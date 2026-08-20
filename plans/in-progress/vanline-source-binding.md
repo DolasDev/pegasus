@@ -3,6 +3,25 @@
 > **Status: DESIGN — review questions resolved 2026-08-06; still not approved for
 > implementation.** Plan-only; the implementing work branches separately per phase.
 
+> ### ⚠️ 2026-08-20 — live Atlas measurement invalidates two assumptions
+>
+> A working Atlas QA subscription key arrived and the API was exercised for the first time
+> (`docs/atlas-world-group-api/README.md`, sections marked VERIFIED). Two things this plan
+> assumed are false:
+>
+> 1. **`On-Behalf-Of` cannot be sent.** Atlas rejects it with `400` _"User is not allowed to
+>    make request on behalf of another user."_ The example `fetch` block below templated
+>    `{{config:ATLAS_USER}}` into that header; that would fail every call. Corrected in place.
+> 2. **The pilot capability `settlements` has no identified Atlas source.** "Settlement" appears
+>    twice in Atlas's entire 24-spec catalog, both incidental. There is no settlements endpoint,
+>    and the invoice-bearing APIs (`RatingSystem-v1`, `atlasorder-v1`, `authorizations-v1`) all
+>    return 401 for our subscription. **This is a live risk to Phase 2's pilot** — see
+>    "Risks" → _The pilot has no proven source_.
+>
+> The plan's **architecture** is unaffected: nothing here depends on OBO, and capability names
+> were deliberately left unfrozen. What changes is which capability can be piloted first, and
+> that is now blocked on an answer from Atlas rather than on engineering.
+
 > **Decisions taken 2026-08-06** (see "Decisions" at the foot for the reasoning):
 >
 > 1. **On-demand fetch stays.** Short-TTL read-through cache, **no single-flight** in v1.
@@ -108,12 +127,18 @@ names come from the floor's declared capability list (so every settlement source
     "method": "GET",
     "path": "/finance/v1/settlements",
     "query": { "from": "{{since}}", "to": "{{until}}" },
-    "headers": { "On-Behalf-Of": "{{config:ATLAS_USER}}" },
     "recordsPath": "Settlements",
     "page": { "style": "none" }
   }
 }
 ```
+
+> **This example is illustrative only — it is not a working Atlas descriptor.**
+> `/finance/v1/settlements` **does not exist**; `finance-v1` publishes exactly two operations
+> (`/invoicedelivery/ReloDirectEntities`, `/invoicedelivery/MadEmails/{agentBranch}/{division}`)
+> and returns 401 for our subscription regardless. The `On-Behalf-Of` header that previously
+> appeared here has been removed: Atlas rejects it outright (see the banner). A real Atlas
+> descriptor cannot be written until open question 1 in the Atlas README is answered.
 
 **Bound the DSL hard.** The mapping format is deliberately not an expression language and a
 fetch block is where that discipline usually dies. Permitted: `{{param}}` and `{{config:KEY}}`
@@ -251,7 +276,11 @@ correlation key the cache lookup cannot happen.
   calls through the existing call-external path (auth/headers/timeout/429-retry all reused),
   extracts `recordsPath`, pages per `page.style`
 - `[ ]` SDK `fetch_external(integration_id, operation, **params)`; docs + MCP + OpenAPI
-- `[ ]` **Pilot:** an Atlas settlements `fetch` block published as a GLOBAL config
+- `[ ]` **Pilot: BLOCKED as specified (2026-08-20).** "An Atlas settlements `fetch` block
+  published as a GLOBAL config" cannot be written — Atlas publishes no settlements endpoint and
+  the invoice-bearing APIs are 401 for us. Unblock by answering open question 1 in
+  `docs/atlas-world-group-api/README.md`, **or** substitute a reachable capability
+  (`documents` via `documents-v1`, `status` via `shipment-management-v1`). See Risks.
 
 ### Phase 3 — Freshness + provenance (C4) `[ ]`
 
@@ -297,6 +326,28 @@ correlation key the cache lookup cannot happen.
 
 ## Risks
 
+- **The pilot has no proven source (NEW, 2026-08-20 — the biggest risk on this list).**
+  Phase 2 ships "an Atlas settlements `fetch` block published as a GLOBAL config", and Atlas
+  publishes no settlements endpoint. Measured: `settlement` occurs twice in the whole 24-spec
+  catalog, both incidental; `remittance` and `disbursement` zero times; and the invoice-heavy
+  APIs (`RatingSystem-v1` 107 mentions, `atlasorder-v1` 55, `authorizations-v1` 33) all return
+  **401** for our subscription. The only reachable candidate is
+  `shipment-management-v1 GET /shipments/{orderNumber}` → `invoices`, which the spec declares as
+  `{"nullable": true}` with **no schema at all**, and no reachable endpoint yields an order
+  number to discover its shape with.
+  **Consequence:** Phases 1, 3 and 4 are source-agnostic and unaffected, but **Phase 2's pilot
+  cannot be written** until Atlas answers where settlement data lives and supplies a QA order
+  number. Two mitigations, in preference order: (a) get the answer — it is open question 1 in
+  `docs/atlas-world-group-api/README.md`; (b) if settlements prove unavailable, pilot a
+  capability we can actually reach (`documents` via `documents-v1`, or `status` via
+  `shipment-management-v1`) — the plan explicitly does not freeze capability names, so this is a
+  substitution, not a redesign.
+- **Identity scoping is unresolved (NEW, 2026-08-20).** Our Atlas key executes as a fixed
+  Atlas-side identity and impersonation is refused, so a Pegasus tenant cannot currently present
+  as its own Atlas agent. If Atlas's answer is "one subscription per agent", per-tenant
+  credentials already handle it and nothing changes. If it is "use `On-Behalf-Of`, we'll grant
+  it", the `fetch` block needs a per-principal substitution (`{{principal:…}}`) plus a
+  Pegasus-user → Atlas-user mapping — a real addition to C2's deliberately-bounded DSL.
 - **Hot-file contention.** `schema.prisma`, `authz/actions.ts` and the Cedar policies are
   merge magnets that collide _semantically_. Serialize across phases; rebase before continuing.
 - **Scope creep in the fetch DSL** — see C2. If a `{{#if}}` shows up in review, the answer is a
@@ -307,7 +358,11 @@ correlation key the cache lookup cannot happen.
 - **SSRF posture unchanged** — resolved URLs still go through `assertDeliverableUrl`. The fetch
   block adds a path/query template, not a new egress.
 - **Unknown rate budget** — see C5. Worth resolving with Atlas before Phase 3 lands, since it is
-  the only input that would move the TTL default off judgement.
+  the only input that would move the TTL default off judgement. **Partially measured 2026-08-20:**
+  ~70 live calls at ~24/min drew no `429` and no rate-limit headers, so there is no aggressive
+  per-minute throttle — but a _weekly_ quota (the `starter` product publishes 100/week) would not
+  have surfaced, and Atlas exposes no quota headers to read it from. The 60s TTL default remains
+  judgement, not measurement.
 - **Deferring single-flight is a bet, and it is instrumented as one.** If duplicate fetches turn
   out to matter, the fix is additive (a shared lease tier, the L2 pattern from #521/#532/#535)
   and does not invalidate anything built in Phases 1–3. The failure mode to avoid is shipping it

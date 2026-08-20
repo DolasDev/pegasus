@@ -2,9 +2,27 @@
 
 **Researched:** 2026-07-30 · **Source:** Atlas QA Azure API Management (`atlas-qa-api-apim`)
 **Scope:** all 24 published APIs / 255 operations, exported as OpenAPI 3 into [`openapi/`](./openapi).
+**Live-verified:** 2026-08-20 against a working QA subscription key.
+
+> ### ⚠️ Read this before trusting anything below
+>
+> The 2026-07-30 research was written **without a subscription key** — every claim about runtime
+> behavior was inferred from the specs. On **2026-08-20** a working key arrived and the inferences
+> were tested. Three of them were wrong:
+>
+> 1. **`On-Behalf-Of` must never be sent.** The doc argued it was required on 91% of our surface and
+>    that header passthrough was what unlocked the tier. The opposite is true: omitting it returns
+>    `200`, sending it returns `400`. See "The `On-Behalf-Of` header".
+> 2. **Our grant is 6 APIs / 102 operations, not 8 / 117.** `RadsSupport-v1` returns `401`. See
+>    "Our measured grant".
+> 3. **The settlements pilot has no identified Atlas source.** The word "settlement" appears twice
+>    in the entire catalog, both incidental. See "Financial data — where settlements are not".
+>
+> Anything not marked **VERIFIED** below is still spec-inferred and may fail the same way.
 
 | File                             | What it is                                                                                        |
 | -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [`OUTREACH.md`](./OUTREACH.md)   | Open questions for Atlas, as a ready-to-send draft — rewritten 2026-08-20                         |
 | [`INVENTORY.md`](./INVENTORY.md) | Every one of the 255 operations, per API, flagged for `On-Behalf-Of` / multipart / base64 content |
 | [`openapi/*.json`](./openapi)    | The 24 OpenAPI 3 documents, byte-for-byte as APIM exported them                                   |
 | `apim-apis.json`                 | APIM's own API metadata (ids, paths, versions, `subscriptionRequired`)                            |
@@ -26,12 +44,28 @@ read against its backing management endpoint returns 401. The programmatic path 
 4. Per-API spec export: `GET {managementApiUrl}/apis/{apiId}?export=true&format=openapi%2Bjson-link&api-version={v}`
    returns `{"value":{"link":"<blob SAS url>"}}`; fetch that link (short-lived, ~5 min) for the JSON.
 
-No fetch script is committed here because it needs portal credentials. The account used for this
-research had **read access to the catalog but zero product subscriptions**, so no live call was ever
-made against `qa-azapi.atlasworldgroup.com` — everything below is derived from the specs.
+5. **`GET {managementApiUrl}/users/{userId}/subscriptions`** returns **200** at developer role and
+   is the authoritative "do we hold a key" check — the admin `/subscriptions` collection is 403, but
+   this one is not. The `{userId}` comes from step 2's response body (`{"id": "<userId>"}`).
+   Likewise `/products/{id}/apis` is readable while `/groups`, `/namedValues` and all `/policies`
+   are 403.
 
-`atlas-prod-api-apim` exists and serves the same portal, but the QA account does not authenticate
-against it (401). Prod needs separate credentials.
+No fetch script is committed here because it needs portal credentials.
+
+**Subscription status (2026-08-20).** The portal account still reports
+`/users/{uid}/subscriptions` → `count: 0`, yet we now hold a **working QA subscription key** that
+Atlas issued admin-side. Keys work at the gateway regardless of portal ownership, but this one
+cannot be viewed or rotated from the portal — see open question 2. The original research
+(2026-07-30) was conducted with **no key at all**, so everything not marked VERIFIED is
+spec-inferred.
+
+**Environments.** Three exist, and only the first appears in any spec:
+
+| Host                            | APIM instance         | Our access                            |
+| ------------------------------- | --------------------- | ------------------------------------- |
+| `qa-azapi.atlasworldgroup.com`  | `atlas-qa-api-apim`   | portal account + working key          |
+| `azapi.atlasworldgroup.com`     | `atlas-prod-api-apim` | no portal account (401); key untested |
+| `dev-azapi.atlasworldgroup.com` | `atlas-dev-api-apim`  | no portal account (401); QA key 401s  |
 
 ---
 
@@ -80,14 +114,46 @@ the catalog. Products: `starter` (no approval), `agent-limited`, `customer-shipm
 
 ### The `On-Behalf-Of` header
 
-**142 of 255 operations (55%) declare a header parameter `On-Behalf-Of`** — _"Specifies the user on
-whose behalf the request is made."_ It is `required: false` in the spec, but it is present on **100%
-of the operations** in nine APIs: `estimating-v2` (58/58), `RadsSupport-v2` (31/31), `documents-v1`
-(13/13), `RadsSupport-v1` (14/14), `customers-v2` (10/10), `cubesheets-v1` (8/8),
-`shipment-management-v1` (4/4), `RatingSystem-v1` (2/2), plus 2 `authorizations-v1` ops using
-`On-Behalf-Of-Agent`. Whether the backend _enforces_ it is untestable without a subscription key, but
-an identity header on every operation of the estimating, document, customer and tariff APIs is not
-decorative.
+> **VERIFIED 2026-08-20 — do not send this header.** The original reading below was backwards.
+
+Measured against the live QA gateway:
+
+| Request                                                       | Result         |
+| ------------------------------------------------------------- | -------------- |
+| `GET /customers/v2/Location/Types` with **no** `On-Behalf-Of` | **200** + data |
+| Same, `On-Behalf-Of: not-a-real-identifier-zzz`               | **400**        |
+| Same, `On-Behalf-Of: dolasllc@gmail.com`                      | **400**        |
+
+The 400 body is identical in both cases:
+
+```json
+{
+  "title": "One or more on behalf of errors occurred.",
+  "errors": { "On-Behalf-Of": ["User is not allowed to make request on behalf of another user."] }
+}
+```
+
+The behavior is **per-API and matches the spec declaration**: every API that declares the header
+rejects it (`cubesheets-v1`, `shipment-management-v1`, `customers-v2` all confirmed), while
+`agents-v1` — which does not declare it — ignores it and returns 200 either way.
+
+**Read the error carefully: it is a _permission denial_, not a protocol rejection.** The subscription
+key evidently executes as some Atlas-side identity, and impersonating a different user is a privilege
+this subscription does not hold. So "never send `On-Behalf-Of`" is true **of this subscription
+today** — it is not an invariant of the Atlas API. If Atlas grants impersonation, the header returns.
+
+That reframes the open question rather than closing it. The live question is now **whose identity
+does our key act as, and whose data does it see?** — which matters directly because Pegasus is
+multi-tenant and different tenants may be different Atlas agents. Suggestive but not conclusive:
+`agents/v1/Companies` and `cubesheets/v1/Cubesheets` both return `[]` while `customers/v2/Customers`
+returns 50 rows. That is indistinguishable between "thin QA dataset" and "scoped to an identity that
+owns nothing".
+
+**Original spec-inferred reading, retained for the record:** 142 of 255 operations (55%) declare
+`On-Behalf-Of` — _"Specifies the user on whose behalf the request is made."_ `required: false`, but
+present on 100% of operations in nine APIs, plus 2 `authorizations-v1` ops using
+`On-Behalf-Of-Agent`. The inference that "an identity header on every operation is not decorative"
+was reasonable and wrong.
 
 Note also that `questionnaire-v1` passes `firstName`, `lastName`, `emailAddress`, `phoneNumber`,
 `orderNumber` and `businessId` as **header** parameters.
@@ -110,10 +176,40 @@ documents are not.
 **`starter` is not a trial of the real APIs** — it grants APIM's stock echo endpoint and nothing
 else. Self-subscribing to it buys no access to anything in §2.
 
-#### Agent-Limited is our tier
+#### Our measured grant — 6 APIs, 102 operations
 
-Atlas has confirmed we are scoped to **`agent-limited`** — 117 of 255 operations (46%). Three
-consequences, all load-bearing:
+> **VERIFIED 2026-08-20.** Atlas said we were on `agent-limited`, and the table above says that
+> product grants 8 APIs / 117 ops. **Measurement disagrees**: `RadsSupport-v1` (14 ops) returns
+> `401` on real paths, and `transitguide-v1` (1 op) is POST-only and remains untested.
+
+| API                      |     Ops | Live result                                 |
+| ------------------------ | ------: | ------------------------------------------- |
+| `estimating-v2`          |      58 | reachable (some ops 422 — see spec drift)   |
+| `documents-v1`           |      13 | reachable (`/Shipment/Documents` 500s bare) |
+| `customers-v2`           |      10 | **200**, 50 customer records                |
+| `agents-v1`              |       9 | **200**                                     |
+| `cubesheets-v1`          |       8 | **200**, empty collections                  |
+| `shipment-management-v1` |       4 | **200**                                     |
+| `RadsSupport-v1`         |      14 | **401 — NOT GRANTED**                       |
+| `transitguide-v1`        |       1 | untested (no GET operation)                 |
+| **Reachable total**      | **102** | vs. 117 documented                          |
+
+**Do not conclude "the portal's product mapping is wrong."** The likelier reading is that **we are
+not on `agent-limited` at all**. Atlas issued the keys admin-side — the portal shows
+`/users/{uid}/subscriptions` → `count: 0` for our account — and an admin-created subscription can
+carry a custom product or a direct API set. Treat the numbers above as _the measured grant of our
+subscription_, and do not assert which product it is. Confirming that is an outreach question.
+
+**How to probe scope correctly.** Only a **real** path discriminates. An unsubscribed API on a real
+path returns `401`; a **fabricated** path returns `404` on every API regardless of subscription,
+because APIM matches the operation before checking the key. A 404-vs-401 sweep over made-up paths
+proves nothing — this was tried and produced a uniformly `SUBSCRIBED` table that was pure artifact.
+
+**Spec drift is real.** Several operations the spec marks parameterless fail when called bare:
+`GET /Estimating/Order` and `GET /Estimating/Estimates` return **422**, `GET /Shipment/Documents`
+returns **500**. Treat "no required parameters" in these specs as unreliable.
+
+Three further consequences, from the original analysis:
 
 |                          | Catalog-wide | Agent-Limited |
 | ------------------------ | -----------: | ------------: |
@@ -122,10 +218,11 @@ consequences, all load-bearing:
 | `multipart/form-data`    |           12 |         **0** |
 | Map to an existing floor |          ~25 |        **17** |
 
-- **`On-Behalf-Of` jumps to 91%** — every operation in Estimating, RadsSupport, Documents,
-  Customers, Cubesheets and Shipment Management. Only `agents-v1` (9) and `transitguide-v1` (1)
-  omit it. Without the header passthrough (G2), Agent-Limited would yield **10 usable operations
-  out of 117**.
+- ~~**`On-Behalf-Of` jumps to 91%**~~ — **DISPROVEN 2026-08-20.** The claim was that without header
+  passthrough (G2) the tier would yield 10 usable operations out of 117. In fact all 102 reachable
+  operations work on the subscription key alone, and sending `On-Behalf-Of` _breaks_ them. G2 is not
+  what unlocks the tier. (G2 remains justified generically, and the subscription key itself rides
+  `AUTH_MODE=apikey`, not G2.)
 - **Multipart is moot.** All 12 multipart ops are in `assetmanagement-v1`, which Agent-Limited
   excludes. G3 is not merely deferred — it is out of scope unless the tier changes.
 - **The floor gap widens.** Only `documents-v1` (13) and `shipment-management-v1` (4) land on an
@@ -145,10 +242,53 @@ Only one figure is published, in the `starter` product description: **5 calls/mi
 per week**. No limit is stated for any other product.
 
 The enforced numbers live in APIM **policy documents**, which return 403 at developer role
-(`/products/{id}/policies` and `/products/{id}/policies/policy` both refused). So Agent-Limited's
-actual budget is **unknown** until we hold a key and can observe `429`s — which is exactly why the
-outbound path treats `Retry-After` as a normal steady-state signal rather than an error (§4, item 2).
+(`/products/{id}/policies` and `/products/{id}/policies/policy` both refused).
+
+> **PARTIALLY MEASURED 2026-08-20.** ~70 live calls at a burst of roughly 24 calls/minute drew
+> **no 429 and no rate-limit response headers whatsoever**. So there is no aggressive per-minute
+> throttle on our subscription. This does **not** answer the question: a _weekly_ quota — `starter`
+> publishes 100/week — would not have surfaced in a single session, and roughly 70 calls of whatever
+> weekly budget exists have now been spent. Responses carry no `X-RateLimit-*` or quota headers, so
+> the budget cannot be read without exhausting it.
+
 On a pull-only integration this budget, not the endpoint list, is the binding design constraint.
+
+### Financial data — where settlements are not
+
+> **VERIFIED 2026-08-20.** This is a plan-level finding, not a documentation detail. The
+> `vanline-source-binding` design nominates **`settlements`** as its pilot capability
+> (`financial-settlement.floor.ts`). Atlas's published catalog does not obviously serve it.
+
+Term frequency across all 24 specs:
+
+| Term           |  Hits | Where                                                                                                                      |
+| -------------- | ----: | -------------------------------------------------------------------------------------------------------------------------- |
+| `settlement`   | **2** | `estimating-v2` (1), `RatingSystem-v1` (1) — both incidental field names                                                   |
+| `remittance`   | **0** | —                                                                                                                          |
+| `disbursement` | **0** | —                                                                                                                          |
+| `payable`      |    25 | `documents-v1` (19), `RadsSupport-v1` (3), `RadsSupport-v2` (3)                                                            |
+| `invoice`      |   260 | `RatingSystem-v1` (107), `atlasorder-v1` (55), `authorizations-v1` (33), `documents-v1` (25), `estimating-v2` (20), others |
+
+**There is no settlement endpoint.** And the invoice-bearing APIs cluster almost exactly in what our
+subscription cannot reach — `RatingSystem-v1`, `atlasorder-v1` and `authorizations-v1` account for
+195 of the 260 invoice mentions and **all three return 401**.
+
+The reachable financial surfaces are only:
+
+- **`documents-v1`** → `GET|POST|DELETE /AccountsPayable/Documents/{documentId}` — document blobs,
+  not structured settlement data.
+- **`shipment-management-v1`** → `GET /shipments/{orderNumber}`, whose `Shipment` schema carries an
+  `invoices` property alongside `invoiceStatus` and `paymentTiming`.
+
+That second one is the only plausible source, and it is **undocumented**: the spec declares
+`invoices` as literally `{"nullable": true}` with no type, no `$ref`, and no item schema. Its shape
+cannot be known without fetching a real shipment — and no reachable endpoint yields an order number
+to fetch with (`customers-v2` records carry no order/shipment identifier of any kind).
+
+**Consequences.** Until Atlas answers, the settlements pilot cannot be designed against a known
+payload; the choice of `settlements` as the pilot capability should be treated as unvalidated; and
+"where does settlement data live, and can we have an order number to see its shape?" is the highest
+-priority outreach question — above rate limits.
 
 ### Payload shapes
 
@@ -192,9 +332,13 @@ callable** through `call_external`.
 **G2. `call-external` cannot send any caller-supplied header.**
 `CallBody` has no `headers` field (`integration-call.ts:124-155`); the header set is hardcoded to
 `Accept` + `Authorization` + `Content-Type` (`:230,304`). This blocks the subscription key _and_
-`On-Behalf-Of` — i.e. even with G1 fixed, the 142 identity-scoped operations (estimating, documents,
-customers, cubesheets, tariffs, shipment-management) stay out of reach, as do the `questionnaire-v1`
-header parameters.
+`On-Behalf-Of`, as well as the `questionnaire-v1` header parameters.
+
+> **Correction 2026-08-20.** This gap was originally justified by "the 142 identity-scoped
+> operations stay out of reach" without G2. That justification is void — those operations are
+> reachable on the key alone, and `On-Behalf-Of` is rejected when sent. G2 is still a real gap
+> (arbitrary outbound headers are a generic requirement, and `questionnaire-v1` genuinely needs
+> them), but it did **not** gate the Atlas tier.
 
 `deliver-to-external` _does_ have `headersConfig` (`integration-delivery.ts:58,153-166`), but it reads
 a **CONFIG** row — plaintext `value`, not `valueCiphertext` — so using it for a subscription key
@@ -231,6 +375,13 @@ OAuth-401 re-mint — dead code for Atlas, which uses no OAuth — and `fetch` w
 **G7. Floor coverage is ~10%.** We have five floors — `shipment_status_update`,
 `shipment_lifecycle_event`, `sales_lead`, `financial_settlement`, `document_record`
 (`apps/api/src/integration-validation/registry.ts:72-81`). Mapping Atlas's catalog onto them:
+
+> **Read with the measured grant in mind (2026-08-20).** This table covers the whole catalog. Of the
+> domains below, our subscription can only reach `shipment-management-v1`, `documents-v1`,
+> `estimating-v2`, `customers-v2` and `cubesheets-v1`. Every row resting on `atlasorder-v1`,
+> `customer-shipment-v1`, `authorizations-v1`, `finance-v1`, `assetmanagement-v1`, `RadsSupport-*`,
+> `RatingSystem-v1`, `claims-v1` or `yembo-v1` is **currently unreachable** — including the
+> `financial_settlement` row, which is the subject of "Financial data — where settlements are not".
 
 | Atlas domain                                |    Ops | Existing floor                                                                  |
 | ------------------------------------------- | -----: | ------------------------------------------------------------------------------- |
@@ -290,7 +441,12 @@ Worth recording, because these were live concerns before the specs were readable
    SECRET key name, resolved server-side so the credential never enters workflow code).
    `Authorization`/`Host`/`Content-Length`/`Content-Type` are reserved and rejected, header names
    must be RFC 7230 tokens, and CR/LF values are refused.
-   **Atlas reachability: 0 → 243 of 255 operations** — the 12 remaining are the multipart ops in G3.
+   ~~**Atlas reachability: 0 → 243 of 255 operations**~~ — **superseded.** That figure assumed the
+   whole catalog was in scope and that G2 was the unlock. Measured 2026-08-20: our subscription
+   reaches **102 operations**, on `AUTH_MODE=apikey` alone.
+   **Still unverified:** this was proven with `curl` against the gateway. The Pegasus
+   `call_external` round-trip through `integration-call.ts` has **not** been exercised against
+   Atlas — that remains the outstanding rung of the verification ladder.
 2. ✅ **G5 + G6 — DONE.** Both handlers return the full response header map (lowercase keys, minus
    `set-cookie`). Every attempt is bounded by `REQUEST_TIMEOUT_MS` (default 30s, clamped to
    [1000, 60000]) with a distinct `504 UPSTREAM_TIMEOUT`, and 429/503 is retried per `Retry-After`
@@ -313,22 +469,49 @@ Items 1–2 shipped in SDK **0.35.0**: `call_external` and `deliver_to_external`
 
 ## 5. Open questions
 
-- **Is `On-Behalf-Of` actually enforced, and what goes in it?** Declared optional, but present on
-  **91% of our Agent-Limited surface**. Needs one live call to settle, which needs a subscription
-  key. Also unanswered: what identifier Atlas expects — an Atlas user id, an agent code, or an
-  email.
-- ~~**Which product do we need?**~~ **Answered** — see "Products" in §2. We are scoped to
-  `agent-limited`: 8 APIs, 117 operations. The per-product API list is readable at developer role
-  even though `/subscriptions` and `/groups` are not.
-- **Rate limits — partially answered.** `starter` publishes 5 calls/min, 100/week; no other product
-  states one, and the enforced policies are 403 at developer role. **Agent-Limited's budget is still
-  unknown**, and on a pull-only integration it is the binding constraint. Worth asking Atlas
-  directly rather than discovering it through 429s in production.
-- **Do we need anything outside Agent-Limited?** Order/shipment _creation_ (`customer-shipment-v1`),
-  claims, rating, and the newer `RadsSupport-v2` are all excluded from our tier. If the roadmap needs
-  any of them, that is a product-tier conversation with Atlas, not an engineering one.
-- **Prod parity.** `atlas-prod-api-apim` was not accessible with the QA account; assume the catalog
-  differs until verified.
-- **Does Atlas offer any push/event feed outside this catalog?** Everything published is pull-only.
-  If near-real-time status is a requirement, polling cadence × rate limits becomes the design
-  constraint — worth asking Atlas directly.
+Reordered 2026-08-20 by what actually blocks work. Items settled by live measurement are struck
+through with a pointer to the evidence.
+
+**1. Where does settlement data live?** — _highest priority; blocks the pilot, not just the docs._
+No settlement endpoint exists in the catalog, and the only plausible reachable source
+(`shipments/{orderNumber}` → `invoices`) has no schema. We also need **one real QA order number** so
+the payload shape can be observed. See "Financial data — where settlements are not".
+
+**2. What product or scope is our subscription actually on?** Atlas said `agent-limited`; that
+product grants `RadsSupport-v1`, and ours returns 401. Is that exclusion deliberate? The
+subscription is also invisible in the portal (`count: 0`), which points at an admin-side custom
+scope. Related ask: **attach the subscription to `dolasllc@gmail.com`** so it is portal-visible and
+self-rotatable.
+
+**3. Whose identity does our key act as?** `On-Behalf-Of` is rejected with _"User is not allowed to
+make request on behalf of another user"_, so calls execute as some fixed Atlas identity. We need to
+know which, and what data it can see. **Then the multi-tenant question:** Pegasus tenants may be
+different Atlas agents — does Atlas want one subscription per agent, or an impersonation grant that
+re-enables `On-Behalf-Of`? This determines whether the fetch descriptor needs per-principal values.
+
+**4. What is the real rate limit, including any weekly quota?** No per-minute throttle observed at
+~24 calls/min, but a weekly cap would not have shown yet and responses carry no quota headers. See
+"Rate limits".
+
+**5. Is there any push/event feed outside this catalog?** Everything published is pull-only. A
+"yes" would reverse the polling design and make the ingress surface relevant again.
+
+**6. Prod parity.** `atlas-prod-api-apim` was not accessible with the QA account, and our portal
+account exists **only** on QA. Note a **third** environment exists that no spec mentions:
+`dev-azapi.atlasworldgroup.com` = `atlas-dev-api-apim` (the QA key 401s there too). Assume the prod
+catalog differs until verified.
+
+**7. Do we need anything outside our grant?** Order/shipment _creation_ (`customer-shipment-v1`),
+claims, rating, `RadsSupport-v2`, and — critically — the invoice-bearing APIs in item 1 are all
+excluded. If the roadmap needs any, that is a product-tier conversation, not an engineering one.
+
+---
+
+### Settled by live measurement
+
+- ~~**Is `On-Behalf-Of` enforced, and what goes in it?**~~ **Answered — never send it.** It is
+  rejected with a permission error. But see item 3: this closed the mechanical question and opened
+  an identity one.
+- ~~**Which product do we need?**~~ **Partly answered, then reopened** — see item 2. The per-product
+  API list is readable at developer role; it just does not match what our key does.
+- ~~**Do we hold a working key?**~~ **Yes**, as of 2026-08-20 (QA only).
