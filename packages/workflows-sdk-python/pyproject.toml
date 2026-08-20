@@ -28,7 +28,7 @@ dependencies = [
   # Keeping it optional regressed that: a clean install registered a server that
   # couldn't start (sdk-feedback 0012). The `[mcp]` extra below is a no-op alias
   # kept only so existing `…[mcp]` install commands still resolve.
-  "mcp>=1,<2",
+  "mcp>=1,<3",
 ]
 
 [project.optional-dependencies]
