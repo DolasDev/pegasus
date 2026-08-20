@@ -21,6 +21,9 @@ const DEFAULT_QUERY: any = {
     Is_Trip_Planning: true,
     load_date: [getDateOffset(-30), getDateOffset(30)],
     assigned: [{ label: 'No', value: 'No' }],
+    // Orders already sitting in SIT at destination are parked, not plannable,
+    // so the board opens without them. Clearing the field brings them back.
+    sit_dest: [{ label: 'No', value: 'No' }],
   },
   sortBy: {},
 }

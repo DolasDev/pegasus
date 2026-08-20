@@ -106,19 +106,34 @@ describe('FilterTabs — SIT-Dest', () => {
   })
 
   it('writes the selection to the sit_dest query key', () => {
+    // The field is isMulti and now opens with No selected, so picking Yes ADDS
+    // to it rather than replacing it — the same behavior Assigned has always
+    // had. Both selected means "Yes or No", which is every order, and the API's
+    // `length === 1` guard drops the predicate accordingly.
     const { store } = renderFilters()
     openMenu(filterRow('sit_dest'))
     fireEvent.click(within(filterRow('sit_dest')).getByText('Yes'))
 
     const { filters } = store.getState().shipments.query
-    expect(filters.sit_dest).toEqual([{ value: 'Yes', label: 'Yes' }])
+    expect(filters.sit_dest).toEqual([
+      { value: 'No', label: 'No' },
+      { value: 'Yes', label: 'Yes' },
+    ])
   })
 
-  it('does not filter by default', () => {
-    // The panel opens unfiltered on SIT — only Is_Trip_Planning, load_date and
-    // assigned carry defaults.
+  it('defaults to No, so SIT orders are hidden until asked for', () => {
+    // Same default as Assigned: the board opens on what can still be planned.
     const { store } = renderFilters()
-    expect(store.getState().shipments.query.filters.sit_dest).toBeUndefined()
+    expect(store.getState().shipments.query.filters.sit_dest).toEqual([
+      { label: 'No', value: 'No' },
+    ])
+  })
+
+  it('shows the default selection in the field', () => {
+    // A default the user cannot see is a default they cannot undo — the row has
+    // to render "No" so it reads as an active filter rather than an empty one.
+    renderFilters()
+    expect(within(filterRow('sit_dest')).getByText('No')).toBeTruthy()
   })
 })
 
