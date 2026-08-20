@@ -110,6 +110,59 @@ into one request — do not add an eighth). Statements are read back **by index*
 so appending one to the common block shifts every per-client index after it;
 update the index map comment and both unpacking branches together.
 
+### …but first check whether the value really is derived
+
+The rule above is about values with **no column behind them**. It is not "any
+filter that concerns activities". `sit_dest` (#639) asks whether an order has a
+SIT-In that actually happened, which sounds like an activity-derived question
+but is a plain predicate over real columns — `ActivityType_code` and
+`actual_date` on `LongDistanceDispatchActivity`, joinable straight to
+`order_num`. It belongs in the `WHERE` builder as a correlated `EXISTS`, next to
+the `assigned` filter, which already pushes a subquery of the same shape.
+
+Ask where the value lives before choosing the site:
+
+- **Computed in JS from the enrichment payload** (`latest_activity_abbr`,
+  `TripStatus_id`) → post-enrichment loop, per the section above.
+- **A column — on the view, or on a table joinable to it** → `WHERE` builder.
+
+Prefer the second whenever it is available. It filters _before_ the
+`SHIPMENT_RESULT_LIMIT` check, so narrowing the list cannot trip the cap on the
+unfiltered set; `meta.count` stays honest with no extra work; and the comparison
+happens in MSSQL, whose `=` ignores trailing spaces — the padded-`nvarchar` trap
+(#628) that a JS comparison has to `.trim()` its way around simply does not
+arise. Bind the code literal through the `ParamBag` like every other clause, and
+import it from `ACTIVITY_TYPE_CODE` rather than hardcoding the string.
+
+Also decide explicitly what the negative case means. `NOT EXISTS` matches an
+order with **no** such activity at all, not only one whose activity is
+unactualized — usually right for a Yes/No filter, but say so in a comment so the
+next reader knows it was chosen rather than inherited.
+
+## Client-side role gates come from one shared const
+
+A route's `beforeLoad` guard in `apps/tenant-web/src/router.tsx` and the nav
+entry for that same route in `components/AppShell.tsx` must agree about who may
+reach it. They live in different modules and each had grown its own copy of the
+Operations role list, so a grant applied to one and not the other would either
+hide a reachable screen or advertise an unreachable one — with nothing in either
+diff to show for it.
+
+Shared role sets belong in `apps/tenant-web/src/auth/role-guard.ts` alongside
+`requireRole` (which router.tsx already imports), exported as a
+`readonly` tuple and spread at both call sites — `OPERATIONS_ROLES` (#639) is
+the worked example. A nav child that should simply inherit its group's gate
+carries **no** `roles` key of its own; the `NavGroup` filter already treats a
+missing `roles` as "inherit", so a per-child list duplicating the group's is
+noise that will drift.
+
+These guards are UX and client-side hardening only — **server-side Cedar remains
+the source of truth**. Before assuming an API change is also needed, check: the
+longhaul planning handlers carry no role gate at all (the operations personas
+hold no permit entries), and `apps/e2e/tests/api/authz-smoke.spec.ts` covers
+neither those routes nor the dispatch roles. Where an authz-smoke pin _does_
+exist, it must move in the same PR — that suite runs only after merge.
+
 ## Password Fields (`PasswordInput`)
 
 Every password field should be a `PasswordInput`, never a bare `type="password"` input — it carries the show/hide eye toggle, the right-padding that keeps text clear of the icon, and the `aria-label`/`aria-pressed` wiring. The toggle is `type="button"` so it never submits the surrounding form, and each instance owns its own visibility so a "new / confirm" pair reveals independently.

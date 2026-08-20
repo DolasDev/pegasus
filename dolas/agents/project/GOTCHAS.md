@@ -883,3 +883,35 @@ Two adjacent notes:
 - The deploy pipeline's ordering is doing its job here: staging deploy → E2E gate → prod. A
   failure at the gate leaves **staging ahead of prod**, which is a normal, recoverable state,
   but it does mean prod stays on the previous SHA until the forward-fix lands.
+
+## A prop-dropping test mock makes assertions vacuously pass
+
+`ShipmentDetail/index.test.tsx` mocked the driver-planning router-compat `Link`
+as `(props: any) => <a>{props.children}</a>`. That renders the text and throws
+away everything else — `className`, `to`, `data-*`. Any assertion about how a
+ported `Link` is styled or where it points would have passed no matter what the
+component did, which is exactly what the item-1 change in #639 needed to assert.
+
+The mock now spreads the remaining props onto the anchor and maps `to` onto
+`href`. **When a test's subject is a prop, check that the mock forwards it**
+before trusting a green run — a hand-rolled mock that keeps only `children` is
+the common shape, and it fails silently in the safe-looking direction.
+
+Related: a new UI label can break an unrelated test that queries the whole
+document. Adding the "SIT-Dest" filter field broke a `FilterTabs` assertion
+doing `screen.queryByText(/SIT\s*[—-]/)` — written to prove the Last Activity
+options use bare abbreviations, but scoped to the entire render. Prefer
+`within(row)` for assertions that are really about one part of a panel.
+
+## Ported longhaul links author _legacy_ paths on purpose
+
+`/trip/:id` appears throughout the ported driver-planning UI and matches no
+route in `router.tsx` (the real path is `/driver-planning/trips/:id`). It is not
+a bug: `features/driver-planning/utils/router-compat.tsx` exports a `Link` whose
+`translatePath` rewrites `/`, `/trip/:id`, `/planning`, `/trips` and
+`/shipments` into their `/driver-planning/*` equivalents. "Correcting" one of
+these paths to the real route double-prefixes it.
+
+Check the import before judging a suspicious path — a `Link` from
+`@/features/driver-planning/utils/router-compat` is the shim, a `Link` from
+`@tanstack/react-router` is not.
