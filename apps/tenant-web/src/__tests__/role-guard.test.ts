@@ -5,7 +5,7 @@ vi.mock('@/auth/session', () => ({
   getSession: vi.fn(),
 }))
 
-import { requireRole } from '@/auth/role-guard'
+import { requireRole, OPERATIONS_ROLES } from '@/auth/role-guard'
 import { getSession } from '@/auth/session'
 import type { Session } from '@/auth/session'
 
@@ -88,6 +88,37 @@ describe('requireRole', () => {
 
     try {
       requireRole('tenant_admin', 'operations_admin')()
+      expect.fail('Expected requireRole to throw')
+    } catch (err) {
+      expect(err).toMatchObject({ options: { to: '/dashboard' } })
+    }
+  })
+})
+
+describe('OPERATIONS_ROLES', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // The Operations routes in router.tsx spread this const into requireRole, and
+  // AppShell gates the matching nav entries on the same const. These pin the
+  // grant itself: dropping a role here silently hides four screens from it.
+  it.each([
+    'tenant_admin',
+    'operations_admin',
+    'long_distance_dispatch',
+    'central_planning_dispatch',
+  ])('admits %s to the Operations routes', (role) => {
+    mockedGetSession.mockReturnValue(makeSession({ roleNames: [role] }))
+
+    expect(() => requireRole(...OPERATIONS_ROLES)()).not.toThrow()
+  })
+
+  it('still turns away a role outside the section', () => {
+    mockedGetSession.mockReturnValue(makeSession({ roleNames: ['sales'] }))
+
+    try {
+      requireRole(...OPERATIONS_ROLES)()
       expect.fail('Expected requireRole to throw')
     } catch (err) {
       expect(err).toMatchObject({ options: { to: '/dashboard' } })

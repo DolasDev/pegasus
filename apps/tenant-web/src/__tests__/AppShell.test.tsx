@@ -194,7 +194,7 @@ describe('AppShell — Operations nav capability gate', () => {
   })
 })
 
-describe('AppShell — Operations submenu per-child role gate', () => {
+describe('AppShell — Operations submenu role gate', () => {
   // Children only render while the group is expanded, which happens when the
   // current route is inside the section. Point it at Availability (reachable by
   // every operations role) so the Planning/Trips children are in the DOM to
@@ -233,7 +233,7 @@ describe('AppShell — Operations submenu per-child role gate', () => {
     expect(screen.getByText('Trips')).toBeInTheDocument()
   })
 
-  it('hides Planning/Trips from long_distance_dispatch but keeps Availability and Shipments', () => {
+  it('shows the whole Operations section to long_distance_dispatch', () => {
     mockPermissions = {
       isLoading: false,
       roles: ['long_distance_dispatch'],
@@ -244,16 +244,15 @@ describe('AppShell — Operations submenu per-child role gate', () => {
         <div />
       </AppShell>,
     )
-    // The Operations section and its unrestricted children stay visible…
     expect(screen.getByText('Operations')).toBeInTheDocument()
     expect(screen.getByText('Availability')).toBeInTheDocument()
     expect(screen.getByText('Shipments')).toBeInTheDocument()
-    // …but the manager-only children are filtered out.
-    expect(screen.queryByText('Planning')).not.toBeInTheDocument()
-    expect(screen.queryByText('Trips')).not.toBeInTheDocument()
+    // Planning and Trips used to be filtered out here; the grant lifted that.
+    expect(screen.getByText('Planning')).toBeInTheDocument()
+    expect(screen.getByText('Trips')).toBeInTheDocument()
   })
 
-  it('hides Planning/Trips from central_planning_dispatch as well', () => {
+  it('shows the whole Operations section to central_planning_dispatch as well', () => {
     mockPermissions = {
       isLoading: false,
       roles: ['central_planning_dispatch'],
@@ -265,6 +264,25 @@ describe('AppShell — Operations submenu per-child role gate', () => {
       </AppShell>,
     )
     expect(screen.getByText('Operations')).toBeInTheDocument()
+    expect(screen.getByText('Availability')).toBeInTheDocument()
+    expect(screen.getByText('Shipments')).toBeInTheDocument()
+    expect(screen.getByText('Planning')).toBeInTheDocument()
+    expect(screen.getByText('Trips')).toBeInTheDocument()
+  })
+
+  it('still hides the Operations section from a role outside it', () => {
+    // The grant widened the section's audience; it did not open it to everyone.
+    mockPermissions = {
+      isLoading: false,
+      roles: ['sales'],
+      capabilities: { longhaul: true },
+    }
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+    expect(screen.queryByText('Operations')).not.toBeInTheDocument()
     expect(screen.queryByText('Planning')).not.toBeInTheDocument()
     expect(screen.queryByText('Trips')).not.toBeInTheDocument()
   })

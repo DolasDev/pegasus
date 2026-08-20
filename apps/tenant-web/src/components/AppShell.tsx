@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { getSession, clearSession } from '@/auth/session'
 import { getCognitoConfig, buildLogoutUrl } from '@/auth/cognito'
 import { usePermissions } from '@/auth/permissions'
+import { OPERATIONS_ROLES } from '@/auth/role-guard'
 
 const SIDEBAR_COLLAPSED_KEY = 'pegasus.sidebar.collapsed'
 
@@ -41,33 +42,17 @@ const MOVES_VIEW_ROLES = ['tenant_admin', 'driver'] as const
 // Roles that may read published integration configs — mirrors the Cedar grant
 // (viewer baseline + integration_publisher; tenant_admin via permit-all).
 const INTEGRATION_VIEW_ROLES = ['tenant_admin', 'viewer', 'integration_publisher'] as const
-const OPERATIONS_PLANNING_ROLES = [
-  'tenant_admin',
-  'operations_admin',
-  'long_distance_dispatch',
-  'central_planning_dispatch',
-] as const
-// Planning and Trips are further restricted to the operations-manager persona
-// (operations_admin) plus tenant_admin — a subset of the roles that can see the
-// Operations section. The dispatch roles keep Availability/Shipments but not
-// these two children (see the per-child `roles` filter in NavGroup rendering).
-// Mirrors the route `beforeLoad` guards on these paths in router.tsx.
-const OPERATIONS_MANAGER_ROLES = ['tenant_admin', 'operations_admin'] as const
+// Shared with the route `beforeLoad` guards on these same paths in router.tsx —
+// see OPERATIONS_ROLES in auth/role-guard.ts. Every role in it reaches all four
+// screens, so the children below carry no `roles` of their own and inherit this
+// gate. (Planning and Trips were once narrowed to tenant_admin +
+// operations_admin, leaving the dispatch roles only Availability/Shipments.)
+const OPERATIONS_PLANNING_ROLES = OPERATIONS_ROLES
 
 const OPERATIONS_CHILDREN = [
   { to: '/driver-planning' as const, label: 'Availability', exact: true },
-  {
-    to: '/driver-planning/planning' as const,
-    label: 'Planning',
-    exact: false,
-    roles: OPERATIONS_MANAGER_ROLES,
-  },
-  {
-    to: '/driver-planning/trips' as const,
-    label: 'Trips',
-    exact: false,
-    roles: OPERATIONS_MANAGER_ROLES,
-  },
+  { to: '/driver-planning/planning' as const, label: 'Planning', exact: false },
+  { to: '/driver-planning/trips' as const, label: 'Trips', exact: false },
   { to: '/driver-planning/shipments' as const, label: 'Shipments', exact: false },
 ] as const
 

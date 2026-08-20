@@ -953,6 +953,19 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
       expect(sql).not.toContain('LongDistanceDispatchActivity AS sit')
     })
 
+    it('adds no predicate for a value that is neither Yes nor No', async () => {
+      // Fail open rather than emit a half-built clause: a saved filter from an
+      // older panel build, or a hand-edited query string, must not change which
+      // orders come back.
+      const [, sql] = await sqlForFilters({ sit_dest: [{ value: 'Maybe', label: 'Maybe' }] })
+      expect(sql).not.toContain('LongDistanceDispatchActivity AS sit')
+    })
+
+    it('adds no predicate when the selected option carries no value', async () => {
+      const [, sql] = await sqlForFilters({ sit_dest: [{ label: 'Yes' }] })
+      expect(sql).not.toContain('LongDistanceDispatchActivity AS sit')
+    })
+
     it('adds no predicate when both Yes and No are selected', async () => {
       // Yes OR No is every order, so the `length === 1` guard drops it rather
       // than emitting a contradictory pair of clauses.
