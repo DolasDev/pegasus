@@ -5,7 +5,14 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { renderWithStore } from '../../__test-utils__/render-with-store'
 
 vi.mock('@/features/driver-planning/utils/router-compat', () => ({
-  Link: (props: any) => <a>{props.children}</a>,
+  // Forwards className/data-* and maps `to` onto href. The old mock rendered a
+  // bare <a> and dropped every other prop, which made any assertion about how a
+  // ported Link is styled or where it points vacuously pass.
+  Link: ({ to, children, ...rest }: any) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
   useLocation: () => ({ pathname: '/', search: '', hash: '' }),
   useNavigate: () => () => {},
   useParams: () => ({}),
@@ -338,6 +345,51 @@ describe('ShipmentDetail container', () => {
       expect(document.querySelector('a[href*="editshipment"]')).toBeNull()
       // The row itself still renders its label, just with an empty value.
       expect(screen.getByText('Reg Number')).toBeInTheDocument()
+    })
+  })
+
+  describe('trip id → trip detail link', () => {
+    it('links the trip id to the trip, via the legacy /trip/:id compat path', () => {
+      renderWithStore(<ShipmentDetail />, {
+        shipments: { selectedShipment: { ...happyShipment, TripMaster_id: 4242 } } as any,
+        user: { user: sampleUser } as any,
+      })
+      const link = document.querySelector('[data-target="trip-id-link"]') as HTMLAnchorElement
+      expect(link).not.toBeNull()
+      expect(link.textContent).toBe('4242')
+      // The shim rewrites this to /driver-planning/trips/4242 at runtime; the
+      // component authors the legacy path on purpose.
+      expect(link.getAttribute('href')).toBe('/trip/4242')
+    })
+
+    it('looks like the Order Number link (shared Clickable styling)', () => {
+      // The whole point of the change: an unstyled <Link> inherits Tailwind
+      // preflight's `color: inherit; text-decoration: inherit` and reads as
+      // plain text rather than a link.
+      isJumpToOrderEnabledMock.mockReturnValue(true)
+      renderWithStore(<ShipmentDetail />, {
+        shipments: { selectedShipment: { ...happyShipment, TripMaster_id: 4242 } } as any,
+        user: { user: sampleUser } as any,
+      })
+      const link = document.querySelector('[data-target="trip-id-link"]') as HTMLAnchorElement
+      const orderNumber = screen.getByText('12345')
+      const sharedClass = orderNumber.className.split(/\s+/)[0]
+      expect(sharedClass).toBeTruthy()
+      expect(link.className.split(/\s+/)).toContain(sharedClass)
+    })
+
+    it('renders no link (and no "/trip/null" href) for an untripped shipment', () => {
+      const untripped = { ...happyShipment }
+      delete (untripped as any).TripMaster_id
+      renderWithStore(<ShipmentDetail />, {
+        shipments: { selectedShipment: untripped } as any,
+        user: { user: sampleUser } as any,
+      })
+      expect(document.querySelector('[data-target="trip-id-link"]')).toBeNull()
+      expect(document.querySelector('a[href="/trip/null"]')).toBeNull()
+      expect(document.querySelector('a[href="/trip/undefined"]')).toBeNull()
+      // The row itself still renders its label, just with an empty value.
+      expect(screen.getByText('Trip Id')).toBeInTheDocument()
     })
   })
 
