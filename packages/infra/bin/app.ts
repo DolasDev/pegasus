@@ -141,29 +141,34 @@ const FEEDBACK_PUBLIC_WEB_URL: Record<Exclude<EnvName, 'dev'>, string> = {
 const feedbackEnabled = envName === 'staging' || envName === 'prod'
 const feedbackPublicWebUrl = envName === 'dev' ? undefined : FEEDBACK_PUBLIC_WEB_URL[envName]
 
-// ── Reporting / customizable dashboards master switch (QA first) ─────────────
+// ── Reporting / customizable dashboards master switch (staging + prod) ───────
 // Ungates the whole /api/v1/reporting/* prefix behind REPORTING_ENABLED on the
 // api Lambda: the dataset catalog + query endpoints and the dashboard-definition
 // CRUD nested under them (every one 404s when off). The tenant SPA probes the
 // catalog endpoint rather than carrying its own flag, so this single switch also
 // controls whether the nav entry and page appear.
 //
-// The feature shipped to prod in #620/#623/#626 but had no env wiring at all,
-// so it has been unreachable in every environment since — this is the lever.
 // Env-gated (not a one-shot `-c` context flag) so it survives routine main-push
 // deploys: `deploy:ci` runs a fixed cdk command that passes no extra context, so
 // a context flag would silently switch the feature back off on the next deploy.
 //
-// staging ONLY for now. Two prerequisites, recorded as deliberate deferrals in
-// both reporting PR bodies, block prod:
-//   1. the three legacy datasets copy their SQL verbatim from the shipping
-//      handlers/dashboard-pegii.ts (v_dashboard1/2/3) and have never been
-//      re-checked against a live view, and
-//   2. there is no e2e spec for the surface.
-// Staging is where both get done; prod then becomes a one-word change here.
-// Note the legacy cards need the QA tunnel up to return rows — per-slot errors
-// degrade them individually while it is down.
-const reportingEnabled = envName === 'staging'
+// #632 wired the flag and turned it on for staging (QA) first; prod follows
+// here. On the two prerequisites #632 recorded as blocking prod:
+//   1. Legacy column names — effectively verified. The three legacy dataset
+//      fragments are BYTE-IDENTICAL to handlers/dashboard-pegii.ts, which backs
+//      the home dashboard's "Use PegII Data" toggle and already runs in prod
+//      against the same v_dashboard1/2/3 views over the same mssql-executor
+//      path. The recorded worry was that the SQL had been copied — but it was
+//      copied from shipping prod code, not from documentation.
+//   2. An e2e spec for the surface — STILL OPEN. Turned on anyway, deliberately.
+//
+// Inert-safe for tenants without a legacy MSSQL: reporting.ts treats that as a
+// normal state, degrading each legacy slot to MSSQL_NOT_CONFIGURED while the
+// Postgres widgets on the same dashboard still render. A tenant whose tunnel is
+// down gets per-slot errors on the three legacy cards only. Reads only — no
+// migration, no new IAM, and authorization is unchanged (each dataset still
+// independently requires the action it reports on).
+const reportingEnabled = envName === 'staging' || envName === 'prod'
 
 // ── CORS allowlist (staging/prod) ────────────────────────────────────────────
 // Browser origins allowed to call the API cross-origin. Tenant + admin SPA
