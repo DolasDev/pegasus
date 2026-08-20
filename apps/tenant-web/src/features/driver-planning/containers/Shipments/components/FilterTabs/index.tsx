@@ -29,6 +29,7 @@ const FIELDS = [
   { label: 'Move Types', property: 'move_type', type: 'move-type' },
   { label: 'Haul Mode', property: 'shaul', type: 'haul-mode' },
   { label: 'Assigned', property: 'assigned', type: 'assigned' },
+  { label: 'SIT-Dest', property: 'sit_dest', type: 'sit-dest' },
   { label: 'Dispatcher', property: 'operations_id', type: 'dispatcher' },
   { label: 'Trip Status', property: 'TripStatus_id', type: 'trip-status' },
   { label: 'Last Activity', property: 'latest_activity', type: 'last-activity' },
@@ -132,6 +133,22 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
         />
       )
     case 'assigned':
+      return (
+        <Select
+          isMulti
+          placeholder="Yes / No"
+          options={assignedAsOptions}
+          styles={createInputStyles(100)}
+          isClearable={false}
+          {...args}
+          value={args.value || []}
+        />
+      )
+    // "Does this order have a SIT-In that actually happened?" Same Yes/No
+    // option list as Assigned — the API reads `.includes('Yes'|'No')` on the
+    // single selected value, and ignores the field entirely when both are
+    // picked (Yes OR No is every order).
+    case 'sit-dest':
       return (
         <Select
           isMulti
