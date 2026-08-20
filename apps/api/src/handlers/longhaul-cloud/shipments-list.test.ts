@@ -906,6 +906,79 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(executeSqlMock).not.toHaveBeenCalled()
   })
 
+  describe('sit_dest filter', () => {
+    async function sqlForFilters(filters: Record<string, unknown>) {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({ shipments: [] })
+      const encoded = encodeURIComponent(JSON.stringify({ filters }))
+      await buildApp().request(`/onprem/longhaul/shipments?filters=${encoded}`)
+      return executeSqlMock.mock.calls[0] as [string, string, { params: Array<{ value: unknown }> }]
+    }
+
+    it('matches orders with an ACTUAL SIT-In when set to Yes', async () => {
+      const [, sql, opts] = await sqlForFilters({ sit_dest: [{ value: 'Yes', label: 'Yes' }] })
+
+      expect(sql).toContain('EXISTS (')
+      expect(sql).not.toContain('NOT EXISTS (')
+      expect(sql).toContain('FROM LongDistanceDispatchActivity AS sit')
+      expect(sql).toContain('sit.actual_date IS NOT NULL')
+      // The whole point of the filter: the SIT-In that HAPPENED, not the one
+      // that was scheduled. whse_date is the planned date and must not appear.
+      expect(sql).not.toContain('whse_date')
+      // Bound, not inlined.
+      expect(sql).not.toContain("'SITIN'")
+      expect(opts.params.map((p) => p.value)).toContain('SITIN')
+    })
+
+    it('matches orders WITHOUT an actual SIT-In when set to No', async () => {
+      const [, sql, opts] = await sqlForFilters({ sit_dest: [{ value: 'No', label: 'No' }] })
+
+      expect(sql).toContain('NOT EXISTS (')
+      expect(sql).toContain('sit.actual_date IS NOT NULL')
+      expect(opts.params.map((p) => p.value)).toContain('SITIN')
+    })
+
+    it('correlates the subquery to the outer shipment row', async () => {
+      // Without the order_num correlation this is "does ANY order have a SIT-In",
+      // which is either all rows or none.
+      const [, sql] = await sqlForFilters({ sit_dest: [{ value: 'Yes', label: 'Yes' }] })
+      expect(sql).toMatch(/WHERE sit\.order_num = \w+\.order_num/)
+    })
+
+    it('adds no predicate when the selection is empty', async () => {
+      const [, sql] = await sqlForFilters({ sit_dest: [] })
+      expect(sql).not.toContain('LongDistanceDispatchActivity AS sit')
+    })
+
+    it('adds no predicate for a value that is neither Yes nor No', async () => {
+      // Fail open rather than emit a half-built clause: a saved filter from an
+      // older panel build, or a hand-edited query string, must not change which
+      // orders come back.
+      const [, sql] = await sqlForFilters({ sit_dest: [{ value: 'Maybe', label: 'Maybe' }] })
+      expect(sql).not.toContain('LongDistanceDispatchActivity AS sit')
+    })
+
+    it('adds no predicate when the selected option carries no value', async () => {
+      const [, sql] = await sqlForFilters({ sit_dest: [{ label: 'Yes' }] })
+      expect(sql).not.toContain('LongDistanceDispatchActivity AS sit')
+    })
+
+    it('adds no predicate when both Yes and No are selected', async () => {
+      // Yes OR No is every order, so the `length === 1` guard drops it rather
+      // than emitting a contradictory pair of clauses.
+      const [, sql] = await sqlForFilters({
+        sit_dest: [
+          { value: 'Yes', label: 'Yes' },
+          { value: 'No', label: 'No' },
+        ],
+      })
+      expect(sql).not.toContain('LongDistanceDispatchActivity AS sit')
+    })
+  })
+
   it('returns 422 MSSQL_NOT_CONFIGURED when the tenant has no connection string', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: null, longhaulClient: 'nwi' })
 

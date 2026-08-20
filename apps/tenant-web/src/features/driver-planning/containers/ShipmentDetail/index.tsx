@@ -201,9 +201,25 @@ export function ShipmentDetail({
     { accessor: '', label: '' },
 
     {
-      accessor: (shipment: LonghaulShipmentRow) => (
-        <Link to={`/trip/${shipment.TripMaster_id}`}>{shipment.TripMaster_id}</Link>
-      ),
+      accessor: (shipment: LonghaulShipmentRow) => {
+        const tripId = shipment.TripMaster_id == null ? '' : String(shipment.TripMaster_id).trim()
+        // An untripped shipment has no trip to link to. Rendering the <Link>
+        // anyway pointed it at "/trip/null"; unstyled that was an invisible
+        // dead link, but styled like the Order Number above it, it reads as a
+        // working one.
+        if (!tripId) return ''
+        return (
+          // `/trip/:id` is the legacy longhaul path — the router-compat shim
+          // rewrites it to /driver-planning/trips/:id. Do not "correct" it.
+          <Link
+            to={`/trip/${tripId}`}
+            className={clickableStyles.clickable}
+            data-target="trip-id-link"
+          >
+            {tripId}
+          </Link>
+        )
+      },
       label: 'Trip Id',
     },
 

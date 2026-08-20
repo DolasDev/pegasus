@@ -42,6 +42,7 @@ import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
 import { getLonghaulClientConfigFor } from '../../lib/longhaul-client-config'
 import {
+  ACTIVITY_TYPE_CODE,
   enrichShipmentWithTripInfo,
   buildExtraShipmentActivities,
   dedupeByOrderNum,
@@ -75,6 +76,9 @@ interface ShipmentFilters {
   short_haul?: Array<{ value: string }>
   move_type?: Array<{ value: string }>
   assigned?: Array<{ value: string }>
+  // 'Yes' | 'No' — does the order have a SIT-In that actually happened?
+  // Applied in SQL; see the filter block in buildBaseSql.
+  sit_dest?: Array<{ value: string }>
   shaul?: Array<{ value: string }>
   TripStatus_id?: Array<{ value: string | number }>
   // Activity-type ABBREVIATIONS — the exact token the shipment card prints in
@@ -250,6 +254,40 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
         where.push(
           `${S}.driver_id IN (SELECT driver_id FROM v_longhaul_drivers WHERE driver_id <> 0)`,
         )
+      }
+    }
+
+    // SIT-Dest: "Yes" = the order has a SIT-In that actually happened — a SITIN
+    // activity row carrying an actual_date.
+    //
+    // Deliberately NOT `whse_date`. That column feeds the SIT-In activity's
+    // PLANNED start/end (legacy activity.service.ts), so it says a SIT-In was
+    // scheduled, not that one occurred.
+    //
+    // In SQL rather than the post-enrichment pass where latest_activity and
+    // TripStatus_id run. Those two filter on values JS derives per row, with no
+    // column behind them; this one has real columns on
+    // LongDistanceDispatchActivity joinable straight to order_num. Keeping it
+    // here filters before the SHIPMENT_RESULT_LIMIT check (so narrowing to SIT
+    // orders cannot trip the limit on the unfiltered set), keeps meta.count
+    // truthful for free, and dodges the padded-nvarchar trap that silently
+    // dropped import_export codes (#628) — MSSQL's `=` ignores trailing spaces,
+    // a JS comparison would have needed .trim().
+    //
+    // NOTE: "No" is NOT EXISTS, so it also matches an order with no SIT-In at
+    // all — not only one whose SIT-In is still unactualized. That is the
+    // intended reading of "is there in fact a SIT-In actual date".
+    if (f.sit_dest?.length === 1) {
+      const val = f.sit_dest[0]?.value ?? ''
+      const sitInActual =
+        `SELECT 1 FROM LongDistanceDispatchActivity AS sit` +
+        ` WHERE sit.order_num = ${S}.order_num` +
+        ` AND sit.ActivityType_code = ${bag.bind(ACTIVITY_TYPE_CODE.SITIN)}` +
+        ` AND sit.actual_date IS NOT NULL`
+      if (val.includes('Yes')) {
+        where.push(`EXISTS (${sitInActual})`)
+      } else if (val.includes('No')) {
+        where.push(`NOT EXISTS (${sitInActual})`)
       }
     }
 

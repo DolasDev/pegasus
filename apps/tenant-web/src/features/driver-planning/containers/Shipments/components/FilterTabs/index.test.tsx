@@ -68,7 +68,9 @@ describe('FilterTabs — Last Activity', () => {
     renderFilters()
     openMenu(filterRow('latest_activity'))
 
-    expect(screen.queryByText(/SIT\s*[—-]/)).toBeNull()
+    // Scoped to this row: the assertion is about the Last Activity OPTIONS, and
+    // a document-wide query also catches the unrelated "SIT-Dest" field label.
+    expect(within(filterRow('latest_activity')).queryByText(/SIT\s*[—-]/)).toBeNull()
   })
 
   it('writes the selection to the latest_activity query key', () => {
@@ -88,6 +90,38 @@ describe('FilterTabs — Last Activity', () => {
   })
 })
 
+describe('FilterTabs — SIT-Dest', () => {
+  it('renders a SIT-Dest filter row', () => {
+    renderFilters()
+    expect(within(filterRow('sit_dest')).getByText('SIT-Dest', { selector: 'label' })).toBeTruthy()
+  })
+
+  it('offers exactly Yes and No', () => {
+    renderFilters()
+    openMenu(filterRow('sit_dest'))
+
+    const row = filterRow('sit_dest')
+    expect(within(row).getByText('Yes')).toBeTruthy()
+    expect(within(row).getByText('No')).toBeTruthy()
+  })
+
+  it('writes the selection to the sit_dest query key', () => {
+    const { store } = renderFilters()
+    openMenu(filterRow('sit_dest'))
+    fireEvent.click(within(filterRow('sit_dest')).getByText('Yes'))
+
+    const { filters } = store.getState().shipments.query
+    expect(filters.sit_dest).toEqual([{ value: 'Yes', label: 'Yes' }])
+  })
+
+  it('does not filter by default', () => {
+    // The panel opens unfiltered on SIT — only Is_Trip_Planning, load_date and
+    // assigned carry defaults.
+    const { store } = renderFilters()
+    expect(store.getState().shipments.query.filters.sit_dest).toBeUndefined()
+  })
+})
+
 describe('FilterTabs — panel layout', () => {
   it('lays the filters out in 5 columns', () => {
     // Regression: the chunker used to slice FIELDS into fixed runs of
@@ -104,6 +138,7 @@ describe('FilterTabs — panel layout', () => {
     const properties = [...rows].map((r) => r.getAttribute('data-filter'))
     expect(new Set(properties).size).toBe(properties.length)
     expect(properties).toContain('latest_activity')
+    expect(properties).toContain('sit_dest')
     expect(properties).toContain('origin')
     expect(properties).toContain('TripStatus_id')
   })

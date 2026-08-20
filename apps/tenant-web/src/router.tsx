@@ -8,7 +8,7 @@ import { LoginCallbackPage } from '@/routes/login.callback'
 import { LoginSignedOutPage } from '@/routes/login.signed-out'
 import { AuthLayout } from '@/routes/_auth'
 import { authGuard } from '@/auth/guard'
-import { requireRole } from '@/auth/role-guard'
+import { requireRole, OPERATIONS_ROLES } from '@/auth/role-guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
@@ -373,13 +373,6 @@ const driverPlanningRoute = createRoute({
   component: DriverPlanningLayout,
 })
 
-// Planning and Trips are restricted to the operations-manager persona
-// (operations_admin) plus tenant_admin. The broader dispatch roles that can see
-// the Operations section still reach Availability/Shipments, but not these two
-// screens — the sibling nav entries in AppShell carry the matching per-child
-// role filter, and server-side Cedar remains the source of truth.
-const OPERATIONS_MANAGER_ROLES = ['tenant_admin', 'operations_admin'] as const
-
 const dpAvailabilityRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: '/',
@@ -389,21 +382,21 @@ const dpAvailabilityRoute = createRoute({
 const dpPlanningRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'planning',
-  beforeLoad: requireRole(...OPERATIONS_MANAGER_ROLES),
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
   component: PlanningModuleLazy,
 })
 
 const dpTripsIndexRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'trips',
-  beforeLoad: requireRole(...OPERATIONS_MANAGER_ROLES),
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
   component: TripsModuleLazy,
 })
 
 const dpTripDetailRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'trips/$tripId',
-  beforeLoad: requireRole(...OPERATIONS_MANAGER_ROLES),
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
   component: TripDetailLazy,
 })
 
@@ -414,7 +407,7 @@ const dpTripDetailRoute = createRoute({
 const dpRejectedTripRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'trips/rejected/$rejectedId',
-  beforeLoad: requireRole(...OPERATIONS_MANAGER_ROLES),
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
   component: TripDetailLazy,
 })
 
