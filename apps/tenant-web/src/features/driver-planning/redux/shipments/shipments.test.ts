@@ -88,6 +88,7 @@ describe('shipments slice — initialState', () => {
     expect(Array.isArray(state.query.filters.load_date)).toBe(true)
     expect(state.query.filters.load_date).toHaveLength(2)
     expect(state.query.filters.assigned).toEqual([{ label: 'No', value: 'No' }])
+    expect(state.query.filters.sit_dest).toEqual([{ label: 'No', value: 'No' }])
     expect(state.query.sortBy).toEqual({})
   })
 })
@@ -197,6 +198,8 @@ describe('shipments slice — query reducers', () => {
     expect(q.searchTerm).toBe('')
     expect(q.filters.Is_Trip_Planning).toBe(true)
     expect(q.filters.assigned).toEqual([{ label: 'No', value: 'No' }])
+    // Reset must restore the SIT default too, not just clear the field.
+    expect(q.filters.sit_dest).toEqual([{ label: 'No', value: 'No' }])
   })
 
   it('resetToDefaultShipmentQuery clones (new dispatches do not share refs across stores)', () => {
