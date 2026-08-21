@@ -89,6 +89,13 @@ export const financialSettlementFloor: TypeFloor = {
   factDocs: financialSettlementFactDocs,
   defaultAction: 'save',
   // Natural key {Id}:{PartyId} (0026).
+  // A settlement is always ABOUT a shipment (the Subject block is the shipment's
+  // shipper/origin/destination/weight), so a settlement record binds to exactly
+  // one Pegasus shipment. Note the canonical shape carries no Pegasus id — see
+  // IntegrationCorrelationBinding for why the id is supplied rather than derived.
+  correlation: {
+    localEntityType: 'shipment',
+  },
   projection: {
     entityType: 'settlement',
     key: (o) => {

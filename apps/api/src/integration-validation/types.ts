@@ -88,6 +88,12 @@ export interface TypeFloor {
   defaultAction: OrderAction
   /** Optional cached-projection binding (keyed off the canonical order). */
   projection?: IntegrationProjectionBinding
+  /**
+   * Optional correlation binding. Absent ⇒ records on this floor cannot be
+   * bound to a Pegasus entity and the projection stays reachable only by the
+   * partner's key.
+   */
+  correlation?: IntegrationCorrelationBinding
 }
 
 /**
@@ -219,4 +225,33 @@ export interface IntegrationProjectionBinding {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   key: (order: any) => string | null
+}
+
+/**
+ * Declares that records on this floor can be bound to a Pegasus entity, so the
+ * cached projection is reachable by OUR id instead of only the partner's key
+ * (Gap A). Present ⇒ the projection-write path accepts a correlation and
+ * persists it alongside the projection.
+ *
+ * WHY THE LOCAL ID IS NOT DERIVED FROM THE PAYLOAD. The original design had the
+ * floor name "which canonical path carries the local id". No floor can honor
+ * that today: a partner payload carries the PARTNER's identifiers, and the
+ * floors that exist prove it — `financial_settlement`'s canonical shape exposes
+ * `Id` and `Reference.PartyId` (both theirs) and nothing of ours. Deriving our
+ * id from their payload would mean assuming it is embeddable in their surrogate,
+ * which is exactly the assumption C1 already rejected for the external key.
+ *
+ * So the floor declares only what it genuinely knows — WHICH KIND of Pegasus
+ * entity its records describe — and the id itself is supplied by the caller
+ * that already holds it (the workflow syncing that entity). The declaration is
+ * still load-bearing: it is what the write path validates the caller's
+ * `localEntityType` against, so a workflow cannot bind a settlement to a
+ * "vehicle" by typo.
+ */
+export interface IntegrationCorrelationBinding {
+  /**
+   * The Pegasus entity kind records on this floor describe, e.g. `shipment`.
+   * A correlation write naming any other local type is rejected.
+   */
+  localEntityType: string
 }
