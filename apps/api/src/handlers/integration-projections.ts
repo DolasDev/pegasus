@@ -19,6 +19,16 @@
 //   GET    /runtime/:integrationId/:entityType/:entityKey   ReadIntegrationProjection
 //   PUT    /runtime/:integrationId/:entityType/:entityKey   WriteIntegrationProjection  { state }
 //   DELETE /runtime/:integrationId/:entityType/:entityKey   WriteIntegrationProjection
+//   GET    /runtime/:integrationId/:entityType/by-local/:localEntityType/:localEntityId
+//                                                          ReadIntegrationProjection
+//
+// That last route is the Gap A read (vanline-source-binding Phase 1): resolve
+// OUR entity id to the partner's key and return the cached state with it. The
+// binding it reads is written by the PUT above when the caller supplies
+// localEntityType + localEntityId. Correlations reuse the projection's two RBAC
+// actions rather than minting their own — a correlation is the index into a
+// projection, with the same actors and tenant scope, and is strictly less
+// sensitive than the state a reader can already see.
 //   GET    /runtime/:integrationId/:entityType              ReadIntegrationProjection   (list)
 //   GET    /integrations/:id/projections/:entityType        ReadIntegrationProjection   (list + filter/page)
 //   GET    /integrations/:id/projections/:entityType/:key   ReadIntegrationProjection   (one)
@@ -39,6 +49,8 @@ import {
   createIntegrationProjectionRepository,
   type IntegrationProjectionRow,
 } from '../repositories/integration-projection.repository'
+import { createIntegrationCorrelationRepository } from '../repositories/integration-correlation.repository'
+import { resolveIntegrationDefinition } from '../integration-validation/registry'
 import { logger } from '../lib/logger'
 
 /** Path-segment shape for integrationId / entityType / entityKey. */
@@ -52,6 +64,15 @@ const PutBody = z
   .object({
     // `state` is the external record's native payload; any defined JSON value.
     state: z.unknown(),
+    /**
+     * Optional correlation: bind this projection's external key to a Pegasus
+     * entity, so the cache becomes reachable by OUR id (Gap A). The caller
+     * supplies the id because the partner payload never carries it — see
+     * IntegrationCorrelationBinding. `localEntityType` is validated against the
+     * floor's declaration, so a typo cannot bind a settlement to a "vehicle".
+     */
+    localEntityType: z.string().min(1).max(64).optional(),
+    localEntityId: z.string().min(1).max(256).optional(),
   })
   .strict()
 
@@ -134,12 +155,28 @@ integrationProjectionsHandler.put(
       return c.json({ error: SEGMENT_HELP, code: 'VALIDATION_ERROR' }, 400)
     }
 
-    const { state } = c.req.valid('json')
+    const { state, localEntityType, localEntityId } = c.req.valid('json')
     if (state === undefined) {
       return c.json({ error: 'state is required', code: 'VALIDATION_ERROR' }, 400)
     }
     if (Buffer.byteLength(JSON.stringify(state) ?? '', 'utf8') > MAX_STATE_BYTES) {
       return c.json({ error: 'state exceeds 256 KB', code: 'VALIDATION_ERROR' }, 413)
+    }
+
+    // Both correlation fields or neither — a half-supplied binding is a caller
+    // bug, and silently ignoring it would leave the cache unreachable by our id
+    // while the write still reported success.
+    if ((localEntityType === undefined) !== (localEntityId === undefined)) {
+      return c.json(
+        {
+          error: 'localEntityType and localEntityId must be supplied together',
+          code: 'VALIDATION_ERROR',
+        },
+        400,
+      )
+    }
+    if (localEntityType !== undefined && badSegment(localEntityType, localEntityId ?? '')) {
+      return c.json({ error: SEGMENT_HELP, code: 'VALIDATION_ERROR' }, 400)
     }
 
     const repo = createIntegrationProjectionRepository(c.get('db'))
@@ -151,6 +188,45 @@ integrationProjectionsHandler.put(
       state: state as object,
       updatedByUserId: userId,
     })
+    // Correlation is written AFTER the projection and never blocks it: the
+    // cached state is the durable artifact, the binding is an index into it. A
+    // correlation failure is surfaced in the response so the caller knows the
+    // cache is not reachable by local id, but it does not fail the write or
+    // discard state we already hold.
+    let correlation: { outcome: string; error?: string } | undefined
+    if (localEntityType !== undefined && localEntityId !== undefined) {
+      const def = await resolveIntegrationDefinition(c.get('db'), integrationId, tenantId)
+      if (!def?.correlation) {
+        correlation = {
+          outcome: 'unsupported',
+          error: `integration '${integrationId}' declares no correlation binding`,
+        }
+      } else if (def.correlation.localEntityType !== localEntityType) {
+        correlation = {
+          outcome: 'rejected',
+          error: `localEntityType must be '${def.correlation.localEntityType}' for this integration, got '${localEntityType}'`,
+        }
+      } else {
+        const corrRepo = createIntegrationCorrelationRepository(c.get('db'))
+        const result = await corrRepo.upsert({
+          tenantId,
+          integrationId,
+          entityType,
+          localEntityType,
+          localEntityId,
+          entityKey,
+          updatedByUserId: userId,
+        })
+        correlation =
+          result.outcome === 'conflict'
+            ? {
+                outcome: 'conflict',
+                error: `external key is already bound to a different ${localEntityType}`,
+              }
+            : { outcome: result.outcome }
+      }
+    }
+
     logger.info('Integration projection upserted', {
       integrationId,
       entityType,
@@ -158,8 +234,59 @@ integrationProjectionsHandler.put(
       tenantId,
       version: row.version,
       created,
+      ...(correlation ? { correlationOutcome: correlation.outcome } : {}),
     })
-    return c.json({ data: toResponse(row) }, created ? 201 : 200)
+    return c.json(
+      { data: toResponse(row), ...(correlation ? { correlation } : {}) },
+      created ? 201 : 200,
+    )
+  },
+)
+
+// GET /runtime/:integrationId/:entityType/by-local/:localEntityType/:localEntityId
+// Resolve OUR entity to the partner's key and return the cached state with it.
+// This is the read Gap A exists to enable: without the correlation the caller
+// must already know the partner's key, which it only learns by fetching.
+integrationProjectionsHandler.get(
+  '/runtime/:integrationId/:entityType/by-local/:localEntityType/:localEntityId',
+  requirePermission(Actions.ReadIntegrationProjection),
+  async (c) => {
+    const integrationId = c.req.param('integrationId') ?? ''
+    const entityType = c.req.param('entityType') ?? ''
+    const localEntityType = c.req.param('localEntityType') ?? ''
+    const localEntityId = c.req.param('localEntityId') ?? ''
+    if (badSegment(integrationId, entityType, localEntityType, localEntityId)) {
+      return c.json({ error: SEGMENT_HELP, code: 'VALIDATION_ERROR' }, 400)
+    }
+
+    const corrRepo = createIntegrationCorrelationRepository(c.get('db'))
+    const correlation = await corrRepo.findByLocal(
+      integrationId,
+      entityType,
+      localEntityType,
+      localEntityId,
+    )
+    if (!correlation) {
+      return c.json({ error: 'No correlation for this entity', code: 'NOT_FOUND' }, 404)
+    }
+
+    // A correlation without a projection is normal, not an error: the binding
+    // can outlive a deleted cache entry. Report the key and a null state so the
+    // caller can decide to fetch rather than treating it as "unknown entity".
+    const repo = createIntegrationProjectionRepository(c.get('db'))
+    const row = await repo.findByKey(integrationId, entityType, correlation.entityKey)
+
+    return c.json({
+      data: {
+        integrationId,
+        entityType,
+        localEntityType: correlation.localEntityType,
+        localEntityId: correlation.localEntityId,
+        entityKey: correlation.entityKey,
+        correlatedAt: correlation.updatedAt.toISOString(),
+        projection: row ? toResponse(row) : null,
+      },
+    })
   },
 )
 

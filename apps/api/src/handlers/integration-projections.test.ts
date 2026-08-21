@@ -15,7 +15,7 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
 
-const { mockRepo } = vi.hoisted(() => ({
+const { mockRepo, mockCorrRepo, mockResolveDefinition } = vi.hoisted(() => ({
   mockRepo: {
     findByKey: vi.fn(),
     findState: vi.fn(),
@@ -23,10 +23,25 @@ const { mockRepo } = vi.hoisted(() => ({
     upsert: vi.fn(),
     deleteByKey: vi.fn(),
   },
+  mockCorrRepo: {
+    findByLocal: vi.fn(),
+    findByExternal: vi.fn(),
+    upsert: vi.fn(),
+    deleteByLocal: vi.fn(),
+  },
+  mockResolveDefinition: vi.fn(),
 }))
 
 vi.mock('../repositories/integration-projection.repository', () => ({
   createIntegrationProjectionRepository: vi.fn(() => mockRepo),
+}))
+
+vi.mock('../repositories/integration-correlation.repository', () => ({
+  createIntegrationCorrelationRepository: vi.fn(() => mockCorrRepo),
+}))
+
+vi.mock('../integration-validation/registry', () => ({
+  resolveIntegrationDefinition: mockResolveDefinition,
 }))
 
 vi.mock('../middleware/dual-auth', () => ({
@@ -210,5 +225,146 @@ describe('DELETE /runtime/:integrationId/:entityType/:entityKey', () => {
     const res = await app.request(`${BASE}/SO-1`, { method: 'DELETE' })
     expect(res.status).toBe(403)
     expect(mockRepo.deleteByKey).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Correlation (vanline-source-binding Phase 1, Gap A)
+// ---------------------------------------------------------------------------
+
+const withCorrelation = { correlation: { localEntityType: 'shipment' } }
+
+describe('PUT with a correlation', () => {
+  beforeEach(() => {
+    mockRepo.upsert.mockResolvedValue({ row: projectionRow(), created: false })
+    mockResolveDefinition.mockResolvedValue(withCorrelation)
+    mockCorrRepo.upsert.mockResolvedValue({ row: {}, outcome: 'created' })
+  })
+
+  it('binds the projection to a local entity and reports the outcome', async () => {
+    const app = buildApp()
+    const res = await app.request(
+      `${BASE}/SO-1`,
+      put({ state: { a: 1 }, localEntityType: 'shipment', localEntityId: 'ship-7' }),
+    )
+    expect(res.status).toBe(200)
+    expect((await json(res))['correlation']).toEqual({ outcome: 'created' })
+    expect(mockCorrRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        localEntityType: 'shipment',
+        localEntityId: 'ship-7',
+        entityKey: 'SO-1',
+      }),
+    )
+  })
+
+  it('writes no correlation when the caller supplies none', async () => {
+    const app = buildApp()
+    const res = await app.request(`${BASE}/SO-1`, put({ state: { a: 1 } }))
+    expect(res.status).toBe(200)
+    expect((await json(res))['correlation']).toBeUndefined()
+    expect(mockCorrRepo.upsert).not.toHaveBeenCalled()
+  })
+
+  it('rejects a half-supplied binding rather than silently ignoring it', async () => {
+    const app = buildApp()
+    const res = await app.request(
+      `${BASE}/SO-1`,
+      put({ state: { a: 1 }, localEntityType: 'shipment' }),
+    )
+    expect(res.status).toBe(400)
+    // The projection must not be written either — the caller gets to retry whole.
+    expect(mockRepo.upsert).not.toHaveBeenCalled()
+  })
+
+  it("rejects a localEntityType the floor doesn't declare", async () => {
+    const app = buildApp()
+    const res = await app.request(
+      `${BASE}/SO-1`,
+      put({ state: { a: 1 }, localEntityType: 'vehicle', localEntityId: 'v-1' }),
+    )
+    expect(res.status).toBe(200)
+    const body = (await json(res))['correlation'] as JsonBody
+    expect(body['outcome']).toBe('rejected')
+    expect(mockCorrRepo.upsert).not.toHaveBeenCalled()
+  })
+
+  it('reports unsupported when the integration declares no correlation', async () => {
+    mockResolveDefinition.mockResolvedValue({})
+    const app = buildApp()
+    const res = await app.request(
+      `${BASE}/SO-1`,
+      put({ state: { a: 1 }, localEntityType: 'shipment', localEntityId: 'ship-7' }),
+    )
+    expect(res.status).toBe(200)
+    expect(((await json(res))['correlation'] as JsonBody)['outcome']).toBe('unsupported')
+  })
+
+  it('still persists the projection when the key is already bound elsewhere', async () => {
+    mockCorrRepo.upsert.mockResolvedValue({ row: null, outcome: 'conflict' })
+    const app = buildApp()
+    const res = await app.request(
+      `${BASE}/SO-1`,
+      put({ state: { a: 1 }, localEntityType: 'shipment', localEntityId: 'ship-9' }),
+    )
+    // The cached state is the durable artifact; the binding is an index into it.
+    expect(res.status).toBe(200)
+    expect(mockRepo.upsert).toHaveBeenCalled()
+    expect(((await json(res))['correlation'] as JsonBody)['outcome']).toBe('conflict')
+  })
+})
+
+describe('GET .../by-local/:localEntityType/:localEntityId', () => {
+  const LOCAL = `${BASE}/by-local/shipment/ship-7`
+
+  it('resolves our id to their key and returns the cached state', async () => {
+    mockCorrRepo.findByLocal.mockResolvedValue({
+      localEntityType: 'shipment',
+      localEntityId: 'ship-7',
+      entityKey: 'SO-1',
+      updatedAt: now,
+    })
+    mockRepo.findByKey.mockResolvedValue(projectionRow())
+
+    const app = buildApp()
+    const res = await app.request(LOCAL)
+    expect(res.status).toBe(200)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['entityKey']).toBe('SO-1')
+    expect((data['projection'] as JsonBody)['state']).toEqual({ serviceOrderNumber: 'SO-1' })
+  })
+
+  it('returns the key with a null projection when the cache entry is gone', async () => {
+    mockCorrRepo.findByLocal.mockResolvedValue({
+      localEntityType: 'shipment',
+      localEntityId: 'ship-7',
+      entityKey: 'SO-1',
+      updatedAt: now,
+    })
+    mockRepo.findByKey.mockResolvedValue(null)
+
+    const app = buildApp()
+    const res = await app.request(LOCAL)
+    // A binding outliving its cache entry is normal — the caller should fetch,
+    // not conclude the entity is unknown.
+    expect(res.status).toBe(200)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['entityKey']).toBe('SO-1')
+    expect(data['projection']).toBeNull()
+  })
+
+  it('404s when the entity has no binding', async () => {
+    mockCorrRepo.findByLocal.mockResolvedValue(null)
+    const app = buildApp()
+    const res = await app.request(LOCAL)
+    expect(res.status).toBe(404)
+    expect(mockRepo.findByKey).not.toHaveBeenCalled()
+  })
+
+  it('403s for a persona without ReadIntegrationProjection', async () => {
+    const app = buildApp(['workflow_developer'])
+    const res = await app.request(LOCAL)
+    expect(res.status).toBe(403)
+    expect(mockCorrRepo.findByLocal).not.toHaveBeenCalled()
   })
 })

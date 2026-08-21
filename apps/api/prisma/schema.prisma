@@ -265,32 +265,33 @@ model Tenant {
   // Relations
   // -------------------------------------------------------------------------
 
-  customers              Customer[]
-  moves                  Move[]
-  quotes                 Quote[]
-  invoices               Invoice[]
-  crewMembers            CrewMember[]
-  vehicles               Vehicle[]
-  availabilities         Availability[]
-  inventoryRooms         InventoryRoom[]
-  leadSources            LeadSource[]
-  accounts               Account[]
-  rateTables             RateTable[]
-  ssoProviders           TenantSsoProvider[]
-  users                  TenantUser[]
-  apiClients             ApiClient[]
-  pegasusEvents          PegasusEvent[]
-  documents              Document[]
-  workflows              Workflow[]
-  workflowTriggers       WorkflowTrigger[]
-  integrationConfigs     IntegrationConfig[]
-  domainEvents           DomainEvent[]
-  tenantEventTypes       TenantEventType[]
-  workflowSecretConfigs  WorkflowSecretConfig[]
-  integrationProjections IntegrationProjection[]
-  outboundOAuthTokens    OutboundOAuthToken[]
-  brokerCredential       TenantBrokerCredential?
-  vpnPeer                VpnPeer?
+  customers               Customer[]
+  moves                   Move[]
+  quotes                  Quote[]
+  invoices                Invoice[]
+  crewMembers             CrewMember[]
+  vehicles                Vehicle[]
+  availabilities          Availability[]
+  inventoryRooms          InventoryRoom[]
+  leadSources             LeadSource[]
+  accounts                Account[]
+  rateTables              RateTable[]
+  ssoProviders            TenantSsoProvider[]
+  users                   TenantUser[]
+  apiClients              ApiClient[]
+  pegasusEvents           PegasusEvent[]
+  documents               Document[]
+  workflows               Workflow[]
+  workflowTriggers        WorkflowTrigger[]
+  integrationConfigs      IntegrationConfig[]
+  domainEvents            DomainEvent[]
+  tenantEventTypes        TenantEventType[]
+  workflowSecretConfigs   WorkflowSecretConfig[]
+  integrationProjections  IntegrationProjection[]
+  integrationCorrelations IntegrationCorrelation[]
+  outboundOAuthTokens     OutboundOAuthToken[]
+  brokerCredential        TenantBrokerCredential?
+  vpnPeer                 VpnPeer?
 
   // Messaging context — RingCentral SMS capture
   ringCentralConnections   RingCentralConnection[]
@@ -2074,6 +2075,44 @@ model IntegrationProjection {
   @@schema("public")
 }
 
+/// Binds a Pegasus entity to the external key its state is cached under in
+/// `IntegrationProjection`. Without this, "read the cached external state for
+/// shipment S" is inexpressible: a projection is keyed by the PARTNER's
+/// identifier, which we only learn BY fetching — so cache-then-fetch degrades
+/// to always-fetch and the cache is dead weight on the read path (Gap A).
+///
+/// Both directions are unique within (tenant, integration, entityType), so the
+/// mapping is a true 1:1 — one local entity resolves to one external key, and
+/// one external key back to one local entity.
+model IntegrationCorrelation {
+  id            String @id @default(uuid())
+  tenantId      String @map("tenant_id")
+  integrationId String @map("integration_id")
+
+  /// The projection's `entityType` segment (e.g. "settlement").
+  entityType String @map("entity_type")
+
+  /// Our side: the Pegasus entity kind (e.g. "shipment") and its id.
+  localEntityType String @map("local_entity_type")
+  localEntityId   String @map("local_entity_id")
+
+  /// Their side: the key the matching IntegrationProjection row is stored under.
+  entityKey String @map("entity_key")
+
+  /// workflow_runtime service-account user id that last wrote the row.
+  updatedByUserId String   @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, integrationId, entityType, localEntityType, localEntityId], name: "correlation_local", map: "integration_correlations_local_key")
+  @@unique([tenantId, integrationId, entityType, entityKey], name: "correlation_external", map: "integration_correlations_external_key")
+  @@index([tenantId, integrationId, entityType])
+  @@map("integration_correlations")
+  @@schema("public")
+}
+
 // ---------------------------------------------------------------------------
 // Outbound OAuth2 token cache (sdk-feedback 0027)
 //
@@ -2143,7 +2182,7 @@ model IngressCredential {
   /// First 12 chars of the token (e.g. "ing_a1b2c3d4") — indexes the hash lookup.
   tokenPrefix String @map("token_prefix")
   /// SHA-256 of the full token. Never returned by any API.
-  tokenHash String @map("token_hash")
+  tokenHash   String @map("token_hash")
 
   enabled         Boolean   @default(true)
   createdByUserId String    @map("created_by_user_id")
@@ -2274,7 +2313,7 @@ model FeedbackRequest {
   /// First 12 chars of the token (e.g. "fbk_a1b2c3d4") — indexes the hash lookup.
   tokenPrefix String @map("token_prefix")
   /// SHA-256 of the full token. Never returned by any API.
-  tokenHash String @map("token_hash")
+  tokenHash   String @map("token_hash")
 
   /// The form this request renders, pinned at mint time.
   formKey     String @map("form_key")

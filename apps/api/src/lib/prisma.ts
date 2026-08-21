@@ -61,6 +61,12 @@ export const TENANT_SCOPED_MODELS = new Set([
   // prior-state lookup go through the tenant-scoped client, so auto-scoping here
   // enforces isolation.
   'IntegrationProjection',
+  // IntegrationCorrelation — binds a Pegasus entity to the external key its
+  // projection is cached under. Purely tenant-owned for the same reason as
+  // IntegrationProjection above: a correlation is only meaningful within the
+  // tenant whose entity it names, and leaking one across tenants would expose
+  // both a partner identifier and the existence of our entity.
+  'IntegrationCorrelation',
   // OutboundOAuthToken (sdk-feedback 0027) — the shared tier of the outbound
   // OAuth token cache. Purely tenant-owned (no GLOBAL case) and reached only from
   // the call_external handler via the tenant-scoped client, so auto-scoping is a
