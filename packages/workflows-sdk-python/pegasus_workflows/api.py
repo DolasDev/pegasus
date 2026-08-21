@@ -2508,12 +2508,31 @@ class PegasusClient:
         ]
 
     def put_projection(
-        self, integration: str, entity_type: str, key: str, state: Any
+        self,
+        integration: str,
+        entity_type: str,
+        key: str,
+        state: Any,
+        local_entity_type: str | None = None,
+        local_entity_id: str | None = None,
     ) -> dict[str, Any]:
         """Upsert the cached state for one record. Requires ``WriteIntegrationProjection``.
 
         Idempotent: calling again with the same key replaces the cached state and
         bumps the row's ``version``.
+
+        Optionally CORRELATE the record with a Pegasus entity. A projection is
+        keyed by the PARTNER's identifier, so without a correlation you can only
+        read the cache back if you already know their key — which you normally
+        learn only by fetching, making the cache useless on the read path. Pass
+        ``local_entity_type`` + ``local_entity_id`` and the binding is stored
+        alongside the state, after which :meth:`get_correlated_state` can resolve
+        the cache by YOUR id.
+
+        You supply the local id because the partner's payload does not contain
+        it. The floor declares which KIND of entity its records describe, and the
+        server validates ``local_entity_type`` against that declaration, so a
+        typo cannot bind a settlement to a "vehicle".
 
         Args:
             integration: Integration slug, e.g. ``"demo_partner"``.
@@ -2522,19 +2541,54 @@ class PegasusClient:
             state: The record's last-known state, in the integration's NATIVE
                 payload shape (the same shape the validator accepts as ``order``/
                 ``prior``). Must be JSON-serializable and ≤ 256 KB serialized.
+            local_entity_type: Pegasus entity kind to bind to, e.g. ``"shipment"``.
+                Must be given together with ``local_entity_id``.
+            local_entity_id: The Pegasus entity's id. Must be given together with
+                ``local_entity_type``.
 
         Returns:
             The created/updated projection row (including its ``state`` and
-            ``version``).
+            ``version``). When a correlation was requested, the row also carries
+            a ``"correlation"`` key describing what happened to the BINDING —
+            ``created`` / ``unchanged`` / ``rebound`` (the partner re-issued its
+            key; we re-pointed), ``conflict`` (that key is already bound to a
+            different entity, so it was left alone), ``rejected`` (wrong
+            ``local_entity_type`` for this floor) or ``unsupported`` (the
+            integration declares no correlation binding).
+
+            A correlation problem never fails the write: the cached state is the
+            durable artifact and the binding is an index into it. **Check this
+            key if you rely on reading back by local id** — the projection can
+            succeed while the binding did not.
 
         Raises:
+            ValueError: If only one of ``local_entity_type`` / ``local_entity_id``
+                is supplied. A half-binding would report success while leaving
+                the cache unreachable by local id.
             PegasusApiError: On 400 (bad key/state), 403 (lacks the action),
                 413 (state too large), or any other non-2xx.
         """
+        if (local_entity_type is None) != (local_entity_id is None):
+            raise ValueError("local_entity_type and local_entity_id must be supplied together")
+        payload: dict[str, Any] = {"state": state}
+        if local_entity_type is not None and local_entity_id is not None:
+            payload["localEntityType"] = local_entity_type
+            payload["localEntityId"] = local_entity_id
+
         captured = self._capture_mutation(
             "WriteIntegrationProjection",
             "put_projection",
-            {"integration": integration, "entity_type": entity_type, "key": key, "state": state},
+            {
+                "integration": integration,
+                "entity_type": entity_type,
+                "key": key,
+                "state": state,
+                **(
+                    {"local_entity_type": local_entity_type, "local_entity_id": local_entity_id}
+                    if local_entity_type is not None
+                    else {}
+                ),
+            },
             {"state": state, "version": 1, "dryRun": True},
         )
         if captured is not _NOT_CAPTURED:
@@ -2542,8 +2596,60 @@ class PegasusClient:
         with self._client() as client:
             response = client.put(
                 f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}/{key}",
-                json={"state": state},
+                json=payload,
             )
+        _raise_for_status(response)
+        body = response.json()
+        row: dict[str, Any] = body["data"]
+        if "correlation" in body:
+            row["correlation"] = body["correlation"]
+        return row
+
+    def get_correlated_state(
+        self,
+        integration: str,
+        entity_type: str,
+        local_entity_type: str,
+        local_entity_id: str,
+    ) -> dict[str, Any] | None:
+        """Read cached external state by YOUR entity id instead of the partner's key.
+
+        Requires ``ReadIntegrationProjection``. The binding this reads is written
+        by :meth:`put_projection` when you pass ``local_entity_type`` +
+        ``local_entity_id``.
+
+        Args:
+            integration: Integration slug, e.g. ``"atlas_settlement"``.
+            entity_type: Logical record type, e.g. ``"settlement"``.
+            local_entity_type: Pegasus entity kind, e.g. ``"shipment"``.
+            local_entity_id: The Pegasus entity's id.
+
+        Returns:
+            ``None`` when the entity has no correlation for this integration —
+            we have never associated it with a record at the partner, so finding
+            one means searching their API, not fetching a known key.
+
+            Otherwise a dict with ``integrationId``, ``entityType``,
+            ``localEntityType``, ``localEntityId``, ``entityKey``,
+            ``correlatedAt`` and ``projection``.
+
+            **``projection`` may be ``None`` while the rest is populated.** That
+            is not an error and is deliberately distinct from the ``None`` above:
+            it means the binding outlived its cached state, so you know the
+            partner's ``entityKey`` and can fetch it directly. Collapsing the two
+            cases would throw that distinction away.
+
+        Raises:
+            PegasusApiError: On 403 (token/manifest lacks the action) or any
+                other non-2xx besides 404.
+        """
+        with self._client() as client:
+            response = client.get(
+                f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}"
+                f"/by-local/{local_entity_type}/{local_entity_id}"
+            )
+        if response.status_code == 404:
+            return None
         _raise_for_status(response)
         return response.json()["data"]
 

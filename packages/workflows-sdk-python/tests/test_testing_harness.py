@@ -106,6 +106,23 @@ def test_get_projection_absent_returns_none() -> None:
     assert client.get_projection("demo_partner", "order", "S-1") is None
 
 
+def test_get_correlated_state_absent_returns_none() -> None:
+    # Same contract as get_projection: an entity with no correlation is a
+    # legitimate None, so the miss path is exercisable without a fixture.
+    client = fake_client()
+    assert client.get_correlated_state("atlas_settlement", "settlement", "shipment", "s-1") is None
+
+
+def test_get_correlated_state_is_keyed_by_local_entity_id() -> None:
+    client = fake_client(
+        reads={"get_correlated_state": {"ship-7": {"entityKey": "SETT-1", "projection": None}}}
+    )
+    row = client.get_correlated_state("atlas_settlement", "settlement", "shipment", "ship-7")
+    assert row["entityKey"] == "SETT-1"
+    # An unstaged local id falls through to the None contract, not an error.
+    assert client.get_correlated_state("atlas_settlement", "settlement", "shipment", "x") is None
+
+
 # --- mutations -----------------------------------------------------------------
 
 

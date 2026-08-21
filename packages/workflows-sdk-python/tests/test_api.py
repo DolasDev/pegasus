@@ -279,9 +279,7 @@ def test_list_executions_passes_limit_and_before() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
         captured["query"] = dict(request.url.params)
-        return httpx.Response(
-            200, json={"data": [{"id": "exec-1"}], "meta": {"count": 1}}
-        )
+        return httpx.Response(200, json={"data": [{"id": "exec-1"}], "meta": {"count": 1}})
 
     client = _client_with(handler)
     rows = client.list_executions("wf-1", limit=25, before="exec-prev")
@@ -462,9 +460,7 @@ def test_publish_integration_config_returns_row() -> None:
         )
 
     client = _client_with(handler)
-    row = client.publish_integration_config(
-        "demo_partner", mapping={}, rules=[], corpus=[]
-    )
+    row = client.publish_integration_config("demo_partner", mapping={}, rules=[], corpus=[])
 
     assert row["version"] == 1
     assert row["visibility"] == "GLOBAL"
@@ -1079,6 +1075,158 @@ def test_put_projection_puts_state_payload() -> None:
     assert row["version"] == 1
 
 
+def test_put_projection_with_correlation_sends_local_entity() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(
+            200,
+            json={
+                "data": {"entityKey": "SO-1", "version": 2},
+                "correlation": {"outcome": "created"},
+            },
+        )
+
+    client = _client_with(handler)
+    row = client.put_projection(
+        "atlas_settlement",
+        "settlement",
+        "SO-1",
+        {"Id": "SO-1"},
+        local_entity_type="shipment",
+        local_entity_id="ship-7",
+    )
+    assert captured["json"] == {
+        "state": {"Id": "SO-1"},
+        "localEntityType": "shipment",
+        "localEntityId": "ship-7",
+    }
+    # The binding outcome must reach the caller — a projection can succeed while
+    # the correlation did not, and only the caller knows if it depends on it.
+    assert row["correlation"] == {"outcome": "created"}
+
+
+def test_put_projection_surfaces_a_correlation_conflict() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": {"entityKey": "SO-1", "version": 2},
+                "correlation": {"outcome": "conflict", "error": "already bound"},
+            },
+        )
+
+    client = _client_with(handler)
+    row = client.put_projection(
+        "atlas_settlement",
+        "settlement",
+        "SO-1",
+        {"Id": "SO-1"},
+        local_entity_type="shipment",
+        local_entity_id="ship-9",
+    )
+    # Not an exception: the state WAS cached. The caller decides whether a
+    # missing binding matters to it.
+    assert row["version"] == 2
+    assert row["correlation"]["outcome"] == "conflict"
+
+
+def test_put_projection_without_correlation_omits_the_fields() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(200, json={"data": {"entityKey": "SO-1", "version": 1}})
+
+    client = _client_with(handler)
+    row = client.put_projection("demo_partner", "order", "SO-1", {"x": 1})
+    assert captured["json"] == {"state": {"x": 1}}
+    assert "correlation" not in row
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"local_entity_type": "shipment"},
+        {"local_entity_id": "ship-7"},
+    ],
+)
+def test_put_projection_half_binding_raises_before_any_request(kwargs: dict) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("no request should be made")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="must be supplied together"):
+        client.put_projection("demo_partner", "order", "SO-1", {"x": 1}, **kwargs)
+
+
+# -- correlated reads ---------------------------------------------------------
+
+
+def test_get_correlated_state_success() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "entityKey": "SETT-1:PARTY-9",
+                    "localEntityId": "ship-7",
+                    "projection": {"state": {"Net": 1200}},
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    row = client.get_correlated_state("atlas_settlement", "settlement", "shipment", "ship-7")
+    assert captured["method"] == "GET"
+    assert captured["path"] == (
+        "/api/v1/integration-projections/runtime/atlas_settlement/settlement"
+        "/by-local/shipment/ship-7"
+    )
+    assert row is not None
+    assert row["entityKey"] == "SETT-1:PARTY-9"
+    assert row["projection"]["state"] == {"Net": 1200}
+
+
+def test_get_correlated_state_unbound_returns_none() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "No correlation", "code": "NOT_FOUND"})
+
+    client = _client_with(handler)
+    assert client.get_correlated_state("atlas_settlement", "settlement", "shipment", "x") is None
+
+
+def test_get_correlated_state_binding_without_cached_state() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"data": {"entityKey": "SETT-1:PARTY-9", "projection": None}},
+        )
+
+    client = _client_with(handler)
+    row = client.get_correlated_state("atlas_settlement", "settlement", "shipment", "ship-7")
+    # Distinct from the unbound case above: we know their key, so the caller can
+    # fetch it directly instead of searching the partner's API.
+    assert row is not None
+    assert row["entityKey"] == "SETT-1:PARTY-9"
+    assert row["projection"] is None
+
+
+def test_get_correlated_state_forbidden_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "denied", "code": "FORBIDDEN"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.get_correlated_state("atlas_settlement", "settlement", "shipment", "ship-7")
+    assert exc_info.value.status_code == 403
+
+
 def test_put_projection_too_large_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -1207,8 +1355,12 @@ def test_dry_run_integration_fetches_native_then_maps() -> None:
             assert json.loads(request.content) == {"data": native}
             return httpx.Response(
                 200,
-                json={"canonical": {"serviceStatus": "Accepted"}, "valid": True,
-                      "issues": [], "degraded": False},
+                json={
+                    "canonical": {"serviceStatus": "Accepted"},
+                    "valid": True,
+                    "issues": [],
+                    "degraded": False,
+                },
             )
         raise AssertionError(f"unexpected path {request.url.path}")
 
@@ -1414,7 +1566,7 @@ def test_from_runtime_reads_dry_run_env(monkeypatch) -> None:
 def test_dry_run_mutation_is_captured_not_sent() -> None:
     reset_dry_run_captures()
     client = _dry_client(_raising_handler)
-    result = client.send_sms(to="+15551234567", body="hi")   # must NOT raise
+    result = client.send_sms(to="+15551234567", body="hi")  # must NOT raise
     assert result == {"data": {"id": "dry-run", "status": "captured", "dryRun": True}}
     assert client.captured[0]["capability"] == "SendSms"
     assert client.captured[0]["args"] == {"to": "+15551234567", "body": "hi"}
@@ -1433,8 +1585,8 @@ def test_dry_run_reads_still_hit_the_api() -> None:
     client = _dry_client(handler)
     order = client.get_order("S-1")
     assert order["orderNumber"] == "S-1"
-    assert seen["path"] == "/api/v1/pegii/orders/S-1"   # the read ran live
-    assert client.captured == []                         # a read captures nothing
+    assert seen["path"] == "/api/v1/pegii/orders/S-1"  # the read ran live
+    assert client.captured == []  # a read captures nothing
 
 
 def test_dry_run_deliver_to_external_captured() -> None:
@@ -1465,7 +1617,7 @@ def test_record_side_effect_only_in_dry_run() -> None:
     reset_dry_run_captures()
     live = PegasusClient(base_url="http://api.test", token=_TOKEN)
     live.record_side_effect("raw_post", {"url": "x"})
-    assert live.captured == []                            # no-op outside dry-run
+    assert live.captured == []  # no-op outside dry-run
     dry = _dry_client(_raising_handler)
     dry.record_side_effect("raw_post", {"url": "x"})
     assert dry.captured[0]["label"] == "raw_post"
@@ -1478,9 +1630,9 @@ def test_non_dry_run_client_sends_normally() -> None:
         calls["path"] = request.url.path
         return httpx.Response(200, json={"data": {"id": 1, "status": "Sent"}})
 
-    client = _client_with(handler)   # dry_run defaults False
+    client = _client_with(handler)  # dry_run defaults False
     client.send_sms(to="+15551234567", body="hi")
-    assert calls["path"] == "/api/v1/sms/send"   # real POST happened
+    assert calls["path"] == "/api/v1/sms/send"  # real POST happened
     assert client.captured == []
 
 
@@ -1505,7 +1657,7 @@ def test_run_workflow_live_omits_mode() -> None:
 
     client = _client_with(handler)
     client.run_workflow("wf-1", {"n": 1})
-    assert captured["body"] == {"input": {"n": 1}}   # back-compat: no mode key
+    assert captured["body"] == {"input": {"n": 1}}  # back-compat: no mode key
 
 
 # --- P2 accessors (SDK completeness) ----------------------------------------

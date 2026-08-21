@@ -89,6 +89,9 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     # reads); offline it is served as a keyed read like map_from_external.
     "dry_run_integration": lambda a, k: _first(a, k, "integration_id"),
     "get_projection": lambda a, k: a[2] if len(a) > 2 else k.get("key"),
+    # Keyed on the LOCAL entity id — the whole point of the call is that you do
+    # not know the partner's key.
+    "get_correlated_state": lambda a, k: a[3] if len(a) > 3 else k.get("local_entity_id"),
     "get_blob": lambda a, k: _first(a, k, "blob_id"),
     "get_blob_url": lambda a, k: _first(a, k, "blob_id"),
     "get_feedback_form": lambda a, k: _first(a, k, "form_key"),
@@ -119,6 +122,12 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_feedback_forms": None,
     "list_feedback_form_versions": None,
 }
+
+#: Reads whose real-server contract includes returning ``None`` — an un-cached
+#: record, or an entity with no correlation. For these the fake client mirrors
+#: that instead of demanding a fixture, so an author can exercise the miss path
+#: without staging one.
+_NONE_ON_MISS: frozenset[str] = frozenset({"get_projection", "get_correlated_state"})
 
 #: mutation method -> the Cedar action (``capability``) it is gated by.
 _MUTATIONS: dict[str, str] = {
@@ -260,9 +269,10 @@ class FakeClient:
     def _read(self, name: str, args: tuple, kwargs: dict) -> Any:
         key_fn = _READS[name]
         if name not in self._reads:
-            # get_projection legitimately returns None for an un-cached record;
-            # every other read needs an explicit fixture to be meaningful.
-            if name == "get_projection":
+            # These legitimately return None against a real server — an un-cached
+            # record, or an entity with no correlation. Every other read needs an
+            # explicit fixture to be meaningful.
+            if name in _NONE_ON_MISS:
                 return None
             raise CaptureError(
                 f"no fixture for read {name!r}. Pass "
@@ -275,11 +285,10 @@ class FakeClient:
         if isinstance(fixture, Mapping):
             if key in fixture:
                 return fixture[key]
-            if name == "get_projection":
+            if name in _NONE_ON_MISS:
                 return None
             raise CaptureError(
-                f"no fixture for {name}({key!r}); "
-                f"reads[{name!r}] has keys {sorted(fixture)}."
+                f"no fixture for {name}({key!r}); reads[{name!r}] has keys {sorted(fixture)}."
             )
         # A non-mapping fixture for a keyed read is returned as-is.
         return fixture
@@ -417,9 +426,7 @@ def run_activity(activity_fn: Callable[..., Any], *args: Any, client: FakeClient
         return result
 
 
-async def arun_activity(
-    activity_fn: Callable[..., Any], *args: Any, client: FakeClient
-) -> Any:
+async def arun_activity(activity_fn: Callable[..., Any], *args: Any, client: FakeClient) -> Any:
     """Async variant of :func:`run_activity`, for use inside an ``async`` test."""
     from temporalio.testing import ActivityEnvironment
 
