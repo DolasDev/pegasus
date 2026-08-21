@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "example-moves-scheduled-this-week",
+      "question": "which moves are scheduled for this week?",
+      "askedAs": "operations_admin",
+      "outcome": "answer",
+      "expected": {
+        "answer": "REPLACE ME — the real count and the real move numbers, read off the screen named in `source` on the day you author this case.",
+        "mustInclude": [],
+        "mustNotInclude": []
+      },
+      "source": {
+        "screen": "Moves list",
+        "endpoint": "/api/v1/runtime/moves"
+      },
+      "notes": "WORKED EXAMPLE — delete once real cases exist. Reachable with a vnd_ reporting key, so you can check the raw data behind the screen yourself."
+    },
+    {
+      "id": "example-shipments-sitting-in-sit",
+      "question": "what's sitting in SIT at destination right now?",
+      "askedAs": "operations_admin",
+      "outcome": "answer",
+      "expected": {
+        "answer": "REPLACE ME — the real shipment numbers, read off the Planning screen with the SIT-Dest filter set to Yes.",
+        "mustInclude": [],
+        "mustNotInclude": []
+      },
+      "source": {
+        "screen": "Operations → Planning → Shipments (SIT-Dest filter = Yes)",
+        "endpoint": "/api/v1/onprem/longhaul/shipments"
+      },
+      "notes": "WORKED EXAMPLE — delete once real cases exist. The endpoint exists but is Cognito-session-only, so a vnd_ key cannot reach it: author this answer from the screen. Phase 1's tools run as your own login and will reach it."
+    },
+    {
+      "id": "example-driver-asks-for-an-invoice-total",
+      "question": "how much did we bill for this move?",
+      "askedAs": "driver",
+      "outcome": "refuse",
+      "expected": {
+        "answer": "A plain statement that billing information is not available to a driver, with no figure of any kind and no offer to look it up another way.",
+        "mustInclude": [],
+        "mustNotInclude": ["$", "invoice", "total"]
+      },
+      "source": {
+        "screen": "Not visible to a driver anywhere in the app",
+        "endpoint": null
+      },
+      "notes": "WORKED EXAMPLE — but keep a case like this one. A driver has no ReadInvoice permission, so the invoice tool must never be offered to them; the correct refusal comes from the empty tool list, not from the model's judgment. Cases like this are the ones that catch a scoping regression."
+    }
+  ]
+}
