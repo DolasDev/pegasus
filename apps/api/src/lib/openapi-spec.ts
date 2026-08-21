@@ -173,6 +173,15 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     'Read one cached projection (ReadIntegrationProjection)',
     { tags: ['Projections'], path: ['integrationId', 'entityType', 'entityKey'] },
   ),
+  '/api/v1/integration-projections/runtime/{integrationId}/{entityType}/by-local/{localEntityType}/{localEntityId}':
+    apiKeyGet(
+      'getRuntimeProjectionByLocalEntity',
+      'Resolve a Pegasus entity to the partner key its cached state is stored under, and return that state with it. 404 when the entity has no correlation; a 200 with a null projection means the binding outlived its cache entry, so fetch rather than treating the entity as unknown (ReadIntegrationProjection)',
+      {
+        tags: ['Projections'],
+        path: ['integrationId', 'entityType', 'localEntityType', 'localEntityId'],
+      },
+    ),
   '/api/v1/integrations/{integrationId}/projections/{entityType}': apiKeyGet(
     'queryProjections',
     'Read-model: filtered + keyset-paged projections for an entity type (ReadIntegrationProjection)',

@@ -197,6 +197,12 @@ export interface IntegrationDefinition {
    */
   projection?: IntegrationProjectionBinding
   /**
+   * Optional correlation binding, inherited from the floor. When set, the
+   * projection-write path accepts a Pegasus entity id alongside the state and
+   * persists the binding, making the cache reachable by our id (Gap A).
+   */
+  correlation?: IntegrationCorrelationBinding
+  /**
    * The partner external output shape as a JSON Schema (0020). Absent ⇒ external
    * == canonical (identity). Used by the publish gate to static-check
    * `externalTransform` targets and round-trip the corpus's external bodies.

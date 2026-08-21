@@ -1,7 +1,15 @@
 # Pluggable data sources — correlation, declarative fetch, and entity→source binding
 
-> **Status: DESIGN — review questions resolved 2026-08-06; still not approved for
-> implementation.** Plan-only; the implementing work branches separately per phase.
+> **Status: APPROVED 2026-08-21 — Phase 1 in flight.** Phases land as separate PRs
+> and serialize (schema.prisma + Cedar are merge magnets). Phase 2's **pilot** is
+> blocked on Atlas; the rest of Phase 2 is not.
+
+> **Sequencing correction (2026-08-21).** An earlier note claimed Phases 1, 3 and 4
+> were source-agnostic and only Phase 2 waited on Atlas. That does not compile:
+> Phase 3's `max_age`/`refresh` live ON Phase 2's fetch surface, so 3 depends on 2
+> existing. The real order is **1 → 2-minus-pilot → 3 → 4**. Only Phase 2's pilot
+> checklist item (and Phase 4's stdlib settlements workflow, same cause) waits for
+> Atlas or a substituted capability.
 
 > ### ⚠️ 2026-08-20 — live Atlas measurement invalidates two assumptions
 >
@@ -106,10 +114,34 @@ model IntegrationCorrelation {
 }
 ```
 
-Both directions are unique, so it is a true 1:1 within an integration. The floor gains an
-optional `correlation` descriptor naming which canonical path carries the local id, so the
-correlation is written by the SAME code path that already computes `projection.key` — no new
-partner-specific logic.
+Both directions are unique, so it is a true 1:1 within an integration.
+
+> **AMENDED 2026-08-21 during Phase 1 — the original wording could not be built.**
+>
+> It read: _"The floor gains an optional `correlation` descriptor naming which canonical path
+> carries the local id, so the correlation is written by the SAME code path that already
+> computes `projection.key` — no new partner-specific logic."_ Two things were wrong.
+>
+> **No canonical path carries our id.** A partner payload carries the PARTNER's identifiers.
+> `financial_settlement`'s canonical shape exposes `Id` and `Reference.PartyId` — both theirs —
+> and nothing of ours; `AgreementReference` is declared but referenced nowhere in the codebase,
+> so treating it as our id would be a guess. Deriving our id from their payload also assumes it
+> is embeddable in their surrogate, which is the assumption this very section rejects for the
+> external key.
+>
+> **It is not one code path.** `projection.key` is invoked in exactly one place —
+> `handlers/integration-validation/validate.ts`, the READ path, to resolve `prior`. That
+> function is deliberately side-effect-free and fails open ("a projection problem must never
+> block a save"), so it is the wrong place to write anything. Projections are WRITTEN through
+> `PUT /runtime/:integrationId/:entityType/:entityKey`, where the key arrives from the caller.
+>
+> **What shipped instead.** The floor declares only what it genuinely knows — WHICH KIND of
+> Pegasus entity its records describe (`correlation: { localEntityType: 'shipment' }`) — and the
+> id is supplied by the caller that already holds it, on the projection PUT. The declaration is
+> still load-bearing: the write path validates the caller's `localEntityType` against it, so a
+> workflow cannot bind a settlement to a "vehicle" by typo. Correlations reuse the projection's
+> RBAC actions rather than minting new ones, which keeps `authz/actions.ts` and Cedar — both
+> named merge magnets in Risks — out of this phase entirely.
 
 **Alternative considered:** derive the external key from the Pegasus entity via a formula in
 config. Rejected — it assumes our id is embeddable in their key, which is false for any
@@ -256,14 +288,18 @@ Ordered by dependency, not visibility. Binding is the most visible piece and the
 first: without a fetch descriptor there is nothing generic to route _to_, and without a
 correlation key the cache lookup cannot happen.
 
-### Phase 1 — Correlation (Gap A) `[ ]`
+### Phase 1 — Correlation (Gap A) — API side `[x]`, SDK `[ ]`
 
-- `[ ]` `IntegrationCorrelation` model + migration + repository
-- `[ ]` Optional `correlation` descriptor on `TypeFloor`; wire into the existing
-  projection-write path so it is written wherever `projection.key` is already computed
-- `[ ]` `financial_settlement` declares its correlation
-- `[ ]` Read endpoint: local id → external key (+ cached state), RBAC-gated
-- `[ ]` SDK: `get_correlated_state(integration_id, local_entity_type, local_entity_id)`
+- `[x]` `IntegrationCorrelation` model + migration + repository (+ 9 integration tests)
+- `[x]` Optional `correlation` descriptor on `TypeFloor`; wired into the projection-write
+  path (`PUT /runtime/...`), **not** the validate path — see the C1 amendment for why
+- `[x]` `financial_settlement` declares its correlation (`localEntityType: 'shipment'`)
+- `[x]` Read endpoint `GET /runtime/:integrationId/:entityType/by-local/:localEntityType/:localEntityId`,
+  gated by the existing `ReadIntegrationProjection`, documented in OpenAPI
+- `[ ]` SDK: `get_correlated_state(integration_id, local_entity_type, local_entity_id)` —
+  **deliberately deferred to its own PR**, because an SDK change drags the full
+  discoverability sweep (README, CHANGELOG, MCP resources, OpenAPI, the authoring repo's
+  `CLAUDE.md`) plus a PyPI release. The API is the contract; the SDK follows it.
 
 ### Phase 2 — Declarative fetch (Gap B) `[ ]`
 
