@@ -646,6 +646,48 @@ async def cache_order(order: dict) -> None:
 `PegasusApiError` (403) if the matching action is absent from `required_actions`,
 and `put_projection` raises 413 if the serialized state exceeds 256 KB.
 
+#### Reading the cache by YOUR id instead of theirs
+
+A projection is keyed by the **partner's** identifier. That is a problem the
+moment you want "the cached settlement for shipment S": you need their key to
+read the cache, and you normally learn their key only by fetching — so the cache
+does nothing for you on the read path.
+
+Pass a Pegasus entity when you write, and the binding is stored alongside the
+state:
+
+```python
+client.put_projection(
+    "atlas_settlement", "settlement", settlement["Id"], settlement,
+    local_entity_type="shipment", local_entity_id=shipment_id,
+)
+
+found = client.get_correlated_state("atlas_settlement", "settlement", "shipment", shipment_id)
+```
+
+You supply the local id because the partner's payload does not contain it — it
+carries _their_ identifiers. The floor declares which **kind** of entity its
+records describe, and the server validates `local_entity_type` against that, so a
+typo cannot bind a settlement to a `"vehicle"`.
+
+Three return states, and the difference between the last two matters:
+
+| Result                      | Meaning                                                                        | What to do                 |
+| --------------------------- | ------------------------------------------------------------------------------ | -------------------------- |
+| `None`                      | No binding — we have never associated this entity with a record at the partner | Search their API           |
+| `{... "projection": None}`  | Binding exists, cached state does not                                          | Fetch `entityKey` directly |
+| `{... "projection": {...}}` | Cache hit                                                                      | Use it                     |
+
+`put_projection` never fails because of the binding — the cached state is the
+durable artifact and the binding is an index into it. When you pass a
+correlation, the returned row carries a `correlation` key reporting what happened
+to it (`created`, `unchanged`, `rebound` when the partner re-issued its key,
+`conflict` when that key is already bound to a different entity, `rejected` for
+the wrong `local_entity_type`, `unsupported` when the integration declares no
+binding). **Check it if you depend on reading back by local id** — the write can
+succeed while the binding did not. Supplying only one of the two arguments raises
+`ValueError` before any request is made.
+
 ### Reading operational entities (inside a workflow)
 
 A running workflow authenticates with its `workflow_runtime` service-account key

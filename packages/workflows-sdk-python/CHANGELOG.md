@@ -3,6 +3,46 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.37.0
+
+### Added — read a cached projection by YOUR entity id
+
+`get_correlated_state(integration, entity_type, local_entity_type, local_entity_id)`
+resolves a Pegasus entity to the partner key its cached state is stored under and
+returns that state with it.
+
+A projection is keyed by the **partner's** identifier, so "the cached settlement
+for shipment S" was previously inexpressible: you needed their key to read the
+cache and only learned it by fetching, which made the cache dead weight on the
+read path.
+
+`put_projection` gained optional `local_entity_type` + `local_entity_id`, which
+write the binding alongside the state. You supply the local id because the
+partner's payload does not contain it; the floor declares which **kind** of
+entity its records describe and the server validates the type against that, so a
+typo cannot bind a settlement to a `"vehicle"`.
+
+Three return states from `get_correlated_state`, and the last two are
+deliberately distinct: `None` (no binding — searching the partner's API is the
+only way to find one), a row with `"projection": None` (binding outlived its
+cached state — you know `entityKey`, so fetch it directly), or a row with the
+cached state.
+
+Correlation never fails the write. The cached state is the durable artifact and
+the binding is an index into it, so when a correlation is requested the returned
+row carries a `correlation` key reporting `created` / `unchanged` / `rebound` /
+`conflict` / `rejected` / `unsupported`. **Check it if you depend on reading back
+by local id.** Supplying only one of the two arguments raises `ValueError` before
+any request is made — a half-binding would report success while leaving the cache
+unreachable by local id.
+
+`fake_client` serves `get_correlated_state` keyed by the local entity id, and
+returns `None` for an unstaged id so the miss path is exercisable without a
+fixture — the same contract `get_projection` already had.
+
+Requires the platform side (`#648`). Against an older API the call 404s, which
+the SDK surfaces as `None`.
+
 ## 0.36.3
 
 Documentation only — no API, CLI, or behavioral change in the SDK itself. The
