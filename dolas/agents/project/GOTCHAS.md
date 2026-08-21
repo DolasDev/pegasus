@@ -137,6 +137,24 @@ line-length 100) will fail E501 on a long trailing comment. Note also that `gene
 suppressed by stopwords — a fixture value containing `secret`/`token`/`example` won't be flagged at
 all, so you often only need to comment the values that lack one.
 
+**Docs count too, and placeholders are not safe.** A markdown example
+`curl -H "Authorization: Bearer vnd_YOUR_KEY"` trips rule `curl-auth-header` (#651) — nothing <!-- gitleaks:allow -->
+secret, check still red. In _user-facing_ docs prefer **rewriting the example** over an
+allow-comment, since hoisting the key into a variable reads better anyway and stops matching:
+`read -rs PEGASUS_KEY && export PEGASUS_KEY`, then `Bearer $PEGASUS_KEY`. Save `gitleaks:allow`
+for code and fixtures where the literal has to stay — **including this very paragraph**, whose
+example is allowed with a trailing `<!-- gitleaks:allow -->`. That is the markdown form: the tool
+only looks for the literal string anywhere on the matched line, and an HTML comment renders as
+nothing.
+
+**After amending, a local full scan still reports the old finding — that is the stale
+remote-tracking ref, not a failed fix.** `betterleaks git .` walks every reachable ref, and
+`origin/<branch>` still points at the pre-amend commit until you force-push. Check your own commits
+first with `./betterleaks git . --log-opts=-3 -v`; the full scan clears once the force-push moves
+the ref. `-v` prints File/Line/RuleID/Fingerprint straight to stdout, which is usually quicker than
+the JSON report above — worth knowing because the CI log only ever prints `leaks found: N`, never
+the finding itself.
+
 **If you find a real, live secret:**
 
 1. **Rotate first.** Revoke the credential at its source (AWS, Cognito, Airbrake, etc.) before touching git.
@@ -765,6 +783,27 @@ What generalizes:
   The one-character difference in the prefix is the whole isolation.
 - The same trap applies to `/onprem`, `/settings` and `/integrations`, all of which
   already have more than one router contributing routes.
+
+### The same split, from the caller's side: a `vnd_` key reaches `m2mV1` and nothing else
+
+The consequence nobody writes down until it bites: **an API key can only reach routes mounted
+on `m2mV1`.** Everything on `v1` sits behind `tenantMiddleware` and requires a Cognito session,
+so a `vnd_` key is rejected there outright. This is a **router split, not a permissions gap** —
+no combination of roles widens it, because the request never reaches an authorization check.
+
+Reachable with a key (given the matching Cedar action): `/api/v1/runtime/{customers,quotes,moves,invoices}`,
+`/orders`, `/events`, `/event-types`, `/pegii/*`, `/workflows`, `/sms`, `/integration-*`, `/blobs`,
+`/feedback-*`. **Not** reachable by any key: everything else on `v1` — notably the whole
+Operations → Planning surface (`/api/v1/onprem/longhaul/*`: shipments, trips, drivers, filter
+reference data), plus `/reporting`, `/documents` and `/dashboard/pegii`.
+
+Assuming otherwise is an easy and expensive mistake: the AI-assistant Phase 0 plan (#651) budgeted
+for an ops admin exploring the planning data with a read-only `reporting` key, which cannot work at
+all. **Before promising any surface to a key-authenticated caller, confirm the route is mounted on
+`m2mV1`** — `grep -n "m2mV1.route\|m2mV1.get" apps/api/src/app.ts`. If it isn't, the options are
+mounting a deliberate `/runtime`-style read mirror (see `handlers/runtime-reads.ts`, which exists
+for exactly this reason) or using a Cognito principal instead. Widening a Cedar policy is never
+the fix.
 
 ## Planning's `move_type` filter and the `Is_Trip_Planning` whitelist constrain the SAME column
 
