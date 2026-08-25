@@ -38,13 +38,6 @@ export default function DrawerLayout() {
         >
           <Drawer.Screen name="index" options={{ title: 'Dashboard' }} />
           <Drawer.Screen name="trips" options={{ title: 'My Trips' }} />
-          <Drawer.Screen
-            name="settings"
-            options={{
-              title: 'Settings',
-              drawerItemStyle: { display: 'none' },
-            }}
-          />
         </Drawer>
       </TripsProvider>
     </GestureHandlerRootView>

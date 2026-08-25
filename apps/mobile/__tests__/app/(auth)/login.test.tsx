@@ -488,4 +488,77 @@ describe('LoginScreen', () => {
       expect(getByText('Unable to sign in. Please try again.')).toBeTruthy()
     })
   })
+
+  // The login steps are component state, not routes, and this stack runs with
+  // headerShown:false — so there is no navigator back button to fall back on.
+  // Without this control a mistyped email is unrecoverable short of a force-quit.
+  describe('back to the email step', () => {
+    const pickerHandoff = {
+      step: 'password',
+      tenantId: 'tenant-acme',
+      tenantName: 'Acme Moving Co',
+      email: 'driver@example.com',
+    }
+
+    it('returns from the password step to the email step', () => {
+      ;(useLocalSearchParams as jest.Mock).mockReturnValue(pickerHandoff)
+
+      const { getByText, queryByText, getByPlaceholderText, queryByPlaceholderText } = render(
+        <LoginScreen />,
+      )
+      expect(getByText('PASSWORD')).toBeTruthy()
+
+      fireEvent.press(getByText('‹ USE A DIFFERENT EMAIL'))
+
+      expect(getByText('EMAIL')).toBeTruthy()
+      expect(queryByText('PASSWORD')).toBeNull()
+      expect(queryByPlaceholderText('Enter password')).toBeNull()
+      // The email survives the reset, so the driver corrects it rather than retyping.
+      expect(getByPlaceholderText('driver@company.com').props.value).toBe('driver@example.com')
+    })
+
+    it('returns from the providers step to the email step', () => {
+      ;(useLocalSearchParams as jest.Mock).mockReturnValue({
+        ...pickerHandoff,
+        step: 'providers',
+        providersJson: JSON.stringify([{ id: 'GoogleSSO', name: 'Google', type: 'oidc' }]),
+        cognitoAuthEnabled: 'true',
+      })
+
+      const { getByText, queryByText } = render(<LoginScreen />)
+      expect(getByText('SIGN IN WITH GOOGLE')).toBeTruthy()
+
+      fireEvent.press(getByText('‹ USE A DIFFERENT EMAIL'))
+
+      expect(getByText('EMAIL')).toBeTruthy()
+      expect(queryByText('SIGN IN WITH GOOGLE')).toBeNull()
+    })
+
+    it('clears a typed password so it is not carried into the next attempt', async () => {
+      ;(useLocalSearchParams as jest.Mock).mockReturnValue(pickerHandoff)
+      mockResolveTenants.mockResolvedValueOnce([
+        {
+          tenantId: 'tenant-best',
+          tenantName: 'Best Movers',
+          cognitoAuthEnabled: true,
+          providers: [],
+        } as TenantResolution,
+      ])
+      mockSelectTenant.mockResolvedValueOnce(undefined)
+
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+      fireEvent.changeText(getByPlaceholderText('Enter password'), 'hunter2')
+
+      fireEvent.press(getByText('‹ USE A DIFFERENT EMAIL'))
+
+      // Correct the email and come back round to the password step.
+      fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@best.com')
+      await act(async () => {
+        fireEvent.press(getByText('FIND MY COMPANY'))
+      })
+
+      expect(getByText('Best Movers')).toBeTruthy()
+      expect(getByPlaceholderText('Enter password').props.value).toBe('')
+    })
+  })
 })

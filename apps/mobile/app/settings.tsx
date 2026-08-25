@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native'
-import { useAuth } from '../../src/context/AuthContext'
-import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
+import { useAuth } from '../src/context/AuthContext'
+import { colors, fontSize, spacing, borderRadius, touchTarget } from '../src/theme/colors'
 import Constants from 'expo-constants'
 import * as WebBrowser from 'expo-web-browser'
 import {
   loadPushRegistrationState,
   type PushRegistrationState,
-} from '../../src/services/pushNotifications'
+} from '../src/services/pushNotifications'
 
 /**
  * The published privacy policy — the same URL registered with the App Store and
