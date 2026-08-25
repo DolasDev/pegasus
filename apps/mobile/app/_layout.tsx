@@ -13,6 +13,27 @@ import { colors, fontSize, spacing } from '../src/theme/colors'
 
 SplashScreen.preventAutoHideAsync()
 
+/**
+ * Header options for the screens pushed on top of the drawer.
+ *
+ * These screens deliberately live on THIS stack rather than in nested
+ * single-screen stacks of their own. On iOS the header's back chevron is
+ * UIKit's, drawn only when the view controller is not the first in its
+ * UINavigationController — react-native-screens can hide that button but
+ * cannot conjure one. A nested stack holding a single screen is therefore
+ * always at index 0, so it renders no chevron no matter what the header
+ * options say. Kept flat here, each screen is a real second entry of the same
+ * native stack as `(drawer)`, and the chevron, the "Back" label and the
+ * left-edge swipe all come for free.
+ */
+const detailHeader = {
+  headerShown: true,
+  headerStyle: { backgroundColor: colors.backgroundDark },
+  headerTintColor: colors.textLight,
+  headerTitleStyle: { fontWeight: '700', fontSize: fontSize.large },
+  headerBackTitle: 'Back',
+} as const
+
 function RootLayoutNav() {
   const { isAuthenticated, isLoading, session } = useAuth()
   const router = useRouter()
@@ -60,8 +81,9 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={isAuthenticated}>
         <Stack.Screen name="(drawer)" />
-        <Stack.Screen name="trip" />
-        <Stack.Screen name="shipment" />
+        <Stack.Screen name="trip/[id]" options={{ ...detailHeader, title: 'Trip' }} />
+        <Stack.Screen name="shipment/[orderNum]" options={{ ...detailHeader, title: 'Shipment' }} />
+        <Stack.Screen name="settings" options={{ ...detailHeader, title: 'Settings' }} />
       </Stack.Protected>
       <Stack.Protected guard={!isAuthenticated}>
         <Stack.Screen name="(auth)" />

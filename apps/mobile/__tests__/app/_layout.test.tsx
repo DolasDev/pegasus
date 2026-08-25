@@ -111,4 +111,54 @@ describe('RootLayout auth guard (GUARD-01)', () => {
 
     expect(getByText('Configuration Error')).toBeTruthy()
   })
+
+  // The iOS back chevron is UIKit's: it is drawn only when the screen is not the
+  // first in its UINavigationController. These three screens must therefore stay
+  // declared on the ROOT stack — pushed on top of `(drawer)` — rather than each
+  // sitting alone inside a nested stack, where it would be at index 0 and render
+  // no back button at all. This test fails the moment someone re-nests them.
+  describe('pushed detail screens keep a native back button (BACK-01)', () => {
+    const PUSHED_SCREENS = ['trip/[id]', 'shipment/[orderNum]', 'settings']
+
+    function screenOptionsFor(name: string) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Stack } = require('expo-router')
+      const call = (Stack.Screen as jest.Mock).mock.calls.find((c) => c[0]?.name === name)
+      return call?.[0]?.options
+    }
+
+    beforeEach(() => {
+      mockUseAuth.mockReturnValue({ isAuthenticated: true, isLoading: false })
+      render(<RootLayout />)
+    })
+
+    it.each(PUSHED_SCREENS)('declares %s on the root stack with a shown header', (name) => {
+      const options = screenOptionsFor(name)
+      expect(options).toBeDefined()
+      // headerShown must be re-enabled per screen — the root stack hides headers.
+      expect(options).toMatchObject({ headerShown: true, headerBackTitle: 'Back' })
+    })
+
+    it('does not declare the old nested group screens', () => {
+      expect(screenOptionsFor('trip')).toBeUndefined()
+      expect(screenOptionsFor('shipment')).toBeUndefined()
+    })
+
+    it('renders every pushed screen inside the authenticated guard', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Stack } = require('expo-router')
+      const guarded = (Stack.Protected as jest.Mock).mock.calls.find((c) => c[0]?.guard === true)
+      expect(guarded).toBeDefined()
+
+      const names = React.Children.toArray(guarded?.[0]?.children)
+        .map((child) =>
+          React.isValidElement(child) ? (child.props as { name?: string }).name : undefined,
+        )
+        .filter(Boolean)
+
+      // Settings in particular was auth-guarded only transitively, by living
+      // inside the (drawer) group; unguarded it would be publicly reachable.
+      expect(names).toEqual(expect.arrayContaining(PUSHED_SCREENS))
+    })
+  })
 })

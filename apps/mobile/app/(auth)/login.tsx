@@ -73,6 +73,22 @@ export default function LoginScreen() {
     }
   }
 
+  /**
+   * Back out of the password / provider step to the email step.
+   *
+   * The steps are component state rather than routes, and this stack runs with
+   * `headerShown: false`, so there is no navigator back button to inherit —
+   * without this a mistyped email is unrecoverable short of force-quitting the
+   * app. `email` survives the reset (it is seeded from the tenant-picker
+   * handoff params too), so the driver corrects it rather than retyping it.
+   */
+  const resetToEmailStep = () => {
+    setStep('email')
+    setPassword('')
+    setPasswordError(null)
+    setSsoError(null)
+  }
+
   // Email step: resolve tenants
   const handleEmailSubmit = async () => {
     if (!email.trim()) return
@@ -178,6 +194,20 @@ export default function LoginScreen() {
     }
   }
 
+  /** Shared by the two post-email steps — the only way back to the email field. */
+  const backToEmailControl = (
+    <TouchableOpacity
+      onPress={resetToEmailStep}
+      style={styles.backLink}
+      accessibilityRole="button"
+      accessibilityLabel="Use a different email"
+      disabled={isLoading}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.backLinkText}>‹ USE A DIFFERENT EMAIL</Text>
+    </TouchableOpacity>
+  )
+
   // ---------------------------------------------------------------------------
   // Providers step — SSO provider buttons
   // ---------------------------------------------------------------------------
@@ -194,6 +224,8 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.form}>
+            {backToEmailControl}
+
             <View style={styles.companyNameContainer}>
               <Text style={styles.companyName}>{tenantName}</Text>
             </View>
@@ -254,6 +286,8 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.form}>
+            {backToEmailControl}
+
             {/* TENANT-05: company name above password input */}
             <View style={styles.companyNameContainer}>
               <Text style={styles.companyName}>{tenantName}</Text>
@@ -422,6 +456,18 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   toggleText: {
+    fontSize: fontSize.medium,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.5,
+  },
+  backLink: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.sm,
+    paddingRight: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  backLinkText: {
     fontSize: fontSize.medium,
     fontWeight: '700',
     color: colors.primary,
