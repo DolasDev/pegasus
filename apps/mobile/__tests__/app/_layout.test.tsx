@@ -140,8 +140,13 @@ describe('RootLayout auth guard (GUARD-01)', () => {
     })
 
     it('does not declare the old nested group screens', () => {
-      expect(screenOptionsFor('trip')).toBeUndefined()
-      expect(screenOptionsFor('shipment')).toBeUndefined()
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Stack } = require('expo-router')
+      const declared = (Stack.Screen as jest.Mock).mock.calls.map((c) => c[0]?.name)
+      // Not "declared without options" — absent entirely. Re-introducing either
+      // group name means the nested single-screen stacks are back.
+      expect(declared).not.toContain('trip')
+      expect(declared).not.toContain('shipment')
     })
 
     it('renders every pushed screen inside the authenticated guard', () => {

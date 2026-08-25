@@ -954,3 +954,38 @@ these paths to the real route double-prefixes it.
 Check the import before judging a suspicious path — a `Link` from
 `@/features/driver-planning/utils/router-compat` is the shim, a `Link` from
 `@tanstack/react-router` is not.
+
+## A nested single-screen `Stack` renders no iOS back chevron
+
+`apps/mobile/app/trip/[id].tsx` and `app/shipment/[orderNum].tsx` each sat in
+their own `_layout.tsx` — a `Stack` holding exactly one screen — mounted under
+the root stack as the group screens `trip` and `shipment`. Both layouts set
+`headerBackTitle: 'Back'`. Neither ever drew a back button on iOS.
+
+The chevron is **UIKit's**, not React Navigation's. `react-native-screens` only
+ever _hides_ it (`navitem.hidesBackButton = config.hideBackButton`,
+`ios/RNSScreenStackHeaderConfig.mm:628`); UIKit draws it only when the view
+controller is not first in its own `UINavigationController`. A nested stack of
+one screen is permanently at index 0, so no header option can produce a button
+there. Android papered over it with hardware back, so it read as an iOS-only
+bug.
+
+Fix (#653): delete the nested layouts and declare the screens directly on the
+parent stack, carrying the header styling across. They become real second
+entries of the same native stack and the chevron, the "Back" label and the
+left-edge swipe all come for free.
+
+Two traps when flattening:
+
+- **Re-declare the screen inside the same `Stack.Protected` guard.** A screen
+  that was auth-guarded only by living inside a guarded group (Settings, in the
+  `(drawer)` group) becomes publicly reachable once moved, because Expo Router
+  auto-registers any filesystem route left undeclared.
+- Don't trust the JS-side `canGoBack`. React Navigation v7 propagates a parent's
+  back state through `HeaderBackContext`, so the _JS_ `headerLeft({ canGoBack })`
+  sees `true` in a nested stack — while the native header still shows nothing.
+  It only tells you what a custom `headerLeft` would receive.
+
+Guarded by `__tests__/app/_layout.test.tsx` → "pushed detail screens keep a
+native back button (BACK-01)", which fails if either screen is re-nested or
+leaves the authenticated guard.
