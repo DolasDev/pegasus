@@ -162,9 +162,22 @@ function delivery(overrides?: Partial<Delivery>): Delivery {
   }
 }
 
+// Every fixture below dates its activities to 2026-06-02, while the Availability
+// page's default Ready Date window is `today +/- 3 months` read off the real
+// clock (isoDateOffsetMonths). That made the suite quietly time-dependent: it
+// passed only while the real date stayed within 3 months of the fixtures, and
+// 52 of these 69 tests would have started failing on 2026-09-03 with no code
+// change at all. Pin the clock so the window is deterministic.
+//
+// vi.setSystemTime WITHOUT vi.useFakeTimers() mocks Date only, leaving timers
+// real — React Testing Library's async waits keep working. Do not "upgrade"
+// this to useFakeTimers.
+const FIXED_NOW = new Date('2026-07-01T12:00:00Z')
+
 describe('DriverPlanningPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.setSystemTime(FIXED_NOW)
     driverPlanningReturn = { data: [], isLoading: false, isError: false }
     // The page renders View A by default (no random pick), so these suites — which
     // assert View A's columns/cells — need no variant pinning. View B has diverged
