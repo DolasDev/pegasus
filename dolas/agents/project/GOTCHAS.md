@@ -1017,3 +1017,35 @@ Related, same component: an `<input type="number">` hands back a **string** from
 string. The shadow schema is `weight: z.number().nullable()` and 400s on it —
 which is the schema doing its job; coerce in the client, at save, and map a
 cleared field to `null` rather than `Number('') === 0`.
+
+## MSSQL ignores trailing whitespace in comparisons — JS `===` does not
+
+`v_longhaul_states.zone` is inconsistently padded on the prod Dolios SQL Server:
+seven states — **MA, MD, ME, NH, NJ, PA, WV** — store `'1 '` (`DATALENGTH` 4)
+where every other state stores a bare `'1'` (`DATALENGTH` 2). The Zone dropdown's
+values come from a _different_ view, `v_longhaul_zones.zone_code`, which is
+always unpadded (`'1'`–`'7'`). The two code spaces otherwise agree exactly.
+
+This is invisible to every SQL-side consumer. ANSI comparison semantics pad the
+shorter operand, so `os.zone IN ('1')` matches `'1 '` and the Planning screen's
+zone filter — which pushes the predicate into the query — has always been
+correct. The **client-side** Availability filter compared the same two columns in
+JavaScript, where `'1 ' === '1'` is false and `['1'].includes('1 ')` is false.
+Result: selecting **North East** silently dropped every driver whose Ready State
+was one of those seven states, while NY/CT/DC/DE/RI/VA/VT (clean `'1'`) stayed.
+No error, no empty state — just a short list that looked plausible.
+
+**How to apply:** any legacy-view value compared in JS rather than in SQL must be
+normalized (`.trim().toUpperCase()`) on **both** sides of the comparison. The SQL
+path working is not evidence the data is clean — it is precisely what hides the
+dirt. When porting a filter from a `WHERE` clause to a client-side `useMemo`, the
+comparison semantics change underneath you.
+
+To check a suspect column, wrap it so padding is visible — `LEN` trims, so use
+`DATALENGTH` or bracket the value:
+
+`SELECT DISTINCT '[' + zone + ']' AS zone, DATALENGTH(zone) AS bytes FROM v_longhaul_states`
+
+Fixed in `AvailabilityViewA.tsx` / `AvailabilityViewB.tsx` (`normalizeRefCode`,
+duplicated because the A/B variants deliberately share no base). Both copies are
+pinned by mutation-checked tests in `routes/driver-planning.index.test.tsx`.
