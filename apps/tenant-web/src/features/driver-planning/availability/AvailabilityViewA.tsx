@@ -316,11 +316,25 @@ function getDriverReadyState(driver: DriverPlanningRow): string | null {
   return getReadyDisplay(driver).state
 }
 
+/** Normalize a legacy reference code for comparison in JS.
+ *
+ *  `v_longhaul_states.zone` is inconsistently padded in prod: seven states
+ *  (MA, MD, ME, NH, NJ, PA, WV) store `'1 '` where every other state stores a
+ *  bare `'1'`, while `v_longhaul_zones.zone_code` — the Zone dropdown's values —
+ *  is always unpadded. Every SQL-side use of this join is immune, because MSSQL
+ *  ignores trailing whitespace when comparing strings; JS `===`/`includes()` do
+ *  not. Untrimmed, those seven states' drivers silently vanished from a North
+ *  East zone selection while NY/CT/DC/DE/RI/VA/VT (clean `'1'`) stayed. Compare
+ *  both sides through here so the padding can never matter again. */
+function normalizeRefCode(value: string | null | undefined): string {
+  return (value ?? '').trim().toUpperCase()
+}
+
 function getDriverZoneCode(driver: DriverPlanningRow, stateList: StateRefRow[]): string | null {
-  const state = getDriverReadyState(driver)
+  const state = normalizeRefCode(getDriverReadyState(driver))
   if (!state) return null
-  const match = stateList.find((s) => (s.geo_code ?? '').toUpperCase() === state)
-  return match?.zone ?? null
+  const match = stateList.find((s) => normalizeRefCode(s.geo_code) === state)
+  return normalizeRefCode(match?.zone) || null
 }
 
 function getReadyDateKey(driver: DriverPlanningRow): string | null {
@@ -878,7 +892,7 @@ export function AvailabilityViewA() {
 
   const visible = useMemo(() => {
     const all = drivers ?? []
-    const selectedZoneCodes = selectedZones.map((z) => z.value)
+    const selectedZoneCodes = selectedZones.map((z) => normalizeRefCode(z.value))
     const rangeActive = dateFrom !== '' || dateTo !== ''
     const filtered = all.filter((d) => {
       if (filter && !d.driverName.toLowerCase().includes(filter.toLowerCase())) {

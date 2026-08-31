@@ -162,9 +162,22 @@ function delivery(overrides?: Partial<Delivery>): Delivery {
   }
 }
 
+// Every fixture below dates its activities to 2026-06-02, while the Availability
+// page's default Ready Date window is `today +/- 3 months` read off the real
+// clock (isoDateOffsetMonths). That made the suite quietly time-dependent: it
+// passed only while the real date stayed within 3 months of the fixtures, and
+// 52 of these 69 tests would have started failing on 2026-09-03 with no code
+// change at all. Pin the clock so the window is deterministic.
+//
+// vi.setSystemTime WITHOUT vi.useFakeTimers() mocks Date only, leaving timers
+// real — React Testing Library's async waits keep working. Do not "upgrade"
+// this to useFakeTimers.
+const FIXED_NOW = new Date('2026-07-01T12:00:00Z')
+
 describe('DriverPlanningPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.setSystemTime(FIXED_NOW)
     driverPlanningReturn = { data: [], isLoading: false, isError: false }
     // The page renders View A by default (no random pick), so these suites — which
     // assert View A's columns/cells — need no variant pinning. View B has diverged
@@ -468,6 +481,62 @@ describe('DriverPlanningPage', () => {
       const rows = screen.getAllByTestId('driver-row')
       expect(rows).toHaveLength(1)
       expect(rows[0]!.getAttribute('data-driver-id')).toBe('1')
+    })
+
+    // Regression: prod `v_longhaul_states.zone` is inconsistently padded —
+    // MA/MD/ME/NH/NJ/PA/WV store '1 ' while NY/CT/DC/DE/RI/VA/VT store '1', and
+    // `v_longhaul_zones.zone_code` (the dropdown's values) is always unpadded.
+    // MSSQL ignores trailing whitespace when comparing, so every SQL-side use of
+    // this join is fine; the client-side filter used `===`/`includes()` and so
+    // silently dropped the seven padded states from a North East selection.
+    // Both fixtures below mirror the real prod rows byte for byte.
+    it('matches a padded v_longhaul_states.zone against an unpadded zone_code', () => {
+      const paddedStateList = [
+        { geo_code: 'NJ', geo_name: 'New Jersey', zone: '1 ' },
+        { geo_code: 'NY', geo_name: 'New York', zone: '1' },
+        { geo_code: 'TX', geo_name: 'Texas', zone: '5' },
+      ]
+      const numericZoneList = [
+        { zone_code: '1', zone_description: 'North East' },
+        { zone_code: '5', zone_description: 'Southwest' },
+      ]
+      driverPlanningReturn = {
+        data: [
+          // Padded zone ('1 ') — the driver that used to vanish.
+          makeDriver({
+            driverId: 1,
+            driverName: 'Padded',
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ state: 'NJ', actualDate: '2026-06-02' })],
+          }),
+          // Unpadded zone ('1') — always worked; must keep working.
+          makeDriver({
+            driverId: 2,
+            driverName: 'Unpadded',
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ activityId: 9, state: 'NY', actualDate: '2026-06-02' })],
+          }),
+          // Different zone entirely — must still be excluded.
+          makeDriver({
+            driverId: 3,
+            driverName: 'OtherZone',
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ activityId: 8, state: 'TX', actualDate: '2026-06-02' })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage({ common: { stateList: paddedStateList, zoneList: numericZoneList } })
+
+      const zoneFilter = screen.getByTestId('driver-zone-filter')
+      const combobox = within(zoneFilter).getByRole('combobox')
+      fireEvent.mouseDown(combobox)
+      fireEvent.focus(combobox)
+      fireEvent.click(screen.getByText('North East'))
+
+      const ids = screen.getAllByTestId('driver-row').map((r) => r.getAttribute('data-driver-id'))
+      expect(ids).toEqual(['1', '2'])
     })
   })
 
@@ -1479,6 +1548,23 @@ describe('DriverPlanningPage', () => {
       renderVariantB({ common: { stateList: [{ geo_code: 'TX', geo_name: 'Texas', zone: 'SW' }] } })
       expect(screen.getByTestId('driver-state')).toHaveTextContent('TX')
       expect(screen.getByTestId('driver-zone')).toHaveTextContent('SW')
+    })
+
+    // View B keeps its own copy of getDriverZoneCode/normalizeRefCode (the A/B
+    // files share no base by design), so the padded-zone regression is pinned
+    // here too — otherwise reverting the trim in B passes every test. Asserted
+    // on raw textContent because toHaveTextContent normalizes whitespace and so
+    // cannot tell 'SW' from 'SW '.
+    it('trims a padded v_longhaul_states.zone before rendering the Zone cell', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ confirmedAvailableLocation: 'Austin, TX' })],
+        isLoading: false,
+        isError: false,
+      }
+      renderVariantB({
+        common: { stateList: [{ geo_code: 'TX', geo_name: 'Texas', zone: 'SW ' }] },
+      })
+      expect(screen.getByTestId('driver-zone').textContent).toBe('SW')
     })
 
     it('toggles Canada on click, commits canada:true, and highlights the cell yellow', () => {
