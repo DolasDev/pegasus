@@ -989,3 +989,31 @@ Two traps when flattening:
 Guarded by `__tests__/app/_layout.test.tsx` → "pushed detail screens keep a
 native back button (BACK-01)", which fails if either screen is re-nested or
 leaves the authenticated guard.
+
+## Shipment-detail popovers keep their state when you switch shipments
+
+The Actual Weight / Coverage / Dispatch Note popovers live inside
+`containers/ShipmentDetail`, which renders its rows from a `fields.map` while a
+shipment is selected. Picking a **different** shipment does not remount them:
+clicking another row deselects (`useOutsideClick` → `selectShipment(null)`) and
+selects the new shipment in the **same React batch**, so the pane never renders
+with `selectedShipment === null` and the popover components stay mounted at the
+same tree position.
+
+Consequence: any `useState(selectedShipment.…)` in one of those components is
+seeded **once**, from whichever shipment happened to be selected at mount, and
+silently goes stale. `ShipmentWeight` held the previous order's weight, and
+saving from the popover would have written it onto the newly selected order —
+the same shape as the trip roll-up that wrote 0 over good data (#593). The
+parent already resets its own display state on `[selectedShipment]`, which is
+what made the omission in the child easy to miss.
+
+Seed from the store on every identity change (an effect keyed on
+`selectedShipment?.order_num`, not on `selectedShipment` itself — that re-runs
+on every shadow write and clobbers what the user is typing).
+
+Related, same component: an `<input type="number">` hands back a **string** from
+`e.target.value`, so a value round-tripped through state reaches the API as a
+string. The shadow schema is `weight: z.number().nullable()` and 400s on it —
+which is the schema doing its job; coerce in the client, at save, and map a
+cleared field to `null` rather than `Number('') === 0`.
