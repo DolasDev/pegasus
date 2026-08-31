@@ -71,9 +71,11 @@ on:
         #   device    — signed ad-hoc .ipa installable on a REGISTERED device.
         #               This is the one that can test push. Requires at least one
         #               device registered (`eas device:create`) or the build fails.
-        #   store     — signed .ipa for TestFlight / App Store. Build only; there
-        #               is no iOS auto-submit yet (submit.production.ios still
-        #               holds PLACEHOLDERs — needs an App Store Connect API key).
+        #   store     — signed .ipa for TestFlight / App Store, and the ONLY
+        #               artifact that can auto-submit: with `submit` ticked it
+        #               lands in TestFlight via eas.json submit.production.ios
+        #               (#627). Releasing from TestFlight to the App Store stays
+        #               a deliberate act in App Store Connect.
         description: 'iOS: which artifact to build'
         type: choice
         required: false
