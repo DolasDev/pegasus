@@ -1,0 +1,17 @@
+{
+  "appName": "Pegasus Move Manager",
+  "shortName": "Pegasus",
+  "subtitle": "Driver Portal",
+  "tagline": "Your trips, shipments, and paperwork — in one place.",
+  "colors": {
+    "brand": "#0F172A",
+    "brandDeep": "#020817",
+    "brandSoft": "#1E293B",
+    "accent": "#3B82F6",
+    "onBrand": "#F8FAFC",
+    "muted": "#94A3B8"
+  },
+  "iconScale": 0.72,
+  "adaptiveScale": 0.58,
+  "splashScale": 0.62
+}

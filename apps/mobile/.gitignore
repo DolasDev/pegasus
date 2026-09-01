@@ -44,3 +44,7 @@ yarn-error.*
 # Firebase client config for Android push (FCM). Supplied to EAS Build as the
 # `file`-type env var GOOGLE_SERVICES_JSON — see app.config.js.
 google-services.json
+
+# Store-screenshot capture: the web build the capture rig drives (regenerate
+# with `npm run store:export`). Generated, large, and machine-specific.
+dist-web/

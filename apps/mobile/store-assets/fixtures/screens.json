@@ -1,0 +1,269 @@
+{
+  "_readme": [
+    "Every value that appears in a published store screenshot lives in this file.",
+    "",
+    "Store screenshots are replayed against these fixtures instead of a live API, so",
+    "no customer name, address, or phone number can reach a public listing by",
+    "accident. Review THIS file, not the screenshots, to audit what ships.",
+    "",
+    "Shapes mirror the real endpoints (see src/types/longhaul.ts and",
+    "src/services/documentService.ts) so the screens render exactly as they do in",
+    "production. Names, streets and order numbers are invented; the city pairs,",
+    "weights, statuses and date spreads are realistic for interstate household-goods",
+    "moves so the listing does not look like lorem ipsum.",
+    "",
+    "The `{ data }` envelope is what @pegasus/api-http unwraps — keep it."
+  ],
+
+  "session": {
+    "sub": "00000000-0000-4000-8000-000000000001",
+    "tenantId": "00000000-0000-4000-8000-0000000000aa",
+    "tenantName": "Rivergate Moving & Storage",
+    "roleNames": ["driver"],
+    "role": "driver",
+    "email": "j.tanner@rivergatemoving.example",
+    "expiresAt": 4102444800,
+    "ssoProvider": null,
+    "token": "screenshot-fixture-token-not-a-credential"
+  },
+
+  "routes": {
+    "GET /api/v1/me/driver": {
+      "data": { "longhaulDriverId": 40218 }
+    },
+
+    "GET /api/v1/onprem/longhaul/trips": {
+      "data": [
+        {
+          "id": 88412,
+          "trip_title": "Chicago → Denver",
+          "driver_id": 40218,
+          "driver_name": "J. Tanner",
+          "status_status": "Offered",
+          "TripStatus_id": 2,
+          "internal_status": null,
+          "origin_geo_code": "CHI",
+          "destination_geo_code": "DEN",
+          "planned_first_day": "2026-09-08T00:00:00.000Z",
+          "planned_last_day": "2026-09-12T00:00:00.000Z",
+          "actual_first_day": null,
+          "actual_last_day": null,
+          "total_estimated_lbs": 18400,
+          "total_actual_lbs": null,
+          "total_estimated_linehaul_usd": 9260,
+          "total_days": 5
+        },
+        {
+          "id": 88377,
+          "trip_title": "Denver → Phoenix",
+          "driver_id": 40218,
+          "driver_name": "J. Tanner",
+          "status_status": "Accepted",
+          "TripStatus_id": 3,
+          "internal_status": null,
+          "origin_geo_code": "DEN",
+          "destination_geo_code": "PHX",
+          "planned_first_day": "2026-09-02T00:00:00.000Z",
+          "planned_last_day": "2026-09-06T00:00:00.000Z",
+          "actual_first_day": "2026-09-02T00:00:00.000Z",
+          "actual_last_day": null,
+          "total_estimated_lbs": 21750,
+          "total_actual_lbs": 22110,
+          "total_estimated_linehaul_usd": 11400,
+          "total_days": 5
+        },
+        {
+          "id": 88301,
+          "trip_title": "Dallas → Nashville",
+          "driver_id": 40218,
+          "driver_name": "J. Tanner",
+          "status_status": "In Transit",
+          "TripStatus_id": 4,
+          "internal_status": null,
+          "origin_geo_code": "DAL",
+          "destination_geo_code": "BNA",
+          "planned_first_day": "2026-08-25T00:00:00.000Z",
+          "planned_last_day": "2026-08-29T00:00:00.000Z",
+          "actual_first_day": "2026-08-25T00:00:00.000Z",
+          "actual_last_day": null,
+          "total_estimated_lbs": 14200,
+          "total_actual_lbs": 14980,
+          "total_estimated_linehaul_usd": 7150,
+          "total_days": 4
+        },
+        {
+          "id": 88254,
+          "trip_title": "Atlanta → Charlotte",
+          "driver_id": 40218,
+          "driver_name": "J. Tanner",
+          "status_status": "Delivered",
+          "TripStatus_id": 6,
+          "internal_status": null,
+          "origin_geo_code": "ATL",
+          "destination_geo_code": "CLT",
+          "planned_first_day": "2026-08-18T00:00:00.000Z",
+          "planned_last_day": "2026-08-21T00:00:00.000Z",
+          "actual_first_day": "2026-08-18T00:00:00.000Z",
+          "actual_last_day": "2026-08-20T00:00:00.000Z",
+          "total_estimated_lbs": 9800,
+          "total_actual_lbs": 10240,
+          "total_estimated_linehaul_usd": 4820,
+          "total_days": 3
+        }
+      ]
+    },
+
+    "GET /api/v1/onprem/longhaul/trips/88412": {
+      "data": {
+        "id": 88412,
+        "trip_title": "Chicago → Denver",
+        "driver_id": 40218,
+        "driver_name": "J. Tanner",
+        "status_status": "Offered",
+        "TripStatus_id": 2,
+        "internal_status": null,
+        "origin_geo_code": "CHI",
+        "destination_geo_code": "DEN",
+        "planned_first_day": "2026-09-08T00:00:00.000Z",
+        "planned_last_day": "2026-09-12T00:00:00.000Z",
+        "actual_first_day": null,
+        "actual_last_day": null,
+        "total_estimated_lbs": 18400,
+        "total_actual_lbs": null,
+        "total_estimated_linehaul_usd": 9260,
+        "total_days": 5,
+        "shipments": [
+          {
+            "order_num": "M2609114",
+            "shipper_name": "Alvarez, R.",
+            "status_status": "Loaded",
+            "shipper_city": "Evanston",
+            "shipper_state": "IL",
+            "consignee_city": "Lakewood",
+            "consignee_state": "CO",
+            "total_est_wt": 8600
+          },
+          {
+            "order_num": "M2609088",
+            "shipper_name": "Whitfield, D.",
+            "status_status": "Packed",
+            "shipper_city": "Naperville",
+            "shipper_state": "IL",
+            "consignee_city": "Aurora",
+            "consignee_state": "CO",
+            "total_est_wt": 6100
+          },
+          {
+            "order_num": "M2609052",
+            "shipper_name": "Okafor, N.",
+            "status_status": "Booked",
+            "shipper_city": "Oak Park",
+            "shipper_state": "IL",
+            "consignee_city": "Boulder",
+            "consignee_state": "CO",
+            "total_est_wt": 3700
+          }
+        ]
+      }
+    },
+
+    "GET /api/v1/onprem/longhaul/shipments": {
+      "data": [
+        {
+          "order_num": "M2609114",
+          "shipper_name": "Alvarez, R.",
+          "ba_name": "Rivergate Moving & Storage",
+          "move_desc": "Interstate — Household Goods",
+          "booker_name": "Rivergate Moving & Storage",
+          "driver_name": "J. Tanner",
+          "TripMaster_id": 88412,
+          "status_status": "Loaded",
+          "shipper_city": "Evanston",
+          "shipper_state": "IL",
+          "consignee_city": "Lakewood",
+          "consignee_state": "CO",
+          "origin_address1": "1420 Maple Grove Ave",
+          "origin_address2": "Unit 3B",
+          "origin_zip": "60201",
+          "destination_address1": "8875 Ridgeview Ct",
+          "destination_address2": null,
+          "destination_zip": "80226",
+          "pack_date2": "2026-09-08T00:00:00.000Z",
+          "plan_pack": "2026-09-09T00:00:00.000Z",
+          "pack_actual": "2026-09-08T00:00:00.000Z",
+          "load_date2": "2026-09-09T00:00:00.000Z",
+          "plan_load": "2026-09-10T00:00:00.000Z",
+          "load_actual": "2026-09-09T00:00:00.000Z",
+          "sit_date": null,
+          "del_date2": "2026-09-12T00:00:00.000Z",
+          "plan_del": "2026-09-13T00:00:00.000Z",
+          "del_actual": null,
+          "total_est_wt": 8600,
+          "pegasus_shadow": {
+            "weight": 8940,
+            "lng_dis_comments": "Elevator reserved 8-11am at destination. Long carry expected."
+          },
+          "disp_instructions": "Gate code required at origin. Park on the north side — no truck access on Maple Grove.",
+          "survey_remarks": "Piano (upright) in living room. Two crated mirrors. Garage items not going."
+        }
+      ]
+    },
+
+    "GET /api/v1/documents/entity/shipment/M2609114": {
+      "data": [
+        {
+          "id": "00000000-0000-4000-8000-0000000000d1",
+          "entityType": "shipment",
+          "entityId": "M2609114",
+          "documentType": "bol",
+          "category": null,
+          "filename": "BOL-M2609114.pdf",
+          "mimeType": "application/pdf",
+          "sizeBytes": 284119,
+          "status": "ACTIVE",
+          "createdAt": "2026-09-09T14:22:00.000Z",
+          "variants": { "thumb": "ready", "web": "ready" }
+        },
+        {
+          "id": "00000000-0000-4000-8000-0000000000d2",
+          "entityType": "shipment",
+          "entityId": "M2609114",
+          "documentType": "inventory",
+          "category": null,
+          "filename": "Inventory-pages-1-4.pdf",
+          "mimeType": "application/pdf",
+          "sizeBytes": 1043882,
+          "status": "ACTIVE",
+          "createdAt": "2026-09-08T17:05:00.000Z",
+          "variants": { "thumb": "ready", "web": "ready" }
+        },
+        {
+          "id": "00000000-0000-4000-8000-0000000000d3",
+          "entityType": "shipment",
+          "entityId": "M2609114",
+          "documentType": "weight_ticket",
+          "category": null,
+          "filename": "Weight-ticket-tare.jpg",
+          "mimeType": "image/jpeg",
+          "sizeBytes": 512044,
+          "status": "ACTIVE",
+          "createdAt": "2026-09-09T09:41:00.000Z",
+          "variants": { "thumb": "ready", "web": "ready" }
+        }
+      ]
+    },
+
+    "POST /api/auth/resolve-tenants": {
+      "data": {
+        "tenants": [
+          {
+            "tenantId": "00000000-0000-4000-8000-0000000000aa",
+            "tenantName": "Rivergate Moving & Storage",
+            "cognitoAuthEnabled": true,
+            "providers": []
+          }
+        ]
+      }
+    }
+  }
+}
