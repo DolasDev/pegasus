@@ -59,6 +59,69 @@ const TARGETS = [
   { id: 'android', label: 'Play phone', css: { width: 360, height: 800 }, scale: 3, out: 'android' },
 ]
 
+// --- render fidelity fixups ------------------------------------------------
+
+/**
+ * Restore the natural height of a horizontal chip/tab row.
+ *
+ * react-native-web gives the trips screen's horizontal ScrollView an explicit
+ * pixel height it computed before the chip text was measured (34.53px), and
+ * `align-items: stretch` then pushes that stale height down the tree: the
+ * content container's content box collapses to 18.53px, every pill is stretched
+ * to it, and 19px of text hangs 9.5px below its own pill. Measured on all five
+ * chips identically.
+ *
+ * This is an RNW layout defect, not something a driver sees — the same screen
+ * ships on iOS/Android (version code 15) with correctly sized chips, because
+ * native measures text before laying out. Clearing the stale heights makes the
+ * screenshot MORE faithful to the shipped app, not less.
+ *
+ * Deliberately narrow: it walks up from one known label to the nearest
+ * horizontal scroller and clears heights only along that path, rather than
+ * carpet-bombing the page with `height: auto !important`. The caller asserts
+ * the result, so if a future RNW release changes this, the capture fails loudly
+ * instead of quietly shipping a squashed PNG.
+ */
+function relaxCollapsedChipRow(anchorText) {
+  return async (page) => {
+    const touched = await page.evaluate((text) => {
+      const leaf = [...document.querySelectorAll('div')].find(
+        (el) => el.children.length === 0 && el.textContent.trim() === text,
+      )
+      if (!leaf) return -1
+
+      let node = leaf.parentElement
+      let n = 0
+      for (let i = 0; i < 5 && node; i++) {
+        const isScroller = getComputedStyle(node).overflowX !== 'visible'
+        node.style.height = 'auto'
+        node.style.minHeight = '0px'
+        node.style.alignItems = 'center'
+        n++
+        if (isScroller) break
+        node = node.parentElement
+      }
+      return n
+    }, anchorText)
+
+    if (touched < 0) throw new Error(`chip-row fixup: no element with text "${anchorText}"`)
+
+    // Assert the pill now actually contains its own text.
+    const bad = await page.evaluate((text) => {
+      const leaf = [...document.querySelectorAll('div')].find(
+        (el) => el.children.length === 0 && el.textContent.trim() === text,
+      )
+      const t = leaf.getBoundingClientRect()
+      const p = leaf.parentElement.getBoundingClientRect()
+      return t.bottom > p.bottom + 0.5 || t.top < p.top - 0.5
+        ? `text ${t.top.toFixed(1)}-${t.bottom.toFixed(1)} vs pill ${p.top.toFixed(1)}-${p.bottom.toFixed(1)}`
+        : null
+    }, anchorText)
+
+    if (bad) throw new Error(`chip-row fixup did not take: ${bad}`)
+  }
+}
+
 // --- screens ---------------------------------------------------------------
 //
 // The authenticated screens are reached by NAVIGATING THE APP, not by loading
@@ -95,6 +158,7 @@ const SCREENS = [
     // The dashboard's "Offered Trips" tile pushes /trips.
     tapLabel: /Open My Trips/,
     waitFor: { text: 'Trip 88412 · Chicago → Denver', exact: true },
+    fixup: relaxCollapsedChipRow('All'),
     caption: 'Every trip, with status you can trust.',
   },
   {
@@ -298,6 +362,18 @@ async function capture() {
         await page.close()
         page = null
         continue
+      }
+
+      if (screen.fixup) {
+        try {
+          await screen.fixup(page)
+        } catch (err) {
+          problems.push(`${target.id}/${screen.name}: ${err.message}`)
+          await page.screenshot({ path: join(outDir, `FAILED-${screen.name}.png`) })
+          await page.close()
+          page = null
+          continue
+        }
       }
 
       // Settle before capturing. Without this the trips screen came back with
