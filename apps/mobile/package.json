@@ -14,7 +14,11 @@
     "expo:doctor": "npx expo-doctor",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --forceExit",
-    "dev": "REACT_NATIVE_PACKAGER_HOSTNAME=100.69.252.113 npx expo start --clear"
+    "dev": "REACT_NATIVE_PACKAGER_HOSTNAME=100.69.252.113 npx expo start --clear",
+    "store:export": "PEGASUS_STORE_CAPTURE=1 expo export --platform web --output-dir dist-web",
+    "store:icons": "node store-assets/scripts/generate-icons.mjs",
+    "store:capture": "node store-assets/scripts/capture-screens.mjs",
+    "store:compose": "node store-assets/scripts/compose-marketing.mjs"
   },
   "dependencies": {
     "@pegasus/api-http": "*",
@@ -54,6 +58,7 @@
     "@babel/plugin-transform-react-display-name": "^7.28.0",
     "@babel/preset-env": "^7.28.5",
     "@babel/preset-typescript": "^7.29.7",
+    "@playwright/test": "^1.58.2",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^30.0.0",
     "@types/react": "^19.2.14",
@@ -63,6 +68,7 @@
     "jest": "^30.3.0",
     "jest-environment-node": "^30.4.1",
     "react-test-renderer": "19.2.0",
+    "sharp": "^0.35.1",
     "typescript": "~6.0.3"
   },
   "expo": {

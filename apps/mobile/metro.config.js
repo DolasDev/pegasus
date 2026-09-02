@@ -32,4 +32,30 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
+// Store-screenshot capture only (npm run store:export).
+//
+// The screenshots are taken by driving a real `expo export --platform web`
+// build in a browser, which means every route has to survive react-native-web.
+// `react-native-document-scanner-plugin` does not: its entry point runs
+// TurboModuleRegistry.getEnforcing('DocumentScanner') at module scope and there
+// is no web implementation, so importing it throws and the shipment route —
+// the one that owns the Documents tab — renders as a blank page.
+//
+// Alias it to an import-safe stub, gated on BOTH platform === 'web' and the
+// PEGASUS_STORE_CAPTURE env var, so device/store builds and the normal `expo
+// start --web` dev flow resolve the real native module exactly as before.
+if (process.env.PEGASUS_STORE_CAPTURE === '1') {
+  const scannerStub = path.resolve(
+    projectRoot,
+    'store-assets/scripts/document-scanner.web-stub.js',
+  );
+
+  config.resolver.resolveRequest = (context, moduleName, platform) => {
+    if (platform === 'web' && moduleName === 'react-native-document-scanner-plugin') {
+      return { type: 'sourceFile', filePath: scannerStub };
+    }
+    return context.resolveRequest(context, moduleName, platform);
+  };
+}
+
 module.exports = config;

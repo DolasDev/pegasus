@@ -75,6 +75,30 @@
     //
     // Remove once prisma ships a @prisma/config on deepmerge-ts >=8.0.0
     // (audit-ci reports unused allowlist entries once it does).
-    "GHSA-ggr8-5vv4-36mx"
+    "GHSA-ggr8-5vv4-36mx",
+
+    // GHSA-3f6p-5ww8-9rcr — two MySQL driver advisories (high): an auth-plugin
+    // downgrade to mysql_clear_password that leaks plaintext credentials, and an
+    // unbounded zlib inflate in the compressed MySQL protocol handler.
+    //
+    // Allowlisted rather than overridden because prisma pins mysql2 EXACTLY
+    // ("mysql2": "3.15.3", verified in `npm view prisma@7.9.1 dependencies`),
+    // the same vendor-exact-pin situation as deepmerge-ts above. npm's
+    // `fixAvailable` suggests prisma@6.19.3 — a major DOWNGRADE from the
+    // installed prisma 7 - which is not a fix.
+    //
+    // Single path, dev-only, and the driver is never loaded at all:
+    //   apps/api > (devDependency) prisma@7.9.1 > mysql2@3.15.3
+    // `prisma` is the CLI and a devDependency — it is not bundled into the API
+    // Lambda (`@prisma/client` is the runtime dependency, and it does not carry
+    // mysql2). More decisively, this project's datasource provider is
+    // `postgresql` (apps/api/prisma/schema.prisma), so no MySQL connection is
+    // ever opened: both advisories describe behaviour of a MySQL wire session
+    // that never happens here. There is no credential to leak over a protocol
+    // we do not speak.
+    //
+    // Remove once prisma bumps its exact mysql2 pin to >3.23.0 (audit-ci
+    // reports unused allowlist entries once it does).
+    "GHSA-3f6p-5ww8-9rcr"
   ]
 }

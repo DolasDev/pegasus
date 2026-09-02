@@ -7,6 +7,7 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useAuth } from '../../src/context/AuthContext'
@@ -14,8 +15,35 @@ import { AuthError, type TenantProvider } from '../../src/auth/types'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 import { getAuthService } from '../../src/auth/authServiceInstance'
 import { getMobileConfig } from '../../src/config'
+import logoLight from '../../assets/logo-mark-light.png'
 
 type LoginStep = 'email' | 'password' | 'providers'
+
+/**
+ * The logo lockup at the top of every login step.
+ *
+ * Uses the REVERSED (white) mark: this screen's ground is
+ * `colors.backgroundDark`, where the logo's own #285785 measures 2.37:1 and
+ * effectively disappears. `logo-mark.png` is the colour variant, for light
+ * surfaces. Both are generated from assets/logo-source.png by
+ * `npm run store:icons` — never hand-edit them.
+ */
+function BrandHeader() {
+  return (
+    <View style={styles.header}>
+      <Image
+        source={logoLight}
+        style={styles.logo}
+        resizeMode="contain"
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel="Pegasus"
+      />
+      <Text style={styles.title}>Moving & Storage</Text>
+      <Text style={styles.subtitle}>Driver Portal</Text>
+    </View>
+  )
+}
 
 export default function LoginScreen() {
   const params = useLocalSearchParams<{
@@ -218,10 +246,7 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Moving & Storage</Text>
-            <Text style={styles.subtitle}>Driver Portal</Text>
-          </View>
+          <BrandHeader />
 
           <View style={styles.form}>
             {backToEmailControl}
@@ -280,10 +305,7 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Moving & Storage</Text>
-            <Text style={styles.subtitle}>Driver Portal</Text>
-          </View>
+          <BrandHeader />
 
           <View style={styles.form}>
             {backToEmailControl}
@@ -341,10 +363,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Moving & Storage</Text>
-          <Text style={styles.subtitle}>Driver Portal</Text>
-        </View>
+        <BrandHeader />
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
@@ -401,9 +420,16 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
+  logo: {
+    width: 96,
+    height: 96,
+    marginBottom: spacing.md,
+  },
   subtitle: {
     fontSize: fontSize.xlarge,
-    color: colors.primary,
+    // NOT colors.primary — this screen's container is colors.backgroundDark and
+    // the two are the same #0F172A, which rendered "Driver Portal" invisible.
+    color: colors.textDisabled,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -470,7 +496,10 @@ const styles = StyleSheet.create({
   backLinkText: {
     fontSize: fontSize.medium,
     fontWeight: '700',
-    color: colors.primary,
+    // Sits on the dark container, not inside a white input — colors.primary
+    // would be the same value as the ground. (toggleText below keeps
+    // colors.primary: it IS inside the white inputWrapper.)
+    color: colors.textDisabled,
     letterSpacing: 0.5,
   },
   companyNameContainer: {
@@ -480,10 +509,14 @@ const styles = StyleSheet.create({
   companyName: {
     fontSize: fontSize.xlarge,
     fontWeight: '700',
-    color: colors.primary,
+    // Was colors.primary on the colors.backgroundDark container — invisible.
+    color: colors.textLight,
   },
   button: {
-    backgroundColor: colors.primary,
+    // The brand blue, not colors.primary: primary is the same #0F172A as this
+    // screen's ground, so the button had no visible surface at all — just its
+    // white label floating on the background. White on brand is 7.5:1.
+    backgroundColor: colors.brand,
     borderRadius: borderRadius.medium,
     padding: spacing.lg,
     alignItems: 'center',
@@ -501,7 +534,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   ssoButton: {
-    backgroundColor: colors.primary,
+    // See `button` — colors.primary is invisible on this screen's ground.
+    backgroundColor: colors.brand,
     borderRadius: borderRadius.medium,
     padding: spacing.lg,
     alignItems: 'center',
