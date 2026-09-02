@@ -80,6 +80,24 @@ async function trimmed(sourcePath, targetWidth) {
 }
 
 /**
+ * Reverse a mark to solid white, preserving its shape.
+ *
+ * Needed wherever the logo sits on a dark ground — the login screen
+ * (colors.backgroundDark) and the marketing panels. The supplied mark is
+ * #285785, which measures 2.37:1 on #0F172A and disappears; white on that
+ * ground is 16:1. Works by keeping the mark's alpha channel and stamping it
+ * onto a white plate, so every curve and counter survives exactly.
+ */
+async function reversedToWhite(logo) {
+  const { width, height } = await sharp(logo).metadata()
+  const alpha = await sharp(logo).extractChannel('alpha').toBuffer()
+  return sharp({ create: { width, height, channels: 3, background: '#FFFFFF' } })
+    .joinChannel(alpha)
+    .png()
+    .toBuffer()
+}
+
+/**
  * Place `logo` centered on a `size`x`size` canvas, occupying `scale` of it.
  * `background` null => transparent.
  */
@@ -136,7 +154,7 @@ if (!markSource) {
 }
 
 const wordmarkSource = findSource('logo-wordmark-source')
-const bg = brand.colors.brand
+const bg = brand.colors.iconBackground
 
 console.log(`\nLogo source: ${markSource.replace(`${MOBILE}/`, '')}`)
 if (wordmarkSource) console.log(`Wordmark:    ${wordmarkSource.replace(`${MOBILE}/`, '')}`)
@@ -168,10 +186,18 @@ await emit(
   await centered({ logo: mark, size: 256, scale: 0.78, background: bg }),
 )
 
-// 5. In-app logo for the login screen — transparent, rendered on the dark hero.
+// 5. In-app / marketing logo, two variants, both transparent.
+//    logo-mark.png       the mark in its own colour, for LIGHT grounds.
+//    logo-mark-light.png reversed to white, for DARK grounds — the login
+//                        screen (colors.backgroundDark) and the Play feature
+//                        graphic. The blue mark on navy is 2.37:1; unusable.
 await emit(
   join(ASSETS, 'logo-mark.png'),
   await centered({ logo: mark, size: 512, scale: 1.0, background: null }),
+)
+await emit(
+  join(ASSETS, 'logo-mark-light.png'),
+  await centered({ logo: await reversedToWhite(mark), size: 512, scale: 1.0, background: null }),
 )
 
 if (wordmarkSource) {

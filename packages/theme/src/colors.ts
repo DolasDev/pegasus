@@ -9,6 +9,12 @@
 // define semantic status colors, so we use the Tailwind ramp shadcn is built
 // on, picking shades that keep text legible on each badge.
 export const colors = {
+  // Brand — the driver app's logo mark colour. This is the one hue that comes
+  // from the actual identity rather than the shadcn slate ramp, so it is what
+  // dark surfaces use for a filled call-to-action: white on it is 7.5:1, while
+  // `primary` on `backgroundDark` is the same value twice (1:1, invisible).
+  brand: '#285785',
+
   // Primary — tenant `--primary` (slate-900) family
   primary: '#0F172A', // slate-900 (tenant --primary)
   primaryDark: '#020817', // slate-950 (tenant --foreground / --ring)

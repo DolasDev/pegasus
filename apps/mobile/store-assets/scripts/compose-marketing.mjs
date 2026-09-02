@@ -122,13 +122,14 @@ function featureHtml({ logo, css }) {
     background:radial-gradient(circle, ${accent}2E 0%, transparent 68%);
   }
   .mark{
-    width:${css.height * 0.42}px;height:${css.height * 0.42}px;
+    width:${css.height * 0.38}px;height:${css.height * 0.38}px;
     flex:none;object-fit:contain;
   }
   .copy{position:relative;z-index:1}
   .name{
-    color:${onBrand};font-size:${css.height * 0.125}px;
-    font-weight:700;letter-spacing:-0.025em;line-height:1.05;
+    color:${onBrand};font-size:${css.height * 0.112}px;
+    font-weight:700;letter-spacing:-0.025em;line-height:1.06;
+    text-wrap:balance;max-width:${css.width * 0.62}px;
   }
   .sub{
     color:${accent};font-size:${css.height * 0.056}px;
@@ -136,8 +137,9 @@ function featureHtml({ logo, css }) {
     margin-top:${css.height * 0.028}px;
   }
   .tag{
-    color:${muted};font-size:${css.height * 0.052}px;
-    margin-top:${css.height * 0.045}px;line-height:1.35;max-width:${css.width * 0.6}px;
+    color:${muted};font-size:${css.height * 0.049}px;
+    margin-top:${css.height * 0.042}px;line-height:1.4;
+    max-width:${css.width * 0.63}px;text-wrap:balance;
   }
 </style></head>
 <body>
@@ -191,7 +193,10 @@ for (const target of TARGETS) {
 
 // --- Play feature graphic (1024x500, required for a Play listing) -----------
 
-const logoPath = join(ASSETS, 'logo-mark.png')
+// The reversed (white) mark, not the colour one: the feature graphic's panel is
+// the dark brand gradient, where the logo's own #285785 measures 2.37:1 and
+// vanishes. logo-mark.png is the variant for light grounds.
+const logoPath = join(ASSETS, 'logo-mark-light.png')
 let logo = null
 if (existsSync(logoPath)) {
   logo = await dataUri(logoPath)
@@ -213,7 +218,7 @@ if (missingLogo) {
   console.log(
     [
       '',
-      '⚠ assets/logo-mark.png does not exist, so the feature graphic has no mark on it.',
+      '⚠ assets/logo-mark-light.png does not exist, so the feature graphic has no mark on it.',
       '  Drop the logo and run:  npm run store:icons && npm run store:compose',
       '',
     ].join('\n'),

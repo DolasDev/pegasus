@@ -2,8 +2,10 @@
   "appName": "Pegasus Move Manager",
   "shortName": "Pegasus",
   "subtitle": "Driver Portal",
-  "tagline": "Your trips, shipments, and paperwork — in one place.",
+  "tagline": "Trips, shipments and paperwork \u2014 in one place.",
   "colors": {
+    "iconBackground": "#F8FAFC",
+    "logoInk": "#285785",
     "brand": "#0F172A",
     "brandDeep": "#020817",
     "brandSoft": "#1E293B",
@@ -13,5 +15,9 @@
   },
   "iconScale": 0.72,
   "adaptiveScale": 0.58,
-  "splashScale": 0.62
+  "splashScale": 0.62,
+  "_notes": {
+    "iconBackground": "Ground for the launcher icon, splash, favicon and both store icons. The supplied mark is #285785, drawn for a light background: on the old #0F172A it measured 2.37:1 and stopped resolving as a shape at home-screen size. On this slate-50 it measures 7.19:1. Change this and you must change app.json's splash.backgroundColor and android.adaptiveIcon.backgroundColor to match.",
+    "brand/brandDeep/brandSoft": "Marketing panels only \u2014 the framed screenshot backgrounds and the feature graphic. Those stay dark: the phone captures inside them are light, so a navy panel frames them well. The logo is reversed to white over these (logo-mark-light.png), never placed in its own blue."
+  }
 }
