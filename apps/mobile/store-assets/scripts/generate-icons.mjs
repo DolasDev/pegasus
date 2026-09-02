@@ -70,12 +70,17 @@ async function rasterize(sourcePath, targetWidth) {
 
 /** Trim transparent padding so `scale` means the same thing for every source. */
 async function trimmed(sourcePath, targetWidth) {
-  const img = await rasterize(sourcePath, targetWidth)
   try {
-    return await img.trim({ threshold: 1 }).png().toBuffer()
+    return await (await rasterize(sourcePath, targetWidth))
+      .trim({ threshold: 1 })
+      .png()
+      .toBuffer()
   } catch {
-    // A logo with no transparent margin trims to nothing — keep it as-is.
-    return await img.png().toBuffer()
+    // A logo with no transparent margin trims to nothing. Re-rasterize rather
+    // than reusing the instance from the try: a sharp pipeline is MUTABLE, so
+    // the failed .trim() is still queued on it and the fallback would throw
+    // the same error it is meant to recover from.
+    return await (await rasterize(sourcePath, targetWidth)).png().toBuffer()
   }
 }
 
