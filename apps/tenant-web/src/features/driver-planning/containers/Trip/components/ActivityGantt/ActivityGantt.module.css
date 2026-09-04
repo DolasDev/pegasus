@@ -137,7 +137,16 @@
 }
 
 /* Arrival window — the local spread customer service quotes the day before.
-   Lives at the bottom of the activity popover, under the date pickers. */
+   Lives at the bottom of the activity popover, under the date pickers.
+
+   The popover's `save` link is absolutely positioned at bottom:5px/right:5px, so
+   as the LAST block in the popover this one sits directly under it. The bottom
+   padding reserves that corner: without it the link floats over the time-zone
+   select and the "pick a time zone" warning. */
+[data-target='arrival-window'] {
+  padding-bottom: 20px;
+}
+
 .arrivalWindowRow {
   display: flex;
   align-items: center;

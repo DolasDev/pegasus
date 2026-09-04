@@ -83,6 +83,25 @@ export function ArrivalWindowField({
     })
   }
 
+  /**
+   * Emptying BOTH time inputs removes the window, zone included.
+   *
+   * Without this the zone survives in popover state while `hasWindow` goes
+   * false, so the block collapses back to "+ Add arrival window" — and the next
+   * save posts a zone with no times, which the API rejects with a message about
+   * missing times while the screen is showing no window at all. Nothing the
+   * dispatcher can see explains the error.
+   */
+  const setTime = (field: 'arrival_window_start' | 'arrival_window_end', raw: string) => {
+    const next = raw || null
+    const other = field === 'arrival_window_start' ? end : start
+    if (next === null && !other) {
+      remove()
+      return
+    }
+    onChange({ [field]: next })
+  }
+
   if (!hasWindow) {
     return (
       <div className={styles.formField} data-target="arrival-window">
@@ -110,7 +129,7 @@ export function ArrivalWindowField({
           name="arrival_window_start"
           aria-label="Arrival window start"
           value={start ?? ''}
-          onChange={(e) => onChange({ arrival_window_start: e.target.value || null })}
+          onChange={(e) => setTime('arrival_window_start', e.target.value)}
         />
         <span className={styles.arrivalWindowDash}>to</span>
         <input
@@ -118,7 +137,7 @@ export function ArrivalWindowField({
           name="arrival_window_end"
           aria-label="Arrival window end"
           value={end ?? ''}
-          onChange={(e) => onChange({ arrival_window_end: e.target.value || null })}
+          onChange={(e) => setTime('arrival_window_end', e.target.value)}
         />
         <button
           type="button"

@@ -540,6 +540,52 @@ describe('ActivityGantt — arrival window', () => {
     })
   })
 
+  it('clearing both times clears the zone too, so no orphan zone is saved', async () => {
+    // Regression: `hasWindow` is (start || end), so emptying both inputs
+    // collapses the block back to "+ Add arrival window". If the zone survived
+    // in state, the save would post a zone with no times — which the API
+    // rejects with a message about missing times while the screen shows no
+    // window at all, leaving the dispatcher nothing to act on.
+    openPopover(
+      baseActivity({
+        state: 'NJ',
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/New_York',
+      }),
+    )
+    fireEvent.change(screen.getByLabelText('Arrival window start'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Arrival window end'), { target: { value: '' } })
+
+    expect(document.querySelector('[data-target="add-arrival-window"]')).toBeTruthy()
+    fireEvent.click(screen.getByText('save'))
+
+    await vi.waitFor(() => expect(saveActivityMock).toHaveBeenCalled())
+    expect(savedPatch()).toMatchObject({
+      arrival_window_start: null,
+      arrival_window_end: null,
+      arrival_window_tz: null,
+    })
+  })
+
+  it('keeps the window when only one end is cleared', () => {
+    openPopover(
+      baseActivity({
+        state: 'NJ',
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/New_York',
+      }),
+    )
+    fireEvent.change(screen.getByLabelText('Arrival window start'), { target: { value: '' } })
+
+    // Still editing a window — the zone must survive a half-finished edit.
+    expect(screen.getByLabelText('Arrival window end')).toBeTruthy()
+    expect((screen.getByLabelText('Arrival window time zone') as HTMLSelectElement).value).toBe(
+      'America/New_York',
+    )
+  })
+
   it('carries no window keys when the dispatcher never opened one', async () => {
     openPopover(baseActivity({ state: 'NJ' }))
     fireEvent.click(screen.getByText('save'))
