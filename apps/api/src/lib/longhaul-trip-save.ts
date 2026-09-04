@@ -42,6 +42,12 @@ export const ACTIVITY_COLUMNS = [
   'trip_status_id',
   'unit',
   'zip',
+  // Arrival window (lib/longhaul-arrival-window). Listed so a trip save that
+  // re-INSERTs an activity carries the window across instead of dropping it.
+  // The handler provisions these columns before the batch runs.
+  'arrival_window_start',
+  'arrival_window_end',
+  'arrival_window_tz',
 ] as const
 
 /** TripMaster columns the header upsert writes (excl. id, created_date, updated_date). */

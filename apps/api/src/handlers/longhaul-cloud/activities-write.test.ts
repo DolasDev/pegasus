@@ -20,6 +20,7 @@ import { longhaulSaveActivityHandler } from './activities-write'
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { recomputeTripSummaryCloud } from '../../lib/longhaul-cloud-trip-summary'
+import { resetArrivalWindowProvisioningCache } from '../../lib/longhaul-arrival-window-schema'
 
 const resolveMock = resolveLonghaulUser as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
@@ -48,6 +49,9 @@ function save(id: string, body: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The provisioning memo is module scope (one Lambda container) — reset it so
+  // each test sees a tenant whose columns have not been added yet.
+  resetArrivalWindowProvisioningCache()
   resolveMock.mockResolvedValue({ ok: true, connectionString: 'Server=a,1433', code: 7, user: {} })
   recomputeMock.mockResolvedValue(1)
   // Default: SELECT TripMaster_id returns trip 100; UPDATE returns rowsAffected.
@@ -213,5 +217,124 @@ describe('POST /activities/:id (cloud-direct save)', () => {
       const res = await save('5', { actual_date: '2026-08-12' })
       expect(res.status).toBe(200)
     })
+  })
+})
+
+describe('POST /activities/:id — arrival window', () => {
+  const WINDOW = {
+    arrival_window_start: '08:00',
+    arrival_window_end: '10:00',
+    arrival_window_tz: 'America/New_York',
+  }
+
+  /** RT1 (existing row) → ensure-columns → RT2 (update). */
+  function mockThreeRoundTrips() {
+    executeSqlMock.mockReset()
+    executeSqlMock
+      .mockResolvedValueOnce({
+        recordset: [{ TripMaster_id: 100 }],
+        recordsets: [[]],
+        rowsAffected: [],
+      })
+      .mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [1] })
+  }
+
+  it('writes the three columns and recomputes the summary', async () => {
+    mockThreeRoundTrips()
+    const res = await save('5', WINDOW)
+    expect(res.status).toBe(200)
+
+    const [, updSql, updOpts] = executeSqlMock.mock.calls[2]!
+    expect(updSql).toContain('arrival_window_start = @arrival_window_start')
+    expect(updSql).toContain('arrival_window_end = @arrival_window_end')
+    expect(updSql).toContain('arrival_window_tz = @arrival_window_tz')
+    expect(updOpts.params).toContainEqual({ name: 'arrival_window_start', value: '08:00' })
+    expect(updOpts.params).toContainEqual({ name: 'arrival_window_tz', value: 'America/New_York' })
+    expect(recomputeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('provisions the columns in a round trip of its OWN, before the UPDATE', async () => {
+    // SQL Server binds column references at parse time: an ALTER and a
+    // statement naming what it adds cannot share a batch, or every
+    // not-yet-provisioned tenant gets `Invalid column name`.
+    mockThreeRoundTrips()
+    await save('5', WINDOW)
+
+    const [, ensureSql] = executeSqlMock.mock.calls[1]!
+    expect(ensureSql).toContain('ALTER TABLE LongDistanceDispatchActivity ADD arrival_window_start')
+    expect(ensureSql).not.toContain('UPDATE LongDistanceDispatchActivity')
+    const [, updSql] = executeSqlMock.mock.calls[2]!
+    expect(updSql).toContain('UPDATE LongDistanceDispatchActivity')
+    expect(updSql).not.toContain('ALTER TABLE')
+  })
+
+  it('widens the history table too, so a `SELECT * FROM deleted` trigger keeps working', async () => {
+    mockThreeRoundTrips()
+    await save('5', WINDOW)
+    const [, ensureSql] = executeSqlMock.mock.calls[1]!
+    expect(ensureSql).toContain("OBJECT_ID('LongDistanceDispatchActivityHistory', 'U') IS NOT NULL")
+    expect(ensureSql).toContain(
+      'ALTER TABLE LongDistanceDispatchActivityHistory ADD arrival_window_start',
+    )
+  })
+
+  it('does NOT provision when the patch carries no window', async () => {
+    const res = await save('5', { city: 'Reno' })
+    expect(res.status).toBe(200)
+    expect(executeSqlMock).toHaveBeenCalledTimes(2)
+    for (const [, sql] of executeSqlMock.mock.calls) expect(sql).not.toContain('ALTER TABLE')
+  })
+
+  it('provisions once per connection, not once per save', async () => {
+    mockThreeRoundTrips()
+    await save('5', WINDOW)
+    executeSqlMock.mockReset()
+    executeSqlMock
+      .mockResolvedValueOnce({
+        recordset: [{ TripMaster_id: 100 }],
+        recordsets: [[]],
+        rowsAffected: [],
+      })
+      .mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [1] })
+    await save('6', WINDOW)
+    expect(executeSqlMock).toHaveBeenCalledTimes(2)
+    for (const [, sql] of executeSqlMock.mock.calls) expect(sql).not.toContain('ALTER TABLE')
+  })
+
+  it('clears a window when all three fields are blanked', async () => {
+    mockThreeRoundTrips()
+    const res = await save('5', {
+      arrival_window_start: null,
+      arrival_window_end: null,
+      arrival_window_tz: null,
+    })
+    expect(res.status).toBe(200)
+    const [, , updOpts] = executeSqlMock.mock.calls[2]!
+    expect(updOpts.params).toContainEqual({ name: 'arrival_window_start', value: null })
+  })
+
+  it('rejects a window with no time zone and writes nothing', async () => {
+    const res = await save('5', {
+      arrival_window_start: '08:00',
+      arrival_window_end: '10:00',
+    })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+    expect(executeSqlMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [
+      'an end before its start',
+      { ...WINDOW, arrival_window_start: '14:00', arrival_window_end: '10:00' },
+    ],
+    ['a malformed time', { ...WINDOW, arrival_window_start: '8am' }],
+    ['an unknown zone', { ...WINDOW, arrival_window_tz: 'America/Nowhere' }],
+  ])('rejects %s with 400 before touching the database', async (_label, body) => {
+    const res = await save('5', body)
+    expect(res.status).toBe(400)
+    expect(executeSqlMock).not.toHaveBeenCalled()
+    expect(recomputeMock).not.toHaveBeenCalled()
   })
 })

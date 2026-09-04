@@ -10,6 +10,8 @@ import { updateActivityForTrip } from '../../../../redux/trips'
 import { Button } from '../../../../components/Button'
 import { HoverToolTip } from '../../../ToolTips'
 import { useAppDispatch } from '../../../../redux/hooks'
+import { ArrivalWindowField } from './ArrivalWindowField'
+import { formatArrivalWindow } from '../../../../utils/arrival-window'
 
 /**
  * A Gantt date column header.
@@ -92,6 +94,14 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, re
     reloadTrip()
   }
 
+  // A window with times but no zone cannot be saved — the API rejects it, and
+  // rightly: an arrival window is a local wall clock and is unusable to the
+  // notification automation without the zone it is read in.
+  const arrivalWindowNeedsZone = Boolean(
+    (selectedActivity?.arrival_window_start || selectedActivity?.arrival_window_end) &&
+    !selectedActivity?.arrival_window_tz,
+  )
+
   const saveActivity = async () => {
     const partialActivity = {
       TripMaster_id: selectedActivity.TripMaster_id,
@@ -99,6 +109,12 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, re
       actual_date: selectedActivity.actual_date,
       is_committed: selectedActivity.is_committed,
       is_confirmed: selectedActivity.is_confirmed,
+      // The three move together or not at all (the API enforces the same rule).
+      // `undefined` on an untouched activity is dropped by JSON.stringify, so a
+      // save that never opened the window leaves the stored one alone.
+      arrival_window_start: selectedActivity.arrival_window_start,
+      arrival_window_end: selectedActivity.arrival_window_end,
+      arrival_window_tz: selectedActivity.arrival_window_tz,
     }
     await dispatch(updateActivityForTrip(selectedActivity.activityId, partialActivity) as any)
     reloadTrip()
@@ -196,7 +212,14 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, re
               <button
                 className="pegasus-link"
                 style={{ position: 'absolute', bottom: '5px', right: '5px' }}
+                disabled={arrivalWindowNeedsZone}
+                title={
+                  arrivalWindowNeedsZone
+                    ? 'Pick the arrival window time zone before saving'
+                    : undefined
+                }
                 onClick={() => {
+                  if (arrivalWindowNeedsZone) return
                   saveActivity()
                   setSelectedActivity(null)
                 }}
@@ -299,6 +322,20 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, re
               ) : (
                 ''
               )}
+
+              {/* Every activity can carry a window, not just the ETA-bearing
+                  ones: customer service notifies the day before ANY activity. */}
+              <ArrivalWindowField
+                start={selectedActivity.arrival_window_start}
+                end={selectedActivity.arrival_window_end}
+                timeZone={selectedActivity.arrival_window_tz}
+                suggestedTimeZone={selectedActivity.arrival_window_tz_suggested}
+                confidence={selectedActivity.arrival_window_tz_confidence}
+                reason={selectedActivity.arrival_window_tz_reason}
+                windowDate={selectedActivity.arrival_window_date}
+                zoneLabel={selectedActivity.arrival_window_tz_label}
+                onChange={updateActivity}
+              />
             </>
           )}
         </PopoverShell>
@@ -340,6 +377,22 @@ const ActivityRow = React.forwardRef<HTMLDivElement, ActivityRowProps>(
       : 0
     const newOffset = hasDateChange ? getOffset(activity.newStart, days) : 0
 
+    // The window the customer was quoted, if one has been set. Shown on hover
+    // rather than in the 80px-wide bar, which has no room for it.
+    const arrivalWindow = formatArrivalWindow({
+      start: activity.arrival_window_start,
+      end: activity.arrival_window_end,
+      windowDate: activity.arrival_window_date,
+      zoneLabel: activity.arrival_window_tz_label,
+    })
+    const driverStatus = activity.actual_date
+      ? `Verified Complete`
+      : activity.is_confirmed
+        ? `Confirmed With Driver`
+        : activity.is_committed
+          ? `Driver Commitment Made`
+          : ''
+
     const innerContent = (
       <>
         <div>
@@ -348,15 +401,9 @@ const ActivityRow = React.forwardRef<HTMLDivElement, ActivityRowProps>(
             {`${getFormattedWeight(activity?.shipment?.pegasus_shadow?.weight || activity?.shipment?.total_est_wt)} `}
           </span>
           <HoverToolTip
-            content={
-              activity.actual_date
-                ? `Verified Complete`
-                : activity.is_confirmed
-                  ? `Confirmed With Driver`
-                  : activity.is_committed
-                    ? `Driver Commitment Made`
-                    : ''
-            }
+            content={[driverStatus, arrivalWindow ? `Arrival ${arrivalWindow}` : '']
+              .filter(Boolean)
+              .join(' · ')}
             direction="right"
           >
             <i
@@ -374,7 +421,13 @@ const ActivityRow = React.forwardRef<HTMLDivElement, ActivityRowProps>(
         </div>
         <div>
           <span>{`${activity.state}`}</span>
-          <></>
+          {arrivalWindow ? (
+            <HoverToolTip content={`Arrival ${arrivalWindow}`} direction="right">
+              <i className={`far fa-clock ${styles.green}`} data-target="arrival-window-set"></i>
+            </HoverToolTip>
+          ) : (
+            <></>
+          )}
         </div>
       </>
     )

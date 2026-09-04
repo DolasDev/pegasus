@@ -135,3 +135,31 @@
 .confirmDateButton.confirmed {
   background-color: green;
 }
+
+/* Arrival window — the local spread customer service quotes the day before.
+   Lives at the bottom of the activity popover, under the date pickers. */
+.arrivalWindowRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.arrivalWindowDash {
+  font-size: 0.8rem;
+  color: var(--grey);
+}
+
+.arrivalWindowSummary {
+  font-size: 0.75rem;
+  color: var(--grey);
+  margin-top: 2px;
+}
+
+/* Used both for the blocking "pick a zone" message and for the softer
+   split-state caveat next to a chosen zone. */
+.arrivalWindowWarning {
+  font-size: 0.75rem;
+  color: darkorange;
+  margin-top: 2px;
+}
