@@ -741,6 +741,7 @@ test.describe('longhaul on-prem bridge (QA)', () => {
         arrival_window_tz?: string | null
         arrival_window_start_utc?: string | null
         arrival_window_tz_label?: string | null
+        arrival_window_date?: string | null
       }
       const afterWindow = await (await qaApiFetch(`${LH}/trips/${tripId}`)).json()
       const stored = (
@@ -750,9 +751,17 @@ test.describe('longhaul on-prem bridge (QA)', () => {
       expect(stored?.arrival_window_end).toBe('10:00')
       expect(stored?.arrival_window_tz).toBe('America/New_York')
       // The read path derives the instant the notification automation will
-      // schedule against, plus the EST/EDT label for that date.
-      expect(stored?.arrival_window_start_utc).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)
-      expect(stored?.arrival_window_tz_label).toMatch(/^E[SD]T$/)
+      // schedule against, plus the EST/EDT label for that date — but only when
+      // the activity HAS a date to anchor to. A generated PACK inherits its
+      // planned_start from the shipment's pegged dates, which are null on
+      // plenty of QA shipments, so the derivation is asserted conditionally
+      // rather than assumed. `arrival_window_date` is the discriminator.
+      if (stored?.arrival_window_date) {
+        expect(stored.arrival_window_start_utc).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)
+        expect(stored.arrival_window_tz_label).toMatch(/^E[SD]T$/)
+      } else {
+        expect(stored?.arrival_window_start_utc ?? null).toBeNull()
+      }
 
       // A window with no zone is unusable to the automation, so the API refuses
       // it rather than storing half of one.

@@ -17,6 +17,7 @@
 
 import { buildShipmentActivities } from './longhaul-build-activities'
 import { mapDateOnlyColumns, findImplausibleDateColumn } from './longhaul-date-only'
+import { validateArrivalWindow } from './longhaul-arrival-window'
 
 type Activity = Record<string, unknown>
 
@@ -251,6 +252,18 @@ export function computeTripSavePlan(
       return {
         kind: 'error',
         error: `${col} year is out of range (${String(a['ActivityType_code'] ?? 'activity')} on order ${String(a['order_num'] ?? '?')})`,
+        code: 'VALIDATION_ERROR',
+      }
+    }
+    // The same arrival-window rules the single-activity PATCH enforces. Without
+    // this the DTO path could write half a window (unusable to the notification
+    // automation), and — sharper — an `'08:00:00'` a client still holds would
+    // overflow varchar(5) and fail the WHOLE atomic batch with an opaque 500.
+    const windowError = validateArrivalWindow(a)
+    if (windowError) {
+      return {
+        kind: 'error',
+        error: `${windowError} (${String(a['ActivityType_code'] ?? 'activity')} on order ${String(a['order_num'] ?? '?')})`,
         code: 'VALIDATION_ERROR',
       }
     }

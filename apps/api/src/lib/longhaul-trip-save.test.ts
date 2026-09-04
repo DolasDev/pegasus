@@ -430,4 +430,95 @@ describe('computeTripSavePlan', () => {
       expect(plan.kind).toBe('plan')
     })
   })
+
+  describe('arrival window', () => {
+    const withActivity = (fields: Record<string, unknown>) =>
+      baseDto({
+        id: 55,
+        shipments: [
+          {
+            ...shipment(100),
+            activities: [
+              {
+                order_num: 100,
+                TripMaster_id: 55,
+                ActivityType_code: 'SITIN',
+                activityType: { code: 'SITIN' },
+                planned_start: '2026-08-20',
+                ...fields,
+              },
+            ],
+          },
+        ],
+      })
+
+    const plan = (fields: Record<string, unknown>) =>
+      computeTripSavePlan(withActivity(fields), { driver_id: 9, dispatcher_id: 5 }, [])
+
+    it('carries a valid window through to the write', () => {
+      const result = plan({
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/New_York',
+      })
+      expect(result.kind).toBe('plan')
+      expect(
+        (result as { activitiesToAdd: Array<Record<string, unknown>> }).activitiesToAdd,
+      ).toContainEqual(
+        expect.objectContaining({
+          arrival_window_start: '08:00',
+          arrival_window_tz: 'America/New_York',
+        }),
+      )
+    })
+
+    it('rejects a window with no zone rather than writing half of one', () => {
+      expect(plan({ arrival_window_start: '08:00', arrival_window_end: '10:00' })).toMatchObject({
+        kind: 'error',
+        code: 'VALIDATION_ERROR',
+      })
+    })
+
+    it('rejects an over-wide time BEFORE it can overflow varchar(5)', () => {
+      // A client still holding 'HH:mm:ss' would otherwise truncate at the
+      // column and fail the whole atomic batch with an opaque 500.
+      expect(
+        plan({
+          arrival_window_start: '08:00:00',
+          arrival_window_end: '10:00:00',
+          arrival_window_tz: 'America/New_York',
+        }),
+      ).toMatchObject({ kind: 'error', code: 'VALIDATION_ERROR' })
+    })
+
+    it('names the offending activity so a multi-shipment save is diagnosable', () => {
+      const result = plan({ arrival_window_start: '08:00', arrival_window_end: '10:00' })
+      expect((result as { error: string }).error).toContain('SITIN')
+      expect((result as { error: string }).error).toContain('100')
+    })
+
+    it('leaves an activity with no window alone', () => {
+      expect(plan({}).kind).toBe('plan')
+    })
+
+    it('still reports a bad window on an activity carrying neither code nor order', () => {
+      // An API client can post a bare activity. The message has to degrade to
+      // something readable rather than "undefined on order undefined".
+      const result = computeTripSavePlan(
+        baseDto({
+          id: 55,
+          shipments: [
+            {
+              ...shipment(100),
+              activities: [{ arrival_window_start: '08:00', arrival_window_end: '10:00' }],
+            },
+          ],
+        }),
+        { driver_id: 9, dispatcher_id: 5 },
+        [],
+      )
+      expect(result).toMatchObject({ kind: 'error', code: 'VALIDATION_ERROR' })
+      expect((result as { error: string }).error).toContain('activity on order ?')
+    })
+  })
 })

@@ -21,6 +21,8 @@ import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { enqueueTripAssignmentPush } from '../../lib/push-triggers'
 
+import { resetArrivalWindowProvisioningCache } from '../../lib/longhaul-arrival-window-schema'
+
 const resolveMock = resolveLonghaulUser as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
 const pushMock = enqueueTripAssignmentPush as unknown as Mock
@@ -357,5 +359,101 @@ describe('driver-assignment push', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ data: { id: 55, trip_title: 'T' } })
+  })
+})
+
+describe('trip save — arrival-window column provisioning', () => {
+  const shipmentRead = {
+    recordset: [],
+    recordsets: [
+      [
+        {
+          order_num: 100,
+          vip: 'N',
+          total_est_wt: 100,
+          weight: 140,
+          line_haul: 500,
+          shipper_state: 'CA',
+          consignee_state: 'PA',
+        },
+      ],
+      STATE_ROWS,
+    ],
+    rowsAffected: [1],
+  }
+  const batchResult = {
+    recordset: [{ id: 77, trip_title: 'T' }],
+    recordsets: [[]],
+    rowsAffected: [1],
+  }
+
+  const withWindow = () =>
+    tripBody({
+      shipments: [
+        {
+          ...shipment,
+          activities: [
+            {
+              order_num: 100,
+              ActivityType_code: 'RDEL',
+              activityType: { code: 'RDEL' },
+              planned_start: '2026-06-05',
+              arrival_window_start: '08:00',
+              arrival_window_end: '10:00',
+              arrival_window_tz: 'America/New_York',
+            },
+          ],
+        },
+      ],
+    })
+
+  beforeEach(() => {
+    resetArrivalWindowProvisioningCache()
+  })
+
+  it('provisions the columns before the batch, in a round trip of its own', async () => {
+    // The ALTER cannot ride inside the atomic batch: SQL Server binds column
+    // references at parse time, so the batch naming arrival_window_* would fail
+    // to parse on exactly the tenants the ALTER exists for.
+    executeSqlMock
+      .mockResolvedValueOnce(shipmentRead)
+      .mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [] })
+      .mockResolvedValueOnce(batchResult)
+
+    const res = await req('/onprem/longhaul/trips', 'POST', withWindow())
+    expect(res.status).toBe(201)
+    expect(executeSqlMock).toHaveBeenCalledTimes(3)
+
+    const [, ensureSql] = executeSqlMock.mock.calls[1]!
+    expect(ensureSql).toContain('ALTER TABLE LongDistanceDispatchActivity ADD arrival_window_start')
+    expect(ensureSql).not.toContain('BEGIN TRAN')
+
+    const [, batchSql] = executeSqlMock.mock.calls[2]!
+    expect(batchSql).toContain('BEGIN TRAN')
+    expect(batchSql).not.toContain('ALTER TABLE')
+    expect(batchSql).toContain('arrival_window_start')
+  })
+
+  it('does not provision when no activity in the payload carries a window', async () => {
+    executeSqlMock.mockResolvedValueOnce(shipmentRead).mockResolvedValueOnce(batchResult)
+
+    const res = await req('/onprem/longhaul/trips', 'POST', tripBody())
+    expect(res.status).toBe(201)
+    expect(executeSqlMock).toHaveBeenCalledTimes(2)
+    for (const [, sql] of executeSqlMock.mock.calls) expect(sql).not.toContain('ALTER TABLE')
+  })
+
+  it('rejects a half-written window before the batch runs', async () => {
+    executeSqlMock.mockResolvedValueOnce(shipmentRead)
+
+    const body = withWindow() as unknown as {
+      shipments: Array<{ activities: Array<Record<string, unknown>> }>
+    }
+    delete body.shipments[0]!.activities[0]!['arrival_window_tz']
+    const res = await req('/onprem/longhaul/trips', 'POST', body)
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+    expect(executeSqlMock).toHaveBeenCalledTimes(1)
   })
 })
