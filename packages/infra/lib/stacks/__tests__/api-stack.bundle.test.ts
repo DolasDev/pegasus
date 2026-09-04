@@ -101,7 +101,11 @@ describe.skipIf(skipReason !== null)(`ApiStack — bundled asset contract`, () =
       )
     }
     assetDir = candidates[0]!
-  }, 60_000) // bundling can take 5–15s on first run; cache makes reruns faster
+  }, 300_000) // A real esbuild bundle of the whole API. ~8s locally on 12 cores,
+  // but this runs inside `turbo test`'s 15-task fan-out on a 2-core CI runner,
+  // and aws-cdk-lib 2.267 synthesizes ~2.5x slower than 2.261 — the old 60s
+  // budget timed out there. The assertions below are about bundle *contents*,
+  // never speed, so the budget is deliberately far above the observed cost.
 
   it('includes the bundled index.js and source map', () => {
     expect(fs.existsSync(path.join(assetDir, 'index.js'))).toBe(true)
