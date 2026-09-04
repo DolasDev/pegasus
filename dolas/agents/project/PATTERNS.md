@@ -201,3 +201,36 @@ A stored dashboard is a `DashboardDefinition` row whose lifecycle **mirrors `Int
 ## Test Coverage Policy
 
 Coverage is collected on **`packages/domain`** and **`apps/api`** only — these are the packages where untested logic directly causes data corruption or incorrect business outcomes. Coverage is deliberately **not** collected on `packages/infra` (CDK stack tests use assertion checks against synthesised CloudFormation, where line-coverage percentages are meaningless), `apps/admin-web`, or `apps/tenant-web` (the SPAs' coverage was never consumed and the infrastructure to gate on it was never wired into CI). Do not add `@vitest/coverage-v8` back to those three packages, and do not add a `coverage:` block to their `vitest.config.ts` files, without first establishing a pipeline that enforces and gates on the numbers. Self-ratcheting thresholds (`thresholds` + `autoUpdate: true`) are configured on `packages/domain` and `apps/api`: each runs `vitest run --coverage`, so the existing CI `turbo run test` gate fails any PR that drops coverage below the committed high-water mark, and `autoUpdate` ratchets the floor upward as coverage improves. The thresholds advance only when a developer runs coverage locally and commits the updated `vitest.config.ts` (CI cannot push the rewrite); if a baseline ever proves too optimistic and blocks the queue, lower the committed numbers a point rather than disabling the gate.
+
+## Wall-clock times on legacy activities — the arrival window
+
+`LongDistanceDispatchActivity.arrival_window_start` / `_end` / `_tz` hold the arrival
+spread customer service quotes ("we'll be there between 8 and 10"). The shape generalizes
+to any local time-of-day this codebase ever needs to store, so copy it rather than
+inventing a second one:
+
+- **`varchar(5)` `'HH:mm'`, never MSSQL `time`.** The `mssql` driver returns a `time`
+  column as a `Date` pinned to 1970-01-01, which puts a timezone back into a value that
+  has none. A fixed-width string is the same discipline `longhaul-date-only.ts` arrived at
+  for the four calendar-day columns after #619/#622 — one representation on the wire, in
+  the driver and in the column, and exactly one place that converts.
+- **Store the wall clock plus an IANA zone; derive instants on read.** "8am in
+  `America/New_York`" survives a tz-database change; a stored UTC instant silently
+  becomes wrong. `deriveArrivalWindow` (`lib/longhaul-arrival-window.ts`) hands every
+  consumer the anchor date, both UTC instants and the EST/EDT label, so no client — web,
+  mobile, or a workflow — does timezone arithmetic of its own. `Intl.DateTimeFormat` with
+  a `timeZone` is enough; no library is needed, and none should be added.
+- **The window carries no date of its own.** It is anchored to
+  `estimated_date ?? planned_start` at read time, so moving an ETA moves the window rather
+  than stranding a stale one.
+- **A resolver that cannot be sure must say so.** `resolveTimeZone` returns
+  `confident` / `likely` / `unknown`, and only `confident` (a state or province lying
+  wholly inside one zone) is auto-applied. The 14 split states and the split Canadian
+  provinces return `likely`, and the UI blocks the save until a person picks. The server
+  never fills a zone in on the caller's behalf — the failure mode is a customer texted an
+  hour early, which no amount of "usually right" justifies.
+- **Native `<input type="time">` in the UI**, not a date-picker component: it yields a
+  plain `"HH:mm"` string with no `Date` and no locale parsing.
+- **The zone list lives in `packages/longhaul-contracts`** (`arrival-window.ts`) so the
+  picker and the validator cannot drift; an apps/api test asserts every zone the resolver
+  can produce is offered by the picker.

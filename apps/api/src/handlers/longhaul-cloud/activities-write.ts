@@ -27,6 +27,11 @@ import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { recomputeTripSummaryCloud } from '../../lib/longhaul-cloud-trip-summary'
 import { pickColumns, assignments } from '../../lib/longhaul-cloud-write'
 import { normalizeDateOnlyColumns, findImplausibleDateColumn } from '../../lib/longhaul-date-only'
+import { validateArrivalWindow } from '../../lib/longhaul-arrival-window'
+import {
+  ensureArrivalWindowColumns,
+  patchTouchesArrivalWindow,
+} from '../../lib/longhaul-arrival-window-schema'
 import { logger } from '../../lib/logger'
 
 const PatchActivityBody = z.object({
@@ -48,6 +53,11 @@ const PatchActivityBody = z.object({
   assigned_agent_code: z.string().nullable().optional(),
   location_id: z.number().nullable().optional(),
   TripMaster_id: z.number().nullable().optional(),
+  // Arrival window — a LOCAL wall clock at the activity's address plus its IANA
+  // zone. `HH:mm` strings, never instants; see lib/longhaul-arrival-window.
+  arrival_window_start: z.string().nullable().optional(),
+  arrival_window_end: z.string().nullable().optional(),
+  arrival_window_tz: z.string().nullable().optional(),
 })
 
 // The activity columns a PATCH may set (knex .update({...patch}) parity — only
@@ -71,6 +81,9 @@ const ACTIVITY_PATCH_COLUMNS = [
   'assigned_agent_code',
   'location_id',
   'TripMaster_id',
+  'arrival_window_start',
+  'arrival_window_end',
+  'arrival_window_tz',
 ] as const
 
 export const longhaulSaveActivityHandler: Handler<AppEnv> = async (c) => {
@@ -107,6 +120,15 @@ export const longhaulSaveActivityHandler: Handler<AppEnv> = async (c) => {
     )
   }
 
+  // An arrival window is a local wall clock, so it is unusable without a zone —
+  // and a zone the SERVER guessed would silently defeat the confirmation the UI
+  // asks for in the 14 split states. The caller supplies all three fields or
+  // none; reads hand it `arrival_window_tz_suggested` to fill in from.
+  const arrivalWindowError = validateArrivalWindow(patch)
+  if (arrivalWindowError) {
+    return c.json({ error: arrivalWindowError, code: 'VALIDATION_ERROR', correlationId }, 400)
+  }
+
   const resolved = await resolveLonghaulUser({
     tenantId: c.get('tenantId'),
     userId: c.get('userId'),
@@ -130,6 +152,14 @@ export const longhaulSaveActivityHandler: Handler<AppEnv> = async (c) => {
       return c.json({ error: 'Activity not found', code: 'NOT_FOUND', correlationId }, 404)
     }
     const previousTripId = existing.TripMaster_id ?? null
+
+    // Provision the arrival-window columns before any statement NAMES them, and
+    // in a round trip of its own — SQL Server binds column references at parse
+    // time, so an ALTER and a reference to what it adds cannot share a batch.
+    // Only pay for it when the patch actually carries a window.
+    if (patchTouchesArrivalWindow(patch)) {
+      await ensureArrivalWindowColumns(connectionString)
+    }
 
     // RT2: UPDATE only the provided columns + audit/timestamp.
     const { columns, params } = pickColumns(patch, ACTIVITY_PATCH_COLUMNS)

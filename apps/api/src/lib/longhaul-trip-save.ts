@@ -17,6 +17,7 @@
 
 import { buildShipmentActivities } from './longhaul-build-activities'
 import { mapDateOnlyColumns, findImplausibleDateColumn } from './longhaul-date-only'
+import { validateArrivalWindow } from './longhaul-arrival-window'
 
 type Activity = Record<string, unknown>
 
@@ -42,6 +43,12 @@ export const ACTIVITY_COLUMNS = [
   'trip_status_id',
   'unit',
   'zip',
+  // Arrival window (lib/longhaul-arrival-window). Listed so a trip save that
+  // re-INSERTs an activity carries the window across instead of dropping it.
+  // The handler provisions these columns before the batch runs.
+  'arrival_window_start',
+  'arrival_window_end',
+  'arrival_window_tz',
 ] as const
 
 /** TripMaster columns the header upsert writes (excl. id, created_date, updated_date). */
@@ -245,6 +252,18 @@ export function computeTripSavePlan(
       return {
         kind: 'error',
         error: `${col} year is out of range (${String(a['ActivityType_code'] ?? 'activity')} on order ${String(a['order_num'] ?? '?')})`,
+        code: 'VALIDATION_ERROR',
+      }
+    }
+    // The same arrival-window rules the single-activity PATCH enforces. Without
+    // this the DTO path could write half a window (unusable to the notification
+    // automation), and — sharper — an `'08:00:00'` a client still holds would
+    // overflow varchar(5) and fail the WHOLE atomic batch with an opaque 500.
+    const windowError = validateArrivalWindow(a)
+    if (windowError) {
+      return {
+        kind: 'error',
+        error: `${windowError} (${String(a['ActivityType_code'] ?? 'activity')} on order ${String(a['order_num'] ?? '?')})`,
         code: 'VALIDATION_ERROR',
       }
     }

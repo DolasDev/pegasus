@@ -1,5 +1,5 @@
 import React from 'react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { screen, fireEvent } from '@testing-library/react'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -12,10 +12,14 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('../../../../utils/api', () => ({
   API: {
     updateActivity: vi.fn(async () => ({})),
+    // What updateActivityForTrip actually calls — the arrival-window tests
+    // assert on the patch body it receives.
+    saveActivity: vi.fn(async () => ({})),
   },
 }))
 
 import { renderWithStore } from '../../../../__test-utils__/render-with-store'
+import { API } from '../../../../utils/api'
 import { ActivityGantt } from './ActivityGantt'
 import { parseActivities } from '../../utils/parse-activities'
 
@@ -404,5 +408,238 @@ describe('ActivityGantt', () => {
         expect(h5.getAttribute('data-day')).toBe('unknown')
       })
     })
+  })
+})
+
+describe('ActivityGantt — arrival window', () => {
+  const saveActivityMock = API.saveActivity as unknown as Mock
+
+  beforeEach(() => {
+    saveActivityMock.mockClear()
+  })
+
+  const openPopover = (activity: any) => {
+    const result = renderWithStore(
+      <ActivityGantt
+        days={days}
+        activities={[activity]}
+        orderIdToColor={{ O1: 'c' }}
+        reloadTrip={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getByText(activity.state))
+    return result
+  }
+
+  const addWindow = () =>
+    fireEvent.click(document.querySelector('[data-target="add-arrival-window"]')!)
+  const savedPatch = () => saveActivityMock.mock.calls[0]![1] as Record<string, unknown>
+
+  it('offers a window on every activity, ETA-bearing or not', () => {
+    // Customer service notifies the day before ANY activity, not only the
+    // ones that carry an ETA.
+    openPopover(
+      baseActivity({ activityType: { abbreviation: 'SIT', code: 'SITIN', isHasETA: false } }),
+    )
+    expect(document.querySelector('[data-target="add-arrival-window"]')).toBeTruthy()
+  })
+
+  it('prefills 8:00–10:00 and stores nothing until the popover is saved', () => {
+    openPopover(
+      baseActivity({
+        state: 'NJ',
+        arrival_window_tz_suggested: 'America/New_York',
+        arrival_window_tz_confidence: 'confident',
+      }),
+    )
+    addWindow()
+
+    expect((screen.getByLabelText('Arrival window start') as HTMLInputElement).value).toBe('08:00')
+    expect((screen.getByLabelText('Arrival window end') as HTMLInputElement).value).toBe('10:00')
+    // "No window" must stay distinguishable from "8–10" for the automation, so
+    // nothing may reach the API until the dispatcher saves.
+    expect(saveActivityMock).not.toHaveBeenCalled()
+  })
+
+  it('auto-selects the zone where the server is confident', () => {
+    openPopover(
+      baseActivity({
+        state: 'NJ',
+        arrival_window_tz_suggested: 'America/New_York',
+        arrival_window_tz_confidence: 'confident',
+      }),
+    )
+    addWindow()
+    expect((screen.getByLabelText('Arrival window time zone') as HTMLSelectElement).value).toBe(
+      'America/New_York',
+    )
+  })
+
+  it('leaves the zone unselected in a split state and blocks the save', () => {
+    // Texas spans Central and Mountain. A silent default here is how a customer
+    // gets texted an hour early, so the dispatcher has to choose.
+    openPopover(
+      baseActivity({
+        state: 'TX',
+        arrival_window_tz_suggested: 'America/Chicago',
+        arrival_window_tz_confidence: 'likely',
+        arrival_window_tz_reason: 'TX spans two time zones',
+      }),
+    )
+    addWindow()
+
+    expect((screen.getByLabelText('Arrival window time zone') as HTMLSelectElement).value).toBe('')
+    expect(document.querySelector('[data-target="arrival-window-needs-zone"]')).toBeTruthy()
+    expect((screen.getByText('save') as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByText('save'))
+    expect(saveActivityMock).not.toHaveBeenCalled()
+  })
+
+  it('re-enables the save once a zone is picked and sends all three fields', async () => {
+    openPopover(
+      baseActivity({
+        state: 'TX',
+        arrival_window_tz_suggested: 'America/Chicago',
+        arrival_window_tz_confidence: 'likely',
+      }),
+    )
+    addWindow()
+    fireEvent.change(screen.getByLabelText('Arrival window time zone'), {
+      target: { value: 'America/Denver' },
+    })
+
+    expect((screen.getByText('save') as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(screen.getByText('save'))
+
+    await vi.waitFor(() => expect(saveActivityMock).toHaveBeenCalled())
+    expect(savedPatch()).toMatchObject({
+      arrival_window_start: '08:00',
+      arrival_window_end: '10:00',
+      arrival_window_tz: 'America/Denver',
+    })
+  })
+
+  it('sends all three as null when the window is removed', async () => {
+    openPopover(
+      baseActivity({
+        state: 'NJ',
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/New_York',
+      }),
+    )
+    fireEvent.click(document.querySelector('[data-target="remove-arrival-window"]')!)
+    fireEvent.click(screen.getByText('save'))
+
+    await vi.waitFor(() => expect(saveActivityMock).toHaveBeenCalled())
+    expect(savedPatch()).toMatchObject({
+      arrival_window_start: null,
+      arrival_window_end: null,
+      arrival_window_tz: null,
+    })
+  })
+
+  it('clearing both times clears the zone too, so no orphan zone is saved', async () => {
+    // Regression: `hasWindow` is (start || end), so emptying both inputs
+    // collapses the block back to "+ Add arrival window". If the zone survived
+    // in state, the save would post a zone with no times — which the API
+    // rejects with a message about missing times while the screen shows no
+    // window at all, leaving the dispatcher nothing to act on.
+    openPopover(
+      baseActivity({
+        state: 'NJ',
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/New_York',
+      }),
+    )
+    fireEvent.change(screen.getByLabelText('Arrival window start'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Arrival window end'), { target: { value: '' } })
+
+    expect(document.querySelector('[data-target="add-arrival-window"]')).toBeTruthy()
+    fireEvent.click(screen.getByText('save'))
+
+    await vi.waitFor(() => expect(saveActivityMock).toHaveBeenCalled())
+    expect(savedPatch()).toMatchObject({
+      arrival_window_start: null,
+      arrival_window_end: null,
+      arrival_window_tz: null,
+    })
+  })
+
+  it('keeps the window when only one end is cleared', () => {
+    openPopover(
+      baseActivity({
+        state: 'NJ',
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/New_York',
+      }),
+    )
+    fireEvent.change(screen.getByLabelText('Arrival window start'), { target: { value: '' } })
+
+    // Still editing a window — the zone must survive a half-finished edit.
+    expect(screen.getByLabelText('Arrival window end')).toBeTruthy()
+    expect((screen.getByLabelText('Arrival window time zone') as HTMLSelectElement).value).toBe(
+      'America/New_York',
+    )
+  })
+
+  it('carries no window keys when the dispatcher never opened one', async () => {
+    openPopover(baseActivity({ state: 'NJ' }))
+    fireEvent.click(screen.getByText('save'))
+
+    await vi.waitFor(() => expect(saveActivityMock).toHaveBeenCalled())
+    expect(savedPatch()['arrival_window_start']).toBeUndefined()
+    expect(savedPatch()['arrival_window_tz']).toBeUndefined()
+  })
+
+  it('shows a stored window using the server-derived date and zone label', () => {
+    openPopover(
+      baseActivity({
+        state: 'NJ',
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/New_York',
+        arrival_window_date: '2026-09-11',
+        arrival_window_tz_label: 'EDT',
+      }),
+    )
+    const summary = document.querySelector('[data-target="arrival-window-summary"]')!
+    expect(summary.textContent).toContain('8:00 AM – 10:00 AM EDT')
+    expect(summary.textContent).toContain('09/11')
+  })
+
+  it('marks a bar whose activity already carries a window', () => {
+    const { container } = renderWithStore(
+      <ActivityGantt
+        days={days}
+        activities={[
+          baseActivity({
+            arrival_window_start: '08:00',
+            arrival_window_end: '10:00',
+            arrival_window_tz_label: 'CDT',
+          }),
+        ]}
+        orderIdToColor={{ O1: 'c' }}
+        reloadTrip={() => {}}
+      />,
+    )
+    expect(container.querySelector('[data-target="arrival-window-set"]')).toBeTruthy()
+  })
+
+  it('never opens the editor on the read-only rejected-trip view', () => {
+    renderWithStore(
+      <ActivityGantt
+        days={days}
+        activities={[baseActivity()]}
+        orderIdToColor={{ O1: 'c' }}
+        reloadTrip={() => {}}
+        readOnly
+      />,
+    )
+    fireEvent.click(screen.getByText('TX'))
+    expect(document.querySelector('[data-target="arrival-window"]')).toBeNull()
   })
 })

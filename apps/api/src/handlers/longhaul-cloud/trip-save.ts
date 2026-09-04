@@ -24,6 +24,10 @@ import type { Handler } from 'hono'
 import { z } from 'zod'
 import type { AppEnv } from '../../types'
 import { executeSql, MssqlExecError, type SqlParam } from '../../lib/mssql-executor-client'
+import {
+  ensureArrivalWindowColumns,
+  activitiesTouchArrivalWindow,
+} from '../../lib/longhaul-arrival-window-schema'
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import {
   computeTripSavePlan,
@@ -149,6 +153,19 @@ async function handleSave(c: Parameters<Handler<AppEnv>>[0], tripId: number | un
       superVipField: 'idc_break',
       stateIdByGeoCode,
     })
+
+    // Provision the arrival-window columns before the batch that names them —
+    // separate round trip (parse-time column binding) and only when some
+    // activity in the payload actually carries a window, so a normal save pays
+    // nothing. See lib/longhaul-arrival-window-schema.
+    if (
+      activitiesTouchArrivalWindow([
+        ...plan.activitiesToAdd,
+        ...plan.activitiesToUpdate.map((u) => u.fields),
+      ])
+    ) {
+      await ensureArrivalWindowColumns(connectionString)
+    }
 
     // --- RT2: one atomic batch.
     const { sql, params } = buildSaveBatch(plan, summary, tripId)

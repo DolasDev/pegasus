@@ -35,6 +35,7 @@ import {
   type ActivityType,
   type ShipmentRow,
 } from './longhaul-shipment-enrich'
+import { enrichActivityArrivalWindow } from './longhaul-arrival-window'
 
 type Row = Record<string, unknown>
 
@@ -143,7 +144,12 @@ export async function fetchTripDetail(
     params: [{ name: 'id', value: tripId }],
   })
   const tripRows = (tripBundle.recordsets[0] ?? []) as Row[]
-  const activities = (tripBundle.recordsets[1] ?? []) as Row[]
+  // `SELECT a.*` already carries the arrival-window columns once a tenant has
+  // them; the derived fields (the window's anchor date, its UTC instants, the
+  // EDT/EST label, and what the resolver would suggest for this address) are
+  // added here so no consumer — tenant-web, mobile, a workflow — ever does
+  // timezone math of its own. Tenants without the columns derive all-nulls.
+  const activities = ((tripBundle.recordsets[1] ?? []) as Row[]).map(enrichActivityArrivalWindow)
   const notes = (tripBundle.recordsets[2] ?? []) as Row[]
 
   const trip = tripRows[0]
@@ -219,7 +225,7 @@ function assembleShipments(
   tripId: number,
   activityTypesMap: Record<string, ActivityType>,
 ): Row[] {
-  const activitiesByOrder = groupBy(activities, 'order_num')
+  const activitiesByOrder = groupBy(activities.map(enrichActivityArrivalWindow), 'order_num')
   const extraByOrder = groupBy(extraLocations, 'order_num')
   const coverageByOrder: Record<number, Row> = {}
   for (const cov of coverages) {

@@ -715,6 +715,79 @@ test.describe('longhaul on-prem bridge (QA)', () => {
       const reActivities =
         ((reread?.data ?? reread)?.activities as Array<{ id: number; city?: string | null }>) ?? []
       expect(reActivities.find((a) => a.id === activityId)?.city).toBe(cityMarker)
+
+      // --- Arrival window. This is the only test that exercises the LAZY
+      // COLUMN PROVISIONING against a real database: the QA tenant's
+      // LongDistanceDispatchActivity almost certainly has no arrival_window_*
+      // columns until this write adds them, so a green run proves the
+      // `IF COL_LENGTH … ALTER TABLE ADD` guard runs, commits, and that the
+      // UPDATE naming those columns parses afterwards. Unit tests cannot show
+      // that — they assert on SQL strings, not on SQL Server's parser.
+      const window = {
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/New_York',
+      }
+      const savedWindow = await qaApiFetch(`${LH}/activities/${activityId}`, {
+        method: 'POST',
+        body: JSON.stringify(window),
+      })
+      expect(savedWindow.status, await savedWindow.text().catch(() => '')).toBeLessThan(300)
+
+      type WindowActivity = {
+        id: number
+        arrival_window_start?: string | null
+        arrival_window_end?: string | null
+        arrival_window_tz?: string | null
+        arrival_window_start_utc?: string | null
+        arrival_window_tz_label?: string | null
+        arrival_window_date?: string | null
+      }
+      const afterWindow = await (await qaApiFetch(`${LH}/trips/${tripId}`)).json()
+      const stored = (
+        ((afterWindow?.data ?? afterWindow)?.activities as WindowActivity[]) ?? []
+      ).find((a) => a.id === activityId)
+      expect(stored?.arrival_window_start).toBe('08:00')
+      expect(stored?.arrival_window_end).toBe('10:00')
+      expect(stored?.arrival_window_tz).toBe('America/New_York')
+      // The read path derives the instant the notification automation will
+      // schedule against, plus the EST/EDT label for that date — but only when
+      // the activity HAS a date to anchor to. A generated PACK inherits its
+      // planned_start from the shipment's pegged dates, which are null on
+      // plenty of QA shipments, so the derivation is asserted conditionally
+      // rather than assumed. `arrival_window_date` is the discriminator.
+      if (stored?.arrival_window_date) {
+        expect(stored.arrival_window_start_utc).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)
+        expect(stored.arrival_window_tz_label).toMatch(/^E[SD]T$/)
+      } else {
+        expect(stored?.arrival_window_start_utc ?? null).toBeNull()
+      }
+
+      // A window with no zone is unusable to the automation, so the API refuses
+      // it rather than storing half of one.
+      const noZone = await qaApiFetch(`${LH}/activities/${activityId}`, {
+        method: 'POST',
+        body: JSON.stringify({ arrival_window_start: '09:00', arrival_window_end: '11:00' }),
+      })
+      expect(noZone.status).toBe(400)
+
+      // Clearing puts the activity back to "not communicated" — which the
+      // automation must be able to tell apart from a stored 8–10.
+      const cleared = await qaApiFetch(`${LH}/activities/${activityId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          arrival_window_start: null,
+          arrival_window_end: null,
+          arrival_window_tz: null,
+        }),
+      })
+      expect(cleared.status, await cleared.text().catch(() => '')).toBeLessThan(300)
+      const afterClear = await (await qaApiFetch(`${LH}/trips/${tripId}`)).json()
+      const clearedRow = (
+        ((afterClear?.data ?? afterClear)?.activities as WindowActivity[]) ?? []
+      ).find((a) => a.id === activityId)
+      expect(clearedRow?.arrival_window_start ?? null).toBeNull()
+      expect(clearedRow?.arrival_window_start_utc ?? null).toBeNull()
     } finally {
       // Cleanup: cancel the trip so the shipment is returned to unassigned.
       await qaApiFetch(`${LH}/trips/${tripId}/cancel`, { method: 'POST' })

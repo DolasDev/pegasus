@@ -98,7 +98,11 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     // Regression (Phase 3.1): activities + notes were silently dropped because
     // the executor's `recordset` only carries the first statement's rows. The
     // handler now reads each child set from `recordsets[i]`.
-    expect(body.data.activities).toEqual([activityRow])
+    // The row is returned verbatim PLUS the derived arrival-window fields
+    // (lib/longhaul-arrival-window) — additive, so match rather than compare.
+    const returnedActivities = body.data.activities as Array<Record<string, unknown>>
+    expect(returnedActivities).toHaveLength(1)
+    expect(returnedActivities[0]).toMatchObject(activityRow)
     expect(body.data.notes).toEqual([noteRow])
 
     const shipments = body.data.shipments as Array<Record<string, unknown>>
@@ -183,7 +187,11 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     // The absent optional table degrades to an empty list — not a 500.
     expect(shipments[0]!['extra_locations']).toEqual([])
     // Mandatory trip data is unaffected.
-    expect(body.data.activities).toEqual([activityRow])
+    // The row is returned verbatim PLUS the derived arrival-window fields
+    // (lib/longhaul-arrival-window) — additive, so match rather than compare.
+    const returnedActivities = body.data.activities as Array<Record<string, unknown>>
+    expect(returnedActivities).toHaveLength(1)
+    expect(returnedActivities[0]).toMatchObject(activityRow)
     expect(body.data.notes).toEqual([noteRow])
     expect(executeSqlMock).toHaveBeenCalledTimes(3)
   })
