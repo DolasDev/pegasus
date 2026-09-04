@@ -1050,23 +1050,40 @@ Fixed in `AvailabilityViewA.tsx` / `AvailabilityViewB.tsx` (`normalizeRefCode`,
 duplicated because the A/B variants deliberately share no base). Both copies are
 pinned by mutation-checked tests in `routes/driver-planning.index.test.tsx`.
 
-## Widening a legacy table means widening its history table too
+## Read the triggers before widening a legacy table
 
-`LongDistanceDispatchActivity` carries enabled AFTER triggers, and the DELETE trigger
-copies the deleted row into `LongDistanceDispatchActivityHistory`. If that copy is written
-as `INSERT INTO …History SELECT * FROM deleted` — no column list — then adding a column to
-the parent alone breaks **every activity delete**, and with it every trip save that drops
-an activity. The failure surfaces nowhere near the column you added.
+`LongDistanceDispatchActivity` carries three ENABLED triggers on NWI (insert /
+update / delete; Quality Move Management's copy of the table has **none**). Its
+AFTER DELETE trigger copies the deleted row into
+`LongDistanceDispatchActivityHistory`, and whether widening the parent is safe
+depends entirely on how that copy is written.
 
-So `ENSURE_ARRIVAL_WINDOW_COLUMNS_SQL` (`lib/longhaul-arrival-window-schema.ts`) widens
-both tables, guarding the history table with `OBJECT_ID(...) IS NOT NULL` because it is not
-present on every tenant. Any future column added to this table must do the same. Read the
-trigger before you ALTER:
+**Verified against prod 2026-09-04, for the arrival-window columns:** none of the
+three trigger bodies contains a `SELECT *`; the only INSERT is the delete
+trigger's, and it names all 25 columns explicitly on both sides; the insert and
+update triggers only `UPDATE sales SET <named columns>`. So adding nullable
+columns to the parent is safe, and only the parent is widened.
 
-`SELECT OBJECT_NAME(parent_id) AS tbl, name, OBJECT_DEFINITION(object_id) AS body FROM sys.triggers WHERE parent_id = OBJECT_ID('LongDistanceDispatchActivity')`
+**This was close to being a live prod break.** The history table is exactly the
+shape that a positional insert would have destroyed: 26 columns to the parent's
+24, with trailing audit columns `date_created` / `created_by`. Under
+`INSERT INTO …History SELECT *, GETDATE() FROM deleted`, appending three
+`varchar(5)` columns to the parent would have shifted `'08:00'` into a `datetime`
+and failed **every activity delete** — and so every trip save that drops an
+activity — with an error pointing nowhere near the column you added.
 
-Note also that there is **no UPDATE history** on this table — the history table is
-delete-only, so a bad UPDATE is unrecoverable from the database itself.
+So: re-read the triggers before adding any column to this table. An explicit
+column list today is not a promise about tomorrow; the legacy VB app owns them.
+
+```
+SELECT OBJECT_NAME(parent_id) AS tbl, name, is_disabled, OBJECT_DEFINITION(object_id) AS body FROM sys.triggers WHERE parent_id = OBJECT_ID('LongDistanceDispatchActivity')
+```
+
+Two consequences worth knowing. The history table is **delete-only** — there is no
+update history, so a bad UPDATE here is unrecoverable from the database itself.
+And because the delete trigger names its columns, a deleted activity's arrival
+window is **not** preserved in history; closing that gap would mean editing a live
+trigger that also writes to `sales`, which was judged riskier than the gap.
 
 ## An ALTER and a reference to what it adds cannot share a batch
 

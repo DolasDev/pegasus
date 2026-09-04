@@ -6,28 +6,44 @@
 // DriverConfirmedAvailability: an idempotent `IF COL_LENGTH … ALTER TABLE ADD`
 // run lazily by the write path. A tenant that never sets an arrival window
 // never gets the columns, and reads tolerate their absence
-// (`deriveArrivalWindow` returns nulls) — so provisioning is driven entirely by
-// use.
+// (`deriveArrivalWindow` returns nulls) — so provisioning is driven by use.
 //
-// TWO RULES, BOTH LEARNED THE HARD WAY:
+// RUN THIS IN ITS OWN executeSql CALL. SQL Server resolves column references at
+// PARSE time, so a batch that both adds a column and names it raises
+// `Invalid column name` before the ALTER ever commits. This is the same trap
+// documented on CONFIRMED_SQL in handlers/longhaul-cloud/driver-planning.ts.
 //
-// 1. RUN THIS IN ITS OWN executeSql CALL. SQL Server resolves column references
-//    at PARSE time, so a batch that both adds a column and names it raises
-//    `Invalid column name` before the ALTER ever commits. This is exactly the
-//    trap documented on CONFIRMED_SQL in handlers/longhaul-cloud/driver-planning.ts.
+// WHY THE PARENT TABLE ONLY — verified against prod 2026-09-04.
 //
-// 2. THE HISTORY TABLE MOVES WITH THE PARENT. LongDistanceDispatchActivity has
-//    an AFTER DELETE trigger that copies the deleted row into
-//    LongDistanceDispatchActivityHistory. If that trigger is written as
-//    `INSERT INTO …History SELECT * FROM deleted` — no column list — then
-//    widening only the parent breaks EVERY activity delete, and with it every
-//    trip save that drops an activity. Widening both tables by the same columns
-//    in the same order keeps such a trigger working, so this SQL does both.
-//    The history table is guarded by OBJECT_ID because it is not present on
-//    every tenant.
+// `LongDistanceDispatchActivity` carries three ENABLED triggers on NWI
+// (insert / update / delete; Quality Move Management has none at all). Widening
+// a table under a trigger is only safe depending on how that trigger moves rows,
+// so all three bodies were read before this shipped:
 //
-// Not soft-failed: if provisioning cannot happen the window cannot be stored,
-// and the caller should see that rather than silently drop the user's input.
+//   - NONE of them contains a `SELECT *`.
+//   - The only INSERT is the delete trigger's copy into
+//     `LongDistanceDispatchActivityHistory`, and it names all 25 columns
+//     explicitly on BOTH sides.
+//   - The insert and update triggers only `UPDATE sales SET <named columns>`.
+//
+// That matters because the history table is exactly the shape that WOULD have
+// broken under a positional insert: 26 columns to the parent's 24, with trailing
+// audit columns `date_created` / `created_by`. Appending to the parent alone
+// would then have shifted `'08:00'` into a `datetime` and failed every activity
+// delete — and so every trip save that drops one. The explicit column list is
+// what makes this safe.
+//
+// It is also why the history table is deliberately NOT widened here. The trigger
+// names its columns, so it would never populate them; the result would be three
+// permanently-NULL columns on an audit table. The cost is that a deleted
+// activity's arrival window is not preserved in history. Accepted: closing that
+// gap means editing a live legacy trigger that also writes to `sales`, which is
+// far riskier than this feature warrants.
+//
+// ANY future column added to this table must re-read the triggers first — an
+// explicit column list today is not a guarantee for tomorrow, and the legacy VB
+// app owns these triggers. Note too that the history table is DELETE-ONLY: there
+// is no update history, so a bad UPDATE here is unrecoverable from the DB itself.
 // ---------------------------------------------------------------------------
 
 import { executeSql } from './mssql-executor-client'
@@ -35,7 +51,6 @@ import { ARRIVAL_WINDOW_COLUMNS } from './longhaul-arrival-window'
 import { logger } from './logger'
 
 const ACTIVITY_TABLE = 'LongDistanceDispatchActivity'
-const HISTORY_TABLE = 'LongDistanceDispatchActivityHistory'
 
 /** `varchar` widths: `HH:mm` is always 5, an IANA id comfortably fits 64. */
 const COLUMN_TYPES: Record<(typeof ARRIVAL_WINDOW_COLUMNS)[number], string> = {
@@ -44,20 +59,12 @@ const COLUMN_TYPES: Record<(typeof ARRIVAL_WINDOW_COLUMNS)[number], string> = {
   arrival_window_tz: 'varchar(64)',
 }
 
-function addColumnGuards(table: string): string {
-  return ARRIVAL_WINDOW_COLUMNS.map(
-    (column) =>
-      `  IF COL_LENGTH('${table}','${column}') IS NULL ALTER TABLE ${table} ADD ${column} ${COLUMN_TYPES[column]} NULL;`,
-  ).join('\n')
-}
-
 export const ENSURE_ARRIVAL_WINDOW_COLUMNS_SQL = `
 SET XACT_ABORT ON;
-${addColumnGuards(ACTIVITY_TABLE)}
-IF OBJECT_ID('${HISTORY_TABLE}', 'U') IS NOT NULL
-BEGIN
-${addColumnGuards(HISTORY_TABLE)}
-END
+${ARRIVAL_WINDOW_COLUMNS.map(
+  (column) =>
+    `IF COL_LENGTH('${ACTIVITY_TABLE}','${column}') IS NULL ALTER TABLE ${ACTIVITY_TABLE} ADD ${column} ${COLUMN_TYPES[column]} NULL;`,
+).join('\n')}
 `
 
 /**
@@ -87,7 +94,7 @@ export function activitiesTouchArrivalWindow(activities: Array<Record<string, un
  * Ensure the arrival-window columns exist on this tenant's legacy database.
  *
  * MUST be awaited before — and separately from — any statement that names the
- * columns. See rule 1 above.
+ * columns. See the parse-time rule above.
  */
 export async function ensureArrivalWindowColumns(connectionString: string): Promise<void> {
   if (provisioned.has(connectionString)) return

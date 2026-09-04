@@ -269,14 +269,19 @@ describe('POST /activities/:id — arrival window', () => {
     expect(updSql).not.toContain('ALTER TABLE')
   })
 
-  it('widens the history table too, so a `SELECT * FROM deleted` trigger keeps working', async () => {
+  it('widens the parent table ONLY, never the history table', async () => {
+    // Verified against prod: the delete trigger's copy into
+    // LongDistanceDispatchActivityHistory names all 25 columns explicitly, so it
+    // would never populate columns added here — widening History would leave
+    // three permanently-NULL columns on an audit table. (Had that insert been
+    // positional the opposite would hold: History carries trailing
+    // date_created/created_by, so widening the parent alone would have shifted
+    // '08:00' into a datetime and broken every activity delete.)
     mockThreeRoundTrips()
     await save('5', WINDOW)
     const [, ensureSql] = executeSqlMock.mock.calls[1]!
-    expect(ensureSql).toContain("OBJECT_ID('LongDistanceDispatchActivityHistory', 'U') IS NOT NULL")
-    expect(ensureSql).toContain(
-      'ALTER TABLE LongDistanceDispatchActivityHistory ADD arrival_window_start',
-    )
+    expect(ensureSql).toContain('ALTER TABLE LongDistanceDispatchActivity ADD arrival_window_start')
+    expect(ensureSql).not.toContain('LongDistanceDispatchActivityHistory')
   })
 
   it('does NOT provision when the patch carries no window', async () => {

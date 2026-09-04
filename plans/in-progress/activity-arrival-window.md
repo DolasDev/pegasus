@@ -1,6 +1,6 @@
 # Arrival time spread on a trip activity
 
-**Status:** in progress — API layer done, UI next, Step 0 gate still OPEN
+**Status:** COMPLETE — Step 0 gate CLEARED against prod 2026-09-04; ready for PR
 **Branch:** to be created via `scripts/new-worktree.sh feat activity-arrival-window`
 **Goal:** let an operations user enter a local-time arrival window (default 8:00–10:00)
 on any activity from the trip Gantt popover, stored with an explicit IANA time zone so
@@ -13,7 +13,7 @@ future automation can turn it into a correct UTC send-time for customer SMS.
 - [x] `POST /activities/:id` accepts, validates and writes the window (27 tests green)
 - [x] Read path derives the anchor date, UTC instants, zone label and suggestion
 - [x] `ACTIVITY_COLUMNS` carries the window through a full trip save
-- [ ] **Step 0 trigger gate — BLOCKED on `aws sso login --sso-session dolas`**
+- [x] **Step 0 trigger gate — CLEARED.** See the finding below.
 - [x] tenant-web popover UI + tests (28 Gantt tests + 11 display-util tests green)
 - [x] e2e round-trip — added to `tests/api/longhaul-qa.spec.ts`, NOT the browser spec:
       the repo deliberately moved activity write flows there
@@ -71,30 +71,35 @@ activity is the precondition for automating the notification.
   zone. The popover makes the zone `<select>` required whenever
   `arrival_window_tz_suggested` comes back null.
 
-## Step 0 — PRE-FLIGHT GATE (blocking, do this first)
+## Step 0 — PRE-FLIGHT GATE: CLEARED (prod, 2026-09-04)
 
-`LongDistanceDispatchActivity` carries enabled triggers, including a DELETE trigger that
-writes `LongDistanceDispatchActivityHistory`. Before any `ALTER TABLE`:
+Read via the mssql-executor against all four tenants carrying a legacy DB
+(Nelson Westerberg, NW Test, Quality Move Management, QMM QA — the last was
+unreachable, tunnel down, and is re-checkable later at no risk since
+provisioning is lazy and per-tenant).
 
-1. Read the trigger bodies against **prod** via the mssql-executor (recipe:
-   `project_star_select_duplicate_column_arrays` memory / `mssql-executor-client`):
-   ```
-   SELECT OBJECT_NAME(parent_id) AS tbl, name, OBJECT_DEFINITION(object_id) AS body
-   FROM sys.triggers WHERE parent_id = OBJECT_ID('LongDistanceDispatchActivity');
-   ```
-2. **If the DELETE trigger uses `INSERT INTO ...History SELECT * FROM deleted`** (no column
-   list), adding columns to the parent table breaks every activity delete — and therefore
-   every trip save that drops an activity. Two ways out, in order of preference:
-   - add the same three columns to `LongDistanceDispatchActivityHistory` in the same
-     ensure-SQL, in the same order; **or**
-   - fall back to a Pegasus-owned sidecar table
-     `pegasus_activity_arrival_window (activity_id int PK, ...)` in the same legacy DB,
-     self-provisioned with `IF OBJECT_ID(...) IS NULL CREATE TABLE` and LEFT JOINed on
-     read. Everything below is unchanged except the SQL shape.
-3. Also confirm the legacy VB app INSERTs into this table with an explicit column list
-   (an `INSERT ... VALUES` with no column list breaks on any added column).
+**Outcome 1: the trigger uses an explicit column list. Ship as-is, parent table only.**
 
-**Do not proceed past this gate on assumption.** Record the finding in the plan.
+- NWI has three ENABLED triggers: `…ActivityInsert`, `…ActivityUpdate`,
+  `…ActivityDelete`. **QMM has none at all.**
+- **No `SELECT *` in any of the three bodies.**
+- The only INSERT anywhere is the delete trigger's copy into
+  `LongDistanceDispatchActivityHistory`, naming all 25 columns explicitly on both
+  sides. The insert/update triggers only `UPDATE sales SET <named columns>`, so
+  new columns are inert to them.
+
+**How close this was.** History has 26 columns to the parent's 24, with trailing
+`date_created` / `created_by`. Under a positional `SELECT *, GETDATE() FROM deleted`
+the parent-only widening would have shifted `'08:00'` into a `datetime` and broken
+every activity delete — and every trip save that drops one. The explicit list is
+the only reason it is safe.
+
+**Consequent change from the drafted design:** the ensure-SQL no longer widens the
+history table. The trigger names its columns, so it would never populate them and
+the result would be three permanently-NULL audit columns. The accepted cost is
+that a deleted activity's arrival window is not preserved in history; closing it
+means editing a live trigger that also writes to `sales`, which is riskier than
+the gap is worth.
 
 ## Schema
 
