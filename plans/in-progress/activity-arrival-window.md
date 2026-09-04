@@ -14,9 +14,13 @@ future automation can turn it into a correct UTC send-time for customer SMS.
 - [x] Read path derives the anchor date, UTC instants, zone label and suggestion
 - [x] `ACTIVITY_COLUMNS` carries the window through a full trip save
 - [ ] **Step 0 trigger gate — BLOCKED on `aws sso login --sso-session dolas`**
-- [ ] tenant-web popover UI + tests
-- [ ] e2e read-back spec
-- [ ] `GOTCHAS.md` / `PATTERNS.md` entries
+- [x] tenant-web popover UI + tests (28 Gantt tests + 11 display-util tests green)
+- [x] e2e round-trip — added to `tests/api/longhaul-qa.spec.ts`, NOT the browser spec:
+      the repo deliberately moved activity write flows there
+      (`plans/completed/longhaul-qa-mutating-triage.md`). It is also the only test that
+      exercises lazy column provisioning against a real SQL Server.
+- [x] `GOTCHAS.md` / `PATTERNS.md` entries
+- [ ] Run the QA e2e round-trip (`npm run e2e:qa`) — needs the QA tenant + tunnel up
 
 ### Deviation from the approved design: the zone is required, not guessed
 

@@ -1049,3 +1049,35 @@ To check a suspect column, wrap it so padding is visible — `LEN` trims, so use
 Fixed in `AvailabilityViewA.tsx` / `AvailabilityViewB.tsx` (`normalizeRefCode`,
 duplicated because the A/B variants deliberately share no base). Both copies are
 pinned by mutation-checked tests in `routes/driver-planning.index.test.tsx`.
+
+## Widening a legacy table means widening its history table too
+
+`LongDistanceDispatchActivity` carries enabled AFTER triggers, and the DELETE trigger
+copies the deleted row into `LongDistanceDispatchActivityHistory`. If that copy is written
+as `INSERT INTO …History SELECT * FROM deleted` — no column list — then adding a column to
+the parent alone breaks **every activity delete**, and with it every trip save that drops
+an activity. The failure surfaces nowhere near the column you added.
+
+So `ENSURE_ARRIVAL_WINDOW_COLUMNS_SQL` (`lib/longhaul-arrival-window-schema.ts`) widens
+both tables, guarding the history table with `OBJECT_ID(...) IS NOT NULL` because it is not
+present on every tenant. Any future column added to this table must do the same. Read the
+trigger before you ALTER:
+
+`SELECT OBJECT_NAME(parent_id) AS tbl, name, OBJECT_DEFINITION(object_id) AS body FROM sys.triggers WHERE parent_id = OBJECT_ID('LongDistanceDispatchActivity')`
+
+Note also that there is **no UPDATE history** on this table — the history table is
+delete-only, so a bad UPDATE is unrecoverable from the database itself.
+
+## An ALTER and a reference to what it adds cannot share a batch
+
+SQL Server binds column references at **parse** time, so a batch that runs
+`ALTER TABLE … ADD col` and then names `col` raises `Invalid column name` on exactly the
+tenants the ALTER was written for — the ones that don't have the column yet. The ALTER must
+be its own `executeSql` call so it commits before the next statement is parsed.
+
+This is why `ensureArrivalWindowColumns` is awaited separately in both
+`activities-write.ts` and `trip-save.ts` rather than being prefixed onto their SQL, and why
+`CONFIRMED_SQL` in `driver-planning.ts` carries the same warning. Unit tests assert on SQL
+strings and cannot catch a violation of this; the QA round-trip in
+`apps/e2e/tests/api/longhaul-qa.spec.ts` is what actually exercises the provisioning path
+against a real server.
