@@ -8,6 +8,12 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
+    // Same reason as packages/infra: `userEvent`-driven tests advance on real
+    // timers, so under the CPU contention of a full `turbo test` on a many-core
+    // dev machine they can exceed vitest's 5s default even though CI, which runs
+    // the same commit on fewer cores, passes comfortably. Timing is never what
+    // these tests assert.
+    testTimeout: 30_000,
   },
   resolve: {
     dedupe: ['react', 'react-dom'],

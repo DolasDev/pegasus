@@ -1098,3 +1098,104 @@ This is why `ensureArrivalWindowColumns` is awaited separately in both
 strings and cannot catch a violation of this; the QA round-trip in
 `apps/e2e/tests/api/longhaul-qa.spec.ts` is what actually exercises the provisioning path
 against a real server.
+
+## A security override outlives its cause, and Dependabot is what tells you
+
+`overrides.protobufjs` was added in `b55299e8` to clear four high protobufjs
+advisories: `@temporalio/proto@1.17.2` pinned `protobufjs@7.5.5` with **exact**
+version syntax, which npm's `overrides` cannot reach through, so the consumer was
+pinned back to `@temporalio/client@1.16.2` and a tree-wide `>=7.6.3 <8` floor was
+forced. That commit left an explicit drop-back note: revert once
+`@temporalio/proto` relaxes its protobufjs pin.
+
+It did — `@temporalio/common@1.23.0` moved to `protobufjs: ^8.7.1`, the patched
+major. But nobody was watching for it. What surfaced the change was a Dependabot
+group bump (#665) failing with `Cannot find module 'protobufjs/ext/protojson'`:
+the `<8` ceiling held temporal 1.23 down on protobufjs 7.6.3, which has only
+`ext/debug` and `ext/descriptor`. Thirteen API test files failed to import. The
+error names a missing _file_, which reads like a broken package — the actual
+cause was our own override, two majors away in `package.json`.
+
+It was not only the tests. The same CI log carries an esbuild line —
+`Could not resolve "protobufjs/ext/protojson"` — from `packages/infra`'s
+`NodejsFunction` bundling step. The **API Lambda bundle itself** was broken by our
+override, which is the #594 failure mode (an unresolvable import that synth and
+deploy will happily carry to production and that only shows up as an INIT crash).
+It went unnoticed because `api-stack.bundle.test.ts` skips itself when
+`packages/domain/dist` is missing, and turbo's `test` task declares
+`dependsOn: []` — so whether that guard runs at all in CI depends on leftover
+build state, not on the task graph. It skipped on one run and ran on the next.
+
+**How to apply:** when an override's comment says "remove once X ships Y", that
+sentence is the only monitor that exists — nothing checks it. A dependency PR
+failing with a missing deep-subpath require is the signature: check our
+`overrides` block for a ceiling on that package _before_ investigating upstream.
+Removing the override alone does nothing (npm keeps the already-locked version);
+run `npm update <pkg> --package-lock-only`, the same tool the `fast-uri` note
+calls for. Verify the split landed with `npm ls <pkg>` — here, 7.6.3 at root for
+`@grpc/proto-loader`, 8.8.0 nested under temporal — then run the real gate,
+`npx audit-ci --config ./audit-ci.jsonc`, since clearing advisories was the whole
+point of the override.
+
+## A dependency bump can lower measured coverage — rebase before touching the ratchet
+
+`apps/api/vitest.config.ts` sets `thresholds.autoUpdate: true`, which **only ever
+raises** a floor. #665 bumped 57 packages, changed zero source lines, passed
+every test — and measured `lines` at 92.18% against the 92.19% floor #651 had
+ratcheted to. v8 attributes coverage against the code that actually runs, so a
+library taking one fewer branch through our own error paths moves the aggregate
+by a hundredth. The gate fails, and `autoUpdate` cannot repair it: it only writes
+the floor after a run _passes_.
+
+The instinct is to hand-lower the floor by the measured hundredth. Don't do that
+first. #665 sat behind main long enough that #668 landed, and rebasing onto it
+brought in well-covered new code that raised the real number to 92.28 — exactly
+meeting the floors #668 had itself ratcheted to. The dip was absorbed and no
+floor change shipped. Hand-lowering it earlier would have committed a spurious
+downward ratchet that the next PR would have had to notice and undo.
+
+**How to apply:** on a dependency-only PR with a sub-0.1% floor miss and every
+test green, rebase onto current `main` and re-measure before editing thresholds.
+Only lower by hand if the miss survives that, and then by exactly the measured
+value with the reason in the commit. Do not chase a per-file diff against main
+for the **api** suite: a local main run is not a valid baseline there (its
+`node_modules` reflects whatever was last installed, and the DB-backed suites
+skip rather than fail without a container up), so the trustworthy comparison is
+CI's own last green Test job. A local run _is_ fair for a package with no
+external dependencies — `packages/infra` is the example.
+
+## `aws-cdk-lib` 2.267 synthesizes ~2.5x slower — and it flakes local pre-push, not CI
+
+The #665 group bump moved `aws-cdk-lib` 2.261 -> 2.267 and `constructs`
+10.4.2 -> 10.8.1. Four `packages/infra` files then failed the husky pre-push hook
+with `Test timed out in 5000ms`, always on the first test in a file — the one
+that triggers `synth()`. One `apps/tenant-web` `userEvent` test failed the same
+way. **The identical commit passed both suites on CI**, where only `apps/api`
+failed. Do not read a local pre-push timeout as a CI failure; check the CI job
+before writing the bump up as a breakage.
+
+Synth really is slower. Measured serially (one file, one worker, no contention),
+`wireguard-stack.test.ts`:
+
+|                | first synth | later assertions | file total |
+| -------------- | ----------- | ---------------- | ---------- |
+| 2.261 / 10.4.2 | 221ms       | 45-58ms          | 1.86s      |
+| 2.267 / 10.8.1 | 930ms       | 117-154ms        | 4.89s      |
+
+Roughly 2.5x across the board, 4.2x on the first call in a process. But that
+alone does not blow a 5s budget — CI's own per-test times on the bumped version
+run 600-1059ms and pass. What breaks locally is contention: `turbo test` starts
+15 package tasks at once and `packages/infra` uses `pool: 'forks'`, so a 12-core
+dev box is oversubscribed several times over. The full-suite figure (32s -> 124s
+of summed test time) is mostly that, not the library.
+
+**How to apply:** read wall time _and_ summed test time. Summed-over-wall is
+effective parallelism — if that ratio moved, part of the slowdown is worker
+contention, and the discriminating experiment is running one file alone. Here it
+was both, in that order of importance. The fix is `testTimeout` (these tests
+assert template shape and DOM behavior, never latency), not shrinking the pool
+and not hoisting synth into `beforeAll`.
+
+Worth knowing for the deploy path: `cdk synth` and `cdk diff` in `deploy.yml` pay
+the same 2.5x. Seconds, not minutes, so not a blocker — but if the pre-deploy
+gate ever starts brushing its timeout, this is why.
