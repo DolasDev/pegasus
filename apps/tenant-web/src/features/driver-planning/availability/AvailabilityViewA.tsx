@@ -85,14 +85,19 @@ function ratingClass(rating: number | null): string {
   return rating != null && rating < 4.5 ? 'bg-red-200 text-red-700' : ''
 }
 
+// Rating is stored as decimal(3,2), so two decimals is the full precision the
+// column carries — render it fixed (4.50, not 4.5) to keep the column aligned.
 function formatRating(rating: number | null): string {
-  return rating == null ? '-' : rating.toFixed(1)
+  return rating == null ? '-' : rating.toFixed(2)
 }
 
+// Round to the column's 2dp before clamping to 0..5, so a hand-typed 4.567 is
+// stored as the 4.57 the cell will read back rather than left for SQL Server to
+// round silently on the way into decimal(3,2).
 function parseRating(value: string): number | null {
   const r = Number.parseFloat(value)
   if (!Number.isFinite(r)) return null
-  return Math.min(5, Math.max(0, r))
+  return Math.min(5, Math.max(0, Number(r.toFixed(2))))
 }
 
 function formatMonthDay(dateStr: string | null): string {
@@ -801,7 +806,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         {editMode?.kind === 'field' && editMode.field === 'rating' ? (
           rosterInput('rating', {
             type: 'number',
-            step: '0.1',
+            step: '0.01',
             placeholder: '0-5',
             className: 'w-20',
           })
