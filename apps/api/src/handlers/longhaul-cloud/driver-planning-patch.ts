@@ -21,6 +21,21 @@ import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { logger } from '../../lib/logger'
 import { ENSURE_CONFIRMED_TABLE_SQL } from './driver-confirmed-availability-schema'
 
+// Driver rating: 0..5 with at most two decimals, matching the
+// DriverConfirmedAvailability.rating decimal(3,2) column and the Availability
+// screen's own clamp. The UI already rounds, but a non-UI caller (SDK, curl)
+// would otherwise write a value SQL Server rounds on the way in — the stored
+// rating would then not round-trip through the screen that shows it.
+// `multipleOf(0.01)` is not used here: it trips on binary float noise
+// (4.75 * 100 === 475.00000000000006), so compare with a tolerance instead.
+const RATING = z
+  .number()
+  .min(0)
+  .max(5)
+  .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-9, {
+    message: 'rating must have at most 2 decimal places',
+  })
+
 const PatchConfirmedBody = z.object({
   confirmedDate: z.string().nullable(),
   confirmedLocation: z.string().nullable(),
@@ -28,7 +43,7 @@ const PatchConfirmedBody = z.object({
   // Variant-B roster overrides (planner-maintained, optional on the wire).
   canada: z.boolean().nullable().optional(),
   california: z.boolean().nullable().optional(),
-  rating: z.number().nullable().optional(),
+  rating: RATING.nullable().optional(),
   equipment: z.string().nullable().optional(),
   homeCity: z.string().nullable().optional(),
   homeState: z.string().nullable().optional(),

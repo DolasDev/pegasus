@@ -104,6 +104,27 @@ describe('PATCH longhaul/driver-planning/:driverId (cloud-direct)', () => {
     expect(opts.params).toContainEqual({ name: 'wgs', value: null })
   })
 
+  // The column is decimal(3,2) and the UI clamps 0..5. Without these guards a
+  // non-UI caller (SDK/curl) can write a value SQL Server silently rounds, so
+  // the stored rating no longer round-trips through the screen.
+  it('accepts a two-decimal rating', async () => {
+    const res = await patch('42', { confirmedDate: null, confirmedLocation: null, rating: 4.75 })
+    expect(res.status).toBe(200)
+    const opts = executeSqlMock.mock.calls[1]![2]
+    expect(opts.params).toContainEqual({ name: 'rating', value: 4.75 })
+  })
+
+  it.each([
+    ['above the 0..5 range', 6],
+    ['below the 0..5 range', -1],
+    ['finer than two decimals', 4.567],
+  ])('returns 400 for a rating %s', async (_label, rating) => {
+    const res = await patch('42', { confirmedDate: null, confirmedLocation: null, rating })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { code: string }).code).toBe('VALIDATION_ERROR')
+    expect(executeSqlMock).not.toHaveBeenCalled()
+  })
+
   it('returns 400 for a non-numeric driver id', async () => {
     const res = await patch('abc', { confirmedDate: null, confirmedLocation: null })
     expect(res.status).toBe(400)

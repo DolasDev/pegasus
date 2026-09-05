@@ -1403,6 +1403,55 @@ describe('DriverPlanningPage', () => {
       )
     })
 
+    it('renders Rating to two decimal places', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ rating: 4.75 })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(screen.getByTestId('driver-rating').textContent).toBe('4.75')
+    })
+
+    it('pads a one-decimal Rating out to two places', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ rating: 4.5 })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(screen.getByTestId('driver-rating').textContent).toBe('4.50')
+    })
+
+    it('rounds a typed Rating to two decimals before committing', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 9, rating: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      fireEvent.click(screen.getByTestId('driver-rating'))
+      const input = screen.getByTestId('confirmed-rating-input')
+      // The column is decimal(3,2); round here so SQL Server never has to.
+      fireEvent.change(input, { target: { value: '4.567' } })
+      fireEvent.blur(input)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 9, rating: 4.57 }),
+        expect.anything(),
+      )
+    })
+
+    it('lets the Rating input step by hundredths', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 9, rating: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      fireEvent.click(screen.getByTestId('driver-rating'))
+      expect(screen.getByTestId('confirmed-rating-input')).toHaveAttribute('step', '0.01')
+    })
+
     it('edits Home State via click-to-edit and commits it on blur', () => {
       driverPlanningReturn = {
         data: [makeDriver({ driverId: 10, homeState: null })],
@@ -1656,6 +1705,44 @@ describe('DriverPlanningPage', () => {
         expect.objectContaining({ driverId: 7, rating: 4.9 }),
         expect.anything(),
       )
+    })
+
+    it('renders Rating to two decimal places', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ rating: 4.75 })],
+        isLoading: false,
+        isError: false,
+      }
+      renderVariantB()
+      expect(screen.getByTestId('driver-rating').textContent).toBe('4.75')
+    })
+
+    it('rounds a typed Rating to two decimals before committing', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 7, rating: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderVariantB()
+      fireEvent.click(screen.getByTestId('driver-rating'))
+      const input = screen.getByTestId('confirmed-rating-input')
+      fireEvent.change(input, { target: { value: '4.567' } })
+      fireEvent.blur(input)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 7, rating: 4.57 }),
+        expect.anything(),
+      )
+    })
+
+    it('lets the Rating input step by hundredths', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 7, rating: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderVariantB()
+      fireEvent.click(screen.getByTestId('driver-rating'))
+      expect(screen.getByTestId('confirmed-rating-input')).toHaveAttribute('step', '0.01')
     })
 
     it('commits a selected Equipment value', () => {
