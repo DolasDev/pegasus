@@ -16,8 +16,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudwatch": "^3.1121.0",
-    "@aws-sdk/client-ec2": "^3.1121.0"
+    "@aws-sdk/client-cloudwatch": "^3.1125.0",
+    "@aws-sdk/client-ec2": "^3.1125.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
