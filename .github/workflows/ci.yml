@@ -33,8 +33,8 @@ jobs:
       workflows_stdlib: ${{ steps.filter.outputs.workflows_stdlib }}
       temporal_worker: ${{ steps.filter.outputs.temporal_worker }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           # Single negated pattern: "code" = anything NOT under plans/ or
@@ -87,12 +87,12 @@ jobs:
       # and bump in lockstep when BETTERLEAKS_VERSION changes.
       BETTERLEAKS_SHA256: 'd590d5f051e49f6769c61dc8cebbce947b20a4042e2915ee234760f81a01c8c4'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Cache Betterleaks
         id: bl-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/betterleaks-bin
           key: betterleaks-${{ env.BETTERLEAKS_VERSION }}-linux-x64
@@ -118,7 +118,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'merge_group'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The single node_modules-cache writer for this workflow (the action
       # additionally gates writing on refs/heads/main). Typecheck is the choice
@@ -147,7 +147,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'merge_group'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup
 
@@ -191,9 +191,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.tenant_runner == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -253,9 +253,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.temporal_worker == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -303,9 +303,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.workflows_stdlib == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -351,7 +351,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'merge_group'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # need origin/main / PR base to diff added migrations
 
@@ -396,7 +396,7 @@ jobs:
       DIRECT_URL: postgresql://pegasus:pegasus@localhost:5432/pegasus?schema=public
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup
 
@@ -474,7 +474,7 @@ jobs:
       E2E_MIN_EXECUTED_TESTS: '32'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup
 
@@ -484,7 +484,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: pw-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
