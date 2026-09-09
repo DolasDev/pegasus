@@ -102,12 +102,14 @@ export async function resetCognitoUserPassword(email: string): Promise<void> {
 /**
  * What {@link resendCognitoInvite} actually did, for the caller to log.
  *
- * - `resent`  — a fresh temporary password was emailed (the expired-invite case)
- * - `reset`   — the user already had a password; a reset code was emailed instead
- * - `created` — no Cognito account existed at all; one was provisioned
- * - `skipped` — non-production, so no email was sent (see below)
+ * - `resent`             — a fresh temporary password was emailed (the expired-invite case)
+ * - `created`            — no Cognito account existed at all; one was provisioned
+ * - `already_registered` — the identity exists and is past the invite stage.
+ *                          Nothing was sent and nothing was mutated; the caller
+ *                          turns this into a 422.
+ * - `skipped`            — non-production, so no email was sent (see below)
  */
-export type ResendInviteOutcome = 'resent' | 'reset' | 'created' | 'skipped'
+export type ResendInviteOutcome = 'resent' | 'created' | 'already_registered' | 'skipped'
 
 /**
  * Re-issues the invitation for a user who never completed first login.
@@ -124,12 +126,23 @@ export type ResendInviteOutcome = 'resent' | 'reset' | 'created' | 'skipped'
  *
  *   FORCE_CHANGE_PASSWORD → AdminCreateUser + MessageAction RESEND. Regenerates
  *                           the temporary password and restarts the 7-day clock.
- *   CONFIRMED             → AdminResetUserPassword. They did set a password but
- *                           pre-token never flipped them to ACTIVE; RESEND is
- *                           rejected in this state.
  *   (no such user)        → provision from scratch.
- *   anything else         → throw, so an unexpected state is loud rather than a
- *                           silent no-op the admin reads as success.
+ *   anything else         → `already_registered`. No Cognito call at all.
+ *
+ * That last branch is a security boundary, not tidiness. The user pool is shared
+ * across every tenant and keyed by email (see the `handlers/users.ts` header),
+ * and a tenant admin may invite an arbitrary address — which mints a PENDING
+ * TenantUser row in *their* tenant for someone who may be an active user of a
+ * different one. So this helper may only ever mutate an identity that has never
+ * completed a login anywhere on the platform, which is exactly what
+ * FORCE_CHANGE_PASSWORD means. Any other state (CONFIRMED, RESET_REQUIRED,
+ * EXTERNAL_PROVIDER) belongs to someone with a real account, and touching it
+ * from here would let tenant A invalidate a tenant-B user's password.
+ *
+ * There is no legitimate case lost by refusing CONFIRMED: `cognito/pre-token.ts`
+ * flips PENDING → ACTIVE on any successful login, so a person who already has a
+ * password simply signs in and their membership activates itself. There is
+ * nothing for an admin to re-send.
  *
  * `MessageAction` is a single enum value, so RESEND cannot be combined with the
  * SUPPRESS that {@link provisionCognitoUser} uses to keep invite email out of
@@ -163,29 +176,22 @@ export async function resendCognitoInvite(
     return 'created'
   }
 
-  if (userStatus === 'FORCE_CHANGE_PASSWORD') {
-    // No UserAttributes on a RESEND — the account already carries them, and
-    // Cognito only wants the identity plus the message action here.
-    await getCognito().send(
-      new AdminCreateUserCommand({
-        UserPoolId: userPoolId,
-        Username: email,
-        MessageAction: 'RESEND',
-        ClientMetadata: {
-          source: 'tenant',
-          tenantId: tenant.tenantId,
-          tenantName: tenant.tenantName,
-          tenantSlug: tenant.tenantSlug,
-        },
-      }),
-    )
-    return 'resent'
-  }
+  if (userStatus !== 'FORCE_CHANGE_PASSWORD') return 'already_registered'
 
-  if (userStatus === 'CONFIRMED') {
-    await resetCognitoUserPassword(email)
-    return 'reset'
-  }
-
-  throw new Error(`Cannot resend an invite to a Cognito user in state "${userStatus ?? 'unknown'}"`)
+  // No UserAttributes on a RESEND — the account already carries them, and
+  // Cognito only wants the identity plus the message action here.
+  await getCognito().send(
+    new AdminCreateUserCommand({
+      UserPoolId: userPoolId,
+      Username: email,
+      MessageAction: 'RESEND',
+      ClientMetadata: {
+        source: 'tenant',
+        tenantId: tenant.tenantId,
+        tenantName: tenant.tenantName,
+        tenantSlug: tenant.tenantSlug,
+      },
+    }),
+  )
+  return 'resent'
 }

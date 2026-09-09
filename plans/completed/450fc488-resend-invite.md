@@ -46,14 +46,24 @@ Endpoint + the tenant-web button that reaches it. Explicitly **out of scope**
 Branch on **state**, not on exception names. Read `AdminGetUser` first (IAM
 already grants it — `api-stack.ts:954`) and dispatch on `UserStatus`:
 
-| `UserStatus`            | Action                                              | Why                                                                                                    |
-| ----------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `FORCE_CHANGE_PASSWORD` | `AdminCreateUser` + `MessageAction: 'RESEND'`       | The expired-invite case. Fresh temp password, fresh 7 days.                                            |
-| `CONFIRMED`             | `AdminResetUserPassword`                            | They _did_ set a password but pre-token never flipped them to ACTIVE. RESEND is invalid in this state. |
-| `UserNotFoundException` | plain `AdminCreateUser` (as `provisionCognitoUser`) | TenantUser row whose Cognito user was never created.                                                   |
-| anything else           | throw                                               | Fail loud rather than silently no-op.                                                                  |
+| `UserStatus`            | Action                                               | Why                                                         |
+| ----------------------- | ---------------------------------------------------- | ----------------------------------------------------------- |
+| `FORCE_CHANGE_PASSWORD` | `AdminCreateUser` + `MessageAction: 'RESEND'`        | The expired-invite case. Fresh temp password, fresh 7 days. |
+| `UserNotFoundException` | plain `AdminCreateUser` (as `provisionCognitoUser`)  | TenantUser row whose Cognito user was never created.        |
+| anything else           | `already_registered` — no Cognito call; handler 422s | See the revision note below.                                |
 
 Return which branch ran so the handler can log it.
+
+> **Revision (self-review, before the PR).** As planned, this table had
+> `CONFIRMED → AdminResetUserPassword`. That was a cross-tenant
+> privilege-escalation: the pool is shared and keyed by email, `POST /invite`
+> accepts an arbitrary address and swallows `UsernameExistsException`, so any
+> tenant admin could mint a PENDING row for someone else's email and reset that
+> person's real password pool-wide. The branch also had no legitimate target —
+> `pre-token.ts` flips PENDING → ACTIVE on any successful login, so a CONFIRMED
+> user needs no admin action at all. Shipped instead: `FORCE_CHANGE_PASSWORD` is
+> the only mutable state, plus a cross-tenant roster guard in the handler. Full
+> write-up in `dolas/agents/project/GOTCHAS.md`.
 
 Two things that are easy to get wrong and must be got right:
 
@@ -91,7 +101,7 @@ Two things that are easy to get wrong and must be got right:
 ## Tests (TDD — red first)
 
 - `apps/api/src/handlers/admin/cognito.test.ts` — `resendCognitoInvite`:
-  RESEND for `FORCE_CHANGE_PASSWORD`; `AdminResetUserPassword` for `CONFIRMED`;
+  RESEND for `FORCE_CHANGE_PASSWORD`; no Cognito write for any other state;
   fresh create on `UserNotFoundException`; **`ClientMetadata` present on the
   RESEND command** (the regression that would silently degrade the email);
   no Cognito call in non-prod.

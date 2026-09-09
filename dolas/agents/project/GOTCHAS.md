@@ -1268,10 +1268,43 @@ temporary password and restarts the window.
 2. `ClientMetadata` must be re-sent on the RESEND call. Without it
    `cognito/custom-message.ts` passes the event straight through and the invitee
    gets Cognito's stock template — no tenant name, no login link.
-3. Branch on `AdminGetUser`'s `UserStatus`, not on exception names. Only one
-   action is legal per state (`FORCE_CHANGE_PASSWORD` → RESEND, `CONFIRMED` →
-   `AdminResetUserPassword`, absent → provision), and the Cognito error strings
-   for a wrong-state call are not worth guessing at.
+3. Branch on `AdminGetUser`'s `UserStatus`, not on exception names — and treat
+   `FORCE_CHANGE_PASSWORD` as the **only** state that may be mutated. See below;
+   this one is a security boundary, not a style choice.
+
+### The branch that must not exist: `CONFIRMED` → `AdminResetUserPassword`
+
+The first revision of `resendCognitoInvite` mapped `CONFIRMED` to
+`AdminResetUserPassword`, reasoning "they set a password but pre-token never
+flipped them to ACTIVE." That state cannot occur — `pre-token.ts` flips
+PENDING → ACTIVE on _any_ successful login — so the branch's only real-world
+population was **active users of some other tenant**, and it was directly
+exploitable:
+
+1. `POST /users/invite` accepts an arbitrary email and swallows Cognito's
+   `UsernameExistsException`, so any tenant admin can mint a PENDING TenantUser
+   row in their _own_ tenant for someone else's address.
+2. Resend on that row → `AdminGetUser` → `CONFIRMED` → `AdminResetUserPassword`
+   → the victim's password is invalidated pool-wide and their account goes to
+   `RESET_REQUIRED`, locking them out of the tenant they actually belong to.
+
+This is the exact failure the `users.ts` header warns about, arrived at from a
+new direction: the header forbids `Admin*User` calls on deactivate/reactivate,
+and this route was the first to accept a PENDING row and turn it into one.
+
+**The rule that generalizes:** a PENDING TenantUser row proves nothing about who
+an email belongs to, because the caller can create one for free. Any tenant route
+that reaches the shared pool needs a fact the caller cannot forge. Two are used
+here, independently: a cross-tenant roster check (`db.tenantUser.findFirst` with
+`tenantId: { not: … }, status: 'ACTIVE'` — `TenantUser` is deliberately **not**
+in `TENANT_SCOPED_MODELS`, so that query works from a tenant-scoped client), and
+refusing every Cognito state except `FORCE_CHANGE_PASSWORD`, which by definition
+means the identity has never completed a login anywhere on the platform.
+
+Residual, accepted: two tenants can each have an outstanding invite for the same
+never-logged-in address, and a resend by one invalidates the other's temporary
+password. The person still receives a working password by email and pre-token
+resolves their tenant at login, so the impact is onboarding churn, not lockout.
 
 **Still open** (deliberately out of scope of that PR, each its own change):
 `login.tsx` maps both `NotAuthorizedException` and `InvalidParameterException`

@@ -232,16 +232,38 @@ describe('resendCognitoInvite', () => {
     expect(sentCommand(1)['MessageAction']).not.toBe('SUPPRESS')
   })
 
-  it('falls back to AdminResetUserPassword when the user is already CONFIRMED', async () => {
-    // They did set a password, but pre-token never flipped them to ACTIVE.
-    // RESEND is invalid in this state.
-    mockSend.mockResolvedValueOnce({ UserStatus: 'CONFIRMED' }).mockResolvedValueOnce({})
+  // The pool is shared across every tenant and keyed by email, and a tenant
+  // admin can mint a PENDING row for an arbitrary address. So the ONLY identity
+  // this helper may mutate is one that has never completed a login anywhere —
+  // FORCE_CHANGE_PASSWORD. Every other state belongs to a real account, quite
+  // possibly on a different tenant.
+  it.each(['CONFIRMED', 'RESET_REQUIRED', 'EXTERNAL_PROVIDER', 'UNCONFIRMED'])(
+    'refuses without any Cognito write when the user is %s',
+    async (status) => {
+      mockSend.mockResolvedValueOnce({ UserStatus: status })
 
-    await expect(resendCognitoInvite('confirmed@acme.com', tenantContext)).resolves.toBe('reset')
+      await expect(resendCognitoInvite('someone@acme.com', tenantContext)).resolves.toBe(
+        'already_registered',
+      )
 
-    expect(mockSend).toHaveBeenCalledTimes(2)
-    expect(sentCommand(1)['__command']).toBe('AdminResetUserPassword')
-    expect(sentCommand(1)['Username']).toBe('confirmed@acme.com')
+      // The state read and nothing else — no reset, no resend.
+      expect(mockSend).toHaveBeenCalledOnce()
+      expect(sentCommand(0)['__command']).toBe('AdminGetUser')
+    },
+  )
+
+  it('never resets the password of an identity registered on another tenant', async () => {
+    // Regression: an earlier revision mapped CONFIRMED to AdminResetUserPassword,
+    // which let tenant A invalidate a tenant-B user's password by inviting their
+    // email and clicking Resend. pre-token.ts flips PENDING -> ACTIVE on any
+    // successful login, so that branch had no legitimate target to begin with.
+    mockSend.mockResolvedValueOnce({ UserStatus: 'CONFIRMED' })
+
+    await resendCognitoInvite('victim@other-tenant.com', tenantContext)
+
+    const commands = mockSend.mock.calls.map((c) => (c[0] as Record<string, unknown>)['__command'])
+    expect(commands).not.toContain('AdminResetUserPassword')
+    expect(commands).not.toContain('AdminCreateUser')
   })
 
   it('creates the account fresh when Cognito has no such user', async () => {
@@ -262,15 +284,6 @@ describe('resendCognitoInvite', () => {
       tenantName: 'Acme Movers',
       tenantSlug: 'acme',
     })
-  })
-
-  it('throws for any other Cognito user state rather than silently no-opping', async () => {
-    mockSend.mockResolvedValueOnce({ UserStatus: 'RESET_REQUIRED' })
-
-    await expect(resendCognitoInvite('odd@acme.com', tenantContext)).rejects.toThrow(
-      /RESET_REQUIRED/,
-    )
-    expect(mockSend).toHaveBeenCalledOnce()
   })
 
   it('rethrows a non-UserNotFoundException failure from the state read', async () => {

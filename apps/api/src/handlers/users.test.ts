@@ -23,7 +23,7 @@ import { _clearAuthzCache } from '../lib/authz'
 // Cognito SDK mock
 // ---------------------------------------------------------------------------
 
-const { mockSend, mockRepo, mockTenantFindUnique } = vi.hoisted(() => ({
+const { mockSend, mockRepo, mockTenantFindUnique, mockTenantUserFindFirst } = vi.hoisted(() => ({
   mockSend: vi.fn(),
   mockRepo: {
     listByTenant: vi.fn(),
@@ -38,6 +38,8 @@ const { mockSend, mockRepo, mockTenantFindUnique } = vi.hoisted(() => ({
     countAdmins: vi.fn(),
   },
   mockTenantFindUnique: vi.fn(),
+  // Cross-tenant roster lookup used by the resend-invite guard.
+  mockTenantUserFindFirst: vi.fn(),
 }))
 
 vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
@@ -94,6 +96,7 @@ function buildApp(role: string | null = 'tenant_admin') {
   app.use('*', async (c, next) => {
     c.set('db', {
       tenant: { findUnique: mockTenantFindUnique },
+      tenantUser: { findFirst: mockTenantUserFindFirst },
     } as unknown as PrismaClient)
     await next()
   })
@@ -495,6 +498,8 @@ describe('users handler', () => {
       // Cognito path is actually exercised.
       vi.stubEnv('NODE_ENV', 'production')
       mockTenantFindUnique.mockResolvedValue({ name: 'Acme Movers', slug: 'acme' })
+      // Default: this email is nobody else's login.
+      mockTenantUserFindFirst.mockResolvedValue(null)
     })
 
     afterEach(() => {
@@ -529,6 +534,44 @@ describe('users handler', () => {
       expect(res.status).toBe(422)
       expect((await json(res)).code).toBe('INVALID_STATE')
       expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('refuses, without touching Cognito, when the email is ACTIVE on another tenant', async () => {
+      // The attack the guard exists for: an admin invites an arbitrary address
+      // (POST /invite swallows UsernameExistsException, so a PENDING row is
+      // created regardless), then clicks Resend. The shared, email-keyed pool
+      // means a Cognito write here would reach the other tenant's user.
+      mockRepo.findById.mockResolvedValue(mockUserRow)
+      mockTenantUserFindFirst.mockResolvedValue({ id: 'other-tenant-row' })
+
+      const res = await buildApp().request('/user-1/resend-invite', post({}))
+
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+      expect(mockSend).not.toHaveBeenCalled()
+
+      // The lookup must be cross-tenant and ACTIVE-only, or it does not mean
+      // what the guard claims.
+      const where = (
+        mockTenantUserFindFirst.mock.calls[0]![0] as { where: Record<string, unknown> }
+      ).where
+      expect(where['email']).toBe('user@example.com')
+      expect(where['tenantId']).toEqual({ not: 'test-tenant-id' })
+      expect(where['status']).toBe('ACTIVE')
+    })
+
+    it('refuses when Cognito says the identity is already registered', async () => {
+      // Second, independent line of defense: even with a clean roster, an
+      // identity past the invite stage is never mutated from here.
+      mockRepo.findById.mockResolvedValue(mockUserRow)
+      mockSend.mockResolvedValueOnce({ UserStatus: 'CONFIRMED' })
+
+      const res = await buildApp().request('/user-1/resend-invite', post({}))
+
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+      // The state read only — no reset, no resend.
+      expect(mockSend).toHaveBeenCalledOnce()
     })
 
     it('returns 500 COGNITO_ERROR when the Cognito call fails', async () => {

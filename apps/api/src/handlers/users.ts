@@ -482,9 +482,20 @@ usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), 
 // Gated on `user:invite` (InviteUser) — re-inviting is the same act as inviting,
 // so no new Cedar action and no AVP policy sync.
 //
+// Cross-tenant guard: a PENDING row proves nothing about who the email belongs
+// to, because POST /invite accepts an arbitrary address and its
+// UsernameExistsException is swallowed — so an admin can mint a PENDING row in
+// their own tenant for a person who is an active user of a different one. The
+// Cognito pool is shared and keyed by email (file header above), so acting on
+// such a row would reach across tenants. Two independent things stop that: the
+// roster check below, and resendCognitoInvite refusing every Cognito state
+// except FORCE_CHANGE_PASSWORD (never-logged-in-anywhere).
+//
 // Response: { data: TenantUserResponse } (200) — the row is unchanged
 //           { error, code: NOT_FOUND }      (404)
-//           { error, code: INVALID_STATE }  (422) — user not PENDING
+//           { error, code: INVALID_STATE }  (422) — user not PENDING, or the
+//                                                   identity is already
+//                                                   registered platform-wide
 //           { error, code: COGNITO_ERROR }  (500) — Cognito call failed
 // ---------------------------------------------------------------------------
 usersHandler.post('/:id/resend-invite', requirePermission(Actions.InviteUser), async (c) => {
@@ -507,6 +518,29 @@ usersHandler.post('/:id/resend-invite', requirePermission(Actions.InviteUser), a
     )
   }
 
+  // TenantUser is not in TENANT_SCOPED_MODELS (lib/prisma.ts), so this query is
+  // deliberately cross-tenant: it asks whether this email is already somebody's
+  // working login on another tenant. If it is, the shared Cognito identity is
+  // theirs and is not ours to touch.
+  const rosteredElsewhere = await db.tenantUser.findFirst({
+    where: { email: existing.email, tenantId: { not: tenantId }, status: 'ACTIVE' },
+    select: { id: true },
+  })
+  if (rosteredElsewhere) {
+    logger.warn('POST /users/:id/resend-invite: refused — email is active on another tenant', {
+      id,
+      tenantId,
+    })
+    return c.json(
+      {
+        error:
+          'This email already has a Pegasus sign-in. Ask them to sign in — their access to this account activates automatically.',
+        code: 'INVALID_STATE',
+      },
+      422,
+    )
+  }
+
   // Same tenant lookup as POST /invite — the CustomMessage Lambda needs it to
   // render a tenant-aware email and link to the right login page.
   const tenant = await db.tenant.findUnique({
@@ -520,6 +554,24 @@ usersHandler.post('/:id/resend-invite', requirePermission(Actions.InviteUser), a
       tenantName: tenant?.name ?? '',
       tenantSlug: tenant?.slug ?? '',
     })
+
+    // The identity exists and is past the invite stage — no email was sent and
+    // nothing was mutated. Nothing failed, but there is no invitation to resend.
+    if (outcome === 'already_registered') {
+      logger.warn('POST /users/:id/resend-invite: identity already registered platform-wide', {
+        id,
+        tenantId,
+      })
+      return c.json(
+        {
+          error:
+            'This email already has a Pegasus sign-in. Ask them to sign in — their access to this account activates automatically.',
+          code: 'INVALID_STATE',
+        },
+        422,
+      )
+    }
+
     logger.info('POST /users/:id/resend-invite: invitation re-issued', {
       id,
       email: existing.email,
