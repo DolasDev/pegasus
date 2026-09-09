@@ -67,7 +67,7 @@ def _load_form(directory: Path) -> tuple[str, Any, str | None]:
     if not form_path.is_file():
         typer.secho(f"error: {form_path} not found", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    doc = json.loads(form_path.read_text())
+    doc = json.loads(form_path.read_text(encoding="utf-8"))
     title = doc.get("title")
     definition = doc.get("definition")
     if not isinstance(title, str) or definition is None:
@@ -78,7 +78,7 @@ def _load_form(directory: Path) -> tuple[str, Any, str | None]:
         )
         raise typer.Exit(code=1)
     message_path = directory / MESSAGE_FILE
-    message = message_path.read_text() if message_path.is_file() else None
+    message = message_path.read_text(encoding="utf-8") if message_path.is_file() else None
     return title, definition, message
 
 
@@ -152,11 +152,12 @@ def pull_command(
     directory.mkdir(parents=True, exist_ok=True)
     (directory / FORM_FILE).write_text(
         json.dumps({"title": row.get("title"), "definition": row.get("definition")}, indent=2)
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     message = row.get("messageTemplate")
     if message is not None:
-        (directory / MESSAGE_FILE).write_text(message)
+        (directory / MESSAGE_FILE).write_text(message, encoding="utf-8")
     typer.secho(
         f"pulled {form_key} v{row.get('version')} → {directory}/{FORM_FILE}",
         fg=typer.colors.GREEN,

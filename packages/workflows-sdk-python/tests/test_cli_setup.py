@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -100,7 +101,9 @@ def test_setup_all_flags_seeds_profile_and_writes_mcp(tmp_path: Path, _creds: Pa
     assert result.exit_code == 0, result.output
 
     # Profile seeded at 0600 with the key.
-    assert stat.S_IMODE(_creds.stat().st_mode) == 0o600
+    # POSIX mode bits only; on Windows the %USERPROFILE% ACL is the protection.
+    if sys.platform != "win32":
+        assert stat.S_IMODE(_creds.stat().st_mode) == 0o600
     assert cr.load_profiles()["qa"]["api_key"] == "vnd_secret"
 
     # MCP config written with the pegasus stanza.

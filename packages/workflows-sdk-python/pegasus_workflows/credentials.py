@@ -182,6 +182,12 @@ def write_profile(name: str, *, api_key: str, api_root: str | None = None) -> Pa
     The parent ``~/.pegasus`` directory is created ``0700``. An existing file is
     re-tightened to ``0600`` on every write (never widened). Returns the path
     written.
+
+    On **Windows** there is no POSIX mode to set: ``os.fchmod`` does not exist
+    before CPython 3.13 and is a near-no-op after it (it only toggles the
+    read-only attribute, which still leaves the owner-write bit of ``0600``).
+    The file's protection there is the inherited ACL of the per-user profile
+    directory under ``%USERPROFILE%``, which is not world-readable by default.
     """
     path = credentials_path(for_write=True)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -198,13 +204,23 @@ def write_profile(name: str, *, api_key: str, api_root: str | None = None) -> Pa
     # Open 0600, then fchmod the (possibly pre-existing, looser-perm) fd to 0600
     # BEFORE writing, so the token is never world-readable even for a pre-existing
     # file. fchmod targets this exact fd, immune to a path swap.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    #
+    # O_BINARY (Windows-only; 0 elsewhere) keeps this an untranslated fd. Without
+    # it the CRT hands back a *text-mode* fd that turns \n into \r\n, and the
+    # TextIOWrapper below translates as well — the file lands with \r\r\n and
+    # tomllib then rejects the stray \r, making the credentials we just wrote
+    # unreadable. newline="\n" pins the wrapper's half of that pair. Same reason
+    # tempfile keeps a separate _bin_openflags.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
     try:
-        fh = os.fdopen(fd, "w", encoding="utf-8")
+        fh = os.fdopen(fd, "w", encoding="utf-8", newline="\n")
     except BaseException:
         os.close(fd)  # fdopen never took ownership of the fd
         raise
     with fh:
-        os.fchmod(fd, 0o600)
+        # Absent on Windows before CPython 3.13; see the docstring for what
+        # protects the file there instead.
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
         fh.write(_toml_dumps(profiles))
     return path

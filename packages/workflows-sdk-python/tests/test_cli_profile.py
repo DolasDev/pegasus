@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -30,7 +31,9 @@ def test_configure_via_flags_writes_0600(_creds: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert _creds.exists()
-    assert stat.S_IMODE(_creds.stat().st_mode) == 0o600
+    # POSIX mode bits only; on Windows the %USERPROFILE% ACL is the protection.
+    if sys.platform != "win32":
+        assert stat.S_IMODE(_creds.stat().st_mode) == 0o600
     assert cr.load_profiles()["qa"]["api_key"] == "vnd_secret"
 
 

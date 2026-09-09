@@ -91,7 +91,7 @@ def _load_json(directory: Path, filename: str) -> Any:
         typer.secho(f"missing {filename} in {directory}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         typer.secho(f"invalid JSON in {path}: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -277,7 +277,7 @@ def pull_command(
         (CORPUS_FILE, "corpus"),
     ):
         (directory / filename).write_text(
-            json.dumps(config.get(key), indent=2, sort_keys=True) + "\n"
+            json.dumps(config.get(key), indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         written.append(filename)
 
@@ -294,7 +294,9 @@ def pull_command(
     if required_configs is not None:
         meta["requiredConfigs"] = required_configs
     if any(v is not None for v in meta.values()):
-        (directory / META_FILE).write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
+        (directory / META_FILE).write_text(
+            json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         written.append(META_FILE)
     for filename, key in (
         (EXTERNAL_SHAPE_FILE, "externalShape"),
@@ -303,7 +305,7 @@ def pull_command(
     ):
         if config.get(key) is not None:
             (directory / filename).write_text(
-                json.dumps(config.get(key), indent=2, sort_keys=True) + "\n"
+                json.dumps(config.get(key), indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )
             written.append(filename)
 
