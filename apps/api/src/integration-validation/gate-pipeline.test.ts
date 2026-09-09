@@ -142,6 +142,78 @@ describe('runGatePipeline', () => {
     expect(report.ok).toBe(true)
   })
 
+  // sdk-feedback 0042 — this is the filed probe, run end to end: the shipped
+  // mapping with ONE `$each` leaf repointed at a root the floor never declares.
+  // It used to gate `ok=True corpus=20/20` and publish, because an unresolvable
+  // `$from` yields null rather than an error and no rule was load-bearing on it.
+  describe('undeclared input roots inside $each (0042)', () => {
+    const repointed = (from: string): Record<string, unknown> => {
+      const shipments = base.mapping['shipments'] as {
+        $from: string
+        $each: Record<string, unknown>
+      }
+      return {
+        ...base.mapping,
+        shipments: {
+          ...shipments,
+          $each: {
+            ...shipments.$each,
+            surveyedThirdPartyCosts: { $from: from, coerce: 'toNumberOrNull' },
+          },
+        },
+      }
+    }
+
+    it('rejects a $from reading a root that does not exist on the floor', () => {
+      const report = runGatePipeline(base, {
+        mapping: repointed('ZZZ_NoSuchRoot.Nope'),
+        rules: base.rules,
+        corpus,
+      })
+      expect(report.ok).toBe(false)
+      const problem = report.problems.find((p) => p.stage === 'mapping')
+      expect(problem?.where).toBe('shipments[].surveyedThirdPartyCosts')
+      expect(problem?.problem).toContain('reads undeclared input field "ZZZ_NoSuchRoot.Nope"')
+      // The corpus is silent about it — that is why the static check has to speak.
+      expect(report.corpus.failures).toEqual([])
+    })
+
+    it('still accepts the legal sibling read under a declared root', () => {
+      const report = runGatePipeline(base, {
+        mapping: repointed('Survey.CoreCost'),
+        rules: base.rules,
+        corpus,
+      })
+      expect(report.problems).toEqual([])
+      expect(report.ok).toBe(true)
+    })
+  })
+
+  it('does not flag a canonical-scope $each read in an external mapping', () => {
+    // The external stage reuses the same checker with the CANONICAL top-level
+    // roots as its allowlist, so composing `$each` sources must not turn a
+    // per-shipment projection into a false positive.
+    const report = runGatePipeline(base, {
+      mapping: base.mapping,
+      rules: base.rules,
+      corpus,
+      externalShape: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ref: { type: 'string' },
+          legs: { type: 'array', items: { type: 'object', properties: { w: { type: 'number' } } } },
+        },
+      },
+      externalMapping: {
+        ref: 'serviceOrderNumber',
+        legs: { $from: 'shipments', $each: { w: 'netWeight.actual' } },
+      },
+    })
+    expect(report.problems).toEqual([])
+    expect(report.ok).toBe(true)
+  })
+
   it('stops before the corpus when the mapping is malformed', () => {
     const report = runGatePipeline(base, {
       mapping: { a: { $from: '' } },

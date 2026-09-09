@@ -100,8 +100,15 @@ Validity comes from three mechanical layers, not from a library:
    **canonical contract** (`analyzeMapping` checks produced paths against
    `z.toJSONSchema(structuralContract)`). You cannot map to a field the validator
    doesn't know.
-3. **Input** — every top-level `$from` must be a declared input field root (a typo
-   guard), when the integration declares `inputFieldRoots`.
+3. **Input** — every `$from` must be covered by a declared input field root (a typo
+   guard), when the integration declares `inputFieldRoots`. A bare entry (`Survey`)
+   opens a whole native root; a dotted entry (`UnusedFields.survey_received`) opens
+   only that path and its descendants. **Reads inside `$each` count**: they resolve
+   against array elements, so they are composed with the array's own `$from` and
+   checked in order scope — `$each` over `"."` (the order IS the single element)
+   makes its sub-reads plain order-scope reads. This matters because an unresolvable
+   `$from` yields `null` rather than an error, so a typo'd source is invisible at
+   runtime and usually invisible to the corpus too (sdk-feedback 0042).
 
 The runtime additionally validates the actual **output** against the canonical
 contract on every call (and the golden corpus pins behavior). The static checker

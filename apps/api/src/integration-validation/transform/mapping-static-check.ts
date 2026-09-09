@@ -5,13 +5,18 @@
 //   1. FORMAT:    the document validates against the mapping format schema.
 //   2. TARGET:    every field the mapping produces exists in the CANONICAL
 //                 contract (no mapping to a field the validator doesn't know).
-//   3. INPUT:     every order-scope source path the mapping reads is covered by
-//                 a declared input field root (a typo guard; only run when the
-//                 integration declares its input field roots). A declared entry
-//                 with NO dot opens a whole top-level root (`Survey`); an entry
-//                 WITH a dot opens only that exact path and its descendants
+//   3. INPUT:     every source path the mapping reads is covered by a declared
+//                 input field root (a typo guard; only run when the integration
+//                 declares its input field roots). A declared entry with NO dot
+//                 opens a whole top-level root (`Survey`); an entry WITH a dot
+//                 opens only that exact path and its descendants
 //                 (`UnusedFields.survey_received`), leaving the rest of an
-//                 otherwise-closed root shut.
+//                 otherwise-closed root shut. Reads INSIDE `$each` count: they
+//                 resolve against array elements, so they are composed with the
+//                 array's own `$from` and checked in order scope (sdk-feedback
+//                 0042 — skipping them left most of a real mapping uninspected,
+//                 and an unresolvable `$from` yields null, not an error, so the
+//                 corpus does not catch it either).
 //
 // Layer 2 reads the canonical JSON Schema (z.toJSONSchema of the structural
 // contract), so target validation tracks the contract automatically. The runtime
@@ -21,8 +26,8 @@
 import {
   MappingTemplateSchema,
   collectMapDirectives,
+  collectScopedSourcePaths,
   collectTargetPaths,
-  collectTopLevelSourcePaths,
   type MappingTemplate,
 } from './mapping-format'
 
@@ -37,7 +42,9 @@ export interface AnalyzeMappingOptions {
   /**
    * Allowed input field roots (the legacy DTO keys). A bare key (`Survey`) opens
    * a whole top-level root; a dotted key (`UnusedFields.survey_received`) opens
-   * only that specific path + its descendants. Optional.
+   * only that specific path + its descendants. Checked against every `$from`,
+   * including those inside `$each` (composed with the array's own source path).
+   * Optional — a floor that declares none has its source side unchecked.
    */
   inputFieldRoots?: string[] | undefined
 }
@@ -156,17 +163,22 @@ export function analyzeMapping(template: unknown, opts: AnalyzeMappingOptions): 
 
   if (opts.inputFieldRoots) {
     const allowed = opts.inputFieldRoots
-    const reported = new Set<string>()
-    for (const path of collectTopLevelSourcePaths(tmpl)) {
-      if (!inputPathAllowed(path, allowed)) {
-        // Report against the top-level root (matches the gate's historical
-        // wording and de-dups repeated reads under the same closed root).
-        const root = normalizeInputPath(path).split('.')[0]!
-        if (!reported.has(root)) {
-          reported.add(root)
-          problems.push({ where: root, problem: `reads undeclared input field "${root}"` })
-        }
-      }
+    for (const read of collectScopedSourcePaths(tmpl)) {
+      // A `.` root-identity read names no field — nothing to check.
+      if (read.paths.length === 0) continue
+      // A read composed under a fallback-chain array is legal if ANY branch is.
+      if (read.paths.some((p) => inputPathAllowed(p, allowed))) continue
+      // Report at the TARGET (as the canonical-target check does), naming the
+      // source as written, where it resolves to when that differs (element
+      // scope), and what the floor does allow.
+      const resolved = read.paths[0]!
+      const scope = resolved === read.source ? '' : ` (resolves to "${resolved}")`
+      problems.push({
+        where: read.target,
+        problem:
+          `reads undeclared input field "${read.source}"${scope} — ` +
+          `not covered by the floor's input field roots (allowed: ${allowed.join(', ')})`,
+      })
     }
   }
 

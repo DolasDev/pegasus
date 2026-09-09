@@ -3,6 +3,45 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.38.0
+
+### Fixed — the publish gate now enforces `inputFieldRoots` (sdk-feedback 0042)
+
+`get_floor` documented the floor's input roots as enforced ("a `$from` reading an
+un-listed sibling … is rejected by the gate"). They were checked only at **order
+scope**, and every read inside `$each` was skipped by construction — which is
+where most of a real mapping lives, since the common shape builds the array from
+`{"$from": "."}` (the order IS the single element). A `$from` pointing at a root
+the floor never declares validated clean and published.
+
+Element-scope reads are now composed with the array's own `$from` and checked like
+any other, nested arrays composing left to right. A rejection names the canonical
+**target** it feeds, the source as written, where it resolves to when that differs,
+and the roots the floor allows. Floors that declare no `inputFieldRoots` are
+unchanged — their source side stays unchecked, as documented.
+
+This matters because the failure it catches is otherwise invisible: an
+unresolvable `$from` yields `null` rather than an error, so the field is simply
+absent from the partner body at runtime, and the golden corpus only notices when
+some rule happens to be load-bearing on that exact field.
+
+**Re-`validate` any config authored against an older gate** — a source typo that
+passed before is a gate failure now, and was always a silently-null field.
+
+### Added — `estimatedTotalCost` is mappable on `shipment_status_update` (sdk-feedback 0041)
+
+The floor's fact summed six per-shipment **add-on** components (storage,
+third-party, crate/uncrate). A partner sending ONE core-transport total could not
+express it: no order-level target existed, the sum came to 0, and
+`submit-requires-estimated-total-cost` refused the order with advice that could
+not fix it.
+
+The canonical order now carries an optional `estimatedTotalCost`, and the fact
+prefers it over the sum. `??`, not `||` — an explicit `0` is honored rather than
+falling back. A config that does not map the new field derives exactly what it
+derived before, so this is backward-compatible by construction. `factDocs` now
+describes the mapped-value-wins behavior; read it before choosing.
+
 ## 0.37.0
 
 ### Added — read a cached projection by YOUR entity id
@@ -428,15 +467,15 @@ superseded (sdk-feedback 0031, plus 0030's tenant-overlay half).
 ### Added — pegII salesman reads (`get_salesman` / `list_salesmen`)
 
 - **`PegasusClient.get_salesman(salesman_id)`** and **`list_salesmen(**params)`** —
-read the legacy pegII (MoveManager) **salesman** (the sales user / employee tied
-to an order) over the WireGuard tunnel, alongside the existing `get_order`/`get_task`pegII bridge.`get_salesman`re-fetches authoritative salesman detail
-from the code carried on an order;`list_salesmen`accepts an`active` filter.
-Both require the new **`ReadSalesman`** action in the workflow manifest
-`required_actions`. Returns `{id, avlCode, firstName, lastName, name, title,
-  email, extension, branch, agencyCode, roles, employeeType, active, startDate,
-  dateTerminated}`. Single-salesman reads are LIVE (`GET
-  /api/v1/pegii/salesmen/:id`); listing is reachability-probed but stub-backed
-until pegII exposes a salesman collection endpoint, mirroring `list_orders`.
+  read the legacy pegII (MoveManager) **salesman** (the sales user / employee tied
+  to an order) over the WireGuard tunnel, alongside the existing `get_order`/`get_task`pegII bridge.`get_salesman`re-fetches authoritative salesman detail
+  from the code carried on an order;`list_salesmen`accepts an`active` filter.
+  Both require the new **`ReadSalesman`** action in the workflow manifest
+  `required_actions`. Returns `{id, avlCode, firstName, lastName, name, title,
+email, extension, branch, agencyCode, roles, employeeType, active, startDate,
+dateTerminated}`. Single-salesman reads are LIVE (`GET
+/api/v1/pegii/salesmen/:id`); listing is reachability-probed but stub-backed
+  until pegII exposes a salesman collection endpoint, mirroring `list_orders`.
 
 ## 0.27.0
 
@@ -487,10 +526,10 @@ until pegII exposes a salesman collection endpoint, mirroring `list_orders`.
 ### Added — generic read passthrough (`api_get`)
 
 - **`PegasusClient.api_get(path, **params)`** — a read-only escape hatch that GETs
-any Pegasus API path with the caller's key and returns the full JSON body (so
-`meta`/`nextCursor`survive). Reaches endpoints without a dedicated helper —
-notably the **projection read-model**`GET /integrations/{id}/projections/{entityType}`
-(`status`/`updatedSince`/ keyset`cursor`), which `get_projection`/`list_projections` (the runtime cache) don't cover. GET-only and Pegasus-host-only
+  any Pegasus API path with the caller's key and returns the full JSON body (so
+  `meta`/`nextCursor`survive). Reaches endpoints without a dedicated helper —
+  notably the **projection read-model**`GET /integrations/{id}/projections/{entityType}`
+  (`status`/`updatedSince`/ keyset`cursor`), which `get_projection`/`list_projections` (the runtime cache) don't cover. GET-only and Pegasus-host-only
   by design (an absolute URL raises); for writes use the typed methods, which route
   through the dry-run capture path a generic call would bypass. Not stubbed by the
   offline test harness — use a typed read helper there.

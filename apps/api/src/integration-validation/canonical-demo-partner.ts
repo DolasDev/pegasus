@@ -97,6 +97,14 @@ export const DemoPartnerOrderSchema = z.object({
   serviceStatus: z.enum(SERVICE_STATUSES),
   contactMadeDate: optDate,
   surveyDate: optDate,
+  // Order-level estimated total. Some partners send ONE native total (a core
+  // transport cost) rather than the per-shipment components below, and the
+  // `estimatedTotalCost` fact used to be summable only from those components —
+  // so such a partner's real total was unmappable and the submit rule gated on a
+  // quantity that did not include it (sdk-feedback 0041). When mapped, this WINS
+  // over the sum (facts/demo-partner-facts.ts). Nullish, not `moneyOrNull`: every
+  // overlay that predates this leaves the key absent and must keep validating.
+  estimatedTotalCost: z.number().nullish(),
   shipments: z.array(DemoPartnerShipmentSchema),
 })
 

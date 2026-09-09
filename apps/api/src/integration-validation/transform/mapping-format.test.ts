@@ -2,9 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   MappingTemplateSchema,
   compileMapping,
+  collectScopedSourcePaths,
   collectTargetPaths,
-  collectTopLevelSourcePaths,
-  collectTopLevelSourceRoots,
   mappingFormatJsonSchema,
   type MappingTemplate,
 } from './mapping-format'
@@ -113,27 +112,41 @@ describe('mapping format — path collection', () => {
     )
   })
 
-  it('collects top-level source roots without descending into $each', () => {
-    const roots = collectTopLevelSourceRoots(sampleMapping).sort()
-    expect(roots).toContain('TripStatus_id')
-    expect(roots).toContain('rows')
-    // order_num lives inside $each (element scope) — must NOT surface as an order root.
-    expect(roots).not.toContain('order_num')
+  it('resolves $each element-scope reads against the array source path', () => {
+    const reads = collectScopedSourcePaths(sampleMapping)
+    const at = (target: string): string[] =>
+      reads.filter((r) => r.target === target).flatMap((r) => r.paths)
+    expect(at('status.id')).toEqual(['TripStatus_id'])
+    expect(at('list')).toEqual(['rows'])
+    // order_num lives inside `$each` over `rows` — it reads `rows.order_num`.
+    expect(at('list[].n')).toEqual(['rows.order_num'])
   })
 
-  it('collects FULL order-scope source paths (not collapsed to first segment)', () => {
-    const paths = collectTopLevelSourcePaths({
+  it('collects FULL dotted paths, composes $each over "." into order scope', () => {
+    const reads = collectScopedSourcePaths({
       surveyDate: { $from: 'UnusedFields.survey_received', default: null },
       contactMadeDate: 'DocumentationDates[0]',
-      whole: { $from: '.', $each: { n: { $from: 'order_num' } } },
-    }).sort()
+      whole: { $from: '.', $each: { n: { $from: 'order_num' }, self: '.' } },
+    })
+    const byTarget = Object.fromEntries(reads.map((r) => [r.target, r.paths]))
     // full dotted depth is preserved for the sub-path guard …
-    expect(paths).toContain('UnusedFields.survey_received')
-    expect(paths).toContain('DocumentationDates[0]')
-    // … the `.` root-identity read carries no field path and is omitted …
-    expect(paths).not.toContain('.')
-    // … and $each element-scope paths still do not surface.
-    expect(paths).not.toContain('order_num')
+    expect(byTarget['surveyDate']).toEqual(['UnusedFields.survey_received'])
+    expect(byTarget['contactMadeDate']).toEqual(['DocumentationDates[0]'])
+    // … the `.` root-identity read names no field, at either scope …
+    expect(byTarget['whole']).toEqual([])
+    expect(byTarget['whole[].self']).toEqual([])
+    // … and `$each` over `.` makes element reads order-scope reads verbatim
+    // (no `..` join): this is the shape the shipment_status_update overlay uses.
+    expect(byTarget['whole[].n']).toEqual(['order_num'])
+  })
+
+  it('composes nested $each left to right, one candidate per fallback prefix', () => {
+    const reads = collectScopedSourcePaths({
+      a: { $from: ['rows', 'legacyRows'], $each: { b: { $from: 'kids', $each: { c: 'name' } } } },
+    })
+    const byTarget = Object.fromEntries(reads.map((r) => [r.target, r.paths]))
+    expect(byTarget['a[].b']).toEqual(['rows.kids', 'legacyRows.kids'])
+    expect(byTarget['a[].b[].c']).toEqual(['rows.kids.name', 'legacyRows.kids.name'])
   })
 })
 

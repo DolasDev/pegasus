@@ -14,6 +14,8 @@ import { deriveDemoPartnerFacts, demoPartnerFactCatalog } from './demo-partner-f
 import { analyzeRuleSet } from '../static-check'
 import { evaluateRules } from '../rules/engine'
 import type { RuleSet } from '../rules/types'
+import { demoPartnerRules } from '../rules/demo-partner.rules'
+import { DemoPartnerOrderSchema } from '../canonical-demo-partner'
 import type { DemoPartnerOrder, DemoPartnerShipment } from '../canonical-demo-partner'
 import type { CanonicalContext } from '../types'
 
@@ -180,6 +182,85 @@ describe('deriveDemoPartnerFacts — per-date actuals counts', () => {
     for (const [name, type] of Object.entries(demoPartnerFactCatalog)) {
       expect(typeof f[name], `fact "${name}"`).toBe(type)
     }
+  })
+})
+
+// sdk-feedback 0041 — a partner whose native payload carries ONE core-transport
+// total could not express it: the fact summed six per-shipment ADD-ON components,
+// so such an order totalled 0 and was refused at submit. The order-level field is
+// now mappable and wins over the sum.
+describe('deriveDemoPartnerFacts — order-level estimatedTotalCost (0041)', () => {
+  const costed = (storageFirstDay: number | null): DemoPartnerShipment => ({
+    ...shipment('S1', {}),
+    surveyedStorageCostFirstDay: storageFirstDay,
+  })
+
+  const order = (
+    total: number | null | undefined,
+    shipments: DemoPartnerShipment[],
+  ): DemoPartnerOrder => ({
+    serviceOrderNumber: 'O-1',
+    supplierContactName: 'Cora',
+    supplierContactEmail: 'cora@example.com',
+    serviceStatus: 'Submitted',
+    contactMadeDate: '2026-01-02',
+    surveyDate: '2026-01-03',
+    ...(total === undefined ? {} : { estimatedTotalCost: total }),
+    shipments,
+  })
+
+  const derive = (o: DemoPartnerOrder) =>
+    // The submit rule keys off serviceStatus, not the action vocabulary.
+    deriveDemoPartnerFacts({ order: o, prior: null, action: 'status-change' })
+
+  const submitCostRule = demoPartnerRules.filter(
+    (r) => r.id === 'submit-requires-estimated-total-cost',
+  )
+
+  it('prefers the mapped order-level total over the component sum', () => {
+    const f = derive(order(4200, [costed(null)]))
+
+    expect(f['estimatedTotalCost']).toBe(4200)
+    // The whole point: a real core cost with no add-ons now clears submit.
+    expect(evaluateRules(submitCostRule, f)).toEqual([])
+  })
+
+  it('honors an explicit 0 rather than falling back to the sum', () => {
+    // `??`, not `||` — a partner that says the estimate is zero means zero, and
+    // the submit rule must still fire even though components would total 250.
+    const f = derive(order(0, [costed(250)]))
+
+    expect(f['estimatedTotalCost']).toBe(0)
+    expect(evaluateRules(submitCostRule, f).map((v) => v.ruleId)).toEqual([
+      'submit-requires-estimated-total-cost',
+    ])
+  })
+
+  it('falls back to the component sum when the field is unmapped (back-compat)', () => {
+    // Every overlay published before this leaves the key absent — its facts must
+    // be byte-identical to what they were.
+    const unmapped = derive(order(undefined, [costed(250)]))
+    const nulled = derive(order(null, [costed(250)]))
+
+    expect(unmapped['estimatedTotalCost']).toBe(250)
+    expect(nulled['estimatedTotalCost']).toBe(250)
+    expect(unmapped).toEqual(nulled)
+    expect(evaluateRules(submitCostRule, unmapped)).toEqual([])
+  })
+
+  it('keeps the fact a number when neither the field nor any component is set', () => {
+    const f = derive(order(undefined, [costed(null)]))
+
+    expect(f['estimatedTotalCost']).toBe(0)
+    expect(evaluateRules(submitCostRule, f).map((v) => v.ruleId)).toEqual([
+      'submit-requires-estimated-total-cost',
+    ])
+  })
+
+  it('accepts an order carrying the new field against the structural contract', () => {
+    expect(DemoPartnerOrderSchema.safeParse(order(4200, [costed(null)])).success).toBe(true)
+    // …and one that omits it, which is every overlay that predates 0041.
+    expect(DemoPartnerOrderSchema.safeParse(order(undefined, [costed(null)])).success).toBe(true)
   })
 })
 
