@@ -12,6 +12,16 @@ updates:
       # package out of root node_modules and broke the API Lambda bundle test.
       # Isolating them keeps a bump that reshuffles the install tree reviewable
       # and independently verifiable instead of buried in a 40-package PR.
+      #
+      # #665 was the same failure a second time: one 57-package minor-and-patch
+      # PR carried three unrelated breakages. @temporalio/client 1.18->1.23 moved
+      # to protobufjs ^8, which our own <8 override capped — 13 API test files
+      # failed to import AND the API Lambda bundle silently stopped resolving
+      # (the #594 INIT-crash shape). aws-cdk-lib/constructs made synth ~2.5x
+      # slower and blew two test timeout budgets. vitest rode along in the same
+      # PR. Each was independently diagnosable and none of them was reviewable
+      # buried in 57 packages, so temporal, aws-cdk and vitest are carved out
+      # here on the same reasoning as the three above.
       prisma:
         patterns:
           - 'prisma'
@@ -32,6 +42,29 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
+      temporal:
+        patterns:
+          - '@temporalio/*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # aws-cdk-lib, constructs and the aws-cdk CLI move in lockstep; a
+      # mismatched pair is its own failure mode, so they share one group.
+      aws-cdk:
+        patterns:
+          - 'aws-cdk-lib'
+          - 'constructs'
+          - 'aws-cdk'
+        update-types:
+          - 'minor'
+          - 'patch'
+      vitest:
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
+        update-types:
+          - 'minor'
+          - 'patch'
       minor-and-patch:
         patterns:
           - '*'
@@ -41,6 +74,12 @@ updates:
           - 'hono'
           - '@hono/*'
           - '@cedar-policy/*'
+          - '@temporalio/*'
+          - 'aws-cdk-lib'
+          - 'constructs'
+          - 'aws-cdk'
+          - 'vitest'
+          - '@vitest/*'
         update-types:
           - 'minor'
           - 'patch'
