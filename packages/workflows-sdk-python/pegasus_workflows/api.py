@@ -2143,6 +2143,15 @@ class PegasusClient:
           so a ``$from`` reading an un-listed sibling under an otherwise-closed
           root is rejected by the gate. Read these to know which native fields you
           may map from without hitting the gate blind (sdk-feedback 0028).
+          Enforcement covers reads INSIDE ``$each`` too: an element-scope path is
+          composed with the array's own ``$from`` and checked in order scope, so
+          ``{"$from": ".", "$each": {...}}`` — the order IS the single element —
+          has its sub-reads checked like any other. Lean on this: an unresolvable
+          ``$from`` yields ``null`` rather than an error, so a typo'd source ships
+          a partner body with a field quietly missing and the corpus catches it
+          only when a rule happens to be load-bearing on that field. Element-scope
+          reads went unchecked before 0.38.0 (sdk-feedback 0042) — re-``validate``
+          a config authored against an older gate.
 
         Author ``mapping.json`` / ``rules.json`` against these so the publish gate
         accepts them — this is how an agent writes a valid config without platform

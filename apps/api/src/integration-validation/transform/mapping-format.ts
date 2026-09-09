@@ -243,58 +243,84 @@ export function collectSourcePaths(template: MappingTemplate): string[] {
   return acc
 }
 
-/**
- * Top-level source-field roots (the first path segment of every `$from` that
- * resolves against the order itself — NOT descending into `$each`, whose paths
- * resolve against array elements). Used by the static checker's input-side guard.
- */
-export function collectTopLevelSourceRoots(template: MappingTemplate): string[] {
-  const roots = new Set<string>()
-  const add = (path: string): void => {
-    // First segment, minus any `[idx]` suffix. "." (root identity) has no root field.
-    const root = path.split('.')[0]!.replace(/\[\d+\]/g, '')
-    if (root) roots.add(root)
-  }
-  const visit = (obj: MappingObject): void => {
-    for (const node of Object.values(obj)) {
-      if (typeof node === 'string') add(node)
-      else if (isDirective(node)) {
-        const from = Array.isArray(node.$from) ? node.$from : [node.$from]
-        from.forEach(add)
-        // Intentionally do NOT descend into $each — element scope, not order scope.
-      } else visit(node)
-    }
-  }
-  visit(template)
-  return [...roots]
+/** One `$from` read, located at its canonical target and resolved to order scope. */
+export interface ScopedSourceRead {
+  /** Canonical target path this read feeds (arrays marked `[]`). */
+  target: string
+  /** The `$from` text exactly as written, in its own (possibly element) scope. */
+  source: string
+  /**
+   * The order-scope path(s) this read actually resolves against. A read at order
+   * scope contributes itself; a read inside `$each` is composed with the array's
+   * own `$from` (`"."` composes to the enclosing scope unchanged, so `$each` over
+   * `.` reads the order's own roots). More than one entry when an enclosing
+   * array's `$from` is a fallback chain — the read is legal if ANY of them is.
+   * EMPTY for the `.` root-identity read, which names no field.
+   */
+  paths: string[]
+}
+
+/** Join an order-scope prefix with a path written in that scope. */
+function joinScoped(prefix: string, path: string): string {
+  if (path === '.') return prefix // root identity: the enclosing scope itself
+  if (!prefix) return path
+  return `${prefix}.${path}`
+}
+
+/** Does a path name a field, as opposed to being a bare root-identity read? */
+function namesField(path: string): boolean {
+  return path.split('.')[0]!.replace(/\[\d+\]/g, '') !== ''
 }
 
 /**
- * Full order-scope source paths — every `$from` that resolves against the order
- * itself (NOT descending into `$each`, whose paths resolve against array
- * elements), kept at FULL dotted depth rather than collapsed to their first
- * segment. This is the sibling of `collectTopLevelSourceRoots`; the static
- * checker's input-side guard uses it so a floor can open a specific vetted
- * sub-path (e.g. `UnusedFields.survey_received`) while leaving the rest of an
- * otherwise-closed root shut. The `.` root-identity read (whole order) carries no
- * field path and is omitted.
+ * Every `$from` in a mapping, resolved to ORDER scope and tagged with the
+ * canonical target it feeds. Used by the static checker's input-side guard.
+ *
+ * Paths inside `$each` resolve against array ELEMENTS, not the order — so they
+ * are COMPOSED with the array's own `$from` rather than skipped. The common case
+ * is `$each` over `.` (the order IS the single element), where a sub-read like
+ * `Survey.ThirdPartyCost` is an order-scope read of `Survey` and has to be checked
+ * as one; skipping element scope left the great majority of a real mapping's reads
+ * uninspected, so a typo'd or undeclared source published green (sdk-feedback
+ * 0042). Nesting composes left to right.
+ *
+ * Kept at FULL dotted depth so the checker can honor a floor that opens a specific
+ * vetted sub-path (`UnusedFields.survey_received`) while leaving the rest of an
+ * otherwise-closed root shut.
  */
-export function collectTopLevelSourcePaths(template: MappingTemplate): string[] {
-  const paths = new Set<string>()
-  const add = (path: string): void => {
-    // Skip the `.` root-identity read (no field) and any empty-root path.
-    if (path.split('.')[0]!.replace(/\[\d+\]/g, '')) paths.add(path)
+export function collectScopedSourcePaths(template: MappingTemplate): ScopedSourceRead[] {
+  const acc: ScopedSourceRead[] = []
+  const froms = (node: MappingDirective): string[] =>
+    Array.isArray(node.$from) ? node.$from : [node.$from]
+
+  const read = (target: string, source: string, prefixes: string[]): void => {
+    acc.push({
+      target,
+      source,
+      paths: [...new Set(prefixes.map((p) => joinScoped(p, source)).filter(namesField))],
+    })
   }
-  const visit = (obj: MappingObject): void => {
-    for (const node of Object.values(obj)) {
-      if (typeof node === 'string') add(node)
-      else if (isDirective(node)) {
-        const from = Array.isArray(node.$from) ? node.$from : [node.$from]
-        from.forEach(add)
-        // Intentionally do NOT descend into $each — element scope, not order scope.
-      } else visit(node)
+
+  const visit = (obj: MappingObject, target: string, prefixes: string[]): void => {
+    for (const [key, node] of Object.entries(obj)) {
+      const to = target ? `${target}.${key}` : key
+      if (typeof node === 'string') {
+        read(to, node, prefixes)
+      } else if (isDirective(node)) {
+        for (const from of froms(node)) read(to, from, prefixes)
+        if (node.$each) {
+          // Element scope: each sub-read composes with each of the array's sources.
+          const inner = [
+            ...new Set(prefixes.flatMap((p) => froms(node).map((f) => joinScoped(p, f)))),
+          ]
+          visit(node.$each, `${to}[]`, inner)
+        }
+      } else {
+        visit(node, to, prefixes)
+      }
     }
   }
-  visit(template)
-  return [...paths]
+
+  visit(template, '', [''])
+  return acc
 }

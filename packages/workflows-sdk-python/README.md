@@ -1031,6 +1031,16 @@ client.get_floor("shipment_lifecycle_event")
 #      opens ONLY that curated sub-path (siblings stay closed).
 ```
 
+**The gate enforces `inputFieldRoots`, including inside `$each`.** A read written
+in element scope is composed with the array's own `$from` and checked in order
+scope — so `{"shipments": {"$from": ".", "$each": {"x": {"$from": "Nope.Thing"}}}}`
+is rejected, naming the canonical target it feeds and the roots the floor allows.
+Lean on it: an unresolvable `$from` yields `null` at runtime rather than an error,
+so a typo'd source produces a partner body with a field quietly missing, and the
+corpus only notices when some rule happens to be load-bearing on that field.
+(Element-scope reads went unchecked until SDK 0.38.0 / sdk-feedback 0042 — if you
+authored a config against an older gate, re-`validate` it.)
+
 **Read `factDocs` before picking a fact.** A name and a type don't say what a fact
 counts. Facts that count related records (`shipmentsWith…`) carry "at least one"
 semantics, so you forbid the milestone with `{"op": "lte", "value": 0}` — and two

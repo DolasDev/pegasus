@@ -35,10 +35,12 @@ describe('analyzeMapping', () => {
       { serviceStatus: { $from: 'totally_made_up' } },
       { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
     )
-    expect(problems).toContainEqual({
-      where: 'totally_made_up',
-      problem: 'reads undeclared input field "totally_made_up"',
-    })
+    expect(problems).toHaveLength(1)
+    // Reported at the TARGET, like the canonical-target check, and naming what
+    // the floor does allow so the author can fix it without reading source.
+    expect(problems[0]!.where).toBe('serviceStatus')
+    expect(problems[0]!.problem).toContain('reads undeclared input field "totally_made_up"')
+    expect(problems[0]!.problem).toContain('allowed: InvolvedParties, Survey')
   })
 
   // sdk-feedback 0028 — a floor can open a specific vetted sub-path of an
@@ -65,10 +67,11 @@ describe('analyzeMapping', () => {
         { surveyDate: { $from: 'UnusedFields.truck_name', default: null } },
         { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
       )
-      expect(problems).toContainEqual({
-        where: 'UnusedFields',
-        problem: 'reads undeclared input field "UnusedFields"',
-      })
+      expect(problems).toHaveLength(1)
+      expect(problems[0]!.where).toBe('surveyDate')
+      expect(problems[0]!.problem).toContain(
+        'reads undeclared input field "UnusedFields.truck_name"',
+      )
     })
 
     it('still rejects a bare read of the otherwise-closed UnusedFields root', () => {
@@ -76,13 +79,12 @@ describe('analyzeMapping', () => {
         { surveyDate: { $from: 'UnusedFields', default: null } },
         { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
       )
-      expect(problems).toContainEqual({
-        where: 'UnusedFields',
-        problem: 'reads undeclared input field "UnusedFields"',
-      })
+      expect(problems).toHaveLength(1)
+      expect(problems[0]!.where).toBe('surveyDate')
+      expect(problems[0]!.problem).toContain('reads undeclared input field "UnusedFields"')
     })
 
-    it('reports a closed root once even when several of its sub-paths are read', () => {
+    it('reports EVERY offending read, at its own target', () => {
       const problems = analyzeMapping(
         {
           surveyDate: { $from: 'UnusedFields.truck_name', default: null },
@@ -90,7 +92,76 @@ describe('analyzeMapping', () => {
         },
         { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
       )
-      expect(problems.filter((p) => p.where === 'UnusedFields')).toHaveLength(1)
+      // Was once de-duped to one problem per closed ROOT, which hid every read
+      // after the first; a per-read report is what an author needs to fix them.
+      expect(problems.map((p) => p.where).sort()).toEqual(['contactMadeDate', 'surveyDate'])
+    })
+  })
+
+  // sdk-feedback 0042 — the source side of a mapping was checked only at order
+  // scope, so every `$from` inside `$each` (the great majority of a real mapping,
+  // which builds `shipments` from `$from: "."`) went uninspected and published green.
+  describe('input roots are enforced inside $each (0042)', () => {
+    const each = (leaf: Record<string, unknown>): Record<string, unknown> => ({
+      shipments: { $from: '.', $each: leaf },
+    })
+    const opts = {
+      canonicalJsonSchema: demoPartnerJsonSchema,
+      inputFieldRoots: demoPartnerInputFieldRoots,
+    }
+
+    it('rejects an undeclared root read inside $each over "."', () => {
+      const problems = analyzeMapping(
+        each({ surveyedThirdPartyCosts: { $from: 'ZZZ_NoSuchRoot.Nope' } }),
+        opts,
+      )
+      expect(problems).toHaveLength(1)
+      expect(problems[0]!.where).toBe('shipments[].surveyedThirdPartyCosts')
+      expect(problems[0]!.problem).toContain('reads undeclared input field "ZZZ_NoSuchRoot.Nope"')
+    })
+
+    it('rejects an un-whitelisted sub-path of a dotted root inside $each', () => {
+      const problems = analyzeMapping(
+        each({ comments: { $from: 'UnusedFields.truck_name' } }),
+        opts,
+      )
+      expect(problems).toHaveLength(1)
+      expect(problems[0]!.where).toBe('shipments[].comments')
+    })
+
+    it('accepts declared element-scope roots — the reads a real overlay makes', () => {
+      const problems = analyzeMapping(
+        each({
+          supplierShipmentId: 'Id',
+          shipmentStatus: { $from: 'Survey.ShipmentStatus' },
+          netWeight: { estimated: 'Financials.EstimatedWeight', actual: 'Financials.ActualWeight' },
+          packDate1: { estimated: 'KeyMoveDates.Pack.Planned', actual: 'KeyMoveDates.Pack.Actual' },
+          comments: { $from: 'UnusedFields.survey_confirm' },
+        }),
+        opts,
+      )
+      expect(problems).toEqual([])
+    })
+
+    it('names the composed order-scope path when $each is over a real array', () => {
+      const problems = analyzeMapping(
+        { shipments: { $from: 'Survey', $each: { comments: { $from: 'Nope' } } } },
+        opts,
+      )
+      // `Survey` is declared, so `Survey.Nope` is legal — the composition is what
+      // makes it legal, and a read outside it is not.
+      expect(problems).toEqual([])
+      const bad = analyzeMapping(
+        { shipments: { $from: 'UnusedFields.survey_confirm', $each: { comments: 'Elsewhere' } } },
+        opts,
+      )
+      expect(bad).toHaveLength(0) // descendant of a declared sub-path is open
+      const worse = analyzeMapping(
+        { shipments: { $from: 'UnusedFields', $each: { comments: 'x' } } },
+        opts,
+      )
+      expect(worse.map((p) => p.where)).toEqual(['shipments', 'shipments[].comments'])
+      expect(worse[1]!.problem).toContain('resolves to "UnusedFields.x"')
     })
   })
 

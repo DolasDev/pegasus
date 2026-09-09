@@ -1,10 +1,18 @@
 // ---------------------------------------------------------------------------
 // Demo Partner fact derivation: canonical order context → neutral facts.
 //
-// `estimatedTotalCost` rolls up the surveyed cost fields across shipments (the
-// example API computes "Estimated Total Cost" from amounts on the related
-// Shipment Orders), so the "required to submit this estimate" rule can test it
-// as `> 0`.
+// `estimatedTotalCost` prefers the order-level canonical field and falls back to
+// rolling up the surveyed cost fields across shipments (the example API computes
+// "Estimated Total Cost" from amounts on the related Shipment Orders), so the
+// "required to submit this estimate" rule can test it as `> 0`.
+//
+// The mapped value wins because the six summed components are storage /
+// third-party / crate-uncrate ADD-ONS: a partner whose native payload carries one
+// core transport total has no way to express it as those components, and summing
+// them yields 0 — refusing a real order at submit with advice that cannot fix it
+// (sdk-feedback 0041). `??`, not `||`, so an explicit 0 from a partner is honored
+// rather than silently falling back to the sum. An overlay that does not map the
+// new field derives exactly what it derived before.
 //
 // Milestone actuals come in two granularities, because "which dates make up a
 // milestone" is partner-varying policy the overlay owns (sdk-feedback 0035 —
@@ -82,7 +90,7 @@ export const demoPartnerFactDocs: Record<string, string> = {
   contactMadeDatePresent: 'True when the order carries a contact-made date.',
   surveyDatePresent: 'True when the order carries a survey date.',
   estimatedTotalCost:
-    'Sum of every surveyed cost field across all shipments (storage, third-party, crate/uncrate). 0 when nothing is surveyed.',
+    'The order-level `estimatedTotalCost` when the mapping sets it — including an explicit 0 — otherwise the sum of every surveyed cost field across all shipments (storage, third-party, crate/uncrate), which is 0 when nothing is surveyed. Map the order-level field when the partner sends ONE total: those six components are add-ons, so a core transport cost cannot be expressed as them and would sum to 0. Leave it unmapped to keep the sum.',
   shipmentCount: 'Number of shipments on the order.',
   shipmentsWithPackLoadActual:
     'Shipments with BOTH pack and load actual dates present on the SAME shipment. Composite — use it when a partner genuinely requires pack; otherwise compose the per-date facts.',
@@ -110,7 +118,8 @@ export function deriveDemoPartnerFacts(ctx: CanonicalContext<DemoPartnerOrder>):
     supplierContactEmailValid: email === '' || EMAIL_RE.test(email),
     contactMadeDatePresent: has(order.contactMadeDate),
     surveyDatePresent: has(order.surveyDate),
-    estimatedTotalCost: order.shipments.reduce((t, s) => t + shipmentSurveyedCost(s), 0),
+    estimatedTotalCost:
+      order.estimatedTotalCost ?? order.shipments.reduce((t, s) => t + shipmentSurveyedCost(s), 0),
     shipmentCount: order.shipments.length,
     shipmentsWithPackLoadActual: order.shipments.filter(packLoad).length,
     shipmentsWithPackLoadDeliveryActual: order.shipments.filter(
