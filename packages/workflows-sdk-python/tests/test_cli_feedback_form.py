@@ -11,6 +11,7 @@ write. These tests fail on Windows if an ``encoding=`` argument is ever dropped.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -69,7 +70,12 @@ def test_pull_writes_non_ascii_as_utf8(tmp_path: Path) -> None:
     assert json.loads(form_bytes.decode("utf-8"))["title"] == _NON_ASCII_TITLE
 
     message_bytes = (tmp_path / ff.MESSAGE_FILE).read_bytes()
-    assert message_bytes.decode("utf-8") == _NON_ASCII_MESSAGE
+    # Line endings are deliberately platform-native — write_text() uses
+    # newline=None, so \n becomes \r\n on Windows, and read_text() translates
+    # it back on the way in (see test_pull_then_load_round_trips). That is the
+    # right behavior for a text file the author edits locally; what this test
+    # pins is the CHARACTER ENCODING, so normalize endings before comparing.
+    assert message_bytes.decode("utf-8").replace("\r\n", "\n") == _NON_ASCII_MESSAGE
 
 
 def test_load_form_reads_non_ascii_utf8(tmp_path: Path) -> None:
@@ -99,4 +105,27 @@ def test_pull_then_load_round_trips(tmp_path: Path) -> None:
 
     title, _definition, message = ff._load_form(tmp_path)
     assert title == _NON_ASCII_TITLE
+    assert message == _NON_ASCII_MESSAGE
+
+
+def test_message_line_endings_are_platform_native(tmp_path: Path) -> None:
+    """Endings follow the platform; the read path normalizes them back to \n.
+
+    Documents the contract deliberately: `pull` writes a text file the author
+    edits locally, so it gets the platform's own convention (CRLF on Windows),
+    and `_load_form` reads it back through universal newlines. The bytes differ
+    across platforms; the text the CLI publishes does not.
+    """
+    result = runner.invoke(
+        ff.feedback_form_app,
+        ["pull", "move_csat", "--dir", str(tmp_path), "--token", _TOKEN],
+    )
+    assert result.exit_code == 0, result.output
+
+    raw = (tmp_path / ff.MESSAGE_FILE).read_bytes()
+    expected_eol = os.linesep.encode("ascii")
+    assert raw.endswith(expected_eol), f"expected {expected_eol!r} ending, got {raw[-4:]!r}"
+
+    # Whatever the on-disk convention, what the CLI reads back is normalized.
+    _title, _definition, message = ff._load_form(tmp_path)
     assert message == _NON_ASCII_MESSAGE
