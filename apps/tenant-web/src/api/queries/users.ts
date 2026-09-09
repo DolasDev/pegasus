@@ -183,3 +183,16 @@ export function useResetUserPassword() {
       apiFetch<TenantUser>(`/api/v1/users/${id}/reset-password`, { method: 'POST' }),
   })
 }
+
+/**
+ * Re-issues the invitation for a PENDING user. Cognito temporary passwords
+ * expire after 7 days; past that the invitee cannot sign in and neither
+ * inviting them again nor resetting their password is available. This emails a
+ * fresh temporary password and restarts the window.
+ */
+export function useResendInvite() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<TenantUser>(`/api/v1/users/${id}/resend-invite`, { method: 'POST' }),
+  })
+}

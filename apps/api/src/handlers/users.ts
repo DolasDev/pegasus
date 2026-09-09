@@ -7,6 +7,8 @@
 // Endpoints:
 //   GET    /                — list all TenantUsers for this tenant
 //   POST   /invite          — invite a user (AdminCreateUser + TenantUser PENDING)
+//   POST   /:id/resend-invite — re-issue the invite for a PENDING user whose
+//                               temporary password expired (7-day Cognito window)
 //   PATCH  /:id             — update Cedar role-group memberships (roleNames)
 //   DELETE /:id             — deactivate (TenantUser DEACTIVATED — tenant-scoped only)
 //   POST   /:id/reactivate  — reactivate (TenantUser ACTIVE — tenant-scoped only)
@@ -35,7 +37,7 @@ import {
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import { ROLE_OPTIONS } from '../authz/role-options'
-import { resetCognitoUserPassword } from './admin/cognito'
+import { resetCognitoUserPassword, resendCognitoInvite } from './admin/cognito'
 import { createUsersRepository, type TenantUserRow } from '../repositories/users'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
@@ -458,6 +460,80 @@ usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), 
     })
     return c.json(
       { error: 'Failed to reset the password. Please try again.', code: 'COGNITO_ERROR' },
+      500,
+    )
+  }
+
+  return c.json({ data: toResponse(existing) })
+})
+
+// ---------------------------------------------------------------------------
+// POST /:id/resend-invite
+//
+// Re-issues the invitation for a PENDING user — the way out of an expired
+// temporary password.
+//
+// Cognito temp passwords expire after 7 days (`tempPasswordValidity`, see
+// cognito-stack.ts). Past that window the invitee cannot sign in, and until this
+// route existed neither the admin nor the user had a way forward: POST /invite
+// 409s because the TenantUser row already exists, and POST /:id/reset-password
+// 422s because the user is not ACTIVE.
+//
+// Gated on `user:invite` (InviteUser) — re-inviting is the same act as inviting,
+// so no new Cedar action and no AVP policy sync.
+//
+// Response: { data: TenantUserResponse } (200) — the row is unchanged
+//           { error, code: NOT_FOUND }      (404)
+//           { error, code: INVALID_STATE }  (422) — user not PENDING
+//           { error, code: COGNITO_ERROR }  (500) — Cognito call failed
+// ---------------------------------------------------------------------------
+usersHandler.post('/:id/resend-invite', requirePermission(Actions.InviteUser), async (c) => {
+  const db = c.get('db')
+  const tenantId = c.get('tenantId')
+  const repo = createUsersRepository(db)
+  const id = c.req.param('id') ?? ''
+
+  const existing = await repo.findById(id, tenantId)
+  if (!existing) {
+    return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  // Only PENDING users have an outstanding invitation. An ACTIVE user has
+  // "Reset password"; a DEACTIVATED user must be reactivated first.
+  if (existing.status !== 'PENDING') {
+    return c.json(
+      { error: 'Only pending users can have their invitation resent', code: 'INVALID_STATE' },
+      422,
+    )
+  }
+
+  // Same tenant lookup as POST /invite — the CustomMessage Lambda needs it to
+  // render a tenant-aware email and link to the right login page.
+  const tenant = await db.tenant.findUnique({
+    where: { id: tenantId },
+    select: { name: true, slug: true },
+  })
+
+  try {
+    const outcome = await resendCognitoInvite(existing.email, {
+      tenantId,
+      tenantName: tenant?.name ?? '',
+      tenantSlug: tenant?.slug ?? '',
+    })
+    logger.info('POST /users/:id/resend-invite: invitation re-issued', {
+      id,
+      email: existing.email,
+      tenantId,
+      outcome,
+    })
+  } catch (err) {
+    logger.error('POST /users/:id/resend-invite: Cognito call failed', {
+      error: String(err),
+      id,
+      email: existing.email,
+    })
+    return c.json(
+      { error: 'Failed to resend the invitation. Please try again.', code: 'COGNITO_ERROR' },
       500,
     )
   }

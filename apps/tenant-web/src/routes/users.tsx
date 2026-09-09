@@ -22,6 +22,7 @@ import {
   X,
   Truck,
   KeyRound,
+  MailPlus,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,7 @@ import {
   useDeactivateUser,
   useReactivateUser,
   useResetUserPassword,
+  useResendInvite,
   type TenantUser,
   type RoleOption,
 } from '@/api/queries/users'
@@ -383,6 +385,92 @@ function ResetPasswordConfirm({ user, onConfirm, onCancel }: ResetPasswordConfir
           <Button onClick={() => void handle()} disabled={state === 'pending'} className="gap-2">
             {state === 'pending' && <Loader2 size={14} className="animate-spin" />}
             Send reset code
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Resend-invite confirmation
+//
+// For a PENDING user whose temporary password expired. Cognito temp passwords
+// are valid for 7 days; past that the invitee cannot sign in, and neither
+// inviting them again nor "Reset password" is available to the admin. This
+// emails a fresh temporary password and restarts the window. Same self-contained
+// idle → pending → done shape as ResetPasswordConfirm.
+//
+// The "7 days" below is the `tempPasswordValidity` in the `passwordPolicy` block
+// of packages/infra/lib/stacks/cognito-stack.ts. Keep the copy in sync if that
+// duration changes — same arrangement as PASSWORD_POLICY_MESSAGE in
+// packages/auth/src/cognito-client.ts.
+// ---------------------------------------------------------------------------
+
+type ResendInviteConfirmProps = {
+  user: TenantUser
+  onConfirm: () => Promise<void>
+  onCancel: () => void
+}
+
+function ResendInviteConfirm({ user, onConfirm, onCancel }: ResendInviteConfirmProps) {
+  const [state, setState] = useState<'idle' | 'pending' | 'done'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  async function handle() {
+    setError(null)
+    setState('pending')
+    try {
+      await onConfirm()
+      setState('done')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
+      setState('idle')
+    }
+  }
+
+  if (state === 'done') {
+    return (
+      <Card className="border-primary/40">
+        <CardHeader>
+          <CardTitle>Invitation re-sent</CardTitle>
+          <CardDescription>
+            A new invitation with a fresh temporary password has been emailed to{' '}
+            <strong>{user.email}</strong>. It is valid for 7 days.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex justify-end">
+          <Button variant="outline" onClick={onCancel}>
+            Close
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Resend invitation?</CardTitle>
+        <CardDescription>
+          <strong>{user.email}</strong> will be emailed a new temporary password, valid for another
+          7 days. Any password from their earlier invitation stops working.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {error && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle size={14} className="shrink-0" />
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onCancel} disabled={state === 'pending'}>
+            Cancel
+          </Button>
+          <Button onClick={() => void handle()} disabled={state === 'pending'} className="gap-2">
+            {state === 'pending' && <Loader2 size={14} className="animate-spin" />}
+            Resend invitation
           </Button>
         </div>
       </CardContent>
@@ -803,10 +891,12 @@ type UserRowProps = {
   canManageRoles: boolean
   canDeactivate: boolean
   canReactivate: boolean
+  canResendInvite: boolean
   onDeactivate: (user: TenantUser) => void
   onReactivate: (user: TenantUser) => void
   onManageRoles: (user: TenantUser) => void
   onResetPassword: (user: TenantUser) => void
+  onResendInvite: (user: TenantUser) => void
   onSaveLegacyWindowsUsername: (
     user: TenantUser,
     legacyWindowsUsername: string | null,
@@ -827,10 +917,12 @@ function UserRow({
   canManageRoles,
   canDeactivate,
   canReactivate,
+  canResendInvite,
   onDeactivate,
   onReactivate,
   onManageRoles,
   onResetPassword,
+  onResendInvite,
   onSaveLegacyWindowsUsername,
   onLinkCrewMember,
   onSaveLonghaulDriverId,
@@ -887,43 +979,59 @@ function UserRow({
           </div>
         </div>
       </div>
-      {!isDeactivated && (canManageRoles || (!isSelf && canDeactivate)) && (
-        <div className="flex shrink-0 items-center gap-1">
-          {canManageRoles && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={() => onManageRoles(user)}
-            >
-              <ShieldCheck size={13} />
-              Manage roles
-            </Button>
-          )}
-          {canManageRoles && user.status === 'ACTIVE' && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={() => onResetPassword(user)}
-            >
-              <KeyRound size={13} />
-              Reset password
-            </Button>
-          )}
-          {!isSelf && canDeactivate && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs text-destructive hover:text-destructive"
-              onClick={() => onDeactivate(user)}
-            >
-              <UserX size={13} />
-              Deactivate
-            </Button>
-          )}
-        </div>
-      )}
+      {!isDeactivated &&
+        (canManageRoles ||
+          (!isSelf && canDeactivate) ||
+          (canResendInvite && user.status === 'PENDING')) && (
+          <div className="flex shrink-0 items-center gap-1">
+            {canManageRoles && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => onManageRoles(user)}
+              >
+                <ShieldCheck size={13} />
+                Manage roles
+              </Button>
+            )}
+            {canManageRoles && user.status === 'ACTIVE' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => onResetPassword(user)}
+              >
+                <KeyRound size={13} />
+                Reset password
+              </Button>
+            )}
+            {/* PENDING is the only state with an outstanding invitation to re-send.
+              An ACTIVE user gets "Reset password" above instead. */}
+            {canResendInvite && user.status === 'PENDING' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => onResendInvite(user)}
+              >
+                <MailPlus size={13} />
+                Resend invite
+              </Button>
+            )}
+            {!isSelf && canDeactivate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs text-destructive hover:text-destructive"
+                onClick={() => onDeactivate(user)}
+              >
+                <UserX size={13} />
+                Deactivate
+              </Button>
+            )}
+          </div>
+        )}
       {isDeactivated && canReactivate && (
         <div className="flex shrink-0 items-center gap-1">
           <Button
@@ -952,6 +1060,7 @@ type PanelState =
   | { kind: 'reactivate'; user: TenantUser }
   | { kind: 'manage'; user: TenantUser }
   | { kind: 'reset'; user: TenantUser }
+  | { kind: 'resend'; user: TenantUser }
 
 export function UsersPage() {
   const session = getSession()
@@ -999,6 +1108,7 @@ export function UsersPage() {
   const deactivateMutation = useDeactivateUser()
   const reactivateMutation = useReactivateUser()
   const resetPasswordMutation = useResetUserPassword()
+  const resendInviteMutation = useResendInvite()
   const roleMutation = useUpdateUserRole()
   const legacyWindowsUsernameMutation = useUpdateUserLegacyWindowsUsername()
   const linkCrewMutation = useLinkCrewMember()
@@ -1076,6 +1186,12 @@ export function UsersPage() {
     await resetPasswordMutation.mutateAsync(user.id)
   }
 
+  async function handleResendInvite(user: TenantUser) {
+    // Same contract as handleResetPassword — the panel owns success and error
+    // display, so let the rejection propagate.
+    await resendInviteMutation.mutateAsync(user.id)
+  }
+
   async function handleSaveRoles(user: TenantUser, roleNames: string[]) {
     await roleMutation.mutateAsync({ id: user.id, input: { roleNames } })
     setPanel({ kind: 'none' })
@@ -1141,10 +1257,12 @@ export function UsersPage() {
               canManageRoles={perms.has('user:update')}
               canDeactivate={perms.has('user:deactivate')}
               canReactivate={perms.has('user:reactivate')}
+              canResendInvite={perms.has('user:invite')}
               onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
               onReactivate={(u) => setPanel({ kind: 'reactivate', user: u })}
               onManageRoles={(u) => setPanel({ kind: 'manage', user: u })}
               onResetPassword={(u) => setPanel({ kind: 'reset', user: u })}
+              onResendInvite={(u) => setPanel({ kind: 'resend', user: u })}
               onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
               onLinkCrewMember={handleLinkCrewMember}
               onSaveLonghaulDriverId={handleSaveLonghaulDriverId}
@@ -1158,6 +1276,19 @@ export function UsersPage() {
                 <ResetPasswordConfirm
                   user={user}
                   onConfirm={() => handleResetPassword(user)}
+                  onCancel={() => setPanel({ kind: 'none' })}
+                />
+              </div>
+            )
+          }
+
+          if (panel.kind === 'resend' && panel.user.id === user.id) {
+            return (
+              <div key={user.id} className="space-y-2">
+                {row}
+                <ResendInviteConfirm
+                  user={user}
+                  onConfirm={() => handleResendInvite(user)}
                   onCancel={() => setPanel({ kind: 'none' })}
                 />
               </div>

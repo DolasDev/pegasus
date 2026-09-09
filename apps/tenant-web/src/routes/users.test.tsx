@@ -15,10 +15,19 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { UsersPage } from './users'
 import type { TenantUser } from '@/api/queries/users'
+
+// apiFetch is mocked so the mutations under test assert on the URL they call
+// rather than on a network stub.
+const { mockApiFetch } = vi.hoisted(() => ({ mockApiFetch: vi.fn() }))
+
+vi.mock('@/api/client', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@/api/client')
+  return { ...actual, apiFetch: mockApiFetch }
+})
 
 // Captured useQuery options, keyed by the head of the query key.
 let seen: Record<string, { enabled?: boolean }> = {}
@@ -132,5 +141,86 @@ describe('UsersPage — longhaul-drivers query gating', () => {
     usersData = [makeUser({ id: 'u6', roleNames: ['driver'] })]
     renderPage()
     expect(seen['longhaul-drivers']?.enabled).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Resend invite — the way out of an expired temporary password
+//
+// Cognito temp passwords expire after 7 days. A PENDING user past that window
+// cannot sign in, and the admin's other two levers do not apply: POST /invite
+// 409s (the TenantUser row exists) and "Reset password" is ACTIVE-only. This
+// button is the only path, so its visibility rules matter — showing it on an
+// ACTIVE user would re-invite someone who already has a working password.
+// ---------------------------------------------------------------------------
+
+describe('UsersPage — resend invite', () => {
+  beforeEach(() => {
+    seen = {}
+    permissions = ['user:list', 'user:invite', 'user:update']
+    usersData = []
+    capabilities = { longhaul: false }
+    mockApiFetch.mockReset()
+    mockApiFetch.mockResolvedValue({})
+  })
+
+  it('offers Resend invite on a PENDING user', () => {
+    usersData = [makeUser({ id: 'p1', status: 'PENDING', activatedAt: null })]
+    renderPage()
+    expect(screen.getByRole('button', { name: /resend invite/i })).toBeTruthy()
+  })
+
+  it('does not offer it on an ACTIVE user (they get Reset password instead)', () => {
+    usersData = [makeUser({ id: 'a1', status: 'ACTIVE' })]
+    renderPage()
+    expect(screen.queryByRole('button', { name: /resend invite/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /reset password/i })).toBeTruthy()
+  })
+
+  it('does not offer it on a DEACTIVATED user (reactivate first)', () => {
+    usersData = [
+      makeUser({ id: 'd1', status: 'DEACTIVATED', deactivatedAt: '2026-02-01T00:00:00.000Z' }),
+    ]
+    renderPage()
+    expect(screen.queryByRole('button', { name: /resend invite/i })).toBeNull()
+  })
+
+  it('does not offer it without user:invite', () => {
+    permissions = ['user:list', 'user:update']
+    usersData = [makeUser({ id: 'p2', status: 'PENDING', activatedAt: null })]
+    renderPage()
+    expect(screen.queryByRole('button', { name: /resend invite/i })).toBeNull()
+  })
+
+  it('posts to the resend-invite endpoint and confirms once it succeeds', async () => {
+    usersData = [makeUser({ id: 'p3', status: 'PENDING', activatedAt: null })]
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /resend invite/i }))
+    fireEvent.click(screen.getByRole('button', { name: /resend invitation$/i }))
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/users/p3/resend-invite', {
+        method: 'POST',
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/invitation re-sent/i)).toBeTruthy()
+    })
+  })
+
+  it('keeps the panel open and surfaces the error when the call fails', async () => {
+    usersData = [makeUser({ id: 'p4', status: 'PENDING', activatedAt: null })]
+    mockApiFetch.mockRejectedValue(new Error('Failed to resend the invitation. Please try again.'))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /resend invite/i }))
+    fireEvent.click(screen.getByRole('button', { name: /resend invitation$/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/failed to resend the invitation/i)).toBeTruthy()
+    })
+    // Still on the confirm step, so the admin can retry without reopening.
+    expect(screen.getByRole('button', { name: /resend invitation$/i })).toBeTruthy()
   })
 })

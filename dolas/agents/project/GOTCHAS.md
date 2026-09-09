@@ -1236,3 +1236,47 @@ does not apply here" (wrong platform, feature flag off) and for an explicit
 human opt-out — never for "the environment isn't set up," which is precisely
 when you want to be told. The same reasoning applies to any check gated on a
 built artifact, a running container, or a credential being present.
+
+## An invited user has 7 days, then the tenant admin has no lever at all
+
+Cognito temporary passwords expire after `tempPasswordValidity`, set to 7 days in
+`packages/infra/lib/stacks/cognito-stack.ts` (also Cognito's own default). A
+tenant invite is an `AdminCreateUser`, so the invitee sits in Cognito
+`FORCE_CHANGE_PASSWORD` / `TenantUser.status = PENDING` until first login flips
+them to ACTIVE in `cognito/pre-token.ts`. Past day 7 they cannot sign in.
+
+The non-obvious part is that the admin's two apparent remedies were both closed,
+each for a locally-reasonable reason:
+
+- `POST /users/invite` 409s — `repo.findByEmail` finds the PENDING TenantUser row.
+- `POST /users/:id/reset-password` 422s — it is ACTIVE-only, and the code comment
+  said PENDING users "re-resolve through the invite / first-login set-password
+  path". That path did not exist.
+
+So the UI rendered no button that did anything. `POST /users/:id/resend-invite`
+(`handlers/users.ts` → `resendCognitoInvite` in `handlers/admin/cognito.ts`) is
+the way out: `AdminCreateUser` with `MessageAction: 'RESEND'` regenerates the
+temporary password and restarts the window.
+
+**Three things that bite when touching that helper:**
+
+1. `MessageAction` is one enum value. `RESEND` cannot be combined with the
+   `SUPPRESS` that keeps invite email out of local dev, so the resend path
+   short-circuits on `NODE_ENV !== 'production'` instead. Every deployed
+   environment including QA sets `NODE_ENV=production` (`api-stack.ts`), so that
+   only affects a dev box and vitest.
+2. `ClientMetadata` must be re-sent on the RESEND call. Without it
+   `cognito/custom-message.ts` passes the event straight through and the invitee
+   gets Cognito's stock template — no tenant name, no login link.
+3. Branch on `AdminGetUser`'s `UserStatus`, not on exception names. Only one
+   action is legal per state (`FORCE_CHANGE_PASSWORD` → RESEND, `CONFIRMED` →
+   `AdminResetUserPassword`, absent → provision), and the Cognito error strings
+   for a wrong-state call are not worth guessing at.
+
+**Still open** (deliberately out of scope of that PR, each its own change):
+`login.tsx` maps both `NotAuthorizedException` and `InvalidParameterException`
+from `ForgotPassword` to "This account signs in through your organization's
+identity provider" — so an expired invitee who tries "Forgot password?" is told
+they are an SSO account. The platform-admin surface
+(`handlers/admin/tenant-users.ts`) has neither reset nor resend. And
+`tempPasswordValidity` could be widened (max 365 days) to lower incidence.

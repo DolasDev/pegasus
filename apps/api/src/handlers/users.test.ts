@@ -11,7 +11,7 @@
 // need 403 responses set role='viewer' in buildApp.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
@@ -49,6 +49,9 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   }),
   AdminResetUserPasswordCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
+  }),
+  AdminGetUserCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'AdminGetUser', ...input }
   }),
 }))
 
@@ -477,6 +480,101 @@ describe('users handler', () => {
       expect(mockSend).toHaveBeenCalledOnce()
       const sentCommand = mockSend.mock.calls[0]![0] as Record<string, unknown>
       expect(sentCommand['Username']).toBe('user@example.com')
+    })
+  })
+
+  // ── POST /:id/resend-invite ────────────────────────────────────────────────
+
+  describe('POST /:id/resend-invite', () => {
+    // mockUserRow is PENDING — the state this route exists for.
+    const activeUser = { ...mockUserRow, status: 'ACTIVE' as const, activatedAt: now }
+    const deactivatedUser = { ...mockUserRow, status: 'DEACTIVATED' as const, deactivatedAt: now }
+
+    beforeEach(() => {
+      // The helper short-circuits outside production; opt in so the route's
+      // Cognito path is actually exercised.
+      vi.stubEnv('NODE_ENV', 'production')
+      mockTenantFindUnique.mockResolvedValue({ name: 'Acme Movers', slug: 'acme' })
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('returns 403 FORBIDDEN without user:invite permission', async () => {
+      const res = await buildApp('viewer').request('/user-1/resend-invite', post({}))
+      expect(res.status).toBe(403)
+      expect((await json(res)).code).toBe('FORBIDDEN')
+    })
+
+    it('returns 404 NOT_FOUND when the user is not in this tenant', async () => {
+      mockRepo.findById.mockResolvedValue(null)
+      const res = await buildApp().request('/missing/resend-invite', post({}))
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 INVALID_STATE for an ACTIVE user (they get Reset password instead)', async () => {
+      mockRepo.findById.mockResolvedValue(activeUser)
+      const res = await buildApp().request('/user-1/resend-invite', post({}))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 INVALID_STATE for a DEACTIVATED user (reactivate first)', async () => {
+      mockRepo.findById.mockResolvedValue(deactivatedUser)
+      const res = await buildApp().request('/user-1/resend-invite', post({}))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('returns 500 COGNITO_ERROR when the Cognito call fails', async () => {
+      mockRepo.findById.mockResolvedValue(mockUserRow)
+      mockSend.mockRejectedValue(
+        Object.assign(new Error('boom'), { name: 'InternalErrorException' }),
+      )
+      const res = await buildApp().request('/user-1/resend-invite', post({}))
+      expect(res.status).toBe(500)
+      expect((await json(res)).code).toBe('COGNITO_ERROR')
+    })
+
+    it('resends the invite for a PENDING user and returns the unchanged row', async () => {
+      mockRepo.findById.mockResolvedValue(mockUserRow)
+      mockSend
+        .mockResolvedValueOnce({ UserStatus: 'FORCE_CHANGE_PASSWORD' })
+        .mockResolvedValueOnce({})
+
+      const res = await buildApp().request('/user-1/resend-invite', post({}))
+
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body.data as JsonBody)['email']).toBe('user@example.com')
+      expect((body.data as JsonBody)['status']).toBe('PENDING')
+
+      expect(mockSend).toHaveBeenCalledTimes(2)
+      const resend = mockSend.mock.calls[1]![0] as Record<string, unknown>
+      expect(resend['MessageAction']).toBe('RESEND')
+      expect(resend['Username']).toBe('user@example.com')
+    })
+
+    it('forwards the tenant name and slug so the re-sent email stays tenant-aware', async () => {
+      mockRepo.findById.mockResolvedValue(mockUserRow)
+      mockSend
+        .mockResolvedValueOnce({ UserStatus: 'FORCE_CHANGE_PASSWORD' })
+        .mockResolvedValueOnce({})
+
+      await buildApp().request('/user-1/resend-invite', post({}))
+
+      const resend = mockSend.mock.calls[1]![0] as { ClientMetadata?: Record<string, string> }
+      expect(resend.ClientMetadata).toEqual({
+        source: 'tenant',
+        tenantId: 'test-tenant-id',
+        tenantName: 'Acme Movers',
+        tenantSlug: 'acme',
+      })
     })
   })
 })
