@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pegasus-workflows-sdk"
-version = "0.38.0"
+version = "0.38.1"
 description = "Python SDK and CLI for authoring, packaging, and publishing Pegasus workflows."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,6 +14,9 @@ keywords = ["pegasus", "workflows", "temporal", "automation"]
 classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
 ]
 # Upper bounds: this SDK is consumed by tenants, and the platform controls the
 # supported matrix — a silent temporalio 2.x / httpx 1.x at install time is a real

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -32,8 +33,10 @@ def test_no_file_returns_empty_profiles() -> None:
 def test_write_profile_creates_0600_file(_hermetic_env: Path) -> None:
     path = cr.write_profile("prod", api_key="vnd_secret", api_root="https://api.x")
     assert path == _hermetic_env
-    mode = stat.S_IMODE(path.stat().st_mode)
-    assert mode == 0o600, oct(mode)
+    # POSIX mode bits only; on Windows the %USERPROFILE% ACL is the protection.
+    if sys.platform != "win32":
+        mode = stat.S_IMODE(path.stat().st_mode)
+        assert mode == 0o600, oct(mode)
     profiles = cr.load_profiles()
     assert profiles["prod"]["api_key"] == "vnd_secret"
     assert profiles["prod"]["api_root"] == "https://api.x"
@@ -105,6 +108,10 @@ def test_unknown_profile_raises() -> None:
         cr.resolve(token=None, base_url=None, profile="ghost")
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX-only: Windows has no mode to loosen; the %USERPROFILE% ACL protects the file",
+)
 def test_write_tightens_preexisting_loose_file(_hermetic_env: Path) -> None:
     _hermetic_env.write_text('[old]\napi_key = "vnd_old"\n', encoding="utf-8")
     os.chmod(_hermetic_env, 0o644)

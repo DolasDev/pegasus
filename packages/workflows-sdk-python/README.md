@@ -19,6 +19,29 @@ This installs the `pegasus-workflows` CLI. **Python 3.11+** is required. Pin the
 version in your project's requirements for reproducible builds, e.g.
 `pegasus-workflows-sdk==0.1.0`.
 
+### Supported platforms
+
+**Linux, macOS, and Windows**, on Python 3.11+. Linux and Windows are both
+covered by CI on every change; macOS is unexercised but shares the POSIX paths
+Linux runs.
+
+Windows notes:
+
+- **Virtualenv activation** is `.venv\Scripts\Activate.ps1` (PowerShell) or
+  `.venv\Scripts\activate.bat` (cmd) — the `source .venv/bin/activate` you'll
+  see in POSIX-flavored docs is the Linux/macOS form.
+- **Credential-file permissions differ.** On Linux/macOS `~/.pegasus/credentials`
+  is written `0600`. Windows has no equivalent POSIX mode — `os.fchmod` doesn't
+  exist there before CPython 3.13 and is a near-no-op after it — so the file is
+  instead protected by the inherited ACL of your per-user profile directory
+  under `%USERPROFILE%`, which is not world-readable by default. Wherever this
+  README says `0600`, read it as "owner-only, by mode on POSIX and by ACL on
+  Windows".
+- **`pegasus-workflows test` needs Docker Desktop**, the same way it needs Docker
+  on Linux: it auto-starts a local Temporal server via `docker compose` when one
+  isn't already listening on `127.0.0.1:7233`. Every other command is pure
+  Python plus HTTPS and needs no container runtime.
+
 ### Interim / unreleased install (git)
 
 The repository is public, so you can install straight from a tagged commit
@@ -47,7 +70,9 @@ pegasus-workflows setup             # seeds ~/.pegasus/credentials (0600) + writ
 at. It:
 
 - seeds/updates a `~/.pegasus/credentials` profile at `0600` (delegates to
-  `configure`; pick the profile with `--profile NAME`),
+  `configure`; pick the profile with `--profile NAME`) — on Windows the
+  equivalent protection is the `%USERPROFILE%` ACL, see [Supported
+  platforms](#supported-platforms),
 - writes the `pegasus` MCP-server stanza into `./.mcp.json` (Claude Code project
   config), never clobbering an existing `pegasus` entry without `--force`, and
 - performs **no network calls** and writes the `api_key` **only** to the `0600`
@@ -889,7 +914,9 @@ pegasus-workflows configure --profile qa
 pegasus-workflows profile list               # names + api_root only — never the key
 ```
 
-The file is created `0600` (owner read/write only) and is **never committed** —
+The file is created `0600` (owner read/write only; on Windows, owner-only via the
+`%USERPROFILE%` ACL — see [Supported platforms](#supported-platforms)) and is
+**never committed** —
 keep it out of repos. Then select a profile per command:
 
 ```

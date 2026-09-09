@@ -339,6 +339,54 @@ jobs:
           python -m pip_audit --skip-editable
 
   # ---------------------------------------------------------------------------
+  # Workflows SDK on Windows — the CLI is the external product boundary
+  # (CLAUDE.md), so authors run `pegasus-workflows` on their own machines, and a
+  # real share of them are on Windows. Until this job existed the package had
+  # zero Windows coverage and shipped an `os.fchmod` call that does not exist on
+  # Windows before CPython 3.13 — `pegasus-workflows setup` crashed on the very
+  # first command, and nothing in CI could see it.
+  #
+  # SDK steps only: packages/workflows-stdlib is server-side code that runs on
+  # Linux Lambda/Temporal workers, so it needs no Windows gate. pip-audit is
+  # skipped too — same resolved closure as the Linux job, no new signal.
+  #
+  # Deliberately NOT setting PYTHONUTF8=1: the runner's default cp1252 locale is
+  # exactly what catches a read_text()/write_text() call that forgot
+  # `encoding="utf-8"`. Forcing UTF-8 mode would mask that whole bug class.
+  #
+  # shell: bash (Git Bash ships on windows-latest) so the `&&` and quoting match
+  # the Linux job verbatim rather than depending on pwsh parsing.
+  # ---------------------------------------------------------------------------
+  workflows-sdk-python-windows:
+    name: Workflows SDK (Python, Windows)
+    runs-on: windows-latest
+    # ~2x the Linux job: Windows pip installs and process spawns are slower, and
+    # a timeout here would read as a flake rather than a real failure.
+    timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.workflows_stdlib == 'true'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install SDK + test deps
+        run: python -m pip install --upgrade pip && python -m pip install -e 'packages/workflows-sdk-python[dev]'
+
+      - name: Ruff (SDK)
+        working-directory: packages/workflows-sdk-python
+        run: python -m ruff check .
+
+      - name: Pytest (SDK)
+        working-directory: packages/workflows-sdk-python
+        run: python -m pytest -q
+
+  # ---------------------------------------------------------------------------
   # Migration safety — enforce the expand-contract policy (PATTERNS.md):
   # newly-added migrations with destructive DDL must carry the explicit
   # `-- expand-contract: contract approved` marker. Cheap, deterministic; the

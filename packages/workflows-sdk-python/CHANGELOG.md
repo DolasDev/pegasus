@@ -3,6 +3,48 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.38.1
+
+### Fixed — the CLI now runs on Windows
+
+`pegasus-workflows setup` crashed on Windows with
+`AttributeError: module 'os' has no attribute 'fchmod'`, on the **first command a
+new author runs**. `write_profile` re-tightened the credentials file through
+`os.fchmod`, which does not exist on Windows before CPython 3.13 — and this
+package supports 3.11+. No credential file could be written at all, so `setup`,
+`configure`, and everything downstream of a stored profile were unusable; the
+only workaround was hand-authoring `~/.pegasus/credentials`.
+
+`os.fchmod` is now called only where it exists. On Windows the credentials file
+is protected by the inherited ACL of the per-user `%USERPROFILE%` directory
+instead of a POSIX mode. The POSIX behavior is unchanged and still verified: a
+fresh file is `0600`, and a pre-existing looser file is re-tightened to `0600`
+before the token is written.
+
+Two latent Windows bugs found alongside it and fixed in the same pass:
+
+- **Credentials could be written unreadable.** `os.open` without `O_BINARY`
+  returns a text-mode fd on Windows whose CRT layer translates `\n`, while the
+  `TextIOWrapper` above it translates as well — the file lands with `\r\r\n`,
+  and `tomllib` then rejects the stray `\r`. Every command after `setup` would
+  have failed to read the profile that `setup` had just written.
+- **Non-ASCII text could be mangled or raise.** Eight `read_text()` /
+  `write_text()` calls in `feedback-form` and `integration-config` omitted
+  `encoding=`, falling back to the platform locale — UTF-8 on Linux/macOS but
+  cp1252 on Windows. A non-ASCII form title or message template raised
+  `UnicodeDecodeError` on read or was silently corrupted on write.
+
+### Added
+
+- **Windows CI.** A `windows-latest` job now runs ruff + the full SDK test suite
+  on every change, so the platform claim is gated rather than asserted. It
+  deliberately does not force `PYTHONUTF8`, since the runner's default codepage
+  is what catches a missing `encoding=`.
+- **`Operating System ::` classifiers** on the package, and a **Supported
+  platforms** section in the README covering PowerShell venv activation, the
+  Windows credential-permission model, and Docker Desktop for
+  `pegasus-workflows test`.
+
 ## 0.38.0
 
 ### Fixed — the publish gate now enforces `inputFieldRoots` (sdk-feedback 0042)
