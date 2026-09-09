@@ -37,8 +37,9 @@ import { ApiStack } from '../api-stack'
 //     not at synth time). Live integration test would catch this — see
 //     plans/todo/avp-provisioning-regression-tests.md item #3.
 //
-// Cost: real bundling adds ~5–15s vs the fast path used by other tests. We
-// gate on PEGASUS_SKIP_BUNDLE_TESTS=1 so local watch-mode runs can opt out.
+// Cost: real bundling adds ~8s locally and ~59s on a loaded 2-core CI runner
+// (hence the beforeAll's 300s budget). PEGASUS_SKIP_BUNDLE_TESTS=1 is the only
+// supported way to opt out.
 // ---------------------------------------------------------------------------
 
 const REPO_ROOT = path.join(__dirname, '../../../../..')
@@ -48,23 +49,39 @@ const AUTHZ_SRC = path.join(REPO_ROOT, 'apps/api/src/authz')
 // test as the contract — if either of these moves, the test breaks AND the
 // bundling config in `api-stack.ts` needs the matching update.
 
+// The ONLY intentional way to not run this suite. Local watch-mode can opt out;
+// nothing else may, because this is the only guard that catches an unresolvable
+// import reaching the deployed API bundle (see #665: our own protobufjs override
+// capped @temporalio below the major it needed and esbuild could not resolve
+// `protobufjs/ext/protojson` — a bundle that synth and deploy carry to
+// production happily and that surfaces only as a Lambda INIT crash, the #594
+// failure mode).
 const explicitSkip = process.env['PEGASUS_SKIP_BUNDLE_TESTS'] === '1'
 
 // esbuild's bundling step resolves `import { ... } from '@pegasus/domain'`
-// references in the API source against the package's `main: dist/index.js`.
-// On a fresh clone where the workspace deps haven't been built, that file
-// doesn't exist and esbuild errors with a not-actionable "Could not resolve
-// '@pegasus/domain'" message. Detect the missing dist and skip with a clear
-// hint instead. CI's `turbo run test` covers this via the per-package
-// `dependsOn: ['^build']` override in `packages/infra/turbo.json`.
-const domainDistExists = fs.existsSync(path.join(REPO_ROOT, 'packages/domain/dist/index.js'))
-const skipReason = explicitSkip
-  ? 'skipped via PEGASUS_SKIP_BUNDLE_TESTS=1'
-  : !domainDistExists
-    ? 'packages/domain/dist not built — run `npx turbo run build --filter=@pegasus/domain` first (or run via `turbo run test` which auto-builds it)'
-    : null
+// references in the API source against the package's `main: dist/index.js`. On a
+// fresh clone where the workspace deps haven't been built, that file is missing
+// and esbuild fails with a not-actionable "Could not resolve '@pegasus/domain'".
+//
+// This used to `describe.skipIf` on that condition. It no longer does, and the
+// distinction matters: a guard that skips itself when its precondition is absent
+// reports green in exactly the situation it is least sure about, and a skip is
+// something nobody investigates. It now throws. `turbo run test` satisfies the
+// precondition via `test.dependsOn: ['@pegasus/domain#build']` in
+// `packages/infra/turbo.json`, so the throw only fires when this package's
+// vitest is invoked directly without that build — and then it tells you so
+// instead of quietly proving nothing.
+if (!explicitSkip && !fs.existsSync(path.join(REPO_ROOT, 'packages/domain/dist/index.js'))) {
+  throw new Error(
+    'packages/domain/dist/index.js is missing, so the API bundle cannot be built and ' +
+      'this guard cannot run.\n' +
+      'Fix: npx turbo run build --filter=@pegasus/domain   (or run the suite via `turbo run test`, ' +
+      'which builds it first)\n' +
+      'To deliberately opt out in watch mode: PEGASUS_SKIP_BUNDLE_TESTS=1',
+  )
+}
 
-describe.skipIf(skipReason !== null)(`ApiStack — bundled asset contract`, () => {
+describe.skipIf(explicitSkip)(`ApiStack — bundled asset contract`, () => {
   let assetDir: string
 
   beforeAll(() => {

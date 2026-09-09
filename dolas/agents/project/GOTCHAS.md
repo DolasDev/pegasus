@@ -1121,10 +1121,16 @@ It was not only the tests. The same CI log carries an esbuild line —
 `NodejsFunction` bundling step. The **API Lambda bundle itself** was broken by our
 override, which is the #594 failure mode (an unresolvable import that synth and
 deploy will happily carry to production and that only shows up as an INIT crash).
-It went unnoticed because `api-stack.bundle.test.ts` skips itself when
-`packages/domain/dist` is missing, and turbo's `test` task declares
-`dependsOn: []` — so whether that guard runs at all in CI depends on leftover
-build state, not on the task graph. It skipped on one run and ran on the next.
+It went unnoticed because the CI job that would have caught it never finished:
+`@pegasus/api#test` failed first, turbo cancelled the rest, and
+`@pegasus/infra#test` was killed mid-run. The rendered line at the cut —
+`api-stack.bundle.test.ts (4 tests | 4 skipped)` — is vitest's in-progress
+output, not a verdict. An earlier version of this entry blamed turbo's task
+graph. That was wrong: `packages/infra/turbo.json` has declared
+`test.dependsOn: ['@pegasus/domain#build']` since `7778372f`, and
+`turbo run test --dry=json` confirms it resolves. Do not read a cancelled task's
+partial output as a result — check for the `Test Files` summary line before
+concluding anything about what a suite did.
 
 **How to apply:** when an override's comment says "remove once X ships Y", that
 sentence is the only monitor that exists — nothing checks it. A dependency PR
@@ -1199,3 +1205,34 @@ and not hoisting synth into `beforeAll`.
 Worth knowing for the deploy path: `cdk synth` and `cdk diff` in `deploy.yml` pay
 the same 2.5x. Seconds, not minutes, so not a blocker — but if the pre-deploy
 gate ever starts brushing its timeout, this is why.
+
+## A guard that skips itself reports green exactly when it is least sure
+
+`api-stack.bundle.test.ts` is the only test that catches an unresolvable import
+reaching the deployed API bundle — the #594 failure mode, where synth and deploy
+both stay green and the breakage surfaces as a Lambda INIT crash in production.
+It used to open with `describe.skipIf` on whether `packages/domain/dist/index.js`
+existed, because esbuild cannot resolve `@pegasus/domain` without it and the
+resulting error is unhelpful.
+
+That is the wrong shape for a guard. The precondition being absent does not mean
+"nothing to check here" — it means "I cannot check, and I have no idea whether
+the thing I protect against is happening." Reporting that as a skip puts it in
+the one bucket nobody reads: a failing test gets investigated, a flaky test gets
+investigated, a skipped test is invisible. The suite that would have caught a
+genuinely broken production bundle was one `fs.existsSync` away from never
+telling anyone.
+
+It now throws with the fix command instead. `turbo run test` satisfies the
+precondition through `test.dependsOn: ['@pegasus/domain#build']` in
+`packages/infra/turbo.json`, so the throw only fires when `packages/infra`'s
+vitest is invoked directly on an unbuilt tree — and then it says so.
+`PEGASUS_SKIP_BUNDLE_TESTS=1` remains the single deliberate opt-out, for watch
+mode.
+
+**How to apply:** when a test guards a failure mode that ships silently, an
+unmet precondition is a failure, not a skip. Reserve `skipIf` for "this genuinely
+does not apply here" (wrong platform, feature flag off) and for an explicit
+human opt-out — never for "the environment isn't set up," which is precisely
+when you want to be told. The same reasoning applies to any check gated on a
+built artifact, a running container, or a credential being present.
