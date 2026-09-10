@@ -23,6 +23,13 @@ jobs:
   # required checks report success, so branch protection stays satisfied.
   # secret-scan deliberately does NOT depend on this (docs can leak secrets).
   # ---------------------------------------------------------------------------
+  # `merge_group` note: every job below that is a REQUIRED check must carry
+  # `|| github.event_name == 'merge_group'` in its `if:`. dorny/paths-filter
+  # cannot diff a merge-group ref against a meaningful base, so these outputs
+  # are not trustworthy there — without the clause the job skips in the queue,
+  # which satisfies branch protection vacuously and means the queue never
+  # re-verifies the merged result. The clause makes it run unconditionally in
+  # the queue and stay path-filtered on PRs.
   changes:
     name: Detect changed paths
     runs-on: ubuntu-latest
@@ -189,7 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.tenant_runner == 'true'
+    if: needs.changes.outputs.tenant_runner == 'true' || github.event_name == 'merge_group'
     steps:
       - uses: actions/checkout@v6
 
@@ -251,7 +258,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.temporal_worker == 'true'
+    if: needs.changes.outputs.temporal_worker == 'true' || github.event_name == 'merge_group'
     steps:
       - uses: actions/checkout@v6
 
@@ -301,7 +308,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.workflows_stdlib == 'true'
+    if: needs.changes.outputs.workflows_stdlib == 'true' || github.event_name == 'merge_group'
     steps:
       - uses: actions/checkout@v6
 
@@ -364,7 +371,7 @@ jobs:
     # a timeout here would read as a flake rather than a real failure.
     timeout-minutes: 15
     needs: changes
-    if: needs.changes.outputs.workflows_stdlib == 'true'
+    if: needs.changes.outputs.workflows_stdlib == 'true' || github.event_name == 'merge_group'
     defaults:
       run:
         shell: bash
