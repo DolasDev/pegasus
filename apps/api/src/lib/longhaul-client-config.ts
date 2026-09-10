@@ -5,8 +5,9 @@
 // /home/steve/repos/longhaul/config/clients/{nwi,qmm}.js. Each defined the
 // values that diverge between NWI and QMM tenants:
 //
-//   - importExport types (the `import_export` codes that count as "trip
+//   - importExport types (the `import_export` codes that counted as "trip
 //     planning eligible" shipments — H/HA/M/A/SS for NWI, N/S/C/U/M for QMM).
+//     REMOVED in #685: see the note at the bottom of this header.
 //   - moveTypesWhere — the SQL fragment used to filter the MoveType lookup
 //     table. NWI returns all rows ("1=1"); QMM restricts to a specific list.
 //   - dispatcher_query — the SQL WHERE clause used to fetch dispatcher users
@@ -23,20 +24,21 @@
 // client by setting LONGHAUL_CLIENT to 'nwi' or 'qmm'; unset/unknown values
 // throw at first call so misconfiguration fails fast at startup instead of
 // silently corrupting query results downstream.
+//
+// #685 dropped `importExportTypes`. It was the trip-planning eligibility
+// whitelist, AND'd onto `import_export` — the same column Planning's
+// `move_type` filter targets. Two predicates on one column meant the default
+// set and the user's selection fought: intersecting them made 10 of NWI's 16
+// dropdown codes return zero rows (#615/#628), and letting the selection win
+// (#628) meant adding a filter could ADD rows. Planning now shows every code
+// by default and the filter narrows from there, so neither failure exists and
+// the whitelist has no remaining caller. Do not reintroduce it here: a default
+// that silently constrains the same column a user filter targets is the bug.
 // ---------------------------------------------------------------------------
 
 export type LonghaulClient = 'nwi' | 'qmm'
 
 export interface LonghaulClientConfig {
-  /**
-   * Shipment `import_export` codes considered "trip-planning eligible". Used
-   * by shipments.repository.findShipmentsWithQuery when filters.Is_Trip_Planning
-   * is set.
-   *
-   * Legacy: config/clients/{nwi,qmm}.js → clientInfo.importExport.
-   */
-  importExportTypes: string[]
-
   /**
    * Raw SQL WHERE fragment used to filter the MoveType lookup table.
    *
@@ -58,18 +60,6 @@ export interface LonghaulClientConfig {
 //   /home/steve/repos/longhaul/config/clients/qmm.js
 const CONFIGS: Record<LonghaulClient, LonghaulClientConfig> = {
   nwi: {
-    // 'Z' (INTERNATIONAL) is a deliberate addition, not a legacy transcription:
-    // the legacy list was H/HA/M/A/SS. This whitelist is AND'd onto
-    // `import_export` by the Is_Trip_Planning predicate — the same column the
-    // user-facing `move_type` filter targets — so a code absent here doesn't
-    // just fall out of the default planning list, it makes filtering BY that
-    // code return zero rows for every date range (an unsatisfiable conjunction).
-    // NWI's MoveType lookup offers INTERNATIONAL (moveTypesWhere '1=1'), so the
-    // dropdown advertised a filter that could never match. Accepted tradeoff:
-    // active, undelivered 'Z' shipments now also appear in the UNfiltered
-    // planning list. QMM is not given 'Z' — its moveTypesWhere excludes it from
-    // the dropdown, so nothing there can reach it.
-    importExportTypes: ['H', 'HA', 'M', 'A', 'SS', 'Z'],
     moveTypesWhere: '1=1',
     // Central-planning (long-haul) dispatchers are identified by managed_by_id;
     // short-haul / local-dispatch staff carry the 'LO' role tag instead. We OR
@@ -79,7 +69,6 @@ const CONFIGS: Record<LonghaulClient, LonghaulClientConfig> = {
     dispatcherQuery: "(managed_by_id = 2021 OR roles like '%LO%')",
   },
   qmm: {
-    importExportTypes: ['N', 'S', 'C', 'U', 'M'],
     moveTypesWhere: "move_type in ('C','S','N','M','U')",
     dispatcherQuery: "roles like ('%cpd%')",
   },
@@ -100,10 +89,8 @@ export function getLonghaulClientConfigFor(client: string): LonghaulClientConfig
     throw new Error(`[longhaul] Unknown longhaul client "${client}". Expected "nwi" or "qmm".`)
   }
   const source = CONFIGS[normalized]
-  // Return a fresh copy so callers can't mutate the shared template (e.g.
-  // arr.push() on importExportTypes would leak across requests).
+  // Return a fresh copy so callers can't mutate the shared template.
   return {
-    importExportTypes: [...source.importExportTypes],
     moveTypesWhere: source.moveTypesWhere,
     dispatcherQuery: source.dispatcherQuery,
   }

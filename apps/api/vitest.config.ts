@@ -21,10 +21,16 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       reportsDirectory: './coverage',
+      // branches/functions dropped 0.01 each when #685 deleted the
+      // trip-planning import_export whitelist: removing a COVERED branch and
+      // covered config code lowers the ratio even though nothing became
+      // untested — lines (92.33) and statements (91.06) are byte-identical to
+      // the pre-change measurement. Re-pinned to measured; `autoUpdate` only
+      // ever raises a floor, so a deletion has to be re-pinned by hand.
       thresholds: {
         lines: 92.33,
-        branches: 80.23,
-        functions: 89,
+        branches: 80.22,
+        functions: 88.99,
         statements: 91.06,
         autoUpdate: true,
       },
