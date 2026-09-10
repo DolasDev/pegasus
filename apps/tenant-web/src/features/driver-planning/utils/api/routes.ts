@@ -76,6 +76,17 @@ export function resolveRoute(routeName: string, args: unknown[]): HttpRequest {
       return { method: 'PATCH', path: `/notes/${id}`, body: { note, tripId } }
     }
 
+    // ---- Activities (Dispatch Activities board) ----
+    // Same `?filters=<encoded json>` convention as fetchShipments, so the
+    // handler parses one param the same way every other longhaul list does.
+    case 'fetchActivities': {
+      const query: Record<string, unknown> = arg0 ?? {}
+      return {
+        method: 'GET',
+        path: `/activities?filters=${encodeURIComponent(JSON.stringify(query))}`,
+      }
+    }
+
     // ---- Shipments ----
     case 'fetchShipments': {
       const query: Record<string, unknown> = arg0 ?? {}

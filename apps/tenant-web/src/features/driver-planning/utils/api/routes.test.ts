@@ -133,6 +133,27 @@ describe('resolveRoute', () => {
   })
 
   describe('shipments', () => {
+    it('fetchActivities → GET /activities?filters=<the whole query>', () => {
+      const query = {
+        filters: { date_range: ['2026-09-10', '2026-09-17'], activity_type: [] },
+        sortBy: null,
+      }
+
+      expect(resolveRoute('fetchActivities', [query])).toEqual({
+        method: 'GET',
+        path: `/activities?filters=${encodeURIComponent(JSON.stringify(query))}`,
+      })
+    })
+
+    it('fetchActivities with no args → an empty filters payload, not a bare path', () => {
+      // The handler reads one `filters` param; sending nothing is fine, but the
+      // shape has to stay consistent so the parse branch is always exercised.
+      expect(resolveRoute('fetchActivities', [])).toEqual({
+        method: 'GET',
+        path: `/activities?filters=${encodeURIComponent('{}')}`,
+      })
+    })
+
     it('fetchShipments with no args → GET /shipments', () => {
       expect(resolveRoute('fetchShipments', [])).toEqual({
         method: 'GET',

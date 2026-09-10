@@ -1,0 +1,41 @@
+/* Matches the shipments card's density so the two Operations boards read as
+   one product: 13px rows, flex columns that ellipsize rather than wrap. */
+.activityCard {
+  padding: 1px 2px;
+  margin-left: -5px !important;
+  border-left: 6px solid var(--blue-700);
+}
+
+/* Done. Muted rather than hidden — a dispatcher scanning the day still wants
+   to see what is already closed out, just not to read it first. */
+.complete {
+  border-left-color: rgba(3, 97, 3, 0.6);
+}
+
+.complete .row {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.lines {
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  margin: 2px;
+  font-size: 13px;
+}
+
+.row > div {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Line 2 is supporting detail — same columns, quieter. */
+.row:last-child {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.7);
+}

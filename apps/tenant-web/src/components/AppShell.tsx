@@ -31,7 +31,7 @@ import { cn } from '@/lib/utils'
 import { getSession, clearSession } from '@/auth/session'
 import { getCognitoConfig, buildLogoutUrl } from '@/auth/cognito'
 import { usePermissions } from '@/auth/permissions'
-import { OPERATIONS_ROLES } from '@/auth/role-guard'
+import { OPERATIONS_ROLES, DISPATCH_ACTIVITIES_ROLES } from '@/auth/role-guard'
 
 const SIDEBAR_COLLAPSED_KEY = 'pegasus.sidebar.collapsed'
 
@@ -44,15 +44,26 @@ const MOVES_VIEW_ROLES = ['tenant_admin', 'driver'] as const
 const INTEGRATION_VIEW_ROLES = ['tenant_admin', 'viewer', 'integration_publisher'] as const
 // The section is gated on OPERATIONS_ROLES (auth/role-guard.ts), shared with the
 // route `beforeLoad` guards on these same paths in router.tsx. Every role in it
-// reaches all four screens, so these children carry no `roles` of their own and
-// inherit the group's gate. (Planning and Trips were once narrowed to
+// reaches the first four screens, so those children carry no `roles` of their
+// own and inherit the group's gate. (Planning and Trips were once narrowed to
 // tenant_admin + operations_admin, leaving the dispatch roles only
 // Availability/Shipments.)
+//
+// Dispatch Activities is the exception: it carries its own, narrower list. Keep
+// it in step with `dpActivitiesRoute`'s guard in router.tsx — a grant applied to
+// one but not the other either hides a reachable screen or advertises an
+// unreachable one.
 const OPERATIONS_CHILDREN = [
   { to: '/driver-planning' as const, label: 'Availability', exact: true },
   { to: '/driver-planning/planning' as const, label: 'Planning', exact: false },
   { to: '/driver-planning/trips' as const, label: 'Trips', exact: false },
   { to: '/driver-planning/shipments' as const, label: 'Shipments', exact: false },
+  {
+    to: '/driver-planning/activities' as const,
+    label: 'Dispatch Activities',
+    exact: false,
+    roles: DISPATCH_ACTIVITIES_ROLES,
+  },
 ] as const
 
 const NAV_ITEMS = [

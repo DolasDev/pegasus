@@ -6,6 +6,7 @@ import { render, type RenderOptions, type RenderResult } from '@testing-library/
 
 import tripPlanningReducer from '../redux/trip-planning'
 import shipmentReducer from '../redux/shipments'
+import activitiesReducer from '../redux/activities'
 import commonReducer from '../redux/common'
 import tripReducer from '../redux/trips'
 import userReducer from '../redux/user'
@@ -16,6 +17,7 @@ import { ConfirmProvider } from '../components/ConfirmDialog'
 const reducers = {
   tripPlanning: tripPlanningReducer,
   shipments: shipmentReducer,
+  activities: activitiesReducer,
   common: commonReducer,
   trips: tripReducer,
   user: userReducer,
@@ -60,6 +62,7 @@ export interface RenderWithStoreOptions extends Omit<RenderOptions, 'wrapper'> {
   preloadedState?: PartialTestRootState
   common?: PartialTestRootState['common']
   shipments?: PartialTestRootState['shipments']
+  activities?: PartialTestRootState['activities']
   trips?: PartialTestRootState['trips']
   tripPlanning?: PartialTestRootState['tripPlanning']
   user?: PartialTestRootState['user']
@@ -99,6 +102,7 @@ export function renderWithStore(
     preloadedState,
     common,
     shipments,
+    activities,
     trips,
     tripPlanning,
     user,
@@ -117,6 +121,7 @@ export function renderWithStore(
     ...(preloadedState ?? {}),
     ...(common ? { common } : {}),
     ...(shipments ? { shipments } : {}),
+    ...(activities ? { activities } : {}),
     ...(trips ? { trips } : {}),
     ...(tripPlanning ? { tripPlanning } : {}),
     ...(user ? { user } : {}),

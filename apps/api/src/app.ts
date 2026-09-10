@@ -43,6 +43,7 @@ import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-o
 import { longhaulDispatchersHandler } from './handlers/longhaul-cloud/dispatchers'
 import { longhaulReferenceDataHandler } from './handlers/longhaul-cloud/reference-data'
 import { longhaulShipmentsListHandler } from './handlers/longhaul-cloud/shipments-list'
+import { longhaulActivitiesListHandler } from './handlers/longhaul-cloud/activities-list'
 import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
 import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud/shipment-filters-default'
 import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipment-filters'
@@ -478,6 +479,12 @@ v1.get('/onprem/longhaul/trip-statuses', longhaulTripStatusesHandler)
 v1.get('/onprem/longhaul/planners', longhaulPlannersHandler)
 // Phase 3: /activity-types is served cloud-direct alongside /version.
 v1.get('/onprem/longhaul/activity-types', longhaulActivityTypesHandler)
+// Dispatch Activities board: the activity-level counterpart to /shipments.
+// One query — LongDistanceDispatchActivity joined to the shipments view — so
+// the shipment-level filters (dispatcher, short haul) stay expressible in SQL
+// on an activity list. Registered here for the same route-precedence reason as
+// every other cloud-direct GET.
+v1.get('/onprem/longhaul/activities', longhaulActivitiesListHandler)
 // Phase 3: /filter-options and /dispatchers are served cloud-direct. Their
 // per-client query config (MoveType filter, dispatcher SQL) is resolved from
 // the tenant's longhaulClient column — see lib/longhaul-client-config.ts.

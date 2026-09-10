@@ -183,6 +183,12 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   // is known. Isolation is enforced by the token→tenant resolution itself, and
   // the pinned form lookup passes tenantId explicitly (findVersionForTenant).
   'feedback-public.ts',
+  // Same rationale as every longhaul-cloud entry below: the handler reads
+  // `Tenant.mssqlConnectionString` to reach the tenant's own legacy MSSQL. The
+  // Tenant model is not tenant-scoped, and no tenant data flows through Prisma
+  // here — the activity rows come from the executor Lambda, keyed by that
+  // connection string.
+  'longhaul-cloud/activities-list.ts',
   'longhaul-cloud/activity-types.ts',
   'longhaul-cloud/dispatchers.ts',
   'longhaul-cloud/driver-planning.ts',

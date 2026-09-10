@@ -3,6 +3,7 @@ import { configureStore } from '@reduxjs/toolkit'
 // reducers
 import tripPlanningReducer from './trip-planning'
 import shipmentReducer from './shipments'
+import activitiesReducer from './activities'
 import commonReducer from './common'
 import tripReducer from './trips'
 import userReducer from './user'
@@ -11,12 +12,14 @@ import versionReducer from './version'
 // Re-export state types so they can be resolved by consumers of this module
 export type { TripPlanningState } from './trip-planning'
 export type { ShipmentsState } from './shipments'
+export type { ActivitiesState } from './activities'
 export type { CommonState } from './common'
 export type { TripsState } from './trips'
 
 const reducer = {
   tripPlanning: tripPlanningReducer,
   shipments: shipmentReducer,
+  activities: activitiesReducer,
   common: commonReducer,
   trips: tripReducer,
   user: userReducer,
