@@ -234,7 +234,7 @@ describe('ActivitiesDashboard', () => {
       expect(document.querySelector('[data-target="clear-activity-filters"]')).not.toBeNull()
     })
 
-    it('Clear restores the defaults', () => {
+    it('Clear empties the selection filters but keeps the date range', () => {
       const { store, rerender } = renderWithStore(<ActivitiesDashboard />, {
         activities: { activityList: [] },
         common: commonState,
@@ -245,9 +245,12 @@ describe('ActivitiesDashboard', () => {
       })
       rerender(<ActivitiesDashboard />)
 
+      const dates = store.getState().activities.query.filters.date_range
+
       fireEvent.click(document.querySelector('[data-target="clear-activity-filters"]')!)
 
       expect(store.getState().activities.query.filters.short_haul).toEqual([])
+      expect(store.getState().activities.query.filters.date_range).toEqual(dates)
     })
   })
 })

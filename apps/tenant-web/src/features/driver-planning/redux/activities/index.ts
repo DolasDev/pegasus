@@ -105,16 +105,20 @@ const activitiesSlice = createSlice({
         },
       }
     },
-    resetActivityQuery(state) {
-      // Re-derive the range rather than replaying a range captured at module
-      // load: a board open across midnight should reset to the NEW today.
-      state.query = {
-        ...structuredClone(DEFAULT_ACTIVITY_QUERY),
-        filters: {
-          ...structuredClone(DEFAULT_ACTIVITY_QUERY.filters),
-          date_range: [activityDateOffset(0), activityDateOffset(ACTIVITIES_DEFAULT_RANGE_DAYS)],
-        },
-      }
+    /**
+     * Clear the SELECTION filters, leaving the date range alone.
+     *
+     * Deliberately not a full reset. The affordance is labelled with a count of
+     * the active selection filters, so clearing anything else — the dates most
+     * of all — would do more than the label promises. The date range is also
+     * never hidden state: both inputs are on screen showing their values, so
+     * there is nothing to "clear" the user cannot already see and change.
+     */
+    clearActivityFilters(state) {
+      state.query.filters.activity_type = []
+      state.query.filters.short_haul = []
+      state.query.filters.operations_id = []
+      state.query.filters.office = []
     },
     fetchActivitiesStart(state) {
       state.loading = true
@@ -136,7 +140,7 @@ const activitiesSlice = createSlice({
 
 export const {
   changeActivityQuery,
-  resetActivityQuery,
+  clearActivityFilters,
   fetchActivitiesStart,
   fetchActivitiesSuccess,
   fetchActivitiesFailure,

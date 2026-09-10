@@ -15,7 +15,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Select } from '../../../../components/Select'
 import { InputField } from '../../../../components/InputField'
 import { SHAUL_LIST } from '../../../../utils/shaul-list'
-import { changeActivityQuery, resetActivityQuery } from '../../../../redux/activities'
+import { changeActivityQuery, clearActivityFilters } from '../../../../redux/activities'
 import type { RootState } from '../../../../redux/store'
 import styles from './ActivityFilters.module.css'
 
@@ -43,8 +43,8 @@ const selectStyles = {
 export function ActivityFilters() {
   const dispatch = useDispatch()
   const query = useSelector((state: RootState) => state.activities.query)
-  const filterOptions = useSelector((state: RootState) => (state as any).common.filterOptions)
-  const dispatcherList = useSelector((state: RootState) => (state as any).common.dispatcherList)
+  const filterOptions = useSelector((state: RootState) => state.common.filterOptions)
+  const dispatcherList = useSelector((state: RootState) => state.common.dispatcherList)
 
   const setFilters = (patch: Record<string, unknown>) =>
     dispatch(changeActivityQuery({ filters: patch }))
@@ -165,7 +165,7 @@ export function ActivityFilters() {
         <a
           className={styles.clear}
           data-target="clear-activity-filters"
-          onClick={() => dispatch(resetActivityQuery())}
+          onClick={() => dispatch(clearActivityFilters())}
         >
           Clear ({activeCount})
         </a>

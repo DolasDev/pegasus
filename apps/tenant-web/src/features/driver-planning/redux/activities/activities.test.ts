@@ -16,7 +16,7 @@ import activitiesReducer, {
   fetchActivitiesFailure,
   fetchActivitiesStart,
   fetchActivitiesSuccess,
-  resetActivityQuery,
+  clearActivityFilters,
   type ActivitiesState,
 } from './index'
 
@@ -99,34 +99,31 @@ describe('activities query', () => {
     )
   })
 
-  it('resets to a range derived from TODAY, not from module load', () => {
-    vi.useFakeTimers()
-    try {
-      vi.setSystemTime(new Date(2026, 8, 10, 12, 0, 0))
-      const store = makeStore({
-        query: {
-          filters: {
-            date_range: ['2020-01-01', '2020-01-02'],
-            activity_type: [{ label: 'Pack', value: 'PACK' }],
-            short_haul: [],
-            operations_id: [],
-            office: [],
-          },
-          sortBy: { value: 'order_num', order: 'asc' },
+  it('clears the selection filters and LEAVES the date range alone', () => {
+    const store = makeStore({
+      query: {
+        filters: {
+          date_range: ['2026-03-01', '2026-03-05'],
+          activity_type: [{ label: 'Pack', value: 'PACK' }],
+          short_haul: [{ label: 'Yes', value: 'Y' }],
+          operations_id: [{ label: 'A B', value: '1196' }],
+          office: [{ label: 'Chicago', value: 'chicago' }],
         },
-      })
+        sortBy: { value: 'order_num', order: 'asc' },
+      },
+    })
 
-      // A board left open overnight must reset to the NEW today.
-      vi.setSystemTime(new Date(2026, 8, 11, 12, 0, 0))
-      store.dispatch(resetActivityQuery())
+    store.dispatch(clearActivityFilters())
 
-      const { query } = store.getState().activities
-      expect(query.filters.date_range).toEqual(['2026-09-11', '2026-09-18'])
-      expect(query.filters.activity_type).toEqual([])
-      expect(query.sortBy).toBeNull()
-    } finally {
-      vi.useRealTimers()
-    }
+    const { filters } = store.getState().activities.query
+    expect(filters.activity_type).toEqual([])
+    expect(filters.short_haul).toEqual([])
+    expect(filters.operations_id).toEqual([])
+    expect(filters.office).toEqual([])
+    // The affordance is labelled with a count of the SELECTION filters only.
+    // Resetting the dates too would do more than the label promises — and the
+    // dates are visible on screen, so they are not state the user needs cleared.
+    expect(filters.date_range).toEqual(['2026-03-01', '2026-03-05'])
   })
 })
 
