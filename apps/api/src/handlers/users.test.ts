@@ -617,6 +617,7 @@ describe('users handler', () => {
         tenantId: 'test-tenant-id',
         tenantName: 'Acme Movers',
         tenantSlug: 'acme',
+        intent: 'resend',
       })
     })
   })

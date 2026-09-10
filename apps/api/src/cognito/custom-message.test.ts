@@ -116,10 +116,10 @@ describe('custom-message trigger', () => {
     ssmResolveOk()
   })
 
-  // ── Pass-through for non-AdminCreateUser sources ──────────────────────────
+  // ── Pass-through for sources we do not rewrite ────────────────────────────
+  // (AdminCreateUser and ForgotPassword are rewritten; everything else is not.)
 
   it.each([
-    'CustomMessage_ForgotPassword',
     'CustomMessage_ResendCode',
     'CustomMessage_SignUp',
     'CustomMessage_UpdateUserAttribute',
@@ -270,5 +270,122 @@ describe('custom-message trigger', () => {
       ([cmd]) => (cmd as { Name: string }).Name === '/dolas/pegasus/web/domain-name',
     )
     expect(tenantCalls.length).toBe(1)
+  })
+
+  // ── Invite copy: the expiry, and how the password actually gets set ────────
+
+  it('states the temporary-password expiry in the invite', async () => {
+    // Its absence is what stranded the user who prompted this work: nothing they
+    // were ever sent said the password had a lifetime at all.
+    const event = makeEvent({ clientMetadata: defaultClientMetadata() })
+    const result = await handler(event, fakeContext, fakeCallback)
+
+    expect(result.response.emailMessage).toContain('expires in 7 days')
+  })
+
+  it('describes choosing a password as part of signing in, not as a later step', async () => {
+    // Cognito issues NEW_PASSWORD_REQUIRED mid-sign-in. The old copy ("please
+    // change your temporary password after signing in") described an optional
+    // afterwards action that does not exist.
+    const event = makeEvent({ clientMetadata: defaultClientMetadata() })
+    const result = await handler(event, fakeContext, fakeCallback)
+
+    const body = result.response.emailMessage
+    expect(body).toContain('asked to choose a permanent password as you sign in')
+    expect(body).not.toContain('after signing in')
+  })
+
+  // ── Re-invite variant ─────────────────────────────────────────────────────
+
+  describe('resend (intent: resend)', () => {
+    it('uses re-invite wording rather than first-invite wording', async () => {
+      const event = makeEvent({
+        clientMetadata: defaultClientMetadata({ intent: 'resend' }),
+      })
+      const result = await handler(event, fakeContext, fakeCallback)
+
+      expect(result.response.emailSubject).toBe(
+        'Your new temporary password for Acme Movers on Pegasus',
+      )
+      expect(result.response.emailMessage).toContain('has been re-sent')
+      expect(result.response.emailMessage).not.toContain("You've been invited")
+    })
+
+    it('says the earlier temporary password no longer works', async () => {
+      // Someone holding two invite emails otherwise cannot tell which is live.
+      const event = makeEvent({
+        clientMetadata: defaultClientMetadata({ intent: 'resend' }),
+      })
+      const result = await handler(event, fakeContext, fakeCallback)
+
+      expect(result.response.emailMessage).toContain('no longer works')
+      expect(result.response.emailMessage).toContain('expires in 7 days')
+    })
+
+    it('still carries the username and password placeholders Cognito substitutes', async () => {
+      const event = makeEvent({
+        clientMetadata: defaultClientMetadata({ intent: 'resend' }),
+      })
+      const result = await handler(event, fakeContext, fakeCallback)
+
+      expect(result.response.emailMessage).toContain('{username}')
+      expect(result.response.emailMessage).toContain('{####}')
+    })
+
+    it('renders the first-invite wording when intent is absent', async () => {
+      const event = makeEvent({ clientMetadata: defaultClientMetadata() })
+      const result = await handler(event, fakeContext, fakeCallback)
+
+      expect(result.response.emailSubject).toBe("You're invited to Acme Movers on Pegasus")
+      expect(result.response.emailMessage).toContain("You've been invited")
+    })
+  })
+
+  // ── Password-reset email ──────────────────────────────────────────────────
+
+  describe('ForgotPassword', () => {
+    it('renders a reset body with the code placeholder and a sign-in link', async () => {
+      // Cognito rejects a reset body that omits codeParameter outright.
+      const event = makeEvent({ triggerSource: 'CustomMessage_ForgotPassword' })
+      const result = await handler(event, fakeContext, fakeCallback)
+
+      expect(result.response.emailSubject).toBe('Your Pegasus password reset code')
+      expect(result.response.emailMessage).toContain('{####}')
+      expect(result.response.emailMessage).toContain(TENANT_BASE)
+      expect(result.response.emailMessage).toContain('Forgot password?')
+    })
+
+    it('never claims the current password still works', async () => {
+      // An admin-initiated reset (AdminResetUserPassword) arrives on this very
+      // source and moves the account to RESET_REQUIRED, so the old password has
+      // already stopped working. The copy must hold for both halves.
+      const event = makeEvent({ triggerSource: 'CustomMessage_ForgotPassword' })
+      const result = await handler(event, fakeContext, fakeCallback)
+
+      expect(result.response.emailMessage).not.toMatch(/current password.*(work|valid)/i)
+    })
+
+    it('SECURITY: renders nothing from clientMetadata on this publicly-invocable source', async () => {
+      // ForgotPassword is unauthenticated and accepts ClientMetadata, so anyone
+      // could invoke it for any address with a payload of their choosing. If
+      // this test fails, our own domain is sending attacker-authored prose.
+      const attacker = {
+        source: 'tenant',
+        tenantId: 'pwned',
+        tenantName: 'Your account is compromised - call 555-0100 to restore it',
+        tenantSlug: 'pwned',
+        intent: 'resend',
+      }
+      const event = makeEvent({
+        triggerSource: 'CustomMessage_ForgotPassword',
+        clientMetadata: attacker,
+      })
+      const result = await handler(event, fakeContext, fakeCallback)
+
+      const rendered = result.response.emailMessage + result.response.emailSubject
+      expect(rendered).not.toContain('555-0100')
+      expect(rendered).not.toContain('compromised')
+      expect(rendered).not.toContain('pwned')
+    })
   })
 })

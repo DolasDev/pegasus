@@ -219,6 +219,9 @@ describe('resendCognitoInvite', () => {
       tenantId: 'tenant-uuid-1',
       tenantName: 'Acme Movers',
       tenantSlug: 'acme',
+      // Drives the re-invite wording in cognito/custom-message.ts. Without it a
+      // resend reads exactly like a first invite.
+      intent: 'resend',
     })
   })
 

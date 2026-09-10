@@ -366,9 +366,14 @@ function ResetPasswordConfirm({ user, onConfirm, onCancel }: ResetPasswordConfir
     <Card>
       <CardHeader>
         <CardTitle>Reset password?</CardTitle>
+        {/* AdminResetUserPassword moves the account to RESET_REQUIRED
+            immediately, so the old password is dead the moment this is
+            confirmed — not when the user finishes the reset. The previous
+            copy promised the opposite. */}
         <CardDescription>
           <strong>{user.email}</strong> will be emailed a confirmation code to set a new password.
-          Their current password keeps working until they complete the reset.
+          Their current password stops working right away, so they will need that code to sign in
+          again.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
