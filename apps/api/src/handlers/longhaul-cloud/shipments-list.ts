@@ -40,7 +40,6 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
-import { getLonghaulClientConfigFor } from '../../lib/longhaul-client-config'
 import {
   ACTIVITY_TYPE_CODE,
   enrichShipmentWithTripInfo,
@@ -110,12 +109,9 @@ class ParamBag {
 // Base query builder — mirrors findShipmentsWithQuery in the on-prem repo.
 // ---------------------------------------------------------------------------
 
-function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: string[]): string {
+function buildBaseSql(query: ShipmentQuery, bag: ParamBag): string {
   const S = SHIPMENTS_TABLE
   const where: string[] = []
-  // Set by the move_type filter; read by the Is_Trip_Planning block, which runs
-  // after it. Both constrain `import_export`, and an explicit selection wins.
-  let moveTypeFiltered = false
 
   if (query.searchTerm && query.searchTerm.length >= 3) {
     const term = query.searchTerm.toLowerCase()
@@ -200,24 +196,32 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
       if (max != null) where.push(`${S}.mileage <= ${bag.bind(max)}`)
     }
 
-    // Each date filter compares a planned column and an actual column; the
-    // `(start && end)` / end-only / start-only branching mirrors the on-prem
-    // repo (findShipmentsWithQuery) verbatim.
+    // Each date filter matches EITHER END OF THE PLANNED SPREAD — `plan_X` and
+    // `X_date2` are the two bounds of one planned range, which ShipmentDetail
+    // renders as "Pack/Load/Del Date Spread". Neither is an actual date: those
+    // are `pack_actual` / `load_actual` / `del_actual`, separate columns that
+    // NO filter reads. (The parameter was named `actualCol` and the comment
+    // here claimed "a planned column and an actual column" — both wrong, and
+    // wrong in the direction that invents a collision with the unconditional
+    // `del_actual IS NULL` predicate below. There is none.)
+    //
+    // The `(start && end)` / end-only / start-only branching mirrors the
+    // on-prem repo (findShipmentsWithQuery) verbatim.
     const dateRangeClause = (
       range: [string | null, string | null],
       planCol: string,
-      actualCol: string,
+      spreadCol: string,
     ): void => {
       const [start, end] = range
       if (start && end) {
         where.push(
           `((${S}.${planCol} BETWEEN ${bag.bind(start)} AND ${bag.bind(end)})` +
-            ` OR (${S}.${actualCol} BETWEEN ${bag.bind(start)} AND ${bag.bind(end)}))`,
+            ` OR (${S}.${spreadCol} BETWEEN ${bag.bind(start)} AND ${bag.bind(end)}))`,
         )
       } else if (end) {
         where.push(`NOT (${S}.${planCol} > ${bag.bind(end)})`)
       } else if (start) {
-        where.push(`NOT (${S}.${actualCol} < ${bag.bind(start)})`)
+        where.push(`NOT (${S}.${spreadCol} < ${bag.bind(start)})`)
       }
     }
 
@@ -232,16 +236,13 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
       }
     }
 
-    // `move_type` has no column of its own — it filters `import_export`, the
-    // very column the Is_Trip_Planning whitelist below also constrains. When the
-    // user picks a code the whitelist omits, ANDing the two yields an
-    // unsatisfiable conjunction and an empty list with nothing to say why. So an
-    // explicit selection SUPERSEDES the whitelist rather than intersecting with
-    // it (see the Is_Trip_Planning block).
+    // `move_type` has no column of its own — it filters `import_export`. Since
+    // #685 that is the ONLY predicate on the column: the Is_Trip_Planning
+    // eligibility whitelist that used to constrain it too is gone, so this is a
+    // plain narrowing filter over the same set the unfiltered board shows.
     if (f.move_type?.length) {
       const vals = f.move_type.map((m) => m.value).filter(Boolean)
       if (vals.length) {
-        moveTypeFiltered = true
         where.push(`${S}.import_export IN (${vals.map((v) => bag.bind(v)).join(', ')})`)
       }
     }
@@ -299,29 +300,21 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
     }
 
     if (f.Is_Trip_Planning) {
+      // Trip-planning eligibility is "active and not yet delivered", full stop.
+      //
+      // It used to also AND a per-client `import_export` whitelist (NWI:
+      // H/HA/M/A/SS/Z — 6 of the 16 codes the MoveType dropdown offers). That
+      // whitelist constrained the SAME column as the user-facing `move_type`
+      // filter, which made the two fight: intersecting them returned zero rows
+      // for the 10 non-whitelisted codes (#628's bug), and letting the filter
+      // supersede the whitelist meant ADDING a filter could ADD rows — a filter
+      // that widens the result is not a filter.
+      //
+      // #685 removes the whitelist instead of arbitrating between them. Every
+      // code the dropdown offers is now in the default board AND narrowable
+      // from it, so the two rules that were incompatible — "a filter can only
+      // narrow" and "every dropdown option returns something" — both hold.
       where.push(`${S}.shipment_status = ${bag.bind('A')}`)
-      // The whitelist is the DEFAULT eligibility set, not an absolute bound: it
-      // decides which codes appear when the user has expressed no preference.
-      // An explicit move_type selection IS that preference, so it wins — the
-      // user asked for those codes by name, and the dropdown (built from the
-      // MoveType lookup, `1=1` for NWI) offers all 16 of them. Suppressing the
-      // whitelist here is what makes the other 10 reachable; intersecting
-      // instead is what made them silently return zero rows.
-      //
-      // Deliberately NOT widened to include those codes by default: this same
-      // predicate gates the unfiltered planning list, and admitting them there
-      // would take it from ~15.9k to ~43.6k eligible rows (prod NWI), burying
-      // central dispatchers in LOCAL MOVES / PERM STORAGE and blowing the
-      // RESULT_LIMIT cap. Which codes also belong in the DEFAULT set is a
-      // separate, per-code operations decision.
-      //
-      // The other two predicates are unconditional — an explicit move-type
-      // filter says nothing about wanting cancelled or already-delivered work.
-      if (!moveTypeFiltered) {
-        where.push(
-          `${S}.import_export IN (${importExportTypes.map((t) => bag.bind(t)).join(', ')})`,
-        )
-      }
       where.push(`${S}.del_actual IS NULL`)
     }
   }
@@ -479,9 +472,13 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
     )
   }
   const connectionString = tenant.mssqlConnectionString
-  // Per-client import/export codes for the Is_Trip_Planning filter — resolved
-  // from the tenant's longhaulClient ('nwi' | 'qmm'), not a process-env value.
-  const { importExportTypes } = getLonghaulClientConfigFor(tenant.longhaulClient)
+  // NOTE: `longhaulClient` is checked for presence above but no longer READ
+  // here — #685 removed the per-client `importExportTypes` whitelist, which was
+  // this handler's only use of it. The 422 stays: a tenant with no longhaul
+  // client is misconfigured for the whole longhaul surface (reference-data and
+  // filter-options still resolve `moveTypesWhere` / `dispatcherQuery` from it),
+  // and failing here rather than returning a plausible-looking list is the
+  // behavior callers already depend on.
 
   // ----- parse query params (mirror on-prem handler) -----
   let query: ShipmentQuery = {}
@@ -499,7 +496,7 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
   try {
     // --- round trip 1: base shipments query ---
     const baseBag = new ParamBag()
-    const baseSql = buildBaseSql(query, baseBag, importExportTypes)
+    const baseSql = buildBaseSql(query, baseBag)
     const baseRes = await executeSql(connectionString, baseSql, { params: baseBag.params })
     const { rows: rawShipments, dropped: duplicateRows } = dedupeByOrderNum(
       baseRes.recordset as ShipmentRow[],

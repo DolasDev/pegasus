@@ -805,7 +805,7 @@ mounting a deliberate `/runtime`-style read mirror (see `handlers/runtime-reads.
 for exactly this reason) or using a Cognito principal instead. Widening a Cedar policy is never
 the fix.
 
-## Planning's `move_type` filter and the `Is_Trip_Planning` whitelist constrain the SAME column
+## Two predicates on ONE column: Planning's `move_type` filter vs the `Is_Trip_Planning` whitelist
 
 Filtering Operations → Planning by move type **INTERNATIONAL** returned zero shipments —
 for every date range, zone and tenant. `move_type` has no column of its own: it filters
@@ -824,11 +824,51 @@ whitelist covered **6** — the other **10 were unsatisfiable**, and they carry 
 ONLY at 16,507. Widening the whitelist to cover them was therefore off the table: the same
 predicate gates the **default unfiltered** list, which would have gone ~15.9k → ~43.6k rows.
 
-So an explicit `move_type` selection now **suppresses** the whitelist clause instead of
-intersecting with it (`shipments-list.ts`, `moveTypeFiltered`). The whitelist keeps its role
-as the _default_ eligibility set; `shipment_status = 'A'` and `del_actual IS NULL` stay
-unconditional. Default list unchanged, all 16 options return rows. Which of the 10 also
-belong in the DEFAULT set remains an open per-code operations decision.
+#628 therefore made an explicit `move_type` selection **suppress** the whitelist clause
+instead of intersecting with it (`moveTypeFiltered`), keeping the whitelist as the _default_
+eligibility set.
+
+**That traded one bug for a subtler one, and #685 removed the whitelist entirely.** Suppression
+means adding a filter can **ADD** rows: selecting HHG INTRASTATE (`I`) dropped the whitelist and
+surfaced ~1,964 shipments the unfiltered board never showed. A filter that widens its own result
+is indefensible from the user's side, and no amount of arbitration between the two predicates
+fixes it — the root cause is that a system default and a user filter constrained the SAME column.
+
+`Is_Trip_Planning` is now `shipment_status = 'A' AND del_actual IS NULL`, full stop;
+`importExportTypes` is deleted from `longhaul-client-config.ts` with no remaining caller. Every
+code the dropdown offers is in the default board AND narrowable from it, so the two rules that
+were incompatible — "a filter can only narrow" and "every dropdown option returns something" —
+both hold. The board grows accordingly: measure before assuming the ±30-day default window still
+fits under `SHIPMENT_RESULT_LIMIT` (1000) for a given tenant.
+
+**The generalizable rule:** when a system default and a user filter constrain the same column,
+neither ANDing them nor letting one win is correct. Intersecting makes the default silently
+unoverridable; overriding makes the filter non-monotonic. Remove one of the two predicates.
+
+**Two system predicates survive** in `buildBaseSql`: `shipment_status = 'A'` and
+`del_actual IS NULL`. Nothing user-facing targets either today — the date filters match the two
+bounds of the PLANNED spread (`plan_X` + `X_date2`, ShipmentDetail's "Date Spread"), never
+`pack_actual`/`load_actual`/`del_actual`. **If you ever add an "Actual Del Date" filter, remove
+`del_actual IS NULL` — do not AND with it.** Same for a shipment-status filter. Every other
+predicate in the builder is a pure conjunct, so no filter can widen its own result; audited
+Sep 2026, and `moveTypeFiltered` was the only suppression flag that ever existed.
+
+**The search box is the one place adding input still WIDENS the result** — and it is not a
+filter. `buildBaseSql` is `if (searchTerm.length >= 3) {…} else if (filters) {…}`, so at three
+characters every filter AND both eligibility predicates vanish: search returns cancelled and
+already-delivered orders with the date window gone. At two characters they all apply. Deliberate
+on-prem parity (`findShipmentsWithQuery`), pinned by a test — flagged here because the 2-vs-3
+character cliff is invisible and reads exactly like the move-type bug from the user's side.
+
+**Beware the JS post-filters when the base query is capped.** `TripStatus_id` and
+`latest_activity` filter in JS after `SELECT TOP (1001) … ORDER BY plan_load ASC`, so on an
+over-cap base they only ever see the 1001 EARLIEST-planned-load shipments — a biased slice, not
+a random one. Post-filtering then brings the count under 1000, so no `RESULT_LIMIT_EXCEEDED`
+fires and `meta.count` undercounts with nothing to indicate it. That is why `sit_dest` was
+deliberately written in SQL instead (see its comment); these two can't follow because both
+fields are derived per row with no column behind them. Removing the eligibility whitelist grew
+the base set ~2.74×, so this is more reachable than it was — a dispatcher who widens the load
+window past the cap and then picks a Last Activity gets a silently incomplete list.
 
 Three things make it invisible:
 
@@ -839,6 +879,8 @@ Three things make it invisible:
   filters that cannot match. (QMM's `moveTypesWhere` is restrictive, which is why it needs no
   `'Z'`: the code never reaches a filter.)
 - An empty list is indistinguishable from "no matching shipments". Nothing surfaces the clash.
+  The #628 shape was worse in this respect: a filter that returns MORE rows looks like working
+  software, so it survived from Aug 2026 until a dispatcher noticed the count going the wrong way.
 
 Not a port regression — legacy `shipment.repository.v2.ts:171`/`:214` AND'd the same two
 predicates onto the same column, so INTERNATIONAL returned nothing there too.

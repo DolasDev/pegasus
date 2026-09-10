@@ -133,9 +133,9 @@ describe('ShipmentCard indicator', () => {
     expect(screen.getByText('O1')).toBeInTheDocument()
   })
 
-  // Codes outside the old allow-list are reachable now that an explicit
-  // move-type filter overrides the trip-planning whitelist. A blank badge would
-  // make each of them read as an Interstate move.
+  // Codes outside the old allow-list reach the card on the default board now
+  // that #685 removed the trip-planning import_export whitelist. A blank badge
+  // would make each of them read as an Interstate move.
   it.each(['OA', 'DA', 'LC', 'I', 'L', 'P', 'SP', 'C', 'TC', 'OF'])(
     'badges newly reachable move type %s',
     (code) => {

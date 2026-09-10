@@ -32,11 +32,12 @@ function getMoveType(moveType: any): string {
   // within a single code. Trim before comparing, and badge on the way out.
   const code = typeof moveType === 'string' ? moveType.trim() : ''
   // Allow-listing the badged codes meant any code missing from that list
-  // rendered blank — indistinguishable from Interstate. Now that an explicit
-  // move-type filter overrides the trip-planning whitelist, all 16 of NWI's
-  // lookup codes can reach this card, so invert it: everything except the
-  // deliberately-unbadged common case gets a badge, and a code added to the
-  // lookup later is badged automatically rather than silently blank.
+  // rendered blank — indistinguishable from Interstate. Since #685 dropped the
+  // trip-planning import_export whitelist entirely, all 16 of NWI's lookup
+  // codes reach this card on the DEFAULT board (not just under a filter), so
+  // invert it: everything except the deliberately-unbadged common case gets a
+  // badge, and a code added to the lookup later is badged automatically rather
+  // than silently blank.
   return code === UNBADGED_MOVE_TYPE ? '' : code
 }
 
