@@ -807,11 +807,16 @@ the fix.
 
 ## Two predicates on ONE column: Planning's `move_type` filter vs the `Is_Trip_Planning` whitelist
 
+> **Resolved — kept as the worked example behind the rule at the end of this section.**
+> The whitelist no longer exists; everything before "#685 removed the whitelist entirely" is
+> the history that produced the rule. Line references are deliberately omitted: the code they
+> pointed at is gone, and a stale line number is how this bug kept getting misread.
+
 Filtering Operations → Planning by move type **INTERNATIONAL** returned zero shipments —
-for every date range, zone and tenant. `move_type` has no column of its own: it filters
-`import_export` (`shipments-list.ts:223`), which is also the column the `Is_Trip_Planning`
-predicate ANDs its per-client eligibility whitelist onto (`:250`). Selecting a code outside
-that whitelist produces an unsatisfiable conjunction:
+for every date range, zone and tenant. `move_type` has no column of its own: it filtered
+`import_export`, which was also the column the `Is_Trip_Planning` predicate ANDed its
+per-client eligibility whitelist onto. Selecting a code outside that whitelist produced an
+unsatisfiable conjunction:
 
 ```sql
 import_export IN ('Z') AND import_export IN ('H','HA','M','A','SS')
