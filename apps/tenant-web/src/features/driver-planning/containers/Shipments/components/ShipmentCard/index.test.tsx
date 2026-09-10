@@ -41,6 +41,15 @@ const sitIndicatorColor = (container: HTMLElement): string | undefined =>
     (el) => el.querySelector('i.fa-warehouse') && el.style.color,
   )?.style.color
 
+/**
+ * Colour of the actual-weight scale badge on the est-weight cell — green when
+ * the shipment has a shadow weight, goldenrod when it does not.
+ */
+const actualWeightIconColor = (container: HTMLElement): string | undefined =>
+  [...container.querySelectorAll('span')].find(
+    (el) => el.querySelector('i.fa-scale-unbalanced-flip') && el.style.color,
+  )?.style.color
+
 /** Colour of the OA coverage shield, or undefined when no shield renders. */
 const coverageShieldColor = (container: HTMLElement): string | undefined =>
   [...container.querySelectorAll('span')].find(
@@ -194,5 +203,38 @@ describe('ShipmentCard indicator', () => {
       packing_coverage: { order_num: 1 },
     })
     expect(container.querySelector('i.fa-shield-halved')).toBeNull()
+  })
+})
+
+// The scale badge mirrors the ShipmentDetail "Actual Weight" row, whose colour
+// keys off `pegasus_shadow.weight` — the `sales` shadow table's weight, NOT the
+// view's own `weight` column that the trip roll-up calls actual weight.
+describe('ShipmentCard actual-weight indicator', () => {
+  it('shows the scale badge in goldenrod when the shipment has no shadow at all', () => {
+    const { container } = render({ pegasus_shadow: null })
+    expect(actualWeightIconColor(container)).toBe('goldenrod')
+  })
+
+  it('shows the scale badge in goldenrod when the shadow weight is null', () => {
+    const { container } = render({ pegasus_shadow: { order_num: 'O1', weight: null } })
+    expect(actualWeightIconColor(container)).toBe('goldenrod')
+  })
+
+  // A zero actual weight is meaningless and is treated as unweighed, matching
+  // the detail panel's truthiness check rather than a `!= null` one.
+  it('shows the scale badge in goldenrod when the shadow weight is zero', () => {
+    const { container } = render({ pegasus_shadow: { order_num: 'O1', weight: 0 } })
+    expect(actualWeightIconColor(container)).toBe('goldenrod')
+  })
+
+  it('shows the scale badge in green once an actual weight exists', () => {
+    const { container } = render({ pegasus_shadow: { order_num: 'O1', weight: 16200 } })
+    expect(actualWeightIconColor(container)).toBe('green')
+  })
+
+  it('still renders the estimated weight alongside the badge', () => {
+    const { container } = render({ total_est_wt: 5000 })
+    expect(screen.getByText('5000')).toBeTruthy()
+    expect(container.querySelector('i.fa-scale-unbalanced-flip')).not.toBeNull()
   })
 })
