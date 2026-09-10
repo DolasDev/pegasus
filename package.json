@@ -21,11 +21,11 @@
     "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
   },
   "devDependencies": {
-    "@aws-sdk/client-ssm": "^3.1121.0",
-    "@aws-sdk/credential-providers": "^3.1121.0",
+    "@aws-sdk/client-ssm": "^3.1127.0",
+    "@aws-sdk/credential-providers": "^3.1127.0",
     "@eslint/js": "^10.0.0",
     "audit-ci": "^7.1.0",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "exceljs": "^4.4.0",
     "husky": "^9.1.7",
@@ -34,7 +34,7 @@
     "shellcheck": "^4.1.0",
     "turbo": "^2.10.12",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.68.0",
+    "typescript-eslint": "^8.70.0",
     "vitest": "^4.1.11"
   },
   "lint-staged": {

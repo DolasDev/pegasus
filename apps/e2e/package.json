@@ -9,9 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.1121.0",
-    "@playwright/mcp": "^0.0.79",
-    "@playwright/test": "^1.62.1",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1127.0",
+    "@playwright/mcp": "^0.0.80",
+    "@playwright/test": "^1.63.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@types/node": "^22.20.1",
