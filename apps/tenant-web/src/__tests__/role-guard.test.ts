@@ -5,7 +5,7 @@ vi.mock('@/auth/session', () => ({
   getSession: vi.fn(),
 }))
 
-import { requireRole, OPERATIONS_ROLES } from '@/auth/role-guard'
+import { requireRole, OPERATIONS_ROLES, DISPATCH_ACTIVITIES_ROLES } from '@/auth/role-guard'
 import { getSession } from '@/auth/session'
 import type { Session } from '@/auth/session'
 
@@ -122,6 +122,45 @@ describe('OPERATIONS_ROLES', () => {
       expect.fail('Expected requireRole to throw')
     } catch (err) {
       expect(err).toMatchObject({ options: { to: '/dashboard' } })
+    }
+  })
+})
+
+describe('DISPATCH_ACTIVITIES_ROLES', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // Dispatch Activities is narrower than the rest of Operations. Both the route
+  // guard (dpActivitiesRoute) and the nav child spread this same const, so these
+  // pin the grant in one place.
+  it.each(['tenant_admin', 'operations_admin'])('admits %s to Dispatch Activities', (role) => {
+    mockedGetSession.mockReturnValue(makeSession({ roleNames: [role] }))
+
+    expect(() => requireRole(...DISPATCH_ACTIVITIES_ROLES)()).not.toThrow()
+  })
+
+  // The dispatch personas reach every OTHER Operations screen. If this pair
+  // starts passing, the narrowing has been lost — which is exactly how Planning
+  // and Trips quietly became visible to everyone.
+  it.each(['long_distance_dispatch', 'central_planning_dispatch'])(
+    'turns away %s, who reaches the rest of Operations',
+    (role) => {
+      mockedGetSession.mockReturnValue(makeSession({ roleNames: [role] }))
+
+      expect(() => requireRole(...OPERATIONS_ROLES)()).not.toThrow()
+      try {
+        requireRole(...DISPATCH_ACTIVITIES_ROLES)()
+        expect.fail('Expected requireRole to throw')
+      } catch (err) {
+        expect(err).toMatchObject({ options: { to: '/dashboard' } })
+      }
+    },
+  )
+
+  it('is a strict subset of the Operations grant', () => {
+    for (const role of DISPATCH_ACTIVITIES_ROLES) {
+      expect(OPERATIONS_ROLES).toContain(role)
     }
   })
 })

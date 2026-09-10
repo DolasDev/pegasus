@@ -38,6 +38,24 @@ import { getSession } from './session'
  * Server-side Cedar policies remain the source of truth; this is client-side
  * hardening and UX.
  */
+/**
+ * Roles that can reach **Dispatch Activities** — a strict subset of
+ * OPERATIONS_ROLES.
+ *
+ * The board is scoped to operations admins by request: it is shaping up to be
+ * the dispatcher workstation, and until it is one, a half-built surface should
+ * not be the first thing the dispatch personas see under Operations.
+ *
+ * `tenant_admin` is included because it is the permit-all persona server-side —
+ * omitting it here would hide the screen from the tenant's own administrator
+ * while Cedar happily authorized every call it makes.
+ *
+ * Enforced in the two places that must agree: the route `beforeLoad` guard in
+ * router.tsx and the nav child in AppShell.tsx. Same reason OPERATIONS_ROLES
+ * lives here rather than in either file.
+ */
+export const DISPATCH_ACTIVITIES_ROLES = ['tenant_admin', 'operations_admin'] as const
+
 export const OPERATIONS_ROLES = [
   'tenant_admin',
   'operations_admin',

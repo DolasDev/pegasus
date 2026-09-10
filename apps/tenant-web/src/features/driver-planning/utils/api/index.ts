@@ -48,6 +48,10 @@ export const API = {
   // The on-prem bridge returns trips with relations flattened into aliased
   // columns; reshape them back into the nested shape the ported components
   // (TripCard, the trip-detail Gantt, PendingTrips) were written against.
+  // The Dispatch Activities board. No reshape: the handler projects an explicit
+  // column list with flat aliases, so the row arrives in the shape the card
+  // renders — unlike shipments/trips, which carry legacy nested relations.
+  fetchActivities: (query: any) => fetchHelper('fetchActivities', query),
   fetchTrips: async (query: any) => reshapeTripList(await fetchHelper('fetchTrips', query)),
   fetchTrip: async (tripId: number) => reshapeTrip(await fetchHelper('fetchTrip', tripId)),
   saveTrip: (trip: any) => fetchHelper('saveTrip', trip),

@@ -1,0 +1,54 @@
+/* One open row of controls — see the component header on why this board does
+   not reuse the shipments panel's collapsible 5-column grid. Wraps rather than
+   scrolls so a narrow window stacks the controls instead of hiding them. */
+.container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 6px 4px 10px;
+}
+
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.filter > label {
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--blue-700);
+}
+
+/* react-select sizes to its container, so the width lives here rather than in
+   the `styles` prop — keeps the two date inputs and the four selects on one
+   measurement system. */
+.control {
+  width: 170px;
+  font-size: 10px;
+}
+
+.dateRange {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dateRange input {
+  font-size: 11px;
+}
+
+.dateSeparator {
+  font-size: 10px;
+  color: var(--blue-700);
+}
+
+.clear {
+  color: var(--blue);
+  font-size: 12px;
+  cursor: pointer;
+  padding-bottom: 6px;
+}

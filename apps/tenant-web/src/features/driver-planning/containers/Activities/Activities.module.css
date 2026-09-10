@@ -1,0 +1,73 @@
+/* Mirrors Shipments.module.css. The comments there explain WHY each rule is
+   shaped this way (the Lane is the scroll box, so the header has to pin inside
+   it and the lane's top padding has to go); this board inherits the same
+   constraints because it inherits the same Lane. */
+
+.container {
+  height: 100%;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+/* The cards are the Lane's grandchildren — same selector shape the shipments
+   lane uses to space them. */
+.container > div > div {
+  margin: 3px;
+}
+
+/* `overflow: auto` clips at the padding box, so the Lane's 5px top padding
+   would let scrolling cards peek above the pinned header. */
+.container > .activitiesLane {
+  padding-top: 0;
+}
+
+/* Title + filters + column labels pin as one block while the cards scroll
+   under them. */
+.container > div > .stickyHeader {
+  position: sticky;
+  top: 0;
+  z-index: 101;
+  background-color: var(--grey);
+  margin: 0 3px;
+  padding-top: 5px;
+  box-shadow: 0 3px 4px -2px rgba(0, 0, 0, 0.2);
+}
+
+.laneTitle {
+  margin: 10px 0;
+  font-size: 12px;
+  letter-spacing: 1px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--blue-700);
+}
+
+.flexContainer {
+  display: flex;
+  justify-content: space-evenly;
+  padding: 10px;
+}
+
+.flexContainer > b {
+  flex: 1;
+  font-size: 12px;
+}
+
+.flexContainer i {
+  margin-left: 5px;
+}
+
+.down {
+  transform: rotate(180deg);
+}
+
+.header {
+  cursor: pointer;
+}
+
+.emptyDisclaimer {
+  font-size: 12px;
+  text-align: center;
+  padding: 20px;
+}

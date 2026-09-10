@@ -137,6 +137,14 @@
   width: 100%;
 }
 
+.driver-planning-root .ActivitiesModule__container {
+  display: flex;
+  flex: 1;
+  margin: 10px 0;
+  overflow: hidden;
+  width: 100%;
+}
+
 .driver-planning-root .TripsModule__container {
   margin: 10px 0;
   overflow: auto;
@@ -161,6 +169,21 @@
 /* Flex items default to `min-height: auto` and refuse to shrink below their
  * content — the pinned height above only holds if this can shrink. */
 .driver-planning-root:has(> .PlanningModule__container) > .PlanningModule__container {
+  min-height: 0;
+}
+
+/* Dispatch Activities needs the same height pinning as Planning, and for the
+ * same reason: the board's sticky header only pins if the Lane is the element
+ * that scrolls, and the Lane only scrolls if this flex line is constrained.
+ * Without it the root grows to content height, AppShell's <main> takes over the
+ * scrolling, and the header scrolls away with the cards. No drawer rule follows
+ * this one — the Activities board has no detail drawer. */
+.driver-planning-root:has(> .ActivitiesModule__container) {
+  height: 100%;
+  min-height: 0;
+}
+
+.driver-planning-root:has(> .ActivitiesModule__container) > .ActivitiesModule__container {
   min-height: 0;
 }
 

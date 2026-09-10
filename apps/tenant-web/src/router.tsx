@@ -8,7 +8,7 @@ import { LoginCallbackPage } from '@/routes/login.callback'
 import { LoginSignedOutPage } from '@/routes/login.signed-out'
 import { AuthLayout } from '@/routes/_auth'
 import { authGuard } from '@/auth/guard'
-import { requireRole, OPERATIONS_ROLES } from '@/auth/role-guard'
+import { requireRole, OPERATIONS_ROLES, DISPATCH_ACTIVITIES_ROLES } from '@/auth/role-guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
@@ -60,6 +60,11 @@ const TripsModuleLazy = lazy(() =>
 const ShipmentModuleLazy = lazy(() =>
   import('@/features/driver-planning/routes/ShipmentModule').then((m) => ({
     default: m.ShipmentModule,
+  })),
+)
+const ActivitiesModuleLazy = lazy(() =>
+  import('@/features/driver-planning/routes/ActivitiesModule').then((m) => ({
+    default: m.ActivitiesModule,
   })),
 )
 const TripDetailLazy = lazy(() =>
@@ -411,6 +416,16 @@ const dpRejectedTripRoute = createRoute({
   component: TripDetailLazy,
 })
 
+// Dispatch Activities — narrower than its Operations siblings: gated on
+// DISPATCH_ACTIVITIES_ROLES (tenant_admin + operations_admin), not the full
+// OPERATIONS_ROLES. The nav child in AppShell.tsx carries the same list.
+const dpActivitiesRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'activities',
+  beforeLoad: requireRole(...DISPATCH_ACTIVITIES_ROLES),
+  component: ActivitiesModuleLazy,
+})
+
 const dpShipmentsRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'shipments',
@@ -448,6 +463,7 @@ const routeTree = rootRoute.addChildren([
       dpRejectedTripRoute,
       dpTripDetailRoute,
       dpShipmentsRoute,
+      dpActivitiesRoute,
     ]),
     settingsLayout.addChildren([
       ssoConfigRoute,
