@@ -154,7 +154,8 @@ export type ResendInviteOutcome = 'resent' | 'created' | 'already_registered' | 
  * `tenant` must be forwarded on every branch: without ClientMetadata the
  * CustomMessage trigger (`cognito/custom-message.ts`) passes the event straight
  * through and the invitee receives Cognito's stock template — no tenant name and
- * no login link.
+ * no login link. The RESEND call additionally carries `intent: 'resend'` so that
+ * trigger can render re-invite wording instead of first-invite wording.
  */
 export async function resendCognitoInvite(
   email: string,
@@ -190,6 +191,10 @@ export async function resendCognitoInvite(
         tenantId: tenant.tenantId,
         tenantName: tenant.tenantName,
         tenantSlug: tenant.tenantSlug,
+        // A resend re-fires CustomMessage_AdminCreateUser, so without this the
+        // recipient gets a body identical to their first invite — with no hint
+        // that the temporary password they already have just stopped working.
+        intent: 'resend',
       },
     }),
   )

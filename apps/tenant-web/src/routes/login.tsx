@@ -11,6 +11,7 @@ import {
   type TenantResolution,
   type TenantProvider,
 } from '@/auth/tenant-resolver'
+import { forgotRefusalMessage, FORGOT_REFUSED_GENERIC } from '@/auth/forgot-password-message'
 import { apiFetch } from '@/api/client'
 import {
   getCognitoConfig,
@@ -227,19 +228,26 @@ export function LoginPage() {
   // Forgot-password — self-service reset via Cognito ForgotPassword
   // -------------------------------------------------------------------------
 
+  /** Turns a Cognito refusal into the narrowest message we can honestly give.
+   *  Resolution failures fall back to the generic copy — the user is already
+   *  looking at an error, so a second one helps nobody. */
+  async function explainForgotRefusal(forgotEmail: string): Promise<string> {
+    try {
+      return forgotRefusalMessage(await resolveTenantsForEmail(forgotEmail))
+    } catch {
+      return FORGOT_REFUSED_GENERIC
+    }
+  }
+
   /** Requests a reset code, then advances to the code-entry step. Throws a
    *  user-ready Error on failure so the form surfaces it inline for retry. */
   async function handleForgotSubmit(forgotEmail: string) {
     try {
       await forgotPassword(forgotEmail)
     } catch (err) {
-      // Federated/SSO-only accounts have no password to reset.
       const code = err instanceof CognitoError ? err.code : ''
       if (code === 'NotAuthorizedException' || code === 'InvalidParameterException') {
-        throw new Error(
-          'This account signs in through your organization’s identity provider and has no password to reset.',
-          { cause: err },
-        )
+        throw new Error(await explainForgotRefusal(forgotEmail), { cause: err })
       }
       throw err instanceof Error
         ? err

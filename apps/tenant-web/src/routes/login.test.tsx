@@ -23,6 +23,20 @@ vi.mock('@/auth/tenant-resolver', () => ({
   selectTenant: vi.fn(),
 }))
 
+// CognitoError must be a real class — the forgot-password path branches on
+// `err instanceof CognitoError`. Defined via vi.hoisted so the (hoisted)
+// vi.mock factory below can reference it.
+const { MockCognitoError } = vi.hoisted(() => ({
+  MockCognitoError: class extends Error {
+    code: string
+    constructor(code: string, message: string) {
+      super(message)
+      this.code = code
+      this.name = code
+    }
+  },
+}))
+
 vi.mock('@/auth/cognito', () => ({
   getCognitoConfig: vi.fn(() => ({
     userPoolId: 'us-east-1_test',
@@ -34,6 +48,10 @@ vi.mock('@/auth/cognito', () => ({
   signIn: vi.fn(),
   respondToMfaChallenge: vi.fn(),
   respondToNewPasswordChallenge: vi.fn(),
+  forgotPassword: vi.fn(),
+  confirmForgotPassword: vi.fn(),
+  passwordPolicyMessage: vi.fn(() => null),
+  CognitoError: MockCognitoError,
 }))
 
 vi.mock('@/auth/pkce', () => ({
@@ -70,6 +88,7 @@ vi.mock('../config', () => ({
 // ---------------------------------------------------------------------------
 
 import { resolveTenantsForEmail, selectTenant } from '@/auth/tenant-resolver'
+import { forgotPassword } from '@/auth/cognito'
 import type { TenantResolution } from '@/auth/tenant-resolver'
 
 const mockResolveTenantsForEmail = vi.mocked(resolveTenantsForEmail)
@@ -213,6 +232,107 @@ describe('LoginPage — select-tenant step', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/unable to reach the authentication service/i)).toBeInTheDocument()
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Forgot-password refusal
+//
+// Cognito refuses ForgotPassword for a federated account AND for an account
+// still holding an unredeemed invitation, with the same two exception codes and
+// no way to tell them apart. The page used to assert the federated explanation
+// unconditionally, which told an invitee whose temporary password had expired
+// that they were an SSO user.
+// ---------------------------------------------------------------------------
+
+describe('LoginPage — forgot-password refusal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  /** Drives email → password step → "Forgot password?" → submit the reset form.
+   *  A tenant with SSO providers lands on the method picker first, so choose
+   *  the password option when it appears. */
+  async function reachForgotAndSubmit(tenants: TenantResolution[]) {
+    mockResolveTenantsForEmail.mockResolvedValue(tenants)
+    mockSelectTenant.mockResolvedValue(tenants[0]!)
+
+    render(<LoginPage />)
+    await submitEmail('user@acme.com')
+
+    if (tenants[0]!.providers.length > 0) {
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /sign in with password/i })).toBeInTheDocument()
+      })
+      fireEvent.click(screen.getByRole('button', { name: /sign in with password/i }))
+    }
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /forgot password\?/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /forgot password\?/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send reset code/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /send reset code/i }))
+  }
+
+  it('does not blame SSO when the tenant has no identity provider', async () => {
+    vi.mocked(forgotPassword).mockRejectedValue(
+      new MockCognitoError('NotAuthorizedException', 'User password cannot be reset'),
+    )
+
+    await reachForgotAndSubmit([makeTenant({ providers: [] })])
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/ask your administrator to resend your invitation/i),
+      ).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/identity provider/i)).not.toBeInTheDocument()
+  })
+
+  it('offers both explanations when the tenant does have an identity provider', async () => {
+    vi.mocked(forgotPassword).mockRejectedValue(
+      new MockCognitoError('InvalidParameterException', 'Cannot reset password'),
+    )
+
+    await reachForgotAndSubmit([
+      makeTenant({ providers: [{ id: 'okta', name: 'Okta', type: 'oidc' }] }),
+    ])
+
+    await waitFor(() => {
+      expect(screen.getByText(/identity provider/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/resend your invitation/i)).toBeInTheDocument()
+  })
+
+  it('falls back to generic copy when the re-resolve fails', async () => {
+    vi.mocked(forgotPassword).mockRejectedValue(
+      new MockCognitoError('NotAuthorizedException', 'nope'),
+    )
+    mockResolveTenantsForEmail
+      .mockResolvedValueOnce([makeTenant({ providers: [] })])
+      .mockRejectedValueOnce(new Error('offline'))
+    mockSelectTenant.mockResolvedValue(makeTenant({ providers: [] }))
+
+    render(<LoginPage />)
+    await submitEmail('user@acme.com')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /forgot password\?/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /forgot password\?/i }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send reset code/i })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /send reset code/i }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/check the address, or contact your administrator/i),
+      ).toBeInTheDocument()
     })
   })
 })

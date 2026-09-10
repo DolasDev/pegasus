@@ -1313,3 +1313,62 @@ identity provider" — so an expired invitee who tries "Forgot password?" is tol
 they are an SSO account. The platform-admin surface
 (`handlers/admin/tenant-users.ts`) has neither reset nor resend. And
 `tempPasswordValidity` could be widened (max 365 days) to lower incidence.
+
+## `ClientMetadata` is trustworthy on one CustomMessage source and forgeable on another
+
+`cognito/custom-message.ts` rewrites two of Cognito's stock emails, and the two
+sources have opposite trust:
+
+- `CustomMessage_AdminCreateUser` fires from `AdminCreateUser`, an IAM-gated
+  admin API whose only callers are ours. Its metadata (`tenantName`, `intent`, …)
+  is safe to render.
+- `CustomMessage_ForgotPassword` fires from `ForgotPassword`, a **public,
+  unauthenticated** Cognito API **that also accepts `ClientMetadata`**. Anyone can
+  invoke it for any address with a payload of their choosing.
+
+So anything the trigger renders from metadata on the ForgotPassword source is
+attacker-authored prose leaving our own domain, over our own DKIM:
+
+```
+tenantName: "Your account is compromised - call 555-0100 to restore it"
+```
+
+`escapeHtml` is no defense — the payload is text, not markup. The reset branch
+therefore reads **no metadata at all**: fixed copy, link from SSM, and the only
+per-recipient value is the address Cognito is already mailing
+(`request.userAttributes.email`). `custom-message.test.ts` carries a test named
+`SECURITY: renders nothing from clientMetadata …` that fails the moment someone
+wires `tenantName` in there. It has been mutation-checked — it does fail when the
+guard is removed.
+
+**Corollary for the admin-initiated reset:** there is no
+`CustomMessage_AdminResetUserPassword` trigger source (check the enum in
+`@types/aws-lambda`). `AdminResetUserPassword` — what
+`POST /users/:id/reset-password` calls — arrives as `CustomMessage_ForgotPassword`,
+indistinguishable from a self-service reset. You cannot say who started it, and
+you cannot offer the usual "your current password still works" reassurance,
+because for the admin-initiated half it is false.
+
+### `AdminResetUserPassword` kills the old password immediately
+
+It moves the account to `RESET_REQUIRED` the moment it is called, so the user is
+locked out until they complete the reset — it does not wait for them to finish.
+The tenant-web reset dialog used to promise the opposite ("Their current password
+keeps working until they complete the reset"). If you are writing copy anywhere
+near this flow, that is the fact to write against.
+
+### Cognito's ForgotPassword refusal does not tell you why
+
+It refuses with `NotAuthorizedException` or `InvalidParameterException` for a
+federated account **and** for one still on an unredeemed invitation, with no way
+to tell them apart. The login page used to map both codes to "signs in through
+your organization's identity provider", which told every invitee whose 7-day
+temporary password had expired that they were an SSO user.
+
+Do not guess from the exception code, and do not ask the API: `resolve-tenants` is
+public and unauthenticated, so per-account Cognito state there would make it a
+user-enumeration oracle. `auth/forgot-password-message.ts` narrows using only what
+that endpoint already returns publicly — whether any tenant behind the address has
+an SSO provider configured. No providers anywhere ⇒ the federated explanation is
+impossible, so speak plainly about the invitation; otherwise say both. A hedge
+that is true beats a specific claim that is false.
