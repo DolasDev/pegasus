@@ -204,6 +204,33 @@ function getFormattedWeight(weight: any) {
   return 'N/A'
 }
 
+// The estimated weight, badged with the same scale icon the ShipmentDetail
+// "Actual Weight" row uses, so a planner can see which orders still need
+// weighing without opening the detail pane. Read-only here: the card's onClick
+// selects the shipment, and the edit popover stays anchored in the detail pane.
+//
+// "Actual weight" is the `sales` shadow table's weight (`ps.weight AS
+// shadow_weight` in shipments-list, renested as `pegasus_shadow.weight` by
+// reshapeShipment) — deliberately NOT the view's own `weight` column, which the
+// trip roll-up also calls actual weight. Truthiness matches the detail panel, so
+// a 0 counts as unweighed.
+function getEstWeightWithActualIndicator(shipment: LonghaulShipmentRow) {
+  const actualWeight = shipment.pegasus_shadow?.weight
+  return (
+    <>
+      {getFormattedWeight(shipment.total_est_wt)} &nbsp;
+      <span style={{ color: actualWeight ? 'green' : 'goldenrod' }}>
+        <HoverToolTip
+          content={actualWeight ? `Actual Weight: ${actualWeight}` : 'No Actual Weight'}
+          direction="bottom"
+        >
+          <i className="fas fa-scale-unbalanced-flip"></i>
+        </HoverToolTip>
+      </span>
+    </>
+  )
+}
+
 function statusCodeToText(status_id: any): string {
   switch (status_id) {
     case 0:
@@ -251,7 +278,7 @@ export function ShipmentCard({
       <b>{`${shipment.consignee_state}`}</b>,{' '}
       <>{`${getTitleCaseWord(shipment.consignee_city)}`}</>{' '}
     </span>,
-    getFormattedWeight(shipment.total_est_wt),
+    getEstWeightWithActualIndicator(shipment),
     getPackDateStart(shipment),
     <b>{getLoadDateStart(shipment)}</b>,
     getDeliveryDateStart(shipment),
@@ -344,7 +371,7 @@ export function ShipmentCard({
                   key={idx}
                   className={`
                   ${styles.row}
-                  ${i === 0 && (idx === 3 || idx === 4) ? styles.icon : ''}
+                  ${i === 0 && (idx === 2 || idx === 3 || idx === 4) ? styles.icon : ''}
                   ${
                     (i === 0 && idx !== 7) || (i === 1 && idx !== 1)
                       ? ''
