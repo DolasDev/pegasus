@@ -23,13 +23,19 @@ jobs:
   # required checks report success, so branch protection stays satisfied.
   # secret-scan deliberately does NOT depend on this (docs can leak secrets).
   # ---------------------------------------------------------------------------
-  # `merge_group` note: every job below that is a REQUIRED check must carry
+  # `merge_group` rule: every job gated on one of these outputs must ALSO carry
   # `|| github.event_name == 'merge_group'` in its `if:`. dorny/paths-filter
   # cannot diff a merge-group ref against a meaningful base, so these outputs
   # are not trustworthy there — without the clause the job skips in the queue,
   # which satisfies branch protection vacuously and means the queue never
   # re-verifies the merged result. The clause makes it run unconditionally in
   # the queue and stay path-filtered on PRs.
+  #
+  # This is ENFORCED, not merely documented: scripts/check_ci_merge_group.py
+  # runs in the Lint job and fails the build on a violation (and on a reference
+  # to an output this job does not declare — a typo is always falsy, so the job
+  # would never run at all). Adding an output here is safe; adding a job that
+  # reads one without the clause is not.
   changes:
     name: Detect changed paths
     runs-on: ubuntu-latest
@@ -180,6 +186,13 @@ jobs:
             fi
             exit 1
           fi
+
+      # Structural guard on this very file: a path-filtered job must also run in
+      # the merge queue, because a SKIPPED required check satisfies branch
+      # protection and would pass vacuously there. Lives in Lint (a required
+      # check) so it actually gates; see the script header for the full rationale.
+      - name: Check CI merge-queue invariants
+        run: python3 scripts/check_ci_merge_group.py
 
       - name: Lint
         run: node node_modules/.bin/turbo run lint
