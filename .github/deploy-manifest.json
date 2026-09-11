@@ -20,6 +20,10 @@
     "admin-web": {
       "paths": ["apps/admin-web"],
       "stacks": ["AdminFrontendStack", "AdminFrontendAssetsStack"]
+    },
+    "company-web": {
+      "paths": ["apps/company-web"],
+      "stacks": ["CompanySiteStack"]
     }
   },
   "forceAllPaths": [
@@ -32,6 +36,7 @@
   ],
   "envExtraStacks": { "staging": ["E2EStagingRoleStack"] },
   "envConditionalStacks": {
+    "CompanySiteStack": ["staging", "prod"],
     "TemporalWorkerStack": ["staging", "prod"],
     "OutboxRelayStack": ["staging", "prod"],
     "E2EStagingRoleStack": ["staging"]

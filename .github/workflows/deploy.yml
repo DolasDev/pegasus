@@ -31,6 +31,7 @@ on:
           - api
           - tenant-web
           - admin-web
+          - company-web
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -61,6 +62,7 @@ jobs:
       api: ${{ steps.decide.outputs.api }}
       tenant_web: ${{ steps.decide.outputs.tenant_web }}
       admin_web: ${{ steps.decide.outputs.admin_web }}
+      company_web: ${{ steps.decide.outputs.company_web }}
       any: ${{ steps.decide.outputs.any }}
       migrations: ${{ steps.decide.outputs.migrations }}
     steps:
@@ -102,13 +104,15 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             case "${{ inputs.target }}" in
               all)
-                api=true; tenant=true; admin=true; migrations=true ;;
+                api=true; tenant=true; admin=true; company=true; migrations=true ;;
               api)
-                api=true; tenant=false; admin=false; migrations=true ;;
+                api=true; tenant=false; admin=false; company=false; migrations=true ;;
               tenant-web)
-                api=false; tenant=true; admin=false; migrations=false ;;
+                api=false; tenant=true; admin=false; company=false; migrations=false ;;
               admin-web)
-                api=false; tenant=false; admin=true; migrations=false ;;
+                api=false; tenant=false; admin=true; company=false; migrations=false ;;
+              company-web)
+                api=false; tenant=false; admin=false; company=true; migrations=false ;;
               *)
                 echo "Unknown target: ${{ inputs.target }}"; exit 1 ;;
             esac
@@ -124,22 +128,25 @@ jobs:
             mapfile -t API_PATHS < <(jq -r '.components.api.paths // [] | .[]' "$MANIFEST")
             mapfile -t TENANT_PATHS < <(jq -r '.components["tenant-web"].paths // [] | .[]' "$MANIFEST")
             mapfile -t ADMIN_PATHS < <(jq -r '.components["admin-web"].paths // [] | .[]' "$MANIFEST")
-            [[ ${#FORCE_ALL[@]} -gt 0 && ${#API_PATHS[@]} -gt 0 && ${#TENANT_PATHS[@]} -gt 0 && ${#ADMIN_PATHS[@]} -gt 0 ]] \
+            mapfile -t COMPANY_PATHS < <(jq -r '.components["company-web"].paths // [] | .[]' "$MANIFEST")
+            [[ ${#FORCE_ALL[@]} -gt 0 && ${#API_PATHS[@]} -gt 0 && ${#TENANT_PATHS[@]} -gt 0 && ${#ADMIN_PATHS[@]} -gt 0 && ${#COMPANY_PATHS[@]} -gt 0 ]] \
               || { echo "::error::deploy-manifest.json missing required path entries — check forceAllPaths and all component paths"; exit 1; }
             if changed "${FORCE_ALL[@]}"; then
-              api=true; tenant=true; admin=true
+              api=true; tenant=true; admin=true; company=true
             else
               changed "${API_PATHS[@]}" && api=true || api=false
               changed "${TENANT_PATHS[@]}" && tenant=true || tenant=false
               changed "${ADMIN_PATHS[@]}" && admin=true || admin=false
+              changed "${COMPANY_PATHS[@]}" && company=true || company=false
             fi
             migrations=$(changed apps/api/prisma/migrations && echo true || echo false)
           fi
           echo "api=${api}" >> "$GITHUB_OUTPUT"
           echo "tenant_web=${tenant}" >> "$GITHUB_OUTPUT"
           echo "admin_web=${admin}" >> "$GITHUB_OUTPUT"
+          echo "company_web=${company}" >> "$GITHUB_OUTPUT"
           echo "migrations=${migrations}" >> "$GITHUB_OUTPUT"
-          if [[ "$api" == "true" || "$tenant" == "true" || "$admin" == "true" ]]; then
+          if [[ "$api" == "true" || "$tenant" == "true" || "$admin" == "true" || "$company" == "true" ]]; then
             echo "any=true" >> "$GITHUB_OUTPUT"
           else
             echo "any=false" >> "$GITHUB_OUTPUT"
@@ -153,6 +160,7 @@ jobs:
             echo "| api | ${api} |"
             echo "| tenant-web | ${tenant} |"
             echo "| admin-web | ${admin} |"
+            echo "| company-web | ${company} |"
             echo "| migrations | ${migrations} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -170,6 +178,7 @@ jobs:
       deploy-api: ${{ needs.changes.outputs.api }}
       deploy-tenant: ${{ needs.changes.outputs.tenant_web }}
       deploy-admin: ${{ needs.changes.outputs.admin_web }}
+      deploy-company: ${{ needs.changes.outputs.company_web }}
       skip-migrate: ${{ needs.changes.outputs.migrations == 'true' && 'false' || 'true' }}
     secrets: inherit
     permissions:
@@ -317,6 +326,7 @@ jobs:
       deploy-api: ${{ needs.changes.outputs.api }}
       deploy-tenant: ${{ needs.changes.outputs.tenant_web }}
       deploy-admin: ${{ needs.changes.outputs.admin_web }}
+      deploy-company: ${{ needs.changes.outputs.company_web }}
       skip-migrate: ${{ needs.changes.outputs.migrations == 'true' && 'false' || 'true' }}
     secrets: inherit
     permissions:

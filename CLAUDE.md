@@ -6,14 +6,15 @@ Pegasus is a cloud-native move management SaaS platform replacing a legacy VB.NE
 
 ## Tech Stack
 
-| Package / App     | Layer                  | Technology                                                                                                                          |
-| ----------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| (Root)            | Monorepo orchestration | [Turborepo](https://turbo.build/) + npm workspaces + TypeScript 6 (strict mode)                                                     |
-| `packages/domain` | Domain Model           | Pure TypeScript — entities, value objects, business rules. Zero runtime dependencies.                                               |
-| `apps/api`        | API                    | [Hono](https://hono.dev/) on AWS Lambda. [Prisma 7](https://www.prisma.io/) + PostgreSQL ([Neon](https://neon.tech)). Zod 4 & jose. |
-| `apps/tenant-web` | Frontend (Tenant)      | React 19 + Vite 8 SPA, TanStack.                                                                                                    |
-| `apps/admin-web`  | Frontend (Admin)       | React 19 + Vite 8 SPA, TanStack.                                                                                                    |
-| `packages/infra`  | Infrastructure         | AWS CDK (TypeScript).                                                                                                               |
+| Package / App      | Layer                  | Technology                                                                                                                          |
+| ------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| (Root)             | Monorepo orchestration | [Turborepo](https://turbo.build/) + npm workspaces + TypeScript 6 (strict mode)                                                     |
+| `packages/domain`  | Domain Model           | Pure TypeScript — entities, value objects, business rules. Zero runtime dependencies.                                               |
+| `apps/api`         | API                    | [Hono](https://hono.dev/) on AWS Lambda. [Prisma 7](https://www.prisma.io/) + PostgreSQL ([Neon](https://neon.tech)). Zod 4 & jose. |
+| `apps/tenant-web`  | Frontend (Tenant)      | React 19 + Vite 8 SPA, TanStack.                                                                                                    |
+| `apps/admin-web`   | Frontend (Admin)       | React 19 + Vite 8 SPA, TanStack.                                                                                                    |
+| `apps/company-web` | Public company site    | Hand-written static HTML + CSS. No build, no framework, no JS. Not an npm workspace.                                                |
+| `packages/infra`   | Infrastructure         | AWS CDK (TypeScript).                                                                                                               |
 
 ## Monorepo Package Map
 
@@ -26,7 +27,9 @@ packages/
 apps/
 ├── api/          Hono HTTP handlers. Calls domain logic, reads/writes via Prisma.
 ├── tenant-web/   React SPA for tenants. Consumes the API; no direct DB imports.
-└── admin-web/    React SPA for platform administration.
+├── admin-web/    React SPA for platform administration.
+└── company-web/  Public marketing site (pegasusmovemanager.com). Flat HTML/CSS, no build step — the
+                  source directory IS the deployed artifact. No package.json, so Turbo/tsc ignore it.
 ```
 
 ## Turbo Pipeline & Script Execution
@@ -46,7 +49,7 @@ The monorepo uses Turborepo (`turbo.json`) and top-level npm scripts:
 - `npm run dev` — Start all packages in development mode (parallel).
 - `npm test` — Run all testing layers across all packages.
 - `npm run typecheck` — Type-check all packages.
-- `npm run deploy` — Local/emergency deploy via `packages/infra/deploy.sh`. **CI is the canonical deploy path**: pushes to `main` trigger `.github/workflows/deploy.yml`, which path-filters changes and deploys only the affected components (api / tenant-web / admin-web). A manual component deploy is available via `workflow_dispatch` from the Actions tab. OIDC role + GitHub environment setup is documented in `plans/todo/aws-oidc-setup.md` (or `plans/completed/` once done).
+- `npm run deploy` — Local/emergency deploy via `packages/infra/deploy.sh`. **CI is the canonical deploy path**: pushes to `main` trigger `.github/workflows/deploy.yml`, which path-filters changes and deploys only the affected components (api / tenant-web / admin-web / company-web). A manual component deploy is available via `workflow_dispatch` from the Actions tab. OIDC role + GitHub environment setup is documented in `plans/todo/aws-oidc-setup.md` (or `plans/completed/` once done).
 - `npm run create-admin-user` — Creates an admin user.
 
 ### Per-Package Commands

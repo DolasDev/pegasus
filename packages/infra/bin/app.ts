@@ -9,6 +9,7 @@ import { FrontendStack } from '../lib/stacks/frontend-stack'
 import { AdminFrontendStack } from '../lib/stacks/admin-frontend-stack'
 import { FrontendAssetsStack } from '../lib/stacks/frontend-assets-stack'
 import { AdminFrontendAssetsStack } from '../lib/stacks/admin-frontend-assets-stack'
+import { CompanySiteStack } from '../lib/stacks/company-site-stack'
 import { MonitoringStack } from '../lib/stacks/monitoring-stack'
 import { DocumentsStack } from '../lib/stacks/documents-stack'
 import { WireGuardStack } from '../lib/stacks/wireguard-stack'
@@ -272,6 +273,30 @@ const adminFrontendStack = new AdminFrontendStack(app, `${stackIdPrefix}-AdminFr
   // *.cloudfront.net.
   attachCustomDomain: envName === 'staging' || envName === 'prod',
 })
+
+// ── CompanySiteStack ─────────────────────────────────────────────────────────
+// Public company/marketing site (apps/company-web) — independent of the product
+// stacks: no Cognito, no API, no config.json. Deployed to staging + prod so the
+// site can be reviewed on the staging CloudFront URL before prod serves it; dev
+// is skipped because nothing there needs a marketing site.
+//
+// COMPANY_SITE_DOMAIN_READY gates the custom domain (pegasusmovemanager.com +
+// www). It stays false until, in order: (1) dolas-infra creates the Route 53
+// zone, (2) the registrar's nameservers are repointed at it, (3) the ACM
+// certificate validates. Flipping it early fails the deploy — the SSM
+// parameters it reads would not exist yet. It is a code constant rather than a
+// CDK context flag on purpose: CI passes no context, so a context flag would
+// silently turn the domain back off on the next routine main-push deploy.
+const COMPANY_SITE_DOMAIN_READY = false
+
+if (envName === 'staging' || envName === 'prod') {
+  new CompanySiteStack(app, `${stackIdPrefix}-CompanySiteStack`, {
+    env,
+    stackName: `${stackNamePrefix}-company-site`,
+    description: `${descPrefix} — S3 + CloudFront (public company site)`,
+    attachCustomDomain: envName === 'prod' && COMPANY_SITE_DOMAIN_READY,
+  })
+}
 
 // ── CognitoStack ──────────────────────────────────────────────────────────────
 // Receives cross-stack tokens for both CloudFront distribution domains.

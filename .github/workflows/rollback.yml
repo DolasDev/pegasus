@@ -39,6 +39,7 @@ on:
           - api
           - tenant-web
           - admin-web
+          - company-web
 
 # Serialize against normal deploys — same group deploy.yml uses for main, so a
 # rollback queues behind an in-flight deploy rather than racing it. Keep
@@ -62,6 +63,7 @@ jobs:
       api: ${{ steps.r.outputs.api }}
       tenant: ${{ steps.r.outputs.tenant }}
       admin: ${{ steps.r.outputs.admin }}
+      company: ${{ steps.r.outputs.company }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -76,12 +78,13 @@ jobs:
           fi
           git cat-file -e "${sha}^{commit}"   # fail fast on bogus input
           case "${{ inputs.target }}" in
-            all)        api=true;  tenant=true;  admin=true ;;
-            api)        api=true;  tenant=false; admin=false ;;
-            tenant-web) api=false; tenant=true;  admin=false ;;
-            admin-web)  api=false; tenant=false; admin=true ;;
+            all)         api=true;  tenant=true;  admin=true;  company=true ;;
+            api)         api=true;  tenant=false; admin=false; company=false ;;
+            tenant-web)  api=false; tenant=true;  admin=false; company=false ;;
+            admin-web)   api=false; tenant=false; admin=true;  company=false ;;
+            company-web) api=false; tenant=false; admin=false; company=true ;;
           esac
-          { echo "sha=$sha"; echo "api=$api"; echo "tenant=$tenant"; echo "admin=$admin"; } >> "$GITHUB_OUTPUT"
+          { echo "sha=$sha"; echo "api=$api"; echo "tenant=$tenant"; echo "admin=$admin"; echo "company=$company"; } >> "$GITHUB_OUTPUT"
           echo "### Rolling back to \`$sha\` (${{ inputs.environment }} / ${{ inputs.target }})" >> "$GITHUB_STEP_SUMMARY"
 
   rollback-staging:
@@ -95,6 +98,7 @@ jobs:
       deploy-api: ${{ needs.resolve.outputs.api }}
       deploy-tenant: ${{ needs.resolve.outputs.tenant }}
       deploy-admin: ${{ needs.resolve.outputs.admin }}
+      deploy-company: ${{ needs.resolve.outputs.company }}
       git-ref: ${{ needs.resolve.outputs.sha }}
       skip-migrate: 'true'
     secrets: inherit
@@ -113,6 +117,7 @@ jobs:
       deploy-api: ${{ needs.resolve.outputs.api }}
       deploy-tenant: ${{ needs.resolve.outputs.tenant }}
       deploy-admin: ${{ needs.resolve.outputs.admin }}
+      deploy-company: ${{ needs.resolve.outputs.company }}
       git-ref: ${{ needs.resolve.outputs.sha }}
       skip-migrate: 'true'
     secrets: inherit

@@ -234,3 +234,27 @@ inventing a second one:
 - **The zone list lives in `packages/longhaul-contracts`** (`arrival-window.ts`) so the
   picker and the validator cannot drift; an apps/api test asserts every zone the resolver
   can produce is offered by the picker.
+
+## Static sites are not SPAs — keep the 404 a 404
+
+`FrontendStack` / `AdminFrontendStack` map CloudFront 403 **and** 404 to `/index.html` with
+an HTTP **200**, because a client-side router has to receive the request to render a deep
+link. That rewrite is correct there and wrong everywhere else, and it has already cost us
+a verification: a driver-privacy-policy page was confirmed "live" by status code while the
+file was in fact missing, because the SPA fallback answers 200 for literally any path.
+
+`CompanySiteStack` (the company site, `apps/company-web`) therefore does the opposite and
+any future static bucket should copy it:
+
+- **403 and 404 both map to `/404.html` with `responseHttpStatus: 404`.** S3 behind an OAC
+  returns **403**, not 404, for a key that is not there — the bucket policy grants no
+  `s3:ListBucket` — so handling only 404 would leak a raw XML AccessDenied page to users.
+- **Verify a deployed static page by its CONTENT, never its status code.** `curl -I` proves
+  nothing about a site that has any fallback behaviour at all.
+- **The CSP is enforced, not report-only.** The SPA policy is report-only because it has to
+  reach Cognito and the API; a hand-written site with no JS has no such excuse, so
+  `default-src 'self'` ships enforced and anything that later needs an off-origin asset
+  fails loudly in review instead of quietly widening the policy.
+- **`prune: true` on the BucketDeployment.** The SPA keeps old hashed chunks on purpose
+  (open tabs mid-deploy); static pages are not content-hashed, so a deleted page must
+  actually leave the bucket rather than linger at its old URL.
