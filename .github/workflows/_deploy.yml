@@ -28,6 +28,12 @@ on:
         description: 'true if admin-web stacks should be deployed'
         type: string
         required: true
+      deploy-company:
+        description: 'true if the company-site stack should be deployed'
+        # Optional (unlike the three above) so a caller that predates the
+        # company site keeps working: it simply deploys no company stacks.
+        type: string
+        default: 'false'
       aws-region:
         description: 'AWS region (defaults to us-east-1)'
         type: string
@@ -213,10 +219,11 @@ jobs:
           API: ${{ inputs.deploy-api }}
           TENANT: ${{ inputs.deploy-tenant }}
           ADMIN: ${{ inputs.deploy-admin }}
+          COMPANY: ${{ inputs.deploy-company }}
           ENV_NAME: ${{ inputs.env-name }}
         run: |
           set -euo pipefail
-          if [[ "$API" == "true" && "$TENANT" == "true" && "$ADMIN" == "true" ]]; then
+          if [[ "$API" == "true" && "$TENANT" == "true" && "$ADMIN" == "true" && "$COMPANY" == "true" ]]; then
             target="--all"
           else
             # Stack lists are driven by .github/deploy-manifest.json (Phase 3.3)
@@ -237,6 +244,11 @@ jobs:
             # path is unaffected.
             [[ "$TENANT" == "true" ]] && add_stacks tenant-web
             [[ "$ADMIN"  == "true" ]] && add_stacks admin-web
+            # The company site (apps/company-web) is independent of the product
+            # stacks — no Cognito, no API — so it deploys on its own whenever
+            # its sources change. Synth is a no-op for dev (the stack only
+            # instantiates for staging/prod).
+            [[ "$COMPANY" == "true" ]] && add_stacks company-web
             # The staging-only E2E role stack is read by the post-deploy
             # gate via the cdk-outputs artifact. `cdk deploy <subset>` only
             # writes outputs for the named stacks, so include it on every
@@ -270,12 +282,14 @@ jobs:
           WEB_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-frontend\"].DistributionUrl // empty" "$OUTPUTS_FILE")
           ADMIN_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-admin-frontend\"].AdminDistributionUrl // empty" "$OUTPUTS_FILE")
           API_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-api\"].ApiUrl // empty" "$OUTPUTS_FILE")
+          COMPANY_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-company-site\"].CompanySiteUrl // empty" "$OUTPUTS_FILE")
 
           {
             echo "### Deployed URLs (${ENV_NAME})"
-            [[ -n "$WEB_URL" ]]   && echo "- Client app: $WEB_URL"
-            [[ -n "$ADMIN_URL" ]] && echo "- Admin portal: $ADMIN_URL"
-            [[ -n "$API_URL" ]]   && echo "- API: $API_URL"
+            [[ -n "$WEB_URL" ]]     && echo "- Client app: $WEB_URL"
+            [[ -n "$ADMIN_URL" ]]   && echo "- Admin portal: $ADMIN_URL"
+            [[ -n "$API_URL" ]]     && echo "- API: $API_URL"
+            [[ -n "$COMPANY_URL" ]] && echo "- Company site: $COMPANY_URL"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload CDK outputs
