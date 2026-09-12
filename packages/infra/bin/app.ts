@@ -281,13 +281,22 @@ const adminFrontendStack = new AdminFrontendStack(app, `${stackIdPrefix}-AdminFr
 // is skipped because nothing there needs a marketing site.
 //
 // COMPANY_SITE_DOMAIN_READY gates the custom domain (pegasusmovemanager.com +
-// www). It stays false until, in order: (1) dolas-infra creates the Route 53
-// zone, (2) the registrar's nameservers are repointed at it, (3) the ACM
-// certificate validates. Flipping it early fails the deploy — the SSM
-// parameters it reads would not exist yet. It is a code constant rather than a
+// www). Its three preconditions are now met, in order: (1) dolas-infra created
+// the Route 53 zone, (2) the registrar's nameservers were repointed at it
+// (2026-09-12 — the .com parent delegates to AWS, verified against
+// a.gtld-servers.net rather than a caching resolver), (3) the ACM certificate
+// issued and published its ARN to /dolas/pegasus/company/cert-arn.
+//
+// Turning it on makes CloudFront claim apex + www and installs the www → apex
+// redirect function. Flipping it before step 3 fails the deploy outright: the
+// SSM parameters it reads would not exist. It is a code constant rather than a
 // CDK context flag on purpose: CI passes no context, so a context flag would
 // silently turn the domain back off on the next routine main-push deploy.
-const COMPANY_SITE_DOMAIN_READY = false
+//
+// The alias records that actually point the domain here are the LAST step
+// (dolas-infra `pegasus:companySite:aliasEnabled`), so the domain never
+// resolves to a distribution that cannot yet serve the hostname.
+const COMPANY_SITE_DOMAIN_READY = true
 
 if (envName === 'staging' || envName === 'prod') {
   new CompanySiteStack(app, `${stackIdPrefix}-CompanySiteStack`, {
