@@ -48,7 +48,7 @@ jobs:
       AWS_REGION: ${{ inputs.aws-region }}
       STACK_NAME: pegasus-${{ inputs.env-name }}-wireguard
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup
 
