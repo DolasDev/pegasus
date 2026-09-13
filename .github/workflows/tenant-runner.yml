@@ -58,7 +58,7 @@ jobs:
       AWS_REGION: us-east-1
       ECR_REPO_NAME: pegasus-tenant-runner
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -121,7 +121,7 @@ jobs:
       AWS_REGION: us-east-1
       ECR_REPO_NAME: pegasus-tenant-runner
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
