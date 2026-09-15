@@ -26,7 +26,7 @@ A production-ready React Native app built with Expo for truck drivers to manage 
 - **Routing**: Expo Router (file-based routing)
 - **State Management**: React Context + AsyncStorage
 - **Styling**: StyleSheet with design system
-- **Permissions**: Camera, Photo Library, Location
+- **Permissions**: Camera, Photo Library
 - **TypeScript**: Full type safety
 
 ## Prerequisites

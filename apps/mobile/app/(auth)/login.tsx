@@ -39,8 +39,8 @@ function BrandHeader() {
         accessibilityRole="image"
         accessibilityLabel="Pegasus"
       />
-      <Text style={styles.title}>Moving & Storage</Text>
-      <Text style={styles.subtitle}>Driver Portal</Text>
+      <Text style={styles.title}>Pegasus</Text>
+      <Text style={styles.subtitle}>Move Manager</Text>
     </View>
   )
 }
@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: fontSize.xlarge,
     // NOT colors.primary — this screen's container is colors.backgroundDark and
-    // the two are the same #0F172A, which rendered "Driver Portal" invisible.
+    // the two are the same #0F172A, which rendered the subtitle invisible.
     color: colors.textDisabled,
     fontWeight: '600',
     textAlign: 'center',

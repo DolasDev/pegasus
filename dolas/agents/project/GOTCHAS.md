@@ -105,6 +105,26 @@ Historically, every API handler had `try { ... } catch { return 500 }`. This pre
 
 The mobile app (`apps/mobile`) historically did not import `@pegasus/api-http` or `@pegasus/domain`. It used raw `fetch()`, local `AsyncStorage` mock data, and its own type definitions. The `mobile-api-integration` plan addresses this convergence. Until it lands, do not assume mobile shares any code with the web apps beyond `@pegasus/theme`.
 
+## Mobile Store Screenshots: Config Is Inlined at Bundle Time, and Metro Caches It
+
+`apps/mobile/store-assets` captures listing screenshots by driving a real
+`expo export --platform web` build. Expo inlines `process.env.EXPO_PUBLIC_*` into
+the bundle **at transform time**, so:
+
+- **A checkout with no `apps/mobile/.env` renders only the "Configuration Error"
+  screen**, and every capture fails with `never reached "<text>"` — including
+  screens whose copy you never touched. A fresh worktree is exactly that case.
+  `npm run store:export` therefore bakes placeholder `EXPO_PUBLIC_*` values itself
+  (every `/api/*` request is served from `fixtures/screens.json`, so the host never
+  matters).
+- **Metro's transform cache survives an env change.** Supplying the variables
+  after an env-less export still produced a bundle with them unset, because
+  `config.ts` came back from cache. `store:export` passes `--clear` for that
+  reason — do not drop it to save a few seconds.
+- **Diagnose from `FAILED-<screen>.png`**, which the capture writes next to the raw
+  shots on any failure, and confirm inlining with
+  `grep -c <expected-host> dist-web/_expo/static/js/web/entry-*.js`.
+
 ## Betterleaks Secret Scanning
 
 CI job `Secret Scanning (Betterleaks)` (`.github/workflows/ci.yml`) runs `betterleaks git .` over full history and fails the build on any finding.

@@ -1,4 +1,4 @@
-# Testing Guide - Moving & Storage Driver App
+# Testing Guide - Pegasus Move Manager
 
 ## Overview
 

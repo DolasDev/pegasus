@@ -3,11 +3,9 @@
 Draft copy for both listings. Character limits are the hard store caps — the
 count after each field is the current draft's length.
 
-> **Unresolved:** the app calls itself three different things. `app.json` says
-> **Pegasus Move Manager** (the chosen store name), the drawer header says
-> **Pegasus**, and the login screen says **Moving & Storage / Driver Portal**.
-> The login copy is what a reviewer and every driver sees first. Worth aligning
-> before submission; not done here because it is a product-copy decision.
+> **Naming:** the brand is **Pegasus**, the product is **Move Manager**. The store
+> name is **Pegasus Move Manager**; the login reads _Pegasus / Move Manager_ and
+> the drawer header _Pegasus_.
 
 ---
 
@@ -101,10 +99,8 @@ Declare what is **actually** collected:
 - Contact info (email) — account
 - Identifiers (Cognito `sub`, tenant) — app functionality
 - Camera / photos — document capture, uploaded to the shipment
-- **Do not declare location.** `app.json` carries
-  `NSLocationWhenInUseUsageDescription` claiming route optimization, but nothing
-  in `src/` imports `expo-location`. Either drop the unused usage string or ship
-  the feature — declaring collection that does not happen is its own problem.
+- **Do not declare location.** The app requests no location permission on
+  either platform and collects none.
 
 ---
 

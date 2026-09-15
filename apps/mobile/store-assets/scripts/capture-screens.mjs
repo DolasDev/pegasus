@@ -143,7 +143,7 @@ const SCREENS = [
   {
     name: '01-login',
     authed: false,
-    waitFor: { text: 'Driver Portal', exact: true },
+    waitFor: { text: 'Move Manager', exact: true },
     caption: 'Sign in once. Your trips are waiting.',
   },
   {
