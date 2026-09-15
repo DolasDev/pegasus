@@ -108,6 +108,8 @@ Declare what is **actually** collected:
 
 - **Privacy policy URL**: https://pegasus.dolas.dev/privacy.html (live).
   Verify by content, not status code — the SPA fallback turns 404 into 200.
-- Screenshots: `../ios/screenshots/` and `../android/screenshots/`.
+- Screenshots: `../ios/screenshots/` (iPhone 6.9", 1320×2868),
+  `../ios-6.5/screenshots/` (iPhone 6.5", 1284×2778 — App Store Connect rejects
+  the 6.9" files in that slot) and `../android/screenshots/`.
 - Icons: `../ios/icon-1024.png`, `../android/icon-512.png`.
 - Feature graphic (Play only): `../android/feature-graphic.png`.

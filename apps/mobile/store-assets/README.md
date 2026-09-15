@@ -42,6 +42,9 @@ ios/
   icon-1024.png                 App Store Connect marketing icon (no alpha channel)
   screenshots/raw/*.png         1320x2868 — the 6.9" iPhone set ASC requires
   screenshots/framed/*.png      same size, on a branded panel with a caption
+ios-6.5/
+  screenshots/raw/*.png         1284x2778 — the 6.5" iPhone slot (ASC rejects the 6.9" set there)
+  screenshots/framed/*.png      same size, branded
 android/
   icon-512.png                  Play listing icon, opaque
   feature-graphic.png           1024x500 — required for a Play listing
