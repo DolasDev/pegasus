@@ -145,7 +145,7 @@ function featureHtml({ logo, css }) {
 <body>
   ${logo ? `<img class="mark" src="${logo}">` : ''}
   <div class="copy">
-    <div class="name">${brand.appName}</div>
+    <div class="name">${brand.shortName}</div>
     <div class="sub">${brand.subtitle}</div>
     <div class="tag">${brand.tagline}</div>
   </div>

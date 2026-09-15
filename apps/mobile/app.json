@@ -18,8 +18,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "This app uses the camera to scan shipment documents.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to attach shipment documents.",
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to optimize delivery routes and track order progress."
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to attach shipment documents."
       }
     },
     "android": {
@@ -32,8 +31,6 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.POST_NOTIFICATIONS"
       ],
       "predictiveBackGestureEnabled": false

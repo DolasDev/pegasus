@@ -25,6 +25,10 @@ Run from `apps/mobile/`.
 | `npm run store:capture` | Drives that build in Chromium and writes raw screenshots at exact store sizes.          |
 | `npm run store:compose` | Wraps the raw captures in branded panels and renders the Play feature graphic.          |
 
+`store:export` bakes placeholder `EXPO_PUBLIC_*` config — every `/api/*` call is
+served from fixtures, so it needs no `.env` and never embeds a real one — and
+passes `--clear`, because Metro caches the inlined env across runs.
+
 Full refresh:
 
 ```

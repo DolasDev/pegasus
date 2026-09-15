@@ -15,7 +15,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --forceExit",
     "dev": "REACT_NATIVE_PACKAGER_HOSTNAME=100.69.252.113 npx expo start --clear",
-    "store:export": "PEGASUS_STORE_CAPTURE=1 expo export --platform web --output-dir dist-web",
+    "store:export": "PEGASUS_STORE_CAPTURE=1 EXPO_PUBLIC_API_URL=https://api.store-capture.invalid EXPO_PUBLIC_COGNITO_REGION=us-east-1 EXPO_PUBLIC_COGNITO_USER_POOL_ID=us-east-1_storecapture EXPO_PUBLIC_COGNITO_CLIENT_ID=store-capture EXPO_PUBLIC_COGNITO_REDIRECT_URI=movingapp://auth/callback expo export --platform web --output-dir dist-web --clear",
     "store:icons": "node store-assets/scripts/generate-icons.mjs",
     "store:capture": "node store-assets/scripts/capture-screens.mjs",
     "store:compose": "node store-assets/scripts/compose-marketing.mjs"

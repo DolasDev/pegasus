@@ -1,8 +1,8 @@
-# Moving & Storage Driver App - Deployment Guide
+# Pegasus Move Manager - Deployment Guide
 
 ## Overview
 
-This guide provides step-by-step instructions for building and deploying the Moving & Storage Driver app to iOS and Android devices using Expo Application Services (EAS).
+This guide provides step-by-step instructions for building and deploying the Pegasus Move Manager driver app to iOS and Android devices using Expo Application Services (EAS).
 
 ---
 
@@ -264,13 +264,11 @@ TestFlight needs none of this; a public listing needs all of it.
   Every future update is re-reviewed, so make this a permanent demo tenant.
 - **Privacy policy URL** — mandatory, must be live and public.
 - **App Privacy questionnaire** — declare what is actually collected (contact
-  info, identifiers, camera/photos). Note `NSLocationWhenInUseUsageDescription`
-  claims route optimization but nothing in `src/` uses `expo-location`; don't
-  declare location collection that doesn't happen.
-- **Screenshots** — 6.9" iPhone at 1320×2868. `app.json` sets
-  `ios.supportsTablet: true`, which also obliges a 13" iPad set (2064×2752) and
-  means reviewers test on iPad; setting it `false` removes both burdens if the
-  driver UI isn't genuinely iPad-designed.
+  info, identifiers, camera/photos). The app requests no location permission —
+  don't declare location collection.
+- **Screenshots** — 6.9" iPhone at 1320×2868, generated in
+  `store-assets/ios/screenshots/`. `app.json` sets `ios.supportsTablet: false`
+  (phone-only), so no 13" iPad set is required and reviewers test on iPhone.
 - **App icon** — 1024×1024 PNG, no alpha. `assets/icon.png` has an alpha
   channel, but prebuild flattens it for iOS, so this is already satisfied.
 - Age rating questionnaire, category (Business), support URL, description
@@ -306,7 +304,7 @@ TestFlight needs none of this; a public listing needs all of it.
 1. Login to Google Play Console
 2. "Create app"
 3. Fill in details:
-   - **App name:** Moving & Storage Driver
+   - **App name:** Pegasus Move Manager
    - **Default language:** English
    - **App or game:** App
    - **Free or paid:** Free (or Paid)
@@ -396,7 +394,7 @@ Our app meets requirements with:
 
 **Include:**
 
-- What data is collected (email, location, photos)
+- What data is collected (email, identifiers, camera/photos)
 - How data is used (order management, delivery tracking)
 - Data storage and security
 - User rights (data deletion)

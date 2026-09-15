@@ -56,14 +56,14 @@ describe('LoginScreen', () => {
   })
 
   describe('email step (initial render)', () => {
-    it('renders "Moving & Storage" title', () => {
+    it('renders "Pegasus" title', () => {
       const { getByText } = render(<LoginScreen />)
-      expect(getByText('Moving & Storage')).toBeTruthy()
+      expect(getByText('Pegasus')).toBeTruthy()
     })
 
-    it('renders "Driver Portal" subtitle', () => {
+    it('renders "Move Manager" subtitle', () => {
       const { getByText } = render(<LoginScreen />)
-      expect(getByText('Driver Portal')).toBeTruthy()
+      expect(getByText('Move Manager')).toBeTruthy()
     })
 
     it('renders EMAIL label', () => {
