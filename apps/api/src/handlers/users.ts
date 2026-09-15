@@ -30,27 +30,17 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import {
-  CognitoIdentityProviderClient,
-  AdminCreateUserCommand,
-} from '@aws-sdk/client-cognito-identity-provider'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import { ROLE_OPTIONS } from '../authz/role-options'
-import { resetCognitoUserPassword, resendCognitoInvite } from './admin/cognito'
+import {
+  provisionCognitoUser,
+  resetCognitoUserPassword,
+  resendCognitoInvite,
+} from './admin/cognito'
 import { createUsersRepository, type TenantUserRow } from '../repositories/users'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
-
-// ---------------------------------------------------------------------------
-// Cognito client singleton — reused across warm invocations
-// ---------------------------------------------------------------------------
-let _cognito: CognitoIdentityProviderClient | null = null
-function getCognito(): CognitoIdentityProviderClient {
-  return (_cognito ??= new CognitoIdentityProviderClient({}))
-}
-
-const USER_POOL_ID = process.env['COGNITO_USER_POOL_ID'] ?? ''
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -213,40 +203,24 @@ usersHandler.post(
       select: { name: true, slug: true },
     })
 
-    // Provision in Cognito
+    // Provision in Cognito. A person who already has a Cognito identity (invited
+    // before, or registered through another tenant — in any letter case) is
+    // reused, not duplicated; see handlers/admin/cognito.ts's header.
     try {
-      await getCognito().send(
-        new AdminCreateUserCommand({
-          UserPoolId: USER_POOL_ID,
-          Username: email,
-          UserAttributes: [
-            { Name: 'email', Value: email },
-            { Name: 'email_verified', Value: 'true' },
-          ],
-          ClientMetadata: {
-            source: 'tenant',
-            tenantId,
-            tenantName: tenant?.name ?? '',
-            tenantSlug: tenant?.slug ?? '',
-          },
-          ...(process.env['NODE_ENV'] !== 'production'
-            ? { MessageAction: 'SUPPRESS' as const }
-            : {}),
-        }),
-      )
+      await provisionCognitoUser(email, {
+        tenantId,
+        tenantName: tenant?.name ?? '',
+        tenantSlug: tenant?.slug ?? '',
+      })
     } catch (err) {
-      // UsernameExistsException — user already exists in Cognito (invited before or
-      // registered through another tenant). Continue to create the TenantUser record.
-      if ((err as { name?: string }).name !== 'UsernameExistsException') {
-        logger.error('POST /users/invite: Cognito AdminCreateUser failed', {
-          error: String(err),
-          email,
-        })
-        return c.json(
-          { error: 'Failed to create the user account. Please try again.', code: 'COGNITO_ERROR' },
-          500,
-        )
-      }
+      logger.error('POST /users/invite: Cognito provisioning failed', {
+        error: String(err),
+        email,
+      })
+      return c.json(
+        { error: 'Failed to create the user account. Please try again.', code: 'COGNITO_ERROR' },
+        500,
+      )
     }
 
     // Create TenantUser record
@@ -450,10 +424,22 @@ usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), 
     )
   }
 
+  // Same tenant lookup as POST /invite — a user who never set a password is sent
+  // a fresh temporary password, and that email is rendered tenant-aware.
+  const tenant = await db.tenant.findUnique({
+    where: { id: tenantId },
+    select: { name: true, slug: true },
+  })
+
+  let outcome: Awaited<ReturnType<typeof resetCognitoUserPassword>>
   try {
-    await resetCognitoUserPassword(existing.email)
+    outcome = await resetCognitoUserPassword(existing.email, {
+      tenantId,
+      tenantName: tenant?.name ?? '',
+      tenantSlug: tenant?.slug ?? '',
+    })
   } catch (err) {
-    logger.error('POST /users/:id/reset-password: Cognito AdminResetUserPassword failed', {
+    logger.error('POST /users/:id/reset-password: Cognito password reset failed', {
       error: String(err),
       id,
       email: existing.email,
@@ -464,6 +450,17 @@ usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), 
     )
   }
 
+  // This used to be swallowed and answered 200, so an admin clicking "Reset
+  // password" for a user Cognito could not find saw success and nothing happened.
+  if (outcome === 'not_found') {
+    logger.warn('POST /users/:id/reset-password: no Cognito sign-in for this user', {
+      id,
+      tenantId,
+    })
+    return c.json({ error: 'This user has no password sign-in to reset.', code: 'NO_SIGN_IN' }, 422)
+  }
+
+  logger.info('POST /users/:id/reset-password: done', { id, tenantId, outcome })
   return c.json({ data: toResponse(existing) })
 })
 

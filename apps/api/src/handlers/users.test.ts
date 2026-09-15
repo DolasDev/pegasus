@@ -46,16 +46,43 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   CognitoIdentityProviderClient: vi.fn().mockImplementation(function () {
     return { send: mockSend }
   }),
-  AdminCreateUserCommand: vi.fn().mockImplementation(function (input: unknown) {
-    return input
+  AdminCreateUserCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'AdminCreateUser', ...input }
   }),
-  AdminResetUserPasswordCommand: vi.fn().mockImplementation(function (input: unknown) {
-    return input
+  AdminResetUserPasswordCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'AdminResetUserPassword', ...input }
   }),
-  AdminGetUserCommand: vi.fn().mockImplementation(function (input: object) {
-    return { __command: 'AdminGetUser', ...input }
+  AdminUpdateUserAttributesCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'AdminUpdateUserAttributes', ...input }
+  }),
+  ListUsersCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'ListUsers', ...input }
   }),
 }))
+
+/** A ListUsers response holding one native Cognito user. */
+function listedUser({
+  email = 'user@example.com',
+  status = 'CONFIRMED',
+  verified = true,
+}: { email?: string; status?: string; verified?: boolean } = {}) {
+  return {
+    Users: [
+      {
+        Username: 'cognito-uuid-1',
+        UserStatus: status,
+        Attributes: [
+          { Name: 'email', Value: email },
+          { Name: 'email_verified', Value: String(verified) },
+        ],
+      },
+    ],
+  }
+}
+
+function sentCommandNames(): unknown[] {
+  return mockSend.mock.calls.map((c) => (c[0] as Record<string, unknown>)['__command'])
+}
 
 vi.mock('../repositories/users', () => ({
   createUsersRepository: vi.fn().mockReturnValue(mockRepo),
@@ -214,12 +241,32 @@ describe('users handler', () => {
 
     it('returns 201 when Cognito throws UsernameExistsException (idempotent)', async () => {
       mockRepo.findByEmail.mockResolvedValue(null)
-      mockSend.mockRejectedValue(
-        Object.assign(new Error('exists'), { name: 'UsernameExistsException' }),
-      )
+      mockSend
+        .mockResolvedValueOnce({ Users: [] })
+        .mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { name: 'UsernameExistsException' }),
+        )
       mockRepo.invite.mockResolvedValue(mockUserRow)
       const res = await buildApp().request('/invite', post({ email: 'new@example.com' }))
       expect(res.status).toBe(201)
+    })
+
+    it('reuses an existing Cognito user whose email SSO re-cased — no duplicate', async () => {
+      // Prod bug: an SSO user (`Gigi@…` in Cognito) invited to a second tenant got a
+      // second Cognito identity, because AdminCreateUser(`gigi@…`) did not collide.
+      mockRepo.findByEmail.mockResolvedValue(null)
+      mockSend.mockResolvedValueOnce(listedUser({ email: 'Gigi@example.com', verified: false }))
+      mockRepo.invite.mockResolvedValue(mockUserRow)
+
+      const res = await buildApp().request('/invite', post({ email: 'gigi@example.com' }))
+
+      expect(res.status).toBe(201)
+      expect(sentCommandNames()).toEqual(['ListUsers'])
+      expect(mockRepo.invite).toHaveBeenCalledWith(
+        'test-tenant-id',
+        'gigi@example.com',
+        expect.anything(),
+      )
     })
 
     it('returns 201 on happy path (new user created)', async () => {
@@ -239,8 +286,8 @@ describe('users handler', () => {
 
       await buildApp().request('/invite', post({ email: 'new@example.com' }))
 
-      expect(mockSend).toHaveBeenCalled()
-      const command = mockSend.mock.calls[0]![0] as { ClientMetadata?: Record<string, string> }
+      expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
+      const command = mockSend.mock.calls[1]![0] as { ClientMetadata?: Record<string, string> }
       expect(command.ClientMetadata).toEqual({
         source: 'tenant',
         tenantId: 'test-tenant-id',
@@ -259,7 +306,7 @@ describe('users handler', () => {
 
       await buildApp().request('/invite', post({ email: '  John.Doe@Example.COM ' }))
 
-      const command = mockSend.mock.calls[0]![0] as {
+      const command = mockSend.mock.calls[1]![0] as {
         Username?: string
         UserAttributes?: Array<{ Name: string; Value: string }>
       }
@@ -473,16 +520,68 @@ describe('users handler', () => {
       expect((await json(res)).code).toBe('COGNITO_ERROR')
     })
 
-    it('returns 200 and calls Cognito with the user email on the happy path', async () => {
+    it('returns 200 and resets by the Cognito UUID Username on the happy path', async () => {
       mockRepo.findById.mockResolvedValue(activeUser)
-      mockSend.mockResolvedValue({})
+      mockSend.mockResolvedValueOnce(listedUser()).mockResolvedValueOnce({})
       const res = await buildApp().request('/user-1/reset-password', post({}))
       expect(res.status).toBe(200)
       const body = await json(res)
       expect((body.data as JsonBody)['email']).toBe('user@example.com')
-      expect(mockSend).toHaveBeenCalledOnce()
-      const sentCommand = mockSend.mock.calls[0]![0] as Record<string, unknown>
-      expect(sentCommand['Username']).toBe('user@example.com')
+      expect(sentCommandNames()).toEqual(['ListUsers', 'AdminResetUserPassword'])
+      const sentCommand = mockSend.mock.calls[1]![0] as Record<string, unknown>
+      expect(sentCommand['Username']).toBe('cognito-uuid-1')
+    })
+
+    it('resets an SSO-linked user whose Cognito email was re-cased and unverified', async () => {
+      // Prod bug: reset for `TimStrey@…` looked up `timstrey@…`, got
+      // UserNotFound, swallowed it, and answered 200 having done nothing.
+      mockRepo.findById.mockResolvedValue(activeUser)
+      mockSend
+        .mockResolvedValueOnce(listedUser({ email: 'User@Example.com', verified: false }))
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({})
+
+      const res = await buildApp().request('/user-1/reset-password', post({}))
+
+      expect(res.status).toBe(200)
+      expect(sentCommandNames()).toEqual([
+        'ListUsers',
+        'AdminUpdateUserAttributes',
+        'AdminResetUserPassword',
+      ])
+    })
+
+    it('sends a tenant-aware temporary password when the user never set one', async () => {
+      vi.stubEnv('NODE_ENV', 'production')
+      mockRepo.findById.mockResolvedValue(activeUser)
+      mockSend
+        .mockResolvedValueOnce(listedUser({ status: 'FORCE_CHANGE_PASSWORD' }))
+        .mockResolvedValueOnce({})
+
+      const res = await buildApp().request('/user-1/reset-password', post({}))
+      vi.unstubAllEnvs()
+
+      expect(res.status).toBe(200)
+      expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
+      const resend = mockSend.mock.calls[1]![0] as Record<string, unknown>
+      expect(resend['MessageAction']).toBe('RESEND')
+      expect(resend['ClientMetadata']).toEqual({
+        source: 'tenant',
+        tenantId: 'test-tenant-id',
+        tenantName: 'Acme Movers',
+        tenantSlug: 'acme',
+        intent: 'resend',
+      })
+    })
+
+    it('returns 422 NO_SIGN_IN — not a silent 200 — when Cognito has no such user', async () => {
+      mockRepo.findById.mockResolvedValue(activeUser)
+      mockSend.mockResolvedValueOnce({ Users: [] })
+
+      const res = await buildApp().request('/user-1/reset-password', post({}))
+
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('NO_SIGN_IN')
     })
   })
 
@@ -564,14 +663,14 @@ describe('users handler', () => {
       // Second, independent line of defense: even with a clean roster, an
       // identity past the invite stage is never mutated from here.
       mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockSend.mockResolvedValueOnce({ UserStatus: 'CONFIRMED' })
+      mockSend.mockResolvedValueOnce(listedUser({ status: 'CONFIRMED' }))
 
       const res = await buildApp().request('/user-1/resend-invite', post({}))
 
       expect(res.status).toBe(422)
       expect((await json(res)).code).toBe('INVALID_STATE')
-      // The state read only — no reset, no resend.
-      expect(mockSend).toHaveBeenCalledOnce()
+      // The lookup only — no reset, no resend.
+      expect(sentCommandNames()).toEqual(['ListUsers'])
     })
 
     it('returns 500 COGNITO_ERROR when the Cognito call fails', async () => {
@@ -587,7 +686,7 @@ describe('users handler', () => {
     it('resends the invite for a PENDING user and returns the unchanged row', async () => {
       mockRepo.findById.mockResolvedValue(mockUserRow)
       mockSend
-        .mockResolvedValueOnce({ UserStatus: 'FORCE_CHANGE_PASSWORD' })
+        .mockResolvedValueOnce(listedUser({ status: 'FORCE_CHANGE_PASSWORD' }))
         .mockResolvedValueOnce({})
 
       const res = await buildApp().request('/user-1/resend-invite', post({}))
@@ -597,16 +696,16 @@ describe('users handler', () => {
       expect((body.data as JsonBody)['email']).toBe('user@example.com')
       expect((body.data as JsonBody)['status']).toBe('PENDING')
 
-      expect(mockSend).toHaveBeenCalledTimes(2)
+      expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
       const resend = mockSend.mock.calls[1]![0] as Record<string, unknown>
       expect(resend['MessageAction']).toBe('RESEND')
-      expect(resend['Username']).toBe('user@example.com')
+      expect(resend['Username']).toBe('cognito-uuid-1')
     })
 
     it('forwards the tenant name and slug so the re-sent email stays tenant-aware', async () => {
       mockRepo.findById.mockResolvedValue(mockUserRow)
       mockSend
-        .mockResolvedValueOnce({ UserStatus: 'FORCE_CHANGE_PASSWORD' })
+        .mockResolvedValueOnce(listedUser({ status: 'FORCE_CHANGE_PASSWORD' }))
         .mockResolvedValueOnce({})
 
       await buildApp().request('/user-1/resend-invite', post({}))

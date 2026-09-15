@@ -42,8 +42,13 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   CognitoIdentityProviderClient: vi.fn().mockImplementation(function () {
     return { send: mockSend }
   }),
-  AdminCreateUserCommand: vi.fn().mockImplementation(function (input: unknown) {
-    return input
+  AdminCreateUserCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'AdminCreateUser', ...input }
+  }),
+  AdminResetUserPasswordCommand: vi.fn(),
+  AdminUpdateUserAttributesCommand: vi.fn(),
+  ListUsersCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'ListUsers', ...input }
   }),
 }))
 
@@ -214,13 +219,38 @@ describe('admin tenant-users handler', () => {
     it('returns 201 when Cognito returns UsernameExistsException (idempotent)', async () => {
       mockDb.tenant.findUnique.mockResolvedValue(mockTenant)
       mockRepo.findByEmail.mockResolvedValue(null)
-      mockSend.mockRejectedValue(
-        Object.assign(new Error('exists'), { name: 'UsernameExistsException' }),
-      )
+      mockSend
+        .mockResolvedValueOnce({ Users: [] })
+        .mockRejectedValueOnce(
+          Object.assign(new Error('exists'), { name: 'UsernameExistsException' }),
+        )
       mockRepo.invite.mockResolvedValue(mockUserRow)
 
       const res = await buildApp().request(BASE, post({ email: 'new@acme.com' }))
       expect(res.status).toBe(201)
+    })
+
+    it('reuses an existing Cognito user whose email differs only in case — no duplicate', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue(mockTenant)
+      mockRepo.findByEmail.mockResolvedValue(null)
+      mockSend.mockResolvedValueOnce({
+        Users: [
+          {
+            Username: 'cognito-uuid-1',
+            UserStatus: 'CONFIRMED',
+            Attributes: [{ Name: 'email', Value: 'New@Acme.com' }],
+          },
+        ],
+      })
+      mockRepo.invite.mockResolvedValue(mockUserRow)
+
+      const res = await buildApp().request(BASE, post({ email: 'new@acme.com' }))
+
+      expect(res.status).toBe(201)
+      const commands = mockSend.mock.calls.map(
+        (c) => (c[0] as Record<string, unknown>)['__command'],
+      )
+      expect(commands).toEqual(['ListUsers'])
     })
 
     it('passes tenant ClientMetadata to AdminCreateUserCommand for the custom-message trigger', async () => {
@@ -230,8 +260,8 @@ describe('admin tenant-users handler', () => {
 
       await buildApp().request(BASE, post({ email: 'new@acme.com' }))
 
-      expect(mockSend).toHaveBeenCalled()
-      const command = mockSend.mock.calls[0]![0] as { ClientMetadata?: Record<string, string> }
+      expect(mockSend).toHaveBeenCalledTimes(2)
+      const command = mockSend.mock.calls[1]![0] as { ClientMetadata?: Record<string, string> }
       expect(command.ClientMetadata).toEqual({
         source: 'tenant',
         tenantId: 'tenant-1',

@@ -156,6 +156,10 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => {
   return {
     CognitoIdentityProviderClient: MockCognitoClient,
     AdminCreateUserCommand: class {},
+    AdminResetUserPasswordCommand: class {},
+    AdminUpdateUserAttributesCommand: class {},
+    // provisionCognitoUser looks the email up (case-insensitively) before creating.
+    ListUsersCommand: class {},
   }
 })
 

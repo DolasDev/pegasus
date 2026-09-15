@@ -437,6 +437,10 @@ const COGNITO_INTROSPECTION_ACTIONS = [
   'cognito-idp:AdminCreateUser',
   'cognito-idp:AdminResetUserPassword',
   'cognito-idp:AdminGetUser',
+  // handlers/admin/cognito.ts: case-insensitive user lookup + email re-verify
+  // before a password reset. Without ListUsers every invite 500s.
+  'cognito-idp:ListUsers',
+  'cognito-idp:AdminUpdateUserAttributes',
   'cognito-idp:CreateIdentityProvider',
   'cognito-idp:UpdateIdentityProvider',
   'cognito-idp:DeleteIdentityProvider',

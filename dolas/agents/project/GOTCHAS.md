@@ -1439,3 +1439,37 @@ that endpoint already returns publicly — whether any tenant behind the address
 an SSO provider configured. No providers anywhere ⇒ the federated explanation is
 impossible, so speak plainly about the invitation; otherwise say both. A hedge
 that is true beats a specific claim that is false.
+
+## SSO sign-in re-cases the Cognito email — never address a Cognito user by email
+
+Every invite lowercases the email (#245), yet on 2026-09-15 prod held 5 of 30 users
+with mixed-case emails (`TimStrey@…`, `SPobuta@…`), all of them SSO-linked and all
+`email_verified=false`. The invite code was never the source. `handlers/sso.ts`
+creates each IdP with `AttributeMapping: { email: 'email' }`. Once pre-sign-up links
+a federated identity to the native user, Cognito copies the IdP-asserted email onto
+that **native** user on **every** federated sign-in, in whatever case Entra stores
+it, and resets `email_verified` to false.
+
+The pool predates `UsernameConfiguration` (case-sensitive sign-in, immutable per
+pool), so any `Username: <lowercase email>` call then misses the user:
+
+- `AdminResetUserPassword` → UserNotFound. The helper swallowed that "fail-open" and
+  the route answered 200, so "Reset password" silently did nothing.
+- `AdminCreateUser` does **not** raise UsernameExistsException. It mints a second
+  native user. The next SSO login then hits pre-sign-up's "multiple native users share
+  this email" anomaly and creates a stray unlinked `EXTERNAL_PROVIDER` user as well.
+
+`ListUsers` with `Filter: email = "…"` **is** case-insensitive (checked in prod:
+`spobuta@…` returned `SPobuta@…`). So `handlers/admin/cognito.ts` looks users up via
+`findCognitoUsersByEmail` and makes every Admin* call with the returned UUID
+`Username`.
+
+Hand-repairing the attribute does not stick, because the next SSO login re-cases
+it. Removing the email mapping is not an option either: pre-sign-up linking and the
+pre-token email guard both need it. Before an admin password reset,
+`resetCognitoUserPassword` restores the lowercase, verified email, because Cognito
+only mails a verified address.
+
+Read-only check for drift (profile `dolas-pegasus-prod-ro`): `aws cognito-idp
+list-users --user-pool-id us-east-1_gg63uAxs0`, then look for uppercase in the
+`email` attribute or two users whose emails match when lowercased.

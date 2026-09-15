@@ -952,6 +952,13 @@ export class ApiStack extends cdk.Stack {
             // tenant they belong to in the shared Cognito user pool.
             'cognito-idp:AdminResetUserPassword',
             'cognito-idp:AdminGetUser',
+            // ListUsers: handlers/admin/cognito.ts finds users by email
+            // case-insensitively — SSO linking re-cases the stored email, so a
+            // `Username: email` lookup misses them and AdminCreateUser duplicates
+            // them. AdminUpdateUserAttributes restores the lowercase, verified email
+            // before an admin password reset (Cognito only mails a verified email).
+            'cognito-idp:ListUsers',
+            'cognito-idp:AdminUpdateUserAttributes',
             'cognito-idp:CreateIdentityProvider',
             'cognito-idp:UpdateIdentityProvider',
             'cognito-idp:DeleteIdentityProvider',
