@@ -25,6 +25,13 @@
 // throw at first call so misconfiguration fails fast at startup instead of
 // silently corrupting query results downstream.
 //
+// `rvs` (Reliable Van and Storage, onboarded 2026-09) has no legacy client
+// file and was first tagged `qmm`. That broke both per-client lookups: RVS's
+// MoveType codes are numeric ('0'..'18'), so QMM's letter whitelist matched
+// none of them (blank Move Types dropdown), and QMM's `%cpd%` role matched
+// only two inactive RVS users (blank Dispatchers). Pick a tenant's client by
+// what its MoveType and v_longhaul_salesman rows actually hold.
+//
 // #685 dropped `importExportTypes`. It was the trip-planning eligibility
 // whitelist, AND'd onto `import_export` — the same column Planning's
 // `move_type` filter targets. Two predicates on one column meant the default
@@ -36,7 +43,7 @@
 // that silently constrains the same column a user filter targets is the bug.
 // ---------------------------------------------------------------------------
 
-export type LonghaulClient = 'nwi' | 'qmm'
+export type LonghaulClient = 'nwi' | 'qmm' | 'rvs'
 
 export interface LonghaulClientConfig {
   /**
@@ -72,6 +79,23 @@ const CONFIGS: Record<LonghaulClient, LonghaulClientConfig> = {
     moveTypesWhere: "move_type in ('C','S','N','M','U')",
     dispatcherQuery: "roles like ('%cpd%')",
   },
+  // No legacy file — values chosen from PegRVS's own data (2026-09-15).
+  rvs: {
+    // All 19 MoveType rows are live `import_export` codes on the board, and
+    // since #685 the board shows every code, so the dropdown must offer every
+    // code or some rows become unfilterable-to.
+    moveTypesWhere: '1=1',
+    // RVS dispatch staff (titles DISPATCH / LOCAL DISPATCHER / ALLIED
+    // DISPATCHER) carry the 'LO' role — the same tag NWI's local-dispatch arm
+    // uses. 'LD' is held by account coordinators, so it is deliberately out.
+    dispatcherQuery: "roles like '%LO%'",
+  },
+}
+
+// Own-property check, not `in` — `in` would accept inherited keys like
+// "constructor" and hand back a non-config object.
+function isLonghaulClient(value: string): value is LonghaulClient {
+  return Object.hasOwn(CONFIGS, value)
 }
 
 /**
@@ -85,8 +109,10 @@ const CONFIGS: Record<LonghaulClient, LonghaulClientConfig> = {
  */
 export function getLonghaulClientConfigFor(client: string): LonghaulClientConfig {
   const normalized = client.trim().toLowerCase()
-  if (normalized !== 'nwi' && normalized !== 'qmm') {
-    throw new Error(`[longhaul] Unknown longhaul client "${client}". Expected "nwi" or "qmm".`)
+  if (!isLonghaulClient(normalized)) {
+    throw new Error(
+      `[longhaul] Unknown longhaul client "${client}". Expected one of: ${Object.keys(CONFIGS).join(', ')}.`,
+    )
   }
   const source = CONFIGS[normalized]
   // Return a fresh copy so callers can't mutate the shared template.
@@ -107,7 +133,7 @@ export function getLonghaulClientConfig(): LonghaulClientConfig {
   if (!raw) {
     throw new Error(
       '[longhaul] LONGHAUL_CLIENT environment variable is required. ' +
-        'Set it to "nwi" or "qmm" to select the per-client query configuration.',
+        'Set it to "nwi", "qmm" or "rvs" to select the per-client query configuration.',
     )
   }
   return getLonghaulClientConfigFor(raw)

@@ -26,14 +26,15 @@ import {
 } from '@/api/queries/app-settings'
 import { DriverImportCard } from '@/features/settings/app/DriverImport'
 
-// The three storage states the dropdown represents. `''` = "not configured",
-// modeled separately from `'nwi' | 'qmm'` so the controlled <select> can render
+// The storage states the dropdown represents. `''` = "not configured",
+// modeled separately from `LonghaulClient` so the controlled <select> can render
 // it as an explicit placeholder option instead of an empty selection.
 type DropdownValue = '' | LonghaulClient
 
 const CLIENT_OPTIONS: { value: LonghaulClient; label: string }[] = [
   { value: 'nwi', label: 'NWI' },
   { value: 'qmm', label: 'QMM' },
+  { value: 'rvs', label: 'RVS' },
 ]
 
 export function AppSettingsOperationsPage() {

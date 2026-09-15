@@ -200,8 +200,8 @@ model Tenant {
   /// Used by mssqlMiddleware to open a connection pool per tenant.
   mssqlConnectionString String? @map("mssql_connection_string")
 
-  /// Per-tenant longhaul client selector — 'nwi' or 'qmm'. Selects the
-  /// dispatcher SQL, MoveType filter, and Is_Trip_Planning import/export codes
+  /// Per-tenant longhaul client selector — 'nwi', 'qmm' or 'rvs'. Selects the
+  /// dispatcher SQL and MoveType filter
   /// for the cloud-direct longhaul handlers (handlers/longhaul-cloud/*). The
   /// multi-tenant cloud equivalent of the on-prem server's LONGHAUL_CLIENT env
   /// var. Null until configured. See lib/longhaul-client-config.ts.

@@ -8,7 +8,7 @@
 // while every un-migrated longhaul endpoint still falls through to the proxy.
 //
 // Mirrors the on-prem `getDispatchers` repository: queries v_longhaul_salesman
-// with a per-client WHERE fragment. The client ('nwi' | 'qmm') is resolved per
+// with a per-client WHERE fragment. The client (LonghaulClient) is resolved per
 // tenant from `Tenant.longhaulClient` — the multi-tenant cloud Lambda cannot
 // use the on-prem server's LONGHAUL_CLIENT env var. The `dispatcherQuery`
 // fragment is a server-side config constant (not user input — same as the

@@ -18,9 +18,9 @@ import type { PrismaClient } from '@prisma/client'
 
 // Mirrors the LonghaulClient union in lib/longhaul-client-config.ts. Inlined
 // rather than imported because that module exports only a TS type, not a
-// runtime array, and the two-element list is too stable to warrant a shared
-// constants file. Keep in sync if a third client is ever onboarded.
-const LONGHAUL_CLIENTS = ['nwi', 'qmm'] as const
+// runtime array, and the short list is too stable to warrant a shared
+// constants file. Keep in sync when a client is onboarded.
+const LONGHAUL_CLIENTS = ['nwi', 'qmm', 'rvs'] as const
 
 // ---------------------------------------------------------------------------
 // Section schemas — each is `.object({...}).partial().default({})` so:
@@ -28,7 +28,7 @@ const LONGHAUL_CLIENTS = ['nwi', 'qmm'] as const
 //   - omitted sections hydrate to `{}` automatically,
 //   - the whole tree always parses, even from the brand-new default `{}` blob.
 //
-// First real field: operations.longhaulClient (nwi | qmm | null). All other
+// First real field: operations.longhaulClient (nwi | qmm | rvs | null). All other
 // sections are scaffold-only for now — each ships with a one-line comment
 // suggesting the first preference that could land there. Add fields by
 // extending the relevant z.object and the FE will pick them up via the

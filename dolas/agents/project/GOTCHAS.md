@@ -1473,3 +1473,20 @@ only mails a verified address.
 Read-only check for drift (profile `dolas-pegasus-prod-ro`): `aws cognito-idp
 list-users --user-pool-id us-east-1_gg63uAxs0`, then look for uppercase in the
 `email` attribute or two users whose emails match when lowercased.
+
+## A longhaul client tag has to match the tenant's lookup DATA
+
+`Tenant.longhaulClient` selects hardcoded SQL fragments (`moveTypesWhere`,
+`dispatcherQuery` in `lib/longhaul-client-config.ts`) that are written against one
+customer's lookup rows. Tag a tenant with a client whose fragments don't fit its data and
+nothing errors. The Planning filters just come back empty, which looks like "no data".
+
+Reliable Van and Storage was tagged `qmm`. QMM's `move_type in ('C','S','N','M','U')` matched
+none of RVS's numeric MoveType codes (`0`–`18`), so Move Types was blank. QMM's
+`roles like '%cpd%'` matched only two inactive RVS users, so Dispatchers was blank too. The fix
+was a third client, `rvs` (`'1=1'` / `roles like '%LO%'`).
+
+When onboarding a longhaul tenant, before choosing its client, query the tenant DB for
+`SELECT move_type, move_type_desc FROM MoveType` and for `roles`/`active`/`title` in
+`v_longhaul_salesman`. Then run each candidate fragment and confirm it returns rows. A
+tenant running a given desktop build tells you nothing about which fragments fit its data.
