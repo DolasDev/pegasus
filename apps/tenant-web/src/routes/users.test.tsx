@@ -224,3 +224,49 @@ describe('UsersPage — resend invite', () => {
     expect(screen.getByRole('button', { name: /resend invitation$/i })).toBeTruthy()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Reset password — the confirmation must say what was actually emailed
+//
+// A user who never set a password (typically one who went straight to SSO) is
+// sent a temporary password, not a reset code. Cognito refuses "Forgot password"
+// in that state, so pointing the admin there would hand the user a dead end.
+// ---------------------------------------------------------------------------
+
+describe('UsersPage — reset password', () => {
+  beforeEach(() => {
+    seen = {}
+    permissions = ['user:list', 'user:invite', 'user:update']
+    usersData = [makeUser({ id: 'r1', status: 'ACTIVE' })]
+    capabilities = { longhaul: false }
+    mockApiFetch.mockReset()
+  })
+
+  function confirmReset() {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send reset code/i }))
+  }
+
+  it('confirms a reset code for a user who has a password', async () => {
+    mockApiFetch.mockResolvedValue({ ...makeUser({ id: 'r1' }), delivery: 'reset_code' })
+    confirmReset()
+
+    await waitFor(() => {
+      expect(screen.getByText(/reset code sent/i)).toBeTruthy()
+    })
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/users/r1/reset-password', {
+      method: 'POST',
+    })
+  })
+
+  it('says a temporary password was sent — and never points to Forgot password — for a user who never set one', async () => {
+    mockApiFetch.mockResolvedValue({ ...makeUser({ id: 'r1' }), delivery: 'temporary_password' })
+    confirmReset()
+
+    await waitFor(() => {
+      expect(screen.getByText(/temporary password sent/i)).toBeTruthy()
+    })
+    expect(screen.queryByText(/forgot password/i)).toBeNull()
+  })
+})

@@ -51,6 +51,7 @@ import {
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { createLogger } from '../lib/logger'
+import { escapeFilterValue } from './list-users-filter'
 
 const logger = createLogger('pegasus-pre-sign-up')
 
@@ -60,18 +61,6 @@ const logger = createLogger('pegasus-pre-sign-up')
 const adapter = new PrismaPg({ connectionString: process.env['DATABASE_URL'] ?? '' })
 const db = new PrismaClient({ adapter })
 const cognitoClient = new CognitoIdentityProviderClient({})
-
-// ---------------------------------------------------------------------------
-// ListUsers filter values are a quoted mini-language, not parameterised: per the
-// API reference, "Quotation marks within the filter string must be escaped using
-// the backslash (\) character". The value here is an IdP-asserted email, so it
-// gets escaped rather than trusted — the roster gate upstream happens to keep
-// quotes out today, but that is a property of a distant validator, not of this
-// call site.
-// ---------------------------------------------------------------------------
-function escapeFilterValue(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-}
 
 // ---------------------------------------------------------------------------
 // Which IdP authenticated this sign-up?

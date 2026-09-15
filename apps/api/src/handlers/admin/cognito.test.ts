@@ -18,8 +18,8 @@ const { mockSend } = vi.hoisted(() => ({
 }))
 
 // Each command carries a `__command` discriminator because the mock returns the
-// raw input object — without it a test cannot tell an AdminGetUser call from an
-// AdminCreateUser one, which is exactly what resendCognitoInvite's branching does.
+// raw input object — without it a test cannot tell a ListUsers call from an
+// AdminCreateUser one, which is exactly what these helpers branch on.
 vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   CognitoIdentityProviderClient: vi.fn().mockImplementation(function () {
     return { send: mockSend }
@@ -30,17 +30,71 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   AdminResetUserPasswordCommand: vi.fn().mockImplementation(function (input: object) {
     return { __command: 'AdminResetUserPassword', ...input }
   }),
-  AdminGetUserCommand: vi.fn().mockImplementation(function (input: object) {
-    return { __command: 'AdminGetUser', ...input }
+  AdminUpdateUserAttributesCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'AdminUpdateUserAttributes', ...input }
+  }),
+  ListUsersCommand: vi.fn().mockImplementation(function (input: object) {
+    return { __command: 'ListUsers', ...input }
   }),
 }))
 
 import {
+  DuplicateCognitoUserError,
+  findCognitoUsersByEmail,
   provisionCognitoUser,
   resetCognitoUserPassword,
   resendCognitoInvite,
   getCognito,
 } from './cognito'
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const tenantContext = {
+  tenantId: 'tenant-uuid-1',
+  tenantName: 'Acme Movers',
+  tenantSlug: 'acme',
+}
+
+interface FakeUser {
+  username?: string
+  email?: string
+  status?: string
+  verified?: boolean
+}
+
+/** A ListUsers user record as Cognito returns it. */
+function cognitoUser({
+  username = 'cognito-uuid-1',
+  email = 'user@acme.com',
+  status = 'CONFIRMED',
+  verified = true,
+}: FakeUser = {}) {
+  return {
+    Username: username,
+    UserStatus: status,
+    Attributes: [
+      { Name: 'email', Value: email },
+      { Name: 'email_verified', Value: String(verified) },
+      // A native user's sub equals its UUID Username.
+      { Name: 'sub', Value: username },
+    ],
+  }
+}
+
+function listed(...users: FakeUser[]) {
+  return { Users: users.map(cognitoUser) }
+}
+
+/** Reads the nth command sent to Cognito, with its `__command` discriminator. */
+function sentCommand(n: number): Record<string, unknown> {
+  return mockSend.mock.calls[n]![0] as Record<string, unknown>
+}
+
+function sentCommandNames(): unknown[] {
+  return mockSend.mock.calls.map((c) => (c[0] as Record<string, unknown>)['__command'])
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -60,26 +114,89 @@ describe('getCognito', () => {
   })
 })
 
-describe('provisionCognitoUser', () => {
-  const tenantContext = {
-    tenantId: 'tenant-uuid-1',
-    tenantName: 'Acme Movers',
-    tenantSlug: 'acme',
-  }
-
+describe('findCognitoUsersByEmail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('calls Cognito AdminCreateUser with the given email', async () => {
-    mockSend.mockResolvedValue({})
+  it('queries ListUsers with the lowercased, trimmed email', async () => {
+    mockSend.mockResolvedValueOnce({ Users: [] })
+
+    await findCognitoUsersByEmail('  TimStrey@Acme.com ')
+
+    expect(sentCommand(0)['__command']).toBe('ListUsers')
+    expect(sentCommand(0)['Filter']).toBe('email = "timstrey@acme.com"')
+  })
+
+  it('escapes quotes and backslashes in the filter value', async () => {
+    mockSend.mockResolvedValueOnce({ Users: [] })
+
+    await findCognitoUsersByEmail('a"b\\c@acme.com')
+
+    expect(sentCommand(0)['Filter']).toBe('email = "a\\"b\\\\c@acme.com"')
+  })
+
+  it('finds a native user whose stored email was re-cased by SSO', async () => {
+    // Prod, 2026-09-15: Entra asserted `TimStrey@…` and Cognito copied it onto the
+    // linked native user. An exact-case lookup by the invited email missed him.
+    mockSend.mockResolvedValueOnce(listed({ email: 'TimStrey@acme.com', verified: false }))
+
+    const { native } = await findCognitoUsersByEmail('timstrey@acme.com')
+
+    expect(native?.Username).toBe('cognito-uuid-1')
+  })
+
+  it('drops results whose email is a different address', async () => {
+    // Guards against a filter that means something looser than we think.
+    mockSend.mockResolvedValueOnce(listed({ email: 'timstrey@acme.com.evil' }))
+
+    const result = await findCognitoUsersByEmail('timstrey@acme.com')
+
+    expect(result.native).toBeNull()
+    expect(result.federated).toEqual([])
+  })
+
+  it('separates unlinked federated identities from the native user', async () => {
+    mockSend.mockResolvedValueOnce(
+      listed(
+        { username: 'microsoft-reliable_abc', status: 'EXTERNAL_PROVIDER' },
+        { username: 'cognito-uuid-1', status: 'CONFIRMED' },
+      ),
+    )
+
+    const { native, federated } = await findCognitoUsersByEmail('user@acme.com')
+
+    expect(native?.Username).toBe('cognito-uuid-1')
+    expect(federated.map((u) => u.Username)).toEqual(['microsoft-reliable_abc'])
+  })
+
+  it('throws rather than pick one when two native users share the email', async () => {
+    mockSend.mockResolvedValueOnce(
+      listed(
+        { username: 'uuid-a', email: 'Gigi@acme.com' },
+        { username: 'uuid-b', email: 'gigi@acme.com' },
+      ),
+    )
+
+    await expect(findCognitoUsersByEmail('gigi@acme.com')).rejects.toBeInstanceOf(
+      DuplicateCognitoUserError,
+    )
+  })
+})
+
+describe('provisionCognitoUser', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('creates the user with AdminCreateUser when no one holds the email', async () => {
+    mockSend.mockResolvedValueOnce({ Users: [] }).mockResolvedValueOnce({})
 
     await provisionCognitoUser('new@acme.com', tenantContext)
 
-    expect(mockSend).toHaveBeenCalledOnce()
-    const sentCommand = mockSend.mock.calls[0]![0] as Record<string, unknown>
-    expect(sentCommand['Username']).toBe('new@acme.com')
-    const attrs = sentCommand['UserAttributes'] as Array<{ Name: string; Value: string }>
+    expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
+    expect(sentCommand(1)['Username']).toBe('new@acme.com')
+    const attrs = sentCommand(1)['UserAttributes'] as Array<{ Name: string; Value: string }>
     expect(attrs).toEqual(
       expect.arrayContaining([
         { Name: 'email', Value: 'new@acme.com' },
@@ -89,12 +206,11 @@ describe('provisionCognitoUser', () => {
   })
 
   it('forwards tenant context as ClientMetadata for the CustomMessage Lambda trigger', async () => {
-    mockSend.mockResolvedValue({})
+    mockSend.mockResolvedValueOnce({ Users: [] }).mockResolvedValueOnce({})
 
     await provisionCognitoUser('new@acme.com', tenantContext)
 
-    const sentCommand = mockSend.mock.calls[0]![0] as { ClientMetadata?: Record<string, string> }
-    expect(sentCommand.ClientMetadata).toEqual({
+    expect(sentCommand(1)['ClientMetadata']).toEqual({
       source: 'tenant',
       tenantId: 'tenant-uuid-1',
       tenantName: 'Acme Movers',
@@ -102,64 +218,193 @@ describe('provisionCognitoUser', () => {
     })
   })
 
-  it('resolves without throwing when Cognito returns UsernameExistsException', async () => {
-    mockSend.mockRejectedValue(
-      Object.assign(new Error('User already exists'), { name: 'UsernameExistsException' }),
-    )
+  it('creates NO duplicate when the existing user’s email differs only in case', async () => {
+    // The bug: inviting an SSO user to a second tenant sent AdminCreateUser for
+    // `gigi@…` while the pool held `Gigi@…`; the case-sensitive pool accepted it
+    // and minted a second identity for the same person.
+    mockSend.mockResolvedValueOnce(listed({ email: 'Gigi@acme.com', verified: false }))
 
-    await expect(provisionCognitoUser('existing@acme.com', tenantContext)).resolves.toBeUndefined()
-    expect(mockSend).toHaveBeenCalledOnce()
+    await provisionCognitoUser('gigi@acme.com', tenantContext)
+
+    expect(sentCommandNames()).toEqual(['ListUsers'])
   })
 
-  it('rethrows non-UsernameExistsException errors', async () => {
-    mockSend.mockRejectedValue(
-      Object.assign(new Error('Service unavailable'), { name: 'ServiceFailureException' }),
-    )
+  it('resolves without throwing when AdminCreateUser loses a race (UsernameExistsException)', async () => {
+    mockSend
+      .mockResolvedValueOnce({ Users: [] })
+      .mockRejectedValueOnce(
+        Object.assign(new Error('User already exists'), { name: 'UsernameExistsException' }),
+      )
+
+    await expect(provisionCognitoUser('existing@acme.com', tenantContext)).resolves.toBeUndefined()
+  })
+
+  it('rethrows other AdminCreateUser errors', async () => {
+    mockSend
+      .mockResolvedValueOnce({ Users: [] })
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Service unavailable'), { name: 'ServiceFailureException' }),
+      )
 
     await expect(provisionCognitoUser('new@acme.com', tenantContext)).rejects.toThrow(
       'Service unavailable',
     )
   })
 
-  it('rethrows generic errors (no name property)', async () => {
-    mockSend.mockRejectedValue(new Error('Network timeout'))
+  it('rethrows a failed lookup instead of creating blind', async () => {
+    mockSend.mockRejectedValueOnce(new Error('Network timeout'))
 
     await expect(provisionCognitoUser('new@acme.com', tenantContext)).rejects.toThrow(
       'Network timeout',
     )
+    expect(sentCommandNames()).toEqual(['ListUsers'])
   })
 })
 
 describe('resetCognitoUserPassword', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubEnv('NODE_ENV', 'production')
   })
 
-  it('calls Cognito AdminResetUserPassword with the given email', async () => {
-    mockSend.mockResolvedValue({})
-
-    await resetCognitoUserPassword('user@acme.com')
-
-    expect(mockSend).toHaveBeenCalledOnce()
-    const sentCommand = mockSend.mock.calls[0]![0] as Record<string, unknown>
-    expect(sentCommand['Username']).toBe('user@acme.com')
+  afterEach(() => {
+    vi.unstubAllEnvs()
   })
 
-  it('resolves without throwing when Cognito returns UserNotFoundException (fail-open)', async () => {
-    mockSend.mockRejectedValue(
-      Object.assign(new Error('User not found'), { name: 'UserNotFoundException' }),
+  it('resets by the UUID Username, never the email', async () => {
+    mockSend.mockResolvedValueOnce(listed({})).mockResolvedValueOnce({})
+
+    await expect(
+      resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('reset')
+
+    expect(sentCommandNames()).toEqual(['ListUsers', 'AdminResetUserPassword'])
+    expect(sentCommand(1)['Username']).toBe('cognito-uuid-1')
+  })
+
+  it('re-verifies a re-cased, unverified email before resetting (SSO-linked user)', async () => {
+    // Cognito only delivers the reset code to a verified email, and SSO linking
+    // leaves it re-cased + email_verified=false.
+    mockSend
+      .mockResolvedValueOnce(listed({ email: 'TimStrey@acme.com', verified: false }))
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+
+    await expect(
+      resetCognitoUserPassword('timstrey@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('reset')
+
+    expect(sentCommandNames()).toEqual([
+      'ListUsers',
+      'AdminUpdateUserAttributes',
+      'AdminResetUserPassword',
+    ])
+    expect(sentCommand(1)['Username']).toBe('cognito-uuid-1')
+    expect(sentCommand(1)['UserAttributes']).toEqual([
+      { Name: 'email', Value: 'timstrey@acme.com' },
+      // Set in the same call so Cognito sends no verification code.
+      { Name: 'email_verified', Value: 'true' },
+    ])
+  })
+
+  it('re-verifies when only email_verified is false', async () => {
+    mockSend
+      .mockResolvedValueOnce(listed({ verified: false }))
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+
+    await resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext)
+
+    expect(sentCommandNames()).toContain('AdminUpdateUserAttributes')
+  })
+
+  it('leaves a clean lowercase, verified email untouched', async () => {
+    mockSend.mockResolvedValueOnce(listed({})).mockResolvedValueOnce({})
+
+    await resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext)
+
+    expect(sentCommandNames()).not.toContain('AdminUpdateUserAttributes')
+  })
+
+  it('sends a fresh temporary password when the user never set one (FORCE_CHANGE_PASSWORD)', async () => {
+    // Tim went straight to SSO: there is no password to reset, and
+    // AdminResetUserPassword is not the operation for this state.
+    mockSend
+      .mockResolvedValueOnce(
+        listed({ status: 'FORCE_CHANGE_PASSWORD', email: 'TimStrey@acme.com' }),
+      )
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+
+    await expect(
+      resetCognitoUserPassword('timstrey@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('resent')
+
+    expect(sentCommandNames()).toEqual([
+      'ListUsers',
+      'AdminUpdateUserAttributes',
+      'AdminCreateUser',
+    ])
+    expect(sentCommand(2)['MessageAction']).toBe('RESEND')
+    // RESEND uses the email alias form (proven in prod), and the email was just
+    // restored to lowercase, so that is what is stored now.
+    expect(sentCommand(2)['Username']).toBe('timstrey@acme.com')
+    expect(sentCommand(2)['ClientMetadata']).toEqual({
+      source: 'tenant',
+      tenantId: 'tenant-uuid-1',
+      tenantName: 'Acme Movers',
+      tenantSlug: 'acme',
+      intent: 'resend',
+    })
+  })
+
+  it('skips the temporary-password email outside production', async () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    mockSend.mockResolvedValueOnce(listed({ status: 'FORCE_CHANGE_PASSWORD' }))
+
+    await expect(
+      resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('skipped')
+
+    expect(sentCommandNames()).toEqual(['ListUsers'])
+  })
+
+  it('refuses a Cognito user that is not the identity the tenant row signed in as', async () => {
+    // A tenant admin can mint an ACTIVE row for anyone's address; the shared pool
+    // must not let that reach another tenant's user. No write of any kind.
+    mockSend.mockResolvedValueOnce(
+      listed({
+        username: 'another-tenants-user',
+        status: 'FORCE_CHANGE_PASSWORD',
+        verified: false,
+      }),
     )
 
-    await expect(resetCognitoUserPassword('ghost@acme.com')).resolves.toBeUndefined()
-    expect(mockSend).toHaveBeenCalledOnce()
+    await expect(
+      resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('not_found')
+    expect(sentCommandNames()).toEqual(['ListUsers'])
   })
 
-  it('rethrows non-UserNotFoundException errors', async () => {
-    mockSend.mockRejectedValue(
-      Object.assign(new Error('Access denied'), { name: 'NotAuthorizedException' }),
-    )
+  it('reports not_found — instead of silently succeeding — when no native user exists', async () => {
+    mockSend.mockResolvedValueOnce({ Users: [] })
 
-    await expect(resetCognitoUserPassword('user@acme.com')).rejects.toThrow('Access denied')
+    await expect(
+      resetCognitoUserPassword('ghost@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('not_found')
+    expect(sentCommandNames()).toEqual(['ListUsers'])
+  })
+
+  it('rethrows Cognito errors from the reset', async () => {
+    mockSend
+      .mockResolvedValueOnce(listed({}))
+      .mockRejectedValueOnce(
+        Object.assign(new Error('Access denied'), { name: 'NotAuthorizedException' }),
+      )
+
+    await expect(
+      resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext),
+    ).rejects.toThrow('Access denied')
   })
 })
 
@@ -168,17 +413,6 @@ describe('resetCognitoUserPassword', () => {
 // ---------------------------------------------------------------------------
 
 describe('resendCognitoInvite', () => {
-  const tenantContext = {
-    tenantId: 'tenant-uuid-1',
-    tenantName: 'Acme Movers',
-    tenantSlug: 'acme',
-  }
-
-  /** Reads the nth command sent to Cognito, with its `__command` discriminator. */
-  function sentCommand(n: number): Record<string, unknown> {
-    return mockSend.mock.calls[n]![0] as Record<string, unknown>
-  }
-
   beforeEach(() => {
     vi.clearAllMocks()
     // Every deployed environment (QA included) runs NODE_ENV=production — only
@@ -190,18 +424,17 @@ describe('resendCognitoInvite', () => {
     vi.unstubAllEnvs()
   })
 
-  it('resends the invite when the user is still in FORCE_CHANGE_PASSWORD', async () => {
+  it('resends by the email as Cognito stores it — not the lowercase invite email', async () => {
+    // The pool is case-sensitive: a RESEND for `pending@…` would miss `Pending@…`.
     mockSend
-      .mockResolvedValueOnce({ UserStatus: 'FORCE_CHANGE_PASSWORD' })
+      .mockResolvedValueOnce(listed({ status: 'FORCE_CHANGE_PASSWORD', email: 'Pending@acme.com' }))
       .mockResolvedValueOnce({})
 
     await expect(resendCognitoInvite('pending@acme.com', tenantContext)).resolves.toBe('resent')
 
-    expect(mockSend).toHaveBeenCalledTimes(2)
-    expect(sentCommand(0)['__command']).toBe('AdminGetUser')
-    expect(sentCommand(1)['__command']).toBe('AdminCreateUser')
+    expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
     expect(sentCommand(1)['MessageAction']).toBe('RESEND')
-    expect(sentCommand(1)['Username']).toBe('pending@acme.com')
+    expect(sentCommand(1)['Username']).toBe('Pending@acme.com')
   })
 
   it('re-sends tenant context as ClientMetadata so the invite email stays tenant-aware', async () => {
@@ -209,10 +442,10 @@ describe('resendCognitoInvite', () => {
     // unchanged and the invitee gets Cognito's stock template — no tenant name,
     // no login link. This is the regression that silently degrades the email.
     mockSend
-      .mockResolvedValueOnce({ UserStatus: 'FORCE_CHANGE_PASSWORD' })
+      .mockResolvedValueOnce(listed({ status: 'FORCE_CHANGE_PASSWORD' }))
       .mockResolvedValueOnce({})
 
-    await resendCognitoInvite('pending@acme.com', tenantContext)
+    await resendCognitoInvite('user@acme.com', tenantContext)
 
     expect(sentCommand(1)['ClientMetadata']).toEqual({
       source: 'tenant',
@@ -227,59 +460,73 @@ describe('resendCognitoInvite', () => {
 
   it('never pairs MessageAction RESEND with SUPPRESS (one mutually exclusive enum)', async () => {
     mockSend
-      .mockResolvedValueOnce({ UserStatus: 'FORCE_CHANGE_PASSWORD' })
+      .mockResolvedValueOnce(listed({ status: 'FORCE_CHANGE_PASSWORD' }))
       .mockResolvedValueOnce({})
 
-    await resendCognitoInvite('pending@acme.com', tenantContext)
+    await resendCognitoInvite('user@acme.com', tenantContext)
 
     expect(sentCommand(1)['MessageAction']).not.toBe('SUPPRESS')
   })
 
-  // The pool is shared across every tenant and keyed by email, and a tenant
-  // admin can mint a PENDING row for an arbitrary address. So the ONLY identity
-  // this helper may mutate is one that has never completed a login anywhere —
+  // The pool is shared across every tenant, and a tenant admin can mint a
+  // PENDING row for an arbitrary address. So the ONLY identity this helper may
+  // mutate is one that has never completed a login anywhere —
   // FORCE_CHANGE_PASSWORD. Every other state belongs to a real account, quite
   // possibly on a different tenant.
-  it.each(['CONFIRMED', 'RESET_REQUIRED', 'EXTERNAL_PROVIDER', 'UNCONFIRMED'])(
+  it.each(['CONFIRMED', 'RESET_REQUIRED', 'UNCONFIRMED'])(
     'refuses without any Cognito write when the user is %s',
     async (status) => {
-      mockSend.mockResolvedValueOnce({ UserStatus: status })
+      mockSend.mockResolvedValueOnce(listed({ status }))
 
-      await expect(resendCognitoInvite('someone@acme.com', tenantContext)).resolves.toBe(
+      await expect(resendCognitoInvite('user@acme.com', tenantContext)).resolves.toBe(
         'already_registered',
       )
 
-      // The state read and nothing else — no reset, no resend.
-      expect(mockSend).toHaveBeenCalledOnce()
-      expect(sentCommand(0)['__command']).toBe('AdminGetUser')
+      // The lookup and nothing else — no reset, no resend.
+      expect(sentCommandNames()).toEqual(['ListUsers'])
     },
   )
+
+  it('refuses when the only identity is an unlinked federated (EXTERNAL_PROVIDER) user', async () => {
+    mockSend.mockResolvedValueOnce(
+      listed({ username: 'microsoft-nw_abc', status: 'EXTERNAL_PROVIDER' }),
+    )
+
+    await expect(resendCognitoInvite('user@acme.com', tenantContext)).resolves.toBe(
+      'already_registered',
+    )
+    expect(sentCommandNames()).toEqual(['ListUsers'])
+  })
 
   it('never resets the password of an identity registered on another tenant', async () => {
     // Regression: an earlier revision mapped CONFIRMED to AdminResetUserPassword,
     // which let tenant A invalidate a tenant-B user's password by inviting their
     // email and clicking Resend. pre-token.ts flips PENDING -> ACTIVE on any
     // successful login, so that branch had no legitimate target to begin with.
-    mockSend.mockResolvedValueOnce({ UserStatus: 'CONFIRMED' })
+    mockSend.mockResolvedValueOnce(listed({ status: 'CONFIRMED', email: 'Victim@other.com' }))
 
-    await resendCognitoInvite('victim@other-tenant.com', tenantContext)
+    await resendCognitoInvite('victim@other.com', tenantContext)
 
-    const commands = mockSend.mock.calls.map((c) => (c[0] as Record<string, unknown>)['__command'])
-    expect(commands).not.toContain('AdminResetUserPassword')
-    expect(commands).not.toContain('AdminCreateUser')
+    expect(sentCommandNames()).not.toContain('AdminResetUserPassword')
+    expect(sentCommandNames()).not.toContain('AdminCreateUser')
+  })
+
+  it('refuses a re-cased CONFIRMED user instead of creating a duplicate', async () => {
+    // Before the case-insensitive lookup, AdminGetUser(`victim@…`) missed
+    // `Victim@…`, fell into "no such user", and minted a second identity.
+    mockSend.mockResolvedValueOnce(listed({ status: 'CONFIRMED', email: 'Victim@other.com' }))
+
+    await expect(resendCognitoInvite('victim@other.com', tenantContext)).resolves.toBe(
+      'already_registered',
+    )
   })
 
   it('creates the account fresh when Cognito has no such user', async () => {
-    mockSend
-      .mockRejectedValueOnce(
-        Object.assign(new Error('User does not exist'), { name: 'UserNotFoundException' }),
-      )
-      .mockResolvedValueOnce({})
+    mockSend.mockResolvedValueOnce({ Users: [] }).mockResolvedValueOnce({})
 
     await expect(resendCognitoInvite('ghost@acme.com', tenantContext)).resolves.toBe('created')
 
-    expect(mockSend).toHaveBeenCalledTimes(2)
-    expect(sentCommand(1)['__command']).toBe('AdminCreateUser')
+    expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
     expect(sentCommand(1)['MessageAction']).toBeUndefined()
     expect(sentCommand(1)['ClientMetadata']).toEqual({
       source: 'tenant',
@@ -289,7 +536,7 @@ describe('resendCognitoInvite', () => {
     })
   })
 
-  it('rethrows a non-UserNotFoundException failure from the state read', async () => {
+  it('rethrows a failure from the lookup', async () => {
     mockSend.mockRejectedValueOnce(
       Object.assign(new Error('Access denied'), { name: 'NotAuthorizedException' }),
     )
