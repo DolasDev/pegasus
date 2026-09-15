@@ -52,10 +52,14 @@ const fixtures = JSON.parse(await readFile(join(STORE, 'fixtures/screens.json'),
 // target is (css width x css height) x deviceScaleFactor = the required pixels.
 //
 //   iOS  1320x2868  — the 6.9" iPhone set App Store Connect requires.
+//   iOS  1284x2778  — the 6.5" slot. ASC rejects a 6.9" file there ("should be
+//                     1242x2688 or 1284x2778"), and the aspect ratios differ, so
+//                     this is a real 428x926 capture, never a resize of the 6.9".
 //   Play 1080x2400  — a 20:9 phone, inside Play's 16:9..9:16 ratio window and
 //                     above its 1080px minimum on the long edge.
 const TARGETS = [
   { id: 'ios', label: 'iOS 6.9"', css: { width: 440, height: 956 }, scale: 3, out: 'ios' },
+  { id: 'ios-6.5', label: 'iOS 6.5"', css: { width: 428, height: 926 }, scale: 3, out: 'ios-6.5' },
   { id: 'android', label: 'Play phone', css: { width: 360, height: 800 }, scale: 3, out: 'android' },
 ]
 

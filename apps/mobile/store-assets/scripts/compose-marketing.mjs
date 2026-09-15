@@ -45,6 +45,7 @@ const CAPTIONS = {
 
 const TARGETS = [
   { id: 'ios', dir: 'ios', css: { width: 440, height: 956 }, scale: 3 },
+  { id: 'ios-6.5', dir: 'ios-6.5', css: { width: 428, height: 926 }, scale: 3 },
   { id: 'android', dir: 'android', css: { width: 360, height: 800 }, scale: 3 },
 ]
 
