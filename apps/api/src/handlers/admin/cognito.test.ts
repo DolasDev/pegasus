@@ -77,6 +77,8 @@ function cognitoUser({
     Attributes: [
       { Name: 'email', Value: email },
       { Name: 'email_verified', Value: String(verified) },
+      // A native user's sub equals its UUID Username.
+      { Name: 'sub', Value: username },
     ],
   }
 }
@@ -272,7 +274,9 @@ describe('resetCognitoUserPassword', () => {
   it('resets by the UUID Username, never the email', async () => {
     mockSend.mockResolvedValueOnce(listed({})).mockResolvedValueOnce({})
 
-    await expect(resetCognitoUserPassword('user@acme.com', tenantContext)).resolves.toBe('reset')
+    await expect(
+      resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('reset')
 
     expect(sentCommandNames()).toEqual(['ListUsers', 'AdminResetUserPassword'])
     expect(sentCommand(1)['Username']).toBe('cognito-uuid-1')
@@ -286,9 +290,9 @@ describe('resetCognitoUserPassword', () => {
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({})
 
-    await expect(resetCognitoUserPassword('timstrey@acme.com', tenantContext)).resolves.toBe(
-      'reset',
-    )
+    await expect(
+      resetCognitoUserPassword('timstrey@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('reset')
 
     expect(sentCommandNames()).toEqual([
       'ListUsers',
@@ -309,7 +313,7 @@ describe('resetCognitoUserPassword', () => {
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({})
 
-    await resetCognitoUserPassword('user@acme.com', tenantContext)
+    await resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext)
 
     expect(sentCommandNames()).toContain('AdminUpdateUserAttributes')
   })
@@ -317,7 +321,7 @@ describe('resetCognitoUserPassword', () => {
   it('leaves a clean lowercase, verified email untouched', async () => {
     mockSend.mockResolvedValueOnce(listed({})).mockResolvedValueOnce({})
 
-    await resetCognitoUserPassword('user@acme.com', tenantContext)
+    await resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext)
 
     expect(sentCommandNames()).not.toContain('AdminUpdateUserAttributes')
   })
@@ -332,9 +336,9 @@ describe('resetCognitoUserPassword', () => {
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({})
 
-    await expect(resetCognitoUserPassword('timstrey@acme.com', tenantContext)).resolves.toBe(
-      'resent',
-    )
+    await expect(
+      resetCognitoUserPassword('timstrey@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('resent')
 
     expect(sentCommandNames()).toEqual([
       'ListUsers',
@@ -358,17 +362,36 @@ describe('resetCognitoUserPassword', () => {
     vi.stubEnv('NODE_ENV', 'test')
     mockSend.mockResolvedValueOnce(listed({ status: 'FORCE_CHANGE_PASSWORD' }))
 
-    await expect(resetCognitoUserPassword('user@acme.com', tenantContext)).resolves.toBe('skipped')
+    await expect(
+      resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('skipped')
 
+    expect(sentCommandNames()).toEqual(['ListUsers'])
+  })
+
+  it('refuses a Cognito user that is not the identity the tenant row signed in as', async () => {
+    // A tenant admin can mint an ACTIVE row for anyone's address; the shared pool
+    // must not let that reach another tenant's user. No write of any kind.
+    mockSend.mockResolvedValueOnce(
+      listed({
+        username: 'another-tenants-user',
+        status: 'FORCE_CHANGE_PASSWORD',
+        verified: false,
+      }),
+    )
+
+    await expect(
+      resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('not_found')
     expect(sentCommandNames()).toEqual(['ListUsers'])
   })
 
   it('reports not_found — instead of silently succeeding — when no native user exists', async () => {
     mockSend.mockResolvedValueOnce({ Users: [] })
 
-    await expect(resetCognitoUserPassword('ghost@acme.com', tenantContext)).resolves.toBe(
-      'not_found',
-    )
+    await expect(
+      resetCognitoUserPassword('ghost@acme.com', 'cognito-uuid-1', tenantContext),
+    ).resolves.toBe('not_found')
     expect(sentCommandNames()).toEqual(['ListUsers'])
   })
 
@@ -379,9 +402,9 @@ describe('resetCognitoUserPassword', () => {
         Object.assign(new Error('Access denied'), { name: 'NotAuthorizedException' }),
       )
 
-    await expect(resetCognitoUserPassword('user@acme.com', tenantContext)).rejects.toThrow(
-      'Access denied',
-    )
+    await expect(
+      resetCognitoUserPassword('user@acme.com', 'cognito-uuid-1', tenantContext),
+    ).rejects.toThrow('Access denied')
   })
 })
 

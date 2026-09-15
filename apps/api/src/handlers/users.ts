@@ -424,6 +424,20 @@ usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), 
     )
   }
 
+  // No cognitoSub ⇒ this row has never signed in, so it owns no Cognito identity
+  // to reset. Refused before any Cognito call: such a row can be minted for
+  // someone else's address (invite → deactivate → reactivate), and the shared
+  // pool would otherwise let this tenant reach that person's account.
+  if (!existing.cognitoSub) {
+    return c.json(
+      {
+        error: 'This user has not signed in yet, so there is no password to reset.',
+        code: 'NO_SIGN_IN',
+      },
+      422,
+    )
+  }
+
   // Same tenant lookup as POST /invite — a user who never set a password is sent
   // a fresh temporary password, and that email is rendered tenant-aware.
   const tenant = await db.tenant.findUnique({
@@ -433,7 +447,7 @@ usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), 
 
   let outcome: Awaited<ReturnType<typeof resetCognitoUserPassword>>
   try {
-    outcome = await resetCognitoUserPassword(existing.email, {
+    outcome = await resetCognitoUserPassword(existing.email, existing.cognitoSub, {
       tenantId,
       tenantName: tenant?.name ?? '',
       tenantSlug: tenant?.slug ?? '',

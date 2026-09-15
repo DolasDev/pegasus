@@ -169,7 +169,8 @@ export async function provisionCognitoUser(
  * - `resent`    — the user never set a password (FORCE_CHANGE_PASSWORD — typically
  *                 someone who went straight to SSO), so there is nothing to reset;
  *                 a fresh temporary password was emailed instead
- * - `not_found` — no password-capable Cognito user exists for this email
+ * - `not_found` — no password-capable Cognito user exists for this email, or the one
+ *                 that does is not the identity the tenant's row signed in as
  * - `skipped`   — `resent` would apply, but non-production sends no invite email
  */
 export type ResetPasswordOutcome = 'reset' | 'resent' | 'not_found' | 'skipped'
@@ -192,11 +193,20 @@ export type ResetPasswordOutcome = 'reset' | 'resent' | 'not_found' | 'skipped'
  */
 export async function resetCognitoUserPassword(
   email: string,
+  expectedSub: string,
   tenant: ProvisionTenantContext,
 ): Promise<ResetPasswordOutcome> {
   const normalized = email.trim().toLowerCase()
   const { native } = await findCognitoUsersByEmail(normalized)
-  if (!native) return 'not_found'
+
+  // Only act on the identity the tenant's row actually signed in as. The pool is
+  // shared, and a tenant admin can mint an ACTIVE row for an arbitrary address
+  // (invite → deactivate → reactivate), so matching by email alone would let
+  // tenant A reset — or re-issue a temporary password for — a user who belongs
+  // only to tenant B. `cognitoSub` is written solely by a real sign-in into the
+  // tenant (cognito/pre-token.ts), which a forged row cannot produce.
+  const sub = native?.Attributes?.find((a) => a.Name === 'sub')?.Value
+  if (!native || sub !== expectedSub) return 'not_found'
 
   const verified = native.Attributes?.find((a) => a.Name === 'email_verified')?.Value === 'true'
   if (emailOf(native) !== normalized || !verified) {

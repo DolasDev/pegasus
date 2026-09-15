@@ -74,6 +74,7 @@ function listedUser({
         Attributes: [
           { Name: 'email', Value: email },
           { Name: 'email_verified', Value: String(verified) },
+          { Name: 'sub', Value: 'cognito-uuid-1' },
         ],
       },
     ],
@@ -487,7 +488,13 @@ describe('users handler', () => {
   // ── POST /:id/reset-password ───────────────────────────────────────────────
 
   describe('POST /:id/reset-password', () => {
-    const activeUser = { ...mockUserRow, status: 'ACTIVE' as const, activatedAt: now }
+    // A real sign-in into the tenant is what writes cognitoSub (pre-token.ts).
+    const activeUser = {
+      ...mockUserRow,
+      status: 'ACTIVE' as const,
+      activatedAt: now,
+      cognitoSub: 'cognito-uuid-1' as string | null,
+    }
 
     it('returns 403 FORBIDDEN without user:update permission', async () => {
       const res = await buildApp('viewer').request('/user-1/reset-password', post({}))
@@ -576,6 +583,29 @@ describe('users handler', () => {
         tenantSlug: 'acme',
         intent: 'resend',
       })
+    })
+
+    it('returns 422 NO_SIGN_IN without touching Cognito for a row that never signed in', async () => {
+      // invite → deactivate → reactivate mints an ACTIVE row with no cognitoSub
+      // for ANY address; resetting it by email would reach another tenant's user.
+      mockRepo.findById.mockResolvedValue({ ...activeUser, cognitoSub: null })
+
+      const res = await buildApp().request('/user-1/reset-password', post({}))
+
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('NO_SIGN_IN')
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 NO_SIGN_IN when the Cognito user is not the identity this row signed in as', async () => {
+      mockRepo.findById.mockResolvedValue({ ...activeUser, cognitoSub: 'some-other-sub' })
+      mockSend.mockResolvedValueOnce(listedUser({ status: 'FORCE_CHANGE_PASSWORD' }))
+
+      const res = await buildApp().request('/user-1/reset-password', post({}))
+
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('NO_SIGN_IN')
+      expect(sentCommandNames()).toEqual(['ListUsers'])
     })
 
     it('returns 422 NO_SIGN_IN — not a silent 200 — when Cognito has no such user', async () => {
