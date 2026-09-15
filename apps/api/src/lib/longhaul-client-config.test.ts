@@ -50,8 +50,8 @@ describe('getLonghaulClientConfig', () => {
   // non-whitelisted NWI codes unsatisfiable (#615/#628) and then, once the
   // selection was allowed to win, made adding a filter ADD rows. Planning shows
   // every code by default and narrows from there. This asserts the field is
-  // gone for BOTH clients, so it cannot quietly return for one of them.
-  it.each(['nwi', 'qmm'])('exposes no import_export whitelist for %s', (client) => {
+  // gone for EVERY client, so it cannot quietly return for one of them.
+  it.each(['nwi', 'qmm', 'rvs'])('exposes no import_export whitelist for %s', (client) => {
     expect(getLonghaulClientConfigFor(client)).not.toHaveProperty('importExportTypes')
   })
 
@@ -102,12 +102,27 @@ describe('getLonghaulClientConfigFor', () => {
     expect(qmm.dispatcherQuery).toBe("roles like ('%cpd%')")
   })
 
+  // RVS's MoveType codes are numeric ('0'..'18'). Tagged `qmm`, its letter
+  // whitelist matched none of them and the Move Types dropdown came back empty;
+  // `%cpd%` likewise matched only inactive RVS users. RVS must offer every code
+  // and pick dispatchers by the 'LO' role its dispatch staff carry.
+  it('resolves rvs to an unrestricted MoveType list and LO-role dispatchers', () => {
+    const rvs = getLonghaulClientConfigFor('rvs')
+    expect(rvs.moveTypesWhere).toBe('1=1')
+    expect(rvs.dispatcherQuery).toBe("roles like '%LO%'")
+  })
+
   it('normalizes mixed-case / padded values', () => {
     expect(getLonghaulClientConfigFor('  NWI ').moveTypesWhere).toBe('1=1')
+    expect(getLonghaulClientConfigFor(' RVS').moveTypesWhere).toBe('1=1')
   })
 
   it('throws on an unknown client', () => {
     expect(() => getLonghaulClientConfigFor('acme')).toThrow(/Unknown longhaul client/)
+  })
+
+  it('throws on an inherited object key rather than returning a non-config', () => {
+    expect(() => getLonghaulClientConfigFor('constructor')).toThrow(/Unknown longhaul client/)
   })
 
   it('returns an independent copy per call (mutation isolation)', () => {

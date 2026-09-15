@@ -17,7 +17,7 @@ import { apiFetch } from '@/api/client'
 // touching this file in lockstep.
 // ---------------------------------------------------------------------------
 
-export type LonghaulClient = 'nwi' | 'qmm'
+export type LonghaulClient = 'nwi' | 'qmm' | 'rvs'
 
 export interface OperationsSettings {
   longhaulClient?: LonghaulClient | null

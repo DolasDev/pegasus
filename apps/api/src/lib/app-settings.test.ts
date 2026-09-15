@@ -36,9 +36,9 @@ describe('AppSettingsSchema', () => {
     ])
   })
 
-  it('accepts a valid operations.longhaulClient', () => {
-    const parsed = AppSettingsSchema.parse({ operations: { longhaulClient: 'qmm' } })
-    expect(parsed.operations.longhaulClient).toBe('qmm')
+  it.each(['nwi', 'qmm', 'rvs'] as const)('accepts operations.longhaulClient %s', (client) => {
+    const parsed = AppSettingsSchema.parse({ operations: { longhaulClient: client } })
+    expect(parsed.operations.longhaulClient).toBe(client)
   })
 
   it('accepts null for operations.longhaulClient (explicit "unconfigured")', () => {
