@@ -342,7 +342,9 @@ describe('resetCognitoUserPassword', () => {
       'AdminCreateUser',
     ])
     expect(sentCommand(2)['MessageAction']).toBe('RESEND')
-    expect(sentCommand(2)['Username']).toBe('cognito-uuid-1')
+    // RESEND uses the email alias form (proven in prod), and the email was just
+    // restored to lowercase, so that is what is stored now.
+    expect(sentCommand(2)['Username']).toBe('timstrey@acme.com')
     expect(sentCommand(2)['ClientMetadata']).toEqual({
       source: 'tenant',
       tenantId: 'tenant-uuid-1',
@@ -399,7 +401,8 @@ describe('resendCognitoInvite', () => {
     vi.unstubAllEnvs()
   })
 
-  it('resends the invite by UUID Username when the user is still in FORCE_CHANGE_PASSWORD', async () => {
+  it('resends by the email as Cognito stores it — not the lowercase invite email', async () => {
+    // The pool is case-sensitive: a RESEND for `pending@…` would miss `Pending@…`.
     mockSend
       .mockResolvedValueOnce(listed({ status: 'FORCE_CHANGE_PASSWORD', email: 'Pending@acme.com' }))
       .mockResolvedValueOnce({})
@@ -408,7 +411,7 @@ describe('resendCognitoInvite', () => {
 
     expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
     expect(sentCommand(1)['MessageAction']).toBe('RESEND')
-    expect(sentCommand(1)['Username']).toBe('cognito-uuid-1')
+    expect(sentCommand(1)['Username']).toBe('Pending@acme.com')
   })
 
   it('re-sends tenant context as ClientMetadata so the invite email stays tenant-aware', async () => {

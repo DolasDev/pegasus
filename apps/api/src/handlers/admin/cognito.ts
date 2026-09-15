@@ -18,7 +18,9 @@
 //
 // So every lookup goes through findCognitoUsersByEmail (ListUsers, whose
 // `email =` filter IS case-insensitive — `spobuta@…` returned `SPobuta@…` in
-// prod), and every Admin* call after it uses the returned UUID `Username`.
+// prod), and every Admin* call after it uses the returned UUID `Username` — except
+// the temporary-password RESEND, which uses the email exactly as currently stored
+// (see resendTemporaryPassword).
 // ---------------------------------------------------------------------------
 
 import {
@@ -212,7 +214,8 @@ export async function resetCognitoUserPassword(
 
   if (native.UserStatus === 'FORCE_CHANGE_PASSWORD') {
     if (process.env['NODE_ENV'] !== 'production') return 'skipped'
-    await resendTemporaryPassword(native.Username, tenant)
+    // The email was restored to `normalized` above, so the alias form matches.
+    await resendTemporaryPassword(normalized, tenant)
     return 'resent'
   }
 
@@ -229,6 +232,11 @@ export async function resetCognitoUserPassword(
  * AdminCreateUser + MessageAction RESEND: regenerates the temporary password and
  * restarts its 7-day clock.
  *
+ * `emailAsStored` must be the email EXACTLY as it is currently on the Cognito
+ * record — the one exception to "address by UUID Username" in this file. RESEND by
+ * email alias is the form proven in prod (2026-09-10); RESEND by UUID is not, so
+ * callers pass the stored email rather than the lowercase invite email.
+ *
  * `MessageAction` is a single enum value, so RESEND cannot be combined with the
  * SUPPRESS that {@link provisionCognitoUser} uses outside production — callers
  * short-circuit non-production before reaching this.
@@ -238,13 +246,13 @@ export async function resetCognitoUserPassword(
  * wording; without it the recipient gets a body identical to their first invite.
  */
 async function resendTemporaryPassword(
-  username: string,
+  emailAsStored: string,
   tenant: ProvisionTenantContext,
 ): Promise<void> {
   await getCognito().send(
     new AdminCreateUserCommand({
       UserPoolId: userPoolId(),
-      Username: username,
+      Username: emailAsStored,
       MessageAction: 'RESEND',
       ClientMetadata: { ...tenantMetadata(tenant), intent: 'resend' },
     }),
@@ -324,6 +332,7 @@ export async function resendCognitoInvite(
 
   if (native.UserStatus !== 'FORCE_CHANGE_PASSWORD') return 'already_registered'
 
-  await resendTemporaryPassword(native.Username, tenant)
+  // Stored case, not the invite's lowercase: see resendTemporaryPassword.
+  await resendTemporaryPassword(emailOf(native) ?? email, tenant)
   return 'resent'
 }

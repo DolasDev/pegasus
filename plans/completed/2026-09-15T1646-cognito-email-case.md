@@ -62,7 +62,7 @@ Frontend: check how tenant-web `routes/users.tsx` surfaces reset-password errors
 - [x] `users.ts` `/invite` uses `provisionCognitoUser`; update `users.test.ts` mocks (ListUsers discriminator)
 - [x] Move `escapeFilterValue` to a shared module (`cognito/list-users-filter.ts`); pre-sign-up imports it; pre-sign-up tests green
 - [x] Infra: ListUsers + AdminUpdateUserAttributes grant + api-stack test
-- [x] tenant-web reset error surfacing: `ResetPasswordConfirm` already shows the thrown API message, so no change. Follow-up: its "Reset code sent" copy is imprecise for the `resent` (temporary password) outcome
+- [x] tenant-web reset UI: `ResetPasswordConfirm` already showed the thrown API message (so 422 `NO_SIGN_IN` surfaces). The reset response now carries `data.delivery` (`reset_code` | `temporary_password`), and the done-state copy branches on it, because Cognito refuses "Forgot password" for FORCE_CHANGE_PASSWORD users. Pinned in `routes/users.test.tsx`
 - [x] Gates: api vitest (3385 pass), infra `api-stack.test.ts` (94 pass), `npm run typecheck` (14/14), `npm run lint` (9/9). `app.test.ts`'s SDK mock needed the new command exports
 - [x] GOTCHAS.md entry: "SSO sign-in re-cases the Cognito email — never address a Cognito user by email"
 - [x] Archive the plan → `plans/completed/` in the impl commit
@@ -71,6 +71,8 @@ Frontend: check how tenant-web `routes/users.tsx` surfaces reset-password errors
 
 - `findCognitoUsersByEmail` returns `{ native, federated }`. `resendCognitoInvite` treats "no native user but an unlinked federated one" as `already_registered` (never mutate). `provisionCognitoUser` (invite) still creates a native user in that case, which matches pre-existing behavior and is the linking flow's expected order.
 - `AdminGetUser` is no longer called by the API Lambda. The grant is left in place (removing IAM is a separate, riskier change).
+- The RESEND (AdminCreateUser `MessageAction: RESEND`) is the one call NOT addressed by UUID. It uses the email exactly as Cognito currently stores it (`emailOf(native)`; in reset, the just-restored lowercase form), because RESEND by email alias is proven in prod (CloudTrail 2026-09-10) and RESEND by UUID is not.
+- apiFetch unwraps `{ data }`, so the reset outcome rides on `data.delivery` rather than `meta`.
 - Unverified in a live pool: whether an SSO-linked user in `RESET_REQUIRED` (after an admin reset) can still sign in through SSO. Watch the first real use.
 
 ## Files

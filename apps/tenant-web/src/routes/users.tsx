@@ -323,19 +323,21 @@ function ReactivateConfirm({ user, onConfirm, onCancel, isPending }: ReactivateC
 
 type ResetPasswordConfirmProps = {
   user: TenantUser
-  onConfirm: () => Promise<void>
+  /** Resolves with what was emailed; rejects to keep the panel open with the error. */
+  onConfirm: () => Promise<'reset_code' | 'temporary_password' | undefined>
   onCancel: () => void
 }
 
 function ResetPasswordConfirm({ user, onConfirm, onCancel }: ResetPasswordConfirmProps) {
   const [state, setState] = useState<'idle' | 'pending' | 'done'>('idle')
+  const [delivery, setDelivery] = useState<'reset_code' | 'temporary_password' | undefined>()
   const [error, setError] = useState<string | null>(null)
 
   async function handle() {
     setError(null)
     setState('pending')
     try {
-      await onConfirm()
+      setDelivery(await onConfirm())
       setState('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
@@ -344,13 +346,28 @@ function ResetPasswordConfirm({ user, onConfirm, onCancel }: ResetPasswordConfir
   }
 
   if (state === 'done') {
+    // A user who never set a password (typically one who signs in with SSO) is
+    // sent a new temporary password rather than a reset code, and Cognito refuses
+    // "Forgot password" in exactly that state — so that copy would send them to a
+    // dead end.
+    const temporary = delivery === 'temporary_password'
     return (
       <Card className="border-primary/40">
         <CardHeader>
-          <CardTitle>Reset code sent</CardTitle>
+          <CardTitle>{temporary ? 'Temporary password sent' : 'Reset code sent'}</CardTitle>
           <CardDescription>
-            A password reset code has been emailed to <strong>{user.email}</strong>. They can set a
-            new password from the &ldquo;Forgot password?&rdquo; link on the sign-in page.
+            {temporary ? (
+              <>
+                <strong>{user.email}</strong> has never set a password, so a new temporary password
+                has been emailed to them instead. They sign in with it on the sign-in page and then
+                choose their own.
+              </>
+            ) : (
+              <>
+                A password reset code has been emailed to <strong>{user.email}</strong>. They can
+                set a new password from the &ldquo;Forgot password?&rdquo; link on the sign-in page.
+              </>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex justify-end">
@@ -1187,8 +1204,9 @@ export function UsersPage() {
 
   async function handleResetPassword(user: TenantUser) {
     // Throws on failure so ResetPasswordConfirm can surface the error and keep
-    // the panel open for retry; on success it shows its own "code sent" notice.
-    await resetPasswordMutation.mutateAsync(user.id)
+    // the panel open for retry; on success the panel says what was emailed.
+    const result = await resetPasswordMutation.mutateAsync(user.id)
+    return result.delivery
   }
 
   async function handleResendInvite(user: TenantUser) {

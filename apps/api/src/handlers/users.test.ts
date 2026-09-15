@@ -527,6 +527,7 @@ describe('users handler', () => {
       expect(res.status).toBe(200)
       const body = await json(res)
       expect((body.data as JsonBody)['email']).toBe('user@example.com')
+      expect((body.data as JsonBody)['delivery']).toBe('reset_code')
       expect(sentCommandNames()).toEqual(['ListUsers', 'AdminResetUserPassword'])
       const sentCommand = mockSend.mock.calls[1]![0] as Record<string, unknown>
       expect(sentCommand['Username']).toBe('cognito-uuid-1')
@@ -562,9 +563,12 @@ describe('users handler', () => {
       vi.unstubAllEnvs()
 
       expect(res.status).toBe(200)
+      // The UI must not tell this user to use "Forgot password".
+      expect(((await json(res)).data as JsonBody)['delivery']).toBe('temporary_password')
       expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
       const resend = mockSend.mock.calls[1]![0] as Record<string, unknown>
       expect(resend['MessageAction']).toBe('RESEND')
+      expect(resend['Username']).toBe('user@example.com')
       expect(resend['ClientMetadata']).toEqual({
         source: 'tenant',
         tenantId: 'test-tenant-id',
@@ -699,7 +703,7 @@ describe('users handler', () => {
       expect(sentCommandNames()).toEqual(['ListUsers', 'AdminCreateUser'])
       const resend = mockSend.mock.calls[1]![0] as Record<string, unknown>
       expect(resend['MessageAction']).toBe('RESEND')
-      expect(resend['Username']).toBe('cognito-uuid-1')
+      expect(resend['Username']).toBe('user@example.com')
     })
 
     it('forwards the tenant name and slug so the re-sent email stays tenant-aware', async () => {

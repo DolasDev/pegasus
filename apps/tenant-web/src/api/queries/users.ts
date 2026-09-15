@@ -174,13 +174,21 @@ export function useReactivateUser() {
 }
 
 /**
- * Admin-initiated password reset. The user is emailed a confirmation code and
- * completes the reset through the "Forgot password" flow on the login page.
+ * What an admin password reset actually emailed. `reset_code`: the user completes
+ * it through "Forgot password" on the login page. `temporary_password`: the user
+ * never set a password (typically someone who signs in with SSO), so they were
+ * sent a new temporary password instead — Cognito refuses "Forgot password" for
+ * that state, so the UI must not point them there.
  */
+export type ResetPasswordDelivery = 'reset_code' | 'temporary_password'
+
+export type ResetPasswordResult = TenantUser & { delivery?: ResetPasswordDelivery }
+
+/** Admin-initiated password reset — see {@link ResetPasswordDelivery}. */
 export function useResetUserPassword() {
   return useMutation({
     mutationFn: (id: string) =>
-      apiFetch<TenantUser>(`/api/v1/users/${id}/reset-password`, { method: 'POST' }),
+      apiFetch<ResetPasswordResult>(`/api/v1/users/${id}/reset-password`, { method: 'POST' }),
   })
 }
 

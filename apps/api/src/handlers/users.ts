@@ -461,7 +461,14 @@ usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), 
   }
 
   logger.info('POST /users/:id/reset-password: done', { id, tenantId, outcome })
-  return c.json({ data: toResponse(existing) })
+  // `delivery` tells the UI what was emailed: a user who never set a password
+  // gets a temporary password, and "Forgot password" does not work for them.
+  return c.json({
+    data: {
+      ...toResponse(existing),
+      delivery: outcome === 'reset' ? 'reset_code' : 'temporary_password',
+    },
+  })
 })
 
 // ---------------------------------------------------------------------------
