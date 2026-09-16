@@ -94,6 +94,39 @@ def test_missing_extra_message_content() -> None:
     assert "pegasus-workflows-sdk" in _MISSING_EXTRA_MSG
 
 
+def test_mcp_server_module_is_importable() -> None:
+    """The module this server is built on must actually exist in this environment.
+
+    Regression for the mcp 2.x break: `mcp` is a BASE dependency, so a widened
+    pin that resolves an incompatible major must turn CI RED. The previous
+    guard, ``pytest.importorskip("mcp.server.fastmcp")``, silently SKIPPED
+    instead — a renamed module reads the same as an uninstalled one — so every
+    test that builds a server stopped running while CI stayed green. A plain
+    import is the whole point: it fails.
+    """
+    import mcp.server.fastmcp
+
+    assert hasattr(mcp.server.fastmcp, "FastMCP")
+
+
+def test_incompatible_mcp_message_does_not_advise_a_reinstall() -> None:
+    """An incompatible mcp must not be reported as a missing one.
+
+    Reinstalling re-resolves to the same incompatible major and fails
+    identically, so the missing-dep remedy sends the user in a circle. The
+    message has to name the version and the pin that actually recovers.
+    """
+    from pegasus_workflows.cli.mcp_server import _incompatible_mcp_msg
+
+    msg = _incompatible_mcp_msg("2.2.0")
+
+    assert "2.2.0" in msg
+    assert "mcp>=1,<2" in msg
+    assert "MCPServer" in msg
+    # The missing-dep remedy must NOT appear here.
+    assert "pip install --upgrade pegasus-workflows-sdk" not in msg
+
+
 # ── test: validate_manifest tool ──────────────────────────────────────────────
 
 
@@ -380,7 +413,7 @@ def test_secrets_config_guide_covers_publish_and_use() -> None:
 
 def test_secrets_config_guide_registered_as_resource() -> None:
     """The guide must be wired onto the MCP server as a resource."""
-    mcp = pytest.importorskip("mcp.server.fastmcp", reason="mcp extra not installed")
+    import mcp.server.fastmcp as mcp
     FastMCP = mcp.FastMCP  # type: ignore[attr-defined]
 
     from pegasus_workflows.cli.mcp_server import _build_server
@@ -400,7 +433,7 @@ def test_no_mutating_tools_registered() -> None:
     Specifically: ``push``, ``publish``, ``run``, ``send_sms`` must not appear
     as tool names.
     """
-    mcp = pytest.importorskip("mcp.server.fastmcp", reason="mcp extra not installed")
+    import mcp.server.fastmcp as mcp
     FastMCP = mcp.FastMCP  # type: ignore[attr-defined]
 
     from pegasus_workflows.cli.mcp_server import _build_server
@@ -419,7 +452,7 @@ def test_no_mutating_tools_registered() -> None:
 
 def test_registered_tools_are_only_safe_actions() -> None:
     """The registered tool names match exactly the expected safe set."""
-    mcp = pytest.importorskip("mcp.server.fastmcp", reason="mcp extra not installed")
+    import mcp.server.fastmcp as mcp
     FastMCP = mcp.FastMCP  # type: ignore[attr-defined]
 
     from pegasus_workflows.cli.mcp_server import _build_server

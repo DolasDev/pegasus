@@ -92,13 +92,49 @@ __all__ = [
     "tool_list_profiles",
 ]
 
-#: Shown if the ``mcp`` dependency is somehow absent. It ships in the BASE package
-#: (as of 0.8.1), so the remedy is a reinstall — not an extra. Defensive only.
+#: Shown if the ``mcp`` dependency is genuinely absent. It ships in the BASE
+#: package (as of 0.8.1), so the remedy is a reinstall — not an extra.
 _MISSING_EXTRA_MSG = (
     "The MCP server dependency 'mcp' is missing from this environment — it ships "
     "in the base pegasus-workflows-sdk package. Reinstall to restore it: "
     "pip install --upgrade pegasus-workflows-sdk"
 )
+
+#: The module this server is built on. mcp 2.x removed it (``FastMCP`` was
+#: renamed ``MCPServer``), so its absence means an *incompatible* mcp, not a
+#: missing one — a distinction the old single message got wrong.
+_MCP_SERVER_MODULE = "mcp.server.fastmcp"
+
+
+def _incompatible_mcp_msg(installed: str) -> str:
+    """Error text for an mcp that is installed but too new to drive this server.
+
+    Telling the user to reinstall (the missing-dep remedy) is actively harmful
+    here: a reinstall re-resolves to the same incompatible major and fails
+    identically. Name the version and the pin instead.
+    """
+    return (
+        f"The installed 'mcp' package ({installed}) is not compatible with this "
+        f"version of pegasus-workflows-sdk: it no longer provides "
+        f"'{_MCP_SERVER_MODULE}' (mcp 2.x renamed FastMCP to MCPServer). "
+        "This SDK requires mcp 1.x — pin it with: pip install 'mcp>=1,<2'"
+    )
+
+
+def _mcp_import_error_msg() -> str:
+    """Pick the message that matches why the import actually failed."""
+    try:
+        import mcp  # noqa: F401
+    except ImportError:
+        return _MISSING_EXTRA_MSG
+
+    try:
+        from importlib.metadata import version
+
+        installed = version("mcp")
+    except Exception:  # pragma: no cover — metadata should always be present
+        installed = "unknown version"
+    return _incompatible_mcp_msg(installed)
 
 
 # ── Resources (plain functions — no MCP runtime dependency) ──────────────────
@@ -976,7 +1012,7 @@ def mcp_command() -> None:
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError:
-        typer.secho(_MISSING_EXTRA_MSG, fg=typer.colors.RED, err=True)
+        typer.secho(_mcp_import_error_msg(), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from None
 
     server = _build_server(FastMCP)
