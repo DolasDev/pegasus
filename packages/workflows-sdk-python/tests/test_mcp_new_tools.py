@@ -39,7 +39,7 @@ def test_list_profiles_never_returns_key(
 
 
 def test_new_tools_registered_and_no_mutation_added() -> None:
-    mcp = pytest.importorskip("mcp.server.fastmcp", reason="mcp extra not installed")
+    import mcp.server.fastmcp as mcp
     server = ms._build_server(mcp.FastMCP)
     tool_names = {t.name for t in asyncio.run(server.list_tools())}
     assert {"list_deployments", "list_profiles"} <= tool_names
