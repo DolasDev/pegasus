@@ -540,6 +540,26 @@ export class WireGuardStack extends cdk.Stack {
     const userData = ec2.UserData.forLinux()
     userData.addCommands(
       'set -euxo pipefail',
+      // Swap FIRST, before anything calls dnf. The hub is a t4g.nano (0.5 GB,
+      // below) with no swap, and on 2026-09-15 `dnf update -y` was OOM-killed
+      // ~30s into boot: "Out of memory: Killed process (dnf)", user-data exits
+      // 137, cfn-signal reports FAILURE, and the ASG rolling update fails. The
+      // rollback then launches its own instance, which dies identically, so the
+      // stack lands in UPDATE_ROLLBACK_FAILED and blocks EVERY subsequent
+      // deploy (three days of them, until this was diagnosed). dnf's metadata
+      // footprint grew past what 0.5 GB allows; the instance size is otherwise
+      // right for a tunnel that moves little traffic, so buy headroom with swap
+      // rather than paying for RAM that only boot needs.
+      //
+      // Idempotent: user-data re-runs on reboot, and fstab makes the swapfile
+      // survive one.
+      "swapon --show | grep -q '/swapfile' || {",
+      '  fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=1024',
+      '  chmod 600 /swapfile',
+      '  mkswap /swapfile',
+      '  swapon /swapfile',
+      '}',
+      "grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab",
       'dnf update -y',
       // iptables-nft + iptables-services are NOT installed by default on
       // Amazon Linux 2023 — the bare `iptables` command is absent. Without

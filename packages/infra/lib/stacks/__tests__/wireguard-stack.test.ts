@@ -100,6 +100,27 @@ describe('WireGuardStack — EC2 hub', () => {
       }),
     })
   })
+
+  // 2026-09-15: `dnf update -y` was OOM-killed ~30s into boot on the 0.5 GB
+  // t4g.nano. user-data exited 137, cfn-signal reported FAILURE, the rolling
+  // update failed, and the rollback's own instance died the same way — leaving
+  // pegasus-staging-wireguard in UPDATE_ROLLBACK_FAILED, which blocked every
+  // deploy for three days. Swap is what makes the hub bootable at this size.
+  it('creates swap before the first dnf call in hub user-data', () => {
+    const launchTemplates = synth().findResources('AWS::EC2::LaunchTemplate')
+    const userData = JSON.stringify(
+      Object.values(launchTemplates)[0]!.Properties.LaunchTemplateData.UserData,
+    )
+
+    expect(userData).toContain('mkswap /swapfile')
+    expect(userData).toContain('swapon /swapfile')
+    // Survives a reboot, and re-running user-data must not stack swapfiles.
+    expect(userData).toContain('/swapfile none swap sw 0 0')
+    expect(userData).toContain("swapon --show | grep -q '/swapfile' ||")
+
+    // Ordering is the entire point: swap after dnf would fix nothing.
+    expect(userData.indexOf('mkswap /swapfile')).toBeLessThan(userData.indexOf('dnf update -y'))
+  })
 })
 
 describe('WireGuardStack — IAM', () => {
