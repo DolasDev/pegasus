@@ -1490,3 +1490,38 @@ When onboarding a longhaul tenant, before choosing its client, query the tenant 
 `SELECT move_type, move_type_desc FROM MoveType` and for `roles`/`active`/`title` in
 `v_longhaul_salesman`. Then run each candidate fragment and confirm it returns rows. A
 tenant running a given desktop build tells you nothing about which fragments fit its data.
+
+## A hub that can't boot wedges the stack, and a wedged stack blocks every deploy
+
+On 2026-09-15 four Deploy runs in a row failed at `Deploy to staging / CDK deploy`, so
+nothing shipped for three days. The error CDK printed named no cause worth acting on:
+
+`Stack:...pegasus-staging-wireguard... is in UPDATE_ROLLBACK_FAILED state and can not be updated.`
+
+The stack got there during #692's deploy. The hub ASG rolled a new instance, which sent
+`cfn-signal` FAILURE ~47s in ("Received 1 FAILURE signal(s) out of 1. Unable to satisfy 100%
+MinSuccessfulInstancesPercent"). CloudFormation rolled back, the rollback launched its own
+instance, that one failed identically — and a rollback that fails leaves
+`UPDATE_ROLLBACK_FAILED`, which refuses all further updates.
+
+**The real cause is only in the instance's console output**, not in CloudFormation, CDK, or
+CloudTrail. The surviving instance showed `dnf invoked oom-killer` at t+29.9s,
+`Out of memory: Killed process (dnf)`, then `+ exitCode=137`. The hub is a `t4g.nano`
+(0.5 GB) and `dnf update -y` was the first thing user-data ran. dnf's metadata footprint
+had grown past what that instance can hold. Fixed by creating a 1 GB swapfile as the first
+user-data command (`wireguard-stack.ts`), pinned by an ordering assertion in
+`wireguard-stack.test.ts`.
+
+Two things worth keeping:
+
+- **Blame the dependency bump last.** #692 (aws-cdk-lib 2.267→2.268) looked like the
+  culprit purely from timing. The rollback instance ran the OLD launch template and died
+  the same way, which rules the bump out in one observation.
+- **Read the console, then decide.** `aws ec2 get-console-output --instance-id <id> --latest`
+  on the instance the ASG left running. Re-running `continue-update-rollback` before
+  understanding why the instance fails just re-wedges the stack on the next deploy. To
+  unstick it once the cause is fixed:
+  `aws cloudformation continue-update-rollback --stack-name pegasus-staging-wireguard --resources-to-skip HubAsgASG26763D76`
+
+Prod runs the same hub at the same size, so an unfixed boot failure is dormant there and
+surfaces at the next hub replacement, taking the on-prem tunnel with it.
