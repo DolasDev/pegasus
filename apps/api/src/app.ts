@@ -85,6 +85,7 @@ import { integrationDeliveryHandler } from './handlers/integration-delivery'
 import { integrationCallHandler } from './handlers/integration-call'
 import { blobsHandler } from './handlers/blobs'
 import { meHandler } from './handlers/me'
+import { clientErrorsHandler } from './handlers/client-errors'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
 import { smsHandler } from './handlers/sms'
@@ -396,6 +397,10 @@ if (process.env['SKIP_AUTH'] === 'true') {
 
 // Bounded-context routers
 v1.route('/me', meHandler)
+// Browser crash reports. Ungated like device-tokens below: any authenticated
+// user may report a crash in their own browser, and a permission check would
+// silently drop reports from exactly the users whose permissions are broken.
+v1.route('/client-errors', clientErrorsHandler)
 // Push notifications: device-tokens is self-service (driver registers their own
 // device, no permission gate); notifications/send is staff-gated (SendNotification).
 v1.route('/device-tokens', deviceTokensHandler)

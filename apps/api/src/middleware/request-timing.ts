@@ -34,9 +34,30 @@ export async function requestTimingMiddleware(c: Context<AppEnv>, next: Next): P
       const durationMs = Math.round(performance.now() - start)
       const downstreamMs = Math.round(ms.db + ms.mssql + ms.tunnel)
 
+      // Identity, so a failing request can be attributed to the person who
+      // reported it. This line used to carry route/status/timings only, which
+      // meant a user saying "I get errors on Operations" could not be matched
+      // to their own 403s and 500s among everyone else's (2026-09-17).
+      //
+      // UUIDs only — never email or name. These same ids already appear in
+      // handler logs, and they keep the line free of PII.
+      //
+      // Resolved here rather than at entry because this runs in the `finally`
+      // AFTER next(), by which point tenantMiddleware has populated them. All
+      // three are absent on unauthenticated routes and on a failed auth, and an
+      // absent value is omitted rather than logged as null.
+      const identity: Record<string, string> = {}
+      const tenantId = c.get('tenantId')
+      const userId = c.get('userId')
+      const sub = c.get('principal')?.sub
+      if (tenantId) identity['tenantId'] = tenantId
+      if (userId) identity['userId'] = userId
+      if (sub) identity['sub'] = sub
+
       // Flat fields (not nested objects) so a Logs-Insights query can `stats`
       // and `sort` on durationMs / dbMs / mssqlMs / tunnelMs directly.
       logger.info('request.completed', {
+        ...identity,
         // The matched route pattern (e.g. /api/v1/customers/:id) — groups
         // requests despite the single ANY /{proxy+} API Gateway route.
         route: c.req.routePath,

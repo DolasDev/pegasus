@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { router } from './router'
 import { loadConfig } from './config'
+import { installGlobalErrorReporting } from './lib/report-client-error'
 import '@fortawesome/fontawesome-free/css/all.min.css'
 import './globals.css'
 
@@ -29,8 +30,12 @@ root.render(
   </div>,
 )
 
+// Crashes React never sees — thrown outside the component tree, or an
+// unhandled promise rejection. Installed after loadConfig resolves because
+// reporting posts through apiFetch, which needs the base URL config.
 loadConfig()
   .then(() => {
+    installGlobalErrorReporting()
     root.render(
       <React.StrictMode>
         <QueryClientProvider client={queryClient}>
