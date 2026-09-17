@@ -1714,3 +1714,44 @@ warranted — on #694 the re-enqueue produced its `merge_group` run in **12 seco
 against 18 minutes of nothing, which is what made the stall diagnosis defensible
 instead of superstitious. If a re-enqueue also produces no run, the problem is not
 the entry.
+
+## "Something went wrong" is a RENDER crash, and it used to leave no trace at all
+
+`apps/tenant-web/src/components/ErrorBoundary.tsx` shows "Something went wrong — An
+unexpected error occurred, please refresh the page or contact support". It is a React
+error boundary, so it catches **render exceptions only**. The QueryClient in `main.tsx`
+does not set `throwOnError`, so a failed API call never reaches it — a 500 or a 403
+surfaces as an in-page error state, not this screen.
+
+So when a user reports this message, **do not go looking for a matching 5xx in
+CloudWatch**. Two hours were spent that way on 2026-09-17 (chasing tunnel 500s and
+business-rule 403s on the Operations screens) before the message was read carefully. The
+boundary wraps the whole app in `routes/__root.tsx`, so the entire page is replaced.
+
+Until #700 the boundary only called `console.error`, which meant this class of failure was
+**invisible server-side by construction**. It now also POSTs to `/api/v1/client-errors`
+(`lib/report-client-error.ts`), which logs one `client.error` line:
+
+```
+fields @timestamp, clientMessage, url, componentStack, userId, tenantId
+  | filter message = 'client.error'
+  | sort @timestamp desc
+```
+
+`request.completed` now carries `userId` / `tenantId` / `sub` too, so a user's own failures
+can be separated from every other tenant's — previously impossible, which is why "is this
+403 even his?" had no answer.
+
+Two things the reporter must keep doing, both load-bearing: it never throws (it runs FROM
+the boundary — a throwing reporter re-enters it and loops), and it drops repeats of the
+same message inside 10s (a render loop fires the same error hundreds of times a second).
+
+**Still not captured:** a crash on `/login`, which happens before there is a token to
+authenticate the report with. Widening the endpoint to unauthenticated would hand the
+internet a way to write arbitrary strings into our logs.
+
+**First thing to try when someone reports it:** a hard refresh. The CDN maps 404→200→
+`index.html` (`frontend-stack.ts`), so after a deploy a stale tab requesting a since-removed
+chunk gets HTML where JS was expected, the dynamic import throws, and the page crashes
+exactly like this. The `client.error` stack now names the chunk, which is how you tell that
+case apart from a real bug.
