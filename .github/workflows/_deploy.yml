@@ -284,12 +284,20 @@ jobs:
           API_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-api\"].ApiUrl // empty" "$OUTPUTS_FILE")
           COMPANY_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-company-site\"].CompanySiteUrl // empty" "$OUTPUTS_FILE")
 
+          # `if … fi`, NOT `[[ … ]] && echo`. A group's exit status is its LAST
+          # command's, and `[[ -n "$EMPTY" ]] && …` returns 1 — so under the
+          # `set -e` above, a missing URL failed this whole step. A URL is empty
+          # whenever its stack is not in the deploy target, which is every
+          # api-only or web-only deploy: on 2026-09-17 (run 35280898726) every
+          # staging stack deployed cleanly, then this cosmetic summary exited 1
+          # and took the E2E gate, the prod deploy and the release tag with it.
+          # An `if` whose condition is false exits 0, so it cannot recur.
           {
             echo "### Deployed URLs (${ENV_NAME})"
-            [[ -n "$WEB_URL" ]]     && echo "- Client app: $WEB_URL"
-            [[ -n "$ADMIN_URL" ]]   && echo "- Admin portal: $ADMIN_URL"
-            [[ -n "$API_URL" ]]     && echo "- API: $API_URL"
-            [[ -n "$COMPANY_URL" ]] && echo "- Company site: $COMPANY_URL"
+            if [[ -n "$WEB_URL" ]]; then echo "- Client app: $WEB_URL"; fi
+            if [[ -n "$ADMIN_URL" ]]; then echo "- Admin portal: $ADMIN_URL"; fi
+            if [[ -n "$API_URL" ]]; then echo "- API: $API_URL"; fi
+            if [[ -n "$COMPANY_URL" ]]; then echo "- Company site: $COMPANY_URL"; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload CDK outputs
