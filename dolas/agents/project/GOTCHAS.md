@@ -1755,3 +1755,38 @@ internet a way to write arbitrary strings into our logs.
 chunk gets HTML where JS was expected, the dynamic import throws, and the page crashes
 exactly like this. The `client.error` stack now names the chunk, which is how you tell that
 case apart from a real bug.
+
+## A green deploy that skips prod: `[[ … ]] && …` as a block's last command
+
+`_deploy.yml`'s "Summarize outputs" step ended with:
+
+```bash
+{
+  echo "### Deployed URLs (${ENV_NAME})"
+  …
+  [[ -n "$COMPANY_URL" ]] && echo "- Company site: $COMPANY_URL"
+} >> "$GITHUB_STEP_SUMMARY"
+```
+
+A group's exit status is its **last command's**, and `[[ -n "$EMPTY" ]] && echo …`
+returns 1. That group was the last thing in the step, so the step exited 1 and the job
+failed — **after every stack had already deployed successfully**.
+
+`COMPANY_URL` is empty whenever the `company-site` stack is not in the deploy target, i.e.
+on every api-only or web-only deploy. It stayed hidden because the deploys that ran after
+the company site shipped happened to include it.
+
+Run 35280898726 (2026-09-17, PR #703) is the shape to recognise: **"CDK deploy" green,
+"Summarize outputs" red**, and then `E2E gate`, `Deploy to prod`, `Record deployed SHA`
+and `Tag prod release` all **skipped** — so staging was current and prod silently was not.
+Read the _step_ list, not just the job result: a failure after the deploy step means the
+infrastructure change landed and only the reporting broke.
+
+Fixed with `if … fi`, whose false branch exits 0. Do not "fix" it with `|| true` on the
+group — that also swallows a real failure to write `$GITHUB_STEP_SUMMARY`.
+
+The same `[[ … ]] && …` shape appears in `_deploy.yml`'s target resolver,
+`mobile-release.yml`'s Decide step and `_temporal-worker.yml`'s rollout poll. Those are
+**safe**: each is mid-script, and `set -e` does not abort when the failing command is the
+left side of an `&&` list. Only last-in-block occurrences can fail a step, so that is the
+thing to grep for.
