@@ -1599,3 +1599,35 @@ _every_ future `jest` bump until the `jest-runtime` pin is lifted — the exit
 condition is react-native shipping a jest-30 preset, or coordinated overrides for
 `jest-environment-node` / `@jest/environment` / `@jest/fake-timers` / `jest-mock`
 (see `plans/todo/2026-05-09T0315-back-out-transitive-dep-workarounds.md`).
+
+## `testTimeout` does not cover `beforeAll` — raise `hookTimeout` too
+
+#674 raised `packages/infra`'s `testTimeout` to 30s with a careful rationale: a
+full-stack CDK synth is CPU-bound, `aws-cdk-lib` 2.267 synthesizes ~2.5x slower
+than 2.261, and `pool: 'forks'` fanning out under a parallel `turbo run test`
+pushes it past the default. All true — and it fixed nothing for two suites,
+because `testTimeout` governs **test bodies only**.
+
+`cognito-stack.test.ts` and `api-stack.bundle.test.ts` synth **once** in a
+`beforeAll` and share the template — a deliberate optimization, since synthesizing
+per-test would be far slower. That hook is governed by `hookTimeout`, which was
+still on vitest's 10s default. So the expensive path was the one left unprotected:
+
+```
+FAIL lib/stacks/__tests__/cognito-stack.test.ts
+Error: Hook timed out in 10000ms.
+```
+
+It only fires when the machine is busy. In isolation the suite passes all 378
+tests, so it looks like a flake or someone else's regression. It is neither — it is
+a budget that was never set. Because husky's pre-push runs
+`turbo run typecheck test --affected`, it surfaces as a failed **push** on a branch
+that has nothing to do with infra, which is how it ends up costing a session
+several attempts and a `--no-verify`.
+
+**How to apply:** when you raise `testTimeout` for something slow, check whether
+the slow thing actually runs in a test body. Setup that is hoisted into
+`beforeAll`/`beforeEach` — precisely the expensive work people hoist _because_ it
+is expensive — needs `hookTimeout`, and the two default independently. A green
+suite in isolation plus a failure under parallel load is the signature of a
+timeout, not a race.

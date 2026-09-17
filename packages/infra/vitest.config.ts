@@ -21,5 +21,15 @@ export default defineConfig({
     // assertions are about template shape, never latency, so give them room
     // instead of letting core count decide whether the suite is green.
     testTimeout: 30_000,
+    // `testTimeout` governs test bodies only. The suites that synth once and
+    // share the template — cognito-stack.test.ts and api-stack.bundle.test.ts —
+    // do that work in `beforeAll`, which is governed by `hookTimeout` and was
+    // still on vitest's 10s default. Same CPU-bound synth, same contention, so
+    // the same budget applies: under a parallel `turbo run test` the cognito
+    // synth blew the 10s hook budget and failed as
+    // `Error: Hook timed out in 10000ms` while passing in isolation (378 tests).
+    // A hook that only fails when the box is busy reads as a regression and
+    // pushes people toward `git push --no-verify`, which is the real cost.
+    hookTimeout: 30_000,
   },
 })
