@@ -65,7 +65,7 @@ jobs:
       admin: ${{ steps.r.outputs.admin }}
       company: ${{ steps.r.outputs.company }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: r

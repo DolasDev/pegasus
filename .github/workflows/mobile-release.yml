@@ -152,7 +152,7 @@ jobs:
     environment: ${{ inputs.env }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/mobile-eas-config
         with:
           aws-role: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -192,7 +192,7 @@ jobs:
     environment: ${{ inputs.env }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/mobile-eas-config
         with:
           aws-role: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
