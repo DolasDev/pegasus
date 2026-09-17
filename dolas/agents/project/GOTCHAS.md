@@ -1569,8 +1569,9 @@ when it is least sure_ above.
 `package.json` declares `packageManager: npm@10.8.2`, and the root `overrides`
 pin `jest-runtime` to exactly `30.3.0` (react-native's jest preset hoists a 29.x
 `jest-mock` to the root; jest-runtime 30.4+ calls `clearMocksOnScope()` on it and
-takes out all 20 mobile suites). Dependabot does not honor `packageManager` — it
-resolves with its own newer npm.
+takes out all 20 mobile suites). Dependabot resolves with its own npm rather than
+the one `packageManager` names — that is the observed outcome; the mechanism is
+inferred.
 
 So every Dependabot PR that bumps `jest` lands a lockfile the repo's own npm
 rejects. CI fails in 15–44s across Lint, Typecheck, Test and E2E with:
@@ -1592,6 +1593,27 @@ npx -y npm@10.8.2 ci --dry-run
 ```
 
 Gate on `ci`, not `install` — `ci`'s sync check is the one that fails in CI.
+
+**That gate is necessary but not sufficient**, and a second defect hides behind the
+first. With the install fixed, `Test` still failed:
+
+```
+CommandError: "jest" is added as a dependency in your project's package.json
+but it doesn't seem to be installed.
+```
+
+The bump moved `apps/mobile`'s range to `^30.5.1`, but the lockfile kept a
+98-entry `jest@30.5.0` subtree nested under `apps/mobile/node_modules` from when
+the range was `^30.5.0`. Nested entries physically shadow the root, so
+apps/mobile resolved 30.5.0 against its own `^30.5.1` and expo reported jest
+missing. `npm ci --dry-run` passed the whole time: being internally consistent
+and not shadowing a workspace's own declared range are different properties, and
+`ci` only checks the first.
+
+So after regenerating, also look for stale `<workspace>/node_modules/<pkg>`
+entries whose version no longer satisfies that workspace's `package.json` range,
+delete them, re-resolve, and then **run the affected suite for real**
+(`npm ci && npm test -w apps/mobile`). A dry-run cannot see this class of break.
 
 **How to apply:** when a Dependabot PR fails fast and identically across
 unrelated jobs, read the install step before the test output. And expect this on
@@ -1631,3 +1653,64 @@ the slow thing actually runs in a test body. Setup that is hoisted into
 is expensive — needs `hookTimeout`, and the two default independently. A green
 suite in isolation plus a failure under parallel load is the signature of a
 timeout, not a race.
+
+## Running the api tests rewrites the coverage floors, and can block your own push
+
+`apps/api/vitest.config.ts` sets `thresholds.autoUpdate: true`. That is normally
+described as a ratchet against _other_ people's regressions, but it fires on every
+local run too: finishing the api suite rewrites the file with whatever this run
+measured. Observed in one session — 92.37→92.39 lines, 80.26→80.29 branches,
+89.06→89.14 functions, 91.11→91.14 statements.
+
+Coverage varies slightly run to run, so the **next** run measures fractionally
+lower and fails against the bar the previous run just set. Since husky's pre-push
+runs `turbo run typecheck test --affected`, that lands as:
+
+```
+Failed:    @pegasus/api#test
+husky - pre-push script failed (code 1)
+```
+
+on a branch whose change has nothing to do with coverage — during the #694
+lockfile work it blocked a push on a commit that touched only `package-lock.json`.
+
+The tell is `git status` showing `M apps/api/vitest.config.ts` after a test run you
+did not intend to change anything with.
+
+**How to apply:** `git checkout -- apps/api/vitest.config.ts`, then push again.
+Never commit that file as a side effect of a local test run — a floor raised by
+run-to-run noise is exactly what gets a PR ejected from the merge queue later
+(see _A dependency bump can lower measured coverage_ above). Check `git status`
+after any local api test run, the same way you would after a codegen step.
+
+## A merge-queue entry that is stuck looks exactly like one that is waiting
+
+The `merge-queue-main` ruleset sets `min_entries_to_merge_wait_minutes: 5`, so a
+lone PR legitimately sits at position 1 in `AWAITING_CHECKS` for ~5 minutes before
+the queue starts building it. Past that, waiting and stalled are visually identical
+in `gh pr view` — both read `CLEAN`, both show `autoMergeRequest: false`.
+
+The discriminator is whether a `merge_group` run exists **for that PR number**:
+
+```
+gh api "repos/DolasDev/pegasus/actions/runs?event=merge_group&per_page=10" \
+  --jq '.workflow_runs[] | "\(.id) \(.status)/\(.conclusion // "-") \(.head_branch)"'
+```
+
+Look for `gh-readonly-queue/main/pr-<N>-<sha>`. **Position 1 + `AWAITING_CHECKS` +
+no run for that PR = stalled**, not waiting. #694 sat 18 minutes with none.
+
+`gh pr merge <N> --disable-auto` does **not** dequeue. Use the GraphQL mutation
+with the PR's _node_ id (not its number), then re-enqueue:
+
+```
+gh api graphql -f query='{repository(owner:"DolasDev",name:"pegasus"){mergeQueue(branch:"main"){entries(first:10){nodes{position state enqueuedAt pullRequest{number id}}}}}}'
+gh api graphql -f query='mutation($pr:ID!){dequeuePullRequest(input:{id:$pr}){mergeQueueEntry{id state}}}' -f pr='<PR node id>'
+gh pr merge <N> --auto
+```
+
+**How to apply:** capture the before/after gap rather than assuming the dequeue was
+warranted — on #694 the re-enqueue produced its `merge_group` run in **12 seconds**
+against 18 minutes of nothing, which is what made the stall diagnosis defensible
+instead of superstitious. If a re-enqueue also produces no run, the problem is not
+the entry.
