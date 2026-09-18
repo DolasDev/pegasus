@@ -1,0 +1,1742 @@
+{
+  "_note": "NOT a capture of Atlas reference-data endpoints. Derived entirely from the committed OpenAPI documents; no live API call was made. See ../reference-data/README.md.",
+  "source_file": "docs/atlas-world-group-api/openapi/estimating-v2.json",
+  "source_sha256": "7c972fea7857a343923c27d52d13343a419b52041c522bb62af935acb95b99c9",
+  "derived": "2026-09-17",
+  "evidence_grade": "B",
+  "declared_enums": {
+    "AccessType": {
+      "type": "string",
+      "values": [
+        "StairsInside",
+        "StairsOutside",
+        "Elevators",
+        "LongCarries"
+      ],
+      "count": 4
+    },
+    "CartonTypes": {
+      "type": "string",
+      "values": [
+        "DISH",
+        "BOOK_15",
+        "CP_30",
+        "CP_45",
+        "CP_60",
+        "CP_65",
+        "WARDROBE",
+        "MIRROR",
+        "CRIB",
+        "TWIN_LONG",
+        "DOUBLE",
+        "QUEEN_KING",
+        "HEAVY_DUTY",
+        "OTHER",
+        "FLAT_TV",
+        "MATERIALS",
+        "GRANDFATHER_CLOCK",
+        "GUN",
+        "IRONING_BOARD",
+        "LAMP_SHADE",
+        "POLE_LAMP",
+        "SKI",
+        "TEA_CHEST",
+        "DTW_UNDER_4_FEET",
+        "DTW_BETWEEN_4_AND_7_FEET",
+        "DTW_BETWEEN_7_AND_15_FEET",
+        "MATTRESS_COVER",
+        "LONG_MATTRESS",
+        "CHINA",
+        "CP_15",
+        "CP_20",
+        "CP_40",
+        "CP_50",
+        "CAN_CP_60",
+        "CAN_WARDROBE",
+        "CAN_LAMP_SHADE",
+        "FLAT_SCREEN_LT_46",
+        "FLAT_SCREEN_GTE_46",
+        "CAN_CRIB",
+        "SINGLE",
+        "CAN_DOUBLE",
+        "KING_QUEEN",
+        "SMALL_MIRROR",
+        "LARGE_MIRROR",
+        "APPLIANCE",
+        "CAN_GUN",
+        "MATTRESS_BAGS",
+        "MICRO_FOAM"
+      ],
+      "count": 48
+    },
+    "HourlyServiceType": {
+      "type": "string",
+      "values": [
+        "Appliances",
+        "OTLoadUnload",
+        "Stairs",
+        "LongCarries",
+        "SplitPickup",
+        "Shuttle",
+        "WaitTime",
+        "SITHandling",
+        "RiggingHoistingLowering",
+        "Elevators",
+        "Packing",
+        "Unpacking",
+        "Transportation",
+        "Labor",
+        "LaborWaiting",
+        "VanWaiting"
+      ],
+      "count": 16
+    },
+    "HourlyType": {
+      "type": "string",
+      "values": [
+        "Regular",
+        "Overtime",
+        "DoubleTime",
+        "Sunday",
+        "Vehicle",
+        "Holiday",
+        "NoWorkDay"
+      ],
+      "count": 7
+    },
+    "LocationType": {
+      "type": "string",
+      "values": [
+        "UNKNOWN",
+        "ORIGIN",
+        "DESTINATION"
+      ],
+      "count": 3
+    },
+    "RateType": {
+      "type": "string",
+      "values": [
+        "UNKNOWN",
+        "REGULAR",
+        "OVERTIME",
+        "DOUBLETIME"
+      ],
+      "count": 4
+    },
+    "Region": {
+      "type": "string",
+      "values": [
+        "UNKNOWN",
+        "US",
+        "CAN",
+        "AK"
+      ],
+      "count": 4
+    },
+    "ReportDefinitionType": {
+      "type": "string",
+      "values": [
+        "NotSpecified",
+        "Estimate",
+        "ShortEstimate",
+        "LongEstimate",
+        "DetailedEstimate",
+        "SummaryEstimate",
+        "DeclarationOfValue",
+        "TableOfMeasurements",
+        "AdditionalServicesPriceList",
+        "OrderForService",
+        "Valuation",
+        "EstimateCoverPage",
+        "ServicePackages"
+      ],
+      "count": 13
+    },
+    "ServiceName": {
+      "type": "string",
+      "values": [
+        "NONE",
+        "ADDITIONAL_DAY_STORAGE",
+        "AGT_FL_AUTO_3RD_PARTY",
+        "AGT_FL_AUTO_SELF",
+        "APPLIANCE_SERVICE",
+        "APPLIANCE_DESERVICE",
+        "ATC",
+        "ATLAS_FLAT_AUTO_LINEHAUL",
+        "ATTEMPTED_DELIVERY",
+        "AUDIT_FEE",
+        "AUDIT_SERVICE",
+        "AUTO",
+        "AUTO_LOAD",
+        "AUTO_UNLOAD",
+        "AUTO_HAUL",
+        "AUXILIARY_LABOR",
+        "AUXILIARY_VAN",
+        "BASE_SHUTTLE_SERVICE_LABOR",
+        "BASE_SHUTTLE_SERVICE_VAN",
+        "BILLED_SIT_VALUATION",
+        "BOND_SERVICE",
+        "BORDER_SECURITY_CHARGE",
+        "BLD_ADJUSTMENT",
+        "BRIDGE_FERRY",
+        "BULKY_ARTICLE",
+        "CARTAGE",
+        "CARTAGE_LINEHAUL_ORIGIN",
+        "CARTAGE_LINEHAUL_DEST",
+        "COMMISSIONED_OA",
+        "CRATING",
+        "CRATING_1617",
+        "CREDIT_CARD_FEE",
+        "CREDIT_OPTIONS",
+        "CUSTOM_PACK",
+        "CUSTOM_UNPACK",
+        "CUSTOMER_COURTESY_VISIT",
+        "DAY_CERTAIN_LOAD",
+        "DEBRIS_REMOVAL_FLAT",
+        "DEBRIS_REMOVAL",
+        "DELIVERY",
+        "DESTINATION_SERVICE_CHARGE",
+        "DIVERSION_CHARGE",
+        "DIVERSION_LINEHAUL",
+        "ELEVATOR",
+        "ELEVATOR_PIANO",
+        "ESCROW_FEE",
+        "EXACT_PACK_SERVICE",
+        "EXCESS_BIPD",
+        "EXCESS_CARRY",
+        "EXCESS_SHUTTLE_SERVICE_LABOR",
+        "EXCESS_SHUTTLE_SERVICE_VAN",
+        "EXTRA_STOPS",
+        "FIRST_DAY_STORAGE",
+        "FLAT_AUTO_ADDITIONAL_DAYS_STORAGE",
+        "FLAT_AUTO_CARTAGE",
+        "FLAT_AUTO_FIRST_DAY_STORAGE",
+        "FLAT_AUTO_VALUATION",
+        "FLIGHTS_INSIDE",
+        "FLIGHTS_OUTSIDE",
+        "FREE_SIT_VALUATION_1ST_MONTH",
+        "FUEL_SURCHARGE",
+        "FULL_PACK",
+        "FULL_UNPACK",
+        "HOISTING",
+        "IMPORT_EXPORT_CHARGE",
+        "INCENTIVE_FEE",
+        "INSURANCE_CHARGE",
+        "ITEM_1506_FIXED_CHARGE",
+        "LABOR",
+        "LINEHAUL",
+        "LIVE_LOAD",
+        "LIVE_UNLOAD",
+        "MAID_SERVICE",
+        "MANAGEMENT_FEE",
+        "MAX_PACK",
+        "METRO_AREA_CHARGE",
+        "MOVE_MANAGEMENT_AVAIL",
+        "NEW_YORK_FEE",
+        "NEXT_DAY_CUSTOM",
+        "NEXT_DAY_UNPACK",
+        "NO_PACKING",
+        "NO_UNPACKING",
+        "NON_PARTICIPATING_AGENT",
+        "NON_TEMP_PACK_INSPECTION_FEE",
+        "ORIGIN_AGENT_COMMISSION",
+        "ORIGIN_SERVICE_CHARGE",
+        "OVERTIME_CUSTOM_UNPACK",
+        "OVERTIME_FULL_UNPACK",
+        "OVERTIME_LOAD",
+        "OVERTIME_NEXT_DAY_UNPACK",
+        "OVERTIME_NEXT_DAY_CUSTOM_UNPACK",
+        "OVERTIME_SERVICE",
+        "PACK_LABOR",
+        "PACK_MATERIAL",
+        "PACKING",
+        "PAIRS_AND_SETS_SERVICE",
+        "PBLD_VARIANCE",
+        "PERFORMING_OA",
+        "PERSONAL_CHECK_FEE",
+        "PIANO",
+        "PIANO_FLIGHTS_INSIDE",
+        "PIANO_FLIGHTS_OUTSIDE",
+        "PICKUP",
+        "PERM_STORAGE_DESTINATION",
+        "PERM_STORAGE_ORIGIN",
+        "FLAT_SCREEN_TV_PACKING_SERVICE",
+        "FLAT_SCREEN_TV_UNPACKING_SERVICE",
+        "PRIMARY_BIPD",
+        "QUICK_PAY",
+        "REFERRAL_FEE",
+        "REFUND_CHARGES_INCLUDED_IN_EBLD_PBLD",
+        "REWEIGH_CHARGE",
+        "SELF_MINI_WAREHOUSE",
+        "SHUTTLE",
+        "SIT_TRANSPORTATION_DESTINATION",
+        "SIT_TRANSPORTATION_ORIGIN",
+        "SMALL_SHIPMENT_DELIVERY",
+        "SMALL_SHIPMENT_LOAD",
+        "SMALL_SHIPMENT_SURCHARGE",
+        "SORTING",
+        "SPECIAL_INSURANCE_FUND",
+        "SPECIAL_INSURANCE_FUND_ON_CARTAGE",
+        "SPECIAL_INSURANCE_FUND_ON_FLAT_AUTO",
+        "SPECIAL_SERVICES",
+        "SPLIT_PACKING_CUSTOM_PACK",
+        "STOCKHOLDER",
+        "STORAGE_VALUATION",
+        "STORAGE_SERVICE_CONTAINER",
+        "THIRD_PARTY_ADVANCED_CHARGES",
+        "TRAILER_LEASE",
+        "TRUCK_ORDERED_NOT_USED",
+        "TRUCK_USAGE",
+        "UNCRATING",
+        "UNCRATING_1617",
+        "UNPACK_LABOR",
+        "UNPACKING",
+        "VALUATION",
+        "VALUATION_FLAT_AUTO",
+        "WAIT_TIME",
+        "WAIT_TIME_LABOR",
+        "WAIT_TIME_VAN",
+        "WAIT_TIME_LABOR_BRIDGE_FERRY",
+        "WAIT_TIME_VAN_BRIDGE_FERRY",
+        "WAREHOUSE_HANDLING",
+        "WATERHAUL",
+        "WHARF_PIER_DOCK",
+        "LABOR_READY_INVOICE",
+        "WEIGHT_ADDITIVE",
+        "ADMINISTRATIVE_FEE",
+        "CONTAINER_LOADING",
+        "CONTAINER_UNLOADING",
+        "NON_TEMP_STORAGE",
+        "LONG_CARRY",
+        "CLAIMS_CHARGE",
+        "CARRIER_SUPERVISORY_PERSONNEL",
+        "EXTRA_DRIVER",
+        "CONTAINERS",
+        "VAN_OP_LABOR",
+        "PROJECT_MANAGER",
+        "LIFTGATE",
+        "COURIER",
+        "SALES_TAX",
+        "APPLIANCE_SERVICE_ADDITIONAL",
+        "APPLIANCE_DESERVICE_ADDITIONAL",
+        "SMALL_SHIPMENT_SERVICE_ORIGIN_CHARGE",
+        "SMALL_SHIPMENT_SERVICE_DESTINATION_CHARGE",
+        "OVERTIME_DEBRIS_REMOVAL",
+        "OVERTIME_CRATING",
+        "OVERTIME_UNCRATING",
+        "FIRST_MILE_CHARGE",
+        "FINAL_MILE_CHARGE",
+        "AREA_SURCHARGE_SERVICE",
+        "STORAGE_IN_VAN",
+        "AIRPORT_HANDLING",
+        "AUTO_SURCHARGE",
+        "AUTO_BLOCKING",
+        "AUTO_STORAGE",
+        "SCALING_FEE",
+        "AIR_PREPARATION",
+        "LABOUR_SURCHARGE",
+        "ORIGIN_CITY_ZONE_PREMIUM",
+        "ORIGIN_CITY_CENTER_PREMIUM",
+        "DESTINATION_CITY_ZONE_PREMIUM",
+        "DESTINATION_CITY_CENTER_PREMIUM",
+        "STORAGE_SERVICE",
+        "MOVING_SERVICES_CONTAINER",
+        "FREIGHT_LINEHAUL",
+        "MICROFOAM_PACKING",
+        "MATTRESS_BAG_PACKING",
+        "AUTO_PER_MILE",
+        "FLAT_SCREEN_TV_PACKING_LT46",
+        "FLAT_SCREEN_TV_PACKING_GTE46",
+        "EMPTY_MILEAGE",
+        "PROVINCIAL_TAX_GST",
+        "PROVINCIAL_TAX_HST",
+        "PROVINCIAL_TAX_QST",
+        "FREIGHT_WATERHAUL",
+        "FUEL_SURCHARGE_ON_CARTAGE",
+        "FUEL_SURCHARGE_ON_FLAT_AUTO",
+        "FLAT_SCREEN_TV_UNPACKING_LT46",
+        "FLAT_SCREEN_TV_UNPACKING_GTE46",
+        "ORIGIN_EXTENDED_SERVICE_AREA_PREMIUM",
+        "DESTINATION_EXTENDED_SERVICE_AREA_PREMIUM",
+        "ADDITIONAL_PROTECTIVE_PACK_CHARGE",
+        "STAIR_CARRY",
+        "COMPARE_PACKING",
+        "COMPARE_UNPACKING",
+        "COMBINATION_CARRIES",
+        "INSIDE_DELIVERY",
+        "INSIDE_PICKUP",
+        "LAYOVER_LABOR",
+        "LAYOVER_VAN",
+        "LABOR_SUNDAY_HOLIDAY",
+        "ON_SITE_SUPERVISOR",
+        "CONTRACT_OT_LOAD",
+        "CONTRACT_OT_UNLOAD",
+        "EXTRA_VAN_OPERATOR",
+        "AIRLINE"
+      ],
+      "count": 218
+    },
+    "SeverityEnum": {
+      "type": "string",
+      "values": [
+        "NONE",
+        "INFORMATION",
+        "WARNING",
+        "ERROR"
+      ],
+      "count": 4
+    },
+    "ValuationCategory": {
+      "type": "string",
+      "values": [
+        "NONE",
+        "BASE_PROTECTION",
+        "DECLARED_VALUE_PROTECTION",
+        "FULL_VALUE_PROTECTION",
+        "REPLACEMENT_VALUE",
+        "RELEASE_LONG_VALUATION",
+        "RELEASE_LOCAL_VALUATION",
+        "VALUATION",
+        "LOCAL_VALUATION",
+        "VALUATION_FLAT_RATE"
+      ],
+      "count": 10
+    }
+  },
+  "observed_values": {
+    "_note": "Distinct string values appearing in the spec's own named worked examples, with the example names each value appears in. These are VENDOR-AUTHORED sample payloads, so the values are real Atlas codes - but each list is a SAMPLE, never the complete code list.",
+    "example_bearing_operations": [
+      "POST /Estimating (47 named examples)",
+      "POST /Estimating/CreateOrder (47 named examples)",
+      "POST /Estimating/Rate (47 named examples)",
+      "POST /Estimating/Reports (17 named examples)"
+    ],
+    "fields": {
+      ".accountType": {
+        "COD": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Alaska Waterhaul",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR COD Incentive Program",
+          "ATVL1000TR Containers",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Cross Border",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle"
+        ],
+        "COD_REFERRAL": [
+          "ATVL1000TR Referral Program"
+        ]
+      },
+      ".authorizations[].amountType": {
+        "Per Mile Rate": [
+          "Canada Authorization"
+        ]
+      },
+      ".authorizations[].type": {
+        "Empty Miles": [
+          "Canada Authorization"
+        ]
+      },
+      ".bindingType": {
+        "Binding": [
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Containers"
+        ],
+        "Non Binding": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR Alaska Waterhaul",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR COD Incentive Program",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Cross Border",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle"
+        ],
+        "Not To Exceed": [
+          "ATVL1000TR Referral Program",
+          "CA Max4",
+          "CA Max4 Accessorials Access Services",
+          "CA Max4 Accessorials Applicances",
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Accessorials Pianos",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 DeclaredValue Valuation",
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "CA Max4 Shuttle",
+          "CA Max4 Transportation",
+          "CA Max4 Transportation IIR and FS"
+        ]
+      },
+      ".bookingAgentCode": {
+        "0207": [
+          "ATVL1000TR Affinity"
+        ],
+        "1830": [
+          "ATVL1000TR Containers"
+        ]
+      },
+      ".bridgeFerries[].agentCode": {
+        "2994": [
+          "ATVL1000TR BridgeFerry"
+        ]
+      },
+      ".bridgeFerries[].name": {
+        "330 - Plantation, FL - Islamorada, FL and points south and west in the Florida Keys": [
+          "ATVL1000TR BridgeFerry"
+        ]
+      },
+      ".bulkies[].type": {
+        "Doll House": [
+          "ATVL1000TR Bulky"
+        ],
+        "Go-Cart": [
+          "ATVL1000TR Bulky"
+        ],
+        "Piano (any size)": [
+          "ATVL1000TR Bulky"
+        ]
+      },
+      ".businessCode": {
+        "08 - Private Client (COD)": [
+          "Canada Authorization",
+          "Canada Base",
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada NU Airport Stops",
+          "Canada Unit Packing"
+        ]
+      },
+      ".containers[].type": {
+        "Affinity Vault": [
+          "ATVL1000TR Affinity"
+        ],
+        "Lift Van": [
+          "ATVL1000TR Containers"
+        ],
+        "Sofa Box": [
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Containers"
+        ]
+      },
+      ".estimate.accountType": {
+        "COD": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate"
+        ]
+      },
+      ".estimate.bindingType": {
+        "Non Binding": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate"
+        ],
+        "Not To Exceed": [
+          "CA Max4 Advanced Charges - Estimate"
+        ]
+      },
+      ".estimate.bridgeFerries[].agentCode": {
+        "2994": [
+          "ATVL1000TR BridgeFerry - Estimate"
+        ]
+      },
+      ".estimate.bridgeFerries[].name": {
+        "330 - Plantation, FL - Islamorada, FL and points south and west in the Florida Keys": [
+          "ATVL1000TR BridgeFerry - Estimate"
+        ]
+      },
+      ".estimate.bulkies[].type": {
+        "Doll House": [
+          "ATVL1000TR Bulky - Estimate"
+        ],
+        "Go-Cart": [
+          "ATVL1000TR Bulky - Estimate"
+        ],
+        "Piano (any size)": [
+          "ATVL1000TR Bulky - Estimate"
+        ]
+      },
+      ".estimate.pricingOption": {
+        "Bottom Line Discount": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate"
+        ]
+      },
+      ".estimate.stops[].accessorials.hourlyServices[].hourlyType": {
+        "Overtime": [
+          "ATVL1000TR Labor - Estimate"
+        ],
+        "Regular": [
+          "ATVL1000TR Labor - Estimate"
+        ]
+      },
+      ".estimate.stops[].accessorials.hourlyServices[].type": {
+        "Labor": [
+          "ATVL1000TR Labor - Estimate"
+        ],
+        "LaborWaiting": [
+          "ATVL1000TR Labor - Estimate"
+        ],
+        "VanWaiting": [
+          "ATVL1000TR Labor - Estimate"
+        ]
+      },
+      ".estimate.stops[].advanceCharges[].type": {
+        "Security Fees": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "CA Max4 Advanced Charges - Estimate"
+        ],
+        "Site Survey": [
+          "CA Max4 Advanced Charges - Estimate"
+        ]
+      },
+      ".estimate.stops[].cratings[].hourlyType": {
+        "Overtime": [
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Full PackUnpack - Summary Estimate"
+        ],
+        "Regular": [
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Full PackUnpack - Summary Estimate"
+        ]
+      },
+      ".estimate.stops[].cratings[].type": {
+        "Crating": [
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Full PackUnpack - Summary Estimate"
+        ],
+        "Uncrating": [
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Full PackUnpack - Summary Estimate"
+        ]
+      },
+      ".estimate.stops[].debrisRemovalType": {
+        "Regular": [
+          "ATVL1000TR DebrisRemoval - Estimate"
+        ]
+      },
+      ".estimate.stops[].packingService.cartons[].name": {
+        "1.5 cf": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "3.0 cf": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "4.5 cf": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "6.0 cf": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "6.5 cf": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Crib Matt": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Dishpack": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Double Matt": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Flat Screen TV": [
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages"
+        ],
+        "Heavy Duty": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Mirror": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Other": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Queen/King Matt": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Twin/Long Matt": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "Wardrobe": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ]
+      },
+      ".estimate.stops[].packingService.type": {
+        "CustomPack": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "CustomUnpack": [
+          "ATVL1000TR Custom PackUnpack - Estimate"
+        ],
+        "FullPack": [
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages"
+        ],
+        "FullUnpack": [
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages"
+        ]
+      },
+      ".estimate.stops[].shuttle.otType": {
+        "Regular": [
+          "ATVL1000TR Shuttle - Estimate"
+        ]
+      },
+      ".estimate.stops[].state": {
+        "CA": [
+          "CA Max4 Advanced Charges - Estimate"
+        ],
+        "CO": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate"
+        ],
+        "IN": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate"
+        ]
+      },
+      ".estimate.stops[].type": {
+        "Destination": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate",
+          "CA Max4 Advanced Charges - Estimate"
+        ],
+        "Destination Extra Stop": [
+          "ATVL1000TR ExtraStops - Estimate"
+        ],
+        "Origin": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate",
+          "CA Max4 Advanced Charges - Estimate"
+        ],
+        "Origin Extra Stop": [
+          "ATVL1000TR ExtraStops - Estimate"
+        ]
+      },
+      ".estimate.tariffName": {
+        "ATVL1000TR": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate"
+        ],
+        "CA MAX4": [
+          "CA Max4 Advanced Charges - Estimate"
+        ]
+      },
+      ".estimate.transportation.authority": {
+        "Agent": [
+          "CA Max4 Advanced Charges - Estimate"
+        ]
+      },
+      ".estimate.valuation.type": {
+        "Release Value": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL",
+          "ATVL1000TR Full PackUnpack - Service Packages",
+          "ATVL1000TR Full PackUnpack - Summary Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate",
+          "CA Max4 Advanced Charges - Estimate"
+        ]
+      },
+      ".estimate.vehicles[].rateType": {
+        "Bulky Auto Self": [
+          "ATVL1000TR Vehicle - Estimate"
+        ]
+      },
+      ".estimate.vehicles[].type": {
+        "Coupe": [
+          "ATVL1000TR Vehicle - Estimate"
+        ]
+      },
+      ".nationalAccountCode": {
+        "CN9997001001": [
+          "Canada Authorization",
+          "Canada Base",
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada NU Airport Stops",
+          "Canada Unit Packing"
+        ]
+      },
+      ".pricingId": {
+        "SZM026": [
+          "ATVL1000TR Referral Program"
+        ]
+      },
+      ".pricingOption": {
+        "Binding COD": [
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Containers"
+        ],
+        "Bottom Line Discount": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR Alaska Waterhaul",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Cross Border",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle"
+        ],
+        "Free Valuation Bottom Line Discount": [
+          "ATVL1000TR COD Incentive Program"
+        ]
+      },
+      ".referralEntityCode": {
+        "101895-001-001": [
+          "ATVL1000TR Referral Program"
+        ]
+      },
+      ".referralMemberCode": {
+        "0123456789": [
+          "ATVL1000TR Referral Program"
+        ]
+      },
+      ".reports[].type": {
+        "AdditionalServicesPriceList": [
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL"
+        ],
+        "DetailedEstimate": [
+          "ATVL1000TR Full PackUnpack - Estimate and ASPL"
+        ],
+        "Estimate": [
+          "ATVL1000TR AdvanceCharges - Estimate",
+          "ATVL1000TR BridgeFerry - Estimate",
+          "ATVL1000TR Bulky - Estimate",
+          "ATVL1000TR Crating - Estimate",
+          "ATVL1000TR Custom PackUnpack - Estimate",
+          "ATVL1000TR DebrisRemoval - Estimate",
+          "ATVL1000TR ExtraStops - Estimate",
+          "ATVL1000TR Full PackUnpack - Estimate",
+          "ATVL1000TR Labor - Estimate",
+          "ATVL1000TR MiniStorage - Estimate",
+          "ATVL1000TR Shuttle - Estimate",
+          "ATVL1000TR Storage In Transit - Estimate",
+          "ATVL1000TR Vehicle - Estimate",
+          "CA Max4 Advanced Charges - Estimate"
+        ],
+        "ServicePackages": [
+          "ATVL1000TR Full PackUnpack - Service Packages"
+        ],
+        "SummaryEstimate": [
+          "ATVL1000TR Full PackUnpack - Summary Estimate"
+        ]
+      },
+      ".stops[].accessorials.accessServices[].type": {
+        "Elevators": [
+          "CA Max4 Accessorials Access Services"
+        ],
+        "LongCarries": [
+          "CA Max4 Accessorials Access Services"
+        ],
+        "StairsInside": [
+          "CA Max4 Accessorials Access Services"
+        ],
+        "StairsOutside": [
+          "CA Max4 Accessorials Access Services"
+        ]
+      },
+      ".stops[].accessorials.hourlyServices[].hourlyType": {
+        "DoubleTime": [
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor"
+        ],
+        "Overtime": [
+          "ATVL1000TR Labor",
+          "CA Max4 Labor",
+          "CA Max4 Shuttle"
+        ],
+        "Regular": [
+          "ATVL1000TR Labor",
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor",
+          "CA Max4 Shuttle"
+        ]
+      },
+      ".stops[].accessorials.hourlyServices[].type": {
+        "Elevators": [
+          "CA Max4 Accessorials Hourly Services"
+        ],
+        "Labor": [
+          "ATVL1000TR Labor",
+          "CA Max4 Labor"
+        ],
+        "LaborWaiting": [
+          "ATVL1000TR Labor"
+        ],
+        "LongCarries": [
+          "CA Max4 Accessorials Hourly Services"
+        ],
+        "Packing": [
+          "CA Max4 Hourly PackUnpack"
+        ],
+        "RiggingHoistingLowering": [
+          "CA Max4 Accessorials Hourly Services"
+        ],
+        "Shuttle": [
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Shuttle"
+        ],
+        "Stairs": [
+          "CA Max4 Accessorials Hourly Services"
+        ],
+        "Unpacking": [
+          "CA Max4 Hourly PackUnpack"
+        ],
+        "VanWaiting": [
+          "ATVL1000TR Labor"
+        ]
+      },
+      ".stops[].advanceCharges[].type": {
+        "Security Fees": [
+          "ATVL1000TR AdvanceCharges"
+        ]
+      },
+      ".stops[].agentCode": {
+        "0207": [
+          "ATVL1000TR Affinity"
+        ],
+        "1830": [
+          "ATVL1000TR Containers"
+        ],
+        "2611": [
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Containers"
+        ]
+      },
+      ".stops[].cratings[].hourlyType": {
+        "Overtime": [
+          "ATVL1000TR Crating"
+        ],
+        "Regular": [
+          "ATVL1000TR Crating"
+        ]
+      },
+      ".stops[].cratings[].type": {
+        "Crating": [
+          "ATVL1000TR Crating"
+        ],
+        "Uncrating": [
+          "ATVL1000TR Crating"
+        ]
+      },
+      ".stops[].debrisRemovalType": {
+        "Regular": [
+          "ATVL1000TR DebrisRemoval"
+        ]
+      },
+      ".stops[].overtimeServices[].type": {
+        "SatSunHoliday": [
+          "ATVL1000TR Overtime"
+        ]
+      },
+      ".stops[].packingService.cartons[].name": {
+        "1.5 cf": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "1.5cu": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "2.0cu": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "3.0 cf": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "4.0cu": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "4.5 cf": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "5.0cu": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "6.0 cf": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "6.0cu": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "6.5 cf": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "Appliance": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "China": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Crib": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Crib Matt": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "Dishpack": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "Double": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Double Matt": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "Flat Screen TV": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR Full PackUnpack"
+        ],
+        "Flt Scrn TV 46 in. +": [
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Flt Scrn TV < 46 in.": [
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Gun": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Heavy Duty": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime"
+        ],
+        "King/Queen": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Lampshade": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Large Mirror": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Mattress Bags": [
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Micro-foam": [
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Mirror": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "Other": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime"
+        ],
+        "Queen/King Matt": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "Single": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Small Mirror": [
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "Twin/Long Matt": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime"
+        ],
+        "Wardrobe": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ]
+      },
+      ".stops[].packingService.schedule": {
+        "A": [
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ]
+      },
+      ".stops[].packingService.type": {
+        "ComparePack": [
+          "Canada Lesser of Two Packing"
+        ],
+        "CompareUnpack": [
+          "Canada Lesser of Two Packing"
+        ],
+        "CustomPack": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "Canada Unit Packing"
+        ],
+        "CustomUnpack": [
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "Canada Unit Packing"
+        ],
+        "FullPack": [
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "Canada Cwt Packing"
+        ],
+        "FullUnpack": [
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "Canada Cwt Packing"
+        ]
+      },
+      ".stops[].shuttle.otType": {
+        "Regular": [
+          "ATVL1000TR Shuttle"
+        ]
+      },
+      ".stops[].state": {
+        "AK": [
+          "ATVL1000TR Alaska Waterhaul"
+        ],
+        "CA": [
+          "ATVL1000TR Affinity",
+          "CA Max4",
+          "CA Max4 Accessorials Access Services",
+          "CA Max4 Accessorials Applicances",
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Accessorials Pianos",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 DeclaredValue Valuation",
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "CA Max4 Shuttle",
+          "CA Max4 Transportation",
+          "CA Max4 Transportation IIR and FS"
+        ],
+        "CO": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR COD Incentive Program",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Referral Program",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle"
+        ],
+        "GA": [
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Containers"
+        ],
+        "IN": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR Alaska Waterhaul",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR COD Incentive Program",
+          "ATVL1000TR Containers",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Cross Border",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Referral Program",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle"
+        ],
+        "MB": [
+          "Canada NU Airport Stops"
+        ],
+        "NS": [
+          "Canada Authorization",
+          "Canada Base",
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "NU": [
+          "Canada NU Airport Stops"
+        ],
+        "ON": [
+          "Canada Authorization",
+          "Canada Base",
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada NU Airport Stops",
+          "Canada Unit Packing"
+        ],
+        "QC": [
+          "ATVL1000TR Cross Border"
+        ]
+      },
+      ".stops[].type": {
+        "Destination": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Alaska Waterhaul",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR COD Incentive Program",
+          "ATVL1000TR Containers",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Cross Border",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Referral Program",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle",
+          "CA Max4",
+          "CA Max4 Accessorials Access Services",
+          "CA Max4 Accessorials Applicances",
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Accessorials Pianos",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 DeclaredValue Valuation",
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "CA Max4 Shuttle",
+          "CA Max4 Transportation",
+          "CA Max4 Transportation IIR and FS",
+          "Canada Authorization",
+          "Canada Base",
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada NU Airport Stops",
+          "Canada Unit Packing"
+        ],
+        "Destination Airport Stop": [
+          "Canada NU Airport Stops"
+        ],
+        "Destination Extra Stop": [
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack"
+        ],
+        "Origin": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Alaska Waterhaul",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR COD Incentive Program",
+          "ATVL1000TR Containers",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Cross Border",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Referral Program",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle",
+          "CA Max4",
+          "CA Max4 Accessorials Access Services",
+          "CA Max4 Accessorials Applicances",
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Accessorials Pianos",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 DeclaredValue Valuation",
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "CA Max4 Shuttle",
+          "CA Max4 Transportation",
+          "CA Max4 Transportation IIR and FS",
+          "Canada Authorization",
+          "Canada Base",
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada NU Airport Stops",
+          "Canada Unit Packing"
+        ],
+        "Origin Airport Stop": [
+          "Canada NU Airport Stops"
+        ],
+        "Origin Extra Stop": [
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack"
+        ]
+      },
+      ".stops[].waterhaulPortAddress.countryRegion": {
+        "USA": [
+          "ATVL1000TR Alaska Waterhaul"
+        ]
+      },
+      ".stops[].waterhaulPortAddress.postalCode": {
+        "98168": [
+          "ATVL1000TR Alaska Waterhaul"
+        ],
+        "99501": [
+          "ATVL1000TR Alaska Waterhaul"
+        ]
+      },
+      ".stops[].waterhaulPortAddress.stateProvince": {
+        "AK": [
+          "ATVL1000TR Alaska Waterhaul"
+        ],
+        "WA": [
+          "ATVL1000TR Alaska Waterhaul"
+        ]
+      },
+      ".tariffName": {
+        "0087-02-01": [
+          "Canada Authorization",
+          "Canada Base",
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada Unit Packing"
+        ],
+        "0135-02-01": [
+          "Canada NU Airport Stops"
+        ],
+        "ATVL1000TR": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Alaska Waterhaul",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR COD Incentive Program",
+          "ATVL1000TR Containers",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Cross Border",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Referral Program",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle"
+        ],
+        "CA MAX4": [
+          "CA Max4",
+          "CA Max4 Accessorials Access Services",
+          "CA Max4 Accessorials Applicances",
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Accessorials Pianos",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 DeclaredValue Valuation",
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "CA Max4 Shuttle",
+          "CA Max4 Transportation",
+          "CA Max4 Transportation IIR and FS"
+        ]
+      },
+      ".transportation.authority": {
+        "Agent": [
+          "CA Max4",
+          "CA Max4 Accessorials Access Services",
+          "CA Max4 Accessorials Applicances",
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Accessorials Pianos",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 DeclaredValue Valuation",
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "CA Max4 Shuttle",
+          "CA Max4 Transportation",
+          "CA Max4 Transportation IIR and FS"
+        ]
+      },
+      ".transportation.hourlyServices[].hourlyType": {
+        "Regular": [
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Transportation"
+        ]
+      },
+      ".valuation.type": {
+        "Canada Released Long Haul": [
+          "Canada Authorization",
+          "Canada Base",
+          "Canada Cwt Packing",
+          "Canada Lesser of Two Packing",
+          "Canada NU Airport Stops",
+          "Canada Unit Packing"
+        ],
+        "Declared Value": [
+          "CA Max4 DeclaredValue Valuation"
+        ],
+        "Full Value Free": [
+          "ATVL1000TR COD Incentive Program",
+          "ATVL1000TR Referral Program"
+        ],
+        "Release Value": [
+          "ATVL1000TR",
+          "ATVL1000TR AdvanceCharges",
+          "ATVL1000TR Affinity",
+          "ATVL1000TR Alaska Waterhaul",
+          "ATVL1000TR BridgeFerry",
+          "ATVL1000TR Bulky",
+          "ATVL1000TR Containers",
+          "ATVL1000TR Crating",
+          "ATVL1000TR Cross Border",
+          "ATVL1000TR Custom PackUnpack",
+          "ATVL1000TR Custom PackUnpack with Overtime",
+          "ATVL1000TR DebrisRemoval",
+          "ATVL1000TR ExtraStops",
+          "ATVL1000TR ExtraStops with Full PackUnpack",
+          "ATVL1000TR Full PackUnpack",
+          "ATVL1000TR Labor",
+          "ATVL1000TR MiniStorage",
+          "ATVL1000TR Overtime",
+          "ATVL1000TR Shuttle",
+          "ATVL1000TR Storage In Transit",
+          "ATVL1000TR Truck Usage with DeliveryDate",
+          "ATVL1000TR Truck Usage with Exclusive Use",
+          "ATVL1000TR Truck Usage with Space Reservation",
+          "ATVL1000TR Vehicle",
+          "CA Max4",
+          "CA Max4 Accessorials Access Services",
+          "CA Max4 Accessorials Applicances",
+          "CA Max4 Accessorials Hourly Services",
+          "CA Max4 Accessorials Pianos",
+          "CA Max4 Containers PackUnpack",
+          "CA Max4 Hourly PackUnpack",
+          "CA Max4 Labor",
+          "CA Max4 PackPerUnit PackUnpack",
+          "CA Max4 PackPerUnit PackUnpack with Double Time",
+          "CA Max4 PackPerUnit PackUnpack with Overtime",
+          "CA Max4 Shuttle",
+          "CA Max4 Transportation",
+          "CA Max4 Transportation IIR and FS"
+        ]
+      },
+      ".vehicles[].rateType": {
+        "Bulky Auto Self": [
+          "ATVL1000TR Vehicle"
+        ]
+      },
+      ".vehicles[].type": {
+        "Coupe": [
+          "ATVL1000TR Vehicle"
+        ]
+      }
+    }
+  }
+}

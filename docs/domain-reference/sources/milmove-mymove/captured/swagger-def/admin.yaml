@@ -1,0 +1,2417 @@
+swagger: '2.0'
+info:
+  contact:
+    email: milmove-developers@caci.com
+  description:
+    $ref: info/admin_description.md
+  license:
+    name: MIT
+    url: 'https://opensource.org/licenses/MIT'
+  title: MilMove Admin API
+  version: 1.0.0
+basePath: /admin/v1
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+tags:
+  - name: Admin users
+    description: Information about Admin UI users
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Client certificates
+    description: Information about Client Certificates
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Electronic orders
+    description: Information about electronic orders
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Moves
+    description: Information about moves
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Notifications
+    description: Information about notifications
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Transportation offices
+    description: Information about transportation offices
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Office users
+    description: Information about office users
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Organizations
+    description: Information about organizations
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Uploads
+    description: Information about uploads
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Requested office users
+    description: Information about requested office users
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Users
+    description: Information about users
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+  - name: Webhook subscriptions
+    description: Information about Webhook subscriptions
+    externalDocs:
+      url: https://transcom.github.io/mymove-docs/docs/api
+definitions:
+  OktaAccountInfoResponse:
+    type: object
+    properties:
+      id:
+        type: string
+      status:
+        type: string
+      activated:
+        type: string
+      created:
+        type: string
+      profile:
+        type: object
+      credentials:
+        type: object
+  Address:
+    type: object
+    properties:
+      streetAddress1:
+        type: string
+        example: 123 Main Ave
+        title: Address line 1
+      streetAddress2:
+        type: string
+        example: Apartment 9000
+        x-nullable: true
+        title: Address line 2
+      streetAddress3:
+        type: string
+        example: Montmârtre
+        x-nullable: true
+        title: Address line 3
+      city:
+        type: string
+        example: Anytown
+        title: City
+      state:
+        title: State
+        type: string
+        x-display-value:
+          AL: AL
+          AK: AK
+          AR: AR
+          AZ: AZ
+          CA: CA
+          CO: CO
+          CT: CT
+          DC: DC
+          DE: DE
+          FL: FL
+          GA: GA
+          HI: HI
+          IA: IA
+          ID: ID
+          IL: IL
+          IN: IN
+          KS: KS
+          KY: KY
+          LA: LA
+          MA: MA
+          MD: MD
+          ME: ME
+          MI: MI
+          MN: MN
+          MO: MO
+          MS: MS
+          MT: MT
+          NC: NC
+          ND: ND
+          NE: NE
+          NH: NH
+          NJ: NJ
+          NM: NM
+          NV: NV
+          NY: NY
+          OH: OH
+          OK: OK
+          OR: OR
+          PA: PA
+          RI: RI
+          SC: SC
+          SD: SD
+          TN: TN
+          TX: TX
+          UT: UT
+          VA: VA
+          VT: VT
+          WA: WA
+          WI: WI
+          WV: WV
+          WY: WY
+        enum:
+          - AL
+          - AK
+          - AR
+          - AZ
+          - CA
+          - CO
+          - CT
+          - DC
+          - DE
+          - FL
+          - GA
+          - HI
+          - IA
+          - ID
+          - IL
+          - IN
+          - KS
+          - KY
+          - LA
+          - MA
+          - MD
+          - ME
+          - MI
+          - MN
+          - MO
+          - MS
+          - MT
+          - NC
+          - ND
+          - NE
+          - NH
+          - NJ
+          - NM
+          - NV
+          - NY
+          - OH
+          - OK
+          - OR
+          - PA
+          - RI
+          - SC
+          - SD
+          - TN
+          - TX
+          - UT
+          - VA
+          - VT
+          - WA
+          - WI
+          - WV
+          - WY
+      postalCode:
+        type: string
+        description: zip code, international allowed
+        format: zip
+        title: ZIP
+        example: "'90210' or 'N15 3NL'"
+      country:
+        type: string
+        title: Country
+        x-nullable: true
+        example: 'USA'
+        default: USA
+      county:
+        type: string
+        title: County
+        x-nullable: true
+        example: LOS ANGELES
+    required:
+      - streetAddress1
+      - state
+      - city
+      - postalCode
+  AdminUser:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      firstName:
+        type: string
+      lastName:
+        type: string
+      email:
+        type: string
+        format: x-email
+        pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+      userId:
+        type: string
+        format: uuid
+      organizationId:
+        type: string
+        format: uuid
+      active:
+        type: boolean
+      super:
+        type: boolean
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+    required:
+      - id
+      - firstName
+      - lastName
+      - email
+      - userId
+      - organizationId
+      - active
+      - super
+      - createdAt
+      - updatedAt
+  AdminUserCreate:
+    type: object
+    properties:
+      email:
+        type: string
+        example: 'user@userdomain.com'
+        title: Email
+      firstName:
+        type: string
+        title: First Name
+      lastName:
+        type: string
+        title: Last Name
+      organizationId:
+        type: string
+        format: uuid
+        example: 'c56a4180-65aa-42ec-a945-5fd21dec0538'
+      super:
+        type: boolean
+  AdminUserUpdate:
+    type: object
+    properties:
+      firstName:
+        type: string
+        title: First Name
+        x-nullable: true
+      lastName:
+        type: string
+        title: Last Name
+        x-nullable: true
+      active:
+        type: boolean
+        x-nullable: true
+      super:
+        type: boolean
+        x-nullable: true
+  AdminUsers:
+    type: array
+    items:
+      $ref: '#/definitions/AdminUser'
+  ClientCertificate:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      userId:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      sha256Digest:
+        type: string
+        example: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+      subject:
+        type: string
+        example: CN=example-user,OU=DoD+OU=PKI+OU=CONTRACTOR,O=U.S. Government,C=US
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+      allowDpsAuthAPI:
+        type: boolean
+      allowOrdersAPI:
+        type: boolean
+      allowAirForceOrdersRead:
+        type: boolean
+      allowAirForceOrdersWrite:
+        type: boolean
+      allowArmyOrdersRead:
+        type: boolean
+      allowArmyOrdersWrite:
+        type: boolean
+      allowCoastGuardOrdersRead:
+        type: boolean
+      allowCoastGuardOrdersWrite:
+        type: boolean
+      allowMarineCorpsOrdersRead:
+        type: boolean
+      allowMarineCorpsOrdersWrite:
+        type: boolean
+      allowNavyOrdersRead:
+        type: boolean
+      allowNavyOrdersWrite:
+        type: boolean
+      allowPrime:
+        type: boolean
+      allowPPTAS:
+        type: boolean
+  ClientCertificates:
+    type: array
+    items:
+      $ref: '#/definitions/ClientCertificate'
+  ClientCertificateCreate:
+    type: object
+    required:
+      - sha256Digest
+      - subject
+      - email
+    properties:
+      email:
+        type: string
+        example: user@example.com
+      sha256Digest:
+        type: string
+        example: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+      subject:
+        type: string
+        example: CN=example-user,OU=DoD+OU=PKI+OU=CONTRACTOR,O=U.S. Government,C=US
+      allowOrdersAPI:
+        type: boolean
+      allowAirForceOrdersRead:
+        type: boolean
+      allowAirForceOrdersWrite:
+        type: boolean
+      allowArmyOrdersRead:
+        type: boolean
+      allowArmyOrdersWrite:
+        type: boolean
+      allowCoastGuardOrdersRead:
+        type: boolean
+      allowCoastGuardOrdersWrite:
+        type: boolean
+      allowMarineCorpsOrdersRead:
+        type: boolean
+      allowMarineCorpsOrdersWrite:
+        type: boolean
+      allowNavyOrdersRead:
+        type: boolean
+      allowNavyOrdersWrite:
+        type: boolean
+      allowPrime:
+        type: boolean
+      allowPPTAS:
+        type: boolean
+  ClientCertificateUpdate:
+    type: object
+    properties:
+      sha256Digest:
+        type: string
+        example: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+      subject:
+        type: string
+        example: CN=example-user,OU=DoD+OU=PKI+OU=CONTRACTOR,O=U.S. Government,C=US
+      allowDpsAuthAPI:
+        type: boolean
+        x-nullable: true
+      allowOrdersAPI:
+        type: boolean
+        x-nullable: true
+      allowAirForceOrdersRead:
+        type: boolean
+        x-nullable: true
+      allowAirForceOrdersWrite:
+        type: boolean
+        x-nullable: true
+      allowArmyOrdersRead:
+        type: boolean
+        x-nullable: true
+      allowArmyOrdersWrite:
+        type: boolean
+        x-nullable: true
+      allowCoastGuardOrdersRead:
+        type: boolean
+        x-nullable: true
+      allowCoastGuardOrdersWrite:
+        type: boolean
+        x-nullable: true
+      allowMarineCorpsOrdersRead:
+        type: boolean
+        x-nullable: true
+      allowMarineCorpsOrdersWrite:
+        type: boolean
+        x-nullable: true
+      allowNavyOrdersRead:
+        type: boolean
+        x-nullable: true
+      allowNavyOrdersWrite:
+        type: boolean
+        x-nullable: true
+      allowPrime:
+        type: boolean
+        x-nullable: true
+      allowPPTAS:
+        type: boolean
+        x-nullable: true
+  ClientError:
+    type: object
+    properties:
+      title:
+        type: string
+      detail:
+        type: string
+      instance:
+        type: string
+        format: uuid
+    required:
+      - title
+      - detail
+      - instance
+  CreateWebhookSubscription:
+    type: object
+    properties:
+      subscriberId:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      status:
+        $ref: '#/definitions/WebhookSubscriptionStatus'
+      eventKey:
+        type: string
+        description: >-
+          A string used to represent which events this subscriber expects to be notified about.
+          Corresponds to the possible event_key values in webhook_notifications.
+      callbackUrl:
+        type: string
+        description: The URL to which the notifications for this subscription will be pushed to.
+    required:
+      - subscriberId
+      - status
+      - eventKey
+      - callbackUrl
+  ElectronicOrder:
+    type: object
+    required:
+      - id
+      - issuer
+      - ordersNumber
+      - createdAt
+      - updatedAt
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      issuer:
+        $ref: '#/definitions/Issuer'
+      ordersNumber:
+        type: string
+        title: Orders Number
+      createdAt:
+        type: string
+        format: date-time
+        title: Created at
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        title: Updated at
+        readOnly: true
+  ElectronicOrders:
+    type: array
+    items:
+      $ref: '#/definitions/ElectronicOrder'
+  ElectronicOrdersTotal:
+    type: object
+    properties:
+      category:
+        type: string
+      count:
+        type: integer
+        minimum: 0
+        title: Total Orders Count
+  ElectronicOrdersTotals:
+    type: array
+    items:
+      $ref: '#/definitions/ElectronicOrdersTotal'
+  Issuer:
+    type: string
+    description: >-
+      Organization that issues orders. If more organizations, especially
+      civilian ones, become clients of this API in the future, this enumeration
+      may need to be expanded.
+    enum:
+      - army
+      - navy
+      - air-force
+      - marine-corps
+      - coast-guard
+  Move:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      ordersId:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      serviceMember:
+        $ref: '#/definitions/ServiceMember'
+      locator:
+        type: string
+        example: '12432'
+      status:
+        $ref: '#/definitions/MoveStatus'
+      show:
+        type: boolean
+        x-nullable: true
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+    required:
+      - id
+      - ordersId
+      - locator
+      - createdAt
+      - updatedAt
+  Moves:
+    type: array
+    items:
+      $ref: '#/definitions/Move'
+  MoveStatus:
+    type: string
+    title: Move status
+    enum:
+      - DRAFT
+      - SUBMITTED
+      - APPROVED
+      - CANCELED
+    x-display-value:
+      DRAFT: Draft
+      SUBMITTED: Submitted
+      APPROVED: Approved
+      CANCELED: Canceled
+  MoveUpdate:
+    type: object
+    required:
+      - show
+    properties:
+      show:
+        type: boolean
+  Notification:
+    type: object
+    required:
+      - id
+      - email
+      - serviceMemberId
+      - sesMessageId
+      - notificationType
+      - createdAt
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      email:
+        type: string
+      serviceMemberId:
+        type: string
+        format: uuid
+      sesMessageId:
+        type: string
+      notificationType:
+        type: string
+        enum:
+          - MOVE_PAYMENT_REMINDER_EMAIL
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+  Notifications:
+    type: array
+    items:
+      $ref: '#/definitions/Notification'
+  OfficeUser:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      userId:
+        type: string
+        format: uuid
+      firstName:
+        type: string
+      middleInitials:
+        type: string
+      lastName:
+        type: string
+      email:
+        type: string
+        format: x-email
+        pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+      telephone:
+        type: string
+        format: telephone
+        pattern: '^[2-9]\d{2}-\d{3}-\d{4}$'
+      transportationOfficeId:
+        type: string
+        format: uuid
+      active:
+        type: boolean
+      roles:
+        type: array
+        items:
+          $ref: '#/definitions/Role'
+      edipi:
+        type: string
+      otherUniqueId:
+        type: string
+      rejectionReason:
+        type: string
+      status:
+        type: string
+        enum:
+          - APPROVED
+          - REQUESTED
+          - REJECTED
+      privileges:
+        type: array
+        items:
+          $ref: '#/definitions/Privilege'
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+    required:
+      - id
+      - firstName
+      - middleInitials
+      - lastName
+      - email
+      - telephone
+      - transportationOfficeId
+      - active
+      - roles
+      - edipi
+      - otherUniqueId
+      - rejectionReason
+      - status
+      - createdAt
+      - updatedAt
+  OfficeUserCreate:
+    type: object
+    properties:
+      email:
+        type: string
+        example: 'user@userdomain.com'
+        title: Email
+      firstName:
+        type: string
+        title: First Name
+      middleInitials:
+        type: string
+        example: L.
+        x-nullable: true
+        title: Middle Initials
+      lastName:
+        type: string
+        title: Last Name
+      telephone:
+        type: string
+        format: telephone
+        pattern: '^[2-9]\d{2}-\d{3}-\d{4}$'
+        example: 212-555-5555
+      transportationOfficeId:
+        type: string
+        format: uuid
+        example: 'c56a4180-65aa-42ec-a945-5fd21dec0538'
+      roles:
+        type: array
+        items:
+          $ref: '#/definitions/OfficeUserRole'
+      privileges:
+        type: array
+        x-nullable: true
+        items:
+          $ref: '#/definitions/OfficeUserPrivilege'
+  OfficeUserUpdate:
+    type: object
+    properties:
+      firstName:
+        type: string
+        title: First Name
+        x-nullable: true
+      middleInitials:
+        type: string
+        title: Middle Initials
+        example: Q.
+        x-nullable: true
+      lastName:
+        type: string
+        title: Last Name
+        x-nullable: true
+      telephone:
+        type: string
+        format: telephone
+        pattern: '^[2-9]\d{2}-\d{3}-\d{4}$'
+        example: 212-555-5555
+        x-nullable: true
+      active:
+        type: boolean
+        x-nullable: true
+      roles:
+        type: array
+        items:
+          $ref: '#/definitions/OfficeUserRole'
+      transportationOfficeId:
+        type: string
+        format: uuid
+        example: 'c56a4180-65aa-42ec-a945-5fd21dec0538'
+      privileges:
+        type: array
+        items:
+          $ref: '#/definitions/OfficeUserPrivilege'
+  OfficeUserRole:
+    type: object
+    properties:
+      name:
+        type: string
+        example: 'Task Ordering Officer'
+        x-nullable: true
+        title: name
+      roleType:
+        type: string
+        example: 'task_ordering_officer'
+        x-nullable: true
+        title: roleType
+  OfficeUserPrivilege:
+    type: object
+    properties:
+      name:
+        type: string
+        example: 'Supervisor'
+        x-nullable: true
+        title: name
+      privilegeType:
+        type: string
+        example: 'supervisor'
+        x-nullable: true
+        title: privilegeType
+  OfficeUsers:
+    type: array
+    items:
+      $ref: '#/definitions/OfficeUser'
+  Organization:
+    type: object
+    required:
+      - id
+      - name
+      - createdAt
+      - updatedAt
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      name:
+        type: string
+        title: Name
+      email:
+        type: string
+        format: x-email
+        pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        x-nullable: true
+      telephone:
+        type: string
+        format: telephone
+        pattern: '^[2-9]\d{2}-\d{3}-\d{4}$'
+        x-nullable: true
+      createdAt:
+        type: string
+        format: date-time
+        title: Created at
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        title: Updated at
+        readOnly: true
+  Organizations:
+    type: array
+    items:
+      $ref: '#/definitions/Organization'
+  RequestedOfficeUserUpdate:
+    type: object
+    properties:
+      firstName:
+        type: string
+        title: First Name
+        x-nullable: true
+      middleInitials:
+        type: string
+        title: Middle Initials
+        example: Q.
+        x-nullable: true
+      lastName:
+        type: string
+        title: Last Name
+        x-nullable: true
+      email:
+        type: string
+        example: 'user@userdomain.com'
+      telephone:
+        type: string
+        format: telephone
+        pattern: '^[2-9]\d{2}-\d{3}-\d{4}$'
+        example: 212-555-5555
+        x-nullable: true
+      roles:
+        type: array
+        items:
+          $ref: '#/definitions/OfficeUserRole'
+      transportationOfficeId:
+        type: string
+        format: uuid
+        example: 'c56a4180-65aa-42ec-a945-5fd21dec0538'
+        x-nullable: true
+      edipi:
+        type: string
+      otherUniqueId:
+        type: string
+      rejectionReason:
+        type: string
+      status:
+        type: string
+        enum:
+          - APPROVED
+          - REJECTED
+  Role:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      roleType:
+        type: string
+        example: customer
+      roleName:
+        type: string
+        example: Task Ordering Officer
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+    required:
+      - id
+      - roleType
+      - roleName
+      - createdAt
+      - updatedAt
+  Privilege:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4780-65aa-42ec-a945-5fd87dec0538
+      privilegeType:
+        type: string
+        example: supervisor
+      privilegeName:
+        type: string
+        example: Supervisor
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+  ServiceMember:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+        readOnly: true
+      userId:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+        readOnly: true
+      firstName:
+        type: string
+        title: First Name
+        x-nullable: true
+      middleName:
+        type: string
+        title: Middle Name
+        x-nullable: true
+      lastName:
+        type: string
+        title: Last Name
+        x-nullable: true
+  TransportationOffice:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      name:
+        type: string
+        example: Fort Bragg North Station
+      address:
+        $ref: '#/definitions/Address'
+      phoneLines:
+        type: array
+        items:
+          type: string
+          format: telephone
+          pattern: '^[2-9]\d{2}-\d{3}-\d{4}$'
+          example: 212-555-5555
+      gbloc:
+        type: string
+        pattern: '^[A-Z]{4}$'
+        example: JENQ
+      latitude:
+        type: number
+        format: float
+        example: 29.382973
+      longitude:
+        type: number
+        format: float
+        example: -98.62759
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+    required:
+      - id
+      - name
+      - address
+      - createdAt
+      - updatedAt
+  TransportationOffices:
+    type: array
+    items:
+      $ref: '#/definitions/TransportationOffice'
+  Upload:
+    type: object
+    properties:
+      createdAt:
+        type: string
+        format: date-time
+        title: Created at
+        readOnly: true
+      filename:
+        type: string
+      size:
+        type: integer
+        title: Size in Bytes
+      contentType:
+        type: string
+        enum:
+          - application/pdf
+          - image/jpeg
+          - image/png
+  UploadInformation:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      moveLocator:
+        type: string
+        example: '12432'
+        x-nullable: true
+      upload:
+        $ref: '#/definitions/Upload'
+      serviceMemberId:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+        x-nullable: true
+      serviceMemberFirstName:
+        type: string
+        x-nullable: true
+      serviceMemberLastName:
+        type: string
+        x-nullable: true
+      serviceMemberPhone:
+        type: string
+        x-nullable: true
+      serviceMemberEmail:
+        type: string
+        x-nullable: true
+      officeUserId:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+        x-nullable: true
+      officeUserFirstName:
+        type: string
+        x-nullable: true
+      officeUserLastName:
+        type: string
+        x-nullable: true
+      officeUserPhone:
+        type: string
+        x-nullable: true
+      officeUserEmail:
+        type: string
+        x-nullable: true
+  User:
+    type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      oktaEmail:
+        type: string
+        format: x-email
+        pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+      active:
+        type: boolean
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+      currentAdminSessionId:
+        type: string
+        example: WiPgsPj-jPySR1d0dpmvIZ-HvZqemjmaQWxGQ6B8K_w
+      currentMilSessionId:
+        type: string
+        example: WiPgsPj-jPySR1d0dpmvIZ-HvZqemjmaQWxGQ6B8K_w
+      currentOfficeSessionId:
+        type: string
+        example: WiPgsPj-jPySR1d0dpmvIZ-HvZqemjmaQWxGQ6B8K_w
+    required:
+      - oktaEmail
+      - active
+      - createdAt
+      - updatedAt
+      - currentAdminSessionId
+      - currentMilSessionId
+      - currentOfficeSessionId
+  Users:
+    type: array
+    items:
+      $ref: '#/definitions/User'
+  UserUpdate:
+    type: object
+    properties:
+      revokeAdminSession:
+        type: boolean
+        x-nullable: true
+      revokeOfficeSession:
+        type: boolean
+        x-nullable: true
+      revokeMilSession:
+        type: boolean
+        x-nullable: true
+      active:
+        type: boolean
+        x-nullable: true
+
+  ValidationError:
+    allOf:
+      - $ref: '#/definitions/ClientError'
+      - type: object
+    properties:
+      invalidFields:
+        type: object
+        additionalProperties:
+          type: string
+    required:
+      - invalidFields
+  WebhookSubscription:
+    type: object
+    description: >-
+      Represents subscribers who expect certain notifications to be pushed to their servers.
+      Used for the Prime and Prime-related events specifically.
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+        readOnly: true
+      subscriberId:
+        type: string
+        format: uuid
+        example: d494f114-05a2-4b39-840c-3d33243b7e29
+        description: Unique identifier for the subscriber
+        x-nullable: true
+      status:
+        $ref: '#/definitions/WebhookSubscriptionStatus'
+      callbackUrl:
+        type: string
+        description: The URL to which the notifications for this subscription will be pushed to.
+        x-nullable: true
+      severity:
+        type: integer
+        minimum: 0
+        x-nullable: true
+      eventKey:
+        type: string
+        description: >-
+          A string used to represent which events this subscriber expects to be notified about.
+          Corresponds to the possible event_key values in webhook_notifications.
+        x-nullable: true
+      createdAt:
+        type: string
+        format: date-time
+        readOnly: true
+      updatedAt:
+        type: string
+        format: date-time
+        readOnly: true
+      eTag:
+        type: string
+        readOnly: true
+  WebhookSubscriptions:
+    type: array
+    items:
+      $ref: '#/definitions/WebhookSubscription'
+  WebhookSubscriptionStatus:
+    type: string
+    title: Webhook subscription status
+    x-nullable: true
+    enum:
+      - ACTIVE
+      - FAILING
+      - DISABLED
+    x-display-value:
+      ACTIVE: Active
+      FAILING: Failing
+      DISABLED: Disabled
+paths:
+  /user:
+    get:
+      summary: Gets the data about the currently signed in admin user
+      description: Returns the admin user info for the currently logged in user
+      operationId: getLoggedInAdminUser
+      tags:
+        - User
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/AdminUser'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Admin User not found
+        '500':
+          description: server error
+  /requested-office-users:
+    get:
+      produces:
+        - application/json
+      summary: List of Office Users Requesting Accounts
+      description:
+        $ref: paths/office-users/get/description.md
+      operationId: indexRequestedOfficeUsers
+      tags:
+        - Requested office users
+      parameters:
+        - in: query
+          name: filter
+          type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/OfficeUsers'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Office User not found
+        '500':
+          description: server error
+  /requested-office-users/{officeUserId}:
+    get:
+      produces:
+        - application/json
+      summary: Get a Requested Office User
+      description: Retrieving a single office user in any status. This endpoint is used in the Admin UI that will allow the admin user to view the user's relevant data.
+      operationId: getRequestedOfficeUser
+      tags:
+        - Requested office users
+      parameters:
+        - in: path
+          name: officeUserId
+          type: string
+          format: uuid
+          required: true
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/OfficeUser'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Office User not found
+        '500':
+          description: server error
+    patch:
+      produces:
+        - application/json
+      summary: Update a Requested Office User
+      description: Updates a requested office user to include profile data and status. This will be used in the Admin UI for approving/rejecting/updating a user.
+      operationId: updateRequestedOfficeUser
+      tags:
+        - Requested office users
+      parameters:
+        - in: path
+          name: officeUserId
+          type: string
+          format: uuid
+          required: true
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/RequestedOfficeUserUpdate'
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/OfficeUser'
+        '422':
+          description: validation error
+          schema:
+            $ref: '#/definitions/ValidationError'
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Office User not found
+        '500':
+          description: server error
+  /office-users:
+    get:
+      produces:
+        - application/json
+      summary: List of Office Users
+      description:
+        $ref: paths/office-users/get/description.md
+      operationId: indexOfficeUsers
+      tags:
+        - Office users
+      parameters:
+        - in: query
+          name: filter
+          type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/OfficeUsers'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Office User not found
+        '500':
+          description: server error
+    post:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Create an Office User
+      description:
+        $ref: paths/office-users/post/description.md
+      operationId: createOfficeUser
+      tags:
+        - Office users
+      parameters:
+        - in: body
+          name: officeUser
+          description: Office User information
+          schema:
+            $ref: '#/definitions/OfficeUserCreate'
+      responses:
+        '201':
+          description: Successfully created Office User
+          schema:
+            $ref: '#/definitions/OfficeUser'
+        '422':
+          description: validation error
+          schema:
+            $ref: '#/definitions/ValidationError'
+        '500':
+          description: internal server error
+  /office-users/{officeUserId}:
+    get:
+      produces:
+        - application/json
+      summary: Get an Office User
+      description:
+        $ref: paths/office-users/{officeUserId}/get/description.md
+      operationId: getOfficeUser
+      tags:
+        - Office users
+      parameters:
+        - in: path
+          name: officeUserId
+          type: string
+          format: uuid
+          required: true
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/OfficeUser'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Office User not found
+        '500':
+          description: server error
+    patch:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Updates an Office User
+      description:
+        $ref: paths/office-users/{officeUserId}/patch/description.md
+      operationId: updateOfficeUser
+      tags:
+        - Office users
+      parameters:
+        - in: path
+          name: officeUserId
+          type: string
+          format: uuid
+          required: true
+        - in: body
+          name: officeUser
+          description: Office User information
+          required: true
+          schema:
+            $ref: '#/definitions/OfficeUserUpdate'
+      responses:
+        '200':
+          description: Successfully updated Office User
+          schema:
+            $ref: '#/definitions/OfficeUser'
+        '400':
+          description: Invalid Request
+        '401':
+          description: Must be authenticated to use this end point
+        '403':
+          description: Not authorized to update an Office User
+        '500':
+          description: Server error
+  /admin-users:
+    get:
+      produces:
+        - application/json
+      summary: List Admin Users
+      description:
+        $ref: paths/admin-users/get/description.md
+      operationId: indexAdminUsers
+      tags:
+        - Admin users
+      parameters:
+        - in: query
+          name: filter
+          type: array
+          items:
+            type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/AdminUsers'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Admin Users not found
+        '500':
+          description: server error
+    post:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Create an Admin User
+      description:
+        $ref: paths/admin-users/post/description.md
+      operationId: createAdminUser
+      tags:
+        - Admin users
+      parameters:
+        - in: body
+          name: adminUser
+          description: Admin User information
+          schema:
+            $ref: '#/definitions/AdminUserCreate'
+      responses:
+        '201':
+          description: Successfully created Admin User
+          schema:
+            $ref: '#/definitions/AdminUser'
+        '400':
+          description: Invalid Request
+        '401':
+          description: Must be authenticated to use this end point
+        '403':
+          description: Not authorized to create an Admin User
+        '500':
+          description: Server error
+  /admin-users/{adminUserId}:
+    get:
+      produces:
+        - application/json
+      summary: Fetch a specific Admin User
+      description:
+        $ref: paths/admin-users/{adminUserId}/get/description.md
+      operationId: getAdminUser
+      tags:
+        - Admin users
+      parameters:
+        - in: path
+          name: adminUserId
+          type: string
+          format: uuid
+          required: true
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/AdminUser'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Admin User not found
+        '500':
+          description: server error
+    patch:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Updates an Admin User
+      description:
+        $ref: paths/admin-users/{adminUserId}/patch/description.md
+      operationId: updateAdminUser
+      tags:
+        - Admin users
+      parameters:
+        - in: path
+          name: adminUserId
+          type: string
+          format: uuid
+          required: true
+        - in: body
+          name: adminUser
+          description: Admin User information
+          required: true
+          schema:
+            $ref: '#/definitions/AdminUserUpdate'
+      responses:
+        '200':
+          description: Successfully updated Admin User
+          schema:
+            $ref: '#/definitions/AdminUser'
+        '400':
+          description: Invalid Request
+        '401':
+          description: Must be authenticated to use this end point
+        '403':
+          description: Not authorized to update an Admin User
+        '500':
+          description: Server error
+  /client-certificates:
+    get:
+      produces:
+        - application/json
+      summary: List client certificates
+      description:
+        $ref: paths/client-certificates/get/description.md
+      operationId: indexClientCertificates
+      tags:
+        - Client certificates
+      parameters:
+        - in: query
+          name: filter
+          type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/ClientCertificates'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: office not found
+        '500':
+          description: server error
+    post:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: create a client cert
+      description:
+        $ref: paths/client-certificates/post/description.md
+      operationId: createClientCertificate
+      tags:
+        - Client certificates
+      parameters:
+        - in: body
+          name: clientCertificate
+          description: client cert information
+          schema:
+            $ref: '#/definitions/ClientCertificateCreate'
+      responses:
+        201:
+          description: Successfully created client certificate
+          schema:
+            $ref: '#/definitions/ClientCertificate'
+        400:
+          description: Invalid Request
+        401:
+          description: Must be authenticated to use this end point
+        403:
+          description: Not authorized to create a client certificate
+        500:
+          description: Server error
+  /client-certificates/{clientCertificateId}:
+    get:
+      produces:
+        - application/json
+      summary: Get a client certificate
+      description:
+        $ref: paths/client-certificates/{clientCertificateId}/get/description.md
+      operationId: getClientCertificate
+      tags:
+        - Client certificates
+      parameters:
+        - in: path
+          name: clientCertificateId
+          type: string
+          format: uuid
+          required: true
+      responses:
+        200:
+          description: success
+          schema:
+            $ref: '#/definitions/ClientCertificate'
+        400:
+          description: invalid request
+        401:
+          description: request requires user authentication
+        404:
+          description: id not found
+        500:
+          description: server error
+    patch:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Updates a client certificate
+      description:
+        $ref: paths/client-certificates/{clientCertificateId}/patch/description.md
+      operationId: updateClientCertificate
+      tags:
+        - Client certificates
+      parameters:
+        - in: path
+          name: clientCertificateId
+          type: string
+          format: uuid
+          required: true
+        - in: body
+          name: clientCertificate
+          description: client cert information
+          required: true
+          schema:
+            $ref: '#/definitions/ClientCertificateUpdate'
+      responses:
+        200:
+          description: Successfully updated Client Certificate
+          schema:
+            $ref: '#/definitions/ClientCertificate'
+        400:
+          description: Invalid Request
+        401:
+          description: Must be authenticated to use this end point
+        403:
+          description: Not authorized to update a client certificate
+        500:
+          description: Server error
+    delete:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: removes a client certificate
+      description:
+        $ref: paths/client-certificates/{clientCertificateId}/delete/description.md
+      operationId: removeClientCertificate
+      tags:
+        - Client certificates
+      parameters:
+        - in: path
+          name: clientCertificateId
+          type: string
+          format: uuid
+          required: true
+      responses:
+        200:
+          description: Successfully removed Client Certificate
+          schema:
+            $ref: '#/definitions/ClientCertificate'
+        400:
+          description: Invalid Request
+        401:
+          description: Must be authenticated to use this end point
+        403:
+          description: Not authorized to remove a client certificate
+        500:
+          description: Server error
+  /offices:
+    get:
+      produces:
+        - application/json
+      summary: List Transportation Offices
+      description:
+        $ref: paths/offices/get/description.md
+      operationId: indexOffices
+      tags:
+        - Transportation offices
+      parameters:
+        - in: query
+          name: filter
+          type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/TransportationOffices'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Transportation Office not found
+        '500':
+          description: server error
+  /electronic-orders:
+    get:
+      produces:
+        - application/json
+      summary: List Electronic Orders
+      description:
+        $ref: paths/electronic-orders/get/description.md
+      operationId: indexElectronicOrders
+      tags:
+        - Electronic orders
+      parameters:
+        - in: query
+          name: filter
+          type: array
+          items:
+            type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/ElectronicOrders'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Electronic Order not found
+        '500':
+          description: server error
+  /electronic-orders/totals:
+    get:
+      produces:
+        - application/json
+      summary: Get total counts for the orders stored in MilMove
+      description:
+        $ref: paths/electronic-orders/totals/get/description.md
+      operationId: getElectronicOrdersTotals
+      tags:
+        - Electronic orders
+      parameters:
+        - in: query
+          name: filter
+          type: array
+          items:
+            type: string
+        - in: query
+          name: andFilter
+          type: array
+          items:
+            type: string
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/ElectronicOrdersTotals'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Total count for Electronic Orders not found
+        '500':
+          description: server error
+  /uploads/{uploadId}:
+    get:
+      produces:
+        - application/json
+      summary: Get information about an Upload
+      description:
+        $ref: paths/uploads/{uploadId}/get/description.md
+      operationId: getUpload
+      tags:
+        - Uploads
+      parameters:
+        - in: path
+          name: uploadId
+          type: string
+          format: uuid
+          required: true
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/UploadInformation'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Upload not found
+        '500':
+          description: server error
+  /organizations:
+    get:
+      produces:
+        - application/json
+      summary: List Organizations
+      description:
+        $ref: paths/organizations/get/description.md
+      operationId: indexOrganizations
+      tags:
+        - Organizations
+      parameters:
+        - in: query
+          name: filter
+          type: array
+          items:
+            type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/Organizations'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Organizations not found
+        '500':
+          description: server error
+  /notifications:
+    get:
+      produces:
+        - application/json
+      summary: List Notifications
+      description:
+        $ref: paths/notifications/get/description.md
+      operationId: indexNotifications
+      tags:
+        - Notifications
+      parameters:
+        - in: query
+          name: filter
+          type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/Notifications'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Notifications not found
+        '500':
+          description: server error
+  /moves:
+    get:
+      produces:
+        - application/json
+      summary: List Moves
+      description:
+        $ref: paths/moves/get/description.md
+      operationId: indexMoves
+      tags:
+        - Moves
+      parameters:
+        - in: query
+          name: filter
+          type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/Moves'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Moves not found
+        '500':
+          description: server error
+  /moves/{moveID}:
+    get:
+      produces:
+        - application/json
+      summary: Get information about a Move
+      description:
+        $ref: paths/moves/{moveID}/get/description.md
+      operationId: getMove
+      tags:
+        - Moves
+      parameters:
+        - in: path
+          name: moveID
+          type: string
+          format: uuid
+          required: true
+      responses:
+        '200':
+          description: Success
+          schema:
+            $ref: '#/definitions/Move'
+        '400':
+          description: Invalid request
+        '401':
+          description: Must be authenticated to use this endpoint
+        '404':
+          description: Move not found
+        '500':
+          description: Server error
+    patch:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Toggle Move visibility
+      description:
+        $ref: paths/moves/{moveID}/patch/description.md
+      operationId: updateMove
+      tags:
+        - Moves
+      parameters:
+        - in: path
+          name: moveID
+          type: string
+          format: uuid
+          required: true
+        - in: body
+          name: Move
+          description: Move information
+          required: true
+          schema:
+            $ref: '#/definitions/MoveUpdate'
+      responses:
+        '200':
+          description: Successfully updated the Move
+          schema:
+            $ref: '#/definitions/Move'
+        '400':
+          description: Invalid request
+        '401':
+          description: Must be authenticated to use this endpoint
+        '403':
+          description: Not authorized to update this Move
+        '404':
+          description: Move not found
+        '422':
+          description: Invalid input
+        '500':
+          description: Server error
+  /users:
+    get:
+      produces:
+        - application/json
+      summary: List Users
+      description:
+        $ref: paths/users/get/description.md
+      operationId: indexUsers
+      tags:
+        - Users
+      parameters:
+        - in: query
+          name: filter
+          type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/Users'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Users not found
+        '500':
+          description: server error
+  /users/{userId}:
+    get:
+      produces:
+        - application/json
+      summary: Get information about a User
+      description:
+        $ref: paths/users/{userId}/get/description.md
+      operationId: getUser
+      tags:
+        - Users
+      parameters:
+        - in: path
+          name: userId
+          type: string
+          format: uuid
+          required: true
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/User'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: User not found
+        '500':
+          description: server error
+    patch:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Update a User's session or active status
+      description:
+        $ref: paths/users/{userId}/patch/description.md
+      operationId: updateUser
+      tags:
+        - Users
+      parameters:
+        - in: path
+          name: userId
+          type: string
+          format: uuid
+          required: true
+        - in: body
+          name: User
+          description: User information
+          required: true
+          schema:
+            $ref: '#/definitions/UserUpdate'
+      responses:
+        '200':
+          description: Successfully updated User
+          schema:
+            $ref: '#/definitions/User'
+        '400':
+          description: Invalid Request
+        '401':
+          description: Must be authenticated to use this end point
+        '403':
+          description: Not authorized to update this User
+        '404':
+          description: Not found
+        '422':
+          description: Validation error
+          schema:
+            $ref: '#/definitions/ValidationError'
+        '500':
+          description: Server error
+  /webhook-subscriptions:
+    get:
+      produces:
+        - application/json
+      summary: Lists Webhook Subscriptions
+      description:
+        $ref: paths/webhook-subscriptions/get/description.md
+      operationId: indexWebhookSubscriptions
+      tags:
+        - Webhook subscriptions
+      parameters:
+        - in: query
+          name: filter
+          type: string
+        - in: query
+          name: page
+          type: integer
+        - in: query
+          name: perPage
+          type: integer
+        - in: query
+          name: sort
+          type: string
+        - in: query
+          name: order
+          type: boolean
+      responses:
+        '200':
+          description: success
+          headers:
+            Content-Range:
+              type: string
+              description: Used for pagination
+          schema:
+            $ref: '#/definitions/WebhookSubscriptions'
+        '400':
+          description: Invalid request
+        '401':
+          description: Not authenticated for this endpoint
+        '404':
+          description: Webhook Subscriptions not found
+        '500':
+          description: Server error
+    post:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Create a Webhook Subscription
+      description:
+        $ref: paths/webhook-subscriptions/post/description.md
+      operationId: createWebhookSubscription
+      tags:
+        - Webhook subscriptions
+      parameters:
+        - in: body
+          name: webhookSubscription
+          description: Webhook subscription information
+          schema:
+            $ref: '#/definitions/CreateWebhookSubscription'
+      responses:
+        '201':
+          description: Successfully created Webhook Subscription
+          schema:
+            $ref: '#/definitions/WebhookSubscription'
+        '400':
+          description: Invalid Request
+        '401':
+          description: Must be authenticated to use this end point
+        '403':
+          description: Not authorized to create a Webhook Subscription
+        '500':
+          description: Server error
+  /webhook-subscriptions/{webhookSubscriptionId}:
+    get:
+      produces:
+        - application/json
+      summary: Get information about a Webhook Subscription
+      description:
+        $ref: paths/webhook-subscriptions/{webhookSubscriptionId}/get/description.md
+      operationId: getWebhookSubscription
+      tags:
+        - Webhook subscriptions
+      parameters:
+        - in: path
+          name: webhookSubscriptionId
+          type: string
+          format: uuid
+          required: true
+      responses:
+        '200':
+          description: success
+          schema:
+            $ref: '#/definitions/WebhookSubscription'
+        '400':
+          description: invalid request
+        '401':
+          description: request requires user authentication
+        '404':
+          description: Webhook Subscription not found
+        '500':
+          description: server error
+    patch:
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      summary: Update a Webhook Subscription
+      description:
+        $ref: paths/webhook-subscriptions/{webhookSubscriptionId}/patch/description.md
+      operationId: updateWebhookSubscription
+      tags:
+        - Webhook subscriptions
+      parameters:
+        - in: path
+          name: webhookSubscriptionId
+          type: string
+          format: uuid
+          required: true
+        - in: body
+          name: WebhookSubscription
+          description: Webhook Subscription information
+          required: true
+          schema:
+            $ref: '#/definitions/WebhookSubscription'
+        - in: header
+          name: If-Match
+          type: string
+          required: true
+          description: >
+            Optimistic locking is implemented via the `If-Match` header. If the ETag header does not match
+            the value of the resource on the server, the server rejects the change with a `412 Precondition Failed` error.
+      responses:
+        '200':
+          description: Successfully updated Webhook Subscription
+          schema:
+            $ref: '#/definitions/WebhookSubscription'
+        '400':
+          description: Invalid Request
+        '401':
+          description: Must be authenticated to use this end point
+        '403':
+          description: Not authorized to update this Webhook Subscription
+        '404':
+          description: Webhook Subscription not found
+        '412':
+          description: Precondition failed
+        '422':
+          description: Validation error
+          schema:
+            $ref: '#/definitions/ValidationError'
+        '500':
+          description: Server error

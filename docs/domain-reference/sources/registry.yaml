@@ -1,0 +1,1255 @@
+# Source registry — the index of every source considered for the domain reference model.
+#
+# Schema (per entry):
+#   id          kebab-case, stable; cite as src:<id>
+#   name, publisher
+#   kind        reference-model | message-standard | vendor-api | regulation | tariff |
+#               ontology | internal-system | glossary | contract | reference-data | dataset
+#   openness    public | free-registration | gated-partner | paid | licensed | internal
+#   license     as stated by the publisher, or "unstated"
+#   areas       rubric area ids (A1–A13) the source informs
+#   priority    P1 analyze in detail · P2 useful / comparator · P3 record only
+#   status      candidate   known, not yet captured
+#               captured    material stored under sources/<id>/ or referenced in-repo
+#               needs-user  requires the user to obtain it (see `obtain`) → drop in inbox/
+#               obtained    user-provided material processed into sources/<id>/
+#               analyzed    sources/<id>/analysis.md exists
+#               skipped     recorded for completeness; not worth analysis
+#   urls        where it lives publicly (verified 2026-09-11 unless `notes` says otherwise)
+#   refs        in-repo or cross-repo paths (pegasus-workflows = ~/repos/pegasus-workflows)
+#   files       stored copies: {path, sha256, retrieved, from}; local/ paths are gitignored
+#   obtain      what a human must do to get gated/licensed/bot-blocked material
+#   notes       anything that changes how the source should be read
+#
+# Discovery performed 2026-09-11 (four research passes: internal, HHG/relocation,
+# logistics standards, visibility/telematics).
+#
+# Tenant reality, confirmed by the user 2026-09-17 — this sets priority:
+#   * Van lines: tenants are agents for ALLIED (SIRVA) and ATLAS. Both already held
+#     (src:sirva-ade, src:atlas-world-group-api). Other van lines dropped to P3.
+#   * Telematics: OMNITRACS and SAMSARA. Both P1. Platform Science / Transflo /
+#     ORBCOMM keep value only as comparators.
+#   * Shippers require NO EDI and NO visibility platform today, but the model must be
+#     ready for both — so X12 and project44 stay in as vocabulary sources (P2),
+#     not as integration targets.
+# Inbox drop processed 2026-09-17: UN/CEFACT RDM package, NMFTA eBOL specs,
+# an X12 858 implementation guide, and further leads (GTFS, Alvys, EDI walkthroughs).
+
+sources:
+
+# Capture log (what was downloaded, when, size, sha256 prefix): capture-log.tsv
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INTERNAL — our own systems and the partner material we already hold
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: pegasus-cloud-domain
+  name: Pegasus Cloud domain package
+  publisher: DolasDev
+  role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
+  kind: internal-system
+  openness: internal
+  areas: [A1, A2, A3, A6, A7, A8, A10, A12, A13]
+  priority: P3
+  status: analyzed
+  refs:
+    - packages/domain/src/dispatch/index.ts      # Move, Stop, MoveStatus state machine, StopType incl. STORAGE
+    - packages/domain/src/quoting/index.ts
+    - packages/domain/src/rating/                # 400NG rating engine, FSC, mileage
+    - packages/domain/src/billing/index.ts
+    - packages/domain/src/customer/index.ts
+    - packages/domain/src/inventory/index.ts
+    - packages/domain/src/document/index.ts
+    - packages/domain/src/schedule/index.ts      # CrewMember (DRIVER/MOVER/SUPERVISOR), Vehicle
+    - packages/domain/src/messaging/index.ts
+    - packages/domain/src/shared/types.ts        # Address, Money, DateRange, Brand
+  notes: Small, early-stage contexts (~75–140 lines each). Tells us what Cloud models today, not what the domain needs.
+
+- id: pegasus-cloud-prisma
+  name: Pegasus Cloud persistence schema
+  publisher: DolasDev
+  role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
+  kind: internal-system
+  openness: internal
+  areas: [A1, A2, A3, A6, A7, A8, A9, A12, A13]
+  priority: P3
+  status: analyzed
+  refs:
+    - apps/api/prisma/schema.prisma   # Move/Stop 687–745, Schedule 746–849, Rating 937–1132, Document 1328–1404,
+                                      # DomainEvent 1883–1969, IntegrationProjection/Correlation 2052–2114,
+                                      # ArchivedTrip 320–382, ShipmentEventInbox 2840
+  notes: Live long-haul TripMaster/activity rows remain in on-prem MSSQL; Cloud holds ArchivedTrip snapshots.
+
+- id: pegasus-integration-floors
+  name: Integration-validation floors (type abstractions)
+  publisher: DolasDev
+  role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
+  kind: internal-system
+  openness: internal
+  areas: [A1, A4, A6, A7, A8, A9]
+  priority: P3
+  status: analyzed
+  refs:
+    - apps/api/src/integration-validation/floors/shipment-status-update.floor.ts
+    - apps/api/src/integration-validation/floors/shipment-lifecycle-event.floor.ts
+    - apps/api/src/integration-validation/floors/sales-lead.floor.ts
+    - apps/api/src/integration-validation/floors/financial-settlement.floor.ts
+    - apps/api/src/integration-validation/floors/document-record.floor.ts
+    - apps/api/src/integration-validation/overlays/allied-status.overlay.ts
+  notes: Already a per-type canonical vocabulary on the partner side; derived facts encode milestone semantics.
+
+- id: pegii-order
+  name: Pegasus II (legacy MoveManager) sale/order
+  publisher: DolasDev
+  role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
+  kind: internal-system
+  openness: internal
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10]
+  priority: P3
+  status: needs-user
+  refs:
+    - apps/api/src/gateways/pegii-order.gateway.ts
+    - apps/api/src/gateways/pegii/pegii-order.dto.ts
+    - apps/api/src/gateways/pegii/pegii-order.mapper.ts
+    - pegasus-workflows:sdk-feedback/0029-pegii-bridge-undefined-stub-and-no-native-fetch.md   # native-shape excerpts
+    - pegasus-workflows:platform/integrations/weichert/corpus.json                            # partial 490317 samples
+    - pegasus-workflows:platform/integrations/weichert/README.md                              # KeyMoveDates, Survey, sentinel dates
+  obtain: >
+    No complete native order exists on disk. Either provide 2–3 sanitized native
+    orders (a local move, a long-haul with SIT, a cancelled one), or approve pulling
+    them with get_order(shape="native") on the nw profile into local/ (gitignored,
+    contains customer PII).
+  notes: Also the source of truth for which concepts pegII can actually supply (rubric S5).
+
+- id: pegii-longhaul
+  name: PegII Long Haul (legacy trip planning) and its Cloud port
+  publisher: DolasDev
+  role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
+  kind: internal-system
+  openness: internal
+  areas: [A3, A4, A5, A8, A13]
+  priority: P3
+  status: analyzed
+  refs:
+    - ~/repos/longhaul/server/modules/          # shipment, weight, coverage, trip, trip-status, activity, extraLocation, activityType, driver, zone, move-type
+    - ~/repos/longhaul/src/common/trip-status.ts   # Pending → Offered → Accepted → In-Progress → Finalized
+    - ~/repos/longhaul/server/migrations/        # TripMaster, ShipmentActivity, ActivityType, TripMasterStatuses, MasterZones
+    - apps/api/src/handlers/longhaul-cloud/
+    - packages/longhaul-contracts/
+    - plans/completed/longhaul-strangler-fig-cloud-migration.md
+    - plans/completed/5948dc44-activity-arrival-window.md
+    - plans/completed/fe2a6a84-shipment-row-type.md
+    - plans/completed/ec8b8958-daily-dispatch.md
+  notes: The only internal model with trip ≠ shipment and an activity/stop concept. Carrier plugins (GOgistiX, myrelo, ais-labornet).
+
+- id: pegasus-domain-plans
+  name: Pegasus design plans touching the domain
+  publisher: DolasDev
+  role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
+  kind: internal-system
+  openness: internal
+  areas: [A3, A4, A5, A6, A7, A12]
+  priority: P3
+  status: captured
+  refs:
+    - plans/completed/sit-filter.md
+    - plans/completed/537ba99-document-variants.md
+    - plans/archived/document-management-system.md
+    - plans/completed/cfd18590-shipment-doc-scan.md
+    - plans/completed/b280811-rating-engine-400ng.md
+    - plans/completed/integration-date-fields.md
+    - plans/completed/e9fbaeb-integration-floor-overlay-split.md
+    - plans/in-progress/vanline-source-binding.md
+    - plans/in-progress/legacy-outbox-relay-setup.md
+
+- id: weichert-supplier-api
+  name: Weichert supplier API (service order / shipment order updates)
+  publisher: Weichert Workforce Mobility
+  role: model-evidence   # external partner contract: how a counterparty behaves
+  kind: vendor-api
+  openness: gated-partner
+  license: partner-confidential
+  areas: [A1, A2, A4, A7, A8, A9]
+  priority: P1
+  status: analyzed
+  files:
+    - {path: sources/weichert-supplier-api/local/weichert-api.odt, sha256: e7093f4871a02136efa7d28bda8fe41972df48533a9615c6d2ad729664a9ebad, retrieved: 2026-09-11, from: "~/weichert-api.odt (user)"}
+  refs:
+    - pegasus-workflows:platform/integrations/weichert/   # mapping, rules, corpus, README
+    - pegasus-workflows:platform/weichert-milestone-update/
+  notes: RMC (relocation management company) view. Rules are snapshot invariants, not transitions; see the pack-before-load gap noted in the plan.
+
+- id: sirva-ade
+  name: SIRVA / Allied Agent Data Exchange (ADE)
+  publisher: SIRVA
+  role: model-evidence   # external partner contract: how a counterparty behaves
+  kind: vendor-api
+  openness: gated-partner
+  license: partner-confidential
+  areas: [A1, A4, A6, A7, A8, A9, A13]
+  priority: P1
+  status: analyzed
+  refs:
+    - pegasus-workflows:platform/allied-vanlines/docs/    # 13 ADE PDFs: shipment operational events/details, lead opportunity, compensation, abstract & statement, documents
+    - pegasus-workflows:platform/allied-vanlines/integrations/   # sirva_ade_{lead,shipment,compensation,document} configs
+    - pegasus-workflows:platform/allied-vanlines/README.md
+  notes: Van-line ↔ agent view — agent roles, operational events, compensation splits. Committed in pegasus-workflows, referenced not copied.
+
+- id: atlas-world-group-api
+  name: Atlas World Group APIM (AtlasNet)
+  publisher: Atlas World Group
+  role: model-evidence   # external partner contract: how a counterparty behaves
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A1, A2, A3, A4, A6, A7, A8, A9, A10, A11, A12]
+  priority: P1
+  status: analyzed
+  refs:
+    - docs/atlas-world-group-api/README.md       # gap analysis
+    - docs/atlas-world-group-api/INVENTORY.md
+    - docs/atlas-world-group-api/openapi/        # estimating-v2, atlasorder-v1, shipment-management, claims, documents, agents, tonnages, cubesheets, transitguide, RatingSystem, …
+  notes: The richest van-line API we hold; covers estimating through claims.
+
+- id: equus-sender-legacy
+  name: Legacy Equus events sender (deleted service)
+  publisher: DolasDev
+  role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
+  kind: internal-system
+  openness: internal
+  areas: [A1, A9]
+  priority: P3
+  status: skipped
+  refs: ["git show ee95136a^:apps/services/service"]
+  notes: Re-sent whole v_equus_* view snapshots; the views' SQL is not on disk. Historical only.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HOUSEHOLD GOODS — government reference systems, tariffs, contracts
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: milmove-mymove
+  name: MilMove (DoD Defense Personal Property System successor)
+  publisher: USTRANSCOM / TrussWorks
+  kind: reference-model
+  openness: public
+  license: public domain (US) / MIT elsewhere — LICENSE.txt
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A11, A12]
+  priority: P1
+  status: analyzed
+  urls:
+    - https://proxy.golang.org/github.com/transcom/mymove/@v/v0.0.0-20241018165427-c4868770c676.zip
+    - https://archive.softwareheritage.org/browse/origin/?origin_url=https://github.com/transcom/mymove
+  files:
+    - {path: sources/milmove-mymove/local/mymove-v0.0.0-20241018165427-c4868770c676.zip, sha256: 701270b0d746abb19be428bcaedc83f74bd135f7bb1b56551355c120d2b21400, retrieved: 2026-09-11, from: Go module proxy}
+    - {path: sources/milmove-mymove/captured/, sha256: n/a, retrieved: 2026-09-11, from: "extract of the zip: LICENSE.txt, swagger/*.yaml, swagger-def/, pkg/models/*.go, pkg/services/event/*.go, pkg/edi/ (tests removed)"}
+  notes: >
+    github.com/transcom/mymove returns 404 as of 2026-09-11 — archived copies only
+    (commit c4868770, 2024-10-18; Software Heritage visit 2025-06-27 is newer).
+    Only open, complete HHG data model found. Has its own event catalog
+    (pkg/services/event/event.go), 49 service-item codes, SIT extensions, reweighs,
+    shipment types HHG/NTS/PPM/boat/mobile home. Military (GHC) flavor — mind that bias.
+
+- id: milmove-docs
+  name: MilMove documentation site and ADRs
+  publisher: USTRANSCOM / TrussWorks
+  kind: reference-model
+  openness: public
+  license: MIT
+  areas: [A1, A4, A7]   # A3/A5/A12 removed: that material is in the code, not the docs
+  priority: P1
+  status: analyzed
+  urls:
+    - https://transcom.github.io/mymove-docs/
+    - https://github.com/transcom/mymove-docs
+  notes: >
+    Capture ADRs 0043 prime-time, 0055 consolidate moves and MTOs, 0060 move state
+    for service counseling, 0067 PPM db design, 0071 move history events; guides
+    ghc-rate-engine, ghc-invoicing, push-notifications-to-prime. Repo archived — capture early.
+
+- id: dp3-400ng
+  name: DP3 Domestic 400NG Tariff (2026)
+  publisher: USTRANSCOM
+  kind: tariff
+  openness: public
+  license: US government work
+  areas: [A5, A7, A12]
+  priority: P1
+  status: analyzed
+  urls:
+    - "https://business.ustranscom.mil/dp3/docs/otherpdfs/0840+2026_Business_Rules/2026%20400NG%20(5%20Dec%2025)%20Final.pdf"
+    - https://business.ustranscom.mil/dp3/pdfs.cfm
+  refs:
+    - /home/steve/repos/pegasus/docs/2026-400ng.pdf   # PRIMARY CHECKOUT ONLY (gitignored); absent from this worktree
+    - docs/400NG-RATING-TOOL.XLSX         # gitignored
+    - docs/400NG-BASELINE-RATES.XLSX      # gitignored
+  notes: Canonical US domestic charge/accessorial/SIT taxonomy. Old www.ustranscom.mil/dp3 paths 404.
+
+- id: dp3-tender-of-service
+  name: DP3 Tender of Service 2026 (+ Change 1) and NTS Tender of Service
+  publisher: USTRANSCOM
+  kind: contract
+  openness: public
+  areas: [A1, A4, A5, A6]
+  priority: P2
+  status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
+  urls: [https://business.ustranscom.mil/dp3/pdfs.cfm]
+
+- id: dp3-claims-liability
+  name: DP3 2026 Claims Liability Business Rules
+  publisher: USTRANSCOM
+  kind: contract
+  openness: public
+  areas: [A11]
+  priority: P2
+  status: candidate
+  urls: [https://business.ustranscom.mil/dp3/pdfs.cfm]
+
+- id: dp3-it26
+  name: DP3 International Tariff IT-26
+  publisher: USTRANSCOM
+  kind: tariff
+  openness: public
+  areas: [A5, A12]
+  priority: P3
+  status: candidate
+  urls: [https://business.ustranscom.mil/dp3/pdfs.cfm]
+
+- id: dp3-ppcig
+  name: Personal Property Consignment Instruction Guides (CONUS / OCONUS)
+  publisher: USTRANSCOM
+  kind: reference-data
+  openness: public
+  areas: [A8]
+  priority: P3
+  status: skipped
+  urls: [https://business.ustranscom.mil/dp3/pdfs.cfm]
+
+- id: dtr-part-iv
+  name: Defense Transportation Regulation Part IV — Personal Property
+  publisher: USTRANSCOM
+  kind: regulation
+  openness: public
+  areas: [A1, A2, A5, A6, A7, A11]
+  priority: P2
+  status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
+  urls:
+    - https://business.ustranscom.mil/dtr/dtrp4.cfm
+  notes: Some mirrors block automated fetches; business.ustranscom.mil resolved.
+
+- id: dteb-edi-conventions
+  name: DoD Transportation EDI conventions (858, 214, 204, 315 …)
+  publisher: USTRANSCOM DTEB
+  kind: message-standard
+  openness: public
+  areas: [A4, A6, A7, A9]
+  priority: P2
+  status: needs-user
+  urls:
+    - https://www.ustranscom.mil/cmd/associated/dteb/files/transportationics/
+  obtain: >
+    Download in a browser (site rejects automated fetches with a certificate error):
+    dteb858b004010_Version_9.pdf and dteb214a004010_Version_13.pdf, plus the 204 and
+    315 conventions if listed. Drop as dteb-edi-conventions--<file>.pdf.
+  notes: X12 as actually used for household goods — the bridge between X12 and HHG.
+
+- id: ghc-pws
+  name: Global Household Goods Contract Performance Work Statement
+  publisher: USTRANSCOM
+  kind: contract
+  openness: public
+  areas: [A1, A4, A5, A6, A7]
+  priority: P2
+  status: needs-user
+  urls:
+    - https://sam.gov/opp/4e6653a999284f86bb32c8730b903d1f/view
+  obtain: Final PWS + attachments from SAM.gov (only a draft mirror was found). Low urgency.
+
+- id: gsa-champ
+  name: GSA CHAMP household goods / extended storage rate filing packages
+  publisher: GSA
+  kind: contract
+  openness: public
+  areas: [A5, A7, A12]
+  priority: P3
+  status: skipped
+  urls: [https://www.gsa.gov/travel/plan-a-trip/transportation-travel/employee-relocation-resource-center/reference-library]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# REGULATION & INDUSTRY (US + international removals)
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: cfr-49-375
+  name: 49 CFR Part 375 — Transportation of Household Goods in Interstate Commerce; Consumer Protection
+  publisher: FMCSA
+  kind: regulation
+  openness: public
+  license: US government work
+  areas: [A1, A2, A5, A6, A7, A8, A10, A11]
+  priority: P1
+  status: analyzed
+  urls: [https://www.ecfr.gov/current/title-49/subtitle-B/chapter-III/subchapter-B/part-375]
+  notes: The legal vocabulary — order for service, bill of lading, estimates, weighing, SIT, delivery, charge collection. Appendix A reproduces the Rights & Responsibilities booklet.
+
+- id: fmcsa-rights-responsibilities
+  name: Your Rights and Responsibilities When You Move
+  publisher: FMCSA
+  kind: glossary
+  openness: public
+  areas: [A2, A6, A10, A11]
+  priority: P2
+  status: needs-user
+  urls: ["https://www.fmcsa.dot.gov/sites/fmcsa.dot.gov/files/2023-10/FMCSA_R&R_Handbook_Web_v1.pdf"]
+  obtain: fmcsa.dot.gov returns 403 to automated fetches — browser download. Mostly duplicated by cfr-49-375 Appendix A, so optional.
+
+- id: cfr-49-hhg-related
+  name: 49 CFR Parts 370 / 1005 (claims), 1310 (HHG tariffs), 371 (brokers)
+  publisher: FMCSA / STB
+  kind: regulation
+  openness: public
+  areas: [A8, A11, A12]
+  priority: P2
+  status: candidate
+  urls: [https://www.ecfr.gov/current/title-49]
+  notes: Part 370 is the useful one (claims lifecycle); 371 defines the HHG broker role.
+
+- id: stb-released-rates
+  name: STB released rates decision (valuation) and Federal Register rule
+  publisher: STB / FMCSA
+  kind: regulation
+  openness: public
+  areas: [A11]
+  priority: P2
+  status: candidate
+  urls:
+    - https://www.stb.gov/resources/need-assistance/hhg-moving/
+    - https://www.federalregister.gov/documents/2012/04/30/2012-9865/
+  notes: Currently effective decision not confirmed.
+
+- id: fmcsa-nccdb
+  name: National Consumer Complaint Database
+  publisher: FMCSA
+  kind: dataset
+  openness: public
+  areas: [A11]
+  priority: P3
+  status: skipped
+  urls: [https://nccdb.fmcsa.dot.gov]
+
+- id: iso-17451
+  name: ISO 17451-1:2016 (HHG inventory/condition/transport codes) and ISO/TS 17451-2:2017 (XML inventory messaging)
+  publisher: ISO (driven by IAM)
+  kind: message-standard
+  openness: paid
+  areas: [A2, A6, A10, A11]
+  priority: P1
+  status: needs-user
+  urls:
+    - https://www.iso.org/standard/63803.html
+    - https://www.iso.org/standard/63804.html
+  obtain: Purchase both from the ISO or ANSI webstore. The only formal removals data standard; value is highest once inventory/claims (A10/A11) is modeled.
+
+- id: en-12522-2024
+  name: EN 12522:2024 Furniture removal activities for private individuals
+  publisher: CEN / BSI
+  kind: regulation
+  openness: paid
+  areas: [A1, A2, A10]
+  priority: P2
+  status: needs-user
+  obtain: Purchase from BSI or a national standards body. Low urgency (European service standard).
+
+- id: werc-mobility-data-standard
+  name: WERC mobility data standards
+  publisher: WERC (formerly Worldwide ERC; now talenteverywhere.org)
+  kind: message-standard
+  openness: gated-partner
+  areas: [A1, A8, A9]
+  priority: P2
+  status: needs-user
+  obtain: Via WERC membership or by asking WERC — would give the RMC ↔ supplier exchange vocabulary Weichert/SIRVA/Cartus share.
+
+- id: hgcb-400n
+  name: Tariff 400N (Household Goods Carriers' Bureau)
+  publisher: HGCB / AMSA
+  kind: tariff
+  openness: licensed
+  areas: [A12]
+  priority: P3
+  status: skipped
+  notes: Discontinued 2008-01-01 when collective ratemaking ended; carriers now publish their own tariffs.
+
+- id: ata-msc
+  name: ATA Moving & Storage Conference (ProMover, arbitration)
+  publisher: ATA
+  kind: glossary
+  openness: public
+  areas: [A11]
+  priority: P3
+  status: skipped
+  urls: [https://moving.org]
+
+- id: iam-data-solutions
+  name: IAM data solutions (ONE Record pilot for moving)
+  publisher: International Association of Movers
+  kind: message-standard
+  openness: public
+  areas: [A3, A9]
+  priority: P3
+  status: skipped
+  urls: [https://www.iamovers.org/iam-data-solutions/]
+  notes: Pilot repos are server setup only; no moving-specific model published.
+
+- id: fidi-mmsa
+  name: FIDI FAIM certification / Moving & Mobility Standards Alliance
+  publisher: FIDI, IAM, OMNI
+  kind: glossary
+  openness: gated-partner
+  areas: []
+  priority: P3
+  status: skipped
+  urls: [https://www.fidi.org/news/moving-mobility-standards-alliance]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RELOCATION MANAGEMENT COMPANIES, VAN LINES, MOVING SOFTWARE
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: sirva-supplier-api
+  name: SIRVA Supplier API
+  publisher: SIRVA
+  kind: vendor-api
+  openness: public
+  license: unstated
+  areas: [A1, A7, A9]
+  priority: P2
+  status: candidate
+  urls:
+    - https://supplierapi.sirva.com
+    - https://supplierapi.sirva.com/openapi.json
+  notes: OpenAPI 2.0 is public but covers home-finding/immigration/temp housing, not HHG. Useful for the RMC service-order acknowledge/accept/decline/complete pattern.
+
+- id: sirva-bgrs-hhg-apis
+  name: SIRVA/BGRS HHG supplier APIs and SIRVA agent Open API
+  publisher: SIRVA
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A1, A4, A7, A9]
+  priority: P3
+  status: needs-user
+  obtain: Through supplier/agent onboarding with SIRVA/BGRS.
+
+- id: cartus-edi
+  name: Cartus EDI implementation guides / supplier portal
+  publisher: Cartus
+  kind: message-standard
+  openness: gated-partner
+  areas: [A1, A7, A9]
+  priority: P2
+  status: needs-user
+  urls: [https://edi.cartus.com]
+  obtain: Cartus supplier account.
+
+- id: van-line-agent-apis
+  name: UniGroup (United/Mayflower), Bekins/Wheaton, Arpin agent integration specs
+  publisher: various van lines
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A1, A3, A4, A6, A7, A8, A9, A13]
+  priority: P3
+  status: skipped
+  notes: >
+    Dropped 2026-09-17: tenants are agents for Allied (SIRVA) and Atlas only, and we
+    already hold both (src:sirva-ade, src:atlas-world-group-api). Revisit only if a
+    tenant joins another van line.
+
+- id: smartmoving-api
+  name: SmartMoving External API
+  publisher: SmartMoving
+  kind: vendor-api
+  openness: public
+  license: unstated
+  areas: [A1, A2, A3, A5, A7, A8, A10]
+  priority: P1
+  status: analyzed
+  urls: [https://smartmoving-prod-api-management.developer.azure-api.net]
+  notes: Best public view of a residential/local mover's model — leads, opportunities, jobs, stops, inventory, surveys, tariffs, storage accounts, crew. Keys need a paid plan; docs don't.
+
+- id: ews-moverssuite
+  name: MoversSuite VendorConnect
+  publisher: EWS
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A1, A7, A9]
+  priority: P2
+  status: needs-user
+  urls: [https://ewsgroup.com/development-community/]
+  obtain: Email request to EWS (contact listed on the development-community page). Competitor van-line integration model.
+
+- id: yembo
+  name: Yembo developer API (AI survey)
+  publisher: Yembo
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A2, A10]
+  priority: P2
+  status: needs-user
+  obtain: Yembo customer/partner account. Atlas's APIM already exposes a yembo API (see atlas-world-group-api).
+
+- id: moving-software-minor
+  name: Supermove, RedSky, Vonigo, MoveitPro, Elromco, Granot, MoveHQ, MoveYou
+  publisher: various
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A1, A2]
+  priority: P3
+  status: skipped
+  notes: No public API references beyond lead intake or generic field-service.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOGISTICS STANDARDS & REFERENCE MODELS
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: x12-transportation
+  name: ANSI ASC X12 transportation sets 204 / 990 / 214 / 210 / 211 / 997
+  publisher: X12
+  kind: message-standard
+  openness: licensed
+  areas: [A1, A3, A4, A6, A7, A8, A9]
+  priority: P3
+  status: needs-user
+  urls: [https://x12.org/products/glass]
+  obtain: >
+    Optional — X12 Glass Premium or Developer license for normative definitions and full
+    AT7 status/reason code lists. stedi-x12-reference + x12-partner-guides are a working
+    substitute; buy only if we implement EDI ourselves.
+  notes: 212/213/856 are P3. Reference code lists, never copy them into the repo.
+
+- id: stedi-x12-reference
+  name: Stedi X12 004010 reference (204, 210, 211, 214, 990)
+  publisher: Stedi
+  kind: message-standard
+  openness: public
+  license: unstated (non-normative)
+  areas: [A1, A3, A4, A5, A6, A7, A8, A9]   # A5 (BC Storage in Transit) + A8 added
+  priority: P2
+  status: analyzed
+  urls: ["https://www.stedi.com/edi/x12-004010/214"]
+
+- id: x12-partner-guides
+  name: Publicly posted carrier/shipper X12 implementation guides
+  publisher: ArcBest, XPO, YRC, C.H. Robinson, CN, FedEx LTL, others
+  kind: message-standard
+  openness: public
+  areas: [A1, A4, A7, A9]
+  priority: P2
+  status: candidate
+  urls:
+    - https://arcb.com/sites/www/files/2024-12/ArcBest-EDI-Specs-204.pdf
+    - https://www.xpo.com/cdn/files/s8/204_specs.pdf
+    - https://my.yrc.com/national/tpp/204_impgdV4010.pdf
+    - https://my.yrc.com/national/tpp/214_impgdV4010.pdf
+  notes: Shows the AT7 subsets carriers actually use. CN / C.H. Robinson 990 / FedEx 210 URLs found by search, unverified.
+
+- id: tenant-edi-partner-guides
+  name: Our tenants' actual EDI trading-partner guides
+  publisher: tenant trading partners
+  kind: message-standard
+  openness: gated-partner
+  areas: [A1, A4, A7, A9]
+  priority: P3
+  status: skipped
+  obtain: Implementation guides from whichever customers/shippers our tenants exchange EDI with today (or expect to). These outrank generic guides.
+  notes: >
+    No tenant exchanges EDI today (user, 2026-09-17). The model must stay EDI-ready, so
+    X12 vocabulary is still analyzed via src:stedi-x12-reference, src:x12-partner-guides
+    and src:x12-858-implementation-guide. Reopen the moment a shipper asks for EDI.
+
+- id: uncefact-mmt-rdm
+  name: UN/CEFACT Multimodal Transport Reference Data Model
+  publisher: UNECE
+  kind: reference-model
+  openness: public
+  areas: [A1, A3, A4, A6, A8, A9]
+  priority: P1
+  status: analyzed
+  urls: [https://unece.org/trade/uncefact/rdm]
+  files:
+    - {path: sources/uncefact-mmt-rdm/local/uncefact-reference-data-models/, sha256: n/a, retrieved: 2026-09-17, from: user (browser download)}
+  notes: >
+    245 MB package, local-only for size (UNECE material is freely available; kept out
+    of git to avoid the bulk). Contains: MMT-RDM_D19A (UML + XSD), the MMT business
+    requirements spec BRS_T+L-MMT.pdf + BRS_T+L-MMTDataElements.xls, the full
+    SCRDM_D22A supply-chain RDM (UML, XSD, Context CCL spreadsheets), BuyShipPay BRS,
+    and the RDM guideline/white paper. Most complete neutral transport reference model —
+    consignment, transport movement, equipment, events, documents, parties. Its code
+    lists (StatusCode, EventTimeReferenceCode, PartyRoleCode, ReferenceTypeCode,
+    DocumentNameCode) are directly relevant to A4/A6/A8/A9.
+
+- id: uncefact-bsp-vocabulary
+  name: UN/CEFACT Buy-Ship-Pay web vocabulary
+  publisher: UNECE
+  kind: ontology
+  openness: public
+  license: unstated
+  areas: [A1, A7, A9]
+  priority: P2
+  status: candidate
+  urls: [https://vocabulary.uncefact.org]
+
+- id: edifact-transport
+  name: UN/EDIFACT IFTSTA / IFTMIN / IFCSUM
+  publisher: UNECE
+  kind: message-standard
+  openness: public
+  areas: [A4]
+  priority: P3
+  status: skipped
+  urls: [https://service.unece.org/trade/untdid/d21b/trmd/iftsta_c.htm]
+
+- id: ubl-2-4
+  name: OASIS UBL 2.4 transport documents (Waybill, BillOfLading, TransportationStatus, TransportExecutionPlan)
+  publisher: OASIS
+  kind: message-standard
+  openness: public
+  license: royalty-free
+  areas: [A4, A6, A9]
+  priority: P2
+  status: candidate
+  urls: [https://docs.oasis-open.org/ubl/UBL-2.4.html]
+
+- id: gs1-epcis-cbv
+  name: GS1 EPCIS 2.0.1 + Core Business Vocabulary 2.0
+  publisher: GS1
+  kind: ontology
+  openness: public
+  license: GS1 IP policy (free download)
+  areas: [A4, A6, A9]
+  priority: P1
+  status: analyzed
+  urls:
+    - https://ref.gs1.org/standards/epcis
+    - https://ref.gs1.org/standards/cbv
+    - https://ref.gs1.org/standards/epcis/artefacts
+  ratified_capture: >
+    RESOLVED 2026-09-17: the ratified EPCIS 2.0.1 standard and CBV 2.0 PDFs plus artefacts are now at
+    sources/gs1-epcis-cbv/local/ratified/. See analysis-supplement-ratified.md for the diff against
+    what round 1 cited from the development repo.
+  capture_caveat: >
+    The first fetch returned error pages (identical 2,922-byte bodies); those files were deleted.
+    What is stored is a clone of github.com/gs1/EPCIS — the DEVELOPMENT repo, not the ratified
+    2.0.1 release, and the prose specs carrying the SHALL/SHOULD conformance rules were never
+    captured. Diff against the ratified artefacts before treating any of it as normative.
+  notes: Most established event-record shape — what/when (event time vs record time)/where/why (bizStep, disposition)/how.
+
+- id: dcsa
+  name: DCSA Track & Trace, Event Hub, Booking, eBL
+  publisher: Digital Container Shipping Association
+  kind: message-standard
+  openness: public
+  license: Apache-2.0
+  areas: [A1, A4, A6, A9]
+  priority: P1
+  status: analyzed
+  urls:
+    - https://github.com/dcsaorg/DCSA-OpenAPI
+    - https://github.com/dcsaorg/DCSA-TNT
+  notes: Clearest PLN/EST/ACT time classifier and equipment/transport/shipment event split.
+
+- id: open-trip-model
+  name: Open Trip Model 5 (OTM5)
+  publisher: SUTC (Netherlands)
+  kind: reference-model
+  openness: public
+  license: unstated (docs) / MIT (Java library)
+  areas: [A1, A3, A4, A8]
+  priority: P1
+  status: analyzed
+  urls:
+    - https://opentripmodel.github.io/documentation/api/
+    - https://otm5.opentripmodel.org
+  files:
+    - {path: sources/open-trip-model/local/otm-api-v5.6.yaml, sha256: n/a, retrieved: 2026-09-17, from: opentripmodel.github.io}
+    - {path: sources/open-trip-model/local/otm-api-v5.7-rc.1.yaml, sha256: n/a, retrieved: 2026-09-17, from: opentripmodel.github.io}
+    - {path: sources/open-trip-model/local/otm5.8-docs-llm.md, sha256: n/a, retrieved: 2026-09-17, from: opentripmodel.github.io}
+    - {path: sources/open-trip-model/local/otm5-index.html, sha256: n/a, retrieved: 2026-09-11, from: otm5.opentripmodel.org}
+  license_note: the spec text states no licence (the Java library is MIT) — do not redistribute
+  notes: Compact road trip / stop / action / consignment model — closest standard shape to how moves are dispatched.
+
+- id: iata-one-record
+  name: IATA ONE Record
+  publisher: IATA
+  kind: ontology
+  openness: public
+  license: MIT
+  areas: [A3, A4, A8, A9]
+  priority: P2
+  status: candidate
+  urls:
+    - https://github.com/IATA-Cargo/ONE-Record
+    - https://onerecord.iata.org/ns/cargo
+
+- id: federated-ontology
+  name: FEDeRATED semantic model
+  publisher: FEDeRATED (EU)
+  kind: ontology
+  openness: public
+  areas: [A4]
+  priority: P2
+  status: candidate
+  urls: [https://ceur-ws.org/Vol-3235/paper21.pdf]
+  notes: Ontology files not located; the paper only.
+
+- id: transport-disruption-ontology
+  name: Transport Disruption Ontology
+  publisher: University of Aberdeen
+  kind: ontology
+  openness: public
+  areas: [A4]
+  priority: P3
+  status: skipped
+  urls: [https://transportdisruption.github.io]
+
+- id: nmfta-ebol
+  name: NMFTA Digital LTL Council eBOL API Standard v2.1
+  publisher: NMFTA
+  kind: message-standard
+  openness: free-registration
+  license: NMFTA copyright, no commercial copying
+  areas: [A2, A6, A7, A8, A9]   # A2/A7 added: line-item structure + charge terms as strong as A8
+  priority: P2
+  status: analyzed
+  urls: [https://dsdc.nmfta.org/apis/ebol-api-standard]
+  files:
+    - {path: sources/nmfta-ebol/local/ebol-apiv2.1.0.yaml, sha256: 39715755793a2f39ee290e17f3997cb1bd7cadf001e5531f4a61093df1094e8c, retrieved: 2026-09-17, from: user}
+    - {path: sources/nmfta-ebol/local/digitalCouncilBol-v2.1.0.yaml, sha256: 9a05f827c1e191410840ddd4a9a81ef0f55c407e96a45ae9f67ad5ca656eb77d, retrieved: 2026-09-17, from: user}
+  duplicate_note: the two stored files are the SAME document, differing only in line endings
+  notes: OpenAPI 3.0, "Electronic Bill Of Lading Service" v2.1.0; PRO number as the document identifier. Local-only — NMFTA copyright forbids commercial copying.
+
+- id: nmfta-scac
+  name: SCAC codes / NMFC
+  publisher: NMFTA
+  kind: reference-data
+  openness: paid
+  areas: [A9]
+  priority: P2
+  status: candidate
+  urls: [https://scac.nmfta.org]
+  notes: Needed as an identifier concept only; no purchase required for modeling.
+
+- id: fmcsa-eld
+  name: ELD technical specification (49 CFR 395 Subpart B, Appendix A)
+  publisher: FMCSA
+  kind: regulation
+  openness: public
+  areas: [A4, A13]
+  priority: P3
+  status: candidate
+  urls: [https://www.ecfr.gov/current/title-49/subtitle-B/chapter-III/subchapter-B/part-395]
+  notes: Driver duty status — telemetry side of the boundary; relevant only for hours-of-service.
+
+- id: eu-transport-docs
+  name: UN eCMR and EU eFTI Regulation 2020/1056
+  publisher: UNECE / EU
+  kind: regulation
+  openness: public
+  areas: [A6]
+  priority: P3
+  status: skipped
+  urls:
+    - https://unttc.org/documents/ecmr-standard-package
+    - https://eur-lex.europa.eu/eli/reg/2020/1056/oj/eng
+
+- id: oracle-otm
+  name: Oracle Transportation Management — shipment status / tracking events help
+  publisher: Oracle
+  kind: vendor-api
+  openness: public
+  areas: [A1, A4]
+  priority: P2
+  status: candidate
+  urls: [https://docs.oracle.com/en/cloud/saas/transportation/25c/otmol/execution/25_shipment_status/shipment_event.htm]
+  notes: Full data dictionary is customer-only (Oracle Support login) — not requested.
+
+- id: sap-tm
+  name: SAP Transportation Management freight order APIs / events
+  publisher: SAP
+  kind: vendor-api
+  openness: free-registration
+  areas: [A1, A3, A4]
+  priority: P2
+  status: candidate
+  urls: [https://api.sap.com]
+
+- id: generic-low-relevance
+  name: FIWARE Smart Data Models (Transportation), schema.org ParcelDelivery, iSHARE, OpenTCS, Open Logistics Foundation
+  publisher: various
+  kind: ontology
+  openness: public
+  areas: []
+  priority: P3
+  status: skipped
+  notes: Vehicles/traffic, too thin, trust framework only, AGV control, or no event model.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VISIBILITY PLATFORMS
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: project44
+  name: project44 API v4
+  publisher: project44
+  kind: vendor-api
+  openness: public
+  license: unstated
+  areas: [A3, A4, A6, A9]
+  priority: P2
+  status: analyzed
+  urls:
+    - https://developers.project44.com/api-reference
+    - https://developers.project44.com/_spec/api-reference/@v4/api-docs.json?download
+  files:
+    - {path: sources/project44/local/p44-api-v4.json, sha256: f7b6fdc05aa8c1932984fdd8ecf0deb4acdabd5a8c78ff6c8bba2f5c7b767563, retrieved: 2026-09-11, from: developers.project44.com}
+  notes: >
+    Best public event vocabulary + PLANNED/ACTUAL/ESTIMATE time tagging; documents
+    that originally contracted time is NOT retained. Pulls location directly from the
+    carrier's ELD connection.
+
+- id: fourkites
+  name: FourKites load tracking API
+  publisher: FourKites
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A3, A4, A9]
+  priority: P3
+  status: skipped
+  urls: [https://developer.fourkites.com/]
+  obtain: Load tracking API reference + webhook status/milestone list (customer login). Only needed if a tenant's shipper requires FourKites; project44 covers the same concepts publicly.
+
+- id: macropoint
+  name: Descartes MacroPoint
+  publisher: Descartes
+  kind: vendor-api
+  openness: public
+  areas: [A4]
+  priority: P2
+  status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
+  urls:
+    - https://docs.macropoint.com/
+    - https://carrierdocs.macropoint.com/
+    - "https://cdn2.hubspot.net/hubfs/3839244/Tracking%20Statuses%20vFinal-Updated.pdf"
+  notes: EDI 214-style status codes (X3/AF/X1/D1).
+
+- id: shippeo
+  name: Shippeo APIs
+  publisher: Shippeo
+  kind: vendor-api
+  openness: public
+  areas: [A4, A6]
+  priority: P2
+  status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
+  urls:
+    - https://developers.shippeo.com
+    - https://api.apim.core.prod.shippeo.com/portal/environments/DEFAULT/apis
+  notes: Comparator. Best public exception vocabulary (situation + justification pairs; REFUSED, PARTIALLY_MISSING, CONSIGNEE_ABSENT, NEW_ADDRESS) and flags which events a geofence may trigger.
+
+- id: trucker-tools
+  name: Trucker Tools APIs
+  publisher: Trucker Tools
+  kind: vendor-api
+  openness: public
+  areas: [A4, A6]
+  priority: P2
+  status: candidate
+  urls: [https://developer.truckertools.com/llms.txt]
+
+- id: visibility-minor
+  name: Trimble Transporeon visibility, Tive, Overhaul, Uber Freight, Convoy, Highway, Carrier Assure, DAT, Truckstop
+  publisher: various
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A4, A9]
+  priority: P3
+  status: skipped
+  notes: EU FTL focus, sensor/security niche, gated, defunct (Convoy), carrier identity, or load boards.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DRIVER COMMUNICATION & TELEMATICS ("MobileCom")
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: transflo
+  name: Transflo integration SDK (Mobile+, Velocity Plus, Broker, Shipper eBOL, Scheduler)
+  publisher: Transflo
+  kind: vendor-api
+  openness: public
+  license: unstated
+  areas: [A3, A4, A6, A8]
+  priority: P2
+  status: candidate
+  urls:
+    - https://svc.transflomobile.com/integration/sdk
+    - https://svc.transflomobile.com/integration/sdk/docs/v1
+  notes: Swagger 2.0 v1–v6 public. Load/stop/leg, workflow steps, geofence, breadcrumbs, eDocuments, signatures, forms, messaging. Stop actions Accept/Start/Pickup/Deliver/Complete.
+
+- id: transflo-customer-config
+  name: Transflo Mobile+ scanning SDK and tenant-configured document types
+  publisher: Transflo / tenants
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A6]
+  priority: P3
+  status: skipped
+  obtain: The document-type list our tenants have configured in Transflo, and scanning SDK docs if we build capture.
+
+- id: omnitracs-roadnet
+  name: Omnitracs Roadnet integration API
+  publisher: Omnitracs (Solera)
+  kind: vendor-api
+  openness: public
+  areas: [A3, A4, A6, A8, A13]
+  priority: P1
+  status: analyzed
+  urls:
+    - https://apex-prod-integration.aws.roadnet.com/integration/api-docs/index.html
+    - https://apex-prod-integration.aws.roadnet.com/integration/api-docs/swagger.yaml
+  notes: OpenAPI 3.0 (3.2 MB). StopArrived/StopDeparted/StopServicing, route states, event source MobileDevice vs Dispatch, Over/Short/Damaged reasons.
+
+- id: omnitracs-one-xrs
+  name: Omnitracs One / XRS messaging, macros (forms), Event Subscription Service
+  publisher: Omnitracs (Solera)
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A4, A6, A13]
+  priority: P1
+  status: needs-user
+  urls:
+    - https://services.omnitracs.ca/help/otsWeb/help/en_US/documents/doc_cust_integrate-with-sp_d.pdf
+  obtain: Omnitracs One API, XRS web services, macro/form definitions and Event Subscription Service schema — via a tenant's Omnitracs account or integration-partner access.
+
+- id: platform-science
+  name: Platform Science developer portal (Workflow, Form Messages, HOS, DVIR)
+  publisher: Platform Science
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A3, A4, A6, A13]
+  priority: P3
+  status: skipped
+  urls:
+    - https://developer.platformscience.com
+    - https://www.platformscience.com/developer-portal-form
+  obtain: Developer portal access (form + SDK terms) — Workflow/job, Form Message and HOS schemas.
+
+- id: orbcomm
+  name: ORBCOMM Platform API
+  publisher: ORBCOMM
+  kind: vendor-api
+  openness: public
+  areas: [A4, A5]
+  priority: P3
+  status: candidate
+  urls: [https://documenter.getpostman.com/view/1578800/TVYCBLqC]
+  notes: Trailer/storage-asset sensor events (door, cargo loaded/empty, geofence, reefer). Full event-type list unconfirmed.
+
+- id: samsara
+  name: Samsara API
+  publisher: Samsara
+  kind: vendor-api
+  openness: public
+  areas: [A3, A4, A6, A13]
+  priority: P1
+  status: analyzed
+  urls: [https://developers.samsara.com/openapi/samsara-api.json]
+  notes: Comparator. Public 4.4 MB spec covering driver workflow, forms, documents, route stops and ETA webhooks together.
+
+- id: motive
+  name: Motive developer API
+  publisher: Motive
+  kind: vendor-api
+  openness: free-registration
+  areas: [A3, A4, A6, A13]
+  priority: P3
+  status: candidate
+  urls: [https://developer-docs.gomotive.com]
+
+- id: geotab
+  name: MyGeotab SDK object model
+  publisher: Geotab
+  kind: vendor-api
+  openness: public
+  areas: [A3, A4, A13]
+  priority: P3
+  status: candidate
+  urls: [https://developers.geotab.com/myGeotab/apiReference/objects]
+
+- id: trimble-peoplenet
+  name: Trimble / PeopleNet mobility APIs
+  publisher: Trimble Transportation
+  kind: vendor-api
+  openness: gated-partner
+  areas: [A4, A13]
+  priority: P3
+  status: needs-user
+  urls: [https://developers.trimble-transportation.com]
+  obtain: Only if a tenant runs PeopleNet.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# USER-SUPPLIED (inbox 2026-09-17) AND USER LEADS
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: uncefact-scrdm
+  name: UN/CEFACT Supply Chain Reference Data Model (SCRDM D22A) + Buy-Ship-Pay BRS
+  publisher: UNECE
+  kind: reference-model
+  openness: public
+  areas: [A1, A7, A8, A9]
+  priority: P2
+  status: analyzed
+  urls: [https://unece.org/trade/uncefact/rdm]
+  files:
+    - {path: sources/uncefact-mmt-rdm/local/uncefact-reference-data-models/SCRDM_D22A/, sha256: n/a, retrieved: 2026-09-17, from: user (browser download)}
+  notes: >
+    Shares the local tree with src:uncefact-mmt-rdm. The ordering/settlement half of
+    the UN/CEFACT model (UML, XSD, Context CCL spreadsheets) plus BRS_BuyShipPay_v1.0,
+    RSM_SCRDM, the RDM guideline and white paper. Read after MMT — MMT is the
+    transport-execution half and matters more for A3/A4.
+
+- id: x12-858-implementation-guide
+  name: X12 858 Shipment Information implementation guide (with load-tender and trailer status examples)
+  publisher: FCA US (Stellantis) CENTS — X12 version/release 003010
+  kind: message-standard
+  openness: public
+  license: unstated
+  areas: [A1, A3, A4, A9]
+  priority: P2
+  status: analyzed
+  files:
+    - {path: sources/x12-858-implementation-guide/local/858.pdf, sha256: 042dd63e527f26c743acef7c2e00a1a0087569cb9824a4153e63e0f46fe6ca3a, retrieved: 2026-09-17, from: user}
+  notes: >
+    Worked 858 examples — load tender (1-stop, 2-stop container/material return, with
+    shipper cancel) and status notifications (trailer arrival, departure, arrival
+    cancellation, empty trailer), using BX / S5 stop-off / N7 equipment / G62 date-time
+    / N9 reference segments. Self-identifies as FCA US (Stellantis) CENTS at X12 003010 — NOT 004010, so its element
+    attributes (6/6 dates with two-digit years) must never be cited as 004010. One partner
+    guide, not a normative source. Local-only pending license confirmation.
+
+- id: gtfs
+  name: GTFS Schedule + GTFS Realtime
+  publisher: MobilityData / GTFS community
+  kind: reference-model
+  openness: public
+  license: CC BY 3.0 (spec text) / Apache-2.0 (protobuf)
+  areas: [A3, A4]   # A5 removed: full read found no storage-in-transit material
+  priority: P2
+  status: analyzed
+  urls:
+    - https://gtfs.org/documentation/schedule/reference
+    - https://gtfs.org/documentation/realtime/reference/
+  notes: >
+    User lead. Not freight, but the most widely deployed public model of *planned vs
+    actual movement along an ordered sequence of stops*: stop_times (scheduled),
+    TripUpdate / StopTimeUpdate (delay, predicted arrival/departure, schedule
+    relationship SCHEDULED/SKIPPED/CANCELED/ADDED), VehiclePosition (the telemetry
+    boundary), and Alerts. Read for A3/A4 structure — stop sequence, prediction vs
+    actual, and how it keeps a plan and its execution in one model.
+
+- id: alvys-api
+  name: Alvys TMS API
+  publisher: Alvys
+  kind: vendor-api
+  openness: public
+  areas: [A1, A3, A4, A6, A7, A8, A9]
+  priority: P2
+  status: analyzed
+  urls:
+    - https://docs.alvys.com/en/api/reference/authentication
+    - https://integrations.alvys.com/api/p/v1.0/
+  notes: >
+    User lead. A modern trucking TMS with public API docs — loads, stops, trips,
+    drivers, documents, invoicing. Useful comparator for how a TMS (rather than a
+    visibility platform) splits load vs trip vs stop, and for dispatch-side vocabulary.
+
+- id: edi-explainer-guides
+  name: Informal EDI walkthroughs — 214 (BoldVAN, Vantree) and 850/856/810/846 (ihateedi)
+  publisher: various
+  kind: glossary
+  openness: public
+  areas: [A4, A7]
+  priority: P3
+  status: candidate
+  urls:
+    - https://www.boldvan.com/blog/edi-214-sample-file-walkthrough-for-shipment-status-updates
+    - https://vantree.com/what-exactly-is-edi-214/
+    - https://ihateedi.com/edi-214/
+  notes: >
+    User leads. Non-normative explainers; useful only as a quick read of 214 segment
+    intent alongside src:stedi-x12-reference. The 850/856/810/846 sets are retail
+    purchase-order/ASN/invoice/inventory flows — out of scope for moving.
+
+- id: inbox-notes
+  name: User-supplied research leads (raw)
+  publisher: user
+  kind: glossary
+  openness: internal
+  areas: []
+  priority: P3
+  status: obtained
+  files:
+    - {path: sources/inbox-notes/local/Other-Resources.txt, sha256: n/a, retrieved: 2026-09-17, from: user}
+  notes: The original leads file; every URL in it is registered above as its own entry.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GAP-FILL ROUND (2026-09-17) — added after round-1 crosscheck named them as the
+# highest-value unread external material. See analysis/round-1-crosscheck.md.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: x12-212-trailer-manifest
+  name: X12 004010 TS 212 — Motor Carrier Delivery Trailer Manifest
+  publisher: X12 (read via stedi.com, non-normative)
+  role: model-evidence
+  kind: message-standard
+  openness: public
+  license: unstated (Stedi reference); X12 definitions themselves are licensed
+  areas: [A2, A3, A6, A7, A9]
+  priority: P1
+  status: analyzed
+  urls: ["https://www.stedi.com/edi/x12-004010/212"]
+  notes: >
+    Read because it is the one standard whose whole premise is MANY SHIPMENTS ON ONE VEHICLE —
+    the consolidation question no round-1 source could express. Verdict: it half-answers A3.
+    Consolidation IS first-class (loop 0200 repeats 9999 shipments under one MS2 equipment, TSD
+    gives loading sequence and physical position on the trailer, AT9 the trailer envelope and
+    tare, BLR a PER-SHIPMENT carrier SCAC so one trailer can carry interline freight) — but
+    stops, stop sequence, legs and driver are entirely ABSENT (no S5, no S5A/S5B, no N7 in the
+    whole set). So it is a LOAD PLAN, not a trip, and consolidation is expressed by re-issuing
+    documents rather than by a persistent trip entity. Strong on A9 identity (manifest number,
+    delivering SCAC, owner SCAC + equipment number + check digit, per-shipment SCAC with an
+    effective date).
+
+- id: smdg-delay-codes
+  name: SMDG Delay Reason Codes and Port Call Activity Codes
+  publisher: SMDG (Ship Message Design Group)
+  role: model-evidence
+  kind: reference-data
+  openness: public
+  areas: [A4]
+  priority: P2
+  status: analyzed
+  urls: ["https://smdg.org/documents/smdg-code-lists/"]
+  files:
+    - {path: sources/smdg-delay-codes/local/SMDG-Delay-Reason-Codes-20220511.xlsx, sha256: 2e3bf6b40298dcbabf39, retrieved: 2026-09-17, from: smdg.org}
+    - {path: sources/smdg-delay-codes/local/SMDG-Port-Call-Activity-Codes-v20260610.xlsx, sha256: 72529a4281dc0f36bf86, retrieved: 2026-09-17, from: smdg.org}
+  notes: The delay-reason list DCSA's domain model references but never bundles. Read for its organising principle, not its maritime vocabulary.
+
+- id: uncefact-rec24
+  name: UNECE Recommendation 24 — Trade and Transport Status Codes
+  publisher: UNECE
+  role: model-evidence
+  kind: reference-data
+  openness: public
+  areas: [A4]
+  priority: P1
+  status: analyzed
+  urls: ["https://unece.org/trade/uncefact/unece-recommendations"]
+  files:
+    - {path: sources/uncefact-rec24/local/, sha256: n/a, retrieved: 2026-09-17, from: unece.org — Rec 24 rev1 (2000), rev3 (2004) code list, rev5 (2009), plus a JSON-LD vocabulary capture and rec24-codes-extracted.tsv}
+  notes: >
+    The NAMED status vocabulary behind the 336-value StatusCode enumeration in the captured
+    UN/CEFACT package — which ships as bare values with no names or definitions, so round 1's
+    highest A4 coverage score is for a count, not a vocabulary. This is the one candidate for a
+    neutral-standards-body status vocabulary rather than a vendor's.

@@ -1,0 +1,18 @@
+type: string
+title: Orders type
+enum:
+  - PERMANENT_CHANGE_OF_STATION
+  - LOCAL_MOVE
+  - RETIREMENT
+  - SEPARATION
+  - WOUNDED_WARRIOR
+  - BLUEBARK
+  - SAFETY
+x-display-value:
+  PERMANENT_CHANGE_OF_STATION: Permanent Change Of Station
+  LOCAL_MOVE: Local Move
+  RETIREMENT: Retirement
+  SEPARATION: Separation
+  WOUNDED_WARRIOR: Wounded Warrior
+  BLUEBARK: BLUEBARK
+  SAFETY: Safety

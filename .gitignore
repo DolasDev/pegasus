@@ -107,3 +107,10 @@ docs/400NG-RATING-TOOL.XLSX
 # root, it does not belong under a workspace glob.
 apps/*/package-lock.json
 packages/*/package-lock.json
+
+# Domain reference model sources — licensed, gated, or large material is kept
+# locally and recorded (URL, date, sha256) in docs/domain-reference/sources/registry.yaml;
+# see docs/domain-reference/sources/README.md for the storage policy.
+docs/domain-reference/sources/*/local/
+docs/domain-reference/sources/inbox/*
+!docs/domain-reference/sources/inbox/README.md

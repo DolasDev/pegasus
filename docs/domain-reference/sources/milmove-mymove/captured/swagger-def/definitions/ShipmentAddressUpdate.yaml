@@ -1,0 +1,51 @@
+description: >
+  This represents a destination address change request made by the Prime that is either auto-approved or requires review if the pricing criteria has changed. If criteria has changed, then it must be approved or rejected by a TOO.
+type: object
+properties:
+  id:
+    type: string
+    format: uuid
+    example: c56a4180-65aa-42ec-a945-5fd21dec0538
+    readOnly: true
+  contractorRemarks:
+    type: string
+    example: 'This is a contractor remark'
+    title: Contractor Remarks
+    description: The reason there is an address change.
+    readOnly: true
+  officeRemarks:
+    type: string
+    example: 'This is an office remark'
+    title: Office Remarks
+    x-nullable: true
+    description: The TOO comment on approval or rejection.
+  status:
+    $ref: 'ShipmentAddressUpdateStatus.yaml'
+  shipmentID:
+    type: string
+    format: uuid
+    example: c56a4180-65aa-42ec-a945-5fd21dec0538
+    readOnly: true
+  originalAddress:
+    $ref: 'Address.yaml'
+  newAddress:
+    $ref: 'Address.yaml'
+  sitOriginalAddress:
+    $ref: 'Address.yaml'
+  oldSitDistanceBetween:
+    description: The distance between the original SIT address and the previous/old destination address of shipment
+    example: 50
+    minimum: 0
+    type: integer
+  newSitDistanceBetween:
+    description: The distance between the original SIT address and requested new destination address of shipment
+    example: 88
+    minimum: 0
+    type: integer
+required:
+  - id
+  - status
+  - shipmentID
+  - originalAddress
+  - newAddress
+  - contractorRemarks

@@ -1,0 +1,74 @@
+# Evaluation rubric
+
+Fixed **before** any source is analyzed, so the first detailed source read does not
+become the frame everything else is judged against.
+
+Sources are scored **per domain area**, not overall. No single source is expected
+to win everywhere — a message standard, a reference model, and a vendor API answer
+different questions. Phase 3 picks a best source per area.
+
+**Only external sources shape the model.** Our own systems are not evidence for what the
+domain _is_; they are subjects of a later mapping exercise. Partner contracts (Weichert,
+SIRVA ADE, Atlas) stay in as external evidence — they describe how counterparties behave —
+but our configs and code that implement them do not.
+
+## Domain areas
+
+| Id  | Area                           | v1 detail   | Covers                                                                                                                |
+| --- | ------------------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| A1  | Order & service lifecycle      | yes         | offer/award, accept/decline, book, estimate submitted, cancel, complete; who may cause each transition                |
+| A2  | Shipment structure             | yes         | shipment vs order, shipment types (HHG, storage, vehicle, PPM/self-move…), weights, services ordered                  |
+| A3  | Trip, stop & assignment        | yes         | vehicle journey, stop sequence, consolidation of several shipments on one trip, legs, equipment + driver assignment   |
+| A4  | Execution events & tracking    | yes         | arrive/depart, pack/load/unload/deliver, ETA, exceptions/delays with reasons; where telemetry stops and events begin  |
+| A5  | Storage-in-transit             | yes         | SIT in/out, warehouse as a stop, duration, delivery-out leg, permanent storage boundary                               |
+| A6  | Documents & evidence           | yes         | order for service, estimate, inventory, BOL, weight tickets, POD, photos; documents as evidence for events            |
+| A7  | Charges & billing hooks        | yes         | line-haul vs accessorials, charge events, invoice issued/paid (detail of rating out of scope)                         |
+| A8  | Parties & roles                | yes         | shipper/transferee, account/RMC, van line, booking/origin/hauling/destination agent, carrier, driver, crew, warehouse |
+| A9  | Identity & cross-references    | yes         | each party's identifiers (order no., registration no., SCAC, BOL/PRO, service order no.), correlation between them    |
+| A10 | Survey, estimating & inventory | context map | survey types, estimate types (binding/non-binding/not-to-exceed), inventory items & condition                         |
+| A11 | Claims & valuation             | context map | released vs full value protection, claims lifecycle                                                                   |
+| A12 | Rating & tariffs               | context map | tariffs (400N, 400NG), rate structures, accessorial catalogs                                                          |
+| A13 | Crew, driver & settlement      | context map | crew scheduling, driver/agent compensation, revenue splits                                                            |
+
+## Per-area criteria (score 0–3 each)
+
+| Id  | Criterion                              | 0                          | 3                                                                                                   |
+| --- | -------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------- |
+| C1  | **Coverage**                           | area absent                | all core concepts of the area present                                                               |
+| C2  | **Semantic precision**                 | names only, no definitions | defined terms with the distinctions that matter (e.g. _loaded_ vs _departed_, _shipment_ vs _trip_) |
+| C3  | **Lifecycle rigor**                    | status strings             | explicit states, allowed transitions, invariants, who may cause them                                |
+| C4  | **HHG fidelity**                       | generic freight only       | moving-specific concepts native (agent roles, SIT, survey, reweigh, valuation)                      |
+| C5  | **Time model**                         | single timestamp           | planned vs estimated vs actual, windows, date-only vs instant, time zone of the stop                |
+| C6  | **Identity & references**              | one opaque id              | multiple party references, typed, with correlation                                                  |
+| C7  | **Evidence, provenance & corrections** | none                       | source/actor of each fact, evidence type, correction or reversal semantics                          |
+| C8  | **Extensibility & versioning**         | closed                     | explicit extension points, versioned vocabulary                                                     |
+
+A criterion that does not apply to an area is `n/a`, not 0.
+
+## Per-source attributes (recorded once)
+
+| Id  | Attribute                           | Values                                                                                                                        |
+| --- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| S1  | **Kind**                            | `reference-model` · `message-standard` · `vendor-api` · `regulation` · `tariff` · `ontology` · `internal-system` · `glossary` |
+| S2  | **Adoption / maturity**             | 0 (niche/draft) – 3 (industry-wide, stable)                                                                                   |
+| S3  | **Openness**                        | `public` · `free-registration` · `gated-partner` · `paid` · `licensed` · `internal`                                           |
+| S4  | **Evidence grade** of _our_ reading | **A** full spec/source read · **B** partial docs, samples, implementation guides · **C** marketing, secondhand, or inferred   |
+
+> **S5 (fit to Pegasus data) was removed on 2026-09-17.** The model is an **ideal target**, derived
+> from external sources only — see [README § Scope](README.md#scope). Asking "can pegII or Cloud
+> supply this?" while shaping the model biases it toward what we already have. That question is
+> real, but it belongs to [`mappings/`](mappings/), after the model exists. Round-1 analyses still
+> carry S5 lines; ignore them when comparing, and harvest them in the mapping phase.
+
+## Scoring rules
+
+- **Cite every score.** Each non-zero score points at a section, path, or URL.
+  An uncited score is treated as 0.
+- **Evidence grade caps confidence.** A grade-C reading may flag a concept as
+  present but cannot score above 1 on C2/C3.
+- **Analyze all sources in an area before scoring it**, so order of reading does
+  not set the scale.
+- **Weighting is decided in phase 3, per area** — e.g. A4 weights C5/C7 heavily,
+  A8 weights C4/C6. Record the weights in the area's analysis file.
+- **Don't reward size.** A huge spec that covers everything shallowly scores on C1,
+  not on C2/C3.
