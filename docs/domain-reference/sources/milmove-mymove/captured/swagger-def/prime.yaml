@@ -1,0 +1,1921 @@
+swagger: '2.0'
+info:
+  title: MilMove Prime API
+  version: 0.0.1
+  license:
+    name: MIT
+    url: 'https://opensource.org/licenses/MIT'
+  contact:
+    email: milmove-developers@caci.com
+  description:
+    $ref: 'info/prime_description.md'
+basePath: /prime/v1
+schemes:
+  - http
+tags:
+  - $ref: 'tags/moveTaskOrder.yaml'
+  - $ref: 'tags/mtoShipment.yaml'
+  - name: mtoServiceItem
+    description: |
+      A service item is a service that the contractor can bill for. For example, if the movers pack and/or unpack a
+      customer's belongings, those are billable services (packing and unpacking). All **mtoServiceItems** must be
+      approved by the TOO before payment can be requested.
+
+      There are three types of service items: accessorial, MTO-level, and standard.
+
+      **WIP:** Add an external link to an article that explains the different types of service items in more detail.
+  - name: paymentRequest
+    description: |
+      The contractor submits a **paymentRequest** to the TIO for approval in order to be reimbursed for 1 or more
+      **mtoServiceItems** on a **moveTaskOrder**. A service item can be on multiple payment requests if necessary.
+
+      Proof of service documentation may be uploaded for each **mtoServiceItem** in a **paymentRequest** after the payment
+      request is created via the endpoint [createUpload](#operation/createUpload).
+
+      All weight entered should be in *pounds* and no other unit of measurement.
+
+x-tagGroups:
+  - name: Endpoints
+    tags:
+      - moveTaskOrder
+      - mtoShipment
+      - mtoServiceItem
+      - paymentRequest
+paths:
+  /moves:
+    get:
+      summary: listMoves
+      description: |
+        Gets all moves that have been reviewed and approved by the TOO. The `since` parameter can be used to filter this
+        list down to only the moves that have been updated since the provided timestamp. A move will be considered
+        updated if the `updatedAt` timestamp on the move or on its orders, shipments, service items, or payment
+        requests, is later than the provided date and time.
+
+        **WIP**: Include what causes moves to leave this list. Currently, once the `availableToPrimeAt` timestamp has
+        been set, that move will always appear in this list.
+      operationId: listMoves
+      tags:
+        - moveTaskOrder
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: since
+          type: string
+          format: date-time
+          description: Only return moves updated since this time. Formatted like "2021-07-23T18:30:47.116Z"
+      responses:
+        '200':
+          description: Successfully retrieved moves. A successful fetch might still return zero moves.
+          schema:
+            $ref: '#/definitions/ListMoves'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /move-task-orders/{moveID}:
+    get:
+      summary: getMoveTaskOrder
+      description: |
+        ### Functionality
+        This endpoint gets an individual MoveTaskOrder by ID.
+
+        It will provide information about the Customer and any associated MTOShipments, MTOServiceItems and PaymentRequests.
+      operationId: getMoveTaskOrder
+      tags:
+        - moveTaskOrder
+      produces:
+        - application/json
+      parameters:
+        - description: UUID or MoveCode of move task order to use.
+          in: path
+          name: moveID
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Successfully retrieve an individual move task order.
+          schema:
+            $ref: '#/definitions/MoveTaskOrder'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /move-task-orders/{moveTaskOrderID}/excess-weight-record:
+    post:
+      summary: createExcessWeightRecord
+      description: >
+        Uploads an excess weight record, which is a document that proves that the movers or contractors have counseled
+        the customer about their excess weight. Excess weight counseling should occur after the sum of the shipments for
+        the customer's move crosses the excess weight alert threshold.
+      operationId: createExcessWeightRecord
+      tags:
+        - moveTaskOrder
+      consumes:
+        - multipart/form-data
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: moveTaskOrderID
+          description: UUID of the move being updated.
+          required: true
+          format: uuid
+          type: string
+        - in: formData
+          name: file
+          type: file
+          description: The file to upload.
+          required: true
+      responses:
+        '201':
+          description: Successfully uploaded the excess weight record file.
+          schema:
+            $ref: 'definitions/ExcessWeightRecord.yaml'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /move-task-orders/{moveTaskOrderID}/post-counseling-info:
+    parameters:
+      - description: ID of move task order to use.
+        in: path
+        name: moveTaskOrderID
+        required: true
+        type: string
+    patch:
+      summary: updateMTOPostCounselingInformation
+      description: |
+        ### Functionality
+        This endpoint **updates** the MoveTaskOrder to indicate that the Prime has completed Counseling.
+        This update uses the moveTaskOrderID provided in the path, updates the move status and marks child elements of the move to indicate the update.
+        No body object is expected for this request.
+
+        **For Full/Partial PPMs**: This action is required so that the customer can start uploading their proof of service docs.
+
+        **For other move types**: This action is required for auditing reasons so that we have a record of when the Prime counseled the customer.
+      operationId: updateMTOPostCounselingInformation
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      tags:
+        - moveTaskOrder
+      parameters:
+        - $ref: 'parameters/ifMatch.yaml'
+      responses:
+        '200':
+          description: Successfully updated move task order with post counseling information.
+          schema:
+            $ref: '#/definitions/MoveTaskOrder'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '412':
+          $ref: '#/responses/PreconditionFailed'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-shipments:
+    post:
+      summary: createMTOShipment
+      description: |
+        _[Deprecated: this endpoint was deprecated on August 5th, 2024]_
+        Please use the new endpoint at `/prime/v3/createMTOShipment` instead.
+      operationId: createMTOShipment
+      tags:
+        - mtoShipment
+      deprecated: true
+      responses:
+        '410':
+          description: This endpoint is deprecated. Please use `/prime/v3/createMTOShipment` instead.
+  /mto-shipments/{mtoShipmentID}:
+    patch:
+      summary: updateMTOShipment
+      description: |
+        _[Deprecated: this endpoint was deprecated on August 5th, 2024]_
+        Please use the new endpoint at `/prime/v3/updateMTOShipment` instead.
+      operationId: updateMTOShipment
+      tags:
+        - mtoShipment
+      deprecated: true
+      parameters:
+        - in: path
+          name: mtoShipmentID
+          description: UUID of the shipment being updated.
+          required: true
+          type: string
+          format: uuid
+      responses:
+        '410':
+          description: This endpoint is deprecated. Please use `/prime/v3/updateMTOShipment` instead.
+    delete:
+      summary: deleteMTOShipment
+      description: |
+        ### Functionality
+        This endpoint deletes an individual shipment by ID.
+
+        ### Errors
+        * The mtoShipment should be associated with an MTO that is available to prime.
+        * The mtoShipment must be a PPM shipment.
+        * Counseling should not have already been completed for the associated MTO.
+      operationId: deleteMTOShipment
+      tags:
+        - mtoShipment
+      produces:
+        - application/json
+      parameters:
+        - description: UUID of the shipment to be deleted
+          in: path
+          name: mtoShipmentID
+          required: true
+          format: uuid
+          type: string
+      responses:
+        '204':
+          description: Successfully deleted the MTO shipment.
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-shipments/{mtoShipmentID}/addresses/{addressID}:
+    put:
+      summary: updateMTOShipmentAddress
+      description: |
+        ### Functionality
+        This endpoint is used to **update** the pickup, secondary, and destination addresses on an MTO Shipment. mto-shipments/{mtoShipmentID}/shipment-address-updates is for updating a delivery address. The address details completely replace the original, except for the UUID.
+        Therefore a complete address should be sent in the request.
+        When a destination address on a shipment is updated, the destination SIT service items address ID will also be updated so that shipment and service item final destinations match.
+
+        This endpoint **cannot create** an address.
+        To create an address on an MTO shipment, the caller must use [updateMTOShipment](#operation/updateMTOShipment) as the parent shipment has to be updated with the appropriate link to the address.
+
+        ### Errors
+        The address must be associated with the mtoShipment passed in the url.
+        In other words, it should be listed as pickupAddress, destinationAddress, secondaryPickupAddress or secondaryDeliveryAddress on the mtoShipment provided.
+        If it is not, caller will receive a **Conflict** Error.
+
+        The mtoShipment should be associated with an MTO that is available to prime.
+        If the caller requests an update to an address, and the shipment is not on an available MTO, the caller will receive a **NotFound** Error.
+
+      operationId: updateMTOShipmentAddress
+      tags:
+        - mtoShipment
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: mtoShipmentID
+          description: UUID of the shipment associated with the address
+          required: true
+          format: uuid
+          type: string
+        - in: path
+          name: addressID
+          description: UUID of the address being updated
+          required: true
+          format: uuid
+          type: string
+        - in: body
+          required: true
+          name: body
+          schema:
+            $ref: 'definitions/Address.yaml'
+        - $ref: 'parameters/ifMatch.yaml'
+      responses:
+        '200':
+          description: Successfully updated the address.
+          schema:
+            $ref: 'definitions/Address.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '412':
+          $ref: '#/responses/PreconditionFailed'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-shipments/{mtoShipmentID}/shipment-address-updates:
+    post:
+      summary: updateShipmentDestinationAddress
+      description: |
+        ### Functionality
+        This endpoint is used so the Prime can request an **update** for the destination address on an MTO Shipment,
+        after the destination address has already been approved.
+
+        This endpoint and operation only supports the following shipment types:
+        - HHG
+        - NTSR
+
+        For HHG shipments, if automatically approved or TOO approves, this will update the final destination address values for destination SIT service items to be the same as the changed destination address that was approved.
+
+        Address updates will be automatically approved unless they change:
+          - The service area
+          - Mileage bracket for direct delivery
+          - the address and the distance between the old and new address is > 50
+          - Domestic Short Haul to Domestic Line Haul or vice versa
+              - Shipments that start and end in one ZIP3 use Short Haul pricing
+              - Shipments that start and end in different ZIP3s use Line Haul pricing
+
+        For those, changes will require TOO approval.
+
+      operationId: updateShipmentDestinationAddress
+      tags:
+        - mtoShipment
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: mtoShipmentID
+          description: UUID of the shipment associated with the address
+          required: true
+          format: uuid
+          type: string
+        - in: body
+          required: true
+          name: body
+          schema:
+            $ref: '#/definitions/UpdateShipmentDestinationAddress'
+        - in: header
+          name: If-Match
+          type: string
+          required: true
+          description: >
+            Needs to be the eTag of the mtoShipment. Optimistic locking is implemented via the `If-Match` header. If the ETag header does not match the value of the resource on the server, the server rejects the change with a `412 Precondition Failed` error.
+
+      responses:
+        '201':
+          description: Successfully created the address update request.
+          schema:
+            $ref: 'definitions/ShipmentAddressUpdate.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '412':
+          $ref: '#/responses/PreconditionFailed'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-shipments/{mtoShipmentID}/agents:
+    post:
+      summary: createMTOAgent
+      description: |
+        ### Functionality
+        This endpoint is used to **create** and add agents for an existing MTO Shipment. Only the fields being modified need to be sent in the request body.
+
+        ### Errors
+        The agent must always have a name and at least one method of contact (either `email` or `phone`).
+
+        The agent must be associated with the MTO shipment passed in the url.
+
+        The shipment should be associated with an MTO that is available to the Pime.
+        If the caller requests a new agent, and the shipment is not on an available MTO, the caller will receive a **NotFound** response.
+      operationId: createMTOAgent
+      tags:
+        - mtoShipment
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: mtoShipmentID
+          description: UUID of the shipment associated with the agent
+          required: true
+          format: uuid
+          type: string
+        - in: body
+          required: true
+          name: body
+          schema:
+            $ref: 'definitions/prime/MTOAgent.yaml'
+      responses:
+        '200':
+          description: Successfully added the agent.
+          schema:
+            $ref: 'definitions/prime/MTOAgent.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-shipments/{mtoShipmentID}/agents/{agentID}:
+    put:
+      summary: updateMTOAgent
+      description: |
+        ### Functionality
+        This endpoint is used to **update** the agents for an MTO Shipment. Only the fields being modified need to be sent in the request body.
+
+        ### Errors:
+        The agent must always have a name and at least one method of contact (either `email` or `phone`).
+
+        The agent must be associated with the MTO shipment passed in the url.
+
+        The shipment should be associated with an MTO that is available to the Prime.
+        If the caller requests an update to an agent, and the shipment is not on an available MTO, the caller will receive a **NotFound** response.
+
+      operationId: updateMTOAgent
+      tags:
+        - mtoShipment
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: mtoShipmentID
+          description: UUID of the shipment associated with the agent
+          required: true
+          format: uuid
+          type: string
+        - in: path
+          name: agentID
+          description: UUID of the agent being updated
+          required: true
+          format: uuid
+          type: string
+        - in: body
+          required: true
+          name: body
+          schema:
+            $ref: 'definitions/prime/MTOAgent.yaml'
+        - $ref: 'parameters/ifMatch.yaml'
+      responses:
+        '200':
+          description: Successfully updated the agent.
+          schema:
+            $ref: 'definitions/prime/MTOAgent.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '412':
+          $ref: '#/responses/PreconditionFailed'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-shipments/{mtoShipmentID}/reweighs/{reweighID}:
+    patch:
+      summary: updateReweigh
+      description: |
+        ### Functionality
+        This endpoint can be used to update a reweigh with a new weight or to provide the reason why a reweigh did not occur.
+        Only one of weight or verificationReason should be sent in the request body.
+
+        A reweigh is the second recorded weight for a shipment, as validated by certified weight tickets. Applies to one shipment.
+        A reweigh can be triggered automatically, or requested by the customer or transportation office. Not all shipments are reweighed,
+        so not all shipments will have a reweigh weight.
+      operationId: updateReweigh
+      tags:
+        - mtoShipment
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: mtoShipmentID
+          description: UUID of the shipment associated with the reweigh
+          required: true
+          format: uuid
+          type: string
+        - in: path
+          name: reweighID
+          description: UUID of the reweigh being updated
+          required: true
+          format: uuid
+          type: string
+        - in: body
+          required: true
+          name: body
+          schema:
+            $ref: '#/definitions/UpdateReweigh'
+        - $ref: 'parameters/ifMatch.yaml'
+      responses:
+        '200':
+          description: Successfully updated the reweigh.
+          schema:
+            $ref: 'definitions/prime/Reweigh.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '412':
+          $ref: '#/responses/PreconditionFailed'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-shipments/{mtoShipmentID}/sit-extensions:
+    post:
+      summary: createSITExtension
+      description: |
+        ### Functionality
+        This endpoint creates a storage in transit (SIT) extension request for a shipment. A SIT extension request is a request an
+        increase in the shipment day allowance for the number of days a shipment is allowed to be in SIT. The total SIT day allowance
+        includes time spent in both origin and destination SIT.
+      operationId: createSITExtension
+      tags:
+        - mtoShipment
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: mtoShipmentID
+          description: UUID of the shipment associated with the agent
+          required: true
+          format: uuid
+          type: string
+        - in: body
+          required: true
+          name: body
+          schema:
+            $ref: '#/definitions/CreateSITExtension'
+      responses:
+        '201':
+          description: Successfully created the sit extension request.
+          schema:
+            $ref: 'definitions/SITExtension.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-shipments/{mtoShipmentID}/status:
+    patch:
+      summary: updateMTOShipmentStatus
+      description: |
+        ### Functionality
+        This endpoint should be used by the Prime to confirm the cancellation of a shipment. It allows the shipment
+        status to be changed to "CANCELED." Currently, the Prime cannot update the shipment to any other status.
+      operationId: updateMTOShipmentStatus
+      tags:
+        - mtoShipment
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: mtoShipmentID
+          description: UUID of the shipment associated with the agent
+          required: true
+          format: uuid
+          type: string
+        - $ref: 'parameters/ifMatch.yaml'
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/UpdateMTOShipmentStatus'
+      responses:
+        '200':
+          description: Successfully updated the shipment's status.
+          schema:
+            $ref: '#/definitions/MTOShipment'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '412':
+          $ref: '#/responses/PreconditionFailed'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-service-items:
+    post:
+      summary: createMTOServiceItem
+      description: |
+        Creates one or more MTOServiceItems. Not all service items may be created, please see details below.
+
+        This endpoint supports different body definitions. In the modelType field below, select the modelType corresponding
+         to the service item you wish to create and the documentation will update with the new definition.
+
+        Upon creation these items are associated with a Move Task Order and an MTO Shipment.
+        The request must include UUIDs for the MTO and MTO Shipment connected to this service item. Some service item types require
+        additional service items to be autogenerated when added - all created service items, autogenerated included,
+        will be returned in the response.
+
+        To update a service item, please use [updateMTOServiceItem](#operation/updateMTOServiceItem) endpoint.
+
+        ---
+
+        **`MTOServiceItemOriginSIT`**
+
+        MTOServiceItemOriginSIT is a subtype of MTOServiceItem.
+
+        This model type describes a domestic origin SIT service item. Items can be created using this
+        model type with the following codes:
+
+        **DOFSIT**
+
+        **1st day origin SIT service item**. When a DOFSIT is requested, the API will auto-create the following group of service items:
+          * DOFSIT - Domestic origin 1st day SIT
+          * DOASIT - Domestic origin Additional day SIT
+          * DOPSIT - Domestic origin SIT pickup
+          * DOSFSC - Domestic origin SIT fuel surcharge
+
+        **DOASIT**
+
+        **Addt'l days origin SIT service item**. This represents an additional day of storage for the same item.
+        Additional DOASIT service items can be created and added to an existing shipment that **includes a DOFSIT service item**.
+
+        ---
+
+        **`MTOServiceItemDestSIT`**
+
+        MTOServiceItemDestSIT is a subtype of MTOServiceItem.
+
+        This model type describes a domestic destination SIT service item. Items can be created using this
+        model type with the following codes:
+
+        **DDFSIT**
+
+        **1st day destination SIT service item**.
+
+        These additional fields are optional for creating a DDFSIT:
+          * `firstAvailableDeliveryDate1`
+            * string <date>
+            * First available date that Prime can deliver SIT service item.
+            * firstAvailableDeliveryDate1, dateOfContact1, and timeMilitary1 are required together
+          * `dateOfContact1`
+            * string <date>
+            * Date of attempted contact by the prime corresponding to `timeMilitary1`
+            * dateOfContact1, timeMilitary1, and firstAvailableDeliveryDate1 are required together
+          * `timeMilitary1`
+            * string\d{4}Z
+            * Time of attempted contact corresponding to `dateOfContact1`, in military format.
+            * timeMilitary1, dateOfContact1, and firstAvailableDeliveryDate1 are required together
+          * `firstAvailableDeliveryDate2`
+            * string <date>
+            * Second available date that Prime can deliver SIT service item.
+            * firstAvailableDeliveryDate2, dateOfContact2, and timeMilitary2 are required together
+          * `dateOfContact2`
+            * string <date>
+            * Date of attempted contact delivery by the prime corresponding to `timeMilitary2`
+            * dateOfContact2, timeMilitary2, and firstAvailableDeliveryDate2 are required together
+          * `timeMilitary2`
+            * string\d{4}Z
+            * Time of attempted contact corresponding to `dateOfContact2`, in military format.
+            * timeMilitary2, dateOfContact2, and firstAvailableDeliveryDate2 are required together
+
+        When a DDFSIT is requested, the API will auto-create the following group of service items:
+          * DDFSIT - Domestic destination 1st day SIT
+          * DDASIT - Domestic destination Additional day SIT
+          * DDDSIT - Domestic destination SIT delivery
+          * DDSFSC - Domestic destination SIT fuel surcharge
+
+        **NOTE** When providing the `sitEntryDate` value in the payload, please ensure that the date is not BEFORE
+        `firstAvailableDeliveryDate1` or `firstAvailableDeliveryDate2`. If it is, you will receive an error response.
+
+        **DDASIT**
+
+        **Addt'l days destination SIT service item**. This represents an additional day of storage for the same item.
+        Additional DDASIT service items can be created and added to an existing shipment that **includes a DDFSIT service item**.
+      operationId: createMTOServiceItem
+      tags:
+        - mtoServiceItem
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          schema:
+            $ref: 'definitions/prime/MTOServiceItem.yaml'
+      responses:
+        '200':
+          description: Successfully created an MTO service item.
+          schema:
+            type: array
+            items:
+              $ref: 'definitions/prime/MTOServiceItem.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-service-items/{mtoServiceItemID}:
+    patch:
+      summary: updateMTOServiceItem
+      description: |
+        Updates MTOServiceItems after creation. Not all service items or fields may be updated, please see details below.
+
+        This endpoint supports different body definitions. In the modelType field below, select the modelType corresponding
+         to the service item you wish to update and the documentation will update with the new definition.
+
+        * Addresses: To update a destination service item's SIT destination final address, update the shipment destination address.
+        For approved shipments, please use [updateShipmentDestinationAddress](#mtoShipment/updateShipmentDestinationAddress).
+        For shipments not yet approved, please use [updateMTOShipmentAddress](#mtoShipment/updateMTOShipmentAddress).
+
+        * SIT Service Items: Take note that when updating `sitCustomerContacted`, `sitDepartureDate`, or `sitRequestedDelivery`, we want
+        those to be updated on `DOASIT` (for origin SIT) and `DDASIT` (for destination SIT). If updating those values in other service
+        items, the office users will not have as much attention to those values.
+
+        To create a service item, please use [createMTOServiceItem](#mtoServiceItem/createMTOServiceItem)) endpoint.
+
+        * Resubmitting rejected SIT service items: This endpoint will handle the logic of changing the status of rejected SIT service items from
+        REJECTED to SUBMITTED. Please provide the `requestedApprovalsRequestedStatus: true` when resubmitting as this will give attention to the TOO to
+        review the resubmitted SIT service item. Another note, `updateReason` must have a different value than the current `reason` value on the service item.
+        If this value is not updated, then an error will be sent back.
+
+        The following SIT service items can be resubmitted following a rejection:
+        - DDASIT
+        - DDDSIT
+        - DDFSIT
+        - DOASIT
+        - DOPSIT
+        - DOFSIT
+        - DDSFSC
+        - DOSFSC
+
+        At a MINIMUM, the payload for resubmitting a rejected SIT service item must look like this:
+        ```json
+        {
+          "reServiceCode": "DDFSIT",
+          "updateReason": "A reason that differs from the previous reason",
+          "modelType": "UpdateMTOServiceItemSIT",
+          "requestApprovalsRequestedStatus": true
+        }
+        ```
+
+      operationId: updateMTOServiceItem
+      tags:
+        - mtoServiceItem
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          schema: # we use an update specific definition for the request
+            $ref: '#/definitions/UpdateMTOServiceItem'
+          required: true
+        - in: path
+          name: mtoServiceItemID
+          type: string
+          description: UUID of service item to update.
+          required: true
+        - $ref: 'parameters/ifMatch.yaml'
+      responses:
+        '200':
+          description: Successfully updated the MTO service item.
+          schema:
+            $ref: 'definitions/prime/MTOServiceItem.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '412':
+          $ref: '#/responses/PreconditionFailed'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /mto-service-items/{mtoServiceItemID}/uploads:
+    post:
+      summary: createServiceRequestDocumentUpload
+      description: |
+        ### Functionality
+
+        This endpoint **uploads** a Service Request document for a
+        ServiceItem.
+
+        The ServiceItem should already exist.
+
+        ServiceItems are created with the
+        [createMTOServiceItem](#operation/createMTOServiceItem)
+        endpoint.
+      operationId: createServiceRequestDocumentUpload
+      tags:
+        - mtoServiceItem
+      consumes:
+        - multipart/form-data
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: mtoServiceItemID
+          type: string
+          description: UUID of the service item to use.
+          required: true
+        - in: formData
+          name: file
+          type: file
+          description: The file to upload.
+          required: true
+      responses:
+        '201':
+          description: Successfully created upload of digital file.
+          schema:
+            $ref: 'definitions/UploadWithOmissions.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: '#/responses/PermissionDenied'
+        '403':
+          $ref: '#/responses/PermissionDenied'
+        '404':
+          $ref: '#/responses/NotFound'
+        '422':
+          $ref: '#/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/responses/ServerError'
+  /payment-requests:
+    post:
+      summary: createPaymentRequest
+      description: |
+        Creates a new instance of a paymentRequest and is assigned the status `PENDING`.
+        A move task order can have multiple payment requests, and
+        a final payment request can be marked using boolean `isFinal`.
+
+        If a `PENDING` payment request is recalculated,
+        a new payment request is created and the original request is
+        marked with the status `DEPRECATED`.
+
+        **NOTE**: In order to create a payment request for most service items, the shipment *must*
+        be updated with the `PrimeActualWeight` value via [updateMTOShipment](#operation/updateMTOShipment).
+
+        **FSC - Fuel Surcharge** service items require `ActualPickupDate` to be updated on the shipment.
+
+        A service item can be on several payment requests in the case of partial payment requests and payments.
+
+        In the request, if no params are necessary, then just the `serviceItem` `id` is required. For example:
+        ```json
+        {
+          "isFinal": false,
+          "moveTaskOrderID": "uuid",
+          "serviceItems": [
+            {
+              "id": "uuid",
+            },
+            {
+              "id": "uuid",
+              "params": [
+                {
+                  "key": "Service Item Parameter Name",
+                  "value": "Service Item Parameter Value"
+                }
+              ]
+            }
+          ],
+          "pointOfContact": "string"
+        }
+        ```
+
+        SIT Service Items & Accepted Payment Request Parameters:
+        ---
+        If `WeightBilled` is not provided then the full shipment weight (`PrimeActualWeight`) will be considered in the calculation.
+
+        **NOTE**: Diversions have a unique calcuation for payment requests without a `WeightBilled` parameter.
+
+        If you created a payment request for a diversion and `WeightBilled` is not provided, then the following will be used in the calculation:
+        - The lowest shipment weight (`PrimeActualWeight`) found in the diverted shipment chain.
+        - The lowest reweigh weight found in the diverted shipment chain.
+
+        The diverted shipment chain is created by referencing the `diversion` boolean, `divertedFromShipmentId` UUID, and matching destination to pickup addresses.
+        If the chain cannot be established it will fall back to the `PrimeActualWeight` of the current shipment. This is utilized because diverted shipments are all one single shipment, but going to different locations.
+        The lowest weight found is the true shipment weight, and thus we search the chain of shipments for the lowest weight found.
+
+        **DOFSIT - Domestic origin 1st day SIT**
+        ```json
+          "params": [
+            {
+              "key": "WeightBilled",
+              "value": "integer"
+            }
+          ]
+        ```
+
+        **DOASIT - Domestic origin add'l SIT** *(SITPaymentRequestStart & SITPaymentRequestEnd are **REQUIRED**)*
+        *To create a paymentRequest for this service item, the `SITPaymentRequestStart` and `SITPaymentRequestEnd` dates must not overlap previously requested SIT dates.*
+        ```json
+          "params": [
+            {
+              "key": "WeightBilled",
+              "value": "integer"
+            },
+            {
+              "key": "SITPaymentRequestStart",
+              "value": "date"
+            },
+            {
+              "key": "SITPaymentRequestEnd",
+              "value": "date"
+            }
+          ]
+        ```
+
+        **DOPSIT - Domestic origin SIT pickup**
+        ```json
+          "params": [
+            {
+              "key": "WeightBilled",
+              "value": "integer"
+            }
+          ]
+        ```
+
+        **DOSHUT - Domestic origin shuttle service**
+        ```json
+          "params": [
+            {
+              "key": "WeightBilled",
+              "value": "integer"
+            }
+          ]
+        ```
+
+        **DDFSIT - Domestic destination 1st day SIT**
+        ```json
+          "params": [
+            {
+              "key": "WeightBilled",
+              "value": "integer"
+            }
+          ]
+        ```
+
+        **DDASIT - Domestic destination add'l SIT** *(SITPaymentRequestStart & SITPaymentRequestEnd are **REQUIRED**)*
+        *To create a paymentRequest for this service item, the `SITPaymentRequestStart` and `SITPaymentRequestEnd` dates must not overlap previously requested SIT dates.*
+        ```json
+          "params": [
+            {
+              "key": "WeightBilled",
+              "value": "integer"
+            },
+            {
+              "key": "SITPaymentRequestStart",
+              "value": "date"
+            },
+            {
+              "key": "SITPaymentRequestEnd",
+              "value": "date"
+            }
+          ]
+        ```
+
+        **DDDSIT - Domestic destination SIT delivery**
+        *To create a paymentRequest for this service item, it must first have a final address set via [updateMTOServiceItem](#operation/updateMTOServiceItem).*
+        ```json
+          "params": [
+            {
+              "key": "WeightBilled",
+              "value": "integer"
+            }
+          ]
+        ```
+
+        **DDSHUT - Domestic destination shuttle service**
+        ```json
+          "params": [
+            {
+              "key": "WeightBilled",
+              "value": "integer"
+            }
+          ]
+        ```
+        ---
+      operationId: createPaymentRequest
+      tags:
+        - paymentRequest
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          schema:
+            $ref: '#/definitions/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Successfully created a paymentRequest object.
+          schema:
+            $ref: 'definitions/prime/PaymentRequest.yaml'
+        '400':
+          description: Request payload is invalid.
+          schema:
+            $ref: 'definitions/ClientError.yaml'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '409':
+          $ref: 'responses/Conflict.yaml'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /payment-requests/{paymentRequestID}/uploads:
+    post:
+      summary: createUpload
+      description: |
+        ### Functionality
+        This endpoint **uploads** a Proof of Service document for a PaymentRequest.
+
+        The PaymentRequest should already exist.
+
+        Optional key of **isWeightTicket** indicates if the document is a weight ticket or not.
+        This will be used for partial and full deliveries and makes it easier for the Task Invoicing Officers to locate and review service item documents.
+        If left empty, it will assume it is NOT a weight ticket.
+
+        The formdata in the body of the POST request that is sent should look like this if it IS a weight ticket being attached to an existing payment request:
+          ```json
+          {
+            "file": "filePath",
+            "isWeightTicket": true
+          }
+          ```
+          If the proof of service doc is NOT a weight ticket, it will look like this - or you can leave it empty:
+          ```json
+          {
+            "file": "filePath",
+            "isWeightTicket": false
+          }
+          ```
+          ```json
+          {
+            "file": "filePath",
+          }
+          ```
+
+        PaymentRequests are created with the [createPaymentRequest](#operation/createPaymentRequest) endpoint.
+
+      operationId: createUpload
+      tags:
+        - paymentRequest
+      consumes:
+        - multipart/form-data
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: paymentRequestID
+          type: string
+          description: UUID of payment request to use.
+          required: true
+        - in: formData
+          name: file
+          type: file
+          description: The file to upload.
+          required: true
+        - in: formData
+          name: isWeightTicket
+          type: boolean
+          description: Indicates whether the file is a weight ticket.
+      responses:
+        '201':
+          description: Successfully created upload of digital file.
+          schema:
+            $ref: 'definitions/UploadWithOmissions.yaml'
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '401':
+          $ref: 'responses/PermissionDenied.yaml'
+        '403':
+          $ref: 'responses/PermissionDenied.yaml'
+        '404':
+          $ref: 'responses/NotFound.yaml'
+        '422':
+          $ref: 'responses/UnprocessableEntity.yaml'
+        '500':
+          $ref: '#/responses/ServerError'
+  /moves/{locator}/documents:
+    get:
+      summary: Downloads move order as a PDF
+      description: |
+        ### Functionality
+        This endpoint downloads all uploaded move order documentations into one download file by locator.
+
+        ### Errors
+        * The move must be in need counseling state.
+        * The move client's origin duty location must not currently have gov counseling.
+      operationId: downloadMoveOrder
+      tags:
+        - moveTaskOrder
+      produces:
+        - application/pdf
+      parameters:
+        - in: path
+          type: string
+          name: locator
+          description: the locator code for move order to be downloaded
+          required: true
+        - in: query
+          name: type
+          type: string
+          description: upload type
+          required: false
+          default: ALL
+          enum:
+            - ALL
+            - ORDERS
+            - AMENDMENTS
+      responses:
+        '200':
+          headers:
+            Content-Disposition:
+              type: string
+              description: File name to download
+          description: Move Order PDF
+          schema:
+            format: binary
+            type: file
+        '400':
+          $ref: '#/responses/InvalidRequest'
+        '403':
+          $ref: '#/responses/PermissionDenied'
+        '404':
+          $ref: '#/responses/NotFound'
+        '422':
+          $ref: '#/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/responses/ServerError'
+definitions:
+  Amendments:
+    description: >
+      Metadata outlining number of amendments for given order.
+    type: object
+    properties:
+      total:
+        description: The total count of amendments.
+        type: integer
+      availableSince:
+        description: The total count of amendments available since specified time.
+        type: integer
+    required:
+      - total
+      - availableSince
+  CreateMTOShipment:
+    type: object
+    properties:
+      moveTaskOrderID:
+        description: The ID of the move this new shipment is for.
+        example: 1f2270c7-7166-40ae-981e-b200ebdf3054
+        format: uuid
+        type: string
+      requestedPickupDate:
+        description: >
+          The customer's preferred pickup date. Other dates, such as required delivery date and (outside MilMove) the
+          pack date, are derived from this date.
+        format: date
+        type: string
+        x-nullable: true
+      primeEstimatedWeight:
+        description: >
+          The estimated weight of this shipment, determined by the movers during the pre-move survey.
+          This value **can only be updated once.** If there was an issue with estimating the weight and a mistake was made,
+          the Prime contractor will need to contact the TOO to change it.
+        type: integer
+        example: 4500
+        minimum: 1
+        x-nullable: true
+      customerRemarks:
+        description: |
+          The customer can use the customer remarks field to inform the services counselor and the movers about any
+          special circumstances for this shipment. Typical examples:
+            * bulky or fragile items,
+            * weapons,
+            * access info for their address.
+
+          Customer enters this information during onboarding. Optional field.
+        type: string
+        example: handle with care
+        x-nullable: true
+      agents:
+        $ref: 'definitions/prime/MTOAgents.yaml'
+      mtoServiceItems:
+        description: A list of service items connected to this shipment.
+        type: array
+        items:
+          $ref: 'definitions/prime/MTOServiceItem.yaml'
+      pickupAddress:
+        description: The address where the movers should pick up this shipment.
+        allOf:
+          - $ref: 'definitions/Address.yaml'
+      destinationAddress:
+        description: Where the movers should deliver this shipment.
+        allOf:
+          - $ref: 'definitions/Address.yaml'
+      shipmentType:
+        $ref: 'definitions/prime/MTOShipmentType.yaml'
+      diversion:
+        description: >
+          This value indicates whether or not this shipment is part of a diversion.
+          If yes, the shipment can be either the starting or ending segment of the diversion.
+        type: boolean
+      pointOfContact:
+        type: string
+        description: >
+          Email or ID of the person who will be contacted in the event of questions or concerns about this update.
+          May be the person performing the update, or someone else working with the Prime contractor.
+      counselorRemarks:
+        type: string
+        example: counselor approved
+        x-nullable: true
+      ppmShipment:
+        $ref: '#/definitions/CreatePPMShipment'
+    required:
+      - moveTaskOrderID
+      - shipmentType
+  CreatePPMShipment:
+    description: Creation object containing the `PPM` shipmentType specific data, not used for other shipment types.
+    type: object
+    properties:
+      expectedDepartureDate:
+        description: >
+          Date the customer expects to begin moving from their origin.
+        format: date
+        type: string
+      pickupAddress:
+        description: The address of the origin location where goods are being moved from.
+        allOf:
+          - $ref: 'definitions/Address.yaml'
+      destinationAddress:
+        description: The address of the destination location where goods are being delivered to.
+        allOf:
+          - $ref: 'definitions/Address.yaml'
+      sitExpected:
+        description: |
+          Captures whether some or all of the PPM shipment will require temporary storage at the origin or destination.
+
+          Must be set to `true` when providing `sitLocation`, `sitEstimatedWeight`, `sitEstimatedEntryDate`, and `sitEstimatedDepartureDate` values to calculate the `sitEstimatedCost`.
+        type: boolean
+      sitLocation:
+        allOf:
+          - $ref: 'definitions/SITLocationType.yaml'
+          - x-nullable: true
+      sitEstimatedWeight:
+        description: The estimated weight of the goods being put into storage in pounds.
+        type: integer
+        example: 2000
+        x-nullable: true
+      sitEstimatedEntryDate:
+        description: The date that goods will first enter the storage location.
+        format: date
+        type: string
+        x-nullable: true
+      sitEstimatedDepartureDate:
+        description: The date that goods will exit the storage location.
+        format: date
+        type: string
+        x-nullable: true
+      estimatedWeight:
+        description: The estimated weight of the PPM shipment goods being moved in pounds.
+        type: integer
+        example: 4200
+      hasProGear:
+        description: >
+          Indicates whether PPM shipment has pro gear for themselves or their spouse.
+        type: boolean
+      proGearWeight:
+        description: The estimated weight of the pro-gear being moved belonging to the service member in pounds.
+        type: integer
+        x-nullable: true
+      spouseProGearWeight:
+        description: The estimated weight of the pro-gear being moved belonging to a spouse in pounds.
+        type: integer
+        x-nullable: true
+    required:
+      - expectedDepartureDate
+      - sitExpected
+      - estimatedWeight
+      - hasProGear
+  CreatePaymentRequest:
+    type: object
+    properties:
+      isFinal:
+        default: false
+        type: boolean
+      moveTaskOrderID:
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+        format: uuid
+        type: string
+      serviceItems:
+        type: array
+        minItems: 1
+        items:
+          $ref: '#/definitions/ServiceItem'
+      pointOfContact:
+        type: string
+        description: Email or id of a contact person for this update.
+    required:
+      - moveTaskOrderID
+      - serviceItems
+  CreateSITExtension:
+    description: CreateSITExtension contains the fields required for the prime to create a SIT Extension request.
+    type: object
+    properties:
+      requestReason:
+        type: string
+        enum:
+          - SERIOUS_ILLNESS_MEMBER
+          - SERIOUS_ILLNESS_DEPENDENT
+          - IMPENDING_ASSIGNEMENT
+          - DIRECTED_TEMPORARY_DUTY
+          - NONAVAILABILITY_OF_CIVILIAN_HOUSING
+          - AWAITING_COMPLETION_OF_RESIDENCE
+          - OTHER
+      contractorRemarks:
+        type: string
+        example: We need SIT additional days. The customer has not found a house yet.
+      requestedDays:
+        type: integer
+        example: 30
+        minimum: 1
+    required:
+      - requestReason
+      - contractorRemarks
+      - requestedDays
+  Error:
+    properties:
+      title:
+        type: string
+      detail:
+        type: string
+      instance:
+        type: string
+        format: uuid
+    required:
+      - title
+      - detail
+    type: object
+  ListMove:
+    description: >
+      An abbreviated definition for a move, without all the nested information (shipments, service items, etc). Used to
+      fetch a list of moves more efficiently.
+    type: object
+    properties:
+      id:
+        example: 1f2270c7-7166-40ae-981e-b200ebdf3054
+        format: uuid
+        type: string
+      moveCode:
+        type: string
+        example: 'HYXFJF'
+        readOnly: true
+      createdAt:
+        format: date-time
+        type: string
+        readOnly: true
+      orderID:
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+        format: uuid
+        type: string
+      referenceId:
+        example: 1001-3456
+        type: string
+      availableToPrimeAt:
+        format: date-time
+        type: string
+        x-nullable: true
+        readOnly: true
+      approvedAt:
+        format: date-time
+        type: string
+        x-nullable: true
+        readOnly: true
+      updatedAt:
+        format: date-time
+        type: string
+        readOnly: true
+      ppmType:
+        type: string
+        enum:
+          - FULL
+          - PARTIAL
+      eTag:
+        type: string
+        readOnly: true
+      amendments:
+        $ref: '#/definitions/Amendments'
+  ListMoves:
+    type: array
+    items:
+      $ref: '#/definitions/ListMove'
+  MoveTaskOrder:
+    $ref: 'definitions/prime/MoveTaskOrder.yaml'
+  MTOServiceItemBasic: # spectral oas2-unused-definition is OK here due to polymorphism
+    $ref: 'definitions/prime/MTOServiceItemBasic.yaml'
+  MTOServiceItemDestSIT: # spectral oas2-unused-definition is OK here due to polymorphism
+    $ref: 'definitions/prime/MTOServiceItemDestSIT.yaml'
+  MTOServiceItemDomesticCrating: # spectral oas2-unused-definition is OK here due to polymorphism
+    $ref: 'definitions/prime/MTOServiceItemDomesticCrating.yaml'
+  MTOServiceItemOriginSIT: # spectral oas2-unused-definition is OK here due to polymorphism
+    $ref: 'definitions/prime/MTOServiceItemOriginSIT.yaml'
+  MTOServiceItemShuttle: # spectral oas2-unused-definition is OK here due to polymorphism
+    $ref: 'definitions/prime/MTOServiceItemShuttle.yaml'
+  MTOShipment:
+    type: object
+    properties:
+      mtoServiceItems:
+        description: A list of service items connected to this shipment.
+        items:
+          $ref: 'definitions/prime/MTOServiceItem.yaml'
+        type: array
+        readOnly: true
+    allOf:
+      - $ref: 'definitions/prime/MTOShipmentWithoutServiceItems.yaml'
+  UpdateShipmentDestinationAddress:
+    description: UpdateShipmentDestinationAddress contains the fields required for the prime to request an update for the destination address on an MTO Shipment.
+    type: object
+    properties:
+      newAddress:
+        $ref: 'definitions/Address.yaml'
+      contractorRemarks:
+        type: string
+        example: Customer reached out to me this week and let me know they want to move somewhere else.
+        description: This is the remark the Prime has entered, which would be the reason there is an address change.
+    required:
+      - contractorRemarks
+      - newAddress
+  ServiceItem:
+    properties:
+      id:
+        type: string
+        format: uuid
+        example: c56a4180-65aa-42ec-a945-5fd21dec0538
+      params:
+        type: array
+        description: |
+          This should be populated for the following service items:
+            * DOASIT(Domestic origin Additional day SIT)
+            * DDASIT(Domestic destination Additional day SIT)
+
+          Both take in the following param keys:
+            * `SITPaymentRequestStart`
+            * `SITPaymentRequestEnd`
+
+          The value of each is a date string in the format "YYYY-MM-DD" (e.g. "2023-01-15")
+        items:
+          properties:
+            key:
+              type: string
+              example: Service Item Parameter Name
+            value:
+              type: string
+              example: Service Item Parameter Value
+          type: object
+      eTag:
+        type: string
+        readOnly: true
+    type: object
+  UpdateMTOServiceItem:
+    description: UpdateMTOServiceItem describes a base type of a service item. Polymorphic type. Both Move Task Orders and MTO Shipments will have MTO Service Items.
+    type: object
+    discriminator: modelType
+    properties:
+      id:
+        example: 1f2270c7-7166-40ae-981e-b200ebdf3054
+        format: uuid
+        type: string
+        description: ID of the service item. Must match path.
+      modelType: # Base type and sub-types of MTOServiceItem
+        $ref: '#/definitions/UpdateMTOServiceItemModelType'
+    required:
+      - modelType
+  UpdateMTOServiceItemModelType:
+    description: |
+      Using this list, choose the correct modelType in the dropdown, corresponding to the service item type.
+        * DDDSIT - UpdateMTOServiceItemSIT
+        * DDFSIT - UpdateMTOServiceItemSIT
+        * DDASIT - UpdateMTOServiceItemSIT
+        * DOPSIT - UpdateMTOServiceItemSIT
+        * DOASIT - UpdateMTOServiceItemSIT
+        * DOFSIT - UpdateMTOServiceItemSIT
+        * DOSFSC - UpdateMTOServiceItemSIT
+        * DDSFSC - UpdateMTOServiceItemSIT
+        * DDSHUT - UpdateMTOServiceItemShuttle
+        * DOSHUT - UpdateMTOServiceItemShuttle
+
+      The documentation will then update with the supported fields.
+    type: string
+    enum:
+      - UpdateMTOServiceItemSIT
+      - UpdateMTOServiceItemShuttle
+  UpdateMTOServiceItemShuttle: # spectral oas2-unused-definition is OK here due to polymorphism
+    description: |
+      Subtype used to provide the estimated weight and actual weight for shuttle. This is not creating a new service item but rather updating an existing service item.
+    allOf:
+      - $ref: '#/definitions/UpdateMTOServiceItem'
+      - type: object
+        properties:
+          actualWeight:
+            type: integer
+            example: 4000
+            description: Provided by the movers, based on weight tickets. Relevant for shuttling (DDSHUT & DOSHUT) service items.
+            x-nullable: true
+            x-omitempty: false
+          estimatedWeight:
+            type: integer
+            example: 4200
+            description: An estimate of how much weight from a shipment will be included in a shuttling (DDSHUT & DOSHUT) service item.
+            x-nullable: true
+            x-omitempty: false
+          reServiceCode:
+            type: string
+            description: Service code allowed for this model type.
+            enum:
+              - DDSHUT # Domestic Destination Shuttle
+              - DOSHUT # Domestic Origin Shuttle
+  UpdateMTOServiceItemSIT: # spectral oas2-unused-definition is OK here due to polymorphism
+    description: |
+      Subtype used to provide the departure date for origin or destination SIT. This is not creating a new service item but rather updating an existing service item.
+    allOf:
+      - $ref: '#/definitions/UpdateMTOServiceItem'
+      - type: object
+        properties:
+          reServiceCode:
+            type: string
+            description: Service code allowed for this model type.
+            enum:
+              - DDDSIT # Domestic Destination SIT Delivery
+              - DDASIT # Domestic Destination Add'l Days SIT
+              - DDFSIT # Domestic Destination 1st Day SIT
+              - DDSFSC # Domestic Destination Fuel Surcharge
+              - DOPSIT # Domestic Origin SIT Pickup
+              - DOASIT # Domestic Origin Add'l Days SIT
+              - DOFSIT # Domestic Origin 1st Day SIT
+              - DOSFSC # Domestic Origin Fuel Surcharge
+          sitDepartureDate:
+            format: date
+            type: string
+            description: Departure date for SIT. This is the end date of the SIT at either origin or destination.
+          sitDestinationFinalAddress:
+            $ref: 'definitions/Address.yaml'
+          dateOfContact1:
+            format: date
+            type: string
+            description: Date of attempted contact by the prime corresponding to 'timeMilitary1'.
+            x-nullable: true
+          timeMilitary1:
+            type: string
+            example: 1400Z
+            description: Time of attempted contact by the prime corresponding to 'dateOfContact1', in military format.
+            pattern: '\d{4}Z'
+            x-nullable: true
+          firstAvailableDeliveryDate1:
+            format: date
+            type: string
+            description: First available date that Prime can deliver SIT service item.
+            x-nullable: true
+          dateOfContact2:
+            format: date
+            type: string
+            description: Date of attempted contact by the prime corresponding to 'timeMilitary2'.
+            x-nullable: true
+          timeMilitary2:
+            type: string
+            example: 1400Z
+            description: Time of attempted contact by the prime corresponding to 'dateOfContact2', in military format.
+            pattern: '\d{4}Z'
+            x-nullable: true
+          firstAvailableDeliveryDate2:
+            format: date
+            type: string
+            description: Second available date that Prime can deliver SIT service item.
+            x-nullable: true
+          sitRequestedDelivery:
+            format: date
+            type: string
+            description: Date when the customer has requested delivery out of SIT.
+            x-nullable: true
+          sitCustomerContacted:
+            format: date
+            type: string
+            description: Date when the customer contacted the prime for a delivery out of SIT.
+            x-nullable: true
+          updateReason:
+            type: string
+            description: Reason for updating service item.
+            x-nullable: true
+          sitPostalCode:
+            type: string
+            format: zip
+            example: '90210'
+            pattern: '^(\d{5}([\-]\d{4})?)$'
+            x-nullable: true
+          sitEntryDate:
+            format: date
+            type: string
+            description: Entry date for the SIT.
+            x-nullable: true
+          requestApprovalsRequestedStatus:
+            description: Indicates if "Approvals Requested" status is being requested.
+            type: boolean
+            x-nullable: true
+  UpdateMTOShipment:
+    properties:
+      actualProGearWeight:
+        description: The actual weight of any pro gear shipped during a move.
+        type: integer
+        example: 4500
+        minimum: 1
+        x-nullable: true
+      actualSpouseProGearWeight:
+        description: The actual weight of any pro gear shipped during a move.
+        type: integer
+        example: 4500
+        minimum: 1
+        x-nullable: true
+      scheduledPickupDate:
+        description: The date the Prime contractor scheduled to pick up this shipment after consultation with the customer.
+        format: date
+        type: string
+        x-omitempty: false
+        x-nullable: true
+      actualPickupDate:
+        description: The date when the Prime contractor actually picked up the shipment. Updated after-the-fact.
+        format: date
+        type: string
+        x-omitempty: false
+        x-nullable: true
+      firstAvailableDeliveryDate:
+        description: >
+          The date the Prime provides to the customer as the first possible delivery date so that they can plan their
+          travel accordingly.
+        format: date
+        type: string
+        x-omitempty: false
+        x-nullable: true
+      scheduledDeliveryDate:
+        description: The date the Prime contractor scheduled to deliver this shipment after consultation with the customer.
+        format: date
+        type: string
+        x-omitempty: false
+        x-nullable: true
+      actualDeliveryDate:
+        description: The date when the Prime contractor actually delivered the shipment. Updated after-the-fact.
+        format: date
+        type: string
+        x-omitempty: false
+        x-nullable: true
+      primeEstimatedWeight:
+        description: >
+          The estimated weight of this shipment, determined by the movers during the pre-move survey.
+          This value **can only be updated once.** If there was an issue with estimating the weight and a mistake was made,
+          the Prime contracter will need to contact the TOO to change it.
+        type: integer
+        example: 4500
+        minimum: 1
+        x-nullable: true
+      primeActualWeight:
+        description: The actual weight of the shipment, provided after the Prime packs, picks up, and weighs a customer's shipment.
+        type: integer
+        example: 4500
+        minimum: 1
+        x-nullable: true
+      ntsRecordedWeight:
+        description: The previously recorded weight for the NTS Shipment. Used for NTS Release to know what the previous primeActualWeight or billable weight was.
+        type: integer
+        example: 4500
+        x-nullable: true
+        x-formatting: weight
+      pickupAddress:
+        description: >
+          The address where the movers should pick up this shipment, entered by the customer during onboarding
+          when they enter shipment details.
+        allOf:
+          - $ref: 'definitions/Address.yaml'
+      destinationAddress:
+        description: |
+          Where the movers should deliver this shipment. Often provided by the customer when they enter shipment details
+          during onboarding, if they know their new address already.
+
+          May be blank when entered by the customer, required when entered by the Prime. May not represent the true
+          final destination due to the shipment being diverted or placed in SIT.
+        allOf:
+          - $ref: 'definitions/Address.yaml'
+      destinationType:
+        $ref: 'definitions/DestinationType.yaml'
+      secondaryPickupAddress:
+        description: A second pickup address for this shipment, if the customer entered one. An optional field.
+        allOf:
+          - $ref: 'definitions/Address.yaml'
+      secondaryDeliveryAddress:
+        description: A second delivery address for this shipment, if the customer entered one. An optional field.
+        allOf:
+          - $ref: 'definitions/Address.yaml'
+      storageFacility:
+        allOf:
+          - x-nullable: true
+          - $ref: 'definitions/StorageFacility.yaml'
+      shipmentType:
+        $ref: 'definitions/prime/MTOShipmentType.yaml'
+      diversion:
+        description: >
+          This value indicates whether or not this shipment is part of a diversion.
+          If yes, the shipment can be either the starting or ending segment of the diversion.
+        type: boolean
+      pointOfContact:
+        type: string
+        description: >
+          Email or ID of the person who will be contacted in the event of questions or concerns about this update.
+          May be the person performing the update, or someone else working with the Prime contractor.
+      counselorRemarks:
+        type: string
+        example: counselor approved
+        x-nullable: true
+      ppmShipment:
+        $ref: '#/definitions/UpdatePPMShipment'
+  UpdatePPMShipment:
+    description: The PPM specific fields of the shipment with values being changed
+    type: object
+    properties:
+      expectedDepartureDate:
+        description: >
+          Date the customer expects to begin moving from their origin.
+        format: date
+        type: string
+        x-nullable: true
+      sitExpected:
+        description: |
+          Captures whether some or all of the PPM shipment will require temporary storage at the origin or destination.
+
+          Must be set to `true` when providing `sitLocation`, `sitEstimatedWeight`, `sitEstimatedEntryDate`, and `sitEstimatedDepartureDate` values to calculate the `sitEstimatedCost`.
+        type: boolean
+        x-nullable: true
+      sitLocation:
+        allOf:
+          - $ref: 'definitions/SITLocationType.yaml'
+          - x-nullable: true
+      sitEstimatedWeight:
+        description: The estimated weight of the goods being put into storage.
+        type: integer
+        example: 2000
+        x-nullable: true
+      sitEstimatedEntryDate:
+        description: The date that goods will first enter the storage location.
+        format: date
+        type: string
+        x-nullable: true
+      sitEstimatedDepartureDate:
+        description: The date that goods will exit the storage location.
+        format: date
+        type: string
+        x-nullable: true
+      estimatedWeight:
+        description: The estimated weight of the PPM shipment goods being moved.
+        type: integer
+        example: 4200
+        x-nullable: true
+      hasProGear:
+        description: >
+          Indicates whether PPM shipment has pro gear for themselves or their spouse.
+        type: boolean
+        x-nullable: true
+      proGearWeight:
+        description: The estimated weight of the pro-gear being moved belonging to the service member.
+        type: integer
+        x-nullable: true
+      spouseProGearWeight:
+        description: The estimated weight of the pro-gear being moved belonging to a spouse.
+        type: integer
+        x-nullable: true
+  UpdateMTOShipmentStatus:
+    description: Contains the statuses available to the Prime when updating the state of a shipment.
+    type: object
+    properties:
+      status:
+        type: string
+        enum:
+          - CANCELED
+  UpdateReweigh:
+    description: Contains the fields available to the Prime when updating a reweigh record.
+    type: object
+    properties:
+      weight:
+        description: The total reweighed weight for the shipment in pounds.
+        example: 2000
+        minimum: 1
+        type: integer
+        x-formatting: weight
+        x-nullable: true
+        x-omitempty: false
+      verificationReason:
+        description: In lieu of a document being uploaded indicating why a reweigh did not occur.
+        example: 'The reweigh was not performed because the shipment was already delivered'
+        type: string
+        x-nullable: true
+        x-omitempty: false
+responses:
+  InvalidRequest:
+    description: The request payload is invalid.
+    schema:
+      $ref: 'definitions/ClientError.yaml'
+  ServerError:
+    description: A server error occurred.
+    schema:
+      $ref: '#/definitions/Error'
+  NotImplemented:
+    description: The requested feature is still in development.
+    schema:
+      $ref: '#/definitions/Error'
+  PreconditionFailed:
+    description: Precondition failed, likely due to a stale eTag (If-Match). Fetch the request again to get the updated eTag value.
+    schema:
+      $ref: 'definitions/ClientError.yaml'

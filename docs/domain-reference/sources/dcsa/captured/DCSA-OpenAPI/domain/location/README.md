@@ -1,0 +1,95 @@
+## Location Domain
+
+The Location Domain is documented on [**Location Domain SwaggerHub**](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN).
+
+The primary purpose of this Domain is to specify common components related to a location.
+
+<a name="v400"></a>[Release v4.0.0 (28 December 2023)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/4.0.0)
+---
+Add support for CountryLocation- and FreetextLocation-Interfaces
+
+- added `countryLocation` a location-interface to be used if only `country` is known
+- added `freetextLocation` a location-interface to be used if location does not fit any other location-interface
+- a maxLength of `4` set on locationType
+
+<a name="v310"></a>[Release v3.1.0 (28 December 2023)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/3.1.0)
+---
+Add support for CityLocation-Interface and removed `enum`
+
+- Bump [DCSA_Domain to version 3.1.0](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v310) (was previously v3.0.0)
+- removed enum from `locationType` in order to better support backward compatability
+- added `cityLocation` a location-interface to be used if only `city`, `region` and `country` is known
+
+<a name="v300"></a>[Release v3.0.0 (31 March 2023)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/3.0.0)
+---
+Add location descriminator
+
+- API description updates
+- Bump [DCSA_Domain to version 3.0.0](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v300) (was previously v2.0.3)
+- added `locationType` to all interfaces to be used as the discriminator. Following values are supported:
+  - `UNLO` (unLocationLocation)
+  - `FACI` (facilityLocation)
+  - `FACS` (facilitySMDGLocation)
+  - `ADDR` (addressLocation)
+  - `GEOL` (geoLocation)
+- specs rewritten to avoid the use of `allOf` where possible
+- `locationReference` renamed to `carrierLocationReference` (not yet used in any APIs)
+- `name` and `country` are now mandatory fields in the `Address` location interface
+
+<a name="v203"></a>[Release v2.0.3 (23 December 2022)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/2.0.3)
+---
+Bump DCSA_Domain reference
+
+- Bump [DCSA_Domain to version 2.0.3](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v203) (was previously v2.0.2)
+
+<a name="v202"></a>[Release v2.0.2 (5 July 2022)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/2.0.2)
+---
+Bump DCSA_Domain reference
+
+- Bump [DCSA_Domain to version 2.0.2](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v202) (was previously v2.0.1)
+
+<a name="v201"></a>[Release v2.0.1 (30 June 2022)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/2.0.1)
+---
+Minor description updates and DCSA_Domain bump
+
+- Bump [DCSA_Domain to version 2.0.1](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v201) (was previously v2.0.0)
+- fixed typo in Domain description
+- fixed type 'interfrace' `->` interface everywhere
+- `referenceLocation` interface added for future use
+- `facilityLocation` and `facilitySMDGLocation` descriptions updated
+- `idLocation` renamed to `referenceLocation` (this has been an unused simpleType)
+- `facilityLocation` interface descrption updated
+  - `UNLocationCode` description updated
+- `facilitySMDGLocation` interface descrption updated
+  - `UNLocationCode` set to mandatory
+
+<a name="v200"></a>[Release v2.0.0 (5 April 2022)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/2.0.0)
+---
+Location `Interfaces` have been introduced in this version.
+
+- Bump [DCSA_Domain to version 2.0.0](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v200) (was previously v1.0.3)
+- Modified description of general purpose `location` object
+- Created interfaces for the location object
+  - `idLocation` ability to identify a location by a unique ID
+  - `addressLocation` express a location only using an `address` object
+  - `facilityLocation` express a location only using a `facilityCode` and a `facilityCodeListProvider` (an optional `UN Location Code` can be provided)
+  - `facilitySMDGLocation` express a location only using a `facilityCode` using the `SMDG` code (an optional `UN Location Code` can be provided)
+  - `geoLocation` express a location using `latitude` and `longitude`
+  - `unLocationLocation` express a location using a `UN Location Code`
+
+<a name="v103"></a>[Release v1.0.3 (28 October 2021)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/1.0.3)
+---
+- Bump [DCSA_Domain to version 1.0.3](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v103)
+- `facilityCode` and `facilityCodeListProvider` have been added to the `location` object
+
+<a name="v102"></a>[Release v1.0.2 (25 August 2021)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/1.0.2)
+---
+- Bump [DCSA_Domain to version 1.0.2](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v102)
+
+<a name="v101"></a>[Release v1.0.1 (02 August 2021)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/1.0.1)
+---
+- Bump [DCSA_Domain to version 1.0.1](https://github.com/dcsaorg/DCSA-OpenAPI/tree/master/domain/dcsa#v101)
+
+<a name="v100"></a>[Release v1.0.0 (30 June 2021)](https://app.swaggerhub.com/domains-docs/dcsaorg/LOCATION_DOMAIN/1.0.0)
+---
+- Domain created and released

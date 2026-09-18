@@ -1,0 +1,66 @@
+---
+sidebar_position: 2
+---
+
+# Common Errors and Solutions
+
+Having trouble running mymove locally? This page collects common errors and their solutions.
+
+## Migrations
+
+### Invalid migration path
+
+```
+2020-08-05T10:41:00.589-0500	INFO	milmove/migrate.go:61	checking migration config	{"git_branch": "main", "git_commit": "c42a3ef9a458e5b9de94fa3507b6c2f43b209856"}
+panic: invalid configuration: Expected migrations//secure to be a path in the filesystem: invalid migration path "migrations//secure"
+```
+
+#### Solution
+Run `direnv allow`
+
+## Pre-Commit Hook Failures
+These can happen when committing your code, or when manually running the `pre-commit install-hooks` command. Check out this doc for all the errors and fixes: [Troubleshoot Precommit Hook Failures](https://transcom.github.io/mymove-docs/docs/help/Troubleshoot-Precommit-Hook-Failures/)
+
+## Yarn
+
+### Engine "node" is incompatible with this module
+When running `yarn install`, you may see an error similar to:
+```
+The engine "node" is incompatible with this module. Expected version "12.21.0". Got [another version].
+```
+
+#### Solution
+The project uses the node version specified in `.tool-versions`. Use `asdf` to manage your node versions and easily switch between them.
+
+* Install `asdf`: https://asdf-vm.com/
+  * `brew install asdf`
+* Install the correct version of Node
+  * `asdf plugin add nodejs`
+  * `asdf install`
+
+## Compiling
+
+## The client doesn't reflect my new changes or will not build locally
+The client server is detecting a build problem. You fix it, but it does not see the new code and the problem remains. Sometimes, no new build is triggered.
+
+This can manifest in a couple of ways, appearing to be a code problem or potential a missing npm package and various other "weird" symptoms. Sometimes it occurs on branch switching without shutting down the server first.
+
+Troubleshooting steps may include:
+- Restarting the server
+- Restarting your code editor
+- Migrating the database
+
+#### Solution
+Trigger a fresh build. To do so, make a change to the code. This may mean inserting a console log, shutting down and switching branches, creating an intentional syntax error, basically anything that will trigger a build.
+
+## Webpack is failing on the client build step unable to order dependencies in the bundle
+
+As Webpack is trying to bundle the frontend javascript and css assets it can run into a problem of circular dependency where it can't deterministically split how some imports should be ordered.
+
+You may see an error message stating `Conflicting order` from a plugin such as the `mini-css-extract-plugin` and names of css or js files that it is failing on.
+
+The way to resolve these errors is to figure out what the common parents of these components or files are and where they are used.  You will likely need to reorder the import statements of these resources in a consistent fashion.  Because we are using create-react-app we can't easily suppress this warning in a webpack config.
+
+For more details you can consult this [GitHub issue](https://github.com/facebook/create-react-app/issues/5372).
+
+

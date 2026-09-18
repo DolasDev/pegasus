@@ -1,0 +1,4 @@
+# Captured third-party source material for the domain reference model.
+# These are EVIDENCE: reformatting them would alter the artefact we cite, and
+# their sha256 is recorded in docs/domain-reference/sources/registry.yaml.
+docs/domain-reference/sources/

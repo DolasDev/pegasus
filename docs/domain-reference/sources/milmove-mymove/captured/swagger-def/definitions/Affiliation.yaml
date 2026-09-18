@@ -1,0 +1,20 @@
+type: string
+x-nullable: true
+title: Branch of service
+description: Military branch of service
+enum: &AFFILIATION
+  - ARMY
+  - NAVY
+  - MARINES
+  - AIR_FORCE
+  - COAST_GUARD
+  - SPACE_FORCE
+  - OTHER
+x-display-value:
+  ARMY: Army
+  NAVY: Navy
+  MARINES: Marine Corps
+  AIR_FORCE: Air Force
+  COAST_GUARD: Coast Guard
+  SPACE_FORCE: Space Force
+  OTHER: OTHER

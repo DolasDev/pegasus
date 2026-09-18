@@ -1,0 +1,17 @@
+project44	p44-api-v4.json	2018047	f7b6fdc05aa8c193	https://developers.project44.com/_spec/api-reference/@v4/api-docs.json?download
+samsara	samsara-api.json	4481734	992439181269fe4f	https://developers.samsara.com/openapi/samsara-api.json
+omnitracs-roadnet	roadnet-swagger.yaml	3260507	7b52089db7e28733	https://apex-prod-integration.aws.roadnet.com/integration/api-docs/swagger.yaml
+gs1-epcis-cbv	epcis-json-schema.json	SUSPECT_SMALL(13)	https://ref.gs1.org/docs/epcis/epcis-json-schema.json
+gs1-epcis-cbv	cbv-index.html	1322587	e7003e4ef71096e9	https://ref.gs1.org/standards/cbv/
+cfr-49-375	cfr-49-375.xml	SUSPECT_SMALL(171)	https://www.ecfr.gov/api/versioner/v1/full/2026-09-01/title-49.xml?part=375
+open-trip-model	otm5-index.html	622868	2904437105a3b86a	https://otm5.opentripmodel.org/
+gtfs	gtfs-realtime-reference.html	240916	22b234f7f859ab7d	https://gtfs.org/documentation/realtime/reference/
+gtfs	gtfs-schedule-reference.html	298318	8708621eac1d4947	https://gtfs.org/documentation/schedule/reference/
+alvys-api	alvys-auth.html	471304	f73e7b20d29204d3	https://docs.alvys.com/en/api/reference/authentication
+cfr-49-375	cfr-49-375.xml	142230	b7c67586e63aa372	https://www.ecfr.gov/api/versioner/v1/full/2026-09-15/title-49.xml?part=375
+gs1-epcis-cbv	epcis-json-schema.json	SUSPECT_SMALL(13)	https://ref.gs1.org/standards/epcis/artefacts/epcis-json-schema.json
+gs1-epcis-cbv	epcis-context.jsonld	2922	5bbcf31cd6d4acf7	https://ref.gs1.org/standards/epcis/artefacts/epcis-context.jsonld
+gs1-epcis-cbv	cbv-ontology.jsonld	2922	5bbcf31cd6d4acf7	https://ref.gs1.org/standards/epcis/artefacts/cbv-ontology.jsonld
+gs1-epcis-cbv	epcis-ontology.jsonld	2922	5bbcf31cd6d4acf7	https://ref.gs1.org/standards/epcis/artefacts/epcis-ontology.jsonld
+gs1-epcis-cbv	openapi.json	SUSPECT_SMALL(13)	https://ref.gs1.org/standards/epcis/artefacts/openapi.json
+gs1-epcis-cbv	epcglobal-epcis-2_0.xsd	2922	5bbcf31cd6d4acf7	https://ref.gs1.org/standards/epcis/artefacts/epcglobal-epcis-2_0.xsd
