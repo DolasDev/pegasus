@@ -1,0 +1,48 @@
+/**
+ * The core vocabulary of the household-goods moving & storage reference domain.
+ *
+ * An **executable specification**, not an implementation and not a description of any system we
+ * run. Its authority, in precedence order, is
+ * `docs/domain-reference/analysis/00-shared-decisions.md` (the binding layer, cited throughout as
+ * **[SD §x]**), then `A8-authority-skeleton.md` (**[A8 §x]**), then the three decision documents
+ * (**[A3]**, **[fork-order]**, **[fork-time]**).
+ *
+ * Every rule encoded here cites the section that decided it. Where a document marks something
+ * **[ORIGINAL]**, the marker travels with it. Where a document marks something **owed**, it is
+ * represented as owed — never guessed to make the types tidy.
+ *
+ * This package imports nothing from the rest of the repository and has no runtime dependency.
+ * Anything that would need product data belongs to a future mapping workstream that has not been
+ * authorised.
+ */
+
+export * from './primitives'
+export * from './ids'
+export * from './envelope'
+export * from './vocabulary'
+export * from './outcomes'
+export * from './assertions'
+export * from './identity'
+export * from './portion'
+
+// Custody is a **projection** ([SD §4.8]), so it is a fold over the records above rather than one
+// of them — which is why it sits beside the vocabulary and not inside it.
+export * from './custody'
+
+// The rules the boundary runs — subject admission ([SD §4.6]) and capture ([SD §5]). They are
+// separate from the vocabulary because they are checks *over* it: the vocabulary says what a record
+// may be, and these say what may be admitted.
+export * from './rules/e-canon'
+export * from './rules/capture'
+
+// And the rules the catalog runs once a record is in: who wins ([A8]), what a correction does
+// ([SD §6]), and the one value rule the binding layer publishes ([SD §4.4]).
+export * from './rules/authority'
+export * from './rules/corrections'
+export * from './rules/resolution'
+
+// The tables that change on their own cadence — [SD §4.7.1]'s canonical subjects, [A8 §5]'s
+// authority rows, and the reason vocabulary's shape, whose content is owed to A4. They live in
+// `data/` as JSON and are checked against everything above at load; this module is the loader, and
+// it is pure (it is handed parsed JSON and never reads a file).
+export * from './data'

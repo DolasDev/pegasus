@@ -1,0 +1,282 @@
+{
+  "table": "reasons",
+  "declaredBy": "[SD §2.4] — 'the reason vocabulary's SHAPE (the list itself is A4's job)'",
+
+  "vocabulary": {
+    "status": "owed",
+    "owedTo": "A4 — the reason vocabulary's content. [SD §2.4]: 'the list itself is A4's job'; [SD §10.4] lists it under what is explicitly NOT settled; [A8 §9] repeats it as an explicit non-goal.",
+    "codes": [],
+    "codesNote": "EMPTY ON PURPOSE. A4 has not been written. The shape below is settled and is shipped populated; the members are not, and inventing a plausible list to fill this array is the exact failure [SD §0]'s disclosure rule forbids. The loader refuses a vocabulary whose status is 'owed' and whose codes array is non-empty, so this file cannot quietly acquire a vocabulary without also declaring that A4 landed.",
+    "whenA4Lands": "Set status to 'published', fill codes, and keep every existing check: each member needs a code, a default scope, its attribution discipline, and whether it requires a remedy. The loader already enforces all of that against an empty list."
+  },
+
+  "shape": {
+    "note": "[SD §2.4]'s record, field for field. Five of the six rules below are sourced; two ELEMENTS of this record are authored, and each says so.",
+    "fields": [
+      {
+        "field": "code",
+        "obligation": "MANDATORY",
+        "from": "the published, versioned reason vocabulary",
+        "marker": null,
+        "citation": "[SD §2.4]"
+      },
+      {
+        "field": "scope",
+        "obligation": "MANDATORY",
+        "from": "ACT | GOODS | PARTY | RESOURCE | SITE | ADMINISTRATIVE",
+        "marker": "[ORIGINAL]",
+        "citation": "[SD §2.4] — 'it exists so a consumer can separate \"something is wrong with the goods\" from \"something is wrong with the site\" without reading a code list, and because HHG's authoring gap is concentrated in SITE and ADMINISTRATIVE'"
+      },
+      {
+        "field": "attribution",
+        "obligation": "MANDATORY",
+        "from": "{ party?, roleClass }",
+        "marker": "[ORIGINAL]",
+        "citation": "[SD §2.4] rule 6 — lifting attribution out of the code into its own field"
+      },
+      {
+        "field": "appliesTo",
+        "obligation": "OPTIONAL",
+        "from": "SubjectRef[] at portion or item grain",
+        "marker": null,
+        "citation": "[SD §2.4]; the field that carries [SD §3.4]'s required form for 'delivered, two items short'"
+      },
+      {
+        "field": "remedy",
+        "obligation": "PER CODE",
+        "from": "typed per code — which codes require which remedy is part of the vocabulary A4 owes",
+        "marker": null,
+        "citation": "[SD §2.4] rule 5"
+      },
+      {
+        "field": "remark",
+        "obligation": "MANDATORY WHEN code = OTHER",
+        "from": "free text",
+        "marker": null,
+        "citation": "[SD §2.4] rule 3"
+      }
+    ],
+    "forbiddenFields": [
+      {
+        "field": "outcome",
+        "why": "A reason is NOT keyed by outcome. Rule 1: 'the catalog MUST NOT mint DELIVERED_SHORT and REFUSED_SHORT as two codes.' A reason that named its outcome would be the combinatorial explosion the factorisation exists to prevent, and it would re-create A-TYPE's defect one field to the right.",
+        "citation": "[SD §2.4] rule 1, [SD §2.5] A-TYPE"
+      },
+      {
+        "field": "grain",
+        "why": "Rule 4: 'Reason.code does not change when the subject changes grain.' Shippeo republishes 19 of the same (situation, justification) pairs at handling-unit grain under HANDLING_UNIT_* names, and the pair is the same pair.",
+        "citation": "[SD §2.4] rule 4"
+      }
+    ]
+  },
+
+  "factorisation": {
+    "note": "THE SETTLED PART. Two axes and only two: the outcome says where in the lifecycle you got to and with what result; the reason says why. The human-readable event name is an ALIAS FOR THE PAIR, never a third axis.",
+    "axes": ["outcome", "reason"],
+    "aliasRule": "A name like ORDER_NOT_DELIVERED_ABSENT is an alias for (situation, justification) and must never be the identity.",
+    "aliasEvidence": "The source is a defect report: Shippeo's SharedEventsOrderConformityOrderNotLoadedPartiallyMissing declares event: 'ORDER_NOT_LOADED_ENTIRELY_MISSING' — the ENTIRELY-missing name on the PARTIALLY-missing schema — while the code pair (ENE/MQP vs ENE/MQT) stays correct in both schemas.",
+    "marker": "[SYNTHESIS]",
+    "citation": "[SD §2.1], [SD §2.5] — src:shippeo supplies the factorisation and the grid; src:open-trip-model supplies the enum, the invariant and the sub-results"
+  },
+
+  "reuse": {
+    "rule": "Reasons are ORTHOGONAL to outcomes and are reused across them. One reason code appears under several outcomes, and that is the point.",
+    "sourceEvidence": "src:shippeo's MQP ('partially missing package') appears under four situations: ECH/MQP (loaded anyway, short), ENE/MQP (not loaded because short), LIV/MQP (DELIVERED anyway, short), REN/MQP (REFUSED because short). Four operationally different things, one reason code, no combinatorial explosion. Shippeo's own analysis calls REN/MQP vs LIV/MQP 'the most important single import' for HHG.",
+    "sourceEvidenceIsNotOurVocabulary": true,
+    "sourceEvidenceNote": "MQP, ECH, ENE, LIV and REN are SHIPPEO's codes, quoted as the evidence for the rule. They are not members of our vocabulary and must not be read as a starting list — ours is owed to A4.",
+    "citation": "[SD §2.4] rule 1, [SD §2.1]"
+  },
+
+  "expectedMagnitude": {
+    "note": "Rule 2's arithmetic, with the measured number rather than the inherited one: ~20 reasons x 5 outcomes, not ~100 types.",
+    "justificationCodes": 18,
+    "situationCodes": 10,
+    "publishedRows": 38,
+    "measuredFrom": "src:shippeo's committed event-list-order-level.md: 40 lines, one header, one separator. Every document's inherited '41 rows / ~20 across 9' is corrected at [SD §2.1] and [SD §5.2 M3].",
+    "isATarget": false,
+    "isATargetNote": "A magnitude, not a quota. It bounds what a sane vocabulary looks like; it does not tell A4 how many codes to mint.",
+    "citation": "[SD §2.4] rule 2, [SD §2.1]"
+  },
+
+  "openMember": {
+    "code": "OTHER",
+    "remarkRequired": true,
+    "note": "The one member the shape itself declares, and the reason src/outcomes.ts keeps it out of the reasonCode() constructor: it carries an obligation the others do not, and the Reason union makes remark MANDATORY for it alone. An OTHER without a narrative is the record both sources forbid.",
+    "marker": null,
+    "citation": "[SD §2.4] rule 3 — two independent sources, one regulation-grade: OTM 5.7's 'other' + remark ('the specific reason is provided in the remark property'); src:dp3-400ng Item 226/226A, a Miscellaneous charge for anything without a designated service code, with a MANDATORY detailed note"
+  },
+
+  "scopes": [
+    { "scope": "ACT", "citation": "[SD §2.4]" },
+    { "scope": "GOODS", "citation": "[SD §2.4]" },
+    { "scope": "PARTY", "citation": "[SD §2.4]" },
+    { "scope": "RESOURCE", "citation": "[SD §2.4]" },
+    {
+      "scope": "SITE",
+      "citation": "[SD §2.4] — one of the two members carrying HHG's authoring gap: shuttle required, long carry, elevator unavailable, parking permit. None of which src:shippeo has."
+    },
+    {
+      "scope": "ADMINISTRATIVE",
+      "citation": "[SD §2.4] — the other: COI not on file, and its neighbours"
+    }
+  ],
+  "scopesMarker": "[ORIGINAL]",
+  "scopesNote": "The whole six-member enum is [ORIGINAL]. No source publishes it; it exists so a consumer can tell 'something is wrong with the goods' from 'something is wrong with the site' without reading a code list. The loader checks this list against REASON_SCOPES in src/outcomes.ts as a SET — a scope added in one place and not the other is a defect, not a widening.",
+
+  "outcomes": [
+    {
+      "outcome": "COMPLETED",
+      "means": "The act was performed over its whole intended scope and nothing is wrong.",
+      "reasonsRequired": false,
+      "reasonsForbidden": true,
+      "firstClassNote": null,
+      "marker": "[ORIGINAL]",
+      "provenance": "OTM 'succeeded'; src:shippeo LIV/CFM, ECH/CFM. [ORIGINAL]: collapsing CFM into COMPLETED and FORBIDDING a reason there — a normalisation that also removes Shippeo's DIV overload, glossed three different ways depending on situation.",
+      "citation": "[SD §2.2], [SD §2.3] invariant 2"
+    },
+    {
+      "outcome": "COMPLETED_WITH_EXCEPTION",
+      "means": "Whole scope performed; something about the goods or the circumstances is wrong and is recorded.",
+      "reasonsRequired": true,
+      "reasonsForbidden": false,
+      "firstClassNote": "THE SETTLED POINT: 'completed with exception' is a FIRST-CLASS OUTCOME, not COMPLETED plus a footnote. src:shippeo is the only source in the corpus that models it that way — LIV carries MQP, RCA and DIV alongside CFM.",
+      "marker": "[ORIGINAL]",
+      "provenance": "The DISTINCTION is Shippeo's — LIV/RCA, delivered-with-damage-accepted, sits under the COMPLETED situation. [ORIGINAL]: rendering it as its own outcome member rather than COMPLETED + a reason.",
+      "citation": "[SD §2.2]"
+    },
+    {
+      "outcome": "PARTIALLY_COMPLETED",
+      "means": "The act was performed over LESS THAN its intended scope.",
+      "reasonsRequired": true,
+      "reasonsForbidden": false,
+      "firstClassNote": "Distinct from COMPLETED_WITH_EXCEPTION by SCOPE OF PERFORMANCE, and that difference is a billing and claims difference, not a shade of meaning. It is why the enum has five members rather than OTM's four.",
+      "marker": null,
+      "provenance": "The distinction is Shippeo's — LIV/MQP (delivered but short) vs LIV/RCA; OTM's partiallySucceeded names it directly. The placement on the outcome axis is ours.",
+      "citation": "[SD §2.2]"
+    },
+    {
+      "outcome": "NOT_COMPLETED",
+      "means": "Attempted, not achieved.",
+      "reasonsRequired": true,
+      "reasonsForbidden": false,
+      "firstClassNote": null,
+      "marker": null,
+      "provenance": "OTM 'failed'; src:shippeo REN (13 rows) and ENE (5).",
+      "citation": "[SD §2.2]"
+    },
+    {
+      "outcome": "CANCELLED",
+      "means": "Called off before attempt.",
+      "reasonsRequired": true,
+      "reasonsForbidden": false,
+      "firstClassNote": null,
+      "marker": null,
+      "provenance": "OTM 'cancelled'. Shippeo has no situation-axis analogue (CANCEL_ORDER is order-level).",
+      "citation": "[SD §2.2]"
+    }
+  ],
+
+  "attribution": {
+    "note": "Rule 6. Attribution is a structured field ON THE REASON — not baked into the code, and not on the assertion. This SUPERSEDES [fork-time §(b)(7)] ('attribution belongs on the assertion'), which the critique identified as a placement rule no source states.",
+    "roleClassStatus": "owed",
+    "roleClassOwedTo": "[A8 §9 item 2] — the role enum this would be cut from is undefined. [SD §2.6]'s worked example uses customer, carrier and unknown; three examples are not a vocabulary.",
+    "partyOptional": true,
+    "partyOptionalWhy": "The responsible party is often unknown at the time the reason is recorded. roleClass is NOT optional: a reason that attributes to nobody at all is the DIV overload invariant 2 exists to remove.",
+    "marker": "[ORIGINAL]",
+    "sourcedPart": "That reason vocabularies are ORGANISED BY RESPONSIBLE PARTY is sourced: src:stedi-x12-reference element 1651's 86 values are organised that way (consignee-, driver-, shipper-, other-carrier-related) and include 'BF Carrier Keying Error'; src:shippeo separates NJU 'not justified by carrier' from DIV 'by the counterparty'.",
+    "authoredPart": "[ORIGINAL]: lifting attribution out of the code into its own field. It removes the duplication both sources carry — Shippeo's REFUSED_LOAD / LOADING_REFUSED_BY_SHIPPER_VARIOUS_REASON are ONE reason with two attributions.",
+    "citation": "[SD §2.4] rule 6"
+  },
+
+  "remedy": {
+    "note": "THE SETTLED POINT: a reason may carry its own remedy, and FOR SOME CODES MUST.",
+    "status": "owed",
+    "owedTo": "A4 — which codes require which remedy is part of the vocabulary A4 owes. The typed remedy shapes are owed with it.",
+    "requiredForSomeCodes": true,
+    "sourcedPart": "src:shippeo's new_slot {start, end} is REQUIRED on appointment events (OrderAppointmentEvent, SharedTrackingSlot): 'a failed delivery that does not say when it will be retried is an incomplete record.'",
+    "marker": null,
+    "citation": "[SD §2.4] rule 5"
+  },
+
+  "rules": [
+    {
+      "rule": 1,
+      "statement": "Reasons are orthogonal to outcomes and are reused across them. The catalog MUST NOT mint DELIVERED_SHORT and REFUSED_SHORT as two codes.",
+      "marker": "sourced",
+      "citation": "[SD §2.4] rule 1 — src:shippeo's MQP under four situations"
+    },
+    {
+      "rule": 2,
+      "statement": "~20 reasons x 5 outcomes, not ~100 types.",
+      "marker": "sourced",
+      "citation": "[SD §2.4] rule 2 — Shippeo's 38 published rows from 18 justification codes; the measured factor is 18, not 'twenty-odd', and the argument is the same argument at 18"
+    },
+    {
+      "rule": 3,
+      "statement": "An open member with a mandatory narrative.",
+      "marker": "sourced",
+      "citation": "[SD §2.4] rule 3 — two independent sources, one regulation-grade (OTM 5.7; src:dp3-400ng Item 226A)"
+    },
+    {
+      "rule": 4,
+      "statement": "The same vocabulary at every grain. Reason.code does not change when the subject changes grain.",
+      "marker": "sourced",
+      "citation": "[SD §2.4] rule 4 — Shippeo republishes 19 of the same pairs at handling-unit grain: HANDLING_UNIT_NOT_DELIVERED_ABSENT IS REN/DAF, exactly as ORDER_NOT_DELIVERED_ABSENT is"
+    },
+    {
+      "rule": 5,
+      "statement": "A reason may carry its own remedy, and for some codes must.",
+      "marker": "sourced",
+      "citation": "[SD §2.4] rule 5 — Shippeo's required new_slot"
+    },
+    {
+      "rule": 6,
+      "statement": "Attribution is a structured field on the reason, not baked into the code and not on the assertion.",
+      "marker": "[ORIGINAL]",
+      "citation": "[SD §2.4] rule 6 — the need is sourced three ways; lifting attribution off the code is authored"
+    }
+  ],
+
+  "illustrativeOnly": {
+    "note": "NOT A VOCABULARY. These are the literals [SD §2.6]'s worked scenario uses to show the shape working. They are reproduced so the scenario can be read, and they are kept in a separate field from 'codes' so that nothing can mistake them for published members. The loader refuses to merge them.",
+    "normative": false,
+    "reasonCodes": [
+      {
+        "code": "CONSIGNEE_ABSENT",
+        "scope": "PARTY",
+        "citation": "[SD §2.6] — Shippeo REN/DAF + required new_slot"
+      },
+      { "code": "REFUSED_DAMAGE", "scope": "GOODS", "citation": "[SD §2.6] — Shippeo REN/AVA" },
+      { "code": "SHORT", "scope": "GOODS", "citation": "[SD §2.6] — Shippeo LIV/MQP" }
+    ],
+    "roleClasses": [
+      { "roleClass": "customer", "citation": "[SD §2.6]" },
+      { "roleClass": "carrier", "citation": "[SD §2.6]" },
+      {
+        "roleClass": "unknown",
+        "citation": "[SD §2.6] — and this one matters: the scenario attributes a shortfall to 'unknown' rather than omitting attribution, which is the discipline attribution.partyOptional describes"
+      }
+    ]
+  },
+
+  "invariants": [
+    {
+      "invariant": 1,
+      "statement": "outcome is legal only where basis = ACTUAL. A plan cannot carry an outcome.",
+      "heldBy": "the type system — ActValue<B> in src/assertions.ts admits outcome only at B = 'ACTUAL'",
+      "citation": "[SD §2.3] invariant 1 — OTM's rule adopted verbatim (result only on actual/realized)"
+    },
+    {
+      "invariant": 2,
+      "statement": "reasons[] has at least one member unless outcome = COMPLETED, where it is FORBIDDEN.",
+      "heldBy": "the type system — ActOutcome in src/outcomes.ts is a two-member union, so COMPLETED cannot carry reasons and nothing else can omit them",
+      "citation": "[SD §2.3] invariant 2"
+    },
+    {
+      "invariant": 3,
+      "statement": "One act, one outcome, one occurrence time. Where one visit produced two outcomes over two subsets of the goods, it is ONE act with PARTIALLY_COMPLETED and the shortfall named by a Portion in reasons[].appliesTo. Sibling acts on Portions are the required form only when the acts happened at different stops or different times.",
+      "heldBy": "prose — a predicate cannot see two records at once; this is a catalog-level rule",
+      "citation": "[SD §2.3] invariant 3, [SD §3.4]"
+    }
+  ]
+}

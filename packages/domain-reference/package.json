@@ -1,0 +1,17 @@
+{
+  "name": "@pegasus/domain-reference",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Executable specification of the household-goods moving & storage reference domain model. Not an implementation, and not our system's model.",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint src tests",
+    "typecheck": "tsc --noEmit",
+    "alloy": "node alloy/run.mjs"
+  },
+  "devDependencies": {
+    "typescript": "*",
+    "vitest": "^4.1.11"
+  }
+}

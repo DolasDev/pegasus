@@ -114,3 +114,7 @@ packages/*/package-lock.json
 docs/domain-reference/sources/*/local/
 docs/domain-reference/sources/inbox/*
 !docs/domain-reference/sources/inbox/README.md
+
+# Alloy analyzer jar — a tool fetched by packages/domain-reference/alloy/run.mjs,
+# verified against a pinned sha256. Not evidence, not ours to redistribute.
+packages/domain-reference/alloy/.tools/

@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    // This package is a specification, not a library: nothing imports it, so it
+    // emits nothing. The strict settings it relies on (strict,
+    // exactOptionalPropertyTypes, noUncheckedIndexedAccess, noImplicitOverride)
+    // all come from tsconfig.base.json.
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    // `src/` reads no file and imports nothing. The one exception is the drift
+    // guard in `tests/conformance/documents.test.ts`, which has to read the
+    // analysis documents in order to compare them with the vocabulary — so the
+    // node types and ES module semantics (`import.meta.url`, to locate the
+    // documents without depending on the working directory) are scoped to this
+    // package's tests and reach nothing the specification itself is built from.
+    "module": "ES2022",
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "tests/**/*", "data/**/*"]
+}
