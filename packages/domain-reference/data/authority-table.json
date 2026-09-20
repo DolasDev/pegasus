@@ -1,0 +1,496 @@
+{
+  "table": "authority",
+  "declaredBy": "[A8 §5] — the per-fact-class authoritative-role table",
+  "note": "Eleven rows, and eleven is the whole of it: [A8 §9 item 8] records that every other fact class is uncovered. The subject family column is quoted from [SD §4.7], never re-derived here ([A8 §5] caveat i). Every row's authority is boundBy = CUSTODY unless the row says otherwise ([A8 §5] caveat iii), but the value is written out on every row rather than inherited, because an inherited default is the thing that goes wrong silently.",
+  "owedNote": "Owed is a value, never an absence. A standing names role-enum members in 'roles' and every asserter designation that is NOT an enum member in 'unresolved', each carrying what it is owed to — usually [A8 §9 item 2] (the role vocabulary is undefined), sometimes [A8 §9 item 1] (there is no party entity), and in row 9's case not owed at all but COMPUTED by custodyAt. An empty standing is written as an empty standing with a note saying so; it never arrives as a missing key.",
+  "structuralObservation": "[A8 §5]'s own closing paragraph: three of eleven rows have no authoritative role — weight.net and sitEntryDate are empty, condition is plural rather than empty. 'That is not a failure of the table. In each case a source supplies something BETTER than a role — a value rule, a mandatory derivation, or a joint record — and the table's job is to say so rather than to invent a winner.' [ORIGINAL] as an observation. Those are exactly the three rows carrying a 'settlement', which is [A8 §4.4] A8-NAMED holding: where authoritative is empty or plural, a tie-break rule MUST be named and 'a resolution may never fall back to latest wins implicitly'.",
+  "overlapNote": "A role may appear in two standings on one row: [A8 §5 r1] has destinationAgent corroborating at its own end AND competing at destination. The loader does not forbid the overlap, because the document requires it.",
+
+  "rows": [
+    {
+      "row": 1,
+      "type": "arrival",
+      "family": "stop",
+      "boundBy": "CUSTODY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["driver", "hauler"],
+          "unresolved": [
+            {
+              "designation": "the leg's authoritativeAsserter on an ExternallyPerformedLeg",
+              "owedTo": "[SD §8.2] carries the field; the asserter it names is a party, and [A8 §9 item 1] leaves the party entity undefined"
+            }
+          ],
+          "note": "Not a fixed list: 'the role holding custody at that stop'. driver where the stop is on our trip, hauler where the trip is the hauling agent's. Which one applies is computed by custodyAt(goods, instant) at the instant the fact is ABOUT ([A8 §4.2] A8-INSTANT), never by recency.",
+          "cardinality": "alternatives"
+        },
+        "corroborating": {
+          "roles": ["originAgent", "destinationAgent", "customer"],
+          "unresolved": [],
+          "note": "originAgent/destinationAgent at their own end. Absence of corroboration is NOT evidence ([A8 §4.1] note 1) — most of these roles have no obligation to speak."
+        },
+        "competing": {
+          "roles": ["destinationAgent"],
+          "unresolved": [],
+          "note": "At destination. The deliberate entry: the critique's own example is the destination agent's shipment-level claim against the driver's stop-level claim; both are real, and E-CANON is what makes them pair ([SD §4.6.3])."
+        },
+        "advisory": {
+          "roles": ["booker", "platform"],
+          "unresolved": [
+            {
+              "designation": "visibility providers (src:dcsa VSP / SVP)",
+              "owedTo": "[A8 §9 item 2] — the role enum does not carry them"
+            }
+          ],
+          "note": "Advisory = recorded, never selected ([A8 §4.1])."
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED: src:dp3-tender-of-service #14 and #20 place the arrival-recording DUTY on the party performing (§C.3.a-b p.34).",
+      "authored": "[ORIGINAL]: converting a recording duty into assertional authority.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10]: rows 1-5, 8 and 11 are medium — every row's DUTY is sourced, and converting a duty into authority is authored in every one of them. The named failure mode is a role that has the duty but not the knowledge.",
+      "citations": ["[A8 §5 r1]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 2,
+      "type": "departure",
+      "family": "stop",
+      "boundBy": "CUSTODY",
+      "sameAs": 1,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["driver", "hauler"],
+          "unresolved": [
+            {
+              "designation": "the leg's authoritativeAsserter on an ExternallyPerformedLeg",
+              "owedTo": "[SD §8.2] carries the field; [A8 §9 item 1] leaves the party entity undefined"
+            }
+          ],
+          "note": "as row 1. Expanded rather than left as 'as #1': a row that says 'as #1' is prose, and a table consumers read mechanically cannot follow a back-reference.",
+          "cardinality": "alternatives"
+        },
+        "corroborating": {
+          "roles": ["originAgent", "destinationAgent", "customer"],
+          "unresolved": [],
+          "note": "as row 1."
+        },
+        "competing": { "roles": ["destinationAgent"], "unresolved": [], "note": "as row 1." },
+        "advisory": {
+          "roles": ["booker", "platform"],
+          "unresolved": [
+            {
+              "designation": "visibility providers (src:dcsa VSP / SVP)",
+              "owedTo": "[A8 §9 item 2]"
+            }
+          ],
+          "note": "as row 1."
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "As row 1, plus src:dp3-tender-of-service #10: the legal name and US DOT number of the service provider ACTUALLY HAULING must be in DPS within 2 GBD of origin departure (§B.3.f p.19) — so at departure the performing party must be nameable, which is the precondition for this row to be computable at all.",
+      "authored": "[ORIGINAL]: as row 1.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] rows 1-5, 8, 11.",
+      "citations": ["[A8 §5 r2]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 3,
+      "type": "loading",
+      "family": "goods",
+      "boundBy": "CUSTODY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["loadAgent", "originAgent"],
+          "unresolved": [],
+          "note": "loadAgent; originAgent where no separate load agent is assigned. src:sirva-ade carries both types (GSD p.9). Two members, one applying at a time — not a plural authority, so no tie-break is owed.",
+          "cardinality": "alternatives"
+        },
+        "corroborating": { "roles": ["driver", "customer"], "unresolved": [], "note": null },
+        "competing": {
+          "roles": ["customer"],
+          "unresolved": [],
+          "note": "For the SCOPE of what was loaded (short/refused) — not for the fact that loading happened."
+        },
+        "advisory": {
+          "roles": ["booker", "destinationAgent", "platform"],
+          "unresolved": [],
+          "note": null
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED: src:dp3-400ng Item 7.1 makes the origin representative a named, updatable party of record at origin; src:dp3-tender-of-service §B.20 requires the ACTUAL servicing rep. The customer-as-competing entry is sourced by src:cfr-49-375 §375.503 + §375.605(b) and DP3 ToS §C.9.a(4)-(11).",
+      "authored": "[ORIGINAL]: the role split.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] rows 1-5, 8, 11.",
+      "citations": ["[A8 §5 r3]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 4,
+      "type": "unloading",
+      "family": "goods",
+      "boundBy": "CUSTODY",
+      "sameAs": 3,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["unloadAgent", "destinationAgent"],
+          "unresolved": [],
+          "note": "unloadAgent; destinationAgent where none is separately assigned.",
+          "cardinality": "alternatives"
+        },
+        "corroborating": { "roles": ["driver", "customer"], "unresolved": [], "note": null },
+        "competing": { "roles": ["customer"], "unresolved": [], "note": null },
+        "advisory": {
+          "roles": ["booker", "originAgent", "platform"],
+          "unresolved": [],
+          "note": null
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "Mirror of row 3, same sources. src:sirva-ade supplies loadAgent and unloadAgent as distinct types (GSD p.9) but states no authority.",
+      "authored": "[ORIGINAL]: the mirror itself.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] rows 1-5, 8, 11.",
+      "citations": ["[A8 §5 r4]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 5,
+      "type": "delivery",
+      "family": "goods",
+      "boundBy": "CUSTODY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["destinationAgent", "rr19Agent"],
+          "unresolved": [
+            {
+              "designation": "the leg's authoritativeAsserter where delivery is externally performed",
+              "owedTo": "[SD §8.2] carries the field; [A8 §9 item 1] leaves the party entity undefined"
+            }
+          ],
+          "note": "rr19Agent under a Reverse Rule 19.",
+          "cardinality": "alternatives"
+        },
+        "corroborating": { "roles": ["driver", "hauler"], "unresolved": [], "note": null },
+        "competing": {
+          "roles": ["customer"],
+          "unresolved": [],
+          "note": "The joint-signature case, [A8 §7.3]."
+        },
+        "advisory": {
+          "roles": ["booker", "originAgent", "platform"],
+          "unresolved": [],
+          "note": null
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED, heavily: src:cfr-49-375 §375.701 — the delivery receipt is signed by the shipper and may not contain release/discharge-of-liability language; src:dp3-tender-of-service §C.17.a — the Notification of Loss or Damage AT DELIVERY is JOINTLY SIGNED; §C.9.a(24) — a signed check-off sheet is NOT proof of delivery. src:sirva-ade carries exactly one human-attestation field, ProofOfDeliveryName (SOE p.5).",
+      "authored": "[ORIGINAL]: placing customer in COMPETING rather than corroborating — three sources make the customer's signature constitutive, not decorative.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] rows 1-5, 8, 11.",
+      "citations": ["[A8 §5 r5]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 6,
+      "type": "weight.net",
+      "family": "goods",
+      "boundBy": "NONE",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": [],
+          "unresolved": [],
+          "note": "EMPTY, and decided so: 'no role is authoritative'. Empty is an answer here, not a gap — which is why this row carries a settlement instead.",
+          "cardinality": "empty"
+        },
+        "corroborating": {
+          "roles": ["weighMaster"],
+          "unresolved": [],
+          "note": "weighMaster supplies the EVIDENCE, not the assertion (src:cfr-49-375 §375.519 puts the signature on the weigh master)."
+        },
+        "competing": {
+          "roles": ["hauler", "originAgent", "customer", "accountParty"],
+          "unresolved": [],
+          "note": "hauler/originAgent assert the weighing; customer/accountParty assert the reweigh. Both sides are eligible to win under the named value rule, which is what makes 'competing' the most important of the four standings ([A8 §4.1] note 3)."
+        },
+        "advisory": { "roles": ["platform", "booker"], "unresolved": [], "note": null }
+      },
+      "settlement": {
+        "kind": "valueRule",
+        "ruleId": "R-WEIGHT-LOWER",
+        "citation": "[SD §4.4] — src:dp3-400ng Item 4 Note 2: 'if duplicates occur, DPS must be updated with the LOWER of the net reweigh weights', corroborated at Item 4.11.d and Items 4.9.h-i",
+        "note": "The row that proves authority and value rules are two mechanisms: the right to contest is held by the other side (src:cfr-49-375 §375.517 gives the shipper the reweigh demand), and the value is settled by a rule rather than by a winner."
+      },
+      "inputAuthority": null,
+      "evidence": "The most strongly-sourced row in the table. src:cfr-49-375 §375.517, §375.515(a)-(b), §375.519; src:dtr-part-iv §D.7.a(4); src:dp3-tender-of-service #11/#15/#16.",
+      "authored": "Nothing. This row is a citation.",
+      "confidence": "high",
+      "confidenceNote": "[A8 §10]: rows 6, 7, 9 and 10 are citations, not designs.",
+      "citations": ["[A8 §5 r6]", "[SD §4.4]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 7,
+      "type": "sitEntryDate",
+      "family": "stay",
+      "boundBy": "NONE",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": [],
+          "unresolved": [],
+          "note": "EMPTY, and decided so: the value is DERIVED and the derivation is MANDATORY ([SD §5.2] M4). 'This row is the one where the right answer is nobody.' A role table that made anyone authoritative for the date itself would contradict the binding layer.",
+          "cardinality": "empty"
+        },
+        "corroborating": {
+          "roles": ["sitAgent", "accountParty"],
+          "unresolved": [],
+          "note": "sitAgent for handling-in; accountParty for approval."
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [],
+          "note": "[A8 §5 r7] writes '—'. Nobody is eligible to win, because nobody is asserting a value: the value is computed."
+        },
+        "advisory": {
+          "roles": ["platform"],
+          "unresolved": [],
+          "note": "platform may assert ONLY the derived value ([SD §6.6])."
+        }
+      },
+      "settlement": {
+        "kind": "derivation",
+        "ruleId": "M4",
+        "citation": "[SD §5.2 M4] — mandatorily DERIVED_BY_RULE from the TSP's first available delivery date",
+        "note": "src:dp3-400ng Items 29.4, 29.6, 17.20 — 'SIT in date will be equal to the TSP's FIRST AVAILABLE DELIVERY DATE', 'always… not the date of notification', and 'the arrival date must NOT be entered as the SIT entry date'; src:dtr-part-iv §D.5.b(2) NOTE p.18 — SIT is effective 'the date the shipment was OFFERED FOR DELIVERY, not the date it arrived.' Sourced twice, from opposite directions."
+      },
+      "inputAuthority": {
+        "appliesTo": "the first available delivery date — the derivation's INPUT, not the derived date",
+        "roles": ["hauler", "destinationAgent"],
+        "unresolved": [],
+        "note": "whichever holds the BL duty. This is the only place in the table where authority attaches to something other than the fact the row names, and it is why the row is not simply 'nobody'."
+      },
+      "evidence": "SOURCED twice, from opposite directions — see settlement.",
+      "authored": "[ORIGINAL] but forced: because M4 already makes the derivation mandatory, a role table that made anyone authoritative for the date itself would contradict the shared layer.",
+      "confidence": "high",
+      "confidenceNote": "[A8 §10]: two independent regulations from opposite directions.",
+      "citations": ["[A8 §5 r7]", "[SD §5.2 M4]", "[SD §5.3]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 8,
+      "type": "storeOut",
+      "family": "stay",
+      "boundBy": "CUSTODY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["sitAgent"],
+          "unresolved": [
+            {
+              "designation": "the warehouseman holding the goods",
+              "owedTo": "[A8 §9 item 2] — which asks outright whether the NTS warehouseman is the same role as ADE's sitAgent. Until it answers, the two are written separately rather than fused by assumption."
+            }
+          ],
+          "note": "The warehouse is the party of record for what happened in the warehouse.",
+          "cardinality": "alternatives"
+        },
+        "corroborating": {
+          "roles": ["hauler", "destinationAgent"],
+          "unresolved": [],
+          "note": "hauler collecting."
+        },
+        "competing": {
+          "roles": ["hauler"],
+          "unresolved": [],
+          "note": "The collecting hauler. This is a handoff, so the exception-sheet rule applies ([A8 §7.3])."
+        },
+        "advisory": { "roles": ["booker", "platform"], "unresolved": [], "note": null }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED: src:dp3-tender-of-service #28 puts handling-in on the warehouseman (§C.14.b p.45); NTS §1.8.1 puts handling-out on the NTS TSP with 5 GBD advance notice; NTS §5.8.2 is decisive on the collecting carrier — the NTS TSP notifies the TO and the DD 1164 is amended to document the carrier's failure. src:dtr-part-iv corroborates from the identity side: the lot number is supplied by the warehouseman, not the Government.",
+      "authored": "[ORIGINAL] in the step that matters — converting the duty into authority.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] rows 1-5, 8, 11.",
+      "citations": ["[A8 §5 r8]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 9,
+      "type": "condition",
+      "family": "item",
+      "boundBy": "CUSTODY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "the party RELEASING the goods at the custody boundary",
+              "owedTo": "Not owed — COMPUTED. Which role this is at a given instant is custodyAt(goods, instant) ([SD §4.8.3], [A8 §4.3]), so it cannot be a fixed enum member."
+            },
+            {
+              "designation": "the party RECEIVING the goods at the custody boundary",
+              "owedTo": "Not owed — COMPUTED, as above."
+            }
+          ],
+          "note": "JOINTLY HELD and deliberately PLURAL — the one row where plural is the answer. One value per ARTICLE ([SD §5.4]); the wildcard subject item:* is forbidden under E-CANON-STRICT ([A8 §11] item 2), so this is one Assertion per article by each side.",
+          "cardinality": "joint"
+        },
+        "corroborating": {
+          "roles": [],
+          "unresolved": [
+            { "designation": "the non-inspecting parties", "owedTo": "[A8 §9 item 2]" }
+          ],
+          "note": null
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "each other — the releasing and receiving parties",
+              "owedTo": "Not owed — computed, as the authoritative standing"
+            }
+          ],
+          "note": "'This is the competing case by construction.'"
+        },
+        "advisory": { "roles": ["platform", "booker"], "unresolved": [], "note": null }
+      },
+      "settlement": {
+        "kind": "joint",
+        "ruleId": "A8-JOINT",
+        "citation": "[A8 §7.3] — on disagreement FactResolved MUST publish both and MUST NOT select; selected[] may be empty",
+        "note": "What is authored is letting FactResolved.selected be EMPTY. 'If a consumer proves it cannot tolerate an unresolved fact, the fix is a DOWNSTREAM named rule, never selecting inside the resolution — selecting there would destroy the one thing every source in this row preserves.' A8-JOINT also reaches 'the counts asserted with it', which is what makes pieceCount's boundary case covered."
+      },
+      "inputAuthority": null,
+      "evidence": "The best-sourced row in the document. src:dp3-400ng Item 17.12.c — BOTH TSP and warehouseman must hold 'the condition of EACH ARTICLE when received at and forwarded from the storage location'; src:cfr-49-375 §375.503 — itemized inventory signed by both; src:dp3-tender-of-service NTS §1.6.2 (condition by omission) and §C.9.a(22) (describing cartons as 'misc.' waives the right to contest).",
+      "authored": "[ORIGINAL] on the mechanism (an empty selection), not on the need: five sources require joint or dual records at a boundary and one states the dissent rule verbatim.",
+      "confidence": "high",
+      "confidenceNote": "[A8 §10]: high on the need, [ORIGINAL] on the mechanism.",
+      "citations": ["[A8 §5 r9]", "[A8 §7.3 A8-JOINT]", "[SD §5.4]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 10,
+      "type": "identity",
+      "family": "anyAggregate",
+      "boundBy": "SCHEME",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "the ISSUER of the scheme, and nobody else, for the value under that scheme",
+              "owedTo": "Not a role at all — a PARTY. [SD §7.1] defines issuer as 'the PARTY that assigned this value under that scheme', and [A8 §9 item 1] leaves the party entity undefined, so it cannot be an enum member."
+            }
+          ],
+          "note": "Authority NEVER MOVES. This is the one row where boundBy is not custody and not the principal: it is the naming scheme, and the scheme does not change hands. Note that an issuer's RESPONSIBILITY can be reassigned with an effective date (src:dp3-400ng GBLOC, Regionalization p.17), which is why [SD §7.2]'s interval carries it rather than a static field.",
+          "cardinality": "one"
+        },
+        "corroborating": {
+          "roles": [],
+          "unresolved": [
+            { "designation": "the counterparty echoing the value back", "owedTo": "[A8 §9 item 2]" }
+          ],
+          "note": "src:dcsa states the echo-back obligation; src:sirva-ade performs it (ExternalReference = 'Agent's internal lead reference', LEP p.3)."
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [],
+          "note": "[A8 §5 r10] writes '—'. Under one scheme there is one issuer, so there is nothing to contest: SIRVA's Brand+RegNumber+RegYear and Weichert's serviceOrderNumber are PEER references, neither authoritative over the other, because they are values under two different schemes ([SD §7.1] I-KEY keys the fact on the full triple)."
+        },
+        "advisory": {
+          "roles": [],
+          "unresolved": [{ "designation": "everyone else", "owedTo": "[A8 §9 item 2]" }],
+          "note": null
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED, and the shared layer already carries the field: [SD §7.1]'s issuer and scheme. src:dcsa supplies the pattern outright — a party is carrierCode + carrierCodeListProvider, i.e. code plus the authority that issued it. src:dtr-part-iv supplies the counter-case that proves the rule has teeth: the BL number is serially pre-assigned accountable stock, audited every 180 days.",
+      "authored": "Nothing structural; the shared layer's own field.",
+      "confidence": "high",
+      "confidenceNote": "[A8 §10]: rows 6, 7, 9, 10 are citations, not designs.",
+      "citations": ["[A8 §5 r10]", "[SD §7.1]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 11,
+      "type": "charge",
+      "family": "charge",
+      "boundBy": "PRINCIPAL",
+      "sameAs": null,
+      "standings": {
+        "kind": "perQualifier",
+        "qualifierField": "aspect",
+        "note": "CORRECTED BY [SD §4.7.2b]. A8 named three authorities over 'one fact class'; under the derived key (subject, type, qualifier?) that would put a proposal, an approval and a price into ONE contest, where an approval would compete with an amount. The {aspect} qualifier makes them THREE FACT KEYS, each with the authority this row already assigns. The three-way split is the finding and does not otherwise change.",
+        "authoritativeByValue": {
+          "PROPOSED": {
+            "roles": [],
+            "unresolved": [
+              {
+                "designation": "the performing role",
+                "owedTo": "Not fixed — it is whichever role performed the act the charge is for, so it varies by charge. [A8 §9 item 2] owes the enum it would be drawn from."
+              }
+            ],
+            "note": "Proposal authority.",
+            "cardinality": "one"
+          },
+          "DECIDED": {
+            "roles": ["accountParty"],
+            "unresolved": [],
+            "note": "Decision authority. accountParty is A8-NAME-2's half of the word 'shipper': the party that contracts and pays.",
+            "cardinality": "one"
+          },
+          "RATED": {
+            "roles": [],
+            "unresolved": [
+              {
+                "designation": "the tariff owner — the van line, or the party whose tariff prices it",
+                "owedTo": "[A8 §9 item 2]"
+              }
+            ],
+            "note": "Rating authority. src:sirva-ade computes charges only 'when Rating to calculate charges has completed successfully' (GSD p.3).",
+            "cardinality": "one"
+          }
+        },
+        "corroborating": {
+          "roles": ["settlingAgent", "setoffAgent"],
+          "unresolved": [],
+          "note": null
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [
+            { "designation": "the performing role, on quantum", "owedTo": "[A8 §9 item 2]" }
+          ],
+          "note": null
+        },
+        "advisory": { "roles": ["platform"], "unresolved": [], "note": null }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED three ways. WHO asserted each number: src:milmove-mymove tags every priced input with PaymentServiceItemParam.origin ∈ PRIME | SYSTEM | PRICER | PAYMENT_REQUEST, and nothing is billable unless a matching service item was created AND APPROVED. The propose/decide split: src:dtr-part-iv models accessorial pre-approval as a typed record (Pending → Approved/Denied, 3-GBD PPSO SLA, §C.8, §D.6); src:milmove-mymove carries both narratives attributed (contractorRemarks on the request, officeRemarks on the decision). Rating is the tariff owner's: src:sirva-ade, GSD p.3.",
+      "authored": "[ORIGINAL]: naming the three-way split (propose / decide / rate) as three authorities. No source names all three.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] rows 1-5, 8, 11.",
+      "correctionRegimeNote": "Already settled against role, and not by this row: financial facts are corrected ONLY by an offsetting record, never by retraction ([SD §6.3]).",
+      "outOfScopeNote": "[A8 §9 item 7]: revenue allocation is a different question from charge assertion and is A13's. This row must not be read as settling it.",
+      "citations": ["[A8 §5 r11]", "[SD §4.7.2b]", "[SD §4.7.1]", "[SD §6.3]"]
+    }
+  ]
+}

@@ -1,0 +1,728 @@
+{
+  "table": "canonical-subjects",
+  "declaredBy": "[SD §4.7] / [SD §4.7.1]",
+  "note": "[SD §1.3] makes [SD §4.7.1] the COMPLETE declaration: every type in the published record vocabulary declares its canonical subject family, its qualifier shape, and what belongs in context[]. A type with no row here, or a row with no type, is a defect and the loader refuses it. The authority column is [A8]'s, quoted and not re-derived ([SD §4.7] note 3), which is why an assigned row links to an authority-table row instead of restating its standings.",
+  "metaRecordNote": "The two meta-record types (FactResolved, Correction) deliberately have no row. [SD §4.7.1] declares none, and their subject rule is fixed elsewhere: [SD §1.3] item 4 — 'on a meta-record, type names the record class and the fact key is carried explicitly… the envelope subject MUST equal the subject of the fact being resolved or corrected.' Minting rows for them here would be a declaration [SD §4.7] never made.",
+  "scoringNote": "No row is marked scoreable-high. [A8 §10]'s last row lifts the bar to MEDIUM and only for the ten fact classes in [A8 §5]; [SD §4.7] note 3 bars a provisional reading from scoring a dependent decision above medium outright. So the only two values are 'capped-medium' and 'do-not-score'.",
+
+  "families": {
+    "note": "[SD §4.7] note 2: 'a family is a named, closed set of aggregate kinds — usually a singleton.' Three are not singletons and each is argued where it is declared. Every member must be a member of the aggregate enum ([SD §1.2]); the loader checks member-by-member and then checks the whole table against SUBJECT_FAMILIES in src/vocabulary.ts, because two spellings of one closed set that can drift are not one closed set.",
+    "anyAggregateSpellingNote": "[SD §4.7] describes identity's family as 'the whole aggregate enum' without naming it. 'anyAggregate' is src/vocabulary.ts's spelling, repeated here so the family column stays a single named key. The membership is quoted; only the name is chosen.",
+    "members": {
+      "stop": {
+        "members": ["stop", "externallyPerformedLeg"],
+        "singleton": false,
+        "citation": "[SD §8.2] — 'which is what lets an arrival be asserted about a leg performed by someone whose journey we cannot see'"
+      },
+      "goods": {
+        "members": ["shipment", "portion"],
+        "singleton": false,
+        "marker": "[ORIGINAL]",
+        "citation": "[SD §3.3] via [SD §4.7] note 2 — 'a separately-timed act may name a Portion directly'. The family and its name are [ORIGINAL]; both halves are settled text and this table is where they are joined into a declaration."
+      },
+      "stay": { "members": ["stay"], "singleton": true, "citation": "[SD §4.7.1]" },
+      "item": {
+        "members": ["item"],
+        "singleton": true,
+        "citation": "[SD §5.4] — a value per article is an item-subject fact; a scope of an act is a Portion"
+      },
+      "charge": { "members": ["charge"], "singleton": true, "citation": "[SD §1.2], [SD §4.7.1]" },
+      "trip": { "members": ["trip"], "singleton": true, "citation": "[A3 §3.2] via [SD §4.7.2d]" },
+      "stopAction": {
+        "members": ["stopAction"],
+        "singleton": true,
+        "citation": "[A3 §3.2] via [SD §4.7.2d]"
+      },
+      "assignment": {
+        "members": ["assignment"],
+        "singleton": true,
+        "citation": "[A3 §3.2] via [SD §4.7.2d]"
+      },
+      "order": {
+        "members": ["order"],
+        "singleton": true,
+        "citation": "[fork-order §3.1] via [SD §4.7.2e]"
+      },
+      "partyRole": {
+        "members": ["partyRole"],
+        "singleton": true,
+        "citation": "[SD §4.7.3] — the role-holding itself is an aggregate ([SD §1.2])"
+      },
+      "anyAggregate": {
+        "members": [
+          "order",
+          "shipment",
+          "portion",
+          "stay",
+          "trip",
+          "stop",
+          "stopAction",
+          "assignment",
+          "partyRole",
+          "item",
+          "charge",
+          "resource",
+          "document",
+          "externallyPerformedLeg"
+        ],
+        "singleton": false,
+        "citation": "[SD §7.1] — 'subject may be ANY aggregate kind'"
+      }
+    }
+  },
+
+  "rows": [
+    {
+      "type": "arrival",
+      "proseAliases": ["time.arrival"],
+      "family": "stop",
+      "qualifier": null,
+      "context": ["trip", "shipment", "stopAction"],
+      "contextNote": "'trip; every shipment on board; stopAction'. context[] is non-authoritative and is never the resolution key ([SD §1.4]).",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "CUSTODY",
+        "a8Row": { "row": 1, "sameType": true, "why": null },
+        "summary": "The role holding custody at that stop — driver on our trip, hauler on the hauling agent's, the leg's authoritativeAsserter on an ExternallyPerformedLeg. destinationAgent competing at destination.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r1]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "departure",
+      "proseAliases": [],
+      "family": "stop",
+      "qualifier": null,
+      "context": ["trip", "shipment", "stopAction"],
+      "contextNote": "'as arrival'.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "CUSTODY",
+        "a8Row": { "row": 2, "sameType": true, "why": null },
+        "summary": "as arrival.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r2]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "packing",
+      "proseAliases": ["pack performance"],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["stopAction", "stop", "trip"],
+      "contextNote": null,
+      "authority": {
+        "status": "owed",
+        "boundBy": "CUSTODY",
+        "owedTo": "[A8 §9 item 8] — names packing performance as not covered by [A8 §5]",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "the mirror of loading (originAgent, or ADE's Packer where separately resourced, GSD pp.12-13), with customer competing on scope",
+          "roles": ["originAgent", "packer", "customer"]
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "loading",
+      "proseAliases": ["load performance"],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["stopAction", "stop", "trip"],
+      "contextNote": null,
+      "authority": {
+        "status": "assigned",
+        "boundBy": "CUSTODY",
+        "a8Row": { "row": 3, "sameType": true, "why": null },
+        "summary": "loadAgent; originAgent where no separate load agent is assigned. driver, customer corroborating; customer competing on SCOPE (short/refused).",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r3]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "unloading",
+      "proseAliases": ["unload performance"],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["stopAction", "stop", "trip"],
+      "contextNote": null,
+      "authority": {
+        "status": "assigned",
+        "boundBy": "CUSTODY",
+        "a8Row": { "row": 4, "sameType": true, "why": null },
+        "summary": "unloadAgent; destinationAgent where none separately assigned.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r4]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "delivery",
+      "proseAliases": ["delivery performance"],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["stop", "externallyPerformedLeg", "trip"],
+      "contextNote": "'stop OR externallyPerformedLeg; trip' — the two are alternatives, not a pair.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "CUSTODY",
+        "a8Row": { "row": 5, "sameType": true, "why": null },
+        "summary": "destinationAgent; the leg's authoritativeAsserter where externally performed; rr19Agent under a Reverse Rule 19. customer COMPETING — three sources make the signature constitutive.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r5]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "handover",
+      "proseAliases": ["custody handoff"],
+      "family": "goods",
+      "qualifier": {
+        "fields": ["releasing", "receiving", "side", "occurrence"],
+        "values": { "side": ["RELEASE", "RECEIPT"] },
+        "marker": "[SYNTHESIS] on releasing/receiving; [ORIGINAL] on side, on occurrence, and on one type with a qualifier",
+        "citation": "[SD §4.7.2f] — the F1 decision. releasing/receiving are members of the published role vocabulary ([A8 §2]), NOT partyRole references: a partyRole is an aggregate with a fact class of its own, so two of those refs in a qualifier is the violation [SD §4.7.2d(3)] names, and that refusal stands. [SYNTHESIS]: src:open-trip-model's HandOver carries from/to actor refs and src:stedi-x12-reference element 1650's R1 names the counterparty's position ('Received from Prior Carrier'); rendering the two ends as key components is the join. side ∈ RELEASE | RECEIPT is §2's two-facts verdict — SOURCED that 1650 publishes the halves as two codes by two parties, [ORIGINAL] that they are one type with a qualifier. occurrence is a 1-based bilateral ordinal, absent = 1, [ORIGINAL] (rule H-OCCUR); it does not enumerate because its domain is 'integer ≥ 1', and the platform may never derive it (foreclosure 8). occurredAt is expressly NOT a component: it fails Q-KEY(iii) — it is the contested value, so keying on it would make a handover time the one act time that can be neither contested nor corrected (foreclosure 4)."
+      },
+      "context": ["stop", "trip", "externallyPerformedLeg"],
+      "contextNote": "'both stops / trips, or the externallyPerformedLeg'. NOTE THE DELETION: partyRole leaves this column at [SD §4.7.2f] §0(4). The releasing and receiving parties move into `value` as releasingParty/receivingParty, where they are asserted, attributed, contestable and LABELLED — [SD §1.4] rules 2 and 3 make context[] valueless, non-authoritative and unlabelled, so it could not say which of two refs was the receiver, which is the F2 defect the same edit closes. Two homes for one link is revision 3's defect C ([SD §1.1]).",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §5] has no handover row (recorded as F3 in findings-from-alloy.md), and boundBy is owed EXPRESSLY NOT CUSTODY: [SD §4.8.2] says of the identical shape that 'that row's binding would be CUSTODY, so A8-MOVE would be defined in terms of the thing it defines'. The fold breaks the circle, so handover's own authority cannot be decided by the fold.",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "the role named on the key's own `side` is authoritative for that key — the releasing role for RELEASE, the receiving role for RECEIPT. It breaks the circle because it reads the KEY, not the fold, and it is src:stedi-x12-reference's own arrangement: only the releasing carrier issues J1, only the receiving carrier issues R1. Whether that is a sixth boundBy member or NONE plus a named rule is [A8]'s to decide. Do not score on this. Under A8-NAMED every handover FactResolved must name a rule, and [A8 §5] owes the row it would name.",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": [
+          "[SD §4.7.1]",
+          "[SD §4.7.2f]",
+          "[SD §4.8.2]",
+          "[A8 §7.1 A8-MOVE]",
+          "[A8 §7.6]",
+          "[A8 §9 item 9]"
+        ]
+      },
+      "citations": [
+        "[SD §4.7.1]",
+        "[SD §4.7.2f]",
+        "[SD §4.8] — handover is the input the Custody fold reads"
+      ]
+    },
+    {
+      "type": "weight.net",
+      "proseAliases": [],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["document", "stop", "stay"],
+      "contextNote": "document is the weight ticket.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "NONE",
+        "a8Row": { "row": 6, "sameType": true, "why": null },
+        "summary": "NO role is authoritative. Settled by the value rule R-WEIGHT-LOWER ([SD §4.4]). weighMaster supplies evidence, not the assertion; the weighing side and the reweigh-demanding side are both competing.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r6]", "[SD §4.4]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "weight.gross",
+      "proseAliases": [],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["document", "resource", "stop"],
+      "contextNote": "resource is the vehicle weighed — the equipment, not the consignment; see weight.tare.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "unassigned",
+        "owedTo": "[A8 §5] — no row. NOTE: [A8 §9 item 8]'s enumeration of uncovered classes does not name gross or tare weight either, so this row is owed by a ledger that does not list it.",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "the weighing party (hauler/originAgent), with weighMaster as evidence",
+          "roles": ["hauler", "originAgent", "weighMaster"]
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "weight.tare",
+      "proseAliases": [],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["document", "stop"],
+      "contextNote": "The CONSIGNMENT's handling units (src:nmfta-ebol: 'weight of the skids/pallets/slips used in the shipment'). The equipment's own tare is a resource-subject fact and therefore a different type, owed and absent ([SD §4.7.2c], [SD §4.7.3]).",
+      "authority": {
+        "status": "owed",
+        "boundBy": "unassigned",
+        "owedTo": "[A8 §5] — no row; 'as weight.gross'",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "as weight.gross — the weighing party (hauler/originAgent), with weighMaster as evidence",
+          "roles": ["hauler", "originAgent", "weighMaster"]
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[SD §4.7.2c]"]
+      },
+      "citations": ["[SD §4.7.1]", "[SD §4.7.2c]"]
+    },
+    {
+      "type": "pieceCount",
+      "proseAliases": [],
+      "family": "goods",
+      "qualifier": {
+        "fields": ["unitization"],
+        "values": { "unitization": ["UNITIZED", "NON_UNITIZED"] },
+        "marker": "[ORIGINAL]",
+        "citation": "[SD §4.7.2a] — src:x12-212-trailer-manifest AT8-04 non-unitized and AT8-05 unitized are 'two separate counts that sum to one total'. SOURCED: that they are separate and additive. [ORIGINAL]: one type with a qualifier rather than two types."
+      },
+      "context": ["document", "stop", "stay"],
+      "contextNote": "document is the inventory.",
+      "authority": {
+        "status": "conditional",
+        "boundBy": "CUSTODY",
+        "a8Row": {
+          "row": 9,
+          "sameType": false,
+          "why": "Row 9's type is condition, not pieceCount — [A8 §5] has no pieceCount row at all ([A8 §9 item 8] names piece count as uncovered). The link is legitimate anyway because A8-JOINT reaches 'condition AND THE COUNTS ASSERTED WITH IT', which is the only thing that covers the boundary case. A link across types has to say so out loud, because the alternative is a table that looks fully covered and is not."
+        },
+        "assignedWhen": "at a custody boundary — jointly held, the releasing AND the receiving role, and selected[] may be empty; A8-JOINT covers 'condition AND the counts asserted with it'",
+        "owedWhen": "away from a custody boundary",
+        "owedTo": "[A8 §9 item 8] — which names piece count outright as a class [A8 §5] does not cover",
+        "summary": "Jointly held at a boundary, owed away from one. The A8 link is to row 9 (condition), which is the row whose joint rule reaches the counts; there is no pieceCount row of its own. Scoring is the conservative half of a split row: the boundary case would be capped-medium under [A8 §5 r9], the away-from-boundary case is owed, and one field cannot say two things — so the row says the weaker.",
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r9]", "[A8 §7.3 A8-JOINT]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "storeIn",
+      "proseAliases": ["the act of placing goods into storage"],
+      "family": "stay",
+      "qualifier": null,
+      "context": ["shipment", "portion", "stop", "trip"],
+      "contextNote": null,
+      "authority": {
+        "status": "assigned",
+        "boundBy": "CUSTODY",
+        "a8Row": null,
+        "summary": "The warehouse agent or TSP crew who performed it; sitAgent (handling-in). [SD §5.2] M2: human or partner asserter, NEVER derived. [A8 §5] has no storeIn row — its row 7 is sitEntryDate and is cited for its INPUTS, so a8Row is null rather than pointed at a row for a different type.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r7 inputs]", "[SD §5.3]"]
+      },
+      "citations": ["[SD §4.7.1]", "[SD §5.3] — the act and the date are two fact classes"]
+    },
+    {
+      "type": "sitEntryDate",
+      "proseAliases": ["SIT entry date"],
+      "family": "stay",
+      "qualifier": null,
+      "context": ["shipment", "stop"],
+      "contextNote": null,
+      "authority": {
+        "status": "assigned",
+        "boundBy": "NONE",
+        "a8Row": { "row": 7, "sameType": true, "why": null },
+        "summary": "NOBODY. Mandatorily DERIVED_BY_RULE ([SD §5.2] M4) from the TSP's first available delivery date. Authority applies only to that INPUT, and is the hauler/destinationAgent's (whichever holds the BL duty).",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r7]", "[SD §5.3]"]
+      },
+      "citations": ["[SD §4.7.1]", "[SD §5.3]"]
+    },
+    {
+      "type": "storeOut",
+      "proseAliases": ["SIT release", "handling-out"],
+      "family": "stay",
+      "qualifier": null,
+      "context": ["shipment", "portion", "stop", "trip", "partyRole"],
+      "contextNote": "partyRole is the collecting carrier's.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "CUSTODY",
+        "a8Row": { "row": 8, "sameType": true, "why": null },
+        "summary": "sitAgent / the warehouseman holding the goods. hauler collecting is COMPETING — it is a handoff, so the exception-sheet rule applies.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r8]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "condition",
+      "proseAliases": [],
+      "family": "item",
+      "qualifier": null,
+      "context": ["shipment", "portion", "stop", "stay", "document"],
+      "contextNote": "document is the signed inventory. The family is the singleton item because this is a value PER ARTICLE ([SD §5.4]); the Portion is the scope of an act, never the grain of a per-article value.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "CUSTODY",
+        "a8Row": { "row": 9, "sameType": true, "why": null },
+        "summary": "JOINTLY HELD and deliberately plural: the releasing role AND the receiving role at each custody boundary. On disagreement FactResolved MUST publish both and MUST NOT select (A8-JOINT).",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r9]", "[A8 §7.3 A8-JOINT]"]
+      },
+      "citations": ["[SD §4.7.1]", "[SD §5.4]"]
+    },
+    {
+      "type": "identity",
+      "proseAliases": [],
+      "family": "anyAggregate",
+      "qualifier": {
+        "fields": ["scheme", "vocabularyScope"],
+        "values": null,
+        "marker": null,
+        "citation": "[SD §7.1] — the I-KEY tuple. Neither field enumerates: scheme is an owed code list and vocabularyScope is a structure, so 'values' is null rather than an invented enum."
+      },
+      "context": ["document", "partyRole"],
+      "contextNote": "document is the instrument the value appears on (the BL, the weight ticket); partyRole is the counterparty echoing it back.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "SCHEME",
+        "a8Row": { "row": 10, "sameType": true, "why": null },
+        "summary": "The ISSUER of the scheme, and nobody else, for the value under that scheme. Authority NEVER moves.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r10]"]
+      },
+      "citations": ["[SD §4.7.1]", "[SD §7.1]"]
+    },
+    {
+      "type": "charge",
+      "proseAliases": [],
+      "family": "charge",
+      "qualifier": {
+        "fields": ["aspect"],
+        "values": { "aspect": ["PROPOSED", "DECIDED", "RATED"] },
+        "marker": "[ORIGINAL]",
+        "citation": "[SD §4.7.2b] — and it CORRECTS [A8 §5 row 11]: without the qualifier the fact key 'would put a proposal, an approval and a price into ONE contest, where an approval would compete with an amount'. [ORIGINAL] as the mechanism; A8's three-way split is the finding."
+      },
+      "context": ["shipment", "portion", "order", "stopAction", "stop", "stay"],
+      "contextNote": null,
+      "authority": {
+        "status": "assigned",
+        "boundBy": "PRINCIPAL",
+        "a8Row": { "row": 11, "sameType": true, "why": null },
+        "summary": "Two-sided, three ways: propose = the performing role; decide = the accountParty; rate = the tariff owner. settlingAgent/setoffAgent corroborate. Three fact keys, not one contest.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r11]", "[SD §4.7.2b]"]
+      },
+      "citations": ["[SD §4.7.1]"]
+    },
+    {
+      "type": "notification",
+      "proseAliases": [],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["stop", "partyRole"],
+      "contextNote": "Also 'the record that triggered the obligation (via evidence[])' — which is a record reference, not a SubjectRef, so it is not in context[]. THE RECIPIENT HAS NO FIELD: [A8 §9 item 6] owes 'the party as a notification target', and [SD §6.5]'s obligations cannot name a contactable party until it lands.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 6] — the party as a notification target; the row is provisional throughout ([SD §4.7.3])",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "the family itself is the [ORIGINAL] part, on the ground that src:dp3-tender-of-service §C.3.c states the duty per shipment; no source fixes an asserting role",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.3]", "[A8 §9 item 6]"]
+      },
+      "citations": ["[SD §4.7.3] — provisional row, [ORIGINAL] family"]
+    },
+    {
+      "type": "partyRole",
+      "proseAliases": [],
+      "family": "partyRole",
+      "qualifier": null,
+      "context": ["shipment", "order", "trip"],
+      "contextNote": "The [SD §4.7.3] row also names 'the party'. A party is deliberately NOT an aggregate kind ([SD §1.2] has partyRole and no party), so it cannot appear in context[] — which is a SubjectRef[] — until [A8 §9 item 1] lands. Recorded rather than smuggled in.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 items 1-2] — both the party entity and the role enum are undefined",
+        "provisional": {
+          "marker": "[SYNTHESIS]",
+          "reading": "[SYNTHESIS] of [SD §1.2] (the aggregate exists) and [A3 §3.2]'s stopAction row ('a fact about the RELATION, not about either end'). Carries effectiveFrom/effectiveTo per [SD §7.1] and is never overwritten (A8-HISTORY).",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.3]", "[A8 §9 items 1-2]", "[A8 §3 A8-HISTORY]"]
+      },
+      "citations": ["[SD §4.7.3] — provisional row"]
+    },
+    {
+      "type": "tripDelay",
+      "proseAliases": [],
+      "family": "trip",
+      "qualifier": null,
+      "context": ["shipment", "portion", "stop", "assignment"],
+      "contextNote": "every shipment AND portion on board ([SD §1.4]'s own worked example); the stops whose position or timing the change moves; the assignments in force.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no trip row, and no source in the corpus binds a plan change to an asserting role",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "the party dispatching the trip — the hauler holding the trip, or the booker where it dispatches",
+          "roles": ["hauler", "booker"]
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": [
+        "[SD §4.7.1]",
+        "[A3 §3.2] via [SD §4.7.2d] — the subject is quoted, not chosen"
+      ],
+      "boundByNote": "owed and explicitly NOT CUSTODY: 'a plan change is not a fact about the goods, and [SD §4.8]'s fold does not reach it'."
+    },
+    {
+      "type": "tripResequence",
+      "proseAliases": [],
+      "family": "trip",
+      "qualifier": null,
+      "context": ["shipment", "portion", "stop", "assignment"],
+      "contextNote": "as tripDelay.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no trip row",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "the party dispatching the trip — the hauler holding the trip, or the booker where it dispatches",
+          "roles": ["hauler", "booker"]
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]", "[A3 §3.2] via [SD §4.7.2d]"],
+      "boundByNote": "owed and explicitly NOT CUSTODY ([SD §4.7.1])."
+    },
+    {
+      "type": "tripCancellation",
+      "proseAliases": [],
+      "family": "trip",
+      "qualifier": null,
+      "context": ["shipment", "portion", "stop", "assignment"],
+      "contextNote": "as tripDelay.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no trip row",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "the party dispatching the trip — the hauler holding the trip, or the booker where it dispatches",
+          "roles": ["hauler", "booker"]
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]", "[A3 §3.2] via [SD §4.7.2d]"],
+      "boundByNote": "owed and explicitly NOT CUSTODY ([SD §4.7.1])."
+    },
+    {
+      "type": "membershipOffer",
+      "proseAliases": [],
+      "family": "stopAction",
+      "qualifier": null,
+      "context": ["trip", "stop", "shipment", "portion", "partyRole"],
+      "contextNote": "the shipment or portion whose membership it is, and the offering and responding partyRoles.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "two-sided — the offering party for membershipOffer and membershipRelease, the responding party for membershipResponse. Neither is a member of the role enum ([A8 §9 item 2]).",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]", "[A3 §5.8] via [SD §4.7.2d]"]
+    },
+    {
+      "type": "membershipResponse",
+      "proseAliases": [],
+      "family": "stopAction",
+      "qualifier": null,
+      "context": ["trip", "stop", "shipment", "portion", "partyRole"],
+      "contextNote": "as membershipOffer.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "two-sided — the responding party. Accept and decline are NOT two acts: they are the two outcomes of one act ([SD §4.7.2d] item 2, A-TYPE).",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]", "[SD §4.7.2d] item 2"]
+    },
+    {
+      "type": "membershipRelease",
+      "proseAliases": [],
+      "family": "stopAction",
+      "qualifier": null,
+      "context": ["trip", "stop", "shipment", "portion", "partyRole"],
+      "contextNote": "as membershipOffer.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "two-sided — the offering party (A3 writes this transition as 'broken')",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]", "[A3 §5.8] via [SD §4.7.2d]"]
+    },
+    {
+      "type": "assignmentOffer",
+      "proseAliases": [],
+      "family": "assignment",
+      "qualifier": null,
+      "context": ["trip", "resource", "partyRole"],
+      "contextNote": "partyRole is the one the resource is offered to.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "as the membership rows, two-sided",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]"],
+      "boundByNote": "owed — and NOT [A8 §4.3]'s ASSIGNMENT binding, which governs facts ABOUT a resource; these are facts about the BINDING ITSELF ([SD §4.7.1])."
+    },
+    {
+      "type": "assignmentResponse",
+      "proseAliases": [],
+      "family": "assignment",
+      "qualifier": null,
+      "context": ["trip", "resource", "partyRole"],
+      "contextNote": "as assignmentOffer.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "as the membership rows, two-sided — the responding party",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]"],
+      "boundByNote": "owed — and NOT [A8 §4.3]'s ASSIGNMENT binding ([SD §4.7.1])."
+    },
+    {
+      "type": "assignmentRelease",
+      "proseAliases": [],
+      "family": "assignment",
+      "qualifier": null,
+      "context": ["trip", "resource", "partyRole"],
+      "contextNote": "as assignmentOffer.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "as the membership rows, two-sided",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": ["[SD §4.7.1]"],
+      "boundByNote": "owed — and NOT [A8 §4.3]'s ASSIGNMENT binding ([SD §4.7.1])."
+    },
+    {
+      "type": "orderAward",
+      "proseAliases": [],
+      "family": "order",
+      "qualifier": null,
+      "context": ["shipment", "partyRole"],
+      "contextNote": "the shipments committed under the order WHERE THERE ARE ANY — zero is normal and is a legal state on a live RMC wire ([fork-order §5.3]) — plus the awarding and the responding partyRoles.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "two-sided, as the membership and assignment rows — the awarding party",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]"]
+      },
+      "citations": [
+        "[SD §4.7.1]",
+        "[SD §4.7.2e] — minted rather than deferred, because [SD §1] and [fork-order §3.1] require it"
+      ],
+      "boundByNote": "owed and explicitly NOT CUSTODY: 'an order is a commitment, not a fact about the goods, and [SD §4.8]'s fold does not reach it'."
+    },
+    {
+      "type": "orderResponse",
+      "proseAliases": [],
+      "family": "order",
+      "qualifier": null,
+      "context": ["shipment", "partyRole"],
+      "contextNote": "as orderAward.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "two-sided — the offeree. Accept and decline are the two OUTCOMES of this one act, never two types (A-TYPE, [SD §4.7.2e] item 1). Which outcome member src:stedi-x12-reference element 558's B (conditional acceptance) and C (counter proposal) take is A1's to declare and is NOT decided.",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]", "[SD §4.7.2e]"]
+      },
+      "citations": ["[SD §4.7.1]", "[SD §4.7.2e]"],
+      "boundByNote": "owed and explicitly NOT CUSTODY ([SD §4.7.1])."
+    },
+    {
+      "type": "orderCancellation",
+      "proseAliases": [],
+      "family": "order",
+      "qualifier": null,
+      "context": ["shipment", "partyRole"],
+      "contextNote": "as orderAward.",
+      "authority": {
+        "status": "owed",
+        "boundBy": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
+        "provisional": {
+          "marker": "[ORIGINAL]",
+          "reading": "two-sided — whichever party ended it, which is the distinction src:dcsa spends three status values on. WHO ended it and WHEN is carried by the stage plus reasons[].attribution, never by a type name ([SD §4.7.2e] item 2).",
+          "roles": []
+        },
+        "scoring": "do-not-score",
+        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]", "[SD §4.7.2e]"]
+      },
+      "citations": ["[SD §4.7.1]", "[SD §4.7.2e]"],
+      "boundByNote": "owed and explicitly NOT CUSTODY ([SD §4.7.1])."
+    }
+  ]
+}

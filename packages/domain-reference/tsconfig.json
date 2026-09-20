@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    // This package is a specification, not a library: nothing imports it, so it
+    // emits nothing. The strict settings it relies on (strict,
+    // exactOptionalPropertyTypes, noUncheckedIndexedAccess, noImplicitOverride)
+    // all come from tsconfig.base.json.
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    // `src/` reads no file and imports nothing. The one exception is the drift
+    // guard in `tests/conformance/documents.test.ts`, which has to read the
+    // analysis documents in order to compare them with the vocabulary — so the
+    // node types and ES module semantics (`import.meta.url`, to locate the
+    // documents without depending on the working directory) are scoped to this
+    // package's tests and reach nothing the specification itself is built from.
+    //
+    // `tools/` is that same exception one step further out: the glossary
+    // generator reads `src/` through the TypeScript compiler API, reads `data/`
+    // and the analysis documents' headings, and writes
+    // `docs/domain-reference/glossary.md`. It is included below so that it is
+    // type-checked like everything else — an unchecked generator is a generator
+    // that breaks on the day it runs.
+    "module": "ES2022",
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "tests/**/*", "data/**/*", "tools/**/*"]
+}
