@@ -21,13 +21,36 @@ import { assertNever } from './primitives'
  * claims difference, not a shade of meaning."
  */
 export const OUTCOMES = [
+  /**
+   * The act was performed in full, with nothing to report. [SD §2.3] invariant 2 **forbids**
+   * `reasons[]` here, and only here: **[ORIGINAL]** in [SD §2.3], "collapsing `CFM` into
+   * `COMPLETED` and forbidding a reason there" normalises Shippeo, which always pairs a situation
+   * with a justification.
+   */
   'COMPLETED',
   /** [SD §2.2] **[ORIGINAL]**: rendering Shippeo's `LIV/RCA` (delivered-with-damage-accepted, which
    * sits under the _completed_ situation) as its own outcome member rather than `COMPLETED` + a
    * reason. */
   'COMPLETED_WITH_EXCEPTION',
+  /**
+   * The act reached **part** of its scope. [SD §2.2] keeps it apart from
+   * `COMPLETED_WITH_EXCEPTION` because the two "differ in **scope of performance**, and that
+   * difference is a billing and claims difference, not a shade of meaning". The scope itself is a
+   * Portion named in `reasons[].appliesTo` — [SD §3.4]'s required form for "delivered, two items
+   * short".
+   */
   'PARTIALLY_COMPLETED',
+  /**
+   * The act did not happen. [SD §2.5] and [SD §2.6]: an **attempted** delivery is `type = delivery`
+   * at this outcome with at least one reason, which is why the vocabulary needs no `attempt` type
+   * and may not have one (**A-TYPE**).
+   */
   'NOT_COMPLETED',
+  /**
+   * The act was called off. Distinct from `NOT_COMPLETED`, which is a performance that failed.
+   * [SD §2.2] takes the five-member enum from `src:open-trip-model`'s result enum plus Shippeo's
+   * situation/justification grid.
+   */
   'CANCELLED',
 ] as const
 
@@ -45,11 +68,39 @@ export type ExceptionalOutcome = Exclude<Outcome, 'COMPLETED'>
  * unavailable, parking permit, COI not on file — none of which Shippeo has."
  */
 export const REASON_SCOPES = [
+  /**
+   * Something is wrong with **the act itself** — its timing, its sequence, its performance.
+   * **[ORIGINAL]**: [SD §2.4] marks the whole `scope` axis authored and gives its purpose and its
+   * HHG examples; it defines no member individually, so the gloss is this model's.
+   */
   'ACT',
+  /**
+   * Something is wrong with **the goods** — damage, shortage, an item refused. **[ORIGINAL]**, as
+   * `ACT`: [SD §2.4] authors the axis and not the member.
+   */
   'GOODS',
+  /**
+   * Something is wrong on **a party's** side — the customer absent, the counterparty unready.
+   * **[ORIGINAL]**, as `ACT`. `src:stedi-x12-reference` element 1651's 86 values are organised by
+   * responsible party, which is the _fact_ [SD §2.4] rule 6 sources; the attribution itself rides
+   * `Reason.attribution` rather than this axis.
+   */
   'PARTY',
+  /**
+   * Something is wrong with **the equipment or crew** — a breakdown, a missing shuttle vehicle.
+   * **[ORIGINAL]**, as `ACT`: [SD §2.4] authors the axis and not the member.
+   */
   'RESOURCE',
+  /**
+   * Something is wrong with **the site** — shuttle required, long carry, elevator unavailable,
+   * parking permit. [SD §2.4] names these as half of the HHG authoring gap: "none of which Shippeo
+   * has". **[ORIGINAL]**, as `ACT`.
+   */
   'SITE',
+  /**
+   * Something is wrong on **paper** — COI not on file, an authorisation missing. The other half of
+   * [SD §2.4]'s HHG authoring gap. **[ORIGINAL]**, as `ACT`.
+   */
   'ADMINISTRATIVE',
 ] as const
 

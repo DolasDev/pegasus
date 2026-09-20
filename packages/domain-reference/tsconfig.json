@@ -15,8 +15,15 @@
     // node types and ES module semantics (`import.meta.url`, to locate the
     // documents without depending on the working directory) are scoped to this
     // package's tests and reach nothing the specification itself is built from.
+    //
+    // `tools/` is that same exception one step further out: the glossary
+    // generator reads `src/` through the TypeScript compiler API, reads `data/`
+    // and the analysis documents' headings, and writes
+    // `docs/domain-reference/glossary.md`. It is included below so that it is
+    // type-checked like everything else — an unchecked generator is a generator
+    // that breaks on the day it runs.
     "module": "ES2022",
     "types": ["node"]
   },
-  "include": ["src/**/*", "tests/**/*", "data/**/*"]
+  "include": ["src/**/*", "tests/**/*", "data/**/*", "tools/**/*"]
 }

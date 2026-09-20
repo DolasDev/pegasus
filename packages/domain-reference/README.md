@@ -26,6 +26,7 @@ careful reader has to verify, and start being something a compiler and a test ru
 | `tests/scenarios/`   | Nine real household-goods situations, as executable acceptance tests                  | The suite that must keep passing |
 | `tests/conformance/` | Checks that the code, the data and the analysis documents agree                       | The drift guard                  |
 | `alloy/`             | Structural model-checking for questions a type system cannot answer                   | Finds counterexamples            |
+| `tools/`             | The glossary generator — reads `src/` through the TypeScript compiler API             | Generates, never decides         |
 
 ## Precedence
 
@@ -37,7 +38,27 @@ careful reader has to verify, and start being something a compiler and a test ru
 that is a defect in one of them — the conformance tests exist to catch it rather than let it sit.
 
 Every rule in `src/` cites the section that decided it. A rule with no citation and no `[ORIGINAL]`
-marker is a defect: the documents' disclosure rule applies here too.
+marker is a defect: the documents' disclosure rule applies here too. That sentence is no longer a
+convention a reviewer has to enforce by reading — `tests/conformance/glossary-coverage.test.ts`
+checks it over every term the glossary covers, and reports failures rather than repairing them.
+
+## The ubiquitous language is generated
+
+[`docs/domain-reference/glossary.md`](../../docs/domain-reference/glossary.md) is **generated from
+this package**, not hand-written. The process originally called for a hand-maintained
+ubiquitous-language document; it was deliberately replaced, because the names already live in the
+types and the definitions already live in the JSDoc beside them, and a third copy is a third place
+to drift — [SD §1.1]'s own reason for deleting the generic `correlation` bag.
+
+So: **to change a definition, change the docstring** and regenerate.
+
+```bash
+npm run glossary -w @pegasus/domain-reference    # rewrites docs/domain-reference/glossary.md
+```
+
+Two gates in `tests/conformance/` keep it honest. `glossary-staleness.test.ts` regenerates the
+document in memory and fails if the committed file differs, naming the first differing line and the
+command to re-run. `glossary-coverage.test.ts` is the disclosure rule above, mechanised.
 
 ## Running it
 

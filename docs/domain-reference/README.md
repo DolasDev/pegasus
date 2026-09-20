@@ -30,6 +30,22 @@ structure in `model/`. It does **not** mean generic: the model uses the moving
 industry's own language (booking/origin/hauling/destination agent, binding
 estimate, storage-in-transit, reweigh), not abstract logistics terms.
 
+## Ubiquitous language — [`glossary.md`](glossary.md)
+
+The glossary is **generated from the executable specification**, not hand-written. Every
+definition is the JSDoc on the type, enum member or function that declares the term in
+[`packages/domain-reference/src/`](../../packages/domain-reference/src/), so there is one home for
+each name rather than a code copy and a prose copy that can drift.
+
+- Regenerate: `npm run glossary -w @pegasus/domain-reference`
+- Generator: [`packages/domain-reference/tools/generate-glossary.ts`](../../packages/domain-reference/tools/generate-glossary.ts)
+- Two gates, both in `packages/domain-reference/tests/conformance/`: `glossary-staleness.test.ts`
+  fails when the committed file and the code disagree, and `glossary-coverage.test.ts` fails when a
+  covered term has no docstring, or a docstring carrying neither a citation nor an explicit
+  `[ORIGINAL]` / `[SYNTHESIS]` marker.
+
+**Do not edit `glossary.md`.** Change the docstring and regenerate.
+
 ## What this model is — and is not
 
 It is an **ideal target model of the domain**, not a description of what Pegasus II or Pegasus

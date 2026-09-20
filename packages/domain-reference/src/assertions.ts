@@ -52,7 +52,35 @@ import type { RoleName } from './envelope'
  * This is the one cross-cutting decision of the three documents that survives unchanged
  * ([SD §1.1]): tense lives here, on the value, and never on the envelope.
  */
-export const BASES = ['REQUESTED', 'COMMITTED', 'PLANNED', 'ESTIMATED', 'ACTUAL'] as const
+export const BASES = [
+  /**
+   * What somebody **asked for**. `src:dcsa`'s `eventClassifierCode` `REQ` ([SD §4.2]); the
+   * attribution is DCSA's and was mis-cited to `src:uncefact-scrdm` before [SD §4.2] corrected it.
+   */
+  'REQUESTED',
+  /**
+   * What was **agreed** — a promise, not a plan. `src:uncefact-scrdm`'s `Confirmed_` renamed, and
+   * its real support is `src:sirva-ade`, "grade A, a live partner contract": the Agreed Load and
+   * Agreed Delivery Periods, kept distinct from the planned customer dates and distinct again from
+   * the trip-side driver dates. ADE even models the **withdrawal** of a commitment as its own
+   * transition (`IntoWillAdvise`). [SD §4.2].
+   */
+  'COMMITTED',
+  /** What we **intend** — `src:uncefact-scrdm`'s `Planned_` ([SD §4.2]). */
+  'PLANNED',
+  /**
+   * What we **expect**, as of an instant — `src:dcsa`'s `EST` ([SD §4.2]). `asOf` is MANDATORY at
+   * this basis ([SD §4.1]), and this is the basis that replaces Alvys's `Eta {Planned, Live,
+   * Manual}`: an ETA is an `arrival` at `basis = ESTIMATED` with a `capturedBy` ([SD §4.5]).
+   */
+  'ESTIMATED',
+  /**
+   * What **happened** — `src:uncefact-scrdm`'s `Actual_` ([SD §4.2]). It is where the capture rules
+   * bite: an act's `(outcome, reasons[])` exists here and nowhere else ([SD §2.3] invariant 1), M1
+   * forbids `ASSUMED_FROM_PLAN` here, and M2/M3/M5 are all written at this basis ([SD §5.2]).
+   */
+  'ACTUAL',
+] as const
 
 export type Basis = (typeof BASES)[number]
 

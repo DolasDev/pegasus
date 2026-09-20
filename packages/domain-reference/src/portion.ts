@@ -25,7 +25,27 @@ import { assertNever, owed } from './primitives'
  * Measured: the same 400NG item requires "the **actual weight** of the portion withdrawn", and
  * `src:sirva-ade`'s `Overflow` event carries `Weight` and nothing else.
  */
-export const MEMBERSHIP_FORMS = ['MEASURED', 'ENUMERATED', 'BOTH'] as const
+export const MEMBERSHIP_FORMS = [
+  /**
+   * The subset is stated **by measure** — `src:dp3-400ng` Item 17.13's "actual weight of the
+   * portion withdrawn"; `src:sirva-ade`'s `Overflow` event carries `Weight` and nothing else
+   * ([SD §3.2]). A `MEASURED`-only Portion **cannot support a claim** (**P-CLAIM**), because a
+   * claim addresses items.
+   */
+  'MEASURED',
+  /**
+   * The subset is stated **by enumeration** — item refs, or a mark range.
+   * `src:dp3-400ng` Item 17.13 identifies a partial SIT withdrawal by inventory item numbers, and
+   * `src:x12-212-trailer-manifest` `MAN` expresses marks as a start-end range ([SD §3.2]).
+   */
+  'ENUMERATED',
+  /**
+   * Both forms are known. [SD §3.2]: "The corpus publishes **both** forms for the same phenomenon,
+   * which is why neither can be the sole grain." Under **P-MEMBER** this is the terminal form —
+   * knowledge may be added to a Portion and never removed.
+   */
+  'BOTH',
+] as const
 
 export type MembershipForm = (typeof MEMBERSHIP_FORMS)[number]
 

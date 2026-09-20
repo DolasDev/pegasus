@@ -34,28 +34,127 @@ import type { OutcomeFreeTypeName } from './outcomes'
  */
 export const ACT_TYPES = [
   // Goods-side (seven) — [SD §4.7.1].
+  /**
+   * The act of packing the goods — [SD §4.7.1], prose alias _pack performance_, family `goods`.
+   * Possession-changing under [SD §5.2] M2, so it needs a human or partner asserter. Its authority
+   * row is **owed** ([A8 §9 item 8] names packing performance among the uncovered classes).
+   */
   'packing',
+  /**
+   * The act of loading the goods onto the vehicle — [SD §4.7.1], prose alias _load performance_,
+   * family `goods`. Possession-changing under [SD §5.2] M2; [A8 §5] row 3 makes the `loadAgent`
+   * authoritative, or the `originAgent` where no separate load agent is assigned.
+   */
   'loading',
+  /**
+   * The act of unloading the goods — [SD §4.7.1], prose alias _unload performance_, family `goods`.
+   * Possession-changing under [SD §5.2] M2; [A8 §5] row 4 mirrors row 3 onto the `unloadAgent`, and
+   * [A8 §5] marks the mirroring itself **[ORIGINAL]**.
+   */
   'unloading',
+  /**
+   * The act of delivering the goods — [SD §4.7.1], prose alias _delivery performance_, family
+   * `goods`. An **attempted** delivery is not a type of its own: it is `delivery` with
+   * `outcome = NOT_COMPLETED` and at least one reason ([A3 §3.2], [SD §2.5] A-TYPE, worked at
+   * [SD §2.6]). "Delivered, two items short" is one `delivery` at `PARTIALLY_COMPLETED` with a
+   * Portion in `reasons[].appliesTo` ([SD §3.4]).
+   */
   'delivery',
+  /**
+   * The act of handing the goods over — [SD §4.7.1], prose alias _custody handoff_, family `goods`.
+   *
+   * [A3 §3.2] rules `transfer-out` and `transfer-in` "**one `handover` type, asserted once by each
+   * side** … not two types" — the `J1` / `R1` shape of `src:stedi-x12-reference` element 1650 — and
+   * [SD §4.7.2f] gives it the qualifier `{releasing, receiving, side, occurrence?}`, so the two
+   * sides of one transfer are two facts on two keys. It is the only act carrying `custodyBasis`,
+   * and therefore the only act **A8-MOVE** can move authority at.
+   */
   'handover',
+  /**
+   * _The act of placing goods into storage_ — [SD §4.7.1], family `stay`. Distinct from
+   * `sitEntryDate`, and the separation is forced rather than convenient: [SD §5.3] shows M2
+   * demanding a human for the act while M4 demands a derivation for the date, "and a single fact
+   * class cannot satisfy both".
+   */
   'storeIn',
+  /**
+   * _SIT release / handling-out_ — [SD §4.7.1], family `stay`. Possession-changing under
+   * [SD §5.2] M2; [A8 §5] row 8 makes the `sitAgent` authoritative, because the warehouse is the
+   * party of record for what happened inside it.
+   */
   'storeOut',
   // The trip-scoped class — [SD §4.7.1], subjects quoted from [A3 §3.2].
+  /**
+   * _"The trip was delayed"_ — [SD §4.7.1]'s trip-scoped class, family `trip` (singleton), subject
+   * quoted from [A3 §3.2]. It declares no qualifier: a trip delayed twice "is one party revising
+   * its own assertion", so successive changes ride `supersedes` ([SD §4.7.2d] item 3).
+   */
   'tripDelay',
+  /**
+   * _"The trip was resequenced"_ — [SD §4.7.1], family `trip`. A3 makes resequencing its own record
+   * type rather than a renumbering, so a stop's identity is never its sequence number ([A3 §3.2]).
+   */
   'tripResequence',
+  /**
+   * _"The trip was cancelled"_ — [SD §4.7.1], family `trip`. Note **A-TYPE** ([SD §2.5]): the type
+   * names the act of cancelling a trip; it does not encode the `CANCELLED` outcome of some other
+   * act.
+   */
   'tripCancellation',
   // A3 §5.8's shipment-on-trip membership lifecycle.
+  /**
+   * A shipment is **offered** a place on a trip — [A3 §5.8]'s shipment-on-trip membership
+   * lifecycle as carried by [SD §4.7.1], family `stopAction` (singleton). The membership is an
+   * entity with its own identity, so two memberships are two `stopAction`s rather than one
+   * contested fact ([SD §4.7.2d] item 3).
+   */
   'membershipOffer',
+  /**
+   * The offer is **accepted or declined** — [A3 §5.8] via [SD §4.7.1], family `stopAction`. The
+   * outcome rides `(outcome, reason)` on the act ([SD §2]); the type names neither answer.
+   */
   'membershipResponse',
+  /**
+   * The membership is **broken** — [A3 §5.8] via [SD §4.7.1], family `stopAction`.
+   */
   'membershipRelease',
   // The resource-assignment lifecycle.
+  /**
+   * A resource is **offered** an assignment — [SD §4.7.1]'s assignment lifecycle, family
+   * `assignment` (singleton).
+   *
+   * Note what this is **not**: [A8 §4.3]'s `ASSIGNMENT` binding, which governs facts _about_ a
+   * resource. These three are facts about the **binding itself** ([SD §4.7.1]'s own warning).
+   */
   'assignmentOffer',
+  /**
+   * The assignment is **accepted or declined** — [SD §4.7.1], family `assignment`. The two-status
+   * shape is `src:atlas-world-group-api`'s structural observation (accepted vs performed), taken as
+   * structure only ([A3 §3.2], C2=1).
+   */
   'assignmentResponse',
+  /**
+   * The resource is **released** from the assignment — [SD §4.7.1], family `assignment`. An
+   * `Assignment` has an effective interval, so a driver change is expressed here and not by
+   * rewriting a field ([A3 §3.2], [A3 §6.1]).
+   */
   'assignmentRelease',
   // The order lifecycle — [SD §4.7.2e], required by [SD §1] and [fork-order §3.1].
+  /**
+   * The order is **awarded** — [SD §4.7.1], family `order` (singleton). Minted at [SD §4.7.2e]
+   * because [SD §1] and [fork-order §3.1] require the lifecycle and the table had declared no
+   * member for it: "a binding document… specifying a record that could not be published".
+   */
   'orderAward',
+  /**
+   * The award is **accepted or declined** — [SD §4.7.1], family `order`, minted at [SD §4.7.2e].
+   */
   'orderResponse',
+  /**
+   * The order is **cancelled** — [SD §4.7.1], family `order`, minted at [SD §4.7.2e]. Which party
+   * ended it is "the distinction `src:dcsa` spends three status values on", and the authority row
+   * for it is owed.
+   */
   'orderCancellation',
 ] as const
 
@@ -68,17 +167,100 @@ export type ActType = (typeof ACT_TYPES)[number]
  * naming those classes in the same vocabulary as the acts, not by adding an axis."
  */
 export const NON_ACT_TYPES = [
+  /**
+   * When the vehicle **arrived** — a time fact about a _visit_, not an act. [SD §4.7.1]: "they are
+   * time facts about a visit, which is why their family is `stop` and why M5 lets a geofence assert
+   * them while M2/M3 forbid a geofence asserting any act in this row." Prose alias _time.arrival_;
+   * family `stop` = {stop, externallyPerformedLeg}. An ETA is this type at `basis = ESTIMATED`
+   * ([SD §4.5]).
+   */
   'arrival',
+  /**
+   * When the vehicle **departed** — as `arrival` ([SD §4.7.1]), family `stop`. [A8 §5] row 2's note
+   * records the precondition that makes the row computable: `src:dp3-tender-of-service` §B.3.f
+   * requires the provider actually hauling to be named within 2 GBD of origin departure.
+   */
   'departure',
+  /**
+   * The consignment's **net** weight — `src:x12-212-trailer-manifest` element 187's `N`, "actual
+   * net" ([SD §4.1]), family `goods`. The one fact class the binding layer settles by a **value
+   * rule** rather than by a role: [A8 §5] row 6 is `boundBy = NONE` and `R-WEIGHT-LOWER`
+   * ([SD §4.4]) picks the lower of two ACTUAL weights from distinct weighings.
+   */
   'weight.net',
+  /**
+   * The consignment's **gross** weight — element 187's `G` ([SD §4.1]), family `goods`. Its
+   * authority row is **owed**, and [SD §4.7.1] marks its `boundBy` _unassigned_ rather than owed:
+   * `R-WEIGHT-LOWER` is scoped to `weight.net` and does not reach here ([SD §4.4]).
+   */
   'weight.gross',
+  /**
+   * The **tare** weight — element 187's `T` ([SD §4.1]) — and it is **the consignment's**, never
+   * the equipment's: `src:nmfta-ebol`'s "weight of the skids/pallets/slips used in the shipment"
+   * ([SD §4.7.2c]). Family `goods`. The equipment's own tare is a `resource`-subject fact, a
+   * different type, left absent and owed at [SD §4.7.3].
+   */
   'weight.tare',
+  /**
+   * How many pieces — family `goods`, with the qualifier `{unitization}` ([SD §4.7.2a]):
+   * `src:x12-212-trailer-manifest` `AT8-04` non-unitized and `AT8-05` unitized are "two separate
+   * counts that sum to one total". **Sourced:** that they are separate and additive.
+   * **[ORIGINAL]:** one type with a qualifier rather than two types.
+   *
+   * Its authority is **borrowed and only half of it**: at a custody boundary **A8-JOINT** reaches
+   * "`condition` and the counts asserted with it" ([A8 §7.3]); away from one it is owed.
+   */
   'pieceCount',
+  /**
+   * _A **date**: when storage starts counting_ — [SD §5.3], family `stay`. Never the `storeIn` act
+   * and never the arrival date: 400NG Item 29.6 / 17.20 forbid substituting one for the other.
+   * Mandatorily `DERIVED_BY_RULE` under [SD §5.2] M4 from the TSP's first available delivery date,
+   * carrying `{ruleId, ruleVersion}` and the `eventId`s of its inputs. [A8 §5] row 7 is the row
+   * where the authoritative role is genuinely **nobody**.
+   */
   'sitEntryDate',
+  /**
+   * A party's assertion about the condition of one article — family `item`, because [SD §5.4] makes
+   * a value _per article_ an `item`-subject fact. The best-sourced row in [A8 §5] (row 9) and the
+   * foundation of **A8-JOINT**: at a custody boundary both the releasing and the receiving role are
+   * authoritative, and on disagreement `FactResolved` publishes both and selects neither.
+   */
   'condition',
+  /**
+   * An identifier, asserted — [SD §7]. Its subject may be **any** aggregate kind ([SD §7.1]), and
+   * its qualifier is `{scheme, vocabularyScope}`, which is **I-KEY**. `primary` is not a stored
+   * flag but the output of `FactResolved` over that key ([SD §7.5]). [A8 §5] row 10 binds authority
+   * to the scheme's **issuer**, where it never moves.
+   */
   'identity',
+  /**
+   * A money fact about one charge — family `charge`, with the qualifier `{aspect}` ∈ `PROPOSED` |
+   * `DECIDED` | `RATED` ([SD §4.7.2b]), which **corrects [A8 §5] row 11**: without it the fact key
+   * "would put a _proposal_, an _approval_ and a _price_ into **one** contest, where an approval
+   * would compete with an amount". Its `value` shape is owed to A11 ([SD §4.7.3]), and financial
+   * facts are corrected only by an offsetting record ([SD §6.3]).
+   */
   'charge',
+  /**
+   * A notification, asserted. **Provisional throughout** ([SD §4.7.3]): "no source fixes a subject
+   * for either" of `notification` and `partyRole`. The family `goods` is **[ORIGINAL]**, on the
+   * ground that `src:dp3-tender-of-service` §C.3.c states the notification duty per shipment.
+   *
+   * And it is known to be incomplete: **the recipient has no field.** [A8 §9 item 6] owes "the
+   * party as a notification target", and [SD §6.5]'s obligations cannot name a contactable party
+   * until it lands.
+   */
   'notification',
+  /**
+   * Who holds a role, over what interval — family `partyRole`, "the role-holding itself is an
+   * aggregate" ([SD §4.7.3]). It is a dated, versioned assertion rather than a static field
+   * ([A8 §3(b)], **A8-HISTORY**): "you cannot ask 'who was authoritative on 3 March' of a roster
+   * that has since been rewritten."
+   *
+   * **Provisional** ([SD §4.7.3]), and its own row records a defect: §4.7.3 says the `context[]`
+   * carries "the party", and a party is deliberately not an aggregate kind, so it cannot be a
+   * `SubjectRef` until [A8 §9 item 1] lands.
+   */
   'partyRole',
 ] as const
 
@@ -405,13 +587,57 @@ export type FactRef<T extends AssertionType = AssertionType> = T extends Asserti
  * statuses DO have a competing-assertion story, and it is the same one times have" ([SD §4]).
  */
 export const FACT_CLASS_FAMILIES = [
+  /**
+   * Times — arrival, departure, SIT entry date, actual delivery date. The contest is real because
+   * `src:dp3-400ng` names **five** distinct delivery-date roles (requested at award / first
+   * available / scheduled / actual / RDD) with different charges attached ([SD §4.1]).
+   */
   'time',
+  /**
+   * Measures — net / gross / tare weight, cube. The contest is real because
+   * `src:x12-212-trailer-manifest` element 187 types every weight: `G` gross, `N` actual net,
+   * `T` tare, `E` estimated net, `B` billed ([SD §4.1]).
+   */
   'measure',
+  /**
+   * Counts — cartons, handling units. The contest is real because `src:x12-212-trailer-manifest`
+   * splits `AT8-04` non-unitized from `AT8-05` unitized: "two separate counts that sum to one
+   * total" ([SD §4.1]).
+   */
   'count',
+  /**
+   * Condition — per-article condition at receipt and at forwarding, `src:dp3-400ng` Item 17.12.c
+   * and `src:cfr-49-375` §375.503 ([SD §4.1]).
+   */
   'condition',
+  /**
+   * _A party's claim about a lifecycle state_ ([SD §4.1]) — SIRVA's dispatch lifecycle against
+   * Weichert's procurement lifecycle, "two parties, two state assertions about one shipment,
+   * neither derived from the other".
+   *
+   * **The family has no publishable member.** [SD §4.7.1] declares no `type` for it: the lifecycle
+   * members are acts, and [SD §4.7.2d] is explicit that `in-transit` "is **not a record at all**:
+   * it is a projection". Recorded as a finding at {@link FACT_CLASS_FAMILY} rather than repaired
+   * here, because [SD §4.7] is the only place a family may be declared.
+   */
   'state',
+  /** Identifiers — BOL number, registration, SCAC, trip number. [SD §4.1] defers to [SD §7]. */
   'identity',
+  /**
+   * Who holds a role — "who is the hauling agent". The contest is real because `src:dp3-400ng`
+   * Item 7.1 requires the origin representative to be named in DPS at acceptance and **updated** to
+   * the one who will actually service the shipment ([SD §4.1]).
+   */
   'partyRole',
+  /**
+   * The performance of an act — [SD §4.1] defers to [SD §2], which puts `(outcome, reason)` on
+   * every act.
+   *
+   * **A record may never carry `type = actPerformance`** ([SD §4.7.1]): a type naming a family
+   * rather than an act would be the outcome-free second axis A-TYPE exists to prevent, and
+   * `outcome` would have nothing to attach to. Held structurally by
+   * {@link ActPerformanceIsNotARecordType}.
+   */
   'actPerformance',
 ] as const
 

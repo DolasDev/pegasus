@@ -6,9 +6,10 @@
   "types": "./src/index.ts",
   "scripts": {
     "test": "vitest run",
-    "lint": "eslint src tests",
+    "lint": "eslint src tests tools",
     "typecheck": "tsc --noEmit",
-    "alloy": "node alloy/run.mjs"
+    "alloy": "node alloy/run.mjs",
+    "glossary": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/generate-glossary.ts"
   },
   "devDependencies": {
     "typescript": "*",

@@ -37,6 +37,26 @@ import { assertNever } from './primitives'
 import type { HandoverQualifier, HandoverSide } from './vocabulary'
 
 /**
+ * Rec 24 **41** `Handed_over_under_continued_responsibility` — "handed over **under responsibility
+ * of the same transport operator**" (rev3 p.4).
+ *
+ * Custody moves and **authority does not** (**A8-MOVE**, [A8 §7.1]). The worked case is
+ * `src:dp3-400ng` Item 125 **Shuttle Service**, a truck-to-truck transfer to the same agent's own
+ * linehaul van — which is what makes A8-MOVE a distinction rather than a synonym for the fold.
+ */
+export const HANDED_OVER_UNDER_CONTINUED_RESPONSIBILITY = 41
+
+/**
+ * Rec 24 **349** `Handed_over` — "handed over **to another party**" (rev3 p.15).
+ *
+ * This is the boundary **A8-MOVE** moves authority at ([A8 §7.1]); the worked case is the interline
+ * pair `J1` Delivered to Connecting Line / `R1` Received from Prior Carrier, which
+ * `src:stedi-x12-reference` element 1650 publishes as **two codes asserted by two different
+ * parties** — the observation [SD §4.7.2f] turns into `handover`'s `side` qualifier.
+ */
+export const HANDED_OVER = 349
+
+/**
  * `src:uncefact-rec24`'s two codes — the one real distinction the source draws, and the hinge
  * [A8 §7.1] hangs **A8-MOVE** on:
  *
@@ -51,16 +71,16 @@ import type { HandoverQualifier, HandoverSide } from './vocabulary'
  *
  * Kept as the numeric code, not renamed: `A3` §5.2 records that Rec 24 "supplies it as two status
  * codes, **not as an entity**", and the code is the part that is sourced.
+ *
+ * The members are the two named constants above rather than bare literals written inside the array,
+ * and that is not a style choice: prettier prints an array of numbers in **fill** mode, packing the
+ * elements onto one line and carrying each member's own JSDoc along with them — so a per-member
+ * definition written inside the array cannot survive a commit. Naming the members keeps each
+ * definition attached to a declaration, which is where `tools/generate-glossary.ts` reads it from.
  */
-export const CUSTODY_BASES = [41, 349] as const
+export const CUSTODY_BASES = [HANDED_OVER_UNDER_CONTINUED_RESPONSIBILITY, HANDED_OVER] as const
 
 export type CustodyBasis = (typeof CUSTODY_BASES)[number]
-
-/** Rec 24 **41**: custody moves, responsibility does not — so authority does not either (A8-MOVE). */
-export const HANDED_OVER_UNDER_CONTINUED_RESPONSIBILITY = 41
-
-/** Rec 24 **349**: handed over to another party — the boundary A8-MOVE moves authority at. */
-export const HANDED_OVER = 349
 
 /**
  * [SD §8.2] `ExternallyPerformedLeg` — "an aggregate; a legal `subject`; canonical-subject family:

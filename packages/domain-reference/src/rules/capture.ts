@@ -790,7 +790,10 @@ function checkM5(facts: CaptureFacts): CaptureRejection | null {
 }
 
 /**
- * M7 — the per-type declaration, enforced at the boundary.
+ * **Rule M7** — [SD §5.2]: "`capturedBy` eligibility is declared per record `type` in the catalog
+ * and enforced on the wire." **[ORIGINAL]:** "promoting the table to a wire-enforced per-type
+ * declaration. Shippeo's analysis recommends the direction — 'make it a property of the event type,
+ * not a runtime guess' — but the enforcement is ours."
  *
  * Returns a verdict rather than a rejection, because this is the one rule whose table can be silent:
  * a row that declares a closed set refuses or admits, and a row that is owed can only admit on an
