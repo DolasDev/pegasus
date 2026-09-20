@@ -43,7 +43,7 @@
     "dotenv": "^16.4.5",
     "expo-server-sdk": "^6.1.0",
     "fast-xml-parser": "^5.11.1",
-    "hono": "^4.13.7",
+    "hono": "^4.13.8",
     "jose": "^6.2.12",
     "pdfjs-dist": "^6.3.289",
     "reflect-metadata": "^0.2.2",
