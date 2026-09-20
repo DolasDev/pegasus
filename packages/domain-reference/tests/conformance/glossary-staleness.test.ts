@@ -29,6 +29,15 @@ import {
 } from '../../tools/generate-glossary'
 
 /**
+ * These suites drive the TypeScript compiler API to regenerate the glossary, which takes seconds,
+ * not milliseconds — and a CI runner is slower than a workstation. vitest's default 5s timeout
+ * passed locally and timed out in CI (PR #712), which is the wrong way round: the machine that
+ * gates the branch was the one that could not run the check. The budget is generous on purpose —
+ * it exists to stop a hang, not to police how fast tsc is.
+ */
+const COMPILER_TIMEOUT_MS = 120_000
+
+/**
  * The first line that differs, with a little context.
  *
  * A staleness test whose output is "expected a 92kB string to equal a 92kB string" is half a test:
@@ -54,22 +63,30 @@ function firstDifference(generated: string, committed: string): string {
 }
 
 describe('the generated glossary', () => {
-  it('is committed in the state the generator produces', () => {
-    const generated = generateGlossary()
-    const committed = readFileSync(GLOSSARY_FILE, 'utf8')
-    if (generated !== committed) {
-      throw new Error(
-        `\`${GLOSSARY_REPO_PATH}\` is stale.\n\n${firstDifference(generated, committed)}`,
-      )
-    }
-    expect(generated).toBe(committed)
-  })
+  it(
+    'is committed in the state the generator produces',
+    () => {
+      const generated = generateGlossary()
+      const committed = readFileSync(GLOSSARY_FILE, 'utf8')
+      if (generated !== committed) {
+        throw new Error(
+          `\`${GLOSSARY_REPO_PATH}\` is stale.\n\n${firstDifference(generated, committed)}`,
+        )
+      }
+      expect(generated).toBe(committed)
+    },
+    COMPILER_TIMEOUT_MS,
+  )
 
-  it('regenerates identically — the output is a function of the code and nothing else', () => {
-    // Byte-order sorting, not locale, and no clock, hostname or working directory in the output.
-    // A generated file that is not reproducible turns its own staleness gate into noise.
-    expect(generateGlossary()).toBe(generateGlossary())
-  })
+  it(
+    'regenerates identically — the output is a function of the code and nothing else',
+    () => {
+      // Byte-order sorting, not locale, and no clock, hostname or working directory in the output.
+      // A generated file that is not reproducible turns its own staleness gate into noise.
+      expect(generateGlossary()).toBe(generateGlossary())
+    },
+    COMPILER_TIMEOUT_MS,
+  )
 
   it('carries the do-not-edit header, naming the generator and the command', () => {
     const committed = readFileSync(GLOSSARY_FILE, 'utf8')

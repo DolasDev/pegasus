@@ -31,6 +31,15 @@ import {
   type DisclosureFailure,
 } from '../../tools/generate-glossary'
 
+/**
+ * These suites drive the TypeScript compiler API to regenerate the glossary, which takes seconds,
+ * not milliseconds — and a CI runner is slower than a workstation. vitest's default 5s timeout
+ * passed locally and timed out in CI (PR #712), which is the wrong way round: the machine that
+ * gates the branch was the one that could not run the check. The budget is generous on purpose —
+ * it exists to stop a hang, not to police how fast tsc is.
+ */
+const COMPILER_TIMEOUT_MS = 120_000
+
 function report(failures: readonly DisclosureFailure[]): string {
   return failures
     .map(
@@ -42,24 +51,32 @@ function report(failures: readonly DisclosureFailure[]): string {
 }
 
 describe('[SD §0] disclosure, over every term the glossary covers', () => {
-  it('every covered term has a docstring carrying a citation or an explicit marker', () => {
-    const failures = collectDisclosureFailures()
-    if (failures.length > 0) {
-      throw new Error(
-        `${failures.length} term(s) fail the disclosure rule. Write a docstring — do not weaken ` +
-          `this check, and do not invent a citation to silence it ([SD §0]).\n\n${report(failures)}\n\n` +
-          `After fixing, regenerate the glossary: \`${GLOSSARY_COMMAND}\`.`,
-      )
-    }
-    expect(failures).toEqual([])
-  })
+  it(
+    'every covered term has a docstring carrying a citation or an explicit marker',
+    () => {
+      const failures = collectDisclosureFailures()
+      if (failures.length > 0) {
+        throw new Error(
+          `${failures.length} term(s) fail the disclosure rule. Write a docstring — do not weaken ` +
+            `this check, and do not invent a citation to silence it ([SD §0]).\n\n${report(failures)}\n\n` +
+            `After fixing, regenerate the glossary: \`${GLOSSARY_COMMAND}\`.`,
+        )
+      }
+      expect(failures).toEqual([])
+    },
+    COMPILER_TIMEOUT_MS,
+  )
 
-  it('the gate is live — it reads real symbols, so it can report a real failure', () => {
-    // The check is only worth having if it is capable of failing. `collectDisclosureFailures`
-    // resolves every term through `checker.getExportsOfModule` over `src/index.ts`, so a term that
-    // stops being exported throws rather than quietly dropping out of the glossary — which is the
-    // half of the guarantee an "expect([]).toEqual([])" assertion cannot show on its own.
-    expect(typeof collectDisclosureFailures).toBe('function')
-    expect(collectDisclosureFailures()).toBeInstanceOf(Array)
-  })
+  it(
+    'the gate is live — it reads real symbols, so it can report a real failure',
+    () => {
+      // The check is only worth having if it is capable of failing. `collectDisclosureFailures`
+      // resolves every term through `checker.getExportsOfModule` over `src/index.ts`, so a term that
+      // stops being exported throws rather than quietly dropping out of the glossary — which is the
+      // half of the guarantee an "expect([]).toEqual([])" assertion cannot show on its own.
+      expect(typeof collectDisclosureFailures).toBe('function')
+      expect(collectDisclosureFailures()).toBeInstanceOf(Array)
+    },
+    COMPILER_TIMEOUT_MS,
+  )
 })
