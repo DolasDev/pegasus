@@ -195,6 +195,9 @@ const DOCUMENTS: Readonly<Record<string, string>> = {
   'fork-order': 'fork-order-shipment-cardinality.md',
   'fork-time': 'fork-time-provenance-corrections.md',
   F1: 'F1-handover-qualifier-decision.md',
+  // Derives from SD and A8 rather than outranking them ([catalog §0]); listed after them for that
+  // reason, and before the review rounds.
+  catalog: 'published-event-catalog.md',
   'round-1-crosscheck': 'round-1-crosscheck.md',
   'round-2-critique': 'round-2-critique.md',
   'findings-from-alloy': 'findings-from-alloy.md',
@@ -202,7 +205,16 @@ const DOCUMENTS: Readonly<Record<string, string>> = {
 
 const DOCUMENT_TOKENS = Object.keys(DOCUMENTS).sort((left, right) => right.length - left.length)
 
-const CITATION = new RegExp(`\\[(${DOCUMENT_TOKENS.join('|')})((?:\\s|\\])[^\\]]*)?\\]`, 'g')
+/**
+ * `[SD §4.7.1]`, and `[SD]` for the document as a whole.
+ *
+ * The section group requires **whitespace** before it rather than allowing the closing bracket.
+ * With `(?:\s|\])` the `\]` branch consumed a citation's own closing bracket and then ran
+ * `[^\]]*` on to the *next* one, so a bare `[findings-from-alloy]` followed later in the same
+ * docstring by `[A8 §2]` was swallowed as a single citation and rendered as a broken nested link.
+ * Bare citations still match: the group is optional.
+ */
+const CITATION = new RegExp(`\\[(${DOCUMENT_TOKENS.join('|')})(\\s[^\\]]*)?\\]`, 'g')
 const CORPUS_CITATION = /`src:[a-z0-9-]+`/g
 const REGULATION_CITATION = /§\s?\d/
 const MARKER = /\[(ORIGINAL|SYNTHESIS)\]/g
@@ -755,6 +767,45 @@ const VOCABULARIES: readonly {
       'part that is sourced.',
     symbols: ['CUSTODY_BASES'],
   },
+  {
+    name: 'catalog face',
+    heading: 'Catalog faces',
+    blurb:
+      "The two published faces of every record ([catalog §4.1]), forced by [SD §1.1]'s obligation " +
+      'on `recordedAt`: "server-authored; **FORBIDDEN on capture, MANDATORY on query**". Two ' +
+      'types, not one optional field — so two schema documents, and both are external contracts.',
+    symbols: ['CATALOG_FACES'],
+  },
+  {
+    name: 'filter axis',
+    heading: 'Filter axes',
+    blurb:
+      'What a consumer may filter a subscription or a query on ([catalog §3.2]). Every member is ' +
+      'an envelope field, a payload field the vocabulary declares, or a key **derived** from ' +
+      'those — there is no fourth kind, and the derived members are what answer the ' +
+      '"publish something coarser" argument without adding the second classification axis ' +
+      '[SD §1.1] forbids.',
+    symbols: ['FILTER_AXES'],
+  },
+  {
+    name: 'refused filter axis',
+    heading: 'Refused filter axes',
+    blurb:
+      'What a consumer may **not** filter on, each carrying the decision that refuses it ' +
+      '([catalog §3.2]). Published as a list rather than left as an absence, for the reason ' +
+      '[SD §4.7.3] gives for its own: "so their absence is not read as an oversight".',
+    symbols: ['REFUSED_FILTER_AXES'],
+  },
+  {
+    name: 'change class',
+    heading: 'Compatibility change classes',
+    blurb:
+      'What may change within a major `specVersion` and what may not ([catalog §2.3]). ' +
+      '**[SYNTHESIS]**: the classification is ours and each member is a consequence of a sourced ' +
+      'rule that it names. `src:dcsa` publishes the _practice_ — per-release changelogs down to a ' +
+      'renamed filter — but no source in the corpus publishes the rule.',
+    symbols: ['ADDITIVE_CHANGES', 'BREAKING_CHANGES'],
+  },
 ]
 
 /**
@@ -1045,12 +1096,74 @@ export function collectDisclosureFailures(): DisclosureFailure[] {
       }
     }
   }
-  return sortedBy(failures, (failure) => `${failure.category} ${failure.term}`)
+  return sortedBy(failures, (failure) => `${failure.category}\u0000${failure.term}`)
 }
 
 /* ------------------------------------------------------------------------------------------------
  * Rendering
  * ---------------------------------------------------------------------------------------------- */
+
+/* ------------------------------------------------------------------------------------------------
+ * The owed ledger, as data
+ * ---------------------------------------------------------------------------------------------- */
+
+/** One line of the owed ledger. The same shape the glossary's `Owed` section renders. */
+export interface OwedInventory {
+  /** Every `owed(name, owedTo)` call and `Owed<Name, Owner>` type in `src/`, deduplicated. */
+  readonly declared: readonly OwedEntry[]
+  /** Record types whose [A8 §5] authority row is owed in whole or in part. */
+  readonly authorityRows: readonly {
+    readonly type: string
+    readonly status: string
+    readonly owedTo: string | null
+    readonly boundBy: string
+  }[]
+  /** Record types [SD §4.1]'s family table cannot place. */
+  readonly factClassFamilies: readonly string[]
+  /** Fact classes [SD §4.7.3] names as absent from the vocabulary and owed a row. */
+  readonly absentFactClasses: readonly string[]
+  /** How many record types the canonical-subject table declares — the denominator. */
+  readonly declaredRecordTypes: number
+}
+
+/**
+ * The owed ledger, computed once and rendered twice.
+ *
+ * The glossary's `Owed` section and the catalog's `index.json` both publish it, and two readings of
+ * one ledger can drift exactly the way [SD §1.1] deletes the generic `correlation` bag for. So the
+ * collection lives here, beside the machinery that already has the compiler model, and
+ * `generate-catalog.ts` imports it rather than re-deriving it.
+ */
+export function collectOwedInventory(): OwedInventory {
+  const model = buildModel()
+  const table = readCanonicalSubjects()
+  const exported = exportsOfIndex(model)
+
+  const deduped = new Map<string, OwedEntry>()
+  for (const entry of owedFromCode(model)) {
+    const key = `${entry.what} ${entry.owedTo}`
+    if (!deduped.has(key)) deduped.set(key, entry)
+  }
+
+  return {
+    declared: sortedBy([...deduped.values()], (item) => `${item.what} ${item.owedTo}`),
+    authorityRows: sortedBy(
+      table.rows.filter((row) => row.authority.status !== 'assigned'),
+      (row) => row.type,
+    ).map((row) => ({
+      type: row.type,
+      status: row.authority.status === 'conditional' ? 'conditional' : 'owed',
+      owedTo: row.authority.owedTo ?? null,
+      boundBy: row.authority.boundBy,
+    })),
+    factClassFamilies: owedFactClassFamilies(model).map(([type]) => type),
+    absentFactClasses: sortedBy(
+      membersOf(model, declaredExport(model, exported, 'ABSENT_AND_OWED')),
+      (member) => member.value,
+    ).map((member) => member.value),
+    declaredRecordTypes: table.rows.length,
+  }
+}
 
 function anchorFor(entry: Entry): string {
   return headingSlug(`${entry.term} (${entry.category})`)
@@ -1084,10 +1197,13 @@ function renderOwed(model: Model, table: CanonicalTable, lines: string[]): void 
   const code = owedFromCode(model)
   const deduped = new Map<string, OwedEntry>()
   for (const entry of code) {
-    const key = `${entry.what} ${entry.owedTo}`
+    const key = `${entry.what}\u0000${entry.owedTo}`
     if (!deduped.has(key)) deduped.set(key, entry)
   }
-  for (const entry of sortedBy([...deduped.values()], (item) => `${item.what} ${item.owedTo}`)) {
+  for (const entry of sortedBy(
+    [...deduped.values()],
+    (item) => `${item.what}\u0000${item.owedTo}`,
+  )) {
     lines.push(`- \`${entry.what}\` — owed to ${entry.owedTo} _(\`${entry.where}\`)_`)
   }
   lines.push('')
@@ -1149,7 +1265,10 @@ function renderIndex(categories: readonly Category[], lines: string[]): void {
   lines.push('## Alphabetical index')
   lines.push('')
   const all = categories.flatMap((category) => category.entries)
-  for (const entry of sortedBy(all, (candidate) => `${candidate.term} ${candidate.category}`)) {
+  for (const entry of sortedBy(
+    all,
+    (candidate) => `${candidate.term}\u0000${candidate.category}`,
+  )) {
     lines.push(`- [\`${entry.term}\`](#${anchorFor(entry)}) — ${entry.category}`)
   }
   lines.push('')

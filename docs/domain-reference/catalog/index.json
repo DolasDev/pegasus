@@ -1,0 +1,620 @@
+{
+  "x-generated": "GENERATED FILE — DO NOT EDIT BY HAND",
+  "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
+  "x-command": "npm run catalog -w @pegasus/domain-reference",
+  "catalog": {
+    "specVersion": "0.1.0",
+    "decidedBy": "docs/domain-reference/analysis/published-event-catalog.md",
+    "note": "The published catalog is the record vocabulary, exactly — [catalog §1]. There is no coarser published layer over these members, because a second classification axis is permanently forbidden by [SD §1.1].",
+    "memberCount": 33,
+    "faces": ["captured", "queried"],
+    "schemas": {
+      "captured": "captured.schema.json",
+      "queried": "queried.schema.json"
+    }
+  },
+  "members": [
+    {
+      "type": "Correction",
+      "kind": "meta"
+    },
+    {
+      "type": "FactResolved",
+      "kind": "meta"
+    },
+    {
+      "type": "arrival",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "stop",
+      "subjectKinds": ["stop", "externallyPerformedLeg"],
+      "factClassFamily": "time",
+      "qualifier": null
+    },
+    {
+      "type": "assignmentOffer",
+      "kind": "act",
+      "canonicalSubjectFamily": "assignment",
+      "subjectKinds": ["assignment"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "assignmentRelease",
+      "kind": "act",
+      "canonicalSubjectFamily": "assignment",
+      "subjectKinds": ["assignment"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "assignmentResponse",
+      "kind": "act",
+      "canonicalSubjectFamily": "assignment",
+      "subjectKinds": ["assignment"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "charge",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "charge",
+      "subjectKinds": ["charge"],
+      "factClassFamily": "owed",
+      "qualifier": ["aspect"]
+    },
+    {
+      "type": "condition",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "item",
+      "subjectKinds": ["item"],
+      "factClassFamily": "condition",
+      "qualifier": null
+    },
+    {
+      "type": "delivery",
+      "kind": "act",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "departure",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "stop",
+      "subjectKinds": ["stop", "externallyPerformedLeg"],
+      "factClassFamily": "time",
+      "qualifier": null
+    },
+    {
+      "type": "handover",
+      "kind": "act",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "actPerformance",
+      "qualifier": ["releasing", "receiving", "side", "occurrence"]
+    },
+    {
+      "type": "identity",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "anyAggregate",
+      "subjectKinds": [
+        "order",
+        "shipment",
+        "portion",
+        "stay",
+        "trip",
+        "stop",
+        "stopAction",
+        "assignment",
+        "partyRole",
+        "item",
+        "charge",
+        "resource",
+        "document",
+        "externallyPerformedLeg"
+      ],
+      "factClassFamily": "identity",
+      "qualifier": ["scheme", "vocabularyScope"]
+    },
+    {
+      "type": "loading",
+      "kind": "act",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "membershipOffer",
+      "kind": "act",
+      "canonicalSubjectFamily": "stopAction",
+      "subjectKinds": ["stopAction"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "membershipRelease",
+      "kind": "act",
+      "canonicalSubjectFamily": "stopAction",
+      "subjectKinds": ["stopAction"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "membershipResponse",
+      "kind": "act",
+      "canonicalSubjectFamily": "stopAction",
+      "subjectKinds": ["stopAction"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "notification",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "owed",
+      "qualifier": null
+    },
+    {
+      "type": "orderAward",
+      "kind": "act",
+      "canonicalSubjectFamily": "order",
+      "subjectKinds": ["order"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "orderCancellation",
+      "kind": "act",
+      "canonicalSubjectFamily": "order",
+      "subjectKinds": ["order"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "orderResponse",
+      "kind": "act",
+      "canonicalSubjectFamily": "order",
+      "subjectKinds": ["order"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "packing",
+      "kind": "act",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "partyRole",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "partyRole",
+      "subjectKinds": ["partyRole"],
+      "factClassFamily": "partyRole",
+      "qualifier": null
+    },
+    {
+      "type": "pieceCount",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "count",
+      "qualifier": ["unitization"]
+    },
+    {
+      "type": "sitEntryDate",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "stay",
+      "subjectKinds": ["stay"],
+      "factClassFamily": "time",
+      "qualifier": null
+    },
+    {
+      "type": "storeIn",
+      "kind": "act",
+      "canonicalSubjectFamily": "stay",
+      "subjectKinds": ["stay"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "storeOut",
+      "kind": "act",
+      "canonicalSubjectFamily": "stay",
+      "subjectKinds": ["stay"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "tripCancellation",
+      "kind": "act",
+      "canonicalSubjectFamily": "trip",
+      "subjectKinds": ["trip"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "tripDelay",
+      "kind": "act",
+      "canonicalSubjectFamily": "trip",
+      "subjectKinds": ["trip"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "tripResequence",
+      "kind": "act",
+      "canonicalSubjectFamily": "trip",
+      "subjectKinds": ["trip"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "unloading",
+      "kind": "act",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "weight.gross",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "measure",
+      "qualifier": null
+    },
+    {
+      "type": "weight.net",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "measure",
+      "qualifier": null
+    },
+    {
+      "type": "weight.tare",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "measure",
+      "qualifier": null
+    }
+  ],
+  "filtering": {
+    "note": "The filter vocabulary is the envelope plus the keys derived from it, and nothing else — [catalog §3.2]. One vocabulary serves both delivery modes (`src:dcsa`), with AND between filters and OR within a comma-separated list.",
+    "axes": [
+      {
+        "axis": "type",
+        "source": "envelope",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "subject.aggregate",
+        "source": "envelope",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "subject.id",
+        "source": "envelope",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "subjectFamily",
+        "source": "derived",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "factClassFamily",
+        "source": "derived",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "factRef",
+        "source": "derived",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "basis",
+        "source": "payload",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "capturedBy",
+        "source": "envelope",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "outcome",
+        "source": "payload",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "assertedBy.role",
+        "source": "envelope",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "assertedAt",
+        "source": "envelope",
+        "faces": ["captured", "queried"]
+      },
+      {
+        "axis": "recordedAt",
+        "source": "envelope",
+        "faces": ["queried"]
+      }
+    ],
+    "refused": ["context", "currentState", "tense", "remarkText", "undeclaredPayloadField"],
+    "refusedNote": "`context` is refused **as a default** only — [SD §1.4] rule 1: \"A consumer filtering by subject MUST NOT be served context matches by default.\" An explicitly named opt-in is not refused."
+  },
+  "compatibility": {
+    "note": "Closed vocabulary, addition-only within a major — [catalog §2.3]. Validate a record against the `specVersion` it carries, never against a pinned one, and treat an unfamiliar member of a closed enum as unhandled rather than as invalid.",
+    "additive": [
+      "newRecordType",
+      "newAggregateKind",
+      "newClosedEnumMember",
+      "newOptionalPayloadField",
+      "newContextMemberKind"
+    ],
+    "breaking": [
+      "removedOrRenamedRecordType",
+      "changedCanonicalSubjectFamily",
+      "changedQualifierShape",
+      "reinterpretedMember",
+      "changedFieldObligation",
+      "changedRoleNameSpelling"
+    ]
+  },
+  "owed": {
+    "note": "What the model declares undecided — [SD §0] forbids guessing a value to make the types tidy. Published here so a consumer sees the gaps without reading the analysis. The A4 reason vocabulary is the one that most affects this contract: `data/reasons.json` ships shape-only, with an empty code list, on purpose.",
+    "counts": {
+      "declared": 21,
+      "authorityRows": 19,
+      "declaredRecordTypes": 31,
+      "factClassFamilies": 2,
+      "absentFactClasses": 10
+    },
+    "declared": [
+      {
+        "what": "amendmentWindowTable",
+        "owedTo": "[SD §6.2] / [SD §4.7.3] — the one published window governs `estimate`, which has no `type`",
+        "where": "packages/domain-reference/src/rules/corrections.ts"
+      },
+      {
+        "what": "authorityRow",
+        "owedTo": "[A8 §5] owes a `handover` row — F3 in `findings-from-alloy.md`",
+        "where": "packages/domain-reference/src/rules/authority.ts"
+      },
+      {
+        "what": "authorityRow",
+        "owedTo": "[A8 §9 item 8] — the fact class has no row in A8 §5",
+        "where": "packages/domain-reference/src/rules/authority.ts"
+      },
+      {
+        "what": "boundBy",
+        "owedTo": "[SD §4.7.1] — NOT `CUSTODY`: a plan change is not a fact about the goods",
+        "where": "packages/domain-reference/src/rules/authority.ts"
+      },
+      {
+        "what": "boundBy",
+        "owedTo": "[SD §4.7.1] — NOT `CUSTODY`: an order is a commitment, not a fact about the goods",
+        "where": "packages/domain-reference/src/rules/authority.ts"
+      },
+      {
+        "what": "boundBy",
+        "owedTo": "[SD §4.7.1] — the binding is owed with the row",
+        "where": "packages/domain-reference/src/rules/authority.ts"
+      },
+      {
+        "what": "boundBy",
+        "owedTo": "[SD §4.7.2f] §7.4 — owed, and expressly NOT `CUSTODY`: the binding would be circular ([SD §4.8.2])",
+        "where": "packages/domain-reference/src/rules/authority.ts"
+      },
+      {
+        "what": "chargeValue",
+        "owedTo": "A11 — charge facts [SD §4.7.3]",
+        "where": "packages/domain-reference/src/assertions.ts"
+      },
+      {
+        "what": "conditionValue",
+        "owedTo": "A4 / A10 — no document fixes the condition vocabulary",
+        "where": "packages/domain-reference/src/assertions.ts"
+      },
+      {
+        "what": "etaChange",
+        "owedTo": "[SD §4.7.3] — `eta` is absent-and-owed; [SD §4.5] reads it as `arrival` at basis = ESTIMATED",
+        "where": "packages/domain-reference/src/rules/capture.ts"
+      },
+      {
+        "what": "itemAccepted",
+        "owedTo": "[SD §4.7.1] — M2 names it in the possession-changing list and no type carries it",
+        "where": "packages/domain-reference/src/rules/capture.ts"
+      },
+      {
+        "what": "itemRefused",
+        "owedTo": "[SD §4.7.1] — read by [SD §5.4] as a Portion in a delivery’s reasons[].appliesTo, not a type",
+        "where": "packages/domain-reference/src/rules/capture.ts"
+      },
+      {
+        "what": "notificationTarget",
+        "owedTo": "A8 §9 item 6 — the party as a notification target",
+        "where": "packages/domain-reference/src/rules/e-canon.ts"
+      },
+      {
+        "what": "notificationValue",
+        "owedTo": "A8 §9 item 6 — the party as a notification target",
+        "where": "packages/domain-reference/src/assertions.ts"
+      },
+      {
+        "what": "obligationDeadline",
+        "owedTo": "A4 / [SD §6.5] — no source states a correction deadline",
+        "where": "packages/domain-reference/src/rules/corrections.ts"
+      },
+      {
+        "what": "obligationRecipient",
+        "owedTo": "[A8 §9 item 6] — the party as a notification target",
+        "where": "packages/domain-reference/src/rules/corrections.ts"
+      },
+      {
+        "what": "placeRef",
+        "owedTo": "[SD §1.2] — no `place` aggregate",
+        "where": "packages/domain-reference/src/custody.ts"
+      },
+      {
+        "what": "portionMembership",
+        "owedTo": "[SD §4.7.1] — a Portion is asserted, and no declared type carries the assertion",
+        "where": "packages/domain-reference/src/portion.ts"
+      },
+      {
+        "what": "position",
+        "owedTo": "[SD §4.7.1] and [SD §4.7.3] — named by M5, in no table at all",
+        "where": "packages/domain-reference/src/rules/capture.ts"
+      },
+      {
+        "what": "remedy",
+        "owedTo": "A4 — the reason vocabulary [SD §2.4, §10.4]",
+        "where": "packages/domain-reference/src/outcomes.ts"
+      },
+      {
+        "what": "tariffOwner",
+        "owedTo": "[A8 §9 item 2] — the role enum has no van-line member",
+        "where": "packages/domain-reference/src/rules/authority.ts"
+      }
+    ],
+    "authorityRows": [
+      {
+        "type": "assignmentOffer",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "boundBy": "owed"
+      },
+      {
+        "type": "assignmentRelease",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "boundBy": "owed"
+      },
+      {
+        "type": "assignmentResponse",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "boundBy": "owed"
+      },
+      {
+        "type": "handover",
+        "status": "owed",
+        "owedTo": "[A8 §5] has no handover row (recorded as F3 in findings-from-alloy.md), and boundBy is owed EXPRESSLY NOT CUSTODY: [SD §4.8.2] says of the identical shape that 'that row's binding would be CUSTODY, so A8-MOVE would be defined in terms of the thing it defines'. The fold breaks the circle, so handover's own authority cannot be decided by the fold.",
+        "boundBy": "owed"
+      },
+      {
+        "type": "membershipOffer",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "boundBy": "owed"
+      },
+      {
+        "type": "membershipRelease",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "boundBy": "owed"
+      },
+      {
+        "type": "membershipResponse",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8]",
+        "boundBy": "owed"
+      },
+      {
+        "type": "notification",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 6] — the party as a notification target; the row is provisional throughout ([SD §4.7.3])",
+        "boundBy": "owed"
+      },
+      {
+        "type": "orderAward",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
+        "boundBy": "owed"
+      },
+      {
+        "type": "orderCancellation",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
+        "boundBy": "owed"
+      },
+      {
+        "type": "orderResponse",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
+        "boundBy": "owed"
+      },
+      {
+        "type": "packing",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8] — names packing performance as not covered by [A8 §5]",
+        "boundBy": "CUSTODY"
+      },
+      {
+        "type": "partyRole",
+        "status": "owed",
+        "owedTo": "[A8 §9 items 1-2] — both the party entity and the role enum are undefined",
+        "boundBy": "owed"
+      },
+      {
+        "type": "pieceCount",
+        "status": "conditional",
+        "owedTo": "[A8 §9 item 8] — which names piece count outright as a class [A8 §5] does not cover",
+        "boundBy": "CUSTODY"
+      },
+      {
+        "type": "tripCancellation",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no trip row",
+        "boundBy": "owed"
+      },
+      {
+        "type": "tripDelay",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no trip row, and no source in the corpus binds a plan change to an asserting role",
+        "boundBy": "owed"
+      },
+      {
+        "type": "tripResequence",
+        "status": "owed",
+        "owedTo": "[A8 §9 item 8] — [A8 §5] has no trip row",
+        "boundBy": "owed"
+      },
+      {
+        "type": "weight.gross",
+        "status": "owed",
+        "owedTo": "[A8 §5] — no row. NOTE: [A8 §9 item 8]'s enumeration of uncovered classes does not name gross or tare weight either, so this row is owed by a ledger that does not list it.",
+        "boundBy": "unassigned"
+      },
+      {
+        "type": "weight.tare",
+        "status": "owed",
+        "owedTo": "[A8 §5] — no row; 'as weight.gross'",
+        "boundBy": "unassigned"
+      }
+    ],
+    "factClassFamilies": ["charge", "notification"],
+    "absentFactClasses": [
+      "claim",
+      "cube",
+      "estimate",
+      "eta",
+      "resourceTareWeight",
+      "sealIntegrity",
+      "survey",
+      "tracerResult",
+      "unpacking",
+      "weighing"
+    ]
+  }
+}

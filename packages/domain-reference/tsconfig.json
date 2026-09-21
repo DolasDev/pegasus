@@ -23,6 +23,11 @@
     // type-checked like everything else — an unchecked generator is a generator
     // that breaks on the day it runs.
     "module": "ES2022",
+    // `tools/generate-catalog.ts` imports `./generate-glossary.ts` **with** its extension, because
+    // it is run directly by Node's type stripping (`npm run catalog`) and Node's loader resolves no
+    // extension for it. Safe here and nowhere else: this package emits nothing, so there is no
+    // output in which the specifier could be wrong.
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
   "include": ["src/**/*", "tests/**/*", "data/**/*", "tools/**/*"]

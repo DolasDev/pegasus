@@ -22,13 +22,26 @@ mappings into the core is what stops a reference model staying pure.
 | Sources       | [`sources/`](sources/)   | Registry + stored material + per-source analysis                                                             | As sources are added    |
 | Analysis      | [`analysis/`](analysis/) | Per-area comparison and "best source" decisions                                                              | Per research round      |
 | Core model    | [`model/`](model/)       | Ubiquitous language, context map, aggregates, value objects, lifecycles, invariants, domain events, commands | Rarely                  |
-| Event catalog | [`catalog/`](catalog/)   | Published integration events, derived from the core                                                          | Deliberately, versioned |
+| Event catalog | [`catalog/`](catalog/)   | **Published integration events, generated from the executable specification — live at `specVersion` 0.1.0**  | Deliberately, versioned |
 | Mappings      | [`mappings/`](mappings/) | pegII ↔ model, Cloud ↔ model, partner ↔ model                                                                | Often                   |
 
 "Pure" means **no technology** — no pegII field names, API shapes, or database
 structure in `model/`. It does **not** mean generic: the model uses the moving
 industry's own language (booking/origin/hauling/destination agent, binding
 estimate, storage-in-transit, reweigh), not abstract logistics terms.
+
+## The published catalog — [`catalog/`](catalog/)
+
+The versioned integration events a consumer subscribes to. Like the glossary, every file in it is
+**generated from the executable specification** and gated against drift — see
+[`catalog/README.md`](catalog/README.md) for the files and
+[`analysis/published-event-catalog.md`](analysis/published-event-catalog.md) for the decisions
+behind them (what is published, how it is versioned, what may be filtered on).
+
+- Regenerate: `npm run catalog -w @pegasus/domain-reference`
+- Gate: `packages/domain-reference/tests/conformance/catalog.test.ts`
+
+**Do not edit anything under `catalog/` by hand.** Change the type and regenerate.
 
 ## Ubiquitous language — [`glossary.md`](glossary.md)
 
@@ -81,13 +94,14 @@ without repeating the research.
 
 ## Process
 
-| Phase                    | Output                                                                                           | Status      |
-| ------------------------ | ------------------------------------------------------------------------------------------------ | ----------- |
-| 1. Inventory + rubric    | `sources/registry.yaml`, `rubric.md`, inbox requests                                             | in progress |
-| 2. Per-source analysis   | `sources/<id>/analysis.md` (from [`templates/source-analysis.md`](templates/source-analysis.md)) | —           |
-| 3. Comparison            | `analysis/<area>.md` — best source per area, with reasons                                        | —           |
-| 4. Core model            | `model/`                                                                                         | —           |
-| 5. Validation + mappings | `model/scenarios/`, `mappings/`, gap list                                                        | —           |
+| Phase                    | Output                                                                                                                                                                 | Status      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1. Inventory + rubric    | `sources/registry.yaml`, `rubric.md`, inbox requests                                                                                                                   | in progress |
+| 2. Per-source analysis   | `sources/<id>/analysis.md` (from [`templates/source-analysis.md`](templates/source-analysis.md))                                                                       | —           |
+| 3. Comparison            | `analysis/<area>.md` — best source per area, with reasons                                                                                                              | —           |
+| 4. Core model            | `model/`                                                                                                                                                               | —           |
+| 5. Validation + mappings | `model/scenarios/`, `mappings/`, gap list                                                                                                                              | —           |
+| 6. Event catalog         | [`catalog/`](catalog/) — two JSON Schema faces, a manifest, an owed inventory; decided in [`analysis/published-event-catalog.md`](analysis/published-event-catalog.md) | **live**    |
 
 ## Conventions (for humans and agents)
 

@@ -41,6 +41,11 @@ export * from './rules/authority'
 export * from './rules/corrections'
 export * from './rules/resolution'
 
+// The published contract *around* the vocabulary — what the catalog publishes, at what version,
+// with what filter axes and what compatibility promise ([catalog]). It declares no record type: its
+// membership **is** `RECORD_TYPES`, and a type-level check keeps the two from drifting.
+export * from './catalog'
+
 // The tables that change on their own cadence — [SD §4.7.1]'s canonical subjects, [A8 §5]'s
 // authority rows, and the reason vocabulary's shape, whose content is owed to A4. They live in
 // `data/` as JSON and are checked against everything above at load; this module is the loader, and
