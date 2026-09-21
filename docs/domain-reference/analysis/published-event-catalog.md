@@ -305,7 +305,7 @@ with no declaration fails to compile.
 
 ### 3.3 The one consequence worth stating on its own
 
-Axes 7 and 8 are not independent, and the dependency is a published guarantee rather than an
+Axes 8 and 9 are not independent, and the dependency is a published guarantee rather than an
 implementation detail.
 
 [SD §5.2 M3]: "Every act record with `outcome ≠ COMPLETED`, and every `Reason`, requires
@@ -428,12 +428,35 @@ Three of those bear directly on this catalog and are named here so they are not 
    **filling it is A4's job, not this document's.** [SD §10.4] lists it under what is explicitly not
    settled.
 2. **F3, F4, F5**, open in [`findings-from-alloy.md`](findings-from-alloy.md). F5 is the one that
-   touches the published contract: role names are fact-key components, so their spelling is
-   load-bearing, and [A8 §2] carries two spellings with nothing cross-checking them. Until it lands,
-   axis 9 in §3.2 filters on a vocabulary whose canonical spelling is owed.
+   touches the published contract, and it does so directly enough to be stated as a commitment
+   rather than a caveat. Role names became fact-key components at F1, so their spelling is
+   load-bearing; [A8 §2] carries **two** spellings of one cast — A8-NAME-1's lower-camel rule
+   (`originAgent`, `sitAgent`) and, in the same section, `src:sirva-ade`'s capitalised cast
+   (`OriginAgent`, `SITAgent`, which is not even a pure case fold) — with nothing cross-checking
+   them.
+
+   `ROLE_NAMES` in `envelope.ts` pins the lower-camel spelling, on the ground that A8-NAME-1 is a
+   _rule_ and the ADE cast is a _citation_. **This catalog publishes that spelling on the wire**, as
+   a closed enum, and filter axis 10 filters on it. F5 is explicit that the pin "is a **local**
+   decision by an implementation, and it must not be mistaken for the answer"; [A8 §9 item 2] owes
+   the canonical list. So: if A8 settles on the other spelling, that is a
+   **`changedRoleNameSpelling`** change under §2.3 — breaking, and requiring a new major. It is
+   survivable here only because this is `0.1.0`, and it is recorded so that nobody later reads the
+   published enum as evidence the question was settled. **[SYNTHESIS]**: F5 states the defect and
+   the pin; naming the consequence for the published contract is this document's step.
+
 3. **`charge`, `condition` and `notification` carry owed values.** They are published members with a
    declared subject family and no value shape, and the emitted schemas say so with the owed marker
    rather than with a permissive empty object.
+4. **One shape in the emitted schemas spans two subject families**, and it is worth recording as a
+   finding rather than leaving a reader to wonder. `Reason.appliesTo` is
+   `SubjectRef<'portion' | 'item'>[]` ([SD §2.4], the field that carries [SD §3.4]'s "delivered, two
+   items short"), and `{item, portion}` matches no declared family — so the generator publishes it
+   as `SubjectRef.item+portion` rather than inventing one. That is correct and not a defect:
+   E-CANON constrains a record's **subject**, and `appliesTo` is a payload field naming a scope, not
+   a subject. [SD §5.4] keeps the two grains apart deliberately — "a value _per article_ is an
+   `item`-subject fact; a scope of an act is a Portion" — so a family joining them would fuse
+   exactly what that section separates. **[SYNTHESIS]**.
 
 ---
 
