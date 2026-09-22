@@ -24,6 +24,10 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Role names](#role-names-18) — 18
 - [Membership forms](#membership-forms-3) — 3
 - [Custody bases](#custody-bases-2) — 2
+- [Catalog faces](#catalog-faces-2) — 2
+- [Filter axes](#filter-axes-12) — 12
+- [Refused filter axes](#refused-filter-axes-5) — 5
+- [Compatibility change classes](#compatibility-change-classes-11) — 11
 - [Key functions and rules](#key-functions-and-rules-23) — 23
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
@@ -1147,6 +1151,272 @@ of the same transport operator**" (rev3 p.4).
 - **Cited:** [[A8 §7.1]](analysis/A8-authority-skeleton.md#71-the-hinge-is-already-in-the-corpus-and-it-is-the-responsibility-distinction)
 - **Declared by:** `CUSTODY_BASES` in `packages/domain-reference/src/custody.ts`
 
+## Catalog faces (2)
+
+The two published faces of every record ([catalog §4.1]), forced by [SD §1.1]'s obligation on `recordedAt`: "server-authored; **FORBIDDEN on capture, MANDATORY on query**". Two types, not one optional field — so two schema documents, and both are external contracts.
+
+### `captured` (catalog face)
+
+What anything asserting into the catalog must satisfy. `recordedAt` is FORBIDDEN. [SD §1.1]
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `CATALOG_FACES` in `packages/domain-reference/src/catalog.ts`
+
+### `queried` (catalog face)
+
+What anything reading out of it is served. `recordedAt` is MANDATORY. [SD §1.1]
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `CATALOG_FACES` in `packages/domain-reference/src/catalog.ts`
+
+## Filter axes (12)
+
+What a consumer may filter a subscription or a query on ([catalog §3.2]). Every member is an envelope field, a payload field the vocabulary declares, or a key **derived** from those — there is no fourth kind, and the derived members are what answer the "publish something coarser" argument without adding the second classification axis [SD §1.1] forbids.
+
+### `assertedAt` (filter axis)
+
+When the asserter said it — [SD §1.1]. A range with operators, as `src:dcsa` filters "both
+timestamps with operators".
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `assertedBy.role` (filter axis)
+
+Who said it, in what role — [SD §1.1], "Role rides on the assertion, not the party". `src:dcsa`
+constrains its own classifier by party role in JIT, which is the same idea one field over.
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `basis` (filter axis)
+
+Tense — [SD §4.2]. The envelope forbids a tense qualifier ([SD §1.1]), so this is the only
+place tense is filtered, and it is a payload field rather than an envelope one.
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.2]](analysis/00-shared-decisions.md#42-basis--and-an-honest-re-citation)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `capturedBy` (filter axis)
+
+How the value was obtained — [SD §1.1], [SD §5.1]. First-class because `src:shippeo` makes
+`trigger.type` and `platform_type` required on every standard events-out message so that "a
+consumer can always tell a geofence crossing from a person's assertion without consulting a
+side table".
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `factClassFamily` (filter axis)
+
+The fact-class family of the record's `type` — **derived**; [SD §4.1]'s family table.
+
+- **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `factRef` (filter axis)
+
+The fact key `(subject, type, qualifier?)` — **derived**; [SD §1.3] item 3, "computed from
+fields the record already carries". Subscribing to a fact key is how a consumer follows one
+contested fact and receives every claim about it, which is [catalog §3.4]'s answer to
+per-property change filtering.
+
+- **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class) · [[catalog §3.4]](analysis/published-event-catalog.md#34-the-original-question-answered)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `outcome` (filter axis)
+
+The exception feed — [SD §2.2]. Legal only at `basis = ACTUAL` ([SD §2.3] invariant 1), and
+disjoint from machine capture by [SD §5.2 M3]; see [catalog §3.3].
+
+- **Cited:** [[SD §2.2]](analysis/00-shared-decisions.md#22-the-outcome-enum) · [[SD §2.3]](analysis/00-shared-decisions.md#23-invariants) · [[SD §5.2 M3]](analysis/00-shared-decisions.md#52-the-rules) · [[catalog §3.3]](analysis/published-event-catalog.md#33-the-one-consequence-worth-stating-on-its-own)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `recordedAt` (filter axis)
+
+When we stored it — [SD §1.1]. **Queried face only**, because capture forbids the field
+outright; a captured-face filter on it would name something that cannot exist.
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `subject.aggregate` (filter axis)
+
+Which kind of thing the record is about — [SD §1.1]. `src:gs1-epcis-cbv` makes every vocabulary
+a browsable collection for exactly this (`/eventTypes/{t}/events`).
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `subject.id` (filter axis)
+
+Which thing — [SD §1.1]. `src:gs1-epcis-cbv`'s `/epcs/{epc}/events`.
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `subjectFamily` (filter axis)
+
+The canonical subject family the record's subject kind belongs to — **derived**; [SD §4.7]
+note 2, "a family is a named, closed set of `aggregate` kinds". This is one of the two axes that
+answer the coarseness argument [catalog §1.2] refuses to answer with a second vocabulary.
+
+- **Cited:** [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table) · [[catalog §1.2]](analysis/published-event-catalog.md#12-the-coarser-published-layer-considered-and-refused)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `type` (filter axis)
+
+The single classification axis — [SD §1.1], [SD §1.3]. `src:dcsa`'s `eventTypes` filter is the
+same axis under another name.
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
+- **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+## Refused filter axes (5)
+
+What a consumer may **not** filter on, each carrying the decision that refuses it ([catalog §3.2]). Published as a list rather than left as an absence, for the reason [SD §4.7.3] gives for its own: "so their absence is not read as an oversight".
+
+### `context` (refused filter axis)
+
+`context[]`, **as a default**. [SD §1.4] rule 1: "A consumer filtering by subject MUST NOT be
+served context matches by default. If it were, the shipment-rooted envelope would reappear as
+a query default." An explicitly named opt-in is not refused; the default is.
+
+- **Cited:** [[SD §1.4]](analysis/00-shared-decisions.md#14-context--the-field-that-makes-the-conflict-disappear)
+- **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `currentState` (refused filter axis)
+
+A mutable current-state field. [SD §1.1] forbids one on the envelope — "The catalog publishes
+assertions; state is a projection" — so there is nothing to filter.
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `remarkText` (refused filter axis)
+
+Free text. `remark` exists and carries the narrative an `OTHER` reason owes ([SD §2.4] rule 3),
+but a filter over free text has no vocabulary and no version, so it is not a contract.
+**[ORIGINAL]**.
+
+- **Marker:** [ORIGINAL]
+- **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `tense` (refused filter axis)
+
+A tense qualifier. Refused at [SD §1.1]; tense lives on the value as `basis` ([SD §4.2]), which
+is filter axis `basis` instead.
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.2]](analysis/00-shared-decisions.md#42-basis--and-an-honest-re-citation)
+- **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+### `undeclaredPayloadField` (refused filter axis)
+
+A payload field no `type` declares. The payload is "typed per `type`" ([SD §1.1]), so a
+cross-type payload filter would be filtering on a field that only some records can have.
+**[SYNTHESIS]** of [SD §1.1] and [SD §4.7]'s per-type declaration.
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
+- **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
+
+## Compatibility change classes (11)
+
+What may change within a major `specVersion` and what may not ([catalog §2.3]). **[SYNTHESIS]**: the classification is ours and each member is a consequence of a sourced rule that it names. `src:dcsa` publishes the _practice_ — per-release changelogs down to a renamed filter — but no source in the corpus publishes the rule.
+
+### `changedCanonicalSubjectFamily` (change class)
+
+Changing a `type`'s canonical subject family. E-CANON admits a different set of records before
+and after, and it "rejects at the boundary, not re-keys" ([SD §4.6]), so the change is visible
+as a refusal rather than as a migration.
+
+- **Cited:** [[SD §4.6]](analysis/00-shared-decisions.md#46-e-canons-boundary-behaviour-reject-never-re-key)
+- **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `changedFieldObligation` (change class)
+
+Moving a field between MANDATORY, OPTIONAL and FORBIDDEN. [SD §1.1]'s obligation column is the
+contract, and its forbidden list is "permanent".
+
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `changedQualifierShape` (change class)
+
+Changing a declared `qualifier`'s shape. The qualifier is a fact key component ([SD §1.3] item
+3), so the change repartitions every contest over that type — which is exactly the defect F1
+found when `handover` declared none.
+
+- **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
+- **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `changedRoleNameSpelling` (change class)
+
+Changing how a role name is spelled. [findings-from-alloy] F5: role names are fact-key
+components after F1, "so spelling is load-bearing, and [A8 §2] carries two spellings with
+nothing cross-checking".
+
+- **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[findings-from-alloy]](analysis/findings-from-alloy.md)
+- **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `newAggregateKind` (change class)
+
+A new `aggregate` kind. [SD §1.2] states this one outright: the enum is "open to _addition_ in
+a later `specVersion`, never to reinterpretation".
+
+- **Cited:** [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `newClosedEnumMember` (change class)
+
+A new member of a closed enum the catalog publishes — a capture method, a basis, an outcome, a
+reason scope or a reason code. **[SYNTHESIS]**: [SD §1.2]'s rule for `aggregate`, generalised.
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `newContextMemberKind` (change class)
+
+A new kind of `context[]` member. `context[]` is non-authoritative and is never the resolution
+key ([SD §1.4] rules 2 and 3), so nothing downstream keys on its membership.
+
+- **Cited:** [[SD §1.4]](analysis/00-shared-decisions.md#14-context--the-field-that-makes-the-conflict-disappear)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `newOptionalPayloadField` (change class)
+
+A new **optional** payload field. No record that validated stops validating, and [SD §1.1]'s
+payload row — "typed per `type`", "per type" — already leaves the per-type shape to [SD §4.7]'s
+declaration rather than to the envelope. **[SYNTHESIS]**.
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `newRecordType` (change class)
+
+A new `type`, with the canonical-subject declaration [SD §4.7] requires of every member. No
+existing row moves, and the new row is complete for the new version.
+
+- **Cited:** [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `reinterpretedMember` (change class)
+
+Changing what an existing member means. [SD §1.2]: "never to reinterpretation."
+
+- **Cited:** [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `removedOrRenamedRecordType` (change class)
+
+Removing or renaming a `type`. It is a component of the fact key ([SD §1.3] item 3).
+
+- **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
+- **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
 ## Key functions and rules (23)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
@@ -1515,16 +1785,27 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`accountParty`](#accountparty-role-name) — role name
 - [`actPerformance`](#actperformance-fact-class-family) — fact-class family
 - [`arrival`](#arrival-record-type) — record type
+- [`assertedAt`](#assertedat-filter-axis) — filter axis
+- [`assertedBy.role`](#assertedbyrole-filter-axis) — filter axis
 - [`assignment`](#assignment-aggregate) — aggregate
 - [`assignmentOffer`](#assignmentoffer-record-type) — record type
 - [`assignmentRelease`](#assignmentrelease-record-type) — record type
 - [`assignmentResponse`](#assignmentresponse-record-type) — record type
+- [`basis`](#basis-filter-axis) — filter axis
 - [`booker`](#booker-role-name) — role name
+- [`captured`](#captured-catalog-face) — catalog face
+- [`capturedBy`](#capturedby-filter-axis) — filter axis
+- [`changedCanonicalSubjectFamily`](#changedcanonicalsubjectfamily-change-class) — change class
+- [`changedFieldObligation`](#changedfieldobligation-change-class) — change class
+- [`changedQualifierShape`](#changedqualifiershape-change-class) — change class
+- [`changedRoleNameSpelling`](#changedrolenamespelling-change-class) — change class
 - [`charge`](#charge-aggregate) — aggregate
 - [`charge`](#charge-record-type) — record type
 - [`condition`](#condition-fact-class-family) — fact-class family
 - [`condition`](#condition-record-type) — record type
+- [`context`](#context-refused-filter-axis) — refused filter axis
 - [`count`](#count-fact-class-family) — fact-class family
+- [`currentState`](#currentstate-refused-filter-axis) — refused filter axis
 - [`custodyAt`](#custodyat-rule) — rule
 - [`customer`](#customer-role-name) — role name
 - [`delivery`](#delivery-record-type) — record type
@@ -1533,6 +1814,8 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`document`](#document-aggregate) — aggregate
 - [`driver`](#driver-role-name) — role name
 - [`externallyPerformedLeg`](#externallyperformedleg-aggregate) — aggregate
+- [`factClassFamily`](#factclassfamily-filter-axis) — filter axis
+- [`factRef`](#factref-filter-axis) — filter axis
 - [`handover`](#handover-record-type) — record type
 - [`hauler`](#hauler-role-name) — role name
 - [`identity`](#identity-fact-class-family) — fact-class family
@@ -1544,12 +1827,18 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`membershipOffer`](#membershipoffer-record-type) — record type
 - [`membershipRelease`](#membershiprelease-record-type) — record type
 - [`membershipResponse`](#membershipresponse-record-type) — record type
+- [`newAggregateKind`](#newaggregatekind-change-class) — change class
+- [`newClosedEnumMember`](#newclosedenummember-change-class) — change class
+- [`newContextMemberKind`](#newcontextmemberkind-change-class) — change class
+- [`newOptionalPayloadField`](#newoptionalpayloadfield-change-class) — change class
+- [`newRecordType`](#newrecordtype-change-class) — change class
 - [`notification`](#notification-record-type) — record type
 - [`order`](#order-aggregate) — aggregate
 - [`orderAward`](#orderaward-record-type) — record type
 - [`orderCancellation`](#ordercancellation-record-type) — record type
 - [`orderResponse`](#orderresponse-record-type) — record type
 - [`originAgent`](#originagent-role-name) — role name
+- [`outcome`](#outcome-filter-axis) — filter axis
 - [`packer`](#packer-role-name) — role name
 - [`packing`](#packing-record-type) — record type
 - [`partyRole`](#partyrole-aggregate) — aggregate
@@ -1559,7 +1848,12 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`platform`](#platform-role-name) — role name
 - [`portHandler`](#porthandler-role-name) — role name
 - [`portion`](#portion-aggregate) — aggregate
+- [`queried`](#queried-catalog-face) — catalog face
 - [`r19Agent`](#r19agent-role-name) — role name
+- [`recordedAt`](#recordedat-filter-axis) — filter axis
+- [`reinterpretedMember`](#reinterpretedmember-change-class) — change class
+- [`remarkText`](#remarktext-refused-filter-axis) — refused filter axis
+- [`removedOrRenamedRecordType`](#removedorrenamedrecordtype-change-class) — change class
 - [`resource`](#resource-aggregate) — aggregate
 - [`rr19Agent`](#rr19agent-role-name) — role name
 - [`setoffAgent`](#setoffagent-role-name) — role name
@@ -1573,11 +1867,17 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`stopAction`](#stopaction-aggregate) — aggregate
 - [`storeIn`](#storein-record-type) — record type
 - [`storeOut`](#storeout-record-type) — record type
+- [`subject.aggregate`](#subjectaggregate-filter-axis) — filter axis
+- [`subject.id`](#subjectid-filter-axis) — filter axis
+- [`subjectFamily`](#subjectfamily-filter-axis) — filter axis
+- [`tense`](#tense-refused-filter-axis) — refused filter axis
 - [`time`](#time-fact-class-family) — fact-class family
 - [`trip`](#trip-aggregate) — aggregate
 - [`tripCancellation`](#tripcancellation-record-type) — record type
 - [`tripDelay`](#tripdelay-record-type) — record type
 - [`tripResequence`](#tripresequence-record-type) — record type
+- [`type`](#type-filter-axis) — filter axis
+- [`undeclaredPayloadField`](#undeclaredpayloadfield-refused-filter-axis) — refused filter axis
 - [`unloadAgent`](#unloadagent-role-name) — role name
 - [`unloading`](#unloading-record-type) — record type
 - [`weighMaster`](#weighmaster-role-name) — role name

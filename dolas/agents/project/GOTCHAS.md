@@ -1790,3 +1790,29 @@ The same `[[ … ]] && …` shape appears in `_deploy.yml`'s target resolver,
 **safe**: each is mid-script, and `set -e` does not abort when the failing command is the
 left side of an `&&` list. Only last-in-block occurrences can fail a step, so that is the
 thing to grep for.
+
+## A grep that matches nothing is not evidence: the shell's `grep` is ugrep with `-I`
+
+`grep` in this environment is a **shell function** wrapping Claude Code's bundled ugrep with
+`-G --ignore-files --hidden -I …`. The `-I` is "skip binary files", and ugrep calls a file
+binary as soon as it contains a NUL byte.
+
+`packages/domain-reference/tools/generate-glossary.ts` contained **four literal NUL bytes**,
+written directly into template strings as a sort separator. So every `grep` of that
+1,254-line TypeScript file returned **nothing, with exit 0** — not an error, not a warning,
+just silence that is indistinguishable from "no match". `file` reported it as `data`; `sed`,
+`node` and `tsc` all read it perfectly.
+
+This is the concrete cause of the class of failure the domain-reference plan warns about —
+"two of my own tamper attempts silently matched nothing, which looks exactly like a working
+gate". A tamper check, a guard script, or a `grep -q` gate over such a file is a **permanent
+false green**.
+
+- **When a negative grep result is load-bearing** — proving a string is absent, confirming a
+  tamper landed, gating on a pattern — use **`/usr/bin/grep -a`** (`-a` forces text mode) and
+  not the wrapper.
+- `/usr/bin/grep` without `-a` is only half a fix: it prints `binary file matches` and
+  suppresses the matching lines.
+- Fixed at the source in that file (escaped as `�`; the runtime string and the generated
+  glossary are byte-identical), but any file can acquire a NUL the same way.
+- No CI job greps that file, so this was local-tooling only — worth checking if one ever does.

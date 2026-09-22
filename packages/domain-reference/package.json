@@ -9,9 +9,11 @@
     "lint": "eslint src tests tools",
     "typecheck": "tsc --noEmit",
     "alloy": "node alloy/run.mjs",
-    "glossary": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/generate-glossary.ts"
+    "glossary": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/generate-glossary.ts",
+    "catalog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/generate-catalog.ts"
   },
   "devDependencies": {
+    "prettier": "*",
     "typescript": "*",
     "vitest": "^4.1.11"
   }
