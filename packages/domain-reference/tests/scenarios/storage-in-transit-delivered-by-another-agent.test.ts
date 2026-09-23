@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ABSENT_AND_OWED,
   AUTHORITY_TABLE,
   CANONICAL_SUBJECT_FAMILY,
   HANDED_OVER,
@@ -36,6 +37,7 @@ import {
   partyId,
   partyRoleId,
   ruleRef,
+  shipmentContinuity,
   shipmentId,
   specVersion,
   stayId,
@@ -394,13 +396,47 @@ describe('[SD §8.2] the different agent gets a home — an ExternallyPerformedL
     expect(isAggregateKind('custody')).toBe(false)
   })
 
-  it('[A5 §3.4] and A2 still owns the other half — the SHIPMENT boundary', () => {
-    // What A5 does NOT settle, and says so: whether the goods moving out on a new bill of lading
-    // (`src:dtr-part-iv` §E.4(4)(c)) are the same shipment. That is [SD §10.4]'s A2 question, and
-    // A5's contribution is the constraint that the stay id is not the thing that answers it — the
-    // stay is a bailment, the shipment is a movement, and only one of them ended.
+  it('[A5 §3.4] and A2 has now answered the other half — the SHIPMENT boundary', () => {
+    // A5's constraint, which is what kept the two halves from collapsing into one: the stay id is
+    // not the thing that answers the shipment's question — the stay is a bailment, the shipment is
+    // a movement, and only one of them ended. The two subjects say so.
     expect(CANONICAL_SUBJECT_FAMILY.storeOut).toBe('stay')
     expect(CANONICAL_SUBJECT_FAMILY.delivery).toBe('goods')
+
+    // [A2 §3.2], rule **B-ONWARD**. THIS scenario's stay never terminates, so the goods leave under
+    // the undertaking that brought them in — `src:dtr-part-iv` #676 makes SIT storage "incident to
+    // a line-haul movement" where "the BL is still alive and the TSP is still liable".
+    expect(shipmentContinuity('DELIVERY_OUT_OF_STORAGE')).toEqual({
+      kind: 'determined',
+      verdict: 'SAME_SHIPMENT',
+    })
+
+    // Had the stay been TERMINATED and the goods reshipped, the answer flips — and for a reason
+    // about the undertaking rather than about the document. #81 defines a bill of lading as "a
+    // contract between the shipper and the TSP whereby the TSP agrees to furnish transportation
+    // services", and §E.4(4)(c) moves a terminated shipment onward on a new one.
+    expect(shipmentContinuity('RESHIPMENT_AFTER_TERMINATION')).toEqual({
+      kind: 'determined',
+      verdict: 'SECOND_SHIPMENT',
+    })
+  })
+
+  it('[A2 §3.2(e)] and a consumer cannot tell those two branches apart from the records', () => {
+    // The honest limit, and it is [A2 §1]'s structural finding: the discriminant is the commitment
+    // and the commitment has no `type`. Neither the termination nor the new undertaking is an
+    // assertion, so the rule above answers a NAMED cause and computes nothing.
+    expect(ABSENT_AND_OWED).toContain('shipmentCommitment')
+    expect(shipmentContinuity('A_COMMERCIAL_CONTRACT_REISSUE')).toEqual({
+      kind: 'undetermined',
+      reason: 'COMMITMENT_NOT_PUBLISHED',
+    })
+
+    // And the third ending [A5 §3.4(c)] ruled out of the model answers neither way: the question is
+    // well-formed and its answer is out of scope, which is not the same as unknown.
+    expect(shipmentContinuity('CONVERSION_TO_PERMANENT_STORAGE')).toEqual({
+      kind: 'undetermined',
+      reason: 'LEAVES_THE_MODEL',
+    })
   })
 
   it('[A5 §3.2] the remedy that opens this stay is typed, and points at this subject', () => {

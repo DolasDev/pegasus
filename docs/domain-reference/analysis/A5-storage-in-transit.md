@@ -587,14 +587,27 @@ changes the payer, which it does not.
 **(b) Termination: what ends, and what does not.** The sources are unusually precise, and they are
 precise about the same facts from two sides:
 
-| What termination does                                       | Cite                                                     |
-| ----------------------------------------------------------- | -------------------------------------------------------- |
-| Ends the TSP's bill-of-lading liability                     | `src:dtr-part-iv` §D.5.c(2); `src:dp3-400ng` Item 17-2.2 |
-| Makes the warehouse "the final destination of the shipment" | `src:dtr-part-iv` §D.5.c(2); `src:dp3-400ng` Item 17-2.2 |
-| Makes the customer, not the Government, the **depositor**   | `src:dp3-400ng` Item 17-2.5                              |
-| Takes effect **only at midnight** on the effective date     | `src:dtr-part-iv` A-406 §A.6.f(1)                        |
-| Cannot be retroactive and cannot be revived                 | `src:dtr-part-iv` §A.6.e; `src:dp3-400ng` Item 17-2.2    |
-| Leaves the customer entitled to delivery out of storage     | `src:dtr-part-iv` §D.5.c(1) NOTE                         |
+| What termination does                                       | Cite                                                      |
+| ----------------------------------------------------------- | --------------------------------------------------------- |
+| Ends the TSP's bill-of-lading liability                     | `src:dtr-part-iv` §D.5.c(2); `src:dp3-400ng` Item 17-2.2  |
+| Makes the warehouse "the final destination of the shipment" | `src:dtr-part-iv` §D.5.c(2); `src:dp3-400ng` Item 17-2.2  |
+| Makes the customer, not the Government, the **depositor**   | `src:dp3-400ng` Item 17-2.5                               |
+| Takes effect **only at midnight** on the effective date     | `src:dtr-part-iv` A-406 §A.6.f(1)                         |
+| Cannot be retroactive and cannot be revived                 | `src:dtr-part-iv` §A.6.e; `src:dp3-400ng` Item 17-2.2     |
+| Leaves the customer entitled to delivery out of storage     | `src:dtr-part-iv` §D.5.c(1) NOTE — **see the note below** |
+
+> **One row in that table is read more confidently than the secondary text supports, and
+> [`A2` §3.2(f)](A2-shipment-structure.md) flagged it.** The sentence the source analysis quotes for
+> §D.5.c(1) NOTE is conditioned differently — _"**when converted to customer expense**, the customer
+> is still entitled to delivery out of storage paid for by the Government"_ — and conversion to
+> customer expense is precisely what (a) above is at pains to keep **apart** from termination. Both
+> readings are available from the secondary text, the primary is not in the corpus, and the DTR
+> analysis's own gloss ("one obligation survives the death of the contract that created it") takes
+> the wider one. **Recorded, not resolved**, and nothing in §3.4 or in [A2 §3.2] rests on it: A5's
+> conclusion is about the stay's **identity**, which none of the six rows touches, and A2's is about
+> the **undertaking**, which the entitlement does not bear on either way. What neither document can
+> supply is the terminal act of a shipment whose warehouse has become its final destination —
+> [A2 §3.6] records that there is no record type for it.
 
 **Nothing in that list is a fact about the stay's identity, and nothing in it moves the goods.** The
 same lot is in the same warehouse under the same SIT control number the minute after midnight as the
@@ -1082,9 +1095,15 @@ currently carries.
 `ACCEPTED` means under [A1 §3.3]. The liability that ends is the carrier's liability for the
 **goods**, which the stage does not encode. Nothing in [A1] changes.
 
-### To [A2]
+### To [A2] — **answered**, at [`A2` §3.2](A2-shipment-structure.md)
 
-Three things, in the order A2 will need them.
+Three things, in the order A2 needed them. All three landed, and the second landed in the direction
+opposite to the way its name reads: [`A2` §3.2(b)](A2-shipment-structure.md) rules that a **Split
+Shipment is one shipment** with Portions and stays — on Item 17.9's own singular grammar, on what
+DTR #662's increments are documented separately _by_ (a weight ticket and a SIT control number, not a
+bill of lading), and on Item 17.9.b.2's 1,000-lb minimum over the **combined** weight. The shipment
+half of [SD §10.4] bullet 1 is closed: a reshipment after termination is a **second shipment**, and
+hand-off 1 below is the constraint that kept the two halves from collapsing into each other.
 
 1. **The stay is not the shipment and does not answer the shipment's question** (§3.4). A2 will find
    the stay id unchanged across termination and must not read that as the shipment's identity

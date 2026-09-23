@@ -34,6 +34,11 @@ export * from './custody'
 // order's stage is a named, versioned fold or it is nothing.
 export * from './rules/order-stage'
 
+// And the one rule that is NOT a fold, for the reason [A2 §1] found: the `shipment` aggregate has
+// no record of its own coming into existence, so the shipment boundary across an interruption takes
+// its discriminant as an input and reports `COMMITMENT_NOT_PUBLISHED` where it cannot.
+export * from './rules/shipment-continuity'
+
 // The rules the boundary runs — subject admission ([SD §4.6]) and capture ([SD §5]). They are
 // separate from the vocabulary because they are checks *over* it: the vocabulary says what a record
 // may be, and these say what may be admitted.

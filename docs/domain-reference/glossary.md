@@ -22,6 +22,8 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Outcomes](#outcomes-5) — 5
 - [Reason scopes](#reason-scopes-6) — 6
 - [Stay locations](#stay-locations-3) — 3
+- [Onward movements](#onward-movements-5) — 5
+- [Shipment continuity verdicts](#shipment-continuity-verdicts-4) — 4
 - [Reason codes](#reason-codes-24) — 24
 - [Role names](#role-names-18) — 18
 - [Membership forms](#membership-forms-3) — 3
@@ -30,7 +32,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
 - [Compatibility change classes](#compatibility-change-classes-13) — 13
-- [Key functions and rules](#key-functions-and-rules-24) — 24
+- [Key functions and rules](#key-functions-and-rules-25) — 25
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
@@ -985,6 +987,101 @@ Where a storage-in-transit stay sits in the move, carried by the `opensStay` rem
 - **Corpus:** `src:dp3-400ng` · `src:weichert-supplier-api`
 - **Declared by:** `STAY_LOCATIONS` in `packages/domain-reference/src/outcomes.ts`
 
+## Onward movements (5)
+
+The interruptions the corpus names, and the input to **B-ONWARD** ([A2 §3.2]). Four are `src:dtr-part-iv`'s — the diversion / termination / reshipment trichotomy its own analysis calls "worth adopting wholesale", plus the split at a transshipment point — and the fifth is the boundary [A5 §3.4] closed. The enum is closed because [A2 §3.2] decides each member individually and by citation: a sixth cause is a new decision, not a default, and `shipmentContinuity` returns undetermined for it.
+
+### `CONVERSION_TO_PERMANENT_STORAGE` (onward movement)
+
+Conversion to non-temporary or permanent storage. [A5 §3.4(c)] ruled that this is the edge of
+the model rather than a flag inside it: `src:cfr-49-375` §375.609(b) makes it a dated event
+that ends carrier liability and places the goods in the shipper's name, `src:dp3-400ng`
+Item 27.3 makes NTS "a separate program" whose facility is the final destination with further
+movement "under separate BL/invoice", and `src:weichert-supplier-api` makes LTS its own order
+type. A bailment with a new bailor is a new bailment, and v1 does not carry it.
+
+- **Cited:** [[A5 §3.4(c)]](analysis/A5-storage-in-transit.md#34-termination-conversion-and-the-customer-expense-switch--owed-item-3)
+- **Corpus:** `src:cfr-49-375` · `src:dp3-400ng` · `src:weichert-supplier-api`
+- **Declared by:** `ONWARD_MOVEMENTS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
+### `DELIVERY_OUT_OF_STORAGE` (onward movement)
+
+Goods leaving storage-in-transit and continuing to their destination.
+
+- **Cited:** [[A5 §3.4]](analysis/A5-storage-in-transit.md#34-termination-conversion-and-the-customer-expense-switch--owed-item-3) · [[SD §8.2]](analysis/00-shared-decisions.md#82-b-externallyperformedleg) · [[SD §8.4]](analysis/00-shared-decisions.md#84-one-dependent-question-settled-here-because-8-requires-it)
+- **Corpus:** `src:dtr-part-iv`
+- **Declared by:** `ONWARD_MOVEMENTS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
+### `DIVERSION` (onward movement)
+
+A change of destination while in transit. `src:dtr-part-iv` #255: the shipment "keeps its
+identity **and its BL**"; only the destination changes, rates recompute as origin to Diversion
+Point plus Diversion Point to the new destination, and a Diversion Certificate evidences it.
+
+- **Cited:** [[A2 §7]](analysis/A2-shipment-structure.md)
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv`
+- **Declared by:** `ONWARD_MOVEMENTS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
+### `RESHIPMENT_AFTER_TERMINATION` (onward movement)
+
+A terminated shipment moving onward — `src:dtr-part-iv` §E.4(4)(c), #596 — **on a new bill of
+lading**.
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A2 §7]](analysis/A2-shipment-structure.md)
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv`
+- **Declared by:** `ONWARD_MOVEMENTS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
+### `SPLIT_AT_TRANSSHIPMENT` (onward movement)
+
+A shipment separated at a transshipment point into increments — `src:dtr-part-iv` #662,
+A-402 §D.5.b(4), "each identified and documented separately"; `src:dp3-400ng` Item 17.9's
+**Split Shipment**, "a shipment where only a portion is stored in transit enroute, or where
+overflow property is delivered to the storage location on different dates".
+
+- **Cited:** [[A2 §3.2]](analysis/A2-shipment-structure.md#32-identity-across-a-terminated-stay-and-reshipment--owed-item-1) · [[A2 §3.5]](analysis/A2-shipment-structure.md#35-the-portion-survives--owed-item-4) · [[SD §11]](analysis/00-shared-decisions.md) · [[SD §3]](analysis/00-shared-decisions.md) · [[SD §7.4]](analysis/00-shared-decisions.md#74-grains--every-aggregate-kind-with-the-three-the-critique-named)
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv`
+- **Declared by:** `ONWARD_MOVEMENTS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
+## Shipment continuity verdicts (4)
+
+What **B-ONWARD** answers, and why it often cannot ([A2 §3.2]). The two determinate verdicts are whether onward movement continues the shipment or is a second one; the two undetermined reasons are the honest half. `COMMITMENT_NOT_PUBLISHED` is [A2 §1]'s structural finding in executable form — **the `shipment` aggregate has no record of its own coming into existence**, so the rule's discriminant is not readable off the catalog — and `LEAVES_THE_MODEL` is [A5 §3.4]'s permanent-storage boundary.
+
+### `COMMITMENT_NOT_PUBLISHED` (shipment continuity verdict)
+
+The interruption is not one the corpus names, so whether a new undertaking was made cannot be
+read off anything published.
+
+- **Cited:** [[A2 §1]](analysis/A2-shipment-structure.md) · [[A2 §3.6]](analysis/A2-shipment-structure.md#36-the-rubrics-row-triaged--owed-item-5)
+- **Declared by:** `SHIPMENT_CONTINUITY_UNDETERMINED_REASONS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
+### `LEAVES_THE_MODEL` (shipment continuity verdict)
+
+The goods crossed into non-temporary or permanent storage, which [A5 §3.4(c)] ruled is a
+different bailment under a different contract. There is no verdict because there is no
+successor **in this model** to have one about — the question is well-formed and its answer is
+out of scope, which is not the same as unknown.
+
+- **Cited:** [[A5 §3.4(c)]](analysis/A5-storage-in-transit.md#34-termination-conversion-and-the-customer-expense-switch--owed-item-3)
+- **Declared by:** `SHIPMENT_CONTINUITY_UNDETERMINED_REASONS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
+### `SAME_SHIPMENT` (shipment continuity verdict)
+
+The undertaking is unchanged, so the shipment is unchanged — [A2 §3.2(a)-(b)].
+
+- **Cited:** [[A2 §3.2(a)-(b)]](analysis/A2-shipment-structure.md#32-identity-across-a-terminated-stay-and-reshipment--owed-item-1) · [[SD §3]](analysis/00-shared-decisions.md)
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv`
+- **Declared by:** `SHIPMENT_CONTINUITY_VERDICTS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
+### `SECOND_SHIPMENT` (shipment continuity verdict)
+
+A new undertaking was made over the same goods, so a second shipment exists — [A2 §3.2(c)].
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A2 §3.2(c)]](analysis/A2-shipment-structure.md#32-identity-across-a-terminated-stay-and-reshipment--owed-item-1) · [[SD §7]](analysis/00-shared-decisions.md)
+- **Corpus:** `src:dtr-part-iv`
+- **Declared by:** `SHIPMENT_CONTINUITY_VERDICTS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
+
 ## Reason codes (24)
 
 The published reason vocabulary — the half of `(outcome, reason)` [SD §2.4] fixed the shape of and left to A4: "the list itself is A4's job". Rule 2 bounds its magnitude magnitude ("~20 reasons × 5 outcomes, not ~100 types") and not a quota. Every member is **orthogonal to the outcome** — `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA` _and_ its `REN/AVA`, one code under two outcomes — and **grain-independent**: a code does not change when the subject changes grain. `OTHER` is not a member: it is declared by the shape itself (rule 3) and carries a mandatory narrative the others do not. The per-code scope, attribution discipline and remedy obligation are joined from `packages/domain-reference/data/reasons.json`, which the loader holds to this list as a set.
@@ -1801,7 +1898,7 @@ Removing or renaming a `type`. It is a component of the fact key ([SD §1.3] ite
 - **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
 - **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (24)
+## Key functions and rules (25)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
 
@@ -1846,6 +1943,16 @@ The named, versioned rules the model computes with. Each entry is the docstring 
 - **Cited:** [[A8 §7.1]](analysis/A8-authority-skeleton.md#71-the-hinge-is-already-in-the-corpus-and-it-is-the-responsibility-distinction) · [[A8 §7.4(b)]](analysis/A8-authority-skeleton.md#74-what-happens-to-the-previous-holders-assertions) · [[SD §4.7.2f]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Corpus:** `src:uncefact-rec24`
 - **Declared by:** `authorityMovesAtHandover` in `packages/domain-reference/src/rules/authority.ts`
+
+### `B-ONWARD` (rule)
+
+**B-ONWARD** — [A2 §3.2]. Does onward movement of the same goods continue the same shipment?
+
+- **Kind:** the shipment boundary across an interruption
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A2 §3.2(d)]](analysis/A2-shipment-structure.md#32-identity-across-a-terminated-stay-and-reshipment--owed-item-1) · [[A2 §3.2]](analysis/A2-shipment-structure.md#32-identity-across-a-terminated-stay-and-reshipment--owed-item-1)
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv`
+- **Declared by:** `shipmentContinuity` in `packages/domain-reference/src/rules/shipment-continuity.ts`
 
 ### `C5` (rule)
 
@@ -2002,7 +2109,8 @@ a claim, and **the catalog says so** rather than leaving a consumer to discover 
 splitting a shipment." The SIT remainder is a Portion; the shipment is untouched.
 
 - **Kind:** a Portion never moves the shipment boundary
-- **Cited:** [[SD §10.4]](analysis/00-shared-decisions.md#104-explicitly-not-settled-here) · [[SD §3.1]](analysis/00-shared-decisions.md#31-the-shape) · [[SD §3.2]](analysis/00-shared-decisions.md#32-why-both-membership-forms-and-why-one-entity)
+- **Cited:** [[A2 §3.2(b)]](analysis/A2-shipment-structure.md#32-identity-across-a-terminated-stay-and-reshipment--owed-item-1) · [[A2 §3.2]](analysis/A2-shipment-structure.md#32-identity-across-a-terminated-stay-and-reshipment--owed-item-1) · [[A5 §3.4]](analysis/A5-storage-in-transit.md#34-termination-conversion-and-the-customer-expense-switch--owed-item-3) · [[SD §10.4]](analysis/00-shared-decisions.md#104-explicitly-not-settled-here) · [[SD §3.1]](analysis/00-shared-decisions.md#31-the-shape) · [[SD §3.2]](analysis/00-shared-decisions.md#32-why-both-membership-forms-and-why-one-entity)
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv`
 - **Declared by:** `PortionCommon.shipment` in `packages/domain-reference/src/portion.ts`
 
 ### `P-MEMBER` (rule)
@@ -2123,6 +2231,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - `eta`
 - `resourceTareWeight` — [SD §4.7.2c] the equipment's own tare — a `resource`-subject fact needing its own type.
 - `sealIntegrity`
+- `shipmentCommitment` — The act by which a party **commits goods to a named movement** — [`fork-order` §3.2.3]'s stage 1, and the thing that mints a shipment. [A2 §3.6].
 - `stayAllowance` — The **days of storage authorised** for a stay, and the extensions that change it — [A5 §3.6].
 - `stayAuthorisation` — The act that **authorises** a storage-in-transit stay — [A5 §3.6].
 - `stayTermination` — The act that **terminates** a stay — [A5 §3.4], [A5 §3.6].
@@ -2144,19 +2253,24 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`ADMINISTRATIVE`](#administrative-reason-scope) — reason scope
 - [`ASSUMED_FROM_PLAN`](#assumedfromplan-capture-method) — capture method
 - [`AUTHORISATION_MISSING`](#authorisationmissing-reason-code) — reason code
+- [`B-ONWARD`](#b-onward-rule) — rule
 - [`BOTH`](#both-membership-form) — membership form
 - [`C5`](#c5-rule) — rule
 - [`C6`](#c6-rule) — rule
 - [`CANCELLED`](#cancelled-outcome) — outcome
 - [`CAUSE_UNKNOWN`](#causeunknown-reason-code) — reason code
+- [`COMMITMENT_NOT_PUBLISHED`](#commitmentnotpublished-shipment-continuity-verdict) — shipment continuity verdict
 - [`COMMITTED`](#committed-basis) — basis
 - [`COMPLETED`](#completed-outcome) — outcome
 - [`COMPLETED_WITH_EXCEPTION`](#completedwithexception-outcome) — outcome
+- [`CONVERSION_TO_PERMANENT_STORAGE`](#conversiontopermanentstorage-onward-movement) — onward movement
 - [`DEADLINE_LAPSED`](#deadlinelapsed-reason-code) — reason code
+- [`DELIVERY_OUT_OF_STORAGE`](#deliveryoutofstorage-onward-movement) — onward movement
 - [`DERIVED_BY_RULE`](#derivedbyrule-capture-method) — capture method
 - [`DESTINATION`](#destination-stay-location) — stay location
 - [`DEVICE_GEOFENCE`](#devicegeofence-capture-method) — capture method
 - [`DEVICE_TELEMETRY`](#devicetelemetry-capture-method) — capture method
+- [`DIVERSION`](#diversion-onward-movement) — onward movement
 - [`DOCUMENT_MISSING_OR_INCORRECT`](#documentmissingorincorrect-reason-code) — reason code
 - [`E-CANON-OBLIGATION`](#e-canon-obligation-rule) — rule
 - [`E-CANON-RESOLVE`](#e-canon-resolve-rule) — rule
@@ -2174,6 +2288,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`IN_TRANSIT`](#intransit-stay-location) — stay location
 - [`KEYED_BY_PERSON`](#keyedbyperson-capture-method) — capture method
 - [`LATE_ARRIVAL`](#latearrival-reason-code) — reason code
+- [`LEAVES_THE_MODEL`](#leavesthemodel-shipment-continuity-verdict) — shipment continuity verdict
 - [`M1`](#m1-rule) — rule
 - [`M2`](#m2-rule) — rule
 - [`M3`](#m3-rule) — rule
@@ -2203,13 +2318,17 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`PLANNED`](#planned-basis) — basis
 - [`R-WEIGHT-LOWER`](#r-weight-lower-rule) — rule
 - [`REQUESTED`](#requested-basis) — basis
+- [`RESHIPMENT_AFTER_TERMINATION`](#reshipmentaftertermination-onward-movement) — onward movement
 - [`RESOURCE`](#resource-reason-scope) — reason scope
 - [`RESOURCE_FAILURE`](#resourcefailure-reason-code) — reason code
 - [`RESOURCE_UNAVAILABLE`](#resourceunavailable-reason-code) — reason code
+- [`SAME_SHIPMENT`](#sameshipment-shipment-continuity-verdict) — shipment continuity verdict
+- [`SECOND_SHIPMENT`](#secondshipment-shipment-continuity-verdict) — shipment continuity verdict
 - [`SITE`](#site-reason-scope) — reason scope
 - [`SITE_ACCESS_RESTRICTED`](#siteaccessrestricted-reason-code) — reason code
 - [`SITE_HANDLING_EXCESS`](#sitehandlingexcess-reason-code) — reason code
 - [`SITE_INACCESSIBLE`](#siteinaccessible-reason-code) — reason code
+- [`SPLIT_AT_TRANSSHIPMENT`](#splitattransshipment-onward-movement) — onward movement
 - [`accountParty`](#accountparty-role-name) — role name
 - [`actPerformance`](#actperformance-fact-class-family) — fact-class family
 - [`arrival`](#arrival-record-type) — record type

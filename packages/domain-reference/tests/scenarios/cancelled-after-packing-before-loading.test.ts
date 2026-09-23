@@ -22,9 +22,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ABSENT_AND_OWED,
   ADJUSTMENT_CODES,
   AUTHORITY_TABLE,
   CANONICAL_SUBJECT_FAMILY,
+  SHIPMENT_BOUNDARY_STAGE_IS_NOT_COMPUTABLE,
   authoritativeHolderAt,
   cancellationZeroesOut,
   chargeId,
@@ -396,14 +398,30 @@ describe('OWED — the charge exists, is anchored, and has no value', () => {
     expect(packing.competing).toContain('customer')
   })
 
-  it('[SD §10.2 item 9] and what a shipment boundary that never got its BOL *is* remains owed', () => {
+  it('[SD §10.2 item 9] what a shipment boundary that never got its BOL *is*, answered', () => {
     // The move was cancelled before loading, so no bill of lading was ever issued
     // (`src:cfr-49-375` §375.505(c) puts the BOL in the driver's hands before the vehicle leaves).
-    // The shared layer says the scenario is expressible and explicitly does NOT settle this:
-    // "§5.2's provisional boundary still needs to say what a boundary that never acquires its
-    // defining document _is_." What holds either way is that the shipment is a subject in its own
-    // right, so every record above has somewhere to hang regardless of how A2 answers it.
+    // [`fork-order` §5.2] answered it with **B-STAGE**: `closed_uncontested` is a NORMAL terminus,
+    // not an incomplete `committed`. What holds either way is that the shipment is a subject in its
+    // own right, so every record above has somewhere to hang.
     expect(packed.subject).toEqual(shipment)
     expect(proposedCharge.context).toContain(shipment)
+  })
+
+  it('[A2 §1] and the stage itself is NOT COMPUTABLE, because nothing publishes the mint', () => {
+    // A2's structural finding, and this scenario is where it is sharpest: the boundary reached a
+    // terminal stage without any transport document, which is exactly the case B-STAGE was written
+    // for — and **B-STAGE has no input records**. [SD §4.7.1] carries nineteen act types and every
+    // one presupposes a shipment that already exists; [`fork-order` §3.2.3]'s stage 1 names three
+    // grade-A minting acts (`src:sirva-ade`'s `Register`, `src:milmove-mymove`'s submission, the
+    // RMC's award) and none of them has a `type`.
+    //
+    // So the scenario passes on every mechanism and fails on the projection: the pack act, the
+    // charge and the cancellation all have subjects and anchors, and nothing published says the
+    // boundary was ever committed. [A2 §3.6] records it rather than minting a row that would owe
+    // [A8 §9 item 8] on the day it was written.
+    expect(SHIPMENT_BOUNDARY_STAGE_IS_NOT_COMPUTABLE).toBe(true)
+    expect(ABSENT_AND_OWED).toContain('shipmentCommitment')
+    expect(isAssertionType('shipmentCommitment')).toBe(false)
   })
 })

@@ -461,6 +461,9 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     stayAuthorisation: '`stayAuthorisation`',
     stayAllowance: '`stayAllowance`',
     stayTermination: '`stayTermination`',
+    // [A2 §3.6]'s one. Its blocker is a schema gap in [A8 §4.3]'s `boundBy` enum rather than A5's
+    // missing party entity, which §4.7.3 records at the point of use.
+    shipmentCommitment: '`shipmentCommitment`',
   }
 
   it('names each absent class in §4.7.3, so its absence is not read as an oversight', () => {

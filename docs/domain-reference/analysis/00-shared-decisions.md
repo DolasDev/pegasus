@@ -1485,6 +1485,30 @@ two.
   `src:dtr-part-iv` A-406 §A.6.e-f and §D.5.c(2); `src:dp3-400ng` Item 17-2; `src:cfr-49-375`
   §375.609(b). [`A5` §3.4](A5-storage-in-transit.md) is the decision this one supports.
 
+**And one storage-adjacent class that is not storage's at all, added by [`A2` §3.6](A2-shipment-structure.md).**
+A2 read the area that owns the shipment and found that the shipment's **own minting act** is named by
+three sources and carried by no row here — which makes it the most **fundamental** absence in this
+table rather than merely another one, since every goods-side act row above presupposes a shipment
+that already exists. It is **absent and owed** on the same
+terms as every entry above, and its blocker is recorded here because it is **not** the one the three
+storage classes have.
+
+- **`shipmentCommitment`** — the act by which a party commits goods to a named movement;
+  [`fork-order` §3.2.3](fork-order-shipment-cardinality.md)'s stage 1. `src:sirva-ade`'s `Register`
+  (a push carrying the full element set, `ShipmentStatus = REGISTERED`, and no bill of lading in the
+  contract at all); `src:milmove-mymove`'s `DRAFT` → `SUBMITTED` → `APPROVED` with a two-actor
+  protocol; `src:cfr-49-375`, which names, enumerates and prices the lot before the contract document
+  exists (§375.403(c), §375.503(a), §375.401(f), against §375.505(c)). **Its asserter is not an
+  undefined party class** — it is the party that awarded or accepted the order, which the corpus
+  names on every order transition ([`A1` §Cross-area](A1-order-service-lifecycle.md)). What blocks it
+  is that [`A8` §4.3](A8-authority-skeleton.md)'s six `boundBy` members carry nothing meaning _the
+  role resolved by the order's own award_, which is the **same schema gap** A1 found under
+  `orderResponse` and `orderCancellation`. Three things in the model are decidable in prose and not
+  in code for want of this row: [`A2` §3.2](A2-shipment-structure.md)'s **B-ONWARD**,
+  [`fork-order` §5.2](fork-order-shipment-cardinality.md)'s **B-STAGE** (a projection with no input
+  records since it was written), and the shipment set an [`A1` §3.4](A1-order-service-lifecycle.md)
+  `COMPLETE` rule would quantify over.
+
 **And one that is absent because it is not a fact class at all: `custody`.** `fork-time` §8.8 asserts
 "a `custody` fact over the interval with `subject = shipment:S`". There is no such `type` and there
 will not be one. Custody is a **projection** over the `handover` row above; **§4.8** is the decision,
@@ -2636,13 +2660,23 @@ RELEASE|RECEIPT, —}`; they key differently, so each is resolved on its own key
   shipment-boundary question resolves — and _who held the goods_ is answered without an owner at
   all, because it is not a stored thing: it is the fold **`custodyAt(goods, instant)`** (§4.8.3)
   over the published `handover` assertions. There is no `Custody` interval to own.
-  **A5's half is now closed and A2's is not.** [`A5` §3.4](A5-storage-in-transit.md) rules that
-  termination ends the carrier's bill-of-lading liability, makes the warehouse the final destination
-  and makes the customer the depositor — and touches **none** of the stay's identity, so a
-  `storeOut` after a terminated stay names the same `stay` as its `storeIn`. What A2 still owns is
-  the **shipment** boundary, and A5 supplies one constraint on it: the stay id is not the thing that
-  answers it, because the stay is a bailment and the shipment is a movement, and only one of them
-  ended.
+  **CLOSED — both halves.** [`A5` §3.4](A5-storage-in-transit.md) rules that termination ends the
+  carrier's bill-of-lading liability, makes the warehouse the final destination and makes the
+  customer the depositor — and touches **none** of the stay's identity, so a `storeOut` after a
+  terminated stay names the same `stay` as its `storeIn`. A5 supplied one constraint on the other
+  half: the stay id is not the thing that answers it, because the stay is a bailment and the
+  shipment is a movement, and only one of them ended.
+  [`A2` §3.2](A2-shipment-structure.md) then closes the shipment half with rule **B-ONWARD**:
+  onward movement continues the same shipment unless a **new undertaking** was made, and
+  `src:dtr-part-iv` §E.4(4)(c)'s new bill of lading is one — because #81 defines a bill of lading as
+  "a contract between the shipper and the TSP whereby the TSP agrees to furnish transportation
+  services", which is what [`fork-order` §3.1](fork-order-shipment-cardinality.md)'s definition
+  already made the discriminant. So **a reshipment after termination is a second shipment**,
+  correlated to the first by `identity`, while a diversion, a split at a transshipment point and an
+  ordinary delivery out of storage all leave the shipment untouched. The oldest open item in the
+  model is spent. **One limit travels with the answer**: A2 §3.2(e) records that the rule is
+  decidable in prose and not computable from the records, because the minting act has no `type` —
+  §4.7.3's `shipmentCommitment`.
 - **SIT as a stop vs SIT as a service at a stop** (§9, item 2). A5/A3. — **CLOSED, by refusing the
   framing.** [`A5` §3.3](A5-storage-in-transit.md) rules that both horns assume the stay is a
   property of something and that it is not: it is an aggregate, and §1.2 and §7.4 had made it one

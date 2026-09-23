@@ -256,6 +256,17 @@ The bumps, and what each was classified as under §2.3:
 | `0.2.0` → `0.3.0` | A8's rows 12-16        | Closing F3 added `keySideRole` to `AuthoritativeHolder`, which `ObligationRecipient` references                                               | `newClosedEnumMember`     |
 | `0.3.0` → `0.4.0` | A1                     | `REASON_CODES` gains `DEADLINE_LAPSED` ([A1 §3.6]). A1's other deliverable, `orderStageAt`, is a **projection** and moves nothing on the wire | `newClosedEnumMember`     |
 | `0.4.0` → `0.5.0` | A5                     | `Remedy`'s owed branch is replaced by `OpensStay` ([A5 §3.2]). A5's other deliverables mint no type, aggregate, field or qualifier            | `publishedOwedShape`      |
+| `0.5.0` → `0.5.0` | A2                     | **No bump.** Both emitted schemas are byte-identical across A2; the only published change is one more member of the owed inventory            | none — see below          |
+
+**A2 is the first area to change nothing on the wire, and the rule that says so is already here.**
+[§5](#5-what-the-catalog-does-not-yet-publish) records of A8's round that a moving owed inventory
+_"alone would not have moved `specVersion`"_, because §2.3 classifies changes to what is
+**published** and an owed count is a change to what is admitted to be **missing**. A2's deliverables
+are a rule (`shipmentContinuity`, [A2 §3.2]) whose vocabularies no record carries, one more absent
+fact class (`shipmentCommitment`, [A2 §3.6]), and a set of refusals. `git diff` over
+`captured.schema.json` and `queried.schema.json` is empty, which is the evidence rather than the
+claim. **A version bumped for a release that changes no published byte would tell a consumer to
+re-validate for nothing**, and [SD §0]'s disclosure rule reaches the version string (§2.4 above).
 
 What caps the version is the authority rows, and no amount of vocabulary work moves that.
 
@@ -443,13 +454,22 @@ Read the generated `Owed` section of [`../glossary.md`](../glossary.md) for the 
 derived from the code and cannot go stale. As at this version it holds: **18 declared owed values**,
 **3 closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` —
 the reason vocabulary was a fourth until A4), **14 of 31** record types whose authority row is owed
-in whole or in part, **2** whose fact-class family is owed, and **13** fact classes named in the
+in whole or in part, **2** whose fact-class family is owed, and **14** fact classes named in the
 corpus and absent from the vocabulary.
 
 **Two of those five moved at A5, in opposite directions, and the pair is worth reading together.**
 The declared count fell by one because [A5 §3.2] published the remedy shape A4 left owed; the absent
 count rose by three because [A5 §3.6] found three storage fact classes the corpus names and no table
 carried. A gap list that only ever shrinks is a gap list nobody is still reading the corpus against.
+
+**The absent count rose again at A2, and this one is a different kind of entry.** A5's three were
+facts about a stay that the corpus names and the table had not reached. [A2 §3.6]'s
+`shipmentCommitment` is the act that **mints a shipment** — so unlike every other member of the list
+it is not a fact the model has yet to get to, but the precondition of nineteen act rows that were
+written on top of it. [A2 §1] is the finding: _the `shipment` aggregate has no record of its own
+coming into existence_, which is why [`fork-order` §5.2]'s `B-STAGE` has been a projection with no
+input records since it was written. **An owed inventory that surfaces a hole this old is doing the
+job §2.4 keeps the version pre-1.0 for.**
 
 **These five numbers are the only counts this document may carry, and they are gated**:
 `tests/conformance/catalog.test.ts` reads them out of this section and compares them with

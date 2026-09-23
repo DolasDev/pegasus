@@ -861,6 +861,33 @@ export const ABSENT_AND_OWED = [
    * — is a computed fact about a **notification**, which [A8 §9 item 6] also owes.
    */
   'stayTermination',
+  /**
+   * The act by which a party **commits goods to a named movement** — [`fork-order` §3.2.3]'s
+   * stage 1, and the thing that mints a shipment. [A2 §3.6].
+   *
+   * Named as a real act, with a real asserter and a real wire representation, by three sources:
+   * `src:sirva-ade`'s `Register`, which arrives as a push carrying the full element set and sets
+   * `ShipmentStatus = REGISTERED` (SOE pp.10-13) with **no bill of lading in the contract at all**;
+   * `src:milmove-mymove`'s `MTOShipment` `DRAFT` → `SUBMITTED` → `APPROVED` with a two-actor
+   * protocol and a rejection invariant; and `src:cfr-49-375`, which names, enumerates and prices
+   * the lot **before** the contract document exists (§375.403(c), §375.503(a), §375.401(f), against
+   * §375.505(c)).
+   *
+   * Absent rather than minted, and the blocker is **not** [A5 §3.6]'s. The asserter is not an
+   * undefined party class: it is the party that awarded or accepted the order, which the corpus
+   * names on every order transition ([A1 §Cross-area]) and which [A8 §4.3]'s six `boundBy` members
+   * cannot express, because none of them means _"resolved by the order's own award"_. This is the
+   * same gap A1 found under `orderResponse` and `orderCancellation` — a **schema** decision A8 can
+   * take, not a corpus gap — and [A2 §Cross-area] records that the count of rows waiting on that
+   * one enum member is now four.
+   *
+   * **What its absence costs**, three things, all recorded at [A2 §3.6]: **B-ONWARD** is decidable
+   * in prose and returns `COMMITMENT_NOT_PUBLISHED` in code ([A2 §3.2]); [`fork-order` §5.2]'s
+   * `B-STAGE` has been a projection with no input records since it was written; and a `COMPLETE`
+   * rule over "the committed shipments' terminal acts" ([A1 §3.4]) cannot read the set it would
+   * quantify over.
+   */
+  'shipmentCommitment',
 ] as const
 
 export type AbsentAndOwedClass = (typeof ABSENT_AND_OWED)[number]

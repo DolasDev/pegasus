@@ -607,7 +607,7 @@
       "authorityRows": 14,
       "declaredRecordTypes": 31,
       "factClassFamilies": 2,
-      "absentFactClasses": 13
+      "absentFactClasses": 14
     },
     "vocabularies": ["identityScheme", "roleClass", "unitOfMeasure"],
     "declared": [
@@ -796,6 +796,7 @@
       "eta",
       "resourceTareWeight",
       "sealIntegrity",
+      "shipmentCommitment",
       "stayAllowance",
       "stayAuthorisation",
       "stayTermination",
