@@ -17,16 +17,31 @@ rubric, compared per domain area, and synthesized.
 The model is split by how often each layer changes. Keep them separate — mixing
 mappings into the core is what stops a reference model staying pure.
 
-| Layer         | Folder                   | What                                                                                                         | Changes                 |
-| ------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------ | ----------------------- |
-| Sources       | [`sources/`](sources/)   | Registry + stored material + per-source analysis                                                             | As sources are added    |
-| Analysis      | [`analysis/`](analysis/) | Per-area comparison and "best source" decisions                                                              | Per research round      |
-| Core model    | [`model/`](model/)       | Ubiquitous language, context map, aggregates, value objects, lifecycles, invariants, domain events, commands | Rarely                  |
-| Event catalog | [`catalog/`](catalog/)   | **Published integration events, generated from the executable specification — live at `specVersion` 0.1.0**  | Deliberately, versioned |
-| Mappings      | [`mappings/`](mappings/) | pegII ↔ model, Cloud ↔ model, partner ↔ model                                                                | Often                   |
+| Layer                    | Where                        | What                                                                                                                                                                  | Changes                 |
+| ------------------------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| Sources                  | [`sources/`](sources/)       | Registry + stored material + per-source analysis                                                                                                                      | As sources are added    |
+| Analysis                 | [`analysis/`](analysis/)     | Per-area comparison and "best source" decisions. **Binding**, and [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) outranks every other file here | Per research round      |
+| Executable specification | `packages/domain-reference/` | The core model, as TypeScript that compiles and is model-checked: ubiquitous language, value objects, invariants, the record vocabulary, the capture rules            | Rarely                  |
+| Ubiquitous language      | [`glossary.md`](glossary.md) | **Generated** from the specification's docstrings — 15 closed vocabularies, and the owed ledger                                                                       | With the specification  |
+| Event catalog            | [`catalog/`](catalog/)       | **Published integration events, generated from the specification — live at `specVersion` 0.2.0**                                                                      | Deliberately, versioned |
+
+**There is no `model/` directory, and that is not a gap.** Most of what a `model/` layer would have
+held was written as the executable specification in `packages/domain-reference/` instead, which is
+strictly better: an invariant that compiles cannot drift from an invariant that is described, and the
+glossary and the catalog are both generated from it rather than maintained beside it. Three of the
+pieces a `model/` layer would have held are genuinely absent and are owed:
+
+- **the context map** — the bounded contexts and the relationships between them;
+- **the command side** — the specification models assertions, not the commands that produce them;
+- **the aggregate lifecycles** — nothing in it models an order or a trip state machine. The only
+  transitions it holds are a Portion's membership (**P-MEMBER**).
+
+**There is no `mappings/` directory either, and that absence is deliberate.** Mapping our systems onto
+the model is a separate workstream that has not started; doing it inside this one is the drift the
+scope rule below exists to prevent.
 
 "Pure" means **no technology** — no pegII field names, API shapes, or database
-structure in `model/`. It does **not** mean generic: the model uses the moving
+structure in the specification. It does **not** mean generic: the model uses the moving
 industry's own language (booking/origin/hauling/destination agent, binding
 estimate, storage-in-transit, reweigh), not abstract logistics terms.
 
@@ -74,8 +89,9 @@ observed from their live APIs), competing products, and telematics vendors.
 
 What does not: `packages/domain`, the Prisma schema, the integration floors, the pegII order
 shape, the long-haul app, and our own integration configs. Their round-1 analyses are kept —
-they are the raw material for [`mappings/`](mappings/), which asks the separate question of what
-our systems can supply and what the gap costs. That question comes **after** the model exists.
+they are the raw material for the **mapping workstream** — which does not exist yet and has no
+directory here — and which asks the separate question of what our systems can supply and what the gap
+costs. That question comes **after** the model exists.
 
 ## Scope
 
@@ -94,14 +110,15 @@ without repeating the research.
 
 ## Process
 
-| Phase                    | Output                                                                                                                                                                 | Status      |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| 1. Inventory + rubric    | `sources/registry.yaml`, `rubric.md`, inbox requests                                                                                                                   | in progress |
-| 2. Per-source analysis   | `sources/<id>/analysis.md` (from [`templates/source-analysis.md`](templates/source-analysis.md))                                                                       | —           |
-| 3. Comparison            | `analysis/<area>.md` — best source per area, with reasons                                                                                                              | —           |
-| 4. Core model            | `model/`                                                                                                                                                               | —           |
-| 5. Validation + mappings | `model/scenarios/`, `mappings/`, gap list                                                                                                                              | —           |
-| 6. Event catalog         | [`catalog/`](catalog/) — two JSON Schema faces, a manifest, an owed inventory; decided in [`analysis/published-event-catalog.md`](analysis/published-event-catalog.md) | **live**    |
+| Phase                  | Output                                                                                                                                                                 | Status                                                 |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 1. Inventory + rubric  | `sources/registry.yaml`, `rubric.md`, inbox requests                                                                                                                   | **done** — 87 sources registered                       |
+| 2. Per-source analysis | `sources/<id>/analysis.md` (from [`templates/source-analysis.md`](templates/source-analysis.md))                                                                       | in progress — 32 of 87; 15 blocked on access           |
+| 3. Comparison          | `analysis/<area>.md` — best source per area, with reasons                                                                                                              | in progress — see the note in [`rubric.md`](rubric.md) |
+| 4. Core model          | `packages/domain-reference/` — not `model/`; see above                                                                                                                 | **live**, minus the context map, commands, lifecycles  |
+| 5. Validation          | `packages/domain-reference/tests/scenarios/` + the Alloy models in `alloy/`                                                                                            | **live** — nine scenarios, model-checked               |
+| 6. Event catalog       | [`catalog/`](catalog/) — two JSON Schema faces, a manifest, an owed inventory; decided in [`analysis/published-event-catalog.md`](analysis/published-event-catalog.md) | **live** at `0.2.0`                                    |
+| 7. Mappings            | A separate workstream, no directory here                                                                                                                               | not started, deliberately                              |
 
 ## Conventions (for humans and agents)
 

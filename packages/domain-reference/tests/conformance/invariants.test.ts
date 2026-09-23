@@ -76,7 +76,7 @@ const saidAt = instant('2026-03-01T10:00:00Z')
 const occurredAt = instant('2026-03-01T09:00:00Z')
 
 const A_REASON: Reason = {
-  code: reasonCode('SHORT'),
+  code: reasonCode('GOODS_MISSING'),
   scope: 'GOODS',
   attribution: { roleClass: roleClass('unknown') },
 }

@@ -21,13 +21,14 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Capture methods](#capture-methods-7) — 7
 - [Outcomes](#outcomes-5) — 5
 - [Reason scopes](#reason-scopes-6) — 6
+- [Reason codes](#reason-codes-23) — 23
 - [Role names](#role-names-18) — 18
 - [Membership forms](#membership-forms-3) — 3
 - [Custody bases](#custody-bases-2) — 2
 - [Catalog faces](#catalog-faces-2) — 2
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
-- [Compatibility change classes](#compatibility-change-classes-11) — 11
+- [Compatibility change classes](#compatibility-change-classes-12) — 12
 - [Key functions and rules](#key-functions-and-rules-23) — 23
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
@@ -43,6 +44,7 @@ Not a foreign key: it has an effective interval, which is how a driver change is
 it must name a legal party with an identifier (`src:dp3-tender-of-service` §B.3.f).
 
 - **Cited:** [[A3 §3.2]](analysis/A3-trip-stop-assignment.md#32-definitions)
+- **Corpus:** `src:dp3-tender-of-service`
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `charge` (aggregate)
@@ -125,6 +127,7 @@ binds a resource to a trip and an equipment identifier must attach to the equipm
 "equipment identity is owner-scoped").
 
 - **Cited:** [[A3]](analysis/A3-trip-stop-assignment.md) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Corpus:** `src:x12-212-trailer-manifest`
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `shipment` (aggregate)
@@ -146,6 +149,7 @@ increment. Origin-side and destination-side SIT are therefore two stays — the 
 prevents, since `src:sirva-ade` has no SIT identifier and "cannot say which one".
 
 - **Cited:** [[SD §7.4]](analysis/00-shared-decisions.md#74-grains--every-aggregate-kind-with-the-three-the-critique-named)
+- **Corpus:** `src:dtr-part-iv` · `src:sirva-ade`
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `stop` (aggregate)
@@ -166,6 +170,7 @@ entity with its own identity, not a foreign key" (`src:x12-212-trailer-manifest`
 and it carries **no quantity and no result**.
 
 - **Cited:** [[A3 §3.2]](analysis/A3-trip-stop-assignment.md#32-definitions)
+- **Corpus:** `src:x12-212-trailer-manifest`
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `trip` (aggregate)
@@ -235,6 +240,7 @@ structure only ([A3 §3.2], C2=1).
 - **Authority:** **owed** — [A8 §9 item 8]. `boundBy = owed`. Provisional reading [ORIGINAL], **do not score**: as the membership rows, two-sided — the responding party
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
 - **Cited:** [[A3 §3.2]](analysis/A3-trip-stop-assignment.md#32-definitions) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table)
+- **Corpus:** `src:atlas-world-group-api`
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `charge` (record type)
@@ -293,6 +299,7 @@ requires the provider actually hauling to be named within 2 GBD of origin depart
 - **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 2. as arrival.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table)
+- **Corpus:** `src:dp3-tender-of-service`
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `handover` (record type)
@@ -305,6 +312,7 @@ The act of handing the goods over — [SD §4.7.1], prose alias _custody handoff
 - **Authority:** **owed** — [A8 §5] has no handover row (recorded as F3 in findings-from-alloy.md), and boundBy is owed EXPRESSLY NOT CUSTODY: [SD §4.8.2] says of the identical shape that 'that row's binding would be CUSTODY, so A8-MOVE would be defined in terms of the thing it defines'. The fold breaks the circle, so handover's own authority cannot be decided by the fold.. `boundBy = owed`. Provisional reading [ORIGINAL], **do not score**: the role named on the key's own `side` is authoritative for that key — the releasing role for RELEASE, the receiving role for RECEIPT. It breaks the circle because it reads the KEY, not the fold, and it is src:stedi-x12-reference's own arrangement: only the releasing carrier issues J1, only the receiving carrier issues R1. Whether that is a sixth boundBy member or NONE plus a named rule is [A8]'s to decide. Do not score on this. Under A8-NAMED every handover FactResolved must name a rule, and [A8 §5] owes the row it would name.
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
 - **Cited:** [[A3 §3.2]](analysis/A3-trip-stop-assignment.md#32-definitions) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §4.7.2f]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
+- **Corpus:** `src:stedi-x12-reference`
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `identity` (record type)
@@ -384,6 +392,7 @@ ground that `src:dp3-tender-of-service` §C.3.c states the notification duty per
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §9 item 6]](analysis/A8-authority-skeleton.md) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them) · [[SD §6.5]](analysis/00-shared-decisions.md#65-corrections-emit-obligations)
+- **Corpus:** `src:dp3-tender-of-service`
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `orderAward` (record type)
@@ -410,6 +419,7 @@ for it is owed.
 - **Authority:** **owed** — [A8 §9 item 8] — [A8 §5] has no order row. `boundBy = owed`. Provisional reading [ORIGINAL], **do not score**: two-sided — whichever party ended it, which is the distinction src:dcsa spends three status values on. WHO ended it and WHEN is carried by the stage plus reasons[].attribution, never by a type name ([SD §4.7.2e] item 2).
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
 - **Cited:** [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §4.7.2e]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
+- **Corpus:** `src:dcsa`
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `orderResponse` (record type)
@@ -464,6 +474,7 @@ counts that sum to one total". **Sourced:** that they are separate and additive.
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §7.3]](analysis/A8-authority-skeleton.md#73-there-is-exactly-one-instant-where-two-roles-are-jointly-authoritative-and-the-model-is-forbidden-to-pick) · [[SD §4.7.2a]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
+- **Corpus:** `src:x12-212-trailer-manifest`
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `sitEntryDate` (record type)
@@ -589,6 +600,7 @@ rule** rather than by a role: [A8 §5] row 6 is `boundBy = NONE` and `R-WEIGHT-L
 - **Authority:** **assigned**, `boundBy = NONE`. [A8 §5] row 6. NO role is authoritative. Settled by the value rule R-WEIGHT-LOWER ([SD §4.4]). weighMaster supplies evidence, not the assertion; the weighing side and the reweigh-demanding side are both competing.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md) · [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape) · [[SD §4.4]](analysis/00-shared-decisions.md#44-the-acceptance-test-duplicate-reweighs)
+- **Corpus:** `src:x12-212-trailer-manifest`
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `weight.tare` (record type)
@@ -603,6 +615,7 @@ different type, left absent and owed at [SD §4.7.3].
 - **Authority:** **owed** — [A8 §5] — no row; 'as weight.gross'. `boundBy = unassigned`. Provisional reading [ORIGINAL], **do not score**: as weight.gross — the weighing party (hauler/originAgent), with weighMaster as evidence
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape) · [[SD §4.7.2c]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
+- **Corpus:** `src:nmfta-ebol`
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ## Fact-class families (8)
@@ -623,6 +636,7 @@ Condition — per-article condition at receipt and at forwarding, `src:dp3-400ng
 and `src:cfr-49-375` §375.503 ([SD §4.1]).
 
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape)
+- **Corpus:** `src:cfr-49-375` · `src:dp3-400ng`
 - **Declared by:** `FACT_CLASS_FAMILIES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `count` (fact-class family)
@@ -632,6 +646,7 @@ splits `AT8-04` non-unitized from `AT8-05` unitized: "two separate counts that s
 total" ([SD §4.1]).
 
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape)
+- **Corpus:** `src:x12-212-trailer-manifest`
 - **Declared by:** `FACT_CLASS_FAMILIES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `identity` (fact-class family)
@@ -648,6 +663,7 @@ Measures — net / gross / tare weight, cube. The contest is real because
 `T` tare, `E` estimated net, `B` billed ([SD §4.1]).
 
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape)
+- **Corpus:** `src:x12-212-trailer-manifest`
 - **Declared by:** `FACT_CLASS_FAMILIES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `partyRole` (fact-class family)
@@ -657,6 +673,7 @@ Item 7.1 requires the origin representative to be named in DPS at acceptance and
 the one who will actually service the shipment ([SD §4.1]).
 
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape)
+- **Corpus:** `src:dp3-400ng`
 - **Declared by:** `FACT_CLASS_FAMILIES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `state` (fact-class family)
@@ -675,6 +692,7 @@ Times — arrival, departure, SIT entry date, actual delivery date. The contest 
 available / scheduled / actual / RDD) with different charges attached ([SD §4.1]).
 
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape)
+- **Corpus:** `src:dp3-400ng`
 - **Declared by:** `FACT_CLASS_FAMILIES` in `packages/domain-reference/src/vocabulary.ts`
 
 ## Bases (5)
@@ -688,6 +706,7 @@ bite: an act's `(outcome, reasons[])` exists here and nowhere else ([SD §2.3] i
 forbids `ASSUMED_FROM_PLAN` here, and M2/M3/M5 are all written at this basis ([SD §5.2]).
 
 - **Cited:** [[SD §2.3]](analysis/00-shared-decisions.md#23-invariants) · [[SD §4.2]](analysis/00-shared-decisions.md#42-basis--and-an-honest-re-citation) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
+- **Corpus:** `src:uncefact-scrdm`
 - **Declared by:** `BASES` in `packages/domain-reference/src/assertions.ts`
 
 ### `COMMITTED` (basis)
@@ -699,6 +718,7 @@ the trip-side driver dates. ADE even models the **withdrawal** of a commitment a
 transition (`IntoWillAdvise`). [SD §4.2].
 
 - **Cited:** [[SD §4.2]](analysis/00-shared-decisions.md#42-basis--and-an-honest-re-citation)
+- **Corpus:** `src:sirva-ade` · `src:uncefact-scrdm`
 - **Declared by:** `BASES` in `packages/domain-reference/src/assertions.ts`
 
 ### `ESTIMATED` (basis)
@@ -708,6 +728,7 @@ this basis ([SD §4.1]), and this is the basis that replaces Alvys's `Eta {Plann
 Manual}`: an ETA is an `arrival` at `basis = ESTIMATED` with a `capturedBy` ([SD §4.5]).
 
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape) · [[SD §4.2]](analysis/00-shared-decisions.md#42-basis--and-an-honest-re-citation) · [[SD §4.5]](analysis/00-shared-decisions.md#45-where-a-second-partys-actual-lives)
+- **Corpus:** `src:dcsa`
 - **Declared by:** `BASES` in `packages/domain-reference/src/assertions.ts`
 
 ### `PLANNED` (basis)
@@ -715,6 +736,7 @@ Manual}`: an ETA is an `arrival` at `basis = ESTIMATED` with a `capturedBy` ([SD
 What we **intend** — `src:uncefact-scrdm`'s `Planned_` ([SD §4.2]).
 
 - **Cited:** [[SD §4.2]](analysis/00-shared-decisions.md#42-basis--and-an-honest-re-citation)
+- **Corpus:** `src:uncefact-scrdm`
 - **Declared by:** `BASES` in `packages/domain-reference/src/assertions.ts`
 
 ### `REQUESTED` (basis)
@@ -723,6 +745,7 @@ What somebody **asked for**. `src:dcsa`'s `eventClassifierCode` `REQ` ([SD §4.2
 attribution is DCSA's and was mis-cited to `src:uncefact-scrdm` before [SD §4.2] corrected it.
 
 - **Cited:** [[SD §4.2]](analysis/00-shared-decisions.md#42-basis--and-an-honest-re-citation)
+- **Corpus:** `src:dcsa` · `src:uncefact-scrdm`
 - **Declared by:** `BASES` in `packages/domain-reference/src/assertions.ts`
 
 ## Capture methods (7)
@@ -740,6 +763,7 @@ fabrication." The source carries it _on a measured actual_; we forbid that.
 
 - **Marker:** [SYNTHESIS]
 - **Cited:** [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
+- **Corpus:** `src:omnitracs-roadnet`
 - **Declared by:** `CAPTURE_METHODS` in `packages/domain-reference/src/envelope.ts`
 
 ### `DERIVED_BY_RULE` (capture method)
@@ -752,6 +776,7 @@ declared derived, and only where the record carries `{ruleId, ruleVersion}` **an
 
 - **Marker:** [SYNTHESIS]
 - **Cited:** [[SD §4.3]](analysis/00-shared-decisions.md#43-resolution--factresolved) · [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
+- **Corpus:** `src:omnitracs-roadnet` · `src:project44`
 - **Declared by:** `CAPTURE_METHODS` in `packages/domain-reference/src/envelope.ts`
 
 ### `DEVICE_GEOFENCE` (capture method)
@@ -764,6 +789,7 @@ per-member source assignment.
 
 - **Marker:** [SYNTHESIS]
 - **Cited:** [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
+- **Corpus:** `src:omnitracs-roadnet` · `src:project44` · `src:shippeo`
 - **Declared by:** `CAPTURE_METHODS` in `packages/domain-reference/src/envelope.ts`
 
 ### `DEVICE_TELEMETRY` (capture method)
@@ -775,6 +801,7 @@ no rule in [SD §5.2] says what it may assert, which is M7's gap rather than a l
 
 - **Marker:** [SYNTHESIS]
 - **Cited:** [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
+- **Corpus:** `src:omnitracs-roadnet` · `src:project44`
 - **Declared by:** `CAPTURE_METHODS` in `packages/domain-reference/src/envelope.ts`
 
 ### `KEYED_BY_PERSON` (capture method)
@@ -786,6 +813,7 @@ A person typed it in, at whatever remove — `src:shippeo`'s `manual`, `src:omni
 
 - **Marker:** [SYNTHESIS]
 - **Cited:** [[SD §4.6.3]](analysis/00-shared-decisions.md#463-the-hard-case-a-shipment-phrased-arrival-against-a-van-with-two-candidate-stops) · [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members)
+- **Corpus:** `src:omnitracs-roadnet` · `src:samsara` · `src:shippeo`
 - **Declared by:** `CAPTURE_METHODS` in `packages/domain-reference/src/envelope.ts`
 
 ### `OBSERVED_BY_PERSON` (capture method)
@@ -795,6 +823,7 @@ A person was there and saw it. One of the three answerable methods M2 and M3 bot
 
 - **Marker:** [SYNTHESIS]
 - **Cited:** [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
+- **Corpus:** `src:samsara` · `src:shippeo`
 - **Declared by:** `CAPTURE_METHODS` in `packages/domain-reference/src/envelope.ts`
 
 ### `PARTNER_ASSERTED` (capture method)
@@ -806,6 +835,7 @@ per-member source assignment.
 
 - **Marker:** [SYNTHESIS]
 - **Cited:** [[SD §4.6.2]](analysis/00-shared-decisions.md#462-the-three-parts-stated-so-they-are-testable) · [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members)
+- **Corpus:** `src:dcsa` · `src:project44`
 - **Declared by:** `CAPTURE_METHODS` in `packages/domain-reference/src/envelope.ts`
 
 ## Outcomes (5)
@@ -819,6 +849,7 @@ The act was called off. Distinct from `NOT_COMPLETED`, which is a performance th
 situation/justification grid.
 
 - **Cited:** [[SD §2.2]](analysis/00-shared-decisions.md#22-the-outcome-enum)
+- **Corpus:** `src:open-trip-model`
 - **Declared by:** `OUTCOMES` in `packages/domain-reference/src/outcomes.ts`
 
 ### `COMPLETED` (outcome)
@@ -864,7 +895,7 @@ short".
 
 ## Reason scopes (6)
 
-`Reason.scope` — **[ORIGINAL]** in [SD §2.4]. "It exists so a consumer can separate 'something is wrong with the goods' from 'something is wrong with the site' without reading a code list, and because HHG's authoring gap is concentrated in `SITE` and `ADMINISTRATIVE`." The code list itself is owed to A4.
+`Reason.scope` — **[ORIGINAL]** in [SD §2.4]. "It exists so a consumer can separate 'something is wrong with the goods' from 'something is wrong with the site' without reading a code list, and because HHG's authoring gap is concentrated in `SITE` and `ADMINISTRATIVE`." Every code below declares a default scope, and [A4 §4.4] is where that gap turned out to be narrower than [SD §2.4]'s examples suggested: `src:dp3-400ng` Item 125.1 enumerates the shuttle causes and Item 33 the impractical operations.
 
 ### `ACT` (reason scope)
 
@@ -903,6 +934,7 @@ responsible party, which is the _fact_ [SD §2.4] rule 6 sources; the attributio
 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:stedi-x12-reference`
 - **Declared by:** `REASON_SCOPES` in `packages/domain-reference/src/outcomes.ts`
 
 ### `RESOURCE` (reason scope)
@@ -924,6 +956,279 @@ has". **[ORIGINAL]**, as `ACT`.
 - **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
 - **Declared by:** `REASON_SCOPES` in `packages/domain-reference/src/outcomes.ts`
 
+## Reason codes (23)
+
+The published reason vocabulary — the half of `(outcome, reason)` [SD §2.4] fixed the shape of and left to A4: "the list itself is A4's job". Twenty-three members, which is rule 2's magnitude ("~20 reasons × 5 outcomes, not ~100 types") and not a quota. Every member is **orthogonal to the outcome** — `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA` _and_ its `REN/AVA`, one code under two outcomes — and **grain-independent**: a code does not change when the subject changes grain. `OTHER` is not a member: it is declared by the shape itself (rule 3) and carries a mandatory narrative the others do not. The per-code scope, attribution discipline and remedy obligation are joined from `packages/domain-reference/data/reasons.json`, which the loader holds to this list as a set.
+
+### `ADDRESS_INCORRECT` (reason code)
+
+The address or contact of record is wrong, incomplete or obsolete — default scope
+`ADMINISTRATIVE`, because it is a defect in our own paper rather than a request.
+
+- **Default scope:** `ADMINISTRATIVE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §4.6]](analysis/A4-execution-events.md#46-instructedchange-names-the-instruction-not-the-tariff-category)
+- **Corpus:** `src:macropoint` · `src:open-trip-model` · `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `AUTHORISATION_MISSING` (reason code)
+
+An approval the act required was not in place — default scope `ADMINISTRATIVE`, and the one
+scope member household-goods regulation supplies more of than any freight source.
+
+- **Default scope:** `ADMINISTRATIVE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §4.4]](analysis/A4-execution-events.md#44-the-authoring-gap-is-narrower-than-sd-24s-examples-suggested) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:atlas-world-group-api` · `src:dp3-400ng` · `src:dtr-part-iv` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `CAUSE_UNKNOWN` (reason code)
+
+The act did not complete as intended and the asserter does not know why — default scope `ACT`.
+
+- **Default scope:** `ACT`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §4.5]](analysis/A4-execution-events.md#45-causeunknown-beside-other-and-the-tension-in-it) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `DOCUMENT_MISSING_OR_INCORRECT` (reason code)
+
+A document the act required is absent or defective — default scope `ADMINISTRATIVE`.
+
+- **Default scope:** `ADMINISTRATIVE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A4 §4.4]](analysis/A4-execution-events.md#44-the-authoring-gap-is-narrower-than-sd-24s-examples-suggested) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:cfr-49-375` · `src:open-trip-model` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `FORCE_MAJEURE` (reason code)
+
+Something outside every party's control prevented or altered the act — default scope `ACT`.
+
+- **Default scope:** `ACT`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:dp3-400ng` · `src:macropoint` · `src:smdg-delay-codes` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `GOODS_DAMAGED` (reason code)
+
+The goods, or some of them, are damaged — default scope `GOODS`.
+
+- **Default scope:** `GOODS`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:cfr-49-375` · `src:macropoint` · `src:open-trip-model` · `src:shippeo` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `GOODS_LOST_OR_STOLEN` (reason code)
+
+Goods have left custody other than by delivery — default scope `GOODS`.
+
+- **Default scope:** `GOODS`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §3]](analysis/A4-execution-events.md)
+- **Corpus:** `src:macropoint` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `GOODS_MISSING` (reason code)
+
+Goods the act expected to handle are not accounted for — default scope `GOODS`.
+
+- **Default scope:** `GOODS`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A4 §4.1]](analysis/A4-execution-events.md#41-mqp-and-mqt-collapse-into-goodsmissing--synthesis) · [[SD §3.4]](analysis/00-shared-decisions.md#34-the-required-form-for-delivered-two-items-short)
+- **Corpus:** `src:cfr-49-375` · `src:open-trip-model` · `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `GOODS_NOT_READY` (reason code)
+
+The goods were not in a state that allowed the act to proceed — default scope `GOODS`.
+
+- **Default scope:** `GOODS`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §3]](analysis/A4-execution-events.md)
+- **Corpus:** `src:macropoint` · `src:shippeo` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `INSTRUCTED_CHANGE` (reason code)
+
+A party instructed a change to **where** or **how** the act is performed — default scope
+`PARTY`. The place-or-pattern half of the pair it forms with `PARTY_RESCHEDULED`.
+
+- **Default scope:** `PARTY`
+- **Attribution:** `attribution.party` **required** — a party-side reason that cannot name the party is the `DIV` overload [SD §2.3] invariant 2 removes
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §4.6]](analysis/A4-execution-events.md#46-instructedchange-names-the-instruction-not-the-tariff-category)
+- **Corpus:** `src:atlas-world-group-api` · `src:dp3-400ng` · `src:shippeo` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `LATE_ARRIVAL` (reason code)
+
+The act happened, or was attempted, outside the window agreed for it — default scope `ACT`.
+
+- **Default scope:** `ACT`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §3]](analysis/A4-execution-events.md)
+- **Corpus:** `src:atlas-world-group-api` · `src:dp3-400ng` · `src:macropoint` · `src:shippeo` · `src:smdg-delay-codes` · `src:stedi-x12-reference`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `OUT_OF_SEQUENCE` (reason code)
+
+The act was requested after the point at which it could still take effect — default scope
+`ACT`.
+
+- **Default scope:** `ACT`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A4 §4.3]](analysis/A4-execution-events.md#43-rule-1-needed-a-reader-twice--and-got-one) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job) · [[SD §4.7.2e]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `OVERFLOW` (reason code)
+
+More goods than the equipment assigned to the act can take — default scope `RESOURCE`.
+
+- **Default scope:** `RESOURCE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Marker:** [ORIGINAL]
+- **Cited:** [[SD §3.2]](analysis/00-shared-decisions.md#32-why-both-membership-forms-and-why-one-entity)
+- **Corpus:** `src:macropoint` · `src:sirva-ade` · `src:stedi-x12-reference`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `PARTY_ABSENT` (reason code)
+
+A party the act required on site was not there, or could not be reached — default scope
+`PARTY`, and the most common household-goods delivery failure there is.
+
+- **Default scope:** `PARTY`
+- **Attribution:** `attribution.party` **required** — a party-side reason that cannot name the party is the `DIV` overload [SD §2.3] invariant 2 removes
+- **Remedy:** **required** — `newWindow` ([SD §2.4] rule 5)
+- **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv` · `src:macropoint` · `src:open-trip-model` · `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `PARTY_NOT_READY` (reason code)
+
+A party was present but not ready, so the act waited or could not proceed — default scope
+`PARTY`.
+
+- **Default scope:** `PARTY`
+- **Attribution:** `attribution.party` **required** — a party-side reason that cannot name the party is the `DIV` overload [SD §2.3] invariant 2 removes
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §5]](analysis/A4-execution-events.md)
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv` · `src:macropoint` · `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `PARTY_REFUSED` (reason code)
+
+A party declined to permit the act, or to accept what it delivered — default scope `PARTY`.
+
+- **Default scope:** `PARTY`
+- **Attribution:** `attribution.party` **required** — a party-side reason that cannot name the party is the `DIV` overload [SD §2.3] invariant 2 removes
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:macropoint` · `src:open-trip-model` · `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `PARTY_RESCHEDULED` (reason code)
+
+A party moved the appointment — default scope `PARTY`. The **time** half of the pair it forms
+with `INSTRUCTED_CHANGE`, which is the place-or-pattern half.
+
+- **Default scope:** `PARTY`
+- **Attribution:** `attribution.party` **required** — a party-side reason that cannot name the party is the `DIV` overload [SD §2.3] invariant 2 removes
+- **Remedy:** **required** — `newWindow` ([SD §2.4] rule 5)
+- **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:dp3-400ng` · `src:macropoint` · `src:shippeo` · `src:stedi-x12-reference`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `PAYMENT_NOT_RECEIVED` (reason code)
+
+Money the act required before it could proceed was not collected — default scope
+`ADMINISTRATIVE`.
+
+- **Default scope:** `ADMINISTRATIVE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §3]](analysis/A4-execution-events.md)
+- **Corpus:** `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `RESOURCE_FAILURE` (reason code)
+
+Equipment or crew assigned to the act failed during it — default scope `RESOURCE`. A van
+breakdown, a lift-gate failure.
+
+- **Default scope:** `RESOURCE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §3]](analysis/A4-execution-events.md)
+- **Corpus:** `src:macropoint` · `src:shippeo` · `src:stedi-x12-reference`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `RESOURCE_UNAVAILABLE` (reason code)
+
+Equipment, storage or crew the act needed was not available — default scope `RESOURCE`.
+
+- **Default scope:** `RESOURCE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §3]](analysis/A4-execution-events.md)
+- **Corpus:** `src:atlas-world-group-api` · `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `SITE_ACCESS_RESTRICTED` (reason code)
+
+The site is reachable but its access is restricted at the time the act needed it — default
+scope `SITE`. A building move-in window, a lift reservation, quiet hours, a dock appointment.
+
+- **Default scope:** `SITE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §3]](analysis/A4-execution-events.md) · [[A4 §4.4]](analysis/A4-execution-events.md#44-the-authoring-gap-is-narrower-than-sd-24s-examples-suggested)
+- **Corpus:** `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `SITE_HANDLING_EXCESS` (reason code)
+
+The site imposes handling the act was not planned for — default scope `SITE`. Long carry, stair
+carry, a lift out of service.
+
+- **Default scope:** `SITE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Marker:** [ORIGINAL] [SYNTHESIS]
+- **Cited:** [[A4 §4.4]](analysis/A4-execution-events.md#44-the-authoring-gap-is-narrower-than-sd-24s-examples-suggested)
+- **Corpus:** `src:cfr-49-375` · `src:dp3-400ng`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `SITE_INACCESSIBLE` (reason code)
+
+The site cannot be reached by the equipment the act was planned with — default scope `SITE`.
+This is the shuttle reason, and it is **sourced**, not authored.
+
+- **Default scope:** `SITE`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Cited:** [[A4 §4.4]](analysis/A4-execution-events.md#44-the-authoring-gap-is-narrower-than-sd-24s-examples-suggested)
+- **Corpus:** `src:dp3-400ng` · `src:open-trip-model` · `src:shippeo` · `src:stedi-x12-reference`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
 ## Role names (18)
 
 [A8 §2]'s cast: `src:sirva-ade`'s `Resource.Type` roles plus the four A8 adds because each asserts facts. Two naming rules bind it — **A8-NAME-1** ("the bare word `agent` is not a role in this model") and **A8-NAME-2** (the bare word `shipper` splits into `accountParty` and the goods owner). **Provisional**: [A8 §9 item 2] leaves the role enum undefined, and [A8 §2] takes the cast as a name list without defining any role individually.
@@ -936,6 +1241,7 @@ half of **A8-NAME-2** ([A8 §2]), added because `src:dp3-400ng` makes the Govern
 row 11 makes it authoritative for a charge at `aspect = DECIDED`.
 
 - **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:dp3-400ng` · `src:weichert-supplier-api`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `booker` (role name)
@@ -944,6 +1250,7 @@ The party that books the move. `src:sirva-ade`'s `Resource.Type` cast, GSD p.9, 
 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:sirva-ade`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `customer` (role name)
@@ -956,6 +1263,7 @@ of "shipper" ([A8 §2]). Added because it asserts facts and ADE has no slot for 
 three sources make the signature constitutive, not decorative.
 
 - **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:cfr-49-375`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `destinationAgent` (role name)
@@ -1016,6 +1324,7 @@ Named in [SD §4.7.1]'s **provisional** reading of the `packing` authority row, 
 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table)
+- **Corpus:** `src:sirva-ade`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `platform` (role name)
@@ -1035,6 +1344,7 @@ via [A8 §2]. **[ORIGINAL] as a gloss** — see `booker`.
 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:sirva-ade`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `r19Agent` (role name)
@@ -1045,6 +1355,7 @@ an **instrument** in [A8 §6]'s sense, granting a role rather than a field-level
 revocably (`R19Cancel`).
 
 - **Cited:** [[A8 §6]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:sirva-ade`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `rr19Agent` (role name)
@@ -1053,6 +1364,7 @@ The destination-side counterpart of `r19Agent` — `src:sirva-ade`'s **RR19**. [
 names it as `delivery`'s alternate authority under the `REVERSE_RULE_19` condition.
 
 - **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:sirva-ade`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `setoffAgent` (role name)
@@ -1062,6 +1374,7 @@ lists it corroborating on `charge`. **[ORIGINAL] as a gloss** — see `booker`.
 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:sirva-ade`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `settlingAgent` (role name)
@@ -1071,6 +1384,7 @@ lists it corroborating on `charge`. **[ORIGINAL] as a gloss** — see `booker`.
 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:sirva-ade`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `sitAgent` (role name)
@@ -1098,6 +1412,7 @@ location. [A8 §5] row 6 lists it **corroborating**, and its note is the distinc
 matters — the weigh master supplies the **evidence**, not the assertion.
 
 - **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:cfr-49-375`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ## Membership forms (3)
@@ -1120,6 +1435,7 @@ The subset is stated **by enumeration** — item refs, or a mark range.
 `src:x12-212-trailer-manifest` `MAN` expresses marks as a start-end range ([SD §3.2]).
 
 - **Cited:** [[SD §3.2]](analysis/00-shared-decisions.md#32-why-both-membership-forms-and-why-one-entity)
+- **Corpus:** `src:dp3-400ng` · `src:x12-212-trailer-manifest`
 - **Declared by:** `MEMBERSHIP_FORMS` in `packages/domain-reference/src/portion.ts`
 
 ### `MEASURED` (membership form)
@@ -1130,6 +1446,7 @@ portion withdrawn"; `src:sirva-ade`'s `Overflow` event carries `Weight` and noth
 claim addresses items.
 
 - **Cited:** [[SD §3.2]](analysis/00-shared-decisions.md#32-why-both-membership-forms-and-why-one-entity)
+- **Corpus:** `src:dp3-400ng` · `src:sirva-ade`
 - **Declared by:** `MEMBERSHIP_FORMS` in `packages/domain-reference/src/portion.ts`
 
 ## Custody bases (2)
@@ -1141,6 +1458,7 @@ claim addresses items.
 Rec 24 **349** `Handed_over` — "handed over **to another party**" (rev3 p.15).
 
 - **Cited:** [[A8 §7.1]](analysis/A8-authority-skeleton.md#71-the-hinge-is-already-in-the-corpus-and-it-is-the-responsibility-distinction) · [[SD §4.7.2f]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
+- **Corpus:** `src:stedi-x12-reference`
 - **Declared by:** `CUSTODY_BASES` in `packages/domain-reference/src/custody.ts`
 
 ### `41` (custody basis)
@@ -1149,6 +1467,7 @@ Rec 24 **41** `Handed_over_under_continued_responsibility` — "handed over **un
 of the same transport operator**" (rev3 p.4).
 
 - **Cited:** [[A8 §7.1]](analysis/A8-authority-skeleton.md#71-the-hinge-is-already-in-the-corpus-and-it-is-the-responsibility-distinction)
+- **Corpus:** `src:dp3-400ng`
 - **Declared by:** `CUSTODY_BASES` in `packages/domain-reference/src/custody.ts`
 
 ## Catalog faces (2)
@@ -1179,6 +1498,7 @@ When the asserter said it — [SD §1.1]. A range with operators, as `src:dcsa` 
 timestamps with operators".
 
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Corpus:** `src:dcsa`
 - **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
 ### `assertedBy.role` (filter axis)
@@ -1187,6 +1507,7 @@ Who said it, in what role — [SD §1.1], "Role rides on the assertion, not the 
 constrains its own classifier by party role in JIT, which is the same idea one field over.
 
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Corpus:** `src:dcsa`
 - **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
 ### `basis` (filter axis)
@@ -1205,6 +1526,7 @@ consumer can always tell a geofence crossing from a person's assertion without c
 side table".
 
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §5.1]](analysis/00-shared-decisions.md#51-capturedby--retained-seven-members)
+- **Corpus:** `src:shippeo`
 - **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
 ### `factClassFamily` (filter axis)
@@ -1246,6 +1568,7 @@ Which kind of thing the record is about — [SD §1.1]. `src:gs1-epcis-cbv` make
 a browsable collection for exactly this (`/eventTypes/{t}/events`).
 
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Corpus:** `src:gs1-epcis-cbv`
 - **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
 ### `subject.id` (filter axis)
@@ -1253,6 +1576,7 @@ a browsable collection for exactly this (`/eventTypes/{t}/events`).
 Which thing — [SD §1.1]. `src:gs1-epcis-cbv`'s `/epcs/{epc}/events`.
 
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Corpus:** `src:gs1-epcis-cbv`
 - **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
 ### `subjectFamily` (filter axis)
@@ -1270,6 +1594,7 @@ The single classification axis — [SD §1.1], [SD §1.3]. `src:dcsa`'s `eventTy
 same axis under another name.
 
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
+- **Corpus:** `src:dcsa`
 - **Declared by:** `FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
 ## Refused filter axes (5)
@@ -1321,7 +1646,7 @@ cross-type payload filter would be filtering on a field that only some records c
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
-## Compatibility change classes (11)
+## Compatibility change classes (12)
 
 What may change within a major `specVersion` and what may not ([catalog §2.3]). **[SYNTHESIS]**: the classification is ours and each member is a consequence of a sourced rule that it names. `src:dcsa` publishes the _practice_ — per-release changelogs down to a renamed filter — but no source in the corpus publishes the rule.
 
@@ -1403,6 +1728,16 @@ existing row moves, and the new row is complete for the new version.
 - **Cited:** [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
+### `publishedOwedVocabulary` (change class)
+
+The **first** publication of a vocabulary that shipped as owed — the change A4 made to the reason
+codes, and the one every remaining owed vocabulary — `roleClass`, `unitOfMeasure`,
+`identityScheme` — will make.
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A4 §7]](analysis/A4-execution-events.md) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
 ### `reinterpretedMember` (change class)
 
 Changing what an existing member means. [SD §1.2]: "never to reinterpretation."
@@ -1432,6 +1767,7 @@ The named, versioned rules the model computes with. Each entry is the docstring 
 
 - **Kind:** a former holder after a handoff
 - **Cited:** [[A8 §7.4]](analysis/A8-authority-skeleton.md#74-what-happens-to-the-previous-holders-assertions) · [[SD §6.4]](analysis/00-shared-decisions.md#64-the-retraction-semantics-fixed)
+- **Corpus:** `src:sirva-ade`
 - **Declared by:** `standingAfterBoundary` in `packages/domain-reference/src/rules/authority.ts`
 
 ### `A8-INSTANT` (rule)
@@ -1459,6 +1795,7 @@ The named, versioned rules the model computes with. Each entry is the docstring 
 - **Kind:** how authority moves at a handover
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §7.1]](analysis/A8-authority-skeleton.md#71-the-hinge-is-already-in-the-corpus-and-it-is-the-responsibility-distinction) · [[A8 §7.4(b)]](analysis/A8-authority-skeleton.md#74-what-happens-to-the-previous-holders-assertions) · [[SD §4.7.2f]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
+- **Corpus:** `src:uncefact-rec24`
 - **Declared by:** `authorityMovesAtHandover` in `packages/domain-reference/src/rules/authority.ts`
 
 ### `C5` (rule)
@@ -1525,6 +1862,7 @@ M1 — **[ORIGINAL], and it departs from a source.**
 - **Kind:** the machine-assertion rule
 - **Marker:** [ORIGINAL]
 - **Cited:** [[SD §4.6.1]](analysis/00-shared-decisions.md#461-why-this-needed-deciding)
+- **Corpus:** `src:omnitracs-roadnet`
 - **Declared by:** `checkM1` in `packages/domain-reference/src/rules/capture.ts`
 
 ### `M2` (rule)
@@ -1552,6 +1890,7 @@ M4 — the sanctioned carve-out, in both directions.
 
 - **Kind:** the machine-assertion rule
 - **Cited:** [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
+- **Corpus:** `src:dp3-400ng`
 - **Declared by:** `checkM4` in `packages/domain-reference/src/rules/capture.ts`
 
 ### `M5` (rule)
@@ -1604,6 +1943,7 @@ a claim, and **the catalog says so** rather than leaving a consumer to discover 
 - **Kind:** a claim addresses items
 - **Marker:** [ORIGINAL]
 - **Cited:** [[SD §3.2]](analysis/00-shared-decisions.md#32-why-both-membership-forms-and-why-one-entity)
+- **Corpus:** `src:cfr-49-375` · `src:dp3-400ng`
 - **Declared by:** `canSupportClaim` in `packages/domain-reference/src/portion.ts`
 
 ### `P-IDENTITY` (rule)
@@ -1645,6 +1985,7 @@ splitting a shipment." The SIT remainder is a Portion; the shipment is untouched
 - **Kind:** the one published value rule
 - **Marker:** [ORIGINAL]
 - **Cited:** [[SD §4.4]](analysis/00-shared-decisions.md#44-the-acceptance-test-duplicate-reweighs)
+- **Corpus:** `src:dp3-400ng`
 - **Declared by:** `R_WEIGHT_LOWER` in `packages/domain-reference/src/rules/resolution.ts`
 
 ### `custodyAt` (rule)
@@ -1658,7 +1999,7 @@ splitting a shipment." The SIT remainder is a Portion; the shipment is untouched
 
 ## Owed — what the model declares undecided, and who owes it
 
-This is the honest state of the model on one page. [SD §0] forbids guessing a value to make the types tidy, so a gap is carried as a gap and names who owes it. Every line below is read out of the code or the tables — the `owed(name, owedTo)` constructor, the `Owed<Name, Owner>` type, and the authority column of `packages/domain-reference/data/canonical-subjects.json`.
+This is the honest state of the model on one page. [SD §0] forbids guessing a value to make the types tidy, so a gap is carried as a gap and names who owes it. Every line below is read out of the code or the tables — the `owed(name, owedTo)` constructor, the `Owed<Name, Owner>` type, the `OwedCode<'x'>` brand, and the authority column of `packages/domain-reference/data/canonical-subjects.json`.
 
 ### Declared owed in `src/`
 
@@ -1681,8 +2022,16 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - `placeRef` — owed to [SD §1.2] — no `place` aggregate _(`packages/domain-reference/src/custody.ts`)_
 - `portionMembership` — owed to [SD §4.7.1] — a Portion is asserted, and no declared type carries the assertion _(`packages/domain-reference/src/portion.ts`)_
 - `position` — owed to [SD §4.7.1] and [SD §4.7.3] — named by M5, in no table at all _(`packages/domain-reference/src/rules/capture.ts`)_
-- `remedy` — owed to A4 — the reason vocabulary [SD §2.4, §10.4] _(`packages/domain-reference/src/outcomes.ts`)_
+- `remedy` — owed to A5 — a remedy that opens a SIT stay; [SD §2.4] rule 5 types only newWindow _(`packages/domain-reference/src/outcomes.ts`)_
 - `tariffOwner` — owed to [A8 §9 item 2] — the role enum has no van-line member _(`packages/domain-reference/src/rules/authority.ts`)_
+
+### Closed vocabularies whose members are owed
+
+A vocabulary whose **shape** is published and whose **members** are not, carried as `OwedCode<'x'>` so that the gap is in the type rather than in a comment. The reason vocabulary was one of these until [A4 §3] published it; these are what is left. Each publishes on the wire as a string with an `x-owed-vocabulary` annotation, and publishing one is `publishedOwedVocabulary` under [catalog §2.3].
+
+- `identityScheme` _(`packages/domain-reference/src/identity.ts`)_
+- `roleClass` _(`packages/domain-reference/src/outcomes.ts`)_
+- `unitOfMeasure` _(`packages/domain-reference/src/assertions.ts`)_
 
 ### Record types whose authority row is owed
 
@@ -1739,26 +2088,37 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`A8-MOVE`](#a8-move-rule) — rule
 - [`ACT`](#act-reason-scope) — reason scope
 - [`ACTUAL`](#actual-basis) — basis
+- [`ADDRESS_INCORRECT`](#addressincorrect-reason-code) — reason code
 - [`ADMINISTRATIVE`](#administrative-reason-scope) — reason scope
 - [`ASSUMED_FROM_PLAN`](#assumedfromplan-capture-method) — capture method
+- [`AUTHORISATION_MISSING`](#authorisationmissing-reason-code) — reason code
 - [`BOTH`](#both-membership-form) — membership form
 - [`C5`](#c5-rule) — rule
 - [`C6`](#c6-rule) — rule
 - [`CANCELLED`](#cancelled-outcome) — outcome
+- [`CAUSE_UNKNOWN`](#causeunknown-reason-code) — reason code
 - [`COMMITTED`](#committed-basis) — basis
 - [`COMPLETED`](#completed-outcome) — outcome
 - [`COMPLETED_WITH_EXCEPTION`](#completedwithexception-outcome) — outcome
 - [`DERIVED_BY_RULE`](#derivedbyrule-capture-method) — capture method
 - [`DEVICE_GEOFENCE`](#devicegeofence-capture-method) — capture method
 - [`DEVICE_TELEMETRY`](#devicetelemetry-capture-method) — capture method
+- [`DOCUMENT_MISSING_OR_INCORRECT`](#documentmissingorincorrect-reason-code) — reason code
 - [`E-CANON-OBLIGATION`](#e-canon-obligation-rule) — rule
 - [`E-CANON-RESOLVE`](#e-canon-resolve-rule) — rule
 - [`E-CANON-STRICT`](#e-canon-strict-rule) — rule
 - [`ENUMERATED`](#enumerated-membership-form) — membership form
 - [`ESTIMATED`](#estimated-basis) — basis
+- [`FORCE_MAJEURE`](#forcemajeure-reason-code) — reason code
 - [`GOODS`](#goods-reason-scope) — reason scope
+- [`GOODS_DAMAGED`](#goodsdamaged-reason-code) — reason code
+- [`GOODS_LOST_OR_STOLEN`](#goodslostorstolen-reason-code) — reason code
+- [`GOODS_MISSING`](#goodsmissing-reason-code) — reason code
+- [`GOODS_NOT_READY`](#goodsnotready-reason-code) — reason code
 - [`I-KEY`](#i-key-rule) — rule
+- [`INSTRUCTED_CHANGE`](#instructedchange-reason-code) — reason code
 - [`KEYED_BY_PERSON`](#keyedbyperson-capture-method) — capture method
+- [`LATE_ARRIVAL`](#latearrival-reason-code) — reason code
 - [`M1`](#m1-rule) — rule
 - [`M2`](#m2-rule) — rule
 - [`M3`](#m3-rule) — rule
@@ -1770,6 +2130,8 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`MEASURED`](#measured-membership-form) — membership form
 - [`NOT_COMPLETED`](#notcompleted-outcome) — outcome
 - [`OBSERVED_BY_PERSON`](#observedbyperson-capture-method) — capture method
+- [`OUT_OF_SEQUENCE`](#outofsequence-reason-code) — reason code
+- [`OVERFLOW`](#overflow-reason-code) — reason code
 - [`P-CLAIM`](#p-claim-rule) — rule
 - [`P-IDENTITY`](#p-identity-rule) — rule
 - [`P-MEMBER`](#p-member-rule) — rule
@@ -1777,11 +2139,21 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`PARTIALLY_COMPLETED`](#partiallycompleted-outcome) — outcome
 - [`PARTNER_ASSERTED`](#partnerasserted-capture-method) — capture method
 - [`PARTY`](#party-reason-scope) — reason scope
+- [`PARTY_ABSENT`](#partyabsent-reason-code) — reason code
+- [`PARTY_NOT_READY`](#partynotready-reason-code) — reason code
+- [`PARTY_REFUSED`](#partyrefused-reason-code) — reason code
+- [`PARTY_RESCHEDULED`](#partyrescheduled-reason-code) — reason code
+- [`PAYMENT_NOT_RECEIVED`](#paymentnotreceived-reason-code) — reason code
 - [`PLANNED`](#planned-basis) — basis
 - [`R-WEIGHT-LOWER`](#r-weight-lower-rule) — rule
 - [`REQUESTED`](#requested-basis) — basis
 - [`RESOURCE`](#resource-reason-scope) — reason scope
+- [`RESOURCE_FAILURE`](#resourcefailure-reason-code) — reason code
+- [`RESOURCE_UNAVAILABLE`](#resourceunavailable-reason-code) — reason code
 - [`SITE`](#site-reason-scope) — reason scope
+- [`SITE_ACCESS_RESTRICTED`](#siteaccessrestricted-reason-code) — reason code
+- [`SITE_HANDLING_EXCESS`](#sitehandlingexcess-reason-code) — reason code
+- [`SITE_INACCESSIBLE`](#siteinaccessible-reason-code) — reason code
 - [`accountParty`](#accountparty-role-name) — role name
 - [`actPerformance`](#actperformance-fact-class-family) — fact-class family
 - [`arrival`](#arrival-record-type) — record type
@@ -1848,6 +2220,7 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - [`platform`](#platform-role-name) — role name
 - [`portHandler`](#porthandler-role-name) — role name
 - [`portion`](#portion-aggregate) — aggregate
+- [`publishedOwedVocabulary`](#publishedowedvocabulary-change-class) — change class
 - [`queried`](#queried-catalog-face) — catalog face
 - [`r19Agent`](#r19agent-role-name) — role name
 - [`recordedAt`](#recordedat-filter-axis) — filter axis

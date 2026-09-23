@@ -1,15 +1,222 @@
 {
   "table": "reasons",
   "declaredBy": "[SD §2.4] — 'the reason vocabulary's SHAPE (the list itself is A4's job)'",
-
   "vocabulary": {
-    "status": "owed",
-    "owedTo": "A4 — the reason vocabulary's content. [SD §2.4]: 'the list itself is A4's job'; [SD §10.4] lists it under what is explicitly NOT settled; [A8 §9] repeats it as an explicit non-goal.",
-    "codes": [],
-    "codesNote": "EMPTY ON PURPOSE. A4 has not been written. The shape below is settled and is shipped populated; the members are not, and inventing a plausible list to fill this array is the exact failure [SD §0]'s disclosure rule forbids. The loader refuses a vocabulary whose status is 'owed' and whose codes array is non-empty, so this file cannot quietly acquire a vocabulary without also declaring that A4 landed.",
-    "whenA4Lands": "Set status to 'published', fill codes, and keep every existing check: each member needs a code, a default scope, its attribution discipline, and whether it requires a remedy. The loader already enforces all of that against an empty list."
+    "status": "published",
+    "owedTo": null,
+    "codes": [
+      {
+        "code": "GOODS_DAMAGED",
+        "scope": "GOODS",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo LIV/RCA (accepted with damage) and REN/AVA (refused for damage) — one code under two outcomes, which is [SD §2.4] rule 1's worked proof; src:macropoint x014; src:open-trip-model 5.7 `damage`; src:uncefact-rec24 97; src:cfr-49-375 §375.503(d)."
+      },
+      {
+        "code": "GOODS_MISSING",
+        "scope": "GOODS",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": "[SYNTHESIS]",
+        "citation": "[A4 §3], [A4 §4.1]. src:shippeo MQP and MQT collapsed into one code — the magnitude is the outcome axis and the extent is `appliesTo` ([SD §3.4]); the two codes are Shippeo's, the collapse is ours. Also src:stedi-x12-reference element 1651 S1 Delivery Shortage; src:uncefact-rec24 283/285/330; src:open-trip-model 5.7 `incomplete`; src:cfr-49-375 §375.503(d)."
+      },
+      {
+        "code": "GOODS_NOT_READY",
+        "scope": "GOODS",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo ENE/MQP and ENE/MQT, whose analysis gives the HHG reading 'the customer hasn't finished packing'; src:macropoint x025 rework needed / not sealed; src:uncefact-rec24 190 Waiting_for_cargo."
+      },
+      {
+        "code": "GOODS_LOST_OR_STOLEN",
+        "scope": "GOODS",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:macropoint x015 Thefts, published only under its undeliverable and returning outcomes and never under a delay; src:uncefact-rec24 329 Consignment_partially_stolen beside 330 Consignment_partially_lost_or_missing. Kept apart from GOODS_MISSING because both sources keep it apart and the claims path differs."
+      },
+      {
+        "code": "OVERFLOW",
+        "scope": "RESOURCE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:sirva-ade's `Overflow` event, cited at [SD §3.2] as carrying the overflow portion's weight and nothing else; src:macropoint x028 'Delivery vehicle capacity limitation'; src:stedi-x12-reference element 1651 BQ Shipment Overweight and AV Exceeds Service Limitations. The code is sourced three ways; placing it at scope RESOURCE rather than GOODS is ours ([A4 §4.2])."
+      },
+      {
+        "code": "PARTY_ABSENT",
+        "scope": "PARTY",
+        "partyRequired": true,
+        "remedyRequired": true,
+        "remedyShape": "newWindow",
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo REN/DAF, 'the single most common HHG delivery failure'; regulation-grade at src:dp3-400ng Item 17-1 (attempted delivery, one hour of free waiting time to locate the customer) and src:dtr-part-iv §D.5.b(2) (two documented contact attempts 6 h apart); src:uncefact-rec24 269/317/243; src:stedi-x12-reference element 1651 B1/A5/AQ; src:macropoint x012; src:open-trip-model 5.7 `receiverAbsent`. Remedy required on [SD §2.4] rule 5."
+      },
+      {
+        "code": "PARTY_REFUSED",
+        "scope": "PARTY",
+        "partyRequired": true,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo NJU 'not justified by carrier' vs DIV 'by the counterparty' — refusal on the justification axis, with the attribution lifted into `attribution` by [SD §2.4] rule 6; src:uncefact-rec24's 22 Delivery_refused_* codes, incl. 281 refused pending instructions; src:stedi-x12-reference element 1651 BS Refused by Customer; src:macropoint x013; src:open-trip-model 5.7 `rejectedByReceiver`."
+      },
+      {
+        "code": "PARTY_RESCHEDULED",
+        "scope": "PARTY",
+        "partyRequired": true,
+        "remedyRequired": true,
+        "remedyShape": "newWindow",
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo REN/NRV APPOINTMENT_UNLOAD_TAKEN with its required new_slot; src:macropoint x023 and x024; src:stedi-x12-reference element 1651 AD/BJ/HB; src:dp3-400ng Item 17-1.3.a. Remedy required on [SD §2.4] rule 5 — this is the rule's own sourced case."
+      },
+      {
+        "code": "PARTY_NOT_READY",
+        "scope": "PARTY",
+        "partyRequired": true,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:macropoint x021 'Late acceptance by consignee'; the billable clock is regulation-grade at src:dtr-part-iv A-406 §A.8.a (2 h domestic / 1 h international free waiting time) and src:dp3-400ng Item 17-1.4; src:uncefact-rec24's Waiting_for_* family (189/191/200/236); src:stedi-x12-reference element 1651 B9 Receiving Time Restricted. The remedy that opens a SIT stay is owed to A5 ([A4 §5])."
+      },
+      {
+        "code": "INSTRUCTED_CHANGE",
+        "scope": "PARTY",
+        "partyRequired": true,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3], [A4 §4.6]. src:shippeo REN/LNA 'deliver to new address', kept apart from REN/DEM by its own analysis; src:dp3-400ng Item 28.4 Diversion and Item 28.3 stop-off, which the tariff explicitly distinguishes by whether the shipment has moved — so the code names the instruction and leaves the tariff classification to A7; src:uncefact-rec24 333; src:atlas-world-group-api's Diversion record."
+      },
+      {
+        "code": "ADDRESS_INCORRECT",
+        "scope": "ADMINISTRATIVE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo REN/DEM 'consignee changed address', which its analysis reads as 'a data defect, not a customer request'; src:uncefact-rec24 234/274/213; src:stedi-x12-reference element 1651 A2 Incorrect Address and A6 Address Corrected - Delivery Attempted; src:open-trip-model 5.7 `invalidAddress`. src:macropoint x011 conflates this with INSTRUCTED_CHANGE and its analysis says to prefer Shippeo's split."
+      },
+      {
+        "code": "PAYMENT_NOT_RECEIVED",
+        "scope": "ADMINISTRATIVE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo's OpenAPI-only ORDER_NOT_DELIVERED_RECEIVER_CANT_PAY, which its analysis says transfers better to HHG than to EU freight; src:uncefact-rec24 291/292 and 250; src:stedi-x12-reference element 1651 B4 Held for Payment and C2 Credit Hold."
+      },
+      {
+        "code": "AUTHORISATION_MISSING",
+        "scope": "ADMINISTRATIVE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3], [A4 §4.4]. Regulation-grade and HHG-native: src:dp3-400ng Item 125 (shuttle pre-approval), Item 17-1 (attempted-delivery pre-approval obtained while the crew is at the delivery point) and Item 29 (SIT entry); src:dtr-part-iv §D.5.b(2); src:atlas-world-group-api's nO_Prior_OPS_Approval and long_Cartage_Denied; src:uncefact-rec24 2 and 236."
+      },
+      {
+        "code": "DOCUMENT_MISSING_OR_INCORRECT",
+        "scope": "ADMINISTRATIVE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3], [A4 §4.4]. src:uncefact-rec24 343 Document_incorrect against 359 Bill_of_Lading_issued; src:stedi-x12-reference element 1651 BC Missing Documents and OO Paperwork Received - Did not Receive Shipment or Equipment; src:open-trip-model 5.7 `invalidShippingLabel`; src:cfr-49-375. A certificate of insurance not on file is an instance of this code, not a member of its own."
+      },
+      {
+        "code": "SITE_INACCESSIBLE",
+        "scope": "SITE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3], [A4 §4.4]. Regulation-grade, with an enumerated cause list: src:dp3-400ng Item 125.1 (building structure, inaccessibility by highway, inadequate or unsafe road, overhead obstructions, narrow gates, sharp turns, trees and shrubbery, roadway deterioration, the nature of an article) and Item 33 Impractical Operations; src:shippeo's OpenAPI-only ORDER_NOT_DELIVERED_NO_ACCESS_TO_SITE; src:open-trip-model 5.7 `inaccessibleAddress`; src:stedi-x12-reference element 1651 B8. This is the shuttle reason, and it is SOURCED."
+      },
+      {
+        "code": "SITE_HANDLING_EXCESS",
+        "scope": "SITE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": "[SYNTHESIS]",
+        "citation": "[A4 §3], [A4 §4.4]. src:cfr-49-375 §375.401(f) names 'elevators, long carries' as accessorials and requires them to be determined before the bill of lading; src:dp3-400ng Item 33 names inadequate loading or unloading facilities. The conditions are sourced and priced; reading them as an execution-time reason is ours. A parking permit not obtained is [ORIGINAL] within this code — no source in the corpus names it."
+      },
+      {
+        "code": "SITE_ACCESS_RESTRICTED",
+        "scope": "SITE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo REN/FCO and REN/FHB, whose analysis states that the codes are freight-only but 'the shape survives: HHG's equivalents are building move-in windows, elevator reservations and HOA quiet hours. Re-label, don't drop.'; src:uncefact-rec24 186/317/211/352-354/184; src:stedi-x12-reference element 1651 B9 and AW Past Cut-off Time."
+      },
+      {
+        "code": "RESOURCE_UNAVAILABLE",
+        "scope": "RESOURCE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:stedi-x12-reference element 1651's T1-T6, D2 Driver Not Available and P4 Held for Full Carrier Load; src:uncefact-rec24's Waiting_for_* family per resource — 191 workers, 192 storage area, 193 equipment, 194 other means of transport, 195 handling equipment, 192 being where src:atlas-world-group-api's warehouse_full and market_Saturated SIT causes land; src:shippeo's OpenAPI-only ORDER_NOT_DELIVERED_RESOURCE_INCIDENT."
+      },
+      {
+        "code": "RESOURCE_FAILURE",
+        "scope": "RESOURCE",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:stedi-x12-reference element 1651 AI Mechanical Breakdown beside the T-series, with T4 'trailer not usable due to prior product' on the boundary; src:shippeo's ORDER_NOT_DELIVERED_RESOURCE_INCIDENT, read by its analysis as van breakdown and lift-gate failure; src:macropoint x026, which folds accidents in with weather."
+      },
+      {
+        "code": "LATE_ARRIVAL",
+        "scope": "ACT",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3]. src:shippeo TAR, which appears under AEC (UNLOADING_POSTPONED) and REN (ORDER_DELIVERY_REFUSED_LATE) — one code, two outcomes; src:macropoint x029; src:atlas-world-group-api's stp_reasonlate and stp_reasonlate_depart with stp_delayhours; src:smdg-delay-codes in its entirety; src:stedi-x12-reference element 1651 AW; src:dp3-400ng Item 17-1.3. The measured delay is a fact about the act, never a member of this enum."
+      },
+      {
+        "code": "FORCE_MAJEURE",
+        "scope": "ACT",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3], [A4 §5]. src:dp3-400ng Item 33 (force majeure, war, riot, strike, picketing); src:macropoint x026, 'the one reason where freight and HHG are identical'; src:smdg-delay-codes group 4 WEA/STR/HOL/OTF; src:stedi-x12-reference element 1651 AO/BE/AF; src:uncefact-rec24 182. The member that proves attribution.roleClass needs an explicit non-party value, owed to [A8 §9 item 2]."
+      },
+      {
+        "code": "OUT_OF_SEQUENCE",
+        "scope": "ACT",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": "[ORIGINAL]",
+        "citation": "[A4 §3], [A4 §4.3]. No source in the corpus publishes it. [SD §4.7.2e] item 3 needs it: 'a cancellation is an act with an outcome, and a refused cancellation needs no new mechanism.' It names the request's place in the sequence, not this record's outcome; the earlier spelling ALREADY_PERFORMED was rejected for putting a completion verb in a closed enum."
+      },
+      {
+        "code": "CAUSE_UNKNOWN",
+        "scope": "ACT",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[A4 §3], [A4 §4.5]. src:uncefact-rec24 265 Reason_unknown beside 125 No_status, which its analysis singles out as more honesty than most vocabularies offer. Distinct from OTHER: OTHER means the list has no code for a known reason and owes a narrative ([SD §2.4] rule 3); this means there is no reason to give yet."
+      }
+    ],
+    "codesNote": "Twenty-three members, cross-checked as a SET against REASON_CODES in src/outcomes.ts by the loader — a code in one place and not the other is a defect, not a widening. `OTHER` is NOT a member: it is declared by the shape ([SD §2.4] rule 3) and the loader refuses it here, which is what lets the Reason union make `remark` mandatory for it alone. Each entry declares its default scope, whether `attribution.party` must name a party, whether a remedy is required and which shape, its disclosure marker and its evidence. [SD §2.6]'s three worked literals are NOT members and could not be: CONSIGNEE_ABSENT bakes a role into the code ([SD §2.4] rule 6 forbids it), REFUSED_DAMAGE encodes an outcome in a verb (rule 1) and SHORT is GOODS_MISSING under another name. See [A4 §4] and the illustrativeOnly block below.",
+    "publishedBy": "A4 — [A4 §3]. [SD §2.4] fixed the shape and left the list to this area: 'the list itself is A4's job'. Twenty-three members, which is rule 2's magnitude and not a quota.",
+    "whenA8Lands": "attribution.roleClass is still owed to [A8 §9 item 2] and `partyRequired` below is deliberately a boolean rather than a default roleClass, so that nothing here has to name a member of an enum that does not exist. FORCE_MAJEURE and CAUSE_UNKNOWN need an explicit non-party member of that enum before they can be recorded at all — A4's one concrete requirement on A8."
   },
-
   "shape": {
     "note": "[SD §2.4]'s record, field for field. Five of the six rules below are sourced; two ELEMENTS of this record are authored, and each says so.",
     "fields": [
@@ -69,7 +276,6 @@
       }
     ]
   },
-
   "factorisation": {
     "note": "THE SETTLED PART. Two axes and only two: the outcome says where in the lifecycle you got to and with what result; the reason says why. The human-readable event name is an ALIAS FOR THE PAIR, never a third axis.",
     "axes": ["outcome", "reason"],
@@ -78,7 +284,6 @@
     "marker": "[SYNTHESIS]",
     "citation": "[SD §2.1], [SD §2.5] — src:shippeo supplies the factorisation and the grid; src:open-trip-model supplies the enum, the invariant and the sub-results"
   },
-
   "reuse": {
     "rule": "Reasons are ORTHOGONAL to outcomes and are reused across them. One reason code appears under several outcomes, and that is the point.",
     "sourceEvidence": "src:shippeo's MQP ('partially missing package') appears under four situations: ECH/MQP (loaded anyway, short), ENE/MQP (not loaded because short), LIV/MQP (DELIVERED anyway, short), REN/MQP (REFUSED because short). Four operationally different things, one reason code, no combinatorial explosion. Shippeo's own analysis calls REN/MQP vs LIV/MQP 'the most important single import' for HHG.",
@@ -86,7 +291,6 @@
     "sourceEvidenceNote": "MQP, ECH, ENE, LIV and REN are SHIPPEO's codes, quoted as the evidence for the rule. They are not members of our vocabulary and must not be read as a starting list — ours is owed to A4.",
     "citation": "[SD §2.4] rule 1, [SD §2.1]"
   },
-
   "expectedMagnitude": {
     "note": "Rule 2's arithmetic, with the measured number rather than the inherited one: ~20 reasons x 5 outcomes, not ~100 types.",
     "justificationCodes": 18,
@@ -97,7 +301,6 @@
     "isATargetNote": "A magnitude, not a quota. It bounds what a sane vocabulary looks like; it does not tell A4 how many codes to mint.",
     "citation": "[SD §2.4] rule 2, [SD §2.1]"
   },
-
   "openMember": {
     "code": "OTHER",
     "remarkRequired": true,
@@ -105,12 +308,23 @@
     "marker": null,
     "citation": "[SD §2.4] rule 3 — two independent sources, one regulation-grade: OTM 5.7's 'other' + remark ('the specific reason is provided in the remark property'); src:dp3-400ng Item 226/226A, a Miscellaneous charge for anything without a designated service code, with a MANDATORY detailed note"
   },
-
   "scopes": [
-    { "scope": "ACT", "citation": "[SD §2.4]" },
-    { "scope": "GOODS", "citation": "[SD §2.4]" },
-    { "scope": "PARTY", "citation": "[SD §2.4]" },
-    { "scope": "RESOURCE", "citation": "[SD §2.4]" },
+    {
+      "scope": "ACT",
+      "citation": "[SD §2.4]"
+    },
+    {
+      "scope": "GOODS",
+      "citation": "[SD §2.4]"
+    },
+    {
+      "scope": "PARTY",
+      "citation": "[SD §2.4]"
+    },
+    {
+      "scope": "RESOURCE",
+      "citation": "[SD §2.4]"
+    },
     {
       "scope": "SITE",
       "citation": "[SD §2.4] — one of the two members carrying HHG's authoring gap: shuttle required, long carry, elevator unavailable, parking permit. None of which src:shippeo has."
@@ -122,7 +336,6 @@
   ],
   "scopesMarker": "[ORIGINAL]",
   "scopesNote": "The whole six-member enum is [ORIGINAL]. No source publishes it; it exists so a consumer can tell 'something is wrong with the goods' from 'something is wrong with the site' without reading a code list. The loader checks this list against REASON_SCOPES in src/outcomes.ts as a SET — a scope added in one place and not the other is a defect, not a widening.",
-
   "outcomes": [
     {
       "outcome": "COMPLETED",
@@ -175,29 +388,28 @@
       "citation": "[SD §2.2]"
     }
   ],
-
   "attribution": {
     "note": "Rule 6. Attribution is a structured field ON THE REASON — not baked into the code, and not on the assertion. This SUPERSEDES [fork-time §(b)(7)] ('attribution belongs on the assertion'), which the critique identified as a placement rule no source states.",
     "roleClassStatus": "owed",
     "roleClassOwedTo": "[A8 §9 item 2] — the role enum this would be cut from is undefined. [SD §2.6]'s worked example uses customer, carrier and unknown; three examples are not a vocabulary.",
     "partyOptional": true,
-    "partyOptionalWhy": "The responsible party is often unknown at the time the reason is recorded. roleClass is NOT optional: a reason that attributes to nobody at all is the DIV overload invariant 2 exists to remove.",
+    "partyOptionalWhy": "Optional BY DEFAULT, refined per code: `vocabulary.codes[].partyRequired` is true for every PARTY-scope member, because a party-side reason that cannot name the party is the DIV overload invariant 2 exists to remove. The responsible party is often unknown when the reason is recorded, which is why the default is optional; roleClass is NOT optional.",
     "marker": "[ORIGINAL]",
     "sourcedPart": "That reason vocabularies are ORGANISED BY RESPONSIBLE PARTY is sourced: src:stedi-x12-reference element 1651's 86 values are organised that way (consignee-, driver-, shipper-, other-carrier-related) and include 'BF Carrier Keying Error'; src:shippeo separates NJU 'not justified by carrier' from DIV 'by the counterparty'.",
     "authoredPart": "[ORIGINAL]: lifting attribution out of the code into its own field. It removes the duplication both sources carry — Shippeo's REFUSED_LOAD / LOADING_REFUSED_BY_SHIPPER_VARIOUS_REASON are ONE reason with two attributions.",
     "citation": "[SD §2.4] rule 6"
   },
-
   "remedy": {
     "note": "THE SETTLED POINT: a reason may carry its own remedy, and FOR SOME CODES MUST.",
-    "status": "owed",
-    "owedTo": "A4 — which codes require which remedy is part of the vocabulary A4 owes. The typed remedy shapes are owed with it.",
+    "status": "partly-published",
+    "owedTo": "A5 — a remedy that opens a storage-in-transit stay, which PARTY_NOT_READY wants. A4 typed the one shape a source states (newWindow) and carries the rest as owed rather than inventing shapes to make the union look finished ([SD §0]).",
     "requiredForSomeCodes": true,
     "sourcedPart": "src:shippeo's new_slot {start, end} is REQUIRED on appointment events (OrderAppointmentEvent, SharedTrackingSlot): 'a failed delivery that does not say when it will be retried is an incomplete record.'",
     "marker": null,
-    "citation": "[SD §2.4] rule 5"
+    "citation": "[SD §2.4] rule 5",
+    "typedShapes": ["newWindow"],
+    "requiredFor": ["PARTY_ABSENT", "PARTY_RESCHEDULED"]
   },
-
   "rules": [
     {
       "rule": 1,
@@ -236,29 +448,58 @@
       "citation": "[SD §2.4] rule 6 — the need is sourced three ways; lifting attribution off the code is authored"
     }
   ],
-
   "illustrativeOnly": {
-    "note": "NOT A VOCABULARY. These are the literals [SD §2.6]'s worked scenario uses to show the shape working. They are reproduced so the scenario can be read, and they are kept in a separate field from 'codes' so that nothing can mistake them for published members. The loader refuses to merge them.",
+    "note": "NOT A VOCABULARY, and [A4 §4] found that none of the three could have become one. These are the literals [SD §2.6]'s worked scenario uses to show the shape working. They are reproduced so the scenario can be read, and they are kept in a separate field from 'codes' so that nothing can mistake them for published members. The loader refuses to merge them. They carry the same per-code fields as a published member because one reader validates both — an illustration with a different shape from the thing it illustrates would illustrate nothing.",
     "normative": false,
     "reasonCodes": [
       {
         "code": "CONSIGNEE_ABSENT",
         "scope": "PARTY",
+        "partyRequired": true,
+        "remedyRequired": true,
+        "remedyShape": "newWindow",
+        "marker": null,
         "citation": "[SD §2.6] — Shippeo REN/DAF + required new_slot"
       },
-      { "code": "REFUSED_DAMAGE", "scope": "GOODS", "citation": "[SD §2.6] — Shippeo REN/AVA" },
-      { "code": "SHORT", "scope": "GOODS", "citation": "[SD §2.6] — Shippeo LIV/MQP" }
+      {
+        "code": "REFUSED_DAMAGE",
+        "scope": "GOODS",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[SD §2.6] — Shippeo REN/AVA"
+      },
+      {
+        "code": "SHORT",
+        "scope": "GOODS",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": null,
+        "citation": "[SD §2.6] — Shippeo LIV/MQP"
+      }
     ],
     "roleClasses": [
-      { "roleClass": "customer", "citation": "[SD §2.6]" },
-      { "roleClass": "carrier", "citation": "[SD §2.6]" },
+      {
+        "roleClass": "customer",
+        "citation": "[SD §2.6]"
+      },
+      {
+        "roleClass": "carrier",
+        "citation": "[SD §2.6]"
+      },
       {
         "roleClass": "unknown",
         "citation": "[SD §2.6] — and this one matters: the scenario attributes a shortfall to 'unknown' rather than omitting attribution, which is the discipline attribution.partyOptional describes"
       }
-    ]
+    ],
+    "supersededBy": {
+      "CONSIGNEE_ABSENT": "PARTY_ABSENT — [SD §2.4] rule 6 forbids baking the role into the code.",
+      "REFUSED_DAMAGE": "GOODS_DAMAGED — rule 1: the outcome is encoded in a verb. The outcome axis carries whether the damaged goods were accepted (COMPLETED_WITH_EXCEPTION) or refused (NOT_COMPLETED), which is src:shippeo's LIV/RCA vs REN/AVA and the rule's own worked proof.",
+      "SHORT": "GOODS_MISSING — the same reason under a name that does not read as a magnitude."
+    }
   },
-
   "invariants": [
     {
       "invariant": 1,

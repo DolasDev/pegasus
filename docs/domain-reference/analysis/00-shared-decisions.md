@@ -523,6 +523,16 @@ Act  type=Delivery  subject=shipment:S  context=[stop:T2]  basis=ACTUAL
                 attribution={roleClass: unknown},  appliesTo=[portion:P2] }]  ← Shippeo LIV/MQP
 ```
 
+> **The three code literals above are illustrations, and A4 published none of them.** [A4 §4.3]
+> found that each fails one of this section's own rules: `CONSIGNEE_ABSENT` bakes the role into the
+> code, which rule 6 forbids; `REFUSED_DAMAGE` encodes the outcome in a verb, which rule 1 forbids;
+> and `SHORT` reads as a magnitude, which the outcome axis carries. The published members are
+> `PARTY_ABSENT`, `GOODS_DAMAGED` and `GOODS_MISSING`, and the scenario is unchanged in every other
+> respect — including that a shortfall is attributed to an unknown role class rather than to nobody.
+> The mapping is carried as `illustrativeOnly.supersededBy` in
+> `packages/domain-reference/data/reasons.json`, and nothing here is retracted: the shape these
+> literals were written to demonstrate is exactly the shape A4 filled.
+
 ---
 
 ## 3. One sub-shipment grain: the **Portion**
@@ -2605,7 +2615,11 @@ RELEASE|RECEIPT, —}`; they key differently, so each is resolved on its own key
   over the published `handover` assertions. There is no `Custody` interval to own.
 - **SIT as a stop vs SIT as a service at a stop** (§9, item 2). A5/A3.
 - **Directional stop-type pairs vs a bare `facilityTypeCode` role** (§9, item 1). A3.
-- **The reason vocabulary's content.** §2.4 fixes its shape; the list is A4's.
+- **The reason vocabulary's content** — **CLOSED.** §2.4 fixed its shape; the list was A4's and
+  [`A4-execution-events.md`](A4-execution-events.md) published it, 23 members at `specVersion`
+  `0.2.0`. What A4 left open is narrower and is named there: the `roleClass` enum ([A8 §9 item 2],
+  which A4 hands one concrete requirement — an explicit non-party member) and every remedy shape
+  beyond `newWindow`, of which the one that matters opens a SIT stay and is owed to A5.
 - **Custody authority's owner** (conflict #7) — **partially closed, and the cap has moved rather
   than lifted.** _(What `Custody` **is** is no longer open: §4.8 settles it as a projection, and
   `boundBy = CUSTODY` now resolves against the envelope. What remains open is whose assertions win,

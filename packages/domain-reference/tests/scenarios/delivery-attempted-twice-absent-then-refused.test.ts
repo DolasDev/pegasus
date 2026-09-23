@@ -40,6 +40,7 @@ import {
   type CapturedAssertion,
   type Portion,
   type Reason,
+  type Remedy,
 } from '../../src/index'
 
 const spec = specVersion('1')
@@ -49,6 +50,9 @@ const firstAttempt = subjectRef('stop', stopId('ST-T1'))
 const secondAttempt = subjectRef('stop', stopId('ST-T2'))
 
 const destinationAgent = { party: partyId('P-DEST-CO'), role: 'destinationAgent' } as const
+
+/** The party `PARTY_ABSENT` attributes to. [A4 §3] makes naming them mandatory for this code. */
+const customer = partyId('P-CUSTOMER')
 
 /** The armchair with the torn arm, and the crate nobody could find — two articles, named. */
 const armchair = itemId('INV-0041')
@@ -63,7 +67,9 @@ const alsoShort = itemId('INV-0108')
 const refusedForDamage: Portion = {
   portionId: portionId('P-DAMAGED'),
   shipment,
-  basis: reasonCode('REFUSED_DAMAGE'),
+  // [A4 §4] rejected `REFUSED_DAMAGE`: it encodes the outcome in a verb, which [SD §2.4] rule 1
+  // forbids. `GOODS_DAMAGED` is the one code, and the outcome axis says whether it was accepted.
+  basis: reasonCode('GOODS_DAMAGED'),
   membership: 'ENUMERATED',
   enumeration: { items: [armchair] },
 }
@@ -71,7 +77,7 @@ const refusedForDamage: Portion = {
 const shortOnDelivery: Portion = {
   portionId: portionId('P-SHORT'),
   shipment,
-  basis: reasonCode('SHORT'),
+  basis: reasonCode('GOODS_MISSING'),
   membership: 'ENUMERATED',
   enumeration: { items: [crate, alsoShort] },
 }
@@ -79,15 +85,19 @@ const shortOnDelivery: Portion = {
 /**
  * [SD §2.6], first record. `src:shippeo` `REN/DAF` consignee-absent, with the required `new_slot` —
  * "a failed delivery that does not say when it will be retried is an incomplete record" ([SD §2.4]).
- * The remedy's shape is **owed** to A4, so it is carried as owed rather than invented.
+ *
+ * The code is `PARTY_ABSENT`, not [SD §2.6]'s `CONSIGNEE_ABSENT`: [A4 §4] rejected that spelling
+ * because it bakes a role into the code, which [SD §2.4] rule 6 forbids in as many words. The
+ * remedy is no longer owed — {@link NewWindow} is the one shape [SD §2.4] rule 5 sources, and
+ * `PARTY_ABSENT` is one of the two codes that **require** it.
  */
-const consigneeAbsent: Reason = {
-  code: reasonCode('CONSIGNEE_ABSENT'),
+const partyAbsent: Reason = {
+  code: reasonCode('PARTY_ABSENT'),
   scope: 'PARTY',
-  attribution: { roleClass: roleClass('customer') },
-  remedy: owed('remedy', 'A4 — the reason vocabulary [SD §2.4, §10.4]', {
-    newWindow: { start: '2026-05-02T08:00:00Z', end: '2026-05-02T12:00:00Z' },
-  }),
+  attribution: { party: customer, roleClass: roleClass('customer') },
+  remedy: {
+    newWindow: { start: instant('2026-05-02T08:00:00Z'), end: instant('2026-05-02T12:00:00Z') },
+  },
 }
 
 const attemptOne: CapturedAssertion<'delivery'> = {
@@ -103,7 +113,7 @@ const attemptOne: CapturedAssertion<'delivery'> = {
   value: {
     occurredAt: instant('2026-04-30T10:05:00Z'),
     outcome: 'NOT_COMPLETED',
-    reasons: [consigneeAbsent],
+    reasons: [partyAbsent],
   },
 }
 
@@ -130,13 +140,13 @@ const attemptTwo: CapturedAssertion<'delivery'> = {
     outcome: 'PARTIALLY_COMPLETED',
     reasons: [
       {
-        code: reasonCode('REFUSED_DAMAGE'),
+        code: reasonCode('GOODS_DAMAGED'),
         scope: 'GOODS',
         attribution: { roleClass: roleClass('carrier') },
         appliesTo: [subjectRef('portion', refusedForDamage.portionId)],
       },
       {
-        code: reasonCode('SHORT'),
+        code: reasonCode('GOODS_MISSING'),
         scope: 'GOODS',
         attribution: { roleClass: roleClass('unknown') },
         appliesTo: [subjectRef('portion', shortOnDelivery.portionId)],
@@ -223,7 +233,7 @@ describe('[SD §3.4] the required form for "delivered, two items short"', () => 
     const weighedOnly: Portion = {
       portionId: portionId('P-GUESS'),
       shipment,
-      basis: reasonCode('SHORT'),
+      basis: reasonCode('GOODS_MISSING'),
       membership: 'MEASURED',
       measure: { weight: { amount: 240, unit: 'lb' } },
     }
@@ -236,7 +246,7 @@ describe('[SD §3.4] the required form for "delivered, two items short"', () => 
     const intoStorage: Portion = {
       portionId: portionId('P-SIT'),
       shipment,
-      basis: reasonCode('SHORT'),
+      basis: reasonCode('GOODS_MISSING'),
       membership: 'ENUMERATED',
       enumeration: { items: [crate, alsoShort, armchair] },
     }
@@ -252,14 +262,17 @@ describe('[SD §3.4] the required form for "delivered, two items short"', () => 
   })
 })
 
-describe('OWED — what this scenario cannot say yet', () => {
-  it("the reason codes are A4's: every code here is a placeholder, not a published member", () => {
-    // [SD §2.4]: "the list itself is A4's job"; [SD §10.4] lists the reason vocabulary's content
-    // among what is explicitly not settled. `reasonCode` exists so that every literal in a scenario
-    // is visibly a placeholder.
-    expect(reasonCode('SHORT')).toBe('SHORT')
-    // `OTHER` is the one code the shape itself declares, and it carries an obligation the owed ones
-    // do not — a mandatory narrative. Passing it through the owed-code constructor is refused.
+describe('A4 — the vocabulary this scenario now names, and what is still owed', () => {
+  it('every code here is a published member, and an unpublished one is refused', () => {
+    // While the vocabulary was owed, `reasonCode` could only reject the empty string and every
+    // literal in this file was visibly a placeholder. [A4 §3] published the list, so the constructor
+    // is now a boundary check — **E-TYPE**'s discipline ([SD §1.3]) one axis over.
+    expect(reasonCode('GOODS_MISSING')).toBe('GOODS_MISSING')
+    expect(() => reasonCode('SHORT')).toThrow(/not a published reason code/)
+    expect(() => reasonCode('CONSIGNEE_ABSENT')).toThrow(/not a published reason code/)
+    expect(() => reasonCode('REFUSED_DAMAGE')).toThrow(/not a published reason code/)
+    // `OTHER` is the one code the shape itself declares, and it carries an obligation the published
+    // ones do not — a mandatory narrative. Passing it through the constructor is refused.
     expect(() => reasonCode(REASON_CODE_OTHER)).toThrow(/declared by \[SD §2\.4\]/)
     const withNarrative: Reason = {
       code: REASON_CODE_OTHER,
@@ -270,23 +283,30 @@ describe('OWED — what this scenario cannot say yet', () => {
     expect(withNarrative.remark).not.toBe('')
   })
 
-  it('the remedy is owed per code — the new delivery window has no published shape', () => {
-    // Shippeo's `new_slot {start, end}` is REQUIRED on appointment events; which of A4's codes
-    // require which remedy is part of the vocabulary A4 owes. The provisional payload is carried so
-    // the scenario can be written and is never normative ([SD §0]).
-    expect(consigneeAbsent.remedy?.owed).toBe('remedy')
-    expect(consigneeAbsent.remedy?.owedTo).toContain('A4')
-    expect(consigneeAbsent.remedy?.provisional).toBeDefined()
+  it('the new delivery window is typed now, and a SIT-opening remedy is still owed', () => {
+    // [SD §2.4] rule 5's one sourced shape. `src:shippeo`'s `new_slot {start, end}` is REQUIRED on
+    // appointment events, and [A4 §3] makes `PARTY_ABSENT` one of the two codes that require it.
+    const remedy = partyAbsent.remedy
+    expect(remedy !== undefined && 'newWindow' in remedy).toBe(true)
+    // The remedy that opens a storage-in-transit stay is owed to A5 — `src:shippeo`'s analysis calls
+    // it "the deepest structural gap": in freight an exception is a retry, in household goods it
+    // starts a whole new phase.
+    const sitRemedy: Remedy = owed(
+      'remedy',
+      'A5 — a remedy that opens a SIT stay; [SD §2.4] rule 5 types only newWindow',
+    )
+    expect('owed' in sitRemedy && sitRemedy.owed).toBe('remedy')
   })
 
   it('and the role class is owed too — three examples are not a vocabulary', () => {
     // [SD §2.4] rule 6 makes attribution structured and sources the fact that reason vocabularies
     // are organised by responsible party; no document publishes the class list, and [A8 §9 item 2]
     // owes the role enum it would be cut from.
-    expect(consigneeAbsent.attribution.roleClass).toBe('customer')
-    // The responsible party is often unknown when the reason is recorded, so `party` is optional —
-    // but attributing to nobody at all is the `DIV` overload invariant 2 exists to remove.
-    expect(consigneeAbsent.attribution.party).toBeUndefined()
+    expect(partyAbsent.attribution.roleClass).toBe('customer')
+    // `party` is optional BY DEFAULT and required per code: [A4 §3] sets `partyRequired` on every
+    // PARTY-scope member, because a party-side reason that cannot name the party is the `DIV`
+    // overload invariant 2 exists to remove.
+    expect(partyAbsent.attribution.party).toBe(customer)
     expect(attemptTwo.value.reasons?.[1]?.attribution.roleClass).toBe('unknown')
   })
 })

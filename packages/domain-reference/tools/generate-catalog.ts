@@ -624,8 +624,13 @@ function convert(type: ts.Type, context: Context): Json {
       return { enum: members.map((member) => (member as ts.StringLiteralType).value) }
     }
     // `anyOf`, never `oneOf`. A TypeScript union is satisfied by being assignable to **at least
-    // one** member, and its members are not always disjoint: `Reason`'s two branches overlap on a
-    // code of `OTHER` carrying a remark, so `oneOf` would reject a record the types admit.
+    // one** member, and its members are not always disjoint, so `oneOf` would reject records the
+    // types admit. The worked example used to be `Reason`, whose two branches overlapped on a code
+    // of `OTHER` carrying a remark while `ReasonCode` was a branded string; A4 published the
+    // vocabulary as a closed enum that excludes `OTHER`, which made those two branches disjoint.
+    // The rule does not depend on that example — it is a property of TypeScript unions, and
+    // switching to `oneOf` on the strength of one union having become disjoint would be a
+    // correctness bug waiting for the next overlapping one.
     return { anyOf: dedupe(members.map((member) => schemaOf(member, context))) }
   }
 
@@ -893,15 +898,18 @@ function indexDocument(declarations: Declarations): Json {
       note:
         'What the model declares undecided — [SD §0] forbids guessing a value to make the types ' +
         'tidy. Published here so a consumer sees the gaps without reading the analysis. The A4 ' +
-        'reason vocabulary is the one that most affects this contract: `data/reasons.json` ships ' +
-        'shape-only, with an empty code list, on purpose.',
+        'reason vocabulary was the one that most affected this contract and it landed at `0.2.0` ' +
+        '([A4 §3]); what caps this version now is the authority rows, 19 of 31 of which are owed ' +
+        'in whole or in part.',
       counts: {
         declared: owed.declared.length,
+        vocabularies: owed.vocabularies.length,
         authorityRows: owed.authorityRows.length,
         declaredRecordTypes: owed.declaredRecordTypes,
         factClassFamilies: owed.factClassFamilies.length,
         absentFactClasses: owed.absentFactClasses.length,
       },
+      vocabularies: owed.vocabularies.map((entry) => entry.name),
       declared: owed.declared.map((entry) => ({
         what: entry.what,
         owedTo: entry.owedTo,

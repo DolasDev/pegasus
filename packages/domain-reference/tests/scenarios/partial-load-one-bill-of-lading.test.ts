@@ -70,7 +70,7 @@ const nextWeekAt = instant('2026-10-12T14:10:00Z')
 const firstHalfAtMint: Portion = {
   portionId: portionId('P-DAY1'),
   shipment,
-  basis: reasonCode('PARTIAL_LOAD'),
+  basis: reasonCode('OVERFLOW'),
   membership: 'MEASURED',
   measure: { weight: { amount: 4120, unit: 'lb' }, pieceCount: 63 },
 }
@@ -79,7 +79,7 @@ const firstHalfAtMint: Portion = {
 const firstHalfEnumerated: Portion = {
   portionId: portionId('P-DAY1'),
   shipment,
-  basis: reasonCode('PARTIAL_LOAD'),
+  basis: reasonCode('OVERFLOW'),
   membership: 'BOTH',
   measure: { weight: { amount: 4120, unit: 'lb' }, pieceCount: 63 },
   // `src:x12-212-trailer-manifest` `MAN-02`/`MAN-03`: the inventory-sticker series as a start–end
@@ -91,7 +91,7 @@ const firstHalfEnumerated: Portion = {
 const secondHalf: Portion = {
   portionId: portionId('P-DAY8'),
   shipment,
-  basis: reasonCode('PARTIAL_LOAD'),
+  basis: reasonCode('OVERFLOW'),
   membership: 'ENUMERATED',
   enumeration: { items: [itemId('INV-0064'), itemId('INV-0065'), itemId('INV-0066')] },
 }
@@ -148,8 +148,12 @@ const loadTodayShipmentPhrased: CapturedAssertion<'loading'> = {
     outcome: 'PARTIALLY_COMPLETED',
     reasons: [
       {
-        code: reasonCode('PARTIAL_LOAD'),
-        scope: 'ACT',
+        // [A4 §4.3]: the placeholder `PARTIAL_LOAD` named a **scope of performance**, which is what
+        // the outcome axis carries — `PARTIALLY_COMPLETED` above. The reason is why only part went,
+        // and `src:dp3-400ng` Item 17.9 gives the tariff's own word for it: a Split Shipment is one
+        // "where overflow property is delivered… on different dates".
+        code: reasonCode('OVERFLOW'),
+        scope: 'RESOURCE',
         attribution: { roleClass: owedCode('roleClass', 'carrier') },
         appliesTo: [subjectRef('portion', firstHalfAtMint.portionId)],
       },
@@ -222,7 +226,7 @@ describe('[SD §3.2] P-MEMBER — knowledge may be added and never removed', () 
     const everythingLeftBehind: Portion = {
       portionId: portionId('P-REMAINDER'),
       shipment,
-      basis: reasonCode('PARTIAL_LOAD'),
+      basis: reasonCode('OVERFLOW'),
       membership: 'ENUMERATED',
       enumeration: {
         items: [itemId('INV-0064'), itemId('INV-0065'), itemId('INV-0066'), itemId('INV-0067')],

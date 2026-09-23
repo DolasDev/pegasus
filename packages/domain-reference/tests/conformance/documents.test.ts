@@ -55,6 +55,7 @@ import {
   META_RECORD_TYPES,
   OUTCOMES,
   PROSE_ALIASES,
+  REASON_CODES,
   RECORD_TYPES,
   type AssertionType,
 } from '../../src/index'
@@ -373,6 +374,22 @@ describe('every vocabulary member is named by at least one document', () => {
   function namedBy(token: string): string[] {
     return [...quoted].filter(([, tokens]) => tokens.has(token)).map(([file]) => file)
   }
+
+  it('holds for every published reason code, and the document that names them is [A4]', () => {
+    const orphans: string[] = []
+    for (const code of REASON_CODES) {
+      if (namedBy(code).length === 0) orphans.push(code)
+    }
+    // A closed vocabulary whose members no document argues for is the [SD §4.7.2e] defect read
+    // backwards, and a reason code is the member most easily minted from a support ticket rather
+    // than from a source — which is what [SD §2.4] rule 1's own example is about. So every one of
+    // them has to be named in prose that cites its evidence.
+    expect(orphans).toEqual([])
+    // And it is A4 that names them: the vocabulary's home is the area document that decided it.
+    for (const code of REASON_CODES) {
+      expect(namedBy(code)).toContain('A4-execution-events.md')
+    }
+  })
 
   it('holds for all 31 assertion types and both meta-record types', () => {
     const orphans: string[] = []
