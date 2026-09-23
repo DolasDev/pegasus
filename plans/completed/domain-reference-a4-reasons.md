@@ -20,7 +20,7 @@ to `specVersion` **0.2.0**.
 `ReasonCode` stopped being `OwedCode<'reasonCode'>` and became a closed union, so `reasonCode()` is a
 real boundary parser and `Portion.basis` is now constrained to a published member.
 
-Gates green: `tsc` silent · **306 tests in 18 files** · lint clean · Alloy every command as expected ·
+Gates green: `tsc` silent · **307 tests in 18 files** · lint clean · Alloy every command as expected ·
 glossary and catalog both regenerated and prettier fixed points.
 
 ## The decisions worth remembering
@@ -57,6 +57,21 @@ glossary and catalog both regenerated and prettier fixed points.
   a **restriction on the captured face**. Classified additive as `publishedOwedVocabulary` because the
   `x-owed` marker was itself published, so no conforming producer could have relied on a code being
   accepted. The restriction is recorded with the class rather than absorbed. [A4 §7], [catalog §2.3].
+
+## A disclosure defect in A4's own §0, caught before the PR
+
+`A4 §0` rule 2 claimed a consumer reading `catalog/index.json` sees each member's marker "without
+reading this file". Nothing emitted them. It was fixed by making the claim true rather than by
+softening it, because the same gap hid a real one: **`attribution.party` and `remedy` are
+schema-optional on every code**, so the emitted schemas admit a `PARTY_ABSENT` with no remedy — a
+record A4 calls incomplete. JSON Schema cannot express a per-code obligation, so `index.json` now
+carries a `reasons` block with the whole per-code discipline. The type-level fix (a third `Reason`
+branch excluding the remedy-requiring codes) is owed at `A4 §5` item 4, because it changes the
+published `Reason` shape and that is `[catalog §2.3]`'s call.
+
+Worth knowing before the next `publishedOwedVocabulary`: **the owed code's `$defs` entry
+disappears.** `ReasonCode.reasonCode` was a named string schema; a closed union of string literals
+inlines as an `enum` on the property, so a consumer pinning that `$ref` loses it.
 
 ## Two things found on the way that were not in the brief
 

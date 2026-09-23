@@ -17,3 +17,44 @@
 - **Workflow visualization = author-declared Mermaid diagram, not code analysis (2026-06-27)**: Published workflows are opaque Python in S3, so the tenant UI can't infer what a workflow does. Rather than statically analyzing the Python (fragile — misses dynamic dispatch, loops, helper indirection) or forcing an in-code step-DSL (invasive), the SDK's `pegasus-workflows diagram` AI-generates a Mermaid flowchart from the source into an author-editable `<source_dir>/workflow.mmd`, embedded in the bundle (so it is covered by `artifactSha256`) and **required** at publish time. The diagram is _author-declared_, so the UI pairs it with a _verified envelope_ built from data the platform actually stores and trusts — triggers + `requiredActions` — so business users see the declared flow next to the platform-guaranteed permission boundary. Trade-off accepted: the diagram is an assertion about the code, not a proof; pinning it to the artifact version + showing the verified envelope alongside is the mitigation.
 - **Workflow execution payloads must be PII-free; Temporal payload codec deferred (2026-06-27)**: Developers inspect executions two ways — tenant developers via an in-app, tenant-scoped event-history timeline (the API authz-filters by tenant), and platform engineers via the read-only Temporal Cloud console (full native fidelity). The Temporal Cloud UI has **no per-tenant isolation** (a namespace is cross-tenant), and Temporal stores workflow input/result/history in plaintext, so the console is surfaced only in admin-web (for already-cross-tenant-trusted platform engineers), never in the tenant app. The convention is therefore that workflow inputs/results carry **entity ids, not raw PII** (look details up inside an activity). A Temporal payload codec (client-side payload encryption) is the proper fix and is deferred until this convention can't hold. Cancel/retry are tenant-app-only and gated by new Cedar actions (`CancelWorkflowExecution` / `RetryWorkflowExecution`).
 - **The published event catalog IS the record vocabulary, exactly — 33 members, closed, `specVersion` 0.1.0 (2026-09-21)**: The reference model's integration events are `packages/domain-reference/src/vocabulary.ts`'s 31 assertion types plus `FactResolved` and `Correction`, with **no coarser published layer** over them. A coarse published type sitting above the fine one is a _second classification axis_, which `00-shared-decisions.md` §1.1 forbids permanently; the stability that layer was wanted for comes instead from A-TYPE (the `type` names the act, never the outcome, so the vocabulary does not grow with outcomes × reasons), addition-only versioning, and the derived subject/fact-class families used as _filter_ axes rather than as published types. The vocabulary is **closed** rather than EPCIS-style open-by-URI, because E-TYPE rejects an unknown type at the boundary and E-CANON requires a per-type declaration in one place — neither survives tenant-minted types; the accepted cost is DCSA's, where a new enum value is a release event. Two schema faces are published, not one with an optional field, because `recordedAt` is forbidden on capture and mandatory on query. Consumers **validate against the `specVersion` the record carries**, never a pinned one, and treat an unfamiliar closed-enum member as unhandled rather than invalid. Version is `0.1.0` and not `1.0.0` deliberately: 19 of 31 authority rows, the A4 reason vocabulary and findings F3/F4/F5 are still owed, and that inventory ships inside `catalog/index.json` so a consumer sees the gaps without reading the analysis. Decision: `docs/domain-reference/analysis/published-event-catalog.md` (cited as `[catalog §x]`). Everything under `docs/domain-reference/catalog/` is **generated** — `npm run catalog -w @pegasus/domain-reference` — and gated by `tests/conformance/catalog.test.ts`.
+
+## Domain reference — the A4 reason vocabulary is published, and the catalog is `0.2.0`
+
+`00-shared-decisions.md` §2.4 fixed the reason record's shape and left the code list to A4. It is now
+published: **23 members**, decided in `docs/domain-reference/analysis/A4-execution-events.md` (cited as
+`[A4 §x]`), named in `REASON_CODES` in `packages/domain-reference/src/outcomes.ts` with one JSDoc of
+evidence each, and tabulated per code in `data/reasons.json` — default scope, whether
+`attribution.party` must name a party, whether a remedy is required and which shape, disclosure marker,
+citations. The loader holds the two to one set in both directions; a code in one place and not the other
+is a defect, not a widening. `ReasonCode` is a closed union rather than a branded string, so
+`reasonCode()` is a boundary parser and `Portion.basis` is constrained to a published member.
+`NewWindow` types the single remedy shape a source states; every other shape stays `Owed`, and the one
+that opens a storage-in-transit stay is owed to A5.
+
+**Reasons are orthogonal to outcomes, and that is the whole design.** `GOODS_DAMAGED` is Shippeo's
+`LIV/RCA` (accepted with damage) _and_ its `REN/AVA` (refused for damage); `SITE_INACCESSIBLE` at
+`COMPLETED_WITH_EXCEPTION` says "performed with a shuttle, and it costs more" — a cell no source in the
+corpus has. Enforced two ways and both are partial: `ReasonCodesAreOutcomeFree` at compile time,
+`outcomeWordIn` at run time; neither catches an outcome hidden in a **verb**, and two placeholder
+literals (`PARTIAL_LOAD`, `ALREADY_PERFORMED`) had to be caught by reading. All three of §2.6's worked
+literals turned out to be unpublishable — `CONSIGNEE_ABSENT` bakes a role into the code, which rule 6
+forbids — and §2.6 now carries the mapping as a footnote.
+
+**Only 3 of 23 members are marked.** §2.4's note that the `SITE`/`ADMINISTRATIVE` examples are "none of
+which **Shippeo** has" had been read as "no source publishes these". It is not: `src:dp3-400ng` Item
+125.1 **enumerates** the valid shuttle causes and Item 33 adds impractical operations, so the shuttle
+reason is regulation-grade. `src:cfr-49-375` §375.401(f) names elevators and long carries, though only
+as pre-BOL accessorials, so the execution-time reading is `[SYNTHESIS]`. Only a parking permit is
+`[ORIGINAL]`, and COI-not-on-file is an _instance_ of `DOCUMENT_MISSING_OR_INCORRECT`. **Read the
+sentence a document actually wrote, not the summary of it** — a claim about one publisher does not
+license a claim about the corpus.
+
+**Publishing a vocabulary that shipped owed is its own compatibility class.** It narrows `string` to an
+enum, which _restricts_ the captured face — a producer sending an unrecognised code was valid and is
+now rejected. Added as `publishedOwedVocabulary` in `ADDITIVE_CHANGES` and classified additive because
+the `x-owed` marker was itself published on the wire, so no conforming producer could have relied on a
+code being accepted. The restriction is recorded with the class. The owed code's `$defs` entry
+**disappears** on publication, because a closed union of string literals inlines as an `enum`.
+`CATALOG_VERSION` is **`0.2.0`**; what keeps it pre-1.0 now is the authority rows — 19 of 31 — and three
+still-owed vocabularies (`roleClass`, `unitOfMeasure`, `identityScheme`), which the owed ledger could not
+even see until this work.

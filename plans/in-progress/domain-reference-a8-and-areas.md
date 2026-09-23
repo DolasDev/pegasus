@@ -36,7 +36,7 @@ Repo: `github.com/DolasDev/pegasus`, primary checkout `~/repos/pegasus`.
 
 ### Gates, all green
 
-`tsc` silent · **306 tests in 18 files** · Alloy runner exits non-zero on a counterexample ·
+`tsc` silent · **307 tests in 18 files** · Alloy runner exits non-zero on a counterexample ·
 glossary is a prettier fixed point · catalog is a prettier fixed point and round-trip-validated.
 
 ```
