@@ -31,11 +31,13 @@ but our configs and code that implement them do not.
 | A13 | Crew, driver & settlement      | context map | crew scheduling, driver/agent compensation, revenue splits                                                            |
 
 > **The `v1 detail` column is the plan, not the state.** Nine areas are _intended_ to be modelled in
-> detail; what exists is what `analysis/` holds. As things stand: **A3** and **A8** have full area
-> documents; **A4** has a decision document covering its reason vocabulary only
+> detail; what exists is what `analysis/` holds. As things stand: **A1**, **A3** and **A8** have full
+> area documents — A1 at [`analysis/A1-order-service-lifecycle.md`](analysis/A1-order-service-lifecycle.md),
+> which records its weights at §3.7 and its owed items at §6; **A4** has a decision document covering
+> its reason vocabulary only
 > ([`analysis/A4-execution-events.md`](analysis/A4-execution-events.md), whose own scope note says
-> so), and its execution-event and tracking model is not yet scored; **A1, A2, A5, A6, A7 and A9 have
-> no area analysis at all**, and a claim about one of them that is not traceable to
+> so), and its execution-event and tracking model is not yet scored; **A2, A5, A6, A7 and A9 have no
+> area analysis at all**, and a claim about one of them that is not traceable to
 > [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) or to a source analysis is
 > unbacked. A10-A13 are context-map-only by design and are not gaps. Recorded here because a column
 > reading "yes" for all nine invites exactly the assumption [SD §0] forbids.

@@ -83,7 +83,8 @@ several of the decisions in §4.
 
 ## 3. The decision
 
-> **Decision. The published reason vocabulary is 23 members, listed in `REASON_CODES` in
+> **Decision. The published reason vocabulary is the list below — 23 members when A4 landed,
+> listed in `REASON_CODES` in
 > `src/outcomes.ts` and tabulated per code in `data/reasons.json`. `OTHER` is not one of them: it is
 > declared by the shape ([SD §2.4] rule 3). Every member is orthogonal to the outcome (rule 1) and
 > grain-independent (rule 4), and every member declares its default scope, whether
@@ -93,31 +94,40 @@ several of the decisions in §4.
 document is explicit that this "is a magnitude, not a quota. It bounds what a sane vocabulary looks
 like; it does not tell A4 how many codes to mint."
 
-| Code                            | Default scope    | Party | Remedy      | Principal evidence                                                                                                               |
-| ------------------------------- | ---------------- | ----- | ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `GOODS_DAMAGED`                 | `GOODS`          | —     | —           | `src:shippeo` `LIV/RCA` and `REN/AVA`; `src:macropoint` `x014`; `src:open-trip-model` 5.7 `damage`; `src:cfr-49-375` §375.503(d) |
-| `GOODS_MISSING`                 | `GOODS`          | —     | —           | `src:shippeo` `MQP`+`MQT` **collapsed** (§4.1); `src:stedi-x12-reference` 1651 `S1`; `src:uncefact-rec24` 283/285/330            |
-| `GOODS_NOT_READY`               | `GOODS`          | —     | —           | `src:shippeo` `ENE/MQP`; `src:macropoint` `x025`; `src:uncefact-rec24` 190                                                       |
-| `GOODS_LOST_OR_STOLEN`          | `GOODS`          | —     | —           | `src:macropoint` `x015`; `src:uncefact-rec24` 329 beside 330                                                                     |
-| `OVERFLOW`                      | `RESOURCE`       | —     | —           | `src:sirva-ade` `Overflow`; `src:macropoint` `x028`; `src:stedi-x12-reference` 1651 `BQ`/`AV` (§4.2)                             |
-| `PARTY_ABSENT`                  | `PARTY`          | ✔     | `newWindow` | `src:shippeo` `REN/DAF`; `src:dp3-400ng` Item 17-1; `src:dtr-part-iv` §D.5.b(2); `src:uncefact-rec24` 269/317/243                |
-| `PARTY_REFUSED`                 | `PARTY`          | ✔     | —           | `src:shippeo` `NJU` vs `DIV`; `src:uncefact-rec24`'s 22 `Delivery_refused_*`; `src:stedi-x12-reference` 1651 `BS`                |
-| `PARTY_RESCHEDULED`             | `PARTY`          | ✔     | `newWindow` | `src:shippeo` `REN/NRV` + required `new_slot`; `src:macropoint` `x023`/`x024`; `src:dp3-400ng` Item 17-1.3.a                     |
-| `PARTY_NOT_READY`               | `PARTY`          | ✔     | —           | `src:macropoint` `x021`; `src:dtr-part-iv` A-406 §A.8.a; `src:dp3-400ng` Item 17-1.4; `src:uncefact-rec24` `Waiting_for_*`       |
-| `INSTRUCTED_CHANGE`             | `PARTY`          | ✔     | —           | `src:shippeo` `REN/LNA`; `src:dp3-400ng` Items 28.3 and 28.4; `src:uncefact-rec24` 333 (§4.6)                                    |
-| `ADDRESS_INCORRECT`             | `ADMINISTRATIVE` | —     | —           | `src:shippeo` `REN/DEM`; `src:uncefact-rec24` 234/274/213; `src:stedi-x12-reference` 1651 `A2`/`A6`                              |
-| `PAYMENT_NOT_RECEIVED`          | `ADMINISTRATIVE` | —     | —           | `src:shippeo` `…RECEIVER_CANT_PAY`; `src:uncefact-rec24` 291/292/250; `src:stedi-x12-reference` 1651 `B4`/`C2`                   |
-| `AUTHORISATION_MISSING`         | `ADMINISTRATIVE` | —     | —           | `src:dp3-400ng` Items 125, 17-1, 29; `src:dtr-part-iv` §D.5.b(2); `src:atlas-world-group-api` `nO_Prior_OPS_Approval`            |
-| `DOCUMENT_MISSING_OR_INCORRECT` | `ADMINISTRATIVE` | —     | —           | `src:uncefact-rec24` 343/359; `src:stedi-x12-reference` 1651 `BC`/`OO`; `src:open-trip-model` 5.7 `invalidShippingLabel`         |
-| `SITE_INACCESSIBLE`             | `SITE`           | —     | —           | `src:dp3-400ng` Item **125.1** (enumerated) and Item **33**; `src:shippeo` `…NO_ACCESS_TO_SITE` (§4.4)                           |
-| `SITE_HANDLING_EXCESS`          | `SITE`           | —     | —           | `src:cfr-49-375` §375.401(f); `src:dp3-400ng` Item 33 — **[SYNTHESIS]** (§4.4)                                                   |
-| `SITE_ACCESS_RESTRICTED`        | `SITE`           | —     | —           | `src:shippeo` `REN/FCO`/`REN/FHB`, re-labelled on its own analysis's instruction; `src:uncefact-rec24` 186/317/211/352-354       |
-| `RESOURCE_UNAVAILABLE`          | `RESOURCE`       | —     | —           | `src:stedi-x12-reference` 1651 `T1`-`T6`/`D2`/`P4`; `src:uncefact-rec24` 191-195                                                 |
-| `RESOURCE_FAILURE`              | `RESOURCE`       | —     | —           | `src:stedi-x12-reference` 1651 `AI`; `src:shippeo` `…RESOURCE_INCIDENT`                                                          |
-| `LATE_ARRIVAL`                  | `ACT`            | —     | —           | `src:shippeo` `TAR` under two situations; `src:macropoint` `x029`; `src:smdg-delay-codes` entire; `src:atlas-world-group-api`    |
-| `FORCE_MAJEURE`                 | `ACT`            | —     | —           | `src:dp3-400ng` Item 33; `src:macropoint` `x026`; `src:smdg-delay-codes` group 4; `src:stedi-x12-reference` 1651 `AO`/`BE`/`AF`  |
-| `OUT_OF_SEQUENCE`               | `ACT`            | —     | —           | **[ORIGINAL]**; needed by [SD §4.7.2e] item 3 (§4.3)                                                                             |
-| `CAUSE_UNKNOWN`                 | `ACT`            | —     | —           | `src:uncefact-rec24` 265 `Reason_unknown` beside 125 `No_status` (§4.5)                                                          |
+> **The vocabulary is A4's, and it is open to addition by another area. It is now 24.**
+> [A1 §3.6] minted `DEADLINE_LAPSED` after reading the corpus's two published **commercial**
+> refusal vocabularies, which A4 did not — A4 cut its list from execution-event sources. The member
+> is listed in the table below, with the rest, because this table is where a reader looks for the
+> evidence behind a code and a member missing from it would make this document wrong. **A1 also
+> refused to mint three more** and its §3.6 says why in each case; that argument is A1's and is not
+> restated here.
+
+| Code                            | Default scope    | Party | Remedy      | Principal evidence                                                                                                                       |
+| ------------------------------- | ---------------- | ----- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOODS_DAMAGED`                 | `GOODS`          | —     | —           | `src:shippeo` `LIV/RCA` and `REN/AVA`; `src:macropoint` `x014`; `src:open-trip-model` 5.7 `damage`; `src:cfr-49-375` §375.503(d)         |
+| `GOODS_MISSING`                 | `GOODS`          | —     | —           | `src:shippeo` `MQP`+`MQT` **collapsed** (§4.1); `src:stedi-x12-reference` 1651 `S1`; `src:uncefact-rec24` 283/285/330                    |
+| `GOODS_NOT_READY`               | `GOODS`          | —     | —           | `src:shippeo` `ENE/MQP`; `src:macropoint` `x025`; `src:uncefact-rec24` 190                                                               |
+| `GOODS_LOST_OR_STOLEN`          | `GOODS`          | —     | —           | `src:macropoint` `x015`; `src:uncefact-rec24` 329 beside 330                                                                             |
+| `OVERFLOW`                      | `RESOURCE`       | —     | —           | `src:sirva-ade` `Overflow`; `src:macropoint` `x028`; `src:stedi-x12-reference` 1651 `BQ`/`AV` (§4.2)                                     |
+| `PARTY_ABSENT`                  | `PARTY`          | ✔     | `newWindow` | `src:shippeo` `REN/DAF`; `src:dp3-400ng` Item 17-1; `src:dtr-part-iv` §D.5.b(2); `src:uncefact-rec24` 269/317/243                        |
+| `PARTY_REFUSED`                 | `PARTY`          | ✔     | —           | `src:shippeo` `NJU` vs `DIV`; `src:uncefact-rec24`'s 22 `Delivery_refused_*`; `src:stedi-x12-reference` 1651 `BS`                        |
+| `PARTY_RESCHEDULED`             | `PARTY`          | ✔     | `newWindow` | `src:shippeo` `REN/NRV` + required `new_slot`; `src:macropoint` `x023`/`x024`; `src:dp3-400ng` Item 17-1.3.a                             |
+| `PARTY_NOT_READY`               | `PARTY`          | ✔     | —           | `src:macropoint` `x021`; `src:dtr-part-iv` A-406 §A.8.a; `src:dp3-400ng` Item 17-1.4; `src:uncefact-rec24` `Waiting_for_*`               |
+| `INSTRUCTED_CHANGE`             | `PARTY`          | ✔     | —           | `src:shippeo` `REN/LNA`; `src:dp3-400ng` Items 28.3 and 28.4; `src:uncefact-rec24` 333 (§4.6)                                            |
+| `ADDRESS_INCORRECT`             | `ADMINISTRATIVE` | —     | —           | `src:shippeo` `REN/DEM`; `src:uncefact-rec24` 234/274/213; `src:stedi-x12-reference` 1651 `A2`/`A6`                                      |
+| `PAYMENT_NOT_RECEIVED`          | `ADMINISTRATIVE` | —     | —           | `src:shippeo` `…RECEIVER_CANT_PAY`; `src:uncefact-rec24` 291/292/250; `src:stedi-x12-reference` 1651 `B4`/`C2`                           |
+| `AUTHORISATION_MISSING`         | `ADMINISTRATIVE` | —     | —           | `src:dp3-400ng` Items 125, 17-1, 29; `src:dtr-part-iv` §D.5.b(2); `src:atlas-world-group-api` `nO_Prior_OPS_Approval`                    |
+| `DOCUMENT_MISSING_OR_INCORRECT` | `ADMINISTRATIVE` | —     | —           | `src:uncefact-rec24` 343/359; `src:stedi-x12-reference` 1651 `BC`/`OO`; `src:open-trip-model` 5.7 `invalidShippingLabel`                 |
+| `SITE_INACCESSIBLE`             | `SITE`           | —     | —           | `src:dp3-400ng` Item **125.1** (enumerated) and Item **33**; `src:shippeo` `…NO_ACCESS_TO_SITE` (§4.4)                                   |
+| `SITE_HANDLING_EXCESS`          | `SITE`           | —     | —           | `src:cfr-49-375` §375.401(f); `src:dp3-400ng` Item 33 — **[SYNTHESIS]** (§4.4)                                                           |
+| `SITE_ACCESS_RESTRICTED`        | `SITE`           | —     | —           | `src:shippeo` `REN/FCO`/`REN/FHB`, re-labelled on its own analysis's instruction; `src:uncefact-rec24` 186/317/211/352-354               |
+| `RESOURCE_UNAVAILABLE`          | `RESOURCE`       | —     | —           | `src:stedi-x12-reference` 1651 `T1`-`T6`/`D2`/`P4`; `src:uncefact-rec24` 191-195                                                         |
+| `RESOURCE_FAILURE`              | `RESOURCE`       | —     | —           | `src:stedi-x12-reference` 1651 `AI`; `src:shippeo` `…RESOURCE_INCIDENT`                                                                  |
+| `LATE_ARRIVAL`                  | `ACT`            | —     | —           | `src:shippeo` `TAR` under two situations; `src:macropoint` `x029`; `src:smdg-delay-codes` entire; `src:atlas-world-group-api`            |
+| `FORCE_MAJEURE`                 | `ACT`            | —     | —           | `src:dp3-400ng` Item 33; `src:macropoint` `x026`; `src:smdg-delay-codes` group 4; `src:stedi-x12-reference` 1651 `AO`/`BE`/`AF`          |
+| `OUT_OF_SEQUENCE`               | `ACT`            | —     | —           | **[ORIGINAL]**; needed by [SD §4.7.2e] item 3 (§4.3)                                                                                     |
+| `DEADLINE_LAPSED`               | `ACT`            | —     | —           | **[SYNTHESIS]**, minted by [A1 §3.6]: `src:dtr-part-iv` §C.4.b non-response; `src:project44` `EXPIRED`; `src:alvys-api` `ExpirationDate` |
+| `CAUSE_UNKNOWN`                 | `ACT`            | —     | —           | `src:uncefact-rec24` 265 `Reason_unknown` beside 125 `No_status` (§4.5)                                                                  |
 
 **Rule 1, demonstrated rather than asserted.** `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA`
 (delivered, damage accepted → `COMPLETED_WITH_EXCEPTION`) **and** its `REN/AVA` (refused for damage →
@@ -305,6 +315,11 @@ billing."
    and [SD §2.4] makes `roleClass` mandatory. Without such a member those two codes cannot be recorded
    at all. [SD §2.6]'s worked example uses `unknown` for this, and three examples are not a vocabulary.
 
+   **Since [A1 §3.6] there are three such codes, and the third is the strongest.**
+   `DEADLINE_LAPSED` carries `src:dtr-part-iv` §C.4.b's non-response, which the regulation describes
+   as caused by **nobody** — an absent act with a typed notice and an escalation behind it. The
+   requirement is now regulation-grade rather than inferred from two codes' semantics.
+
 2. **Remedy shapes beyond `newWindow`.** [SD §2.4] rule 5's one sourced shape is `src:shippeo`'s
    `new_slot {start, end}`, required on its appointment events. A4 types it as `NewWindow` — spelled
    after [SD §2.6]'s `newWindow` rather than after Shippeo's wire name, because [SD] outranks the
@@ -395,8 +410,11 @@ are not" — so no conforming producer could have relied on any particular code 
 existing member's meaning moves, which is the property [SD §1.2]'s "never to reinterpretation" protects.
 The restriction is real and is recorded with the class rather than left for a consumer to discover.
 
-`CATALOG_VERSION` goes to **`0.2.0`**. It stays pre-1.0 for the reason [catalog §2.4] gives: 19 of 31
-authority rows are still owed, and that — not this — is what caps the contract.
+`CATALOG_VERSION` goes to **`0.2.0`** — the version **at A4**, not the current one, which
+[catalog §2.4] tabulates. It stays pre-1.0 for the reason that section gives: the authority rows are
+still owed, and that — not this — is what caps the contract. The count that stood here when A4
+landed has been removed rather than updated: [catalog §5] is the one place a count of owed rows is
+written and gated ([A1 §9]).
 
 ---
 

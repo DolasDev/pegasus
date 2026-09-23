@@ -79,7 +79,8 @@ current list.
 
 The reason vocabulary's codes were on that list and are not any more:
 [`A4-execution-events.md`](../../docs/domain-reference/analysis/A4-execution-events.md) published 23
-members, which took the catalog to `specVersion` 0.2.0.
+members, which took the catalog to `specVersion` 0.2.0. [A1 §3.6] added a twenty-fourth,
+`DEADLINE_LAPSED`, at `0.4.0`.
 
 ### Gaps writing the core vocabulary surfaced
 
@@ -99,7 +100,7 @@ declared:
 ### Gaps writing the data tables surfaced
 
 `data/` holds three tables — canonical subjects, A8's authority rows, and the reason vocabulary
-(its shape, and since A4 its 23 members with their per-code scope, attribution discipline and remedy
+(its shape, and since A4 its members with their per-code scope, attribution discipline and remedy
 obligation) — and `src/data.ts` is the loader that refuses a bad one. Filling them row by row surfaced
 four things, each recorded in the table itself rather than smoothed over.
 

@@ -351,7 +351,9 @@ describe('[SD §2.4], [A4 §3] the reason vocabulary', () => {
     const missing = broken(reasons)
     const missingCodes = (missing['vocabulary'] as Record<string, unknown>)['codes'] as unknown[]
     missingCodes.pop()
-    expect(() => loadReasonVocabulary(missing)).toThrow(/exactly the 23 members of REASON_CODES/)
+    expect(() => loadReasonVocabulary(missing)).toThrow(
+      new RegExp(`exactly the ${String(REASON_CODES.length)} members of REASON_CODES`),
+    )
 
     const extra = broken(reasons)
     ;((extra['vocabulary'] as Record<string, unknown>)['codes'] as unknown[]).push({
@@ -363,7 +365,9 @@ describe('[SD §2.4], [A4 §3] the reason vocabulary', () => {
       marker: null,
       citation: 'invented',
     })
-    expect(() => loadReasonVocabulary(extra)).toThrow(/exactly the 23 members of REASON_CODES/)
+    expect(() => loadReasonVocabulary(extra)).toThrow(
+      new RegExp(`exactly the ${String(REASON_CODES.length)} members of REASON_CODES`),
+    )
   })
 
   it('refuses a code that must carry a remedy and names no shape', () => {

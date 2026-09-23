@@ -29,6 +29,11 @@ export * from './portion'
 // of them — which is why it sits beside the vocabulary and not inside it.
 export * from './custody'
 
+// And the second projection, on the commitment side rather than the goods side ([A1 §3.3]). It is
+// the same shape for the same reason: [SD §1.1] forbids a mutable current-state field, so an
+// order's stage is a named, versioned fold or it is nothing.
+export * from './rules/order-stage'
+
 // The rules the boundary runs — subject admission ([SD §4.6]) and capture ([SD §5]). They are
 // separate from the vocabulary because they are checks *over* it: the vocabulary says what a record
 // may be, and these say what may be admitted.

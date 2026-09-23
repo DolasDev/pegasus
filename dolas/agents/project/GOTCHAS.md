@@ -1860,3 +1860,42 @@ saying the schema is more permissive than the vocabulary. If a document claims a
 something from a generated artifact, **open the artifact and check** — `A4 §0` made that claim before
 anything emitted it, which is a disclosure defect in the document that introduces the disclosure
 rule.
+
+## A count written in prose must be **gated or deleted** — the ungated copies rot
+
+`catalog/index.json`'s generated owed note read _"the authority rows, 19 of 31 of which are owed"_
+beside a generated `counts.authorityRows` of **14**. Two more copies of the same numbers were stale
+in `published-event-catalog.md` §2.4 and `docs/domain-reference/README.md`, plus a fourth in
+`A4-execution-events.md` §7, and `src/outcomes.ts` said "Twenty-three members" of a 24-member enum.
+
+**The interesting part is which copy did _not_ rot.** `published-event-catalog.md` §5 carries the
+same five counts and stayed correct across two releases, because
+`tests/conformance/catalog.test.ts` parses them out of that section and compares them with
+`collectOwedInventory()`.
+
+So the rule is not "write the number once" — a gated copy earns its place, and prose that says
+"14 of 31" is more useful to a reader than prose that says "see `counts.authorityRows`". The rule is
+**gate it or delete it**, and the same trap bit a tamper test that asserted
+`/exactly the 23 members of REASON_CODES/` as a literal where the loader derives it from
+`REASON_CODES.length`.
+
+## The test suite knows things the prose does not — read it before writing about a record
+
+A1's first draft said the model "already has the fields" for a cancellation's requestor: the actor on
+`assertedBy`, the requestor on `reasons[].attribution`. `[SD §2.3]` invariant 2 **forbids**
+`reasons[]` at `outcome = COMPLETED`, so on a cancellation that succeeded — the ordinary case — the
+field does not exist. `tests/scenarios/cancelled-after-packing-before-loading.test.ts` had already
+asserted exactly that, as a block literally titled `FINDING:`, months earlier.
+
+Nothing in the prose layer would have caught it, because the two sections that collide
+(`[SD §4.7.2e]` item 2 and `[SD §2.3]` invariant 2) are thousands of lines apart and neither is
+wrong on its own. **Before writing a claim about what a record can carry, grep
+`packages/domain-reference/tests/` for the type and read what is already asserted about it.**
+
+## `new-worktree.sh` derives the Postgres port from the slug, and slugs collide
+
+The port is `5433 + (sum of the slug's character ordinals) % 60`. `area-a1` hashes to **5433**, which
+the long-lived `domain-reference` worktree already holds, so provisioning fails **after** creating
+the git worktree and branch — leaving partial state that `scripts/rm-worktree.sh <slug>` cleans up.
+Pick a different slug rather than tearing down another workstream's container; agents are barred from
+removing worktrees they did not create.

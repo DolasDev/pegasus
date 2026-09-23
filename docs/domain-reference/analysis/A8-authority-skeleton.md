@@ -828,15 +828,60 @@ file may be read as deciding them.
      [A3 §7]'s own confidence table rates the membership lifecycle **"Low-to-medium — ORIGINAL,
      seeded"**, because Atlas's two-status-per-service is "structural evidence only (C2=1)" and
      Alvys's `Stops[].Status` "is never enumerated".
-   - `orderAward` / `orderResponse` / `orderCancellation` — the lifecycle is
-     [`fork-order` §3.1](fork-order-shipment-cardinality.md)'s; no source in the corpus attaches an
-     authority to it.
+   - `orderAward` / `orderResponse` / `orderCancellation` — **corrected by
+     [`A1` §Cross-area](A1-order-service-lifecycle.md), and these three are no longer part of the
+     blocked-on-the-corpus set.** This item used to read: _"the lifecycle is [`fork-order` §3.1]'s;
+     no source in the corpus attaches an authority to it."_ A1 read the corpus for exactly that and
+     the sentence is **too strong in one direction and not specific enough in the other**. See
+     (b-i). The count of corpus-blocked rows is **nine**, not twelve.
 
-   **Why `KEY` does not rescue them, which is the finding worth keeping.** §4.3's new member reads
-   the role off a fact's own **qualifier**, and **nine of the twelve** — the offer / response /
-   release / award family, everything above except the three `trip` rows — name their
-   actor in **`context[]`** instead — "the offering and responding `partyRole`s", "the `partyRole`
-   the resource is offered to", "the awarding and the responding `partyRole`s". [Shared
+   **(b-i) The order lifecycle, in three lines rather than one — [`A1` §Cross-area].** A1 wrote no
+   row and this item asks for none; what follows is the corrected reasoning, and the question it
+   leaves is a **schema** question rather than a research one.
+
+   1. **The corpus does attach a party to every order transition.** `src:dtr-part-iv` A-402 §C-§F
+      names one on every edge — the TSP accepts, refuses and turns back; the PPSO cancels and pulls
+      back; `src:atlas-world-group-api` captures `bookedBy`, `accepted_by`, `cancelledBy` **and**
+      `cancelRequestor` on the order record; `src:milmove-mymove` **enforces** which actor may make
+      which transition; `src:project44` says a booking may be cancelled "due to actions caused by
+      **either party**". That is **permission**, not assertional authority — but it is the same kind
+      of material §10 says rows 1-5, 8 and 11 were built from: "converting a recording duty into
+      assertional authority is authored in every one of them".
+   2. **The `context[]` argument does not reach a fixed-role row.** DTR's actors are fixed **by the
+      transition kind**, not read off the record, and §5 row 11 is the published precedent for a
+      literal role in `authoritative` — `DECIDED` names `accountParty` with no fold and no key
+      behind it.
+   3. **What actually blocks them is a `boundBy` gap, and it differs per row.** §4.3 publishes six
+      members and none means _"a fixed role, resolved outside this fact"_. `orderResponse` and
+      `orderCancellation` resolve their role through **the order's own award** — structurally the
+      same binding as `ASSIGNMENT`, one aggregate over — and this document has no member for it.
+      **`orderAward` alone is blocked by this document's own mint principle** (§4.3: "`orderAward`
+      mints the principal relation, so it cannot be `PRINCIPAL`"), and `KEY` cannot rescue it
+      because its actor is in `context[]` rather than in a qualifier. For that one row the original
+      sentence was exactly right.
+
+   **So the open question for A8 is: does §4.3's table need a seventh member?** Deciding it would
+   close two rows without new research, which makes it the cheapest remaining move on the owed
+   count. This document has not decided it.
+
+   **Two worked cases A1 handed over with the correction.** `src:dtr-part-iv` §C.4.a permits refusal
+   **only** for a short-fuse or shortened-transit shipment — the same record by the same role,
+   authorised or not depending on a property of the thing it is about, which is the cleanest
+   published **A8-UNAUTH** case in the corpus (§8). And `src:dcsa`'s JIT `classifierCode` binds an
+   assertion class to a role verbatim — _"`EST`, `PLN` and `ACT` can **only** be used by the
+   **Service Provider** … `REQ` is **only** to be used by the **Service Consumer**"_
+   (`jit/v2/JIT_v2.0.0.yaml` L3554-3585). It does not overturn
+   [shared §4.7.1](00-shared-decisions.md)'s "no source in the corpus binds a **plan change** to an
+   asserting role" — a planned time is not a plan change — but it was not cited when that sentence
+   was written and it is where to look first.
+
+   **Why `KEY` does not rescue the remaining nine, which is the finding worth keeping.** §4.3's new member reads
+   the role off a fact's own **qualifier**, and **six of the nine** — the membership and assignment
+   offer / response / release families, everything above except the three `trip` rows — name their
+   actor in **`context[]`** instead — "the offering and responding `partyRole`s" and "the
+   `partyRole` the resource is offered to". (The order family's "the awarding and the responding
+   `partyRole`s" is the same shape and is why `KEY` does not reach `orderAward` either, but the
+   order rows are now (b-i)'s.) [Shared
    §1.4](00-shared-decisions.md) rule 1 forbids resolution from keying on `context[]`, and moving
    those names into a qualifier is a **`changedQualifierShape`** — breaking, a new major under
    [catalog §2.3]. So the provisional two-sided reading §4.7.1 carries has no legal mechanism, and
@@ -981,3 +1026,28 @@ Worth recording how that was found, because the reasoning nearly went the other 
 on a record, so the change looked internal, and it was reading the **emitted schema diff** that said
 otherwise. A compatibility claim argued from which fields feel published is a claim waiting to be
 wrong.
+
+### Revision 8 — the order rows re-explained, on A1's reading of the corpus
+
+Nothing in §5 changes and no row is written. What changes is **§9 item 8(b)'s reasoning about the
+three order types**, which [`A1` §Cross-area](A1-order-service-lifecycle.md) tested against the
+corpus and found wrong in both directions.
+
+1. **"No source in the corpus attaches an authority to it" is withdrawn as written.** Four sources
+   name a party on every order transition, and one of them enforces it in a running system. What
+   they supply is **permission** rather than assertional authority — but so did the material §10
+   records this document converting for rows 1-5, 8 and 11.
+2. **The blocked-on-the-corpus set is nine, not twelve.** The three order rows leave it.
+3. **The remaining blocker is §4.3's `boundBy` enum, which is this document's own.** Two of the
+   three — `orderResponse` and `orderCancellation` — need a member meaning "a role resolved by the
+   order's own award", structurally `ASSIGNMENT` one aggregate over. `orderAward` stays blocked by
+   §4.3's mint principle, where the original sentence was exactly right. **Deciding whether the
+   table needs a seventh member would close two rows with no new research**, which is the cheapest
+   remaining move on the owed count and is recorded here as an open question rather than taken.
+4. **Two worked cases arrive with it** — `src:dtr-part-iv` §C.4.a's conditional refusal permission
+   for §8's `A8-UNAUTH`, and `src:dcsa`'s JIT `classifierCode` for §9 item 9's neighbourhood.
+
+**The lesson, and it is the mirror of [A4 §4.4]'s.** A4 found that a claim about **one publisher**
+had been read as a claim about **the corpus**. This is the same error in the other direction: a
+claim about **the corpus** that had not been tested against it. Both sentences were written in good
+faith from material that was in front of the author; neither survived a read aimed at it.

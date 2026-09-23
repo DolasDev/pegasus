@@ -204,6 +204,15 @@
         "citation": "[A4 §3], [A4 §4.3]. No source in the corpus publishes it. [SD §4.7.2e] item 3 needs it: 'a cancellation is an act with an outcome, and a refused cancellation needs no new mechanism.' It names the request's place in the sequence, not this record's outcome; the earlier spelling ALREADY_PERFORMED was rejected for putting a completion verb in a closed enum."
       },
       {
+        "code": "DEADLINE_LAPSED",
+        "scope": "ACT",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": "[SYNTHESIS]",
+        "citation": "[A1 §3.6]. Three sources publish a lapsing offer as a first-class terminal, in three shapes, and the collapse into one grain-independent code is ours: src:dtr-part-iv §C.4.b (non-response to an award — a typed event caused by nobody, with a Notice of Non-Response and an escalation); src:project44 (`EXPIRED`, `:28434`); src:alvys-api (the tender's `ExpirationDate`). The third member that attributes to nobody, after FORCE_MAJEURE and CAUSE_UNKNOWN — [A8 §9 item 2]."
+      },
+      {
         "code": "CAUSE_UNKNOWN",
         "scope": "ACT",
         "partyRequired": false,
@@ -213,8 +222,8 @@
         "citation": "[A4 §3], [A4 §4.5]. src:uncefact-rec24 265 Reason_unknown beside 125 No_status, which its analysis singles out as more honesty than most vocabularies offer. Distinct from OTHER: OTHER means the list has no code for a known reason and owes a narrative ([SD §2.4] rule 3); this means there is no reason to give yet."
       }
     ],
-    "codesNote": "Twenty-three members, cross-checked as a SET against REASON_CODES in src/outcomes.ts by the loader — a code in one place and not the other is a defect, not a widening. `OTHER` is NOT a member: it is declared by the shape ([SD §2.4] rule 3) and the loader refuses it here, which is what lets the Reason union make `remark` mandatory for it alone. Each entry declares its default scope, whether `attribution.party` must name a party, whether a remedy is required and which shape, its disclosure marker and its evidence. [SD §2.6]'s three worked literals are NOT members and could not be: CONSIGNEE_ABSENT bakes a role into the code ([SD §2.4] rule 6 forbids it), REFUSED_DAMAGE encodes an outcome in a verb (rule 1) and SHORT is GOODS_MISSING under another name. See [A4 §4] and the illustrativeOnly block below.",
-    "publishedBy": "A4 — [A4 §3]. [SD §2.4] fixed the shape and left the list to this area: 'the list itself is A4's job'. Twenty-three members, which is rule 2's magnitude and not a quota.",
+    "codesNote": "Cross-checked as a SET against REASON_CODES in src/outcomes.ts by the loader — a code in one place and not the other is a defect, not a widening. `OTHER` is NOT a member: it is declared by the shape ([SD §2.4] rule 3) and the loader refuses it here, which is what lets the Reason union make `remark` mandatory for it alone. Each entry declares its default scope, whether `attribution.party` must name a party, whether a remedy is required and which shape, its disclosure marker and its evidence. [SD §2.6]'s three worked literals are NOT members and could not be: CONSIGNEE_ABSENT bakes a role into the code ([SD §2.4] rule 6 forbids it), REFUSED_DAMAGE encodes an outcome in a verb (rule 1) and SHORT is GOODS_MISSING under another name. See [A4 §4] and the illustrativeOnly block below.",
+    "publishedBy": "A4 — [A4 §3]. [SD §2.4] fixed the shape and left the list to this area: 'the list itself is A4's job'. Rule 2 bounds its magnitude and is explicitly not a quota; the count is REASON_CODES.length and is deliberately not written here ([A1 §9]).",
     "whenA8Lands": "attribution.roleClass is still owed to [A8 §9 item 2] and `partyRequired` below is deliberately a boolean rather than a default roleClass, so that nothing here has to name a member of an enum that does not exist. FORCE_MAJEURE and CAUSE_UNKNOWN need an explicit non-party member of that enum before they can be recorded at all — A4's one concrete requirement on A8."
   },
   "shape": {
@@ -223,7 +232,7 @@
       {
         "field": "code",
         "obligation": "MANDATORY",
-        "from": "the published, versioned reason vocabulary — REASON_CODES, 23 members [A4 §3]",
+        "from": "the published, versioned reason vocabulary — REASON_CODES [A4 §3], as extended by later areas",
         "marker": null,
         "citation": "[SD §2.4]"
       },
