@@ -44,7 +44,7 @@ import { fileURLToPath } from 'node:url'
 import prettier from 'prettier'
 import ts from 'typescript'
 
-import { byteOrder, collectOwedInventory } from './generate-glossary.ts'
+import { byteOrder, collectOwedInventory, readReasonCodeTable } from './generate-glossary.ts'
 
 /* ------------------------------------------------------------------------------------------------
  * Where things are
@@ -870,6 +870,36 @@ function indexDocument(declarations: Declarations): Json {
       if (qualifier !== undefined) record['qualifier'] = qualifier === null ? null : [...qualifier]
       return record
     }),
+    reasons: {
+      note:
+        'The published reason vocabulary — [A4 §3]. The schemas publish the code list as a closed ' +
+        'enum on `Reason.code`; this is the part a schema cannot carry. **The per-code discipline ' +
+        'is normative and is not expressible in JSON Schema**: `attribution.party` and `remedy` are ' +
+        'schema-optional on every code, and the rows below say which codes require them. A ' +
+        'consumer that omits a required one is emitting an incomplete record ([SD §2.4] rules 5 ' +
+        'and 6), and [A4 §5] carries as owed the type-level change that would make the schema say ' +
+        'so on its own.',
+      openMember: {
+        code: 'OTHER',
+        remarkRequired: true,
+        note:
+          'Declared by the shape, not by the vocabulary — [SD §2.4] rule 3. Not an extension ' +
+          'point ([catalog §2.2]): it carries a narrative, not a vocabulary, and nothing switches ' +
+          'on it. Distinct from `CAUSE_UNKNOWN`, which means there is no reason to give yet.',
+      },
+      codes: [...readReasonCodeTable().values()]
+        .slice()
+        .sort((left, right) => byteOrder(left.code, right.code))
+        .map((row) => ({
+          code: row.code,
+          scope: row.scope,
+          partyRequired: row.partyRequired,
+          remedyRequired: row.remedyRequired,
+          remedyShape: row.remedyShape,
+          marker: row.marker,
+          citation: row.citation,
+        })),
+    },
     filtering: {
       note:
         'The filter vocabulary is the envelope plus the keys derived from it, and nothing else — ' +

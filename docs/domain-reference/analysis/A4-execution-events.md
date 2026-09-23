@@ -321,7 +321,19 @@ billing."
    boundary, the transition graph — is not attempted here. [`../rubric.md`](../rubric.md) should read
    A4 as "modeled in detail" for the vocabulary only.
 
-4. **The fact classes the corpus names and the vocabulary does not.** [SD §4.7.3] carries them, and
+4. **The per-code discipline is not expressible in JSON Schema, and the type system does not carry
+   it either.** `attribution.party` and `remedy` are optional on the `Reason` record, so the emitted
+   schemas admit a `PARTY_ABSENT` with no remedy and a `PARTY_REFUSED` naming no party — records this
+   document says are incomplete. The obligations are published as data instead, in
+   `catalog/index.json`'s `reasons.codes`, so a consumer can read them without reading this file.
+
+   The stronger fix is a type-level one: a third `Reason` branch mirroring the `OTHER` branch, with
+   the remedy-requiring codes excluded from the general branch, so an incomplete record would not
+   compile and the schemas would say so on their own. It is **owed**, and it is owed here rather than
+   done because it changes the published `Reason` shape, which is a decision for [catalog §2.3] to
+   classify rather than a vocabulary one.
+
+5. **The fact classes the corpus names and the vocabulary does not.** [SD §4.7.3] carries them, and
    two are A4-adjacent: `weighing` and `eta`. A reason vocabulary does not need them — `LATE_ARRIVAL`
    is a reason and an ETA is a fact — but `OVERFLOW`'s natural companion ("weight exceeds estimate,
    reweigh required") is a `weighing` fact that has no type to carry it. Recorded, not resolved.

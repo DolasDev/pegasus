@@ -295,6 +295,12 @@ export const ADDITIVE_CHANGES = [
    * member's meaning moves — which is the property [SD §1.2]'s "never to reinterpretation" protects.
    * **[SYNTHESIS]**, and the restriction is recorded with the class rather than left to be
    * discovered ([A4 §7]).
+   *
+   * One emitted detail worth knowing before the next one of these: the owed code's `$defs` entry
+   * **disappears**. `ReasonCode.reasonCode` was a named string schema; a closed union of string
+   * literals inlines as an `enum` on the property, so a consumer pinning that `$ref` loses it. A4
+   * also publishes the obligations no schema can carry — which codes require a remedy or a named
+   * party — as data in `catalog/index.json`'s `reasons` block.
    */
   'publishedOwedVocabulary',
   /**

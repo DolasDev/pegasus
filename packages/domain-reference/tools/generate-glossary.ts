@@ -681,14 +681,14 @@ function readCanonicalSubjects(): CanonicalTable {
  * a reader who has to open two files to learn whether a code requires a remedy has been given half
  * an answer. The loader already holds the two to one set ([SD §2.4]).
  */
-function readReasonCodeTable(): Map<string, ReasonRow> {
+export function readReasonCodeTable(): Map<string, ReasonRow> {
   const raw = JSON.parse(readFileSync(REASONS_FILE, 'utf8')) as {
     vocabulary: { codes: ReasonRow[] }
   }
   return new Map(raw.vocabulary.codes.map((row) => [row.code, row]))
 }
 
-interface ReasonRow {
+export interface ReasonRow {
   readonly code: string
   readonly scope: string
   readonly partyRequired: boolean
