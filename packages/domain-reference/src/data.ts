@@ -39,9 +39,11 @@ import {
   REASON_CODES,
   REASON_CODE_OTHER,
   REASON_SCOPES,
+  REMEDY_SHAPES,
   reasonsAreRequired,
   type Outcome,
   type ReasonScope,
+  type RemedyShape,
 } from './outcomes'
 import type { BoundBy } from './rules/authority'
 import {
@@ -1026,6 +1028,15 @@ function readReasonCodeEntry(path: string, value: unknown): ReasonCodeEntry {
   }
   const remedyRequired = readBoolean(`${path}.remedyRequired`, object['remedyRequired'])
   const remedyShape = readStringOrNull(`${path}.remedyShape`, object['remedyShape'])
+  if (remedyShape !== null && !REMEDY_SHAPES.includes(remedyShape as RemedyShape)) {
+    // The table names a shape the `Remedy` union does not carry. Left ungated until [A5 §3.2] made
+    // the union two-membered: while there was one shape a typo could only be a typo, and with two
+    // it can silently promise a consumer a shape no producer can send.
+    fail(
+      `${path}.remedyShape`,
+      `names ${remedyShape}, which is not a member of the Remedy union ([SD §2.4] rule 5)`,
+    )
+  }
   if (remedyRequired && remedyShape === null) {
     // [SD §2.4] rule 5 is "a reason may carry its own remedy, and for some codes must". A code that
     // must carry one and names no shape is the incomplete record the rule exists to forbid —

@@ -3,7 +3,7 @@
   "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
   "x-command": "npm run catalog -w @pegasus/domain-reference",
   "catalog": {
-    "specVersion": "0.4.0",
+    "specVersion": "0.5.0",
     "decidedBy": "docs/domain-reference/analysis/published-event-catalog.md",
     "note": "The published catalog is the record vocabulary, exactly — [catalog §1]. There is no coarser published layer over these members, because a second classification axis is permanently forbidden by [SD §1.1].",
     "memberCount": 33,
@@ -586,6 +586,7 @@
       "newAggregateKind",
       "newClosedEnumMember",
       "publishedOwedVocabulary",
+      "publishedOwedShape",
       "newOptionalPayloadField",
       "newContextMemberKind"
     ],
@@ -601,12 +602,12 @@
   "owed": {
     "note": "What the model declares undecided — [SD §0] forbids guessing a value to make the types tidy. Published here so a consumer sees the gaps without reading the analysis. The A4 reason vocabulary was the one that most affected this contract and it landed at `0.2.0` ([A4 §3]); what caps this version now is the authority rows, whose owed count is `counts.authorityRows` of `counts.declaredRecordTypes` below.",
     "counts": {
-      "declared": 19,
+      "declared": 18,
       "vocabularies": 3,
       "authorityRows": 14,
       "declaredRecordTypes": 31,
       "factClassFamilies": 2,
-      "absentFactClasses": 10
+      "absentFactClasses": 13
     },
     "vocabularies": ["identityScheme", "roleClass", "unitOfMeasure"],
     "declared": [
@@ -694,11 +695,6 @@
         "what": "position",
         "owedTo": "[SD §4.7.1] and [SD §4.7.3] — named by M5, in no table at all",
         "where": "packages/domain-reference/src/rules/capture.ts"
-      },
-      {
-        "what": "remedy",
-        "owedTo": "A5 — a remedy that opens a SIT stay; [SD §2.4] rule 5 types only newWindow",
-        "where": "packages/domain-reference/src/outcomes.ts"
       },
       {
         "what": "tariffOwner",
@@ -800,6 +796,9 @@
       "eta",
       "resourceTareWeight",
       "sealIntegrity",
+      "stayAllowance",
+      "stayAuthorisation",
+      "stayTermination",
       "survey",
       "tracerResult",
       "unpacking",

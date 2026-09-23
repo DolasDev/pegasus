@@ -73,8 +73,8 @@ several of the decisions in §4.
 - **No source models an exception that forks the shipment.** `src:shippeo`'s analysis calls this "the
   deepest structural gap": in freight an exception is something to resolve; in household goods
   "destination not ready" opens storage in transit, with its own duration, charges and a later
-  delivery-out leg. `PARTY_NOT_READY` is the reason; the remedy that opens the stay is owed to A5
-  (§5).
+  delivery-out leg. `PARTY_NOT_READY` is the reason; the remedy that opens the stay was owed to A5
+  and **[A5 §3.2] has published it** as `opensStay` (§5).
 - **`src:sirva-ade` — a van line's own contract — has no reason codes at all.** "`Cancel`, `Break`,
   `Reinstate`, `DeleteSIT`, `ExtendADP` all carry none", and its analysis draws the conclusion for
   this document: "our A4 model must add reason codes rather than inherit their absence."
@@ -320,16 +320,24 @@ billing."
    as caused by **nobody** — an absent act with a typed notice and an escalation behind it. The
    requirement is now regulation-grade rather than inferred from two codes' semantics.
 
-2. **Remedy shapes beyond `newWindow`.** [SD §2.4] rule 5's one sourced shape is `src:shippeo`'s
-   `new_slot {start, end}`, required on its appointment events. A4 types it as `NewWindow` — spelled
-   after [SD §2.6]'s `newWindow` rather than after Shippeo's wire name, because [SD] outranks the
-   citation — and makes it required on `PARTY_ABSENT` and `PARTY_RESCHEDULED`. Every other shape stays
-   `Owed`.
+2. **Remedy shapes beyond `newWindow` — CLOSED at [A5 §3.2], and the refusal was right.**
+   [SD §2.4] rule 5's one sourced shape is `src:shippeo`'s `new_slot {start, end}`, required on its
+   appointment events. A4 types it as `NewWindow` — spelled after [SD §2.6]'s `newWindow` rather
+   than after Shippeo's wire name, because [SD] outranks the citation — and makes it required on
+   `PARTY_ABSENT` and `PARTY_RESCHEDULED`. Every other shape stayed `Owed` **until A5**.
 
-   The one that is missed is **the remedy that opens a storage-in-transit stay**, which is what
-   `PARTY_NOT_READY` wants and what `src:shippeo`'s analysis calls the deepest structural gap. It is
-   owed to **A5**, and it is not A4's to invent: SIT has its own duration, approvals, charges and
-   delivery-out leg, and a remedy shape minted here would prejudge all four.
+   The one that was missed is **the remedy that opens a storage-in-transit stay**, which is what
+   `PARTY_NOT_READY` wants and what `src:shippeo`'s analysis calls the deepest structural gap. It was
+   owed to **A5** and was not A4's to invent: SIT has its own duration, approvals, charges and
+   delivery-out leg, and a remedy shape minted here would have prejudged all four.
+
+   **[A5 §3.2] has now published it**, and the shape vindicates the refusal: it carries a `stay`
+   reference and a location and **none of the four**. The duration and the approval turned out to be
+   absent fact classes ([A5 §3.6]), the charges are A7's, and the delivery-out leg was already
+   settled at [SD §8]. A remedy minted here would have carried at least the dates, which are the
+   `storeIn` act's and the `sitEntryDate`'s ([SD §5.3]). A5 also declined to make the remedy
+   **required** on `PARTY_NOT_READY` — [A5 §3.2] has the argument — so this table's `—` in the
+   remedy column for that code is current and not stale.
 
 3. **The A4 area comparison.** This document settles the vocabulary. The eight-criteria scoring of
    A4's execution-event and tracking model — the arrive/depart grain, the ETA model, the telemetry

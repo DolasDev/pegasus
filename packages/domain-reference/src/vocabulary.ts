@@ -812,6 +812,55 @@ export const ABSENT_AND_OWED = [
    * absent, and "minting `unpacking` here while `A3` is told to record it as absent would put the
    * two halves of one decision in contradiction." */
   'unpacking',
+  /**
+   * The act that **authorises** a storage-in-transit stay — [A5 §3.6].
+   *
+   * `src:dtr-part-iv` §D.5.a makes it a three-party act: "the TSP requests in DPS, the PPSO
+   * approves or denies, DPS issues the SIT control number". `src:atlas-world-group-api` carries
+   * the same shape as `supervisor_approval_by`/`supervisor_approval_on` beside an
+   * `auto_authorized` flag, and `src:milmove-mymove` runs SIT service items through
+   * `SUBMITTED` → `APPROVED` | `REJECTED` with a `rejectionReason`.
+   *
+   * Absent rather than minted because its asserting role is a **Government transportation office**
+   * (the PPSO) or a van line's own supervisor — a party class [A8 §9 item 1] has not defined — so
+   * the row would be [A8 §9 item 8]-owed on the day it was written, trading one gap for two.
+   * [A5 §3.2] is explicit that the `opensStay` remedy does **not** stand in for it.
+   */
+  'stayAuthorisation',
+  /**
+   * The **days of storage authorised** for a stay, and the extensions that change it — [A5 §3.6].
+   *
+   * `src:dp3-400ng` Item 17.3: "an aggregate period **not to exceed 90 days** unless the authorized
+   * Government representative authorizes additional storage", billable in further 90-day increments
+   * (Item 17.5.c). `src:dtr-part-iv` §C.9.c publishes the arithmetic over it verbatim —
+   * `Days SIT Used = Release Date - Date Placed in Storage + 1` and
+   * `Remaining Days at Destination = Days Authorized - Days Used` — and extends it on a DD 1857.
+   * `src:milmove-mymove` publishes `sitDaysAllowance` (default 90) plus a `SITDurationUpdate`
+   * lifecycle with seven reason codes; `src:atlas-world-group-api` has `days_authorized` +
+   * `additional_authorized_days` with an extension request/receipt date pair.
+   *
+   * **An extension is not a separate class**: it is a later assertion of this one, carried on
+   * `supersedes` ([SD §4.1]). Minting `stayExtension` beside it would be two types for one fact.
+   * The **used**-days half is not a class at all — it is the fold DTR states, and [A5 §3.6] declines
+   * to publish it while its only input is owed.
+   */
+  'stayAllowance',
+  /**
+   * The act that **terminates** a stay — [A5 §3.4], [A5 §3.6].
+   *
+   * `src:dtr-part-iv` A-406 §A.6.e-f: "Shipments remain in SIT until terminated by the PPSO and
+   * cannot be retroactive", effective "only at midnight on the effective date"; at that moment
+   * §D.5.c(2) makes "the warehouse… the final destination of the shipment" and ends the TSP's
+   * bill-of-lading liability, while §D.5.c(1) NOTE keeps the customer "entitled to delivery out of
+   * storage". `src:dp3-400ng` Item 17-2 is the same act on the charging side, and
+   * `src:cfr-49-375` §375.609(b) is its commercial twin.
+   *
+   * Absent for the same reason as `stayAuthorisation`: the terminating party is the PPSO, and on
+   * the commercial side the carrier acting under a notice whose own §375.609(g) consequence —
+   * liability continues "until the end of the day following the date when you actually gave notice"
+   * — is a computed fact about a **notification**, which [A8 §9 item 6] also owes.
+   */
+  'stayTermination',
 ] as const
 
 export type AbsentAndOwedClass = (typeof ABSENT_AND_OWED)[number]

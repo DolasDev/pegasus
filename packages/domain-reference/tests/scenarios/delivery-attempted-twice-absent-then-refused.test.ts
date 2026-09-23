@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CANONICAL_SUBJECT_FAMILY,
   REASON_CODE_OTHER,
   canSupportClaim,
   checkCaptureOf,
@@ -26,7 +27,6 @@ import {
   isAssertionType,
   isWellFormedActOutcome,
   itemId,
-  owed,
   partyId,
   portionId,
   reasonCode,
@@ -35,6 +35,7 @@ import {
   sameFactKey,
   shipmentId,
   specVersion,
+  stayId,
   stopId,
   subjectRef,
   type CapturedAssertion,
@@ -283,19 +284,25 @@ describe('A4 — the vocabulary this scenario now names, and what is still owed'
     expect(withNarrative.remark).not.toBe('')
   })
 
-  it('the new delivery window is typed now, and a SIT-opening remedy is still owed', () => {
+  it('the new delivery window is typed, and so is the other branch — a stay opens', () => {
     // [SD §2.4] rule 5's one sourced shape. `src:shippeo`'s `new_slot {start, end}` is REQUIRED on
     // appointment events, and [A4 §3] makes `PARTY_ABSENT` one of the two codes that require it.
     const remedy = partyAbsent.remedy
     expect(remedy !== undefined && 'newWindow' in remedy).toBe(true)
-    // The remedy that opens a storage-in-transit stay is owed to A5 — `src:shippeo`'s analysis calls
-    // it "the deepest structural gap": in freight an exception is a retry, in household goods it
-    // starts a whole new phase.
-    const sitRemedy: Remedy = owed(
-      'remedy',
-      'A5 — a remedy that opens a SIT stay; [SD §2.4] rule 5 types only newWindow',
-    )
-    expect('owed' in sitRemedy && sitRemedy.owed).toBe('remedy')
+    // [A5 §3.2] discharged what A4 left owed: the remedy that opens a storage-in-transit stay —
+    // `src:shippeo`'s "deepest structural gap", where in freight an exception is a retry and in
+    // household goods it starts a whole new phase. The union is now two shapes and no `Owed`.
+    const sitRemedy: Remedy = {
+      opensStay: {
+        stay: subjectRef('stay', stayId('SIT-2291')),
+        location: 'DESTINATION',
+      },
+    }
+    expect('opensStay' in sitRemedy && sitRemedy.opensStay.location).toBe('DESTINATION')
+    // A remedy is a promise, not a performance: nothing here asserts anything about the stay. The
+    // first record that does is a `storeIn` whose ENVELOPE subject is this same aggregate
+    // ([SD §5.3]), which is why the forward ref is not [SD §1.1]'s second subject.
+    expect(CANONICAL_SUBJECT_FAMILY.storeIn).toBe('stay')
   })
 
   it('and the role class is owed too — three examples are not a vocabulary', () => {

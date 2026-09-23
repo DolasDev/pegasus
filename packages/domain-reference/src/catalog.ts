@@ -76,8 +76,15 @@ void _catalogIsTheVocabulary
  * deliverable, `orderStageAt`, moves nothing on the wire: a projection is a fold over records that
  * already exist, exactly as `custodyAt` is, and [A1 §3.1] mints no type, aggregate, field or
  * qualifier. The **schema diff** was read before this line was written ([catalog §5]).
+ *
+ * `0.5.0` at A5: `Remedy`'s owed branch is replaced by `OpensStay` ([A5 §3.2]) —
+ * `publishedOwedShape`, additive, and a class this bump adds. The diff is two `$defs` (one gone,
+ * one new) plus a swapped `anyOf` branch on `Remedy`. A5's other deliverables move nothing on the
+ * wire: the three absent fact classes are a change to what the model admits is **missing**, which
+ * [catalog §5] already distinguishes from a change to what is published, and [A5 §3.3]-[A5 §3.5]
+ * mint no type, aggregate, field or qualifier at all.
  */
-export const CATALOG_VERSION = '0.4.0'
+export const CATALOG_VERSION = '0.5.0'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces
@@ -317,6 +324,25 @@ export const ADDITIVE_CHANGES = [
    * party — as data in `catalog/index.json`'s `reasons` block.
    */
   'publishedOwedVocabulary',
+  /**
+   * The **first** publication of a value **shape** that shipped as owed — the change A5 made to
+   * {@link Remedy}, replacing `Owed<'remedy', 'A5 — …'>` with `OpensStay` ([A5 §3.2]).
+   *
+   * The sibling of {@link ADDITIVE_CHANGES} member `publishedOwedVocabulary` and additive for
+   * exactly the same reason, one level up the type: **the owed marker was itself published**. The
+   * emitted union carried an `Owed.remedy` branch whose `owedTo` was a `const` naming A5, so the
+   * wire said in as many words that this branch was a placeholder — no conforming producer could
+   * have relied on it being accepted for ever, and no existing member's meaning moves.
+   *
+   * Distinguished from `publishedOwedVocabulary` because it does **not** narrow a string to an
+   * enum: it removes one branch of an `anyOf` and adds another. On the **queried** face a consumer
+   * is served a branch it can act on in place of one it could only ignore; on the **captured** face
+   * it is a restriction, and the restriction is recorded here rather than left to be discovered.
+   *
+   * One emitted detail, the twin of the one above: the owed branch's `$defs` entry **disappears**
+   * (`Owed.remedy` is gone from both faces), so a consumer pinning that `$ref` loses it.
+   */
+  'publishedOwedShape',
   /**
    * A new **optional** payload field. No record that validated stops validating, and [SD §1.1]'s
    * payload row — "typed per `type`", "per type" — already leaves the per-type shape to [SD §4.7]'s
