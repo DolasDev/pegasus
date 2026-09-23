@@ -9,6 +9,7 @@ import { StateDropdown } from '../../../containers/StateDropdown'
 import styles from './TripsFilter.module.css'
 import { DriverTypeahead } from '../../../containers/DriverTypeahead'
 import type { RootState } from '../../../redux/store'
+import { REJECTED_STATUS_OPTION } from '../../../utils/rejected-status-filter'
 
 const FIELDS = [
   { label: 'Status', property: 'TripStatus_id', type: 'status' },
@@ -69,7 +70,17 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
         />
       )
     case 'status':
-      return <StatusDropdown isMulti {...args} value={args.value || []} />
+      // "Rejected" is not a MasterTripStatus row — the snapshots live cloud-side
+      // in Postgres, so the option is appended here and split back out before
+      // the query reaches MSSQL. See utils/rejected-status-filter.ts.
+      return (
+        <StatusDropdown
+          isMulti
+          extraOptions={[REJECTED_STATUS_OPTION]}
+          {...args}
+          value={args.value || []}
+        />
+      )
     case 'internal_status':
       return (
         <Select

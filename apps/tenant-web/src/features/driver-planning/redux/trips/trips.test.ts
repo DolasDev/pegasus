@@ -88,9 +88,7 @@ describe('trips slice — changeTripsQuery reducer', () => {
   it('replaces sortBy without touching searchTerm or filters', () => {
     const store = makeStore()
     store.dispatch(changeTripsQuery({ searchTerm: 'foo' }))
-    store.dispatch(
-      changeTripsQuery({ sortBy: { value: 'driver_name', order: 'asc' } }),
-    )
+    store.dispatch(changeTripsQuery({ sortBy: { value: 'driver_name', order: 'asc' } }))
     const q = getTrips(store).query
     expect(q.sortBy).toEqual({ value: 'driver_name', order: 'asc' })
     expect(q.searchTerm).toBe('foo')
@@ -213,9 +211,7 @@ describe('trips slice — updateActivityForTrip thunk', () => {
     const store = makeStore()
     mockedSaveActivity.mockResolvedValueOnce(undefined)
 
-    await store.dispatch(
-      updateActivityForTrip('act-1', { foo: 'bar' }) as any,
-    )
+    await store.dispatch(updateActivityForTrip('act-1', { foo: 'bar' }) as any)
 
     expect(mockedSaveActivity).toHaveBeenCalledTimes(1)
     expect(mockedSaveActivity).toHaveBeenCalledWith('act-1', { foo: 'bar' })
@@ -226,10 +222,54 @@ describe('trips slice — updateActivityForTrip thunk', () => {
     mockedSaveActivity.mockRejectedValueOnce(new Error('save failed'))
     const before = getTrips(store)
 
-    await expect(
-      store.dispatch(updateActivityForTrip('act-2', {}) as any),
-    ).resolves.toBeUndefined()
+    await expect(store.dispatch(updateActivityForTrip('act-2', {}) as any)).resolves.toBeUndefined()
 
     expect(getTrips(store)).toEqual(before)
+  })
+})
+
+describe('trips slice — fetchTrips thunk, synthetic "Rejected" status', () => {
+  const rejected = { value: 'REJECTED', label: 'Rejected' }
+
+  it('strips the sentinel before calling the API', async () => {
+    const store = makeStore()
+    mockedFetchTrips.mockResolvedValueOnce([{ id: 1 }])
+
+    await store.dispatch(
+      fetchTrips({
+        searchTerm: '',
+        filters: { TripStatus_id: [{ value: 1, label: 'Pending' }, rejected] },
+      }) as any,
+    )
+
+    // The sentinel would bind into `TripStatus_id IN (@p0)` against an int
+    // column and 500 the whole list, so it must never leave the client.
+    expect(mockedFetchTrips).toHaveBeenCalledWith({
+      searchTerm: '',
+      filters: { TripStatus_id: [{ value: 1, label: 'Pending' }] },
+    })
+    expect(getTrips(store).tripList).toEqual([{ id: 1 }])
+  })
+
+  it('skips the live fetch entirely when "Rejected" is the only status', async () => {
+    const store = makeStore()
+
+    await store.dispatch(fetchTrips({ filters: { TripStatus_id: [rejected] } }) as any)
+
+    // Stripping to an empty list would read as "no status filter" server-side
+    // and return the TOP 100 of everything.
+    expect(mockedFetchTrips).not.toHaveBeenCalled()
+    expect(getTrips(store).tripList).toEqual([])
+    expect(getTrips(store).loading).toBe(false)
+  })
+
+  it('clears a previously loaded list when the filter narrows to "Rejected" only', async () => {
+    const store = makeStore()
+    mockedFetchTrips.mockResolvedValueOnce([{ id: 1 }, { id: 2 }])
+    await store.dispatch(fetchTrips({ filters: {} }) as any)
+    expect(getTrips(store).tripList).toHaveLength(2)
+
+    await store.dispatch(fetchTrips({ filters: { TripStatus_id: [rejected] } }) as any)
+    expect(getTrips(store).tripList).toEqual([])
   })
 })

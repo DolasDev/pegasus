@@ -3,6 +3,7 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import type { AppDispatch } from '../store'
 import { coerceListPayload } from '../lib/coerce-list-payload'
 import { notifyError } from '../../components/Snackbar/notify'
+import { splitRejectedStatus } from '../../utils/rejected-status-filter'
 
 export interface TripsState {
   loading: boolean
@@ -74,9 +75,22 @@ export default tripsSlice.reducer
 
 export const fetchTrips = (query: any) => async (dispatch: AppDispatch) => {
   const { fetchTripsStart, fetchTripsFailure, fetchTripsSuccess } = tripsSlice.actions
+  // The Trips filter's synthetic "Rejected" status never belongs in the live
+  // query: `TripStatus_id` is an int column the handler binds into an IN list,
+  // so the sentinel would fail MSSQL's conversion and 500 the whole list. The
+  // split lives here — the single choke point every caller goes through —
+  // rather than in <Trips>, so no other dispatcher can leak it.
+  const { liveQuery, onlyRejected } = splitRejectedStatus(query)
   try {
     dispatch(fetchTripsStart())
-    const trips = await API.fetchTrips(query)
+    // "Rejected" on its own matches no live trip. Stripping it would leave an
+    // EMPTY status list, which the handler reads as "no status filter" and
+    // answers with the TOP 100 of everything — so short-circuit instead.
+    if (onlyRejected) {
+      dispatch(fetchTripsSuccess([]))
+      return
+    }
+    const trips = await API.fetchTrips(liveQuery)
     dispatch(fetchTripsSuccess(trips))
   } catch (e: any) {
     console.error(e)

@@ -51,3 +51,47 @@ describe('StatusDropdown', () => {
     expect(screen.getByText('Choose status')).toBeInTheDocument()
   })
 })
+
+describe('StatusDropdown — extraOptions', () => {
+  it('appends cloud-side-only options after the MasterTripStatus rows', () => {
+    renderWithStore(<StatusDropdown extraOptions={[{ value: 'REJECTED', label: 'Rejected' }]} />, {
+      common: { tripStatuses: sampleStatuses },
+    })
+
+    const input = screen.getByRole('combobox')
+    fireEvent.mouseDown(input)
+    fireEvent.focus(input)
+
+    expect(screen.getByText('Pending')).toBeInTheDocument()
+    expect(screen.getByText('Rejected')).toBeInTheDocument()
+  })
+
+  it('does not forward extraOptions to the underlying Select as a prop', () => {
+    const onChange = vi.fn()
+    renderWithStore(
+      <StatusDropdown
+        onChange={onChange}
+        extraOptions={[{ value: 'REJECTED', label: 'Rejected' }]}
+      />,
+      { common: { tripStatuses: sampleStatuses } },
+    )
+
+    const input = screen.getByRole('combobox')
+    fireEvent.mouseDown(input)
+    fireEvent.focus(input)
+    fireEvent.click(screen.getByText('Rejected'))
+
+    const [selected] = onChange.mock.calls[0]!
+    expect(selected.value).toBe('REJECTED')
+  })
+
+  it('renders only the server statuses when extraOptions is omitted', () => {
+    renderWithStore(<StatusDropdown />, { common: { tripStatuses: sampleStatuses } })
+
+    const input = screen.getByRole('combobox')
+    fireEvent.mouseDown(input)
+    fireEvent.focus(input)
+
+    expect(screen.queryByText('Rejected')).not.toBeInTheDocument()
+  })
+})

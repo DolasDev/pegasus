@@ -12,6 +12,7 @@ import { useDebounce } from '../../utils/hooks/use-debounce'
 import { Button } from '@/features/driver-planning/components/Button'
 import { useAppDispatch } from '../../redux/hooks'
 import type { RootState } from '../../redux/store'
+import { splitRejectedStatus } from '../../utils/rejected-status-filter'
 
 const MemoizedTripCards = React.memo(({ trips }: { trips: any[] }) => {
   return trips.map((trip: any) => <TripCard key={trip.archivedTripId ?? trip.id} trip={trip} />)
@@ -23,8 +24,12 @@ export function Trips() {
   const loading = useSelector((state: RootState) => state.shipments.loading)
 
   // Rejected-trip snapshots are stored cloud-side in Postgres, separate from the
-  // MSSQL live-trip list. When the list is filtered by a driver, surface that
-  // driver's rejected offers inline (badged) so they appear "in their trips".
+  // MSSQL live-trip list. They are surfaced inline (badged) in two cases:
+  //   - the list is filtered by a driver — that driver's rejected offers show
+  //     up "in their trips" (the original #290 behaviour); or
+  //   - "Rejected" is picked in the Status filter, which is a synthetic option
+  //     the legacy MasterTripStatus table knows nothing about.
+  // With both set, the driver still narrows the snapshots.
   const [rejectedTrips, setRejectedTrips] = useState<any[]>([])
 
   const debouncedQuery = useDebounce(query, 300)
@@ -32,6 +37,7 @@ export function Trips() {
   const dispatch = useAppDispatch()
 
   const driverFilterId = query?.filters?.driver_id?.value
+  const rejectedSelected = splitRejectedStatus(query).includesRejected
 
   const countShipments = () => {
     return `(${trips.length + rejectedTrips.length})`
@@ -44,13 +50,19 @@ export function Trips() {
   useEffect(() => {
     let canceled = false
     async function loadRejected() {
-      const driverId = debouncedQuery?.filters?.driver_id?.value
-      if (driverId == null || driverId === '') {
+      const driverIdRaw = debouncedQuery?.filters?.driver_id?.value
+      const hasDriver = driverIdRaw != null && driverIdRaw !== ''
+      const wantsRejected = splitRejectedStatus(debouncedQuery).includesRejected
+      if (!hasDriver && !wantsRejected) {
         setRejectedTrips([])
         return
       }
       try {
-        const rows = await API.fetchRejectedTrips({ driverId: Number(driverId) })
+        // No driverId ⇒ every rejected snapshot in the tenant, which is what
+        // picking "Rejected" with no driver means.
+        const rows = await API.fetchRejectedTrips(
+          hasDriver ? { driverId: Number(driverIdRaw) } : {},
+        )
         if (!canceled) setRejectedTrips(Array.isArray(rows) ? rows : [])
       } catch {
         if (!canceled) setRejectedTrips([])
@@ -62,7 +74,7 @@ export function Trips() {
     }
   }, [debouncedQuery])
 
-  const allTrips = driverFilterId != null ? [...rejectedTrips, ...trips] : trips
+  const allTrips = driverFilterId != null || rejectedSelected ? [...rejectedTrips, ...trips] : trips
 
   return (
     <Lane key="Trips" title={`Trips ${countShipments()}`}>

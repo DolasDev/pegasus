@@ -258,3 +258,35 @@ any future static bucket should copy it:
 - **`prune: true` on the BucketDeployment.** The SPA keeps old hashed chunks on purpose
   (open tabs mid-deploy); static pages are not content-hashed, so a deleted page must
   actually leave the bucket rather than linger at its old URL.
+
+## Cross-store filter options — the synthetic status sentinel
+
+The Trips screen's Status dropdown is fed by `MasterTripStatus` (legacy MSSQL,
+via the batched `GET /reference-data`), but one of its options — **Rejected** —
+has no row there. Rejected trips are immutable `ArchivedTrip` snapshots in
+Postgres (#290): they are deliberately never written back to MSSQL, whose
+`LongDistanceDispatchActivity` AFTER triggers must not re-fire.
+
+The pattern for a filter option that spans the two stores:
+
+- Keep the sentinel in **one** module (`utils/rejected-status-filter.ts`) — the
+  constant, the option object, and the `split*` function that separates it from
+  the live query. Nothing else may hardcode the string.
+- Append it via an explicit `extraOptions` prop on the shared dropdown, at the
+  **one** call site that wants it. Do not bake it into the dropdown component:
+  the same control elsewhere would then offer a status nothing can be saved to.
+- Strip it in the **thunk**, not the container. `TripStatus_id` is an `int`
+  column that `trips-list.ts` binds into `TripStatus_id IN (@p0, …)`, so a
+  sentinel that reaches MSSQL fails the conversion and 500s the _entire_ list —
+  not just the part it was meant to add. The thunk is the single choke point
+  every dispatcher goes through; a container-level strip leaks through any
+  other caller.
+- Watch the empty-list trap: stripping the sentinel from a single-selection
+  filter leaves `[]`, which `buildWhere` reads as "no status filter" and answers
+  with the TOP 100 of everything. Short-circuit on an `onlyRejected` flag and
+  dispatch an empty list instead of firing the query.
+
+Known limitation, by design: the other filters (dates, states, planner,
+dispatcher, weight) are SQL predicates against `TripMaster` and do **not** apply
+to the Postgres snapshots. Selecting "Rejected" with no driver lists every
+snapshot in the tenant.
