@@ -827,14 +827,14 @@ describe('OWED — [SD §10.5]: dwell classification to A5, custody authority to
     expect(hasAuthorityRow('storeIn')).toBe(false)
   })
 
-  it('F3 — the `handover` row is owed, and its `boundBy` may not be `CUSTODY`', () => {
+  it('F3, resolved — the `handover` row is row 12, and its `boundBy` is `KEY` not `CUSTODY`', () => {
     // [SD §4.7.1]'s handover row is a SHAPE, not a standing table. Which side wins when the two
     // halves of a handover disagree cannot be answered by a `CUSTODY` binding, "because A8-MOVE
     // would then be defined in terms of the thing it defines" ([SD §4.8.2]) — and [SD §4.7.1] used
     // to give the row `boundBy = CUSTODY` anyway. The two sentences contradicted each other, and
     // F1's fix made the contradiction load-bearing, because the fold now depends on selecting among
     // paired handover assertions. [SD §4.7.2f] §7.4 resolves it: the binding is owed, expressly not
-    // `CUSTODY`. Recorded as **F3** in `findings-from-alloy.md`, open.
+    // `CUSTODY`. Recorded as **F3** in `findings-from-alloy.md`, and now resolved there.
     // **F3 is closed, and the half that mattered is the one this line still checks:** the binding
     // is NOT `CUSTODY`. It is `KEY` — authority belongs to the role the fact's own qualifier names
     // (A8-KEY, [A8 §5] row 12), which reads the key rather than the fold and so cannot define
