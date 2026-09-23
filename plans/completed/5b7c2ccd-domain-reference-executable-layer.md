@@ -1,5 +1,12 @@
 # Domain reference model — executable layer (TypeScript + Alloy)
 
+> **ARCHIVED PLAN — not a record.** Its work landed in **`5b7c2ccd`** (PR #712) and this file is the
+> plan **as it was written beforehand**, moved here on 2026-09-23 so `plans/in-progress/` stops
+> reading as in-flight. It was never rewritten into a post-hoc record the way
+> `domain-reference-a4-reasons.md`, `-a8-authority-rows.md` and `-a1-order-lifecycle.md` were, so
+> read it as intent rather than as an account of what shipped — where the two differ, the code and
+> the analysis documents win. What shipped is `packages/domain-reference/` and its `alloy/` models.
+
 **Type/slug:** `feat` / `domain-model`
 **Goal:** turn the settled structural decisions into a specification that compiles, runs and
 fails loudly — types, pure predicates, Alloy specs and an executable scenario suite.

@@ -266,14 +266,15 @@ re-raises them: the four merged worktrees were removed — `a1-lifecycle`, `doma
 
 What is actually left:
 
-- **Two spent plans are still sitting in `plans/in-progress/`, and they are not in-flight.** This is
-  the known trap that `plans/in-progress/` is **not** an in-flight signal (#567): the directory accumulates
-  plans whose work shipped. `domain-model.md` is the executable layer, which **landed** as
-  `5b7c2ccd` / PR #712; `domain-reference-model.md` is the research corpus, which **landed** as
-  `34713637` / PR #705. Both worktrees are gone. Neither has a record in `plans/completed/`, which
-  is why moving them is a judgement call rather than a chore — a plan is not a record, and this
-  effort's convention is that the session which finishes the work **rewrites** the plan as a record.
-  **Of the three `domain-reference*` files in `plans/in-progress/`, this one is the only live plan.**
+- **The two spent plans have been moved out — DONE.** `plans/in-progress/` is **not** an in-flight
+  signal (#567) and had accumulated two plans whose work had shipped. They are now
+  `plans/completed/5b7c2ccd-domain-reference-executable-layer.md` (was `domain-model.md`, landed
+  `5b7c2ccd` / PR #712) and `plans/completed/34713637-domain-reference-research-corpus.md` (was
+  `domain-reference-model.md`, landed `34713637` / PR #705), hash-prefixed to match the dominant
+  naming in that directory. **Each carries a banner saying it is an archived _plan_ and not a
+  record** — neither was ever rewritten into one the way the A4, A8 and A1 records were — so read
+  them as intent, and prefer the code and the analysis documents where the two differ.
+  **This is now the only `domain-reference*` plan in `plans/in-progress/`, and it is the live one.**
 - **Separate repo, unrelated to this plan** — `~/repos/pegasus-workflows`,
   `platform/integrations/weichert/rules.json`: six rules carry `sourceRef: "Weichert API: …"` quoting
   sentences that appear nowhere in `weichert-api.odt`. Confirmed by the user: they came from
