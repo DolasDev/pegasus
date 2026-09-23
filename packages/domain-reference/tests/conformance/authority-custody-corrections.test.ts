@@ -20,6 +20,7 @@ import {
   authorityMovesAtHandover,
   authorityToDeclare,
   authoritativeHolderAt,
+  jointRuleApplies,
   contestAfterRetraction,
   corroborationIsIndependent,
   custodyAt,
@@ -294,15 +295,21 @@ describe('[A8 §4.2] A8-INSTANT, and [A8 §7.6] why the origin agent loses', () 
 })
 
 describe('[A8 §5] the table', () => {
-  it('has eleven rows and marks every other fact class owed', () => {
+  it('has sixteen rows and still marks every fact class it does not reach owed', () => {
     const rowed = Object.values(AUTHORITY_TABLE).filter((entry) => 'a8Row' in entry)
-    expect(rowed).toHaveLength(11)
+    // Eleven at `0.1.0`; rows 12-16 closed the five of [A8 §9 item 8]'s owed rows the corpus
+    // supports — `handover` (F3), `weight.gross`, `weight.tare`, `packing`, `pieceCount`.
+    expect(rowed).toHaveLength(16)
     expect(hasAuthorityRow('arrival')).toBe(true)
-    expect(hasAuthorityRow('packing')).toBe(false)
-    // Owed is a VALUE, not an absence — an owed row still names what it is owed to.
-    const packing = AUTHORITY_TABLE.packing
-    expect(packing.row.owed).toBe('authorityRow')
-    expect(packing.row.owedTo).toContain('A8 §9 item 8')
+    expect(hasAuthorityRow('packing')).toBe(true)
+    expect(hasAuthorityRow('handover')).toBe(true)
+    // Owed is a VALUE, not an absence — an owed row still names what it is owed to. Fourteen
+    // remain, and `tripDelay` is one the corpus cannot close: no source binds a plan change to an
+    // asserting role ([A8 §9 item 8]).
+    expect(hasAuthorityRow('tripDelay')).toBe(false)
+    const tripDelay = AUTHORITY_TABLE.tripDelay
+    expect(tripDelay.row.owed).toBe('authorityRow')
+    expect(tripDelay.row.owedTo).toContain('A8 §9 item 8')
   })
 
   it('[A8 §4.4] A8-NAMED — the recency registry is empty, for every fact class', () => {
@@ -327,6 +334,39 @@ describe('[A8 §5] the table', () => {
     })
     // Asking without an aspect is asking which of a proposal and a price wins. It gets no holder.
     expect(authoritativeHolderAt('charge', base).kind).toBe('owed')
+  })
+
+  it('[A8 §5 r16] pieceCount has TWO standings, and the split is in the code not the prose', () => {
+    const base = {
+      at: factInstant('2026-03-10T00:00:00Z'),
+      custody: custodyAt(S, afterT1, evidence),
+    }
+    // AWAY from a custody boundary: the party holding the goods, resolved through the same path a
+    // `held` spec takes — so the C5 amendment is not duplicated.
+    expect(authoritativeHolderAt('pieceCount', base)).toMatchObject({
+      holder: { kind: 'custodyHolder' },
+    })
+    expect(
+      authoritativeHolderAt('pieceCount', { ...base, atCustodyBoundary: false }),
+    ).toMatchObject({ holder: { kind: 'custodyHolder' } })
+    // AT a boundary the answer is row 9's: A8-JOINT reaches "condition AND the counts asserted with
+    // it", so it is jointly held and NO single side may be selected.
+    expect(authoritativeHolderAt('pieceCount', { ...base, atCustodyBoundary: true }).kind).toBe(
+      'joint',
+    )
+    // The regression this guards against, stated so it cannot come back: while row 16 was owed, a
+    // boundary count was refused outright; a `held`/`custodyHolder` row would have AUTHORISED one
+    // side at a boundary, contradicting row 9. It must still refuse.
+    const claim = { kind: 'role', role: 'destinationAgent' } as const
+    expect(
+      authorityToDeclare('pieceCount', claim, { ...base, atCustodyBoundary: true }),
+    ).toMatchObject({ kind: 'UNAUTHORISED' })
+    // And the published predicate agrees with the table, which is the point of having both.
+    expect(jointRuleApplies('pieceCount', true)).toBe(true)
+    expect(jointRuleApplies('pieceCount', false)).toBe(false)
+    expect(jointRuleApplies('condition', true)).toBe(true)
+    // Absence of the flag is not a default that over-authorises: it reads as away-from-boundary.
+    expect(jointRuleApplies('loading', true)).toBe(false)
   })
 
   it('[A8 §7.5] A8-PRINCIPAL moves only what is bound to the principal', () => {
@@ -545,7 +585,7 @@ describe('[SD §6] corrections — every attempt recorded, no refusal path', () 
   })
 
   it('an owed row never silently authorises', () => {
-    expect(authorityToDeclare('packing', { kind: 'role', role: 'originAgent' }, context)).toEqual({
+    expect(authorityToDeclare('tripDelay', { kind: 'role', role: 'hauler' }, context)).toEqual({
       kind: 'UNAUTHORISED',
       because: 'NO_AUTHORITY_ROW_FOR_THIS_FACT_CLASS',
     })

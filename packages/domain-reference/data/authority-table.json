@@ -5,7 +5,6 @@
   "owedNote": "Owed is a value, never an absence. A standing names role-enum members in 'roles' and every asserter designation that is NOT an enum member in 'unresolved', each carrying what it is owed to — usually [A8 §9 item 2] (the role vocabulary is undefined), sometimes [A8 §9 item 1] (there is no party entity), and in row 9's case not owed at all but COMPUTED by custodyAt. An empty standing is written as an empty standing with a note saying so; it never arrives as a missing key.",
   "structuralObservation": "[A8 §5]'s own closing paragraph: three of eleven rows have no authoritative role — weight.net and sitEntryDate are empty, condition is plural rather than empty. 'That is not a failure of the table. In each case a source supplies something BETTER than a role — a value rule, a mandatory derivation, or a joint record — and the table's job is to say so rather than to invent a winner.' [ORIGINAL] as an observation. Those are exactly the three rows carrying a 'settlement', which is [A8 §4.4] A8-NAMED holding: where authoritative is empty or plural, a tie-break rule MUST be named and 'a resolution may never fall back to latest wins implicitly'.",
   "overlapNote": "A role may appear in two standings on one row: [A8 §5 r1] has destinationAgent corroborating at its own end AND competing at destination. The loader does not forbid the overlap, because the document requires it.",
-
   "rows": [
     {
       "row": 1,
@@ -79,7 +78,11 @@
           "unresolved": [],
           "note": "as row 1."
         },
-        "competing": { "roles": ["destinationAgent"], "unresolved": [], "note": "as row 1." },
+        "competing": {
+          "roles": ["destinationAgent"],
+          "unresolved": [],
+          "note": "as row 1."
+        },
         "advisory": {
           "roles": ["booker", "platform"],
           "unresolved": [
@@ -113,7 +116,11 @@
           "note": "loadAgent; originAgent where no separate load agent is assigned. src:sirva-ade carries both types (GSD p.9). Two members, one applying at a time — not a plural authority, so no tie-break is owed.",
           "cardinality": "alternatives"
         },
-        "corroborating": { "roles": ["driver", "customer"], "unresolved": [], "note": null },
+        "corroborating": {
+          "roles": ["driver", "customer"],
+          "unresolved": [],
+          "note": null
+        },
         "competing": {
           "roles": ["customer"],
           "unresolved": [],
@@ -147,8 +154,16 @@
           "note": "unloadAgent; destinationAgent where none is separately assigned.",
           "cardinality": "alternatives"
         },
-        "corroborating": { "roles": ["driver", "customer"], "unresolved": [], "note": null },
-        "competing": { "roles": ["customer"], "unresolved": [], "note": null },
+        "corroborating": {
+          "roles": ["driver", "customer"],
+          "unresolved": [],
+          "note": null
+        },
+        "competing": {
+          "roles": ["customer"],
+          "unresolved": [],
+          "note": null
+        },
         "advisory": {
           "roles": ["booker", "originAgent", "platform"],
           "unresolved": [],
@@ -182,7 +197,11 @@
           "note": "rr19Agent under a Reverse Rule 19.",
           "cardinality": "alternatives"
         },
-        "corroborating": { "roles": ["driver", "hauler"], "unresolved": [], "note": null },
+        "corroborating": {
+          "roles": ["driver", "hauler"],
+          "unresolved": [],
+          "note": null
+        },
         "competing": {
           "roles": ["customer"],
           "unresolved": [],
@@ -226,7 +245,11 @@
           "unresolved": [],
           "note": "hauler/originAgent assert the weighing; customer/accountParty assert the reweigh. Both sides are eligible to win under the named value rule, which is what makes 'competing' the most important of the four standings ([A8 §4.1] note 3)."
         },
-        "advisory": { "roles": ["platform", "booker"], "unresolved": [], "note": null }
+        "advisory": {
+          "roles": ["platform", "booker"],
+          "unresolved": [],
+          "note": null
+        }
       },
       "settlement": {
         "kind": "valueRule",
@@ -318,7 +341,11 @@
           "unresolved": [],
           "note": "The collecting hauler. This is a handoff, so the exception-sheet rule applies ([A8 §7.3])."
         },
-        "advisory": { "roles": ["booker", "platform"], "unresolved": [], "note": null }
+        "advisory": {
+          "roles": ["booker", "platform"],
+          "unresolved": [],
+          "note": null
+        }
       },
       "settlement": null,
       "inputAuthority": null,
@@ -354,7 +381,10 @@
         "corroborating": {
           "roles": [],
           "unresolved": [
-            { "designation": "the non-inspecting parties", "owedTo": "[A8 §9 item 2]" }
+            {
+              "designation": "the non-inspecting parties",
+              "owedTo": "[A8 §9 item 2]"
+            }
           ],
           "note": null
         },
@@ -368,7 +398,11 @@
           ],
           "note": "'This is the competing case by construction.'"
         },
-        "advisory": { "roles": ["platform", "booker"], "unresolved": [], "note": null }
+        "advisory": {
+          "roles": ["platform", "booker"],
+          "unresolved": [],
+          "note": null
+        }
       },
       "settlement": {
         "kind": "joint",
@@ -405,7 +439,10 @@
         "corroborating": {
           "roles": [],
           "unresolved": [
-            { "designation": "the counterparty echoing the value back", "owedTo": "[A8 §9 item 2]" }
+            {
+              "designation": "the counterparty echoing the value back",
+              "owedTo": "[A8 §9 item 2]"
+            }
           ],
           "note": "src:dcsa states the echo-back obligation; src:sirva-ade performs it (ExternalReference = 'Agent's internal lead reference', LEP p.3)."
         },
@@ -416,7 +453,12 @@
         },
         "advisory": {
           "roles": [],
-          "unresolved": [{ "designation": "everyone else", "owedTo": "[A8 §9 item 2]" }],
+          "unresolved": [
+            {
+              "designation": "everyone else",
+              "owedTo": "[A8 §9 item 2]"
+            }
+          ],
           "note": null
         }
       },
@@ -476,11 +518,18 @@
         "competing": {
           "roles": [],
           "unresolved": [
-            { "designation": "the performing role, on quantum", "owedTo": "[A8 §9 item 2]" }
+            {
+              "designation": "the performing role, on quantum",
+              "owedTo": "[A8 §9 item 2]"
+            }
           ],
           "note": null
         },
-        "advisory": { "roles": ["platform"], "unresolved": [], "note": null }
+        "advisory": {
+          "roles": ["platform"],
+          "unresolved": [],
+          "note": null
+        }
       },
       "settlement": null,
       "inputAuthority": null,
@@ -491,6 +540,228 @@
       "correctionRegimeNote": "Already settled against role, and not by this row: financial facts are corrected ONLY by an offsetting record, never by retraction ([SD §6.3]).",
       "outOfScopeNote": "[A8 §9 item 7]: revenue allocation is a different question from charge assertion and is A13's. This row must not be read as settling it.",
       "citations": ["[A8 §5 r11]", "[SD §4.7.2b]", "[SD §4.7.1]", "[SD §6.3]"]
+    },
+    {
+      "row": 12,
+      "type": "handover",
+      "family": "goods",
+      "boundBy": "KEY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "the role named on the key's own `side` — the releasing role for a RELEASE key, the receiving role for a RECEIPT key",
+              "owedTo": "Not owed — READ FROM THE KEY. The qualifier {releasing, receiving, side, occurrence} names both roles, so which one is authoritative is a property of the record and cannot be a fixed enum member. This is what breaks F3's circle: it reads the key, not custodyAt."
+            }
+          ],
+          "note": "EXACTLY ONE, and computable from the record alone — so A8-NAMED never fires and there is no value rule to name, which is why this is a sixth boundBy and not NONE. F1 gave handover the qualifier that makes this possible; before F1 the two sides did not key differently. The row therefore carries NO settlement: settlement.kind is valueRule | derivation | joint, and A8-KEY is none of those — it is what boundBy = KEY MEANS, stated once at rules/authority.ts's A8_KEY and not a tie-break a resolution has to name.",
+          "cardinality": "one"
+        },
+        "corroborating": {
+          "roles": ["originAgent", "destinationAgent", "sitAgent"],
+          "unresolved": [],
+          "note": "The other side of the same transfer corroborates; it does not win. Absence of corroboration is not evidence ([A8 §4.1] note 1) — and a transfer gap is a custody UNKNOWN (C5), not an authority vacuum."
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "the role named on the OTHER side of the same transfer",
+              "owedTo": "Not owed — computed, as the authoritative standing. It may assert the same key and is recorded in considered[]; it may not be selected, because the side that may speak is a property of the code in the source (src:stedi-x12-reference issues J1 from the releasing carrier and R1 from the receiving one)."
+            }
+          ],
+          "note": "Two assertions about ONE side of one transfer is the contest F1 made routine and F3 found had no published rule to settle. A8-KEY settles it."
+        },
+        "advisory": {
+          "roles": ["platform", "booker"],
+          "unresolved": [],
+          "note": "A geofence may witness a departure; it may never witness a change of responsibility ([SD §5] M2/M3)."
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "src:stedi-x12-reference element 1650's interline pair J1/R1, issued from opposite sides — the side that may speak is already a property of the code in the source. src:uncefact-rec24 41 `Handed_over_under_continued_responsibility` vs 349 `Handed_over` supplies the custodyBasis the receipt carries (A8-MOVE, [A8 §7.1]); it does not say who may assert the handover, which is the part this row adds.",
+      "authored": "[SYNTHESIS]. The two-sided arrangement is stedi's; binding AUTHORITY to it — and therefore adding KEY to [A8 §4.3]'s five — is this model's step. The general principle it is the first instance of is also ours: an act that MINTS the thing a binding follows can never be bound to that thing, which is why [SD §4.8.2] refused a custody fact class and why the nine lifecycle rows cannot use their natural bindings either ([A8 §9 item 8]).",
+      "confidence": "medium",
+      "confidenceNote": "Medium, not high, and the reason is worth keeping: stedi sources the ARRANGEMENT (who issues which code) and not the RANKING (whose assertion wins a contest). No source in the corpus ranks two assertions about one transfer, because no source in the corpus models a contest at all. Closing F3 removes a contradiction between two published sentences; it does not turn a synthesis into a citation.",
+      "citations": [
+        "[A8 §5 r12]",
+        "[A8 §4.3]",
+        "[SD §4.7.1]",
+        "[SD §4.7.2f]",
+        "[SD §4.8.2]",
+        "[findings-from-alloy]"
+      ]
+    },
+    {
+      "row": 13,
+      "type": "weight.gross",
+      "family": "goods",
+      "boundBy": "CUSTODY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["hauler", "originAgent"],
+          "unresolved": [],
+          "note": "The party that PERFORMED the weighing, which is the party holding the goods at the scale — hauler where the vehicle is on our trip, originAgent where the agent weighs. Which one applies is custodyAt(goods, instant) at the instant of the weighing (A8-INSTANT), never recency. Unlike row 6 this is NOT empty: a gross weight is an OBSERVATION someone made at a scale, and R-WEIGHT-LOWER settles the derived net, not its inputs.",
+          "cardinality": "alternatives"
+        },
+        "corroborating": {
+          "roles": ["weighMaster"],
+          "unresolved": [],
+          "note": "weighMaster supplies the EVIDENCE, not the assertion — src:cfr-49-375 §375.519(a)(1)-(6) puts the signature, the scale name and the scale location on the weigh master. Exactly as row 6."
+        },
+        "competing": {
+          "roles": ["customer", "accountParty"],
+          "unresolved": [],
+          "note": "The reweigh right, and it is the shipper's: src:cfr-49-375 §375.517 gives the shipper the reweigh demand before unloading begins and requires the freight bill to be based on the reweigh weight. A competing assertion here wins only through row 6's R-WEIGHT-LOWER on the NET, which is the mechanism this row hands the contest to."
+        },
+        "advisory": {
+          "roles": ["platform", "booker"],
+          "unresolved": [],
+          "note": null
+        }
+      },
+      "settlement": null,
+      "inputAuthority": {
+        "appliesTo": "weight.net",
+        "roles": ["hauler", "originAgent"],
+        "unresolved": [],
+        "note": "Gross and tare are the INPUTS to row 6's derived net. Row 6 is boundBy NONE because a value rule picks the net regardless of who asserted it; that says nothing about who may assert an input, and reading it as though it did is what left these two rows owed by a ledger that does not list them ([SD §4.7.1]'s own note on weight.gross)."
+      },
+      "evidence": "Row 6's citations, which [A8 §10] calls 'a citation' with 'Authored: nothing': src:cfr-49-375 §375.517 (the shipper's reweigh demand), §375.515(a)-(b) (non-observation is a presumed waiver; giving up observing a REweighing needs a WRITTEN waiver), §375.519 (the weigh master signs); src:dtr-part-iv §D.7.a(4) (interested parties get reasonable opportunity to be present at a reweigh); src:dp3-tender-of-service #11/#15/#16 (the weigh-and-enter duty is the TSP's, expressly 'to allow the customer or PPSO the opportunity to request a reweight'); src:dp3-400ng Item 4.",
+      "authored": "[SYNTHESIS]. Every party in this row is named by a source and so is every right. What is ours is separating the INPUT authority from row 6's value rule — the sources put the weighing duty on the TSP and the contest right on the shipper without ever saying who 'owns' a gross weight, because none of them models a contest.",
+      "confidence": "medium",
+      "confidenceNote": "[SD §4.7.1] carried the provisional 'the weighing party (Hauler/OriginAgent), weighMaster as evidence. Do not score on this.' This row adopts that reading and can be scored, because the roles and the rights are citations; the input/value-rule split is the only authored step. Capped at medium for the same reason row 12 is: the sources give duties, not rankings.",
+      "citations": ["[A8 §5 r13]", "[A8 §5 r6]", "[SD §4.4]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 14,
+      "type": "weight.tare",
+      "family": "goods",
+      "boundBy": "CUSTODY",
+      "sameAs": 13,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["hauler", "originAgent"],
+          "unresolved": [],
+          "note": "As row 13. [SD §4.7.1] states this row as 'as weight.gross' and nothing in the sources separates them: the same weighing, on the same scale, on the same ticket.",
+          "cardinality": "alternatives"
+        },
+        "corroborating": {
+          "roles": ["weighMaster"],
+          "unresolved": [],
+          "note": "weighMaster supplies the EVIDENCE, not the assertion — src:cfr-49-375 §375.519(a)(1)-(6) puts the signature, the scale name and the scale location on the weigh master. Exactly as row 6."
+        },
+        "competing": {
+          "roles": ["customer", "accountParty"],
+          "unresolved": [],
+          "note": "The reweigh right, and it is the shipper's: src:cfr-49-375 §375.517 gives the shipper the reweigh demand before unloading begins and requires the freight bill to be based on the reweigh weight. A competing assertion here wins only through row 6's R-WEIGHT-LOWER on the NET, which is the mechanism this row hands the contest to."
+        },
+        "advisory": {
+          "roles": ["platform", "booker"],
+          "unresolved": [],
+          "note": null
+        }
+      },
+      "settlement": null,
+      "inputAuthority": {
+        "appliesTo": "weight.net",
+        "roles": ["hauler", "originAgent"],
+        "unresolved": [],
+        "note": "Gross and tare are the INPUTS to row 6's derived net. Row 6 is boundBy NONE because a value rule picks the net regardless of who asserted it; that says nothing about who may assert an input, and reading it as though it did is what left these two rows owed by a ledger that does not list them ([SD §4.7.1]'s own note on weight.gross)."
+      },
+      "evidence": "As row 13 — the same weighing and the same ticket. src:cfr-49-375 §375.519's ticket carries both.",
+      "authored": "As row 13.",
+      "confidence": "medium",
+      "confidenceNote": "As row 13. The pair is deliberately two rows and not one: [SD §4.7.1] declares weight.gross and weight.tare as separate types, so collapsing them here would make the table disagree with the vocabulary. `sameAs` is how the table says 'this row is that row' without duplicating it.",
+      "citations": ["[A8 §5 r13]", "[A8 §5 r6]", "[SD §4.4]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 15,
+      "type": "packing",
+      "family": "goods",
+      "boundBy": "CUSTODY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["originAgent", "packer"],
+          "unresolved": [],
+          "note": "The mirror of row 3 (loading): the party performing the act on the goods while holding them. originAgent, or packer where the packing is separately resourced (src:sirva-ade's Packer, GSD pp.12-13). Which one applies is custodyAt(goods, instant) at the instant packed (A8-INSTANT).",
+          "cardinality": "alternatives"
+        },
+        "corroborating": {
+          "roles": ["customer", "destinationAgent"],
+          "unresolved": [],
+          "note": "The customer observes the pack; the destination agent sees the result at delivery. Neither has an obligation to speak, so silence is not evidence ([A8 §4.1] note 1)."
+        },
+        "competing": {
+          "roles": ["customer"],
+          "unresolved": [],
+          "note": "On SCOPE, not on performance — 'what did you actually pack'. src:cfr-49-375 §375.503(a) requires an itemized inventory identifying every carton and every uncartoned item with a number placed physically on each article, prepared before or at loading with the shipper given the opportunity to observe and verify; §375.503(d) gives the same opportunity at delivery. That is a published right to contest the scope of what was packed."
+        },
+        "advisory": {
+          "roles": ["platform", "booker"],
+          "unresolved": [],
+          "note": "M2/M3 forbid a machine asserting any act in the act-performance family ([SD §5])."
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "src:cfr-49-375 §375.503(a) and (d) — the itemized inventory, per-article numbering, and the shipper's opportunity to observe, verify and note in writing at both ends. src:dp3-400ng Item 17.12.c requires the condition of EACH ARTICLE as received and forwarded, which is row 9's citation and reaches the packing that produced the cartons. src:sirva-ade resources a Packer separately (GSD pp.12-13). src:macropoint x025 'rework needed: not sealed or wrapped securely' is the exception vocabulary's acknowledgement that packing quality is contestable, and [A4 §3]'s GOODS_NOT_READY carries it.",
+      "authored": "[SYNTHESIS]. The roles and the shipper's right are citations; MIRRORING row 3 — treating packing performance as the same shape as loading performance because both are acts performed on the goods by the holder — is ours. [SD §4.7.1] carried it as the provisional reading and barred scoring on it.",
+      "confidence": "medium",
+      "confidenceNote": "A8 §9 item 8 named 'packing performance' as uncovered. It is covered now, at medium: the mirror is a short step from a sourced row and the contest right is published, but no source states an authority ranking for packing any more than for loading.",
+      "citations": ["[A8 §5 r15]", "[A8 §5 r3]", "[SD §4.7.1]", "[A4 §3]"]
+    },
+    {
+      "row": 16,
+      "type": "pieceCount",
+      "family": "goods",
+      "boundBy": "CUSTODY",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "the party holding the goods at the instant counted",
+              "owedTo": "Not owed — COMPUTED. custodyAt(goods, instant) at the instant the count is ABOUT ([SD §4.8.3], A8-INSTANT), so it cannot be a fixed enum member. Same treatment as row 9."
+            }
+          ],
+          "note": "AWAY FROM A CUSTODY BOUNDARY, which is the half [SD §4.7.1] left owed: a count is an observation, and the party holding the goods is the one who can make it. AT a boundary the row is row 9's — A8-JOINT reaches 'condition AND the counts asserted with it', so the count is JOINTLY held and selected[] may be empty. Two standings for one type, split by whether the instant is a boundary, and the split is A8-INSTANT's to compute.",
+          "cardinality": "one"
+        },
+        "corroborating": {
+          "roles": ["customer", "originAgent", "destinationAgent"],
+          "unresolved": [],
+          "note": "Whoever else was present. src:cfr-49-375 §375.503 gives the shipper the opportunity to verify at both ends."
+        },
+        "competing": {
+          "roles": ["customer", "accountParty"],
+          "unresolved": [],
+          "note": "A count is the thing a shortage claim is built on, so the right to contest it is the same right row 9 publishes: §375.503(d)'s opportunity to note missing articles IN WRITING and receive a copy of the notations. [A4 §3]'s GOODS_MISSING is the reason code that records the disagreement. `accountParty` competes here and NOT on row 15, and the difference is deliberate: a count is a billing and claims input — the same reason row 6 has both `customer` and `accountParty` competing over weight — whereas packing performance is neither. Row 15 mirrors row 3, which has `customer` alone."
+        },
+        "advisory": {
+          "roles": ["platform", "booker"],
+          "unresolved": [],
+          "note": null
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "src:cfr-49-375 §375.503(a) — an itemized inventory identifying 'every carton and every uncartoned item' with a number physically on each article — and §375.503(d), the opportunity to verify, to note missing articles in writing and to receive a copy. src:dp3-400ng Item 17.13 identifies a partial SIT withdrawal by INVENTORY ITEM NUMBERS, only complete cartons or item numbers, and requires the TSP to obtain the actual weight of the portion withdrawn — a count performed by the holder, published as a duty. Row 9's citations reach the boundary case.",
+      "authored": "[SYNTHESIS]. The boundary half is row 9's, quoted. The away-from-boundary half reasons from the same sources: every published counting duty falls on the party holding the goods. Splitting one type's standing by whether the instant is a custody boundary is ours, and it is the shape A8-INSTANT already requires — standing is a function of the instant, so a type may have two.",
+      "confidence": "medium",
+      "confidenceNote": "The row was CONDITIONAL, not owed: [SD §4.7.1] already answered the boundary case through A8-JOINT and left the rest open. This closes the rest at medium — the counting duties are citations, the instant-dependent split is authored.",
+      "citations": ["[A8 §5 r16]", "[A8 §5 r9]", "[A8 §7.3]", "[SD §4.7.1]", "[SD §5.4]", "[A4 §3]"]
     }
   ]
 }

@@ -43,6 +43,7 @@ import {
   type Outcome,
   type ReasonScope,
 } from './outcomes'
+import type { BoundBy } from './rules/authority'
 import {
   ASSERTION_TYPES,
   CANONICAL_SUBJECT_FAMILY,
@@ -227,8 +228,28 @@ export const SCORINGS = ['capped-medium', 'do-not-score'] as const
 export type Scoring = (typeof SCORINGS)[number]
 
 /** [A8 §4.3]. */
-export const BOUND_BY_VALUES = ['CUSTODY', 'ASSIGNMENT', 'SCHEME', 'PRINCIPAL', 'NONE'] as const
+export const BOUND_BY_VALUES = [
+  'CUSTODY',
+  'ASSIGNMENT',
+  'SCHEME',
+  'PRINCIPAL',
+  'NONE',
+  'KEY',
+] as const
 export type BoundByValue = (typeof BOUND_BY_VALUES)[number]
+
+/**
+ * `BOUND_BY_VALUES` here and `BOUND_BY` in `rules/authority.ts` are **one enum held in two places**,
+ * and this is the line that says so. The check lives on this side because the loader is what
+ * validates data against the model; the pure model must not import the reader.
+ *
+ * Added while closing F3, because adding `KEY` meant editing both places and nothing would have
+ * caught editing only one. It is the defect the reason vocabulary had one layer down — a table and
+ * an enum with no set comparison between them — and the same fix ([A4 §3]).
+ */
+export type BoundByMatchesTheModel = Exact<BoundByValue, BoundBy>
+const _boundByMatchesTheModel: BoundByMatchesTheModel = true
+void _boundByMatchesTheModel
 
 /**
  * What a row may say about `boundBy`.

@@ -1338,9 +1338,14 @@ function renderOwed(model: Model, table: CanonicalTable, lines: string[]): void 
   const owedRows = table.rows.filter((row) => row.authority.status !== 'assigned')
   lines.push(
     `${owedRows.length} of ${table.rows.length} declared types carry an authority that is owed in ` +
-      'whole or in part. [A8 §9 item 8] is the ledger: "cube, piece count, packing performance, ' +
-      'survey/estimate facts, ETA, seal integrity, tracer results, claim facts, and every A10/A11 ' +
-      'class. **Each needs a row before its area can score a dependent decision high.**"',
+      'whole or in part, and [A8 §9 item 8] is the ledger. It used to read as a to-do list; it now ' +
+      'separates the two reasons a row can be missing. **Twelve of these are blocked on the ' +
+      'corpus**, not on effort — no external source binds a plan change, a membership offer, an ' +
+      'assignment or an order award to an asserting role, so a row for one would be [ORIGINAL] and ' +
+      '[SD §4.7] note 3 bars a provisional reading from scoring anyway. **Two are owed to A8 ' +
+      'itself**: `partyRole` (the party entity and the role enum) and `notification` (a role ' +
+      'resolved to a contactable address). Five came off this list at [A8 §5] rows 12-16 — ' +
+      '`handover`, `weight.gross`, `weight.tare`, `packing` and `pieceCount`.',
   )
   lines.push('')
   for (const row of sortedBy(owedRows, (candidate) => candidate.type)) {

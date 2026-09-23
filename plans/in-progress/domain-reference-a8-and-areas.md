@@ -1,13 +1,19 @@
-# Domain reference — A8's authority rows and the unwritten areas: plan and resumption state
+# Domain reference — the unwritten areas: plan and resumption state
 
 **Written 2026-09-22, revised 2026-09-23** to be read by a session with **no prior context**.
 Everything needed to resume is here or is named by path. Read this whole file before starting.
 
-**Deliverable 1 of the previous revision — the A4 reason vocabulary — LANDED.** Its record, including
-five findings worth not rediscovering, is `plans/completed/domain-reference-a4-reasons.md`. Read that
-first; it is short.
+**Two deliverables have landed since this file was first written.** Read their records first; both are
+short, and each carries findings worth not rediscovering:
 
-**Next deliverable:** **A8's owed authority rows** (§5). Then the unwritten area comparisons (§6).
+- `plans/completed/domain-reference-a4-reasons.md` — the A4 reason vocabulary, 23 codes.
+- `plans/completed/domain-reference-a8-authority-rows.md` — **A8 §5 rows 12-16**, closing F3 and F5.
+  **Read its "headline" section before planning any area work**: the expectation that authority rows
+  "unblock scoring in every area" turned out to be wrong for twelve of them, and the reason is about
+  the corpus, not about effort.
+
+**Next deliverable:** the **unwritten area comparisons** (§6) — A1, A2, A5, A6, A7, A9 have no area
+analysis at all. §5 is what remains of the A8 work and is now small.
 
 ---
 
@@ -18,8 +24,9 @@ only. It has three layers that are all live: a **research corpus** (`docs/domain
 87 sources, 32 analysed), a **binding decision layer** (`docs/domain-reference/analysis/`), and an
 **executable specification** (`packages/domain-reference/`) whose glossary and published event
 catalog are both **generated from the code and gated against drift**. The catalog is at `specVersion`
-**0.2.0** — A4 published the reason vocabulary, which took it off `0.1.0`. What keeps it pre-1.0 now
-is **the authority rows**, and no amount of vocabulary work moves that.
+**0.3.0**. A4 published the reason vocabulary; A8's rows 12-16 added `keySideRole` to a published
+enum. What keeps it pre-1.0 is the **fourteen remaining authority rows** — and twelve of those are
+blocked on the corpus, so it may stay pre-1.0 for a while. That is honest, not a failure.
 
 ---
 
@@ -115,7 +122,7 @@ Settled, executable, and gated. Safe to design against today:
 
 ---
 
-## 4. Landing a change to a published vocabulary — the recipe A4 established
+## 4. Landing a change to a published vocabulary — the recipe A4 and A8 established
 
 Follow this order; it is what made A4 land without a false green.
 
@@ -138,29 +145,44 @@ Follow this order; it is what made A4 land without a false green.
 7. Run `npx prettier --check` over `docs/domain-reference` and `packages/domain-reference` **before**
    committing. `packages/domain-reference/alloy/run.mjs` fails this on `main` already — pre-existing,
    not yours.
+8. **Read the emitted schema diff before classifying the change.** A8's rows looked like a pure
+   internal edit — `boundBy` is on no record — and `git diff docs/domain-reference/catalog/*.json`
+   showed a new `AuthoritativeHolder` member reachable from `ObligationRecipient`, which made it
+   `newClosedEnumMember` and a version bump. A compatibility claim argued from which fields _feel_
+   published is waiting to be wrong.
+9. **A data table may have more than two homes.** The authority table has **three** —
+   `data/authority-table.json`, the typed `AUTHORITY_TABLE` in `src/rules/authority.ts`, and the
+   authority column in `data/canonical-subjects.json` — and the generated owed inventory reads only the
+   third. The count did not move until all three agreed.
 
 ---
 
-## 5. Deliverable 1 — A8's owed authority rows (do this first)
+## 5. What is left of the A8 work — small, and mostly not A8's to do
 
-19 of 31. Since A4 landed this is **the** thing keeping the catalog pre-1.0, and it unblocks scoring
-in **every** area:
-`[A8 §10]`'s last row and `[SD §4.7]` note 3 both bar a provisional reading from scoring a dependent
-decision above medium.
+Rows 12-16 landed. **Fourteen rows remain owed, and only two are owed to A8.** Read
+`plans/completed/domain-reference-a8-authority-rows.md` and then `[A8 §9 item 8]`, which now separates
+the two reasons a row can be missing.
 
-- The ledger is `[A8 §9 item 8]`. The current list is generated — read the **Owed** section of
-  `docs/domain-reference/glossary.md`, never a copy of it.
-- **F3 and F5 land with this work**, and F5 is the one with a published consequence: role names
-  became fact-key components at F1, so their spelling is load-bearing. `ROLE_NAMES` in
-  `envelope.ts` pins A8-NAME-1's lower-camel spelling over `src:sirva-ade`'s capitalised cast, and
-  **the catalog now publishes that spelling on the wire**. If A8 settles the other way it is a
-  `changedRoleNameSpelling` — **breaking, a new major**. `[catalog §5]` item 2 records this.
-- **F4** — `ExternallyPerformedLeg.performedBy` has no consumer: `[SD §4.8.3]` rule 1 names it as a
-  fold input but `holder` comes solely from the selected receipt, and Alloy shows they can disagree.
+- **Owed to A8, and doable:** `partyRole` (§9 items 1-2 — the party entity and the role enum are both
+  undefined) and `notification` (§9 item 6 — nothing resolves a role to a contactable address). The
+  role enum is also what **A4 needs**: `roleClass` wants an explicit **non-party** member, because
+  `FORCE_MAJEURE` and `CAUSE_UNKNOWN` attribute to nobody and `roleClass` is mandatory.
+- **Owed to the corpus, twelve rows.** The plan-, binding- and commitment-side lifecycle acts —
+  `trip*`, `membership*`, `assignment*`, `order*`. **Do not write [ORIGINAL] rows for these.** They
+  would move the count and not the capability, and `[A8 §9 item 8]` explains the mechanism: their actor
+  is named in `context[]`, `[SD §1.4]` forbids resolution from keying on that, and moving it into a
+  qualifier is `changedQualifierShape` — breaking. Closing them needs **a new source**, which is a
+  research task (`sources/registry.yaml`), not an authoring one.
+- **F4** is the only open Alloy finding — `ExternallyPerformedLeg.performedBy` has no consumer.
+  `[SD §4.8.3]` rule 1 names it as a fold input but `holder` comes solely from the selected receipt, and
+  Alloy shows they can disagree. It is a fold question, not a row.
+- **Three pieces of the old `model/` layer are genuinely missing** and nobody has picked them up: **the
+  context map**, **the command side**, **the aggregate lifecycles**. The context map is the cheapest and
+  would help the area work below.
 
 ---
 
-## 6. Deliverable 2 — the unwritten area comparisons
+## 6. THE NEXT DELIVERABLE — the unwritten area comparisons
 
 In the order the model's own owed list keeps pointing at: **A1** (order lifecycle transition
 mapping), **A2** (shipment identity across a terminated SIT stay, with A5), **A5** (SIT). Then A6,
@@ -273,7 +295,7 @@ API**. If you extend either:
 
 ```bash
 cd ~/repos/pegasus && git fetch && git pull --ff-only    # primary checkout, parked on main
-scripts/workstream-start.sh feat a8-authority plans/in-progress/domain-reference-a8-and-areas.md
+scripts/workstream-start.sh feat area-a1 plans/in-progress/domain-reference-a8-and-areas.md
 ```
 
 Then work in the new worktree; the plan is seeded into `plans/in-progress/` there and commits with

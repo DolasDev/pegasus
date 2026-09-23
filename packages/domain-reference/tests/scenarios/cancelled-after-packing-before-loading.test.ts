@@ -306,12 +306,21 @@ describe('OWED — the charge exists, is anchored, and has no value', () => {
     expect(proposedCharge.value.provisional).toBeDefined()
   })
 
-  it('[A8 §9 item 8] and `packing` itself has no authority row', () => {
-    // So "the origin agent packed and says so" is not backed by a table: if the customer disputes
-    // the scope of what was packed, nothing published decides it.
-    expect(hasAuthorityRow('packing')).toBe(false)
-    expect(AUTHORITY_TABLE.packing.row.owedTo).toContain('A8 §9 item 8')
-    expect(AUTHORITY_TABLE.packing.provisional).toContain('Do not score on this')
+  it('[A8 §5] row 15 — `packing` now has an authority row, and the customer competes on scope', () => {
+    // This block used to record the gap: "the origin agent packed and says so" was not backed by a
+    // table, so a dispute about the SCOPE of what was packed had nothing published to decide it.
+    // Row 15 decides it, as the mirror of row 3 (loading) — which is the authored step.
+    expect(hasAuthorityRow('packing')).toBe(true)
+    const packing = AUTHORITY_TABLE.packing
+    expect(packing.a8Row).toBe(15)
+    expect(packing.boundBy).toBe('CUSTODY')
+    expect(packing.authoritative).toMatchObject({
+      kind: 'held',
+      primary: { kind: 'role', role: 'packer' },
+    })
+    // `src:cfr-49-375` §375.503(a) and (d) give the shipper the opportunity to observe, verify and
+    // note in writing at both ends — a published right to contest the scope.
+    expect(packing.competing).toContain('customer')
   })
 
   it('[SD §10.2 item 9] and what a shipment boundary that never got its BOL *is* remains owed', () => {
