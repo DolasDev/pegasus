@@ -12,7 +12,7 @@
 
 import type { SubjectRef } from './envelope'
 import type { PartyId } from './ids'
-import type { Exact, Instant, NonEmptyArray, Owed, OwedCode } from './primitives'
+import type { Exact, Instant, NonEmptyArray, OwedCode } from './primitives'
 import { assertNever } from './primitives'
 
 /**
@@ -257,9 +257,10 @@ export const REASON_CODES = [
    * Restricted`.
    *
    * This is also the code a destination-not-ready delivery carries when the goods go to storage in
-   * transit. The **remedy that opens a SIT stay is owed to A5** — `src:shippeo`'s analysis calls
-   * this "the deepest structural gap": in freight an exception is a retry, in household goods it
-   * starts a whole new phase. [A4 §5] item 2 carries that as owed.
+   * transit, and the remedy it carries is {@link OpensStay} — `src:shippeo`'s analysis calls this
+   * "the deepest structural gap": in freight an exception is a retry, in household goods it starts
+   * a whole new phase. [A5 §3.2] types it; the remedy is _permitted_ and not _required_ here, and
+   * [A5 §6] says why.
    */
   'PARTY_NOT_READY',
   /**
@@ -598,21 +599,122 @@ export interface NewWindow {
 }
 
 /**
+ * Where a storage-in-transit stay sits in the move — [A5 §3.2].
+ *
+ * Three members because three independent sources declare the location **at entry** and rate or
+ * administer the stay differently by it: `src:dp3-400ng` Items 17.4 and 17.5 (origin SIT and
+ * destination SIT are separate rate items, and Item 17.3 pools enroute SIT with them),
+ * `src:dtr-part-iv` §C.9.c (origin, in-transit and destination draw on **one cumulative pool** of
+ * authorised days, which is only expressible if each entry says which it is), and
+ * `src:weichert-supplier-api` (`sitInDateOrigin`/`sitOutDateOrigin` beside
+ * `sitInDateDestination`/`sitOutDateDestination`, odt:495-529 — four date fields because the
+ * location is fixed when the stay opens).
+ *
+ * `src:milmove-mymove`'s `SITLocationType` publishes **two** members, `ORIGIN` and `DESTINATION`.
+ * That is the narrower programme rather than a contradiction — DP3 moves under the DTR, whose
+ * §C.9.c arithmetic names in-transit SIT explicitly — so the wider enum is taken and the narrower
+ * one is recorded as its subset.
+ */
+export const STAY_LOCATIONS = [
+  /** `src:dp3-400ng` Item 17.4; `src:weichert-supplier-api` `sitInDateOrigin`. */
+  'ORIGIN',
+  /** `src:dtr-part-iv` §C.9.c's in-transit leg of the cumulative pool; `src:dp3-400ng` Item 17.3. */
+  'IN_TRANSIT',
+  /** `src:dp3-400ng` Item 17.5; `src:weichert-supplier-api` `sitInDateDestination`. */
+  'DESTINATION',
+] as const
+
+/** One member of {@link STAY_LOCATIONS}. [A5 §3.2] */
+export type StayLocation = (typeof STAY_LOCATIONS)[number]
+
+/**
+ * The remedy that **opens a storage-in-transit stay** — [A5 §3.2], the shape [A4 §5] item 2 owed to
+ * A5 and the one `PARTY_NOT_READY` was waiting for.
+ *
+ * It says what will be done about an act that did not happen, exactly as {@link NewWindow} does,
+ * and it is the other answer to the same question: a failed household-goods delivery is either
+ * retried at a new time or the goods go into storage. `src:shippeo`'s analysis is the statement of
+ * the gap — "in freight an exception is a *retry*… In HHG this exception starts **a whole new
+ * phase** — storage in transit, with its own in/out events, duration, charges and a later
+ * delivery-out leg" — and `src:dp3-400ng` Item 17.15 is the regulation that makes the second branch
+ * mandatory in fact: where delivery cannot be made and no alternative address is designated, "TSP
+ * will place the property under the SIT provision".
+ *
+ * **Two fields, and the argument for stopping there is [A5 §3.2]'s.** A remedy is a **promise**,
+ * not a performance: the goods reaching the warehouse floor is the later `storeIn` act, whose
+ * subject is this same stay ([SD §5.3]), and the accrual clock is the `sitEntryDate` derived from
+ * the first available delivery date — neither is knowable when the delivery fails. Everything the
+ * corpus hangs off a SIT record that is **not** in this shape is either a separate fact class
+ * ([A5 §3.6] records three as absent and owed) or a charge ([A5 §Cross-area] to A7).
+ *
+ * **Why the stay reference is not a second subject** ([SD §1.1] forbids "a second subject hidden
+ * inside the payload"). That prohibition exists because two subjects make [SD §4.3]'s resolution
+ * rule undecidable. A remedy cannot reach it: reasons are not facts, they are never resolved by a
+ * `FactResolved`, and [SD §1.3]'s fact key reads `subject` and `type` and never the payload. The
+ * ref here is a **forward reference to an aggregate that acquires its facts elsewhere** — the first
+ * thing to assert anything about this stay is a `storeIn` whose envelope `subject` it is.
+ *
+ * **What it does not do: authorise the stay.** `src:dtr-part-iv` §D.5.a makes entry a three-party
+ * act — the TSP requests in DPS, the PPSO approves or denies, DPS issues the SIT control number —
+ * and `src:atlas-world-group-api` carries the same shape as `supervisor_approval_by`/`_on` beside
+ * an `auto_authorized` flag. That act is its own fact class, and it is **absent and owed**
+ * ([A5 §3.6]): its asserting role is a Government transportation office, a party class
+ * [A8 §9 item 1] has not defined.
+ */
+export interface OpensStay {
+  /**
+   * The stay this remedy opens. [SD §10.4]: "the `stay` is an aggregate with its own identity and
+   * its own subject kind", and [SD §7.4] gives it a published identifier — `src:dtr-part-iv`'s SIT
+   * control number, `YY` + Julian day of entry + a 4-digit intra-day sequence, one **per increment**
+   * of a split shipment.
+   *
+   * The model's stay id and that control number are not the same string and are not required to be:
+   * the control number is issued by DPS **on approval**, which is after this remedy is published,
+   * and it reaches the model as an `identity` assertion about this subject under I-KEY ([SD §7.1]).
+   */
+  readonly stay: SubjectRef<'stay'>
+  /** Where the stay sits. Fixed at entry — see {@link STAY_LOCATIONS}. */
+  readonly location: StayLocation
+}
+
+/**
  * [SD §2.4] "A reason may carry its own remedy, and for some codes must."
  *
- * A4 types the one shape a source states and carries the rest as owed, rather than inventing shapes
- * to make the union look finished ([SD §0]). Which codes **require** a remedy is published per code
- * in `data/reasons.json`; `PARTY_ABSENT` and `PARTY_RESCHEDULED` are the two that do, and
- * {@link NewWindow} is what they carry.
+ * Two shapes, both sourced. Which codes **require** a remedy is published per code in
+ * `data/reasons.json`; `PARTY_ABSENT` and `PARTY_RESCHEDULED` are the two that do, and
+ * {@link NewWindow} is what they carry. {@link OpensStay} is **permitted everywhere and required
+ * nowhere** — [A5 §6] is the argument, and it turns on the fact that `src:dp3-400ng` Item 17.15
+ * compels the **placement** and no source compels the **record**.
  *
- * Still owed: a remedy that **opens a storage-in-transit stay**, which is the remedy
- * `PARTY_NOT_READY` wants and which `src:shippeo`'s analysis calls "the deepest structural gap" —
- * in freight an exception is a retry, in household goods it starts a whole new phase. That belongs
- * to A5, not here.
+ * The union no longer carries an `Owed` member. A4 typed the one shape a source stated and left the
+ * other owed rather than inventing it ([SD §0]); A5 is the area that owed it, and no remaining
+ * remedy shape has a named requester anywhere in the corpus — so the owed value is discharged
+ * rather than re-owned. [A5 §6] records what a third shape would have to look like to earn one.
  */
-export type Remedy =
-  | { readonly newWindow: NewWindow }
-  | Owed<'remedy', 'A5 — a remedy that opens a SIT stay; [SD §2.4] rule 5 types only newWindow'>
+export type Remedy = { readonly newWindow: NewWindow } | { readonly opensStay: OpensStay }
+
+/**
+ * The discriminating key of each {@link Remedy} member — the vocabulary `data/reasons.json`'s
+ * `remedyShape` column is drawn from, and the one the loader checks it against.
+ *
+ * The column existed from [A4 §3] and was **ungated** until the union had two members: with one
+ * shape a wrong value could only be a typo, and with two it can silently promise a consumer a shape
+ * no producer is able to send. {@link RemedyShapesCoverTheUnion} is the other half — a third remedy
+ * shape that is not added here fails to compile rather than fails to be checked.
+ */
+export const REMEDY_SHAPES = ['newWindow', 'opensStay'] as const
+
+/** One member of {@link REMEDY_SHAPES}. [SD §2.4] rule 5 */
+export type RemedyShape = (typeof REMEDY_SHAPES)[number]
+
+/** The key of one member of the {@link Remedy} union. */
+type RemedyKey = Remedy extends infer R ? (R extends Remedy ? keyof R : never) : never
+
+/** Compile-time: {@link REMEDY_SHAPES} is exactly the union's keys, in both directions. */
+export type RemedyShapesCoverTheUnion = Exact<RemedyShape, RemedyKey>
+// A bare `Exact<>` alias evaluates to `never` and reports nothing; assigning `true` to it is
+// what makes it fail to compile. Same shape as `_catalogIsTheVocabulary` in `catalog.ts`.
+const _remedyShapesCoverTheUnion: RemedyShapesCoverTheUnion = true
 
 interface ReasonCommon {
   readonly scope: ReasonScope

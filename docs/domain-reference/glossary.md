@@ -21,6 +21,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Capture methods](#capture-methods-7) — 7
 - [Outcomes](#outcomes-5) — 5
 - [Reason scopes](#reason-scopes-6) — 6
+- [Stay locations](#stay-locations-3) — 3
 - [Reason codes](#reason-codes-24) — 24
 - [Role names](#role-names-18) — 18
 - [Membership forms](#membership-forms-3) — 3
@@ -28,7 +29,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Catalog faces](#catalog-faces-2) — 2
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
-- [Compatibility change classes](#compatibility-change-classes-12) — 12
+- [Compatibility change classes](#compatibility-change-classes-13) — 13
 - [Key functions and rules](#key-functions-and-rules-24) — 24
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
@@ -956,6 +957,34 @@ has". **[ORIGINAL]**, as `ACT`.
 - **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
 - **Declared by:** `REASON_SCOPES` in `packages/domain-reference/src/outcomes.ts`
 
+## Stay locations (3)
+
+Where a storage-in-transit stay sits in the move, carried by the `opensStay` remedy — [A5 §3.2]. Three members because three independent sources declare the location **at entry** and rate or administer the stay differently by it; `src:milmove-mymove` publishes two, which [A5 §3.2] records as the narrower programme rather than a contradiction. It is the one closed enum A5 adds to the wire.
+
+### `DESTINATION` (stay location)
+
+`src:dp3-400ng` Item 17.5; `src:weichert-supplier-api` `sitInDateDestination`.
+
+- **Cited:** _no document citation in the docstring_
+- **Corpus:** `src:dp3-400ng` · `src:weichert-supplier-api`
+- **Declared by:** `STAY_LOCATIONS` in `packages/domain-reference/src/outcomes.ts`
+
+### `IN_TRANSIT` (stay location)
+
+`src:dtr-part-iv` §C.9.c's in-transit leg of the cumulative pool; `src:dp3-400ng` Item 17.3.
+
+- **Cited:** _no document citation in the docstring_
+- **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv`
+- **Declared by:** `STAY_LOCATIONS` in `packages/domain-reference/src/outcomes.ts`
+
+### `ORIGIN` (stay location)
+
+`src:dp3-400ng` Item 17.4; `src:weichert-supplier-api` `sitInDateOrigin`.
+
+- **Cited:** _no document citation in the docstring_
+- **Corpus:** `src:dp3-400ng` · `src:weichert-supplier-api`
+- **Declared by:** `STAY_LOCATIONS` in `packages/domain-reference/src/outcomes.ts`
+
 ## Reason codes (24)
 
 The published reason vocabulary — the half of `(outcome, reason)` [SD §2.4] fixed the shape of and left to A4: "the list itself is A4's job". Rule 2 bounds its magnitude magnitude ("~20 reasons × 5 outcomes, not ~100 types") and not a quota. Every member is **orthogonal to the outcome** — `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA` _and_ its `REN/AVA`, one code under two outcomes — and **grain-independent**: a code does not change when the subject changes grain. `OTHER` is not a member: it is declared by the shape itself (rule 3) and carries a mandatory narrative the others do not. The per-code scope, attribution discipline and remedy obligation are joined from `packages/domain-reference/data/reasons.json`, which the loader holds to this list as a set.
@@ -1142,7 +1171,7 @@ A party was present but not ready, so the act waited or could not proceed — de
 - **Default scope:** `PARTY`
 - **Attribution:** `attribution.party` **required** — a party-side reason that cannot name the party is the `DIV` overload [SD §2.3] invariant 2 removes
 - **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
-- **Cited:** [[A4 §5]](analysis/A4-execution-events.md)
+- **Cited:** [[A5 §3.2]](analysis/A5-storage-in-transit.md#32-the-remedy-that-opens-a-stay--owed-item-1) · [[A5 §6]](analysis/A5-storage-in-transit.md)
 - **Corpus:** `src:dp3-400ng` · `src:dtr-part-iv` · `src:macropoint` · `src:shippeo` · `src:stedi-x12-reference` · `src:uncefact-rec24`
 - **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
 
@@ -1658,7 +1687,7 @@ cross-type payload filter would be filtering on a field that only some records c
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
-## Compatibility change classes (12)
+## Compatibility change classes (13)
 
 What may change within a major `specVersion` and what may not ([catalog §2.3]). **[SYNTHESIS]**: the classification is ours and each member is a consequence of a sourced rule that it names. `src:dcsa` publishes the _practice_ — per-release changelogs down to a renamed filter — but no source in the corpus publishes the rule.
 
@@ -1738,6 +1767,14 @@ A new `type`, with the canonical-subject declaration [SD §4.7] requires of ever
 existing row moves, and the new row is complete for the new version.
 
 - **Cited:** [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `publishedOwedShape` (change class)
+
+The **first** publication of a value **shape** that shipped as owed — the change A5 made to
+`Remedy`, replacing `Owed<'remedy', 'A5 — …'>` with `OpensStay` ([A5 §3.2]).
+
+- **Cited:** [[A5 §3.2]](analysis/A5-storage-in-transit.md#32-the-remedy-that-opens-a-stay--owed-item-1)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
 ### `publishedOwedVocabulary` (change class)
@@ -2040,7 +2077,6 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - `placeRef` — owed to [SD §1.2] — no `place` aggregate _(`packages/domain-reference/src/custody.ts`)_
 - `portionMembership` — owed to [SD §4.7.1] — a Portion is asserted, and no declared type carries the assertion _(`packages/domain-reference/src/portion.ts`)_
 - `position` — owed to [SD §4.7.1] and [SD §4.7.3] — named by M5, in no table at all _(`packages/domain-reference/src/rules/capture.ts`)_
-- `remedy` — owed to A5 — a remedy that opens a SIT stay; [SD §2.4] rule 5 types only newWindow _(`packages/domain-reference/src/outcomes.ts`)_
 - `tariffOwner` — owed to [A8 §9 item 2] — the role enum has no van-line member _(`packages/domain-reference/src/rules/authority.ts`)_
 
 ### Closed vocabularies whose members are owed
@@ -2087,6 +2123,9 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - `eta`
 - `resourceTareWeight` — [SD §4.7.2c] the equipment's own tare — a `resource`-subject fact needing its own type.
 - `sealIntegrity`
+- `stayAllowance` — The **days of storage authorised** for a stay, and the extensions that change it — [A5 §3.6].
+- `stayAuthorisation` — The act that **authorises** a storage-in-transit stay — [A5 §3.6].
+- `stayTermination` — The act that **terminates** a stay — [A5 §3.4], [A5 §3.6].
 - `survey`
 - `tracerResult`
 - `unpacking` — [SD §4.7.3] deferred alongside `weighing` "for that reason and for no evidentiary one — **its family is not in doubt**", because [SD §10.1] item 20 already directs A3 to record it as absent, and "minting `unpacking` here while `A3` is told to record it as absent would put the two halves of one decision in contradiction."
@@ -2115,6 +2154,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`COMPLETED_WITH_EXCEPTION`](#completedwithexception-outcome) — outcome
 - [`DEADLINE_LAPSED`](#deadlinelapsed-reason-code) — reason code
 - [`DERIVED_BY_RULE`](#derivedbyrule-capture-method) — capture method
+- [`DESTINATION`](#destination-stay-location) — stay location
 - [`DEVICE_GEOFENCE`](#devicegeofence-capture-method) — capture method
 - [`DEVICE_TELEMETRY`](#devicetelemetry-capture-method) — capture method
 - [`DOCUMENT_MISSING_OR_INCORRECT`](#documentmissingorincorrect-reason-code) — reason code
@@ -2131,6 +2171,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`GOODS_NOT_READY`](#goodsnotready-reason-code) — reason code
 - [`I-KEY`](#i-key-rule) — rule
 - [`INSTRUCTED_CHANGE`](#instructedchange-reason-code) — reason code
+- [`IN_TRANSIT`](#intransit-stay-location) — stay location
 - [`KEYED_BY_PERSON`](#keyedbyperson-capture-method) — capture method
 - [`LATE_ARRIVAL`](#latearrival-reason-code) — reason code
 - [`M1`](#m1-rule) — rule
@@ -2144,6 +2185,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`MEASURED`](#measured-membership-form) — membership form
 - [`NOT_COMPLETED`](#notcompleted-outcome) — outcome
 - [`OBSERVED_BY_PERSON`](#observedbyperson-capture-method) — capture method
+- [`ORIGIN`](#origin-stay-location) — stay location
 - [`OUT_OF_SEQUENCE`](#outofsequence-reason-code) — reason code
 - [`OVERFLOW`](#overflow-reason-code) — reason code
 - [`P-CLAIM`](#p-claim-rule) — rule
@@ -2235,6 +2277,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`platform`](#platform-role-name) — role name
 - [`portHandler`](#porthandler-role-name) — role name
 - [`portion`](#portion-aggregate) — aggregate
+- [`publishedOwedShape`](#publishedowedshape-change-class) — change class
 - [`publishedOwedVocabulary`](#publishedowedvocabulary-change-class) — change class
 - [`queried`](#queried-catalog-face) — catalog face
 - [`r19Agent`](#r19agent-role-name) — role name

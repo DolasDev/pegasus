@@ -20,6 +20,7 @@ import {
   AUTHORITY_TABLE,
   CANONICAL_SUBJECT_FAMILY,
   HANDED_OVER,
+  STAY_LOCATIONS,
   authoritativeHolderAt,
   calendarDate,
   cascadeOnRetractedInput,
@@ -46,6 +47,7 @@ import {
   type CustodyHolder,
   type ExternallyPerformedLeg,
   type FactResolved,
+  type Remedy,
 } from '../../src/index'
 
 const spec = specVersion('1')
@@ -379,12 +381,33 @@ describe('[SD §8.2] the different agent gets a home — an ExternallyPerformedL
     expect(isAggregateKind('place')).toBe(false)
   })
 
-  it('OWED: [SD §10.4] whether store-out after a TERMINATED stay names the same shipment is A2/A5', () => {
-    // Six weeks is ordinary SIT and the shipment is untouched. What is NOT settled is the terminated
-    // case, and the shared layer says exactly what holds either way — so that is what is asserted.
+  it('[A5 §3.4] A5 has answered its half: the STAY is untouched by termination', () => {
+    // Six weeks is ordinary SIT and the shipment is untouched. [SD §10.4] left the TERMINATED case
+    // to A2/A5, and [A5 §3.4] settles A5's half: termination ends the carrier's bill-of-lading
+    // liability and makes the customer the depositor (`src:dtr-part-iv` §D.5.c(2), §A.6.f(1)), but
+    // the occupancy does not end and neither does its identity — the same lot is in the same
+    // warehouse under the same SIT control number. So a `storeOut` after a terminated stay names
+    // **the same stay** as its `storeIn`.
     expect(isAggregateKind('stay')).toBe(true)
+    expect(storeIn.subject.id).toBe(stay.id)
     // "who held the goods is answered without an owner at all, because it is not a stored thing."
     expect(isAggregateKind('custody')).toBe(false)
-    expect(storeIn.subject.id).toBe(stay.id)
+  })
+
+  it('[A5 §3.4] and A2 still owns the other half — the SHIPMENT boundary', () => {
+    // What A5 does NOT settle, and says so: whether the goods moving out on a new bill of lading
+    // (`src:dtr-part-iv` §E.4(4)(c)) are the same shipment. That is [SD §10.4]'s A2 question, and
+    // A5's contribution is the constraint that the stay id is not the thing that answers it — the
+    // stay is a bailment, the shipment is a movement, and only one of them ended.
+    expect(CANONICAL_SUBJECT_FAMILY.storeOut).toBe('stay')
+    expect(CANONICAL_SUBJECT_FAMILY.delivery).toBe('goods')
+  })
+
+  it('[A5 §3.2] the remedy that opens this stay is typed, and points at this subject', () => {
+    // The shape [A4 §5] item 2 owed to A5. A delivery that fails because the destination is not
+    // ready is the moment the stay is promised; `storeIn` above is the moment it is performed.
+    const remedy: Remedy = { opensStay: { stay, location: 'DESTINATION' } }
+    expect('opensStay' in remedy && remedy.opensStay.stay).toEqual(storeIn.subject)
+    expect(STAY_LOCATIONS).toContain('IN_TRANSIT')
   })
 })

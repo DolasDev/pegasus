@@ -456,6 +456,11 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     resourceTareWeight: "the equipment's own tare weight",
     weighing: '`weighing`',
     unpacking: '`unpacking`',
+    // [A5 §3.6]'s three, added to §4.7.3 in the same revision. Spelled in backticks there because
+    // they are identifiers and not prose the way "the equipment's own tare weight" is.
+    stayAuthorisation: '`stayAuthorisation`',
+    stayAllowance: '`stayAllowance`',
+    stayTermination: '`stayTermination`',
   }
 
   it('names each absent class in §4.7.3, so its absence is not read as an oversight', () => {

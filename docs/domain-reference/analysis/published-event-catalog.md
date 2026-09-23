@@ -192,14 +192,15 @@ rule is named.
 
 **Additive** (a new `specVersion` within the same major):
 
-| Change                                                                                    | Why additive                                                                                                                                                                                                                                                                                                   |
-| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A new `type` row, with its [SD §4.7]-shaped declaration                                   | The declaration is complete for the new version; no existing row moves                                                                                                                                                                                                                                         |
-| A new `aggregate` kind                                                                    | [SD §1.2] states exactly this: "open to _addition_ in a later `specVersion`"                                                                                                                                                                                                                                   |
-| A new member of `CAPTURE_METHODS`, `BASES`, `OUTCOMES`, `REASON_SCOPES`, or a reason code | Same rule, generalised — **[SYNTHESIS]**                                                                                                                                                                                                                                                                       |
-| **The first publication of a vocabulary that shipped owed** — `publishedOwedVocabulary`   | Not an addition but a **narrowing**, `string` → enum. Additive because the owed marker was itself published: `x-owed` states on the wire that "the members are not", so no conforming producer could have relied on a code being accepted, and no existing member's meaning moves — see below. **[SYNTHESIS]** |
-| A new optional payload field                                                              | No record that validated stops validating                                                                                                                                                                                                                                                                      |
-| A new `context[]` member kind                                                             | `context[]` is non-authoritative ([SD §1.4]) and nothing keys on it                                                                                                                                                                                                                                            |
+| Change                                                                                    | Why additive                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A new `type` row, with its [SD §4.7]-shaped declaration                                   | The declaration is complete for the new version; no existing row moves                                                                                                                                                                                                                                                                                                                        |
+| A new `aggregate` kind                                                                    | [SD §1.2] states exactly this: "open to _addition_ in a later `specVersion`"                                                                                                                                                                                                                                                                                                                  |
+| A new member of `CAPTURE_METHODS`, `BASES`, `OUTCOMES`, `REASON_SCOPES`, or a reason code | Same rule, generalised — **[SYNTHESIS]**                                                                                                                                                                                                                                                                                                                                                      |
+| **The first publication of a vocabulary that shipped owed** — `publishedOwedVocabulary`   | Not an addition but a **narrowing**, `string` → enum. Additive because the owed marker was itself published: `x-owed` states on the wire that "the members are not", so no conforming producer could have relied on a code being accepted, and no existing member's meaning moves — see below. **[SYNTHESIS]**                                                                                |
+| **The first publication of a value _shape_ that shipped owed** — `publishedOwedShape`     | The sibling of the row above, one level up the type: A5 replaced `Remedy`'s `Owed` branch with `OpensStay` ([A5 §3.2]). Additive on the same ground — the emitted union carried an `Owed.remedy` branch whose `owedTo` was a `const` naming A5, so the wire said the branch was a placeholder. It removes one `anyOf` branch and adds another rather than narrowing a string. **[SYNTHESIS]** |
+| A new optional payload field                                                              | No record that validated stops validating                                                                                                                                                                                                                                                                                                                                                     |
+| A new `context[]` member kind                                                             | `context[]` is non-authoritative ([SD §1.4]) and nothing keys on it                                                                                                                                                                                                                                                                                                                           |
 
 **Breaking** (a new major):
 
@@ -212,13 +213,15 @@ rule is named.
 | Moving a field between MANDATORY, OPTIONAL and FORBIDDEN | The envelope's obligations are the contract                                                                                          |
 | Changing a role name's spelling                          | F5 in [`findings-from-alloy.md`](findings-from-alloy.md): role names are fact-key components after F1, "so spelling is load-bearing" |
 
-**`publishedOwedVocabulary` carries a restriction, and it is recorded rather than absorbed.** The
+**Both owed-publication classes carry a restriction, and it is recorded rather than absorbed.** The
 narrowing is safe on the **queried** face — a consumer is served a narrower type — and is a genuine
 restriction on the **captured** face: a producer sending an unrecognised code was valid and is now
 rejected. It is classified additive on the strength of the published `x-owed` annotation, not on the
 strength of nobody minding. A4 is the first use of the class ([A4 §7]); `roleClass`, `unitOfMeasure`
 and `identityScheme` are the three vocabularies still owed, and the glossary's Owed section lists
-them as such.
+them as such. A5 is the first use of `publishedOwedShape` ([A5 §3.2]), which removes one `anyOf`
+branch rather than narrowing a string; the branch it removed was itself annotated as owed on the
+wire, which is why the two classes share an argument.
 
 **Deprecation is marked, never deleted.** Adopted from DCSA, whose fields "carry `deprecated: true`
 with a note saying what supersedes them and why they are still required", and whose old versions
@@ -252,6 +255,7 @@ The bumps, and what each was classified as under §2.3:
 | `0.1.0` → `0.2.0` | A4's reason vocabulary | The vocabulary shipped owed and was published — `string` → enum ([A4 §7])                                                                     | `publishedOwedVocabulary` |
 | `0.2.0` → `0.3.0` | A8's rows 12-16        | Closing F3 added `keySideRole` to `AuthoritativeHolder`, which `ObligationRecipient` references                                               | `newClosedEnumMember`     |
 | `0.3.0` → `0.4.0` | A1                     | `REASON_CODES` gains `DEADLINE_LAPSED` ([A1 §3.6]). A1's other deliverable, `orderStageAt`, is a **projection** and moves nothing on the wire | `newClosedEnumMember`     |
+| `0.4.0` → `0.5.0` | A5                     | `Remedy`'s owed branch is replaced by `OpensStay` ([A5 §3.2]). A5's other deliverables mint no type, aggregate, field or qualifier            | `publishedOwedShape`      |
 
 What caps the version is the authority rows, and no amount of vocabulary work moves that.
 
@@ -436,11 +440,16 @@ and markdown and a generator that is not a fixed point turns its own gate into a
 ## 5. What the catalog does not yet publish
 
 Read the generated `Owed` section of [`../glossary.md`](../glossary.md) for the current list; it is
-derived from the code and cannot go stale. As at this version it holds: **19 declared owed values**,
+derived from the code and cannot go stale. As at this version it holds: **18 declared owed values**,
 **3 closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` —
 the reason vocabulary was a fourth until A4), **14 of 31** record types whose authority row is owed
-in whole or in part, **2** whose fact-class family is owed, and **10** fact classes named in the
+in whole or in part, **2** whose fact-class family is owed, and **13** fact classes named in the
 corpus and absent from the vocabulary.
+
+**Two of those five moved at A5, in opposite directions, and the pair is worth reading together.**
+The declared count fell by one because [A5 §3.2] published the remedy shape A4 left owed; the absent
+count rose by three because [A5 §3.6] found three storage fact classes the corpus names and no table
+carried. A gap list that only ever shrinks is a gap list nobody is still reading the corpus against.
 
 **These five numbers are the only counts this document may carry, and they are gated**:
 `tests/conformance/catalog.test.ts` reads them out of this section and compares them with

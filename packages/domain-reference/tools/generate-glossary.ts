@@ -194,6 +194,7 @@ const DOCUMENTS: Readonly<Record<string, string>> = {
   A8: 'A8-authority-skeleton.md',
   A4: 'A4-execution-events.md',
   A1: 'A1-order-service-lifecycle.md',
+  A5: 'A5-storage-in-transit.md',
   A3: 'A3-trip-stop-assignment.md',
   'fork-order': 'fork-order-shipment-cardinality.md',
   'fork-time': 'fork-time-provenance-corrections.md',
@@ -819,6 +820,17 @@ const VOCABULARIES: readonly {
       "gap turned out to be narrower than [SD §2.4]'s examples suggested: `src:dp3-400ng` Item " +
       '125.1 enumerates the shuttle causes and Item 33 the impractical operations.',
     symbols: ['REASON_SCOPES'],
+  },
+  {
+    name: 'stay location',
+    heading: 'Stay locations',
+    blurb:
+      'Where a storage-in-transit stay sits in the move, carried by the `opensStay` remedy — ' +
+      '[A5 §3.2]. Three members because three independent sources declare the location **at ' +
+      'entry** and rate or administer the stay differently by it; `src:milmove-mymove` publishes ' +
+      'two, which [A5 §3.2] records as the narrower programme rather than a contradiction. It is ' +
+      'the one closed enum A5 adds to the wire.',
+    symbols: ['STAY_LOCATIONS'],
   },
   {
     name: 'reason code',

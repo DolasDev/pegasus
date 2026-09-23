@@ -1462,6 +1462,29 @@ reweigh values separately (`RG`/`RN`/`RT`, §4.1). `unpacking` is the exact mirr
 **[ORIGINAL]** as a deferral. The regulatory standing of the acts is sourced and is not in dispute;
 what is missing is a family for one of them and an authority row for both.
 
+**And three storage classes, added by [`A5` §3.6](A5-storage-in-transit.md).** A5 read the corpus's
+best-covered area and found that three of its facts are named by four or more grade-A sources and
+carried by no row here. All three are **absent and owed** on the same terms as every entry above,
+and A5 declined to mint any of them for one reason: each is asserted by a **Government
+transportation office or a van line's own approving supervisor**, and
+[`A8` §9 item 1](A8-authority-skeleton.md) has not defined the party. A row written today would be
+[`A8` §9 item 8](A8-authority-skeleton.md)-owed on the day it was written, which trades one gap for
+two.
+
+- **`stayAuthorisation`** — the act that authorises a stay. `src:dtr-part-iv` §D.5.a: the TSP
+  requests in DPS, the PPSO approves or denies, DPS issues the SIT control number.
+  `src:atlas-world-group-api` carries `supervisor_approval_by`/`_on` beside `auto_authorized`;
+  `src:milmove-mymove` runs SIT service items `SUBMITTED` → `APPROVED` | `REJECTED`.
+- **`stayAllowance`** — the days authorised, and the extensions that change it. `src:dp3-400ng`
+  Item 17.3's 90-day aggregate extendable in 90-day increments; `src:dtr-part-iv` §C.9.c's
+  `Days Authorized` and its DD 1857 extension; `src:milmove-mymove`'s `sitDaysAllowance` and
+  `SITDurationUpdate`; `src:atlas-world-group-api`'s `days_authorized` +
+  `additional_authorized_days`. **An extension is not a separate class** — it is a later assertion
+  of this one on `supersedes` (§4.1).
+- **`stayTermination`** — the act that ends a stay without ending the occupancy.
+  `src:dtr-part-iv` A-406 §A.6.e-f and §D.5.c(2); `src:dp3-400ng` Item 17-2; `src:cfr-49-375`
+  §375.609(b). [`A5` §3.4](A5-storage-in-transit.md) is the decision this one supports.
+
 **And one that is absent because it is not a fact class at all: `custody`.** `fork-time` §8.8 asserts
 "a `custody` fact over the interval with `subject = shipment:S`". There is no such `type` and there
 will not be one. Custody is a **projection** over the `handover` row above; **§4.8** is the decision,
@@ -2613,13 +2636,30 @@ RELEASE|RECEIPT, —}`; they key differently, so each is resolved on its own key
   shipment-boundary question resolves — and _who held the goods_ is answered without an owner at
   all, because it is not a stored thing: it is the fold **`custodyAt(goods, instant)`** (§4.8.3)
   over the published `handover` assertions. There is no `Custody` interval to own.
-- **SIT as a stop vs SIT as a service at a stop** (§9, item 2). A5/A3.
+  **A5's half is now closed and A2's is not.** [`A5` §3.4](A5-storage-in-transit.md) rules that
+  termination ends the carrier's bill-of-lading liability, makes the warehouse the final destination
+  and makes the customer the depositor — and touches **none** of the stay's identity, so a
+  `storeOut` after a terminated stay names the same `stay` as its `storeIn`. What A2 still owns is
+  the **shipment** boundary, and A5 supplies one constraint on it: the stay id is not the thing that
+  answers it, because the stay is a bailment and the shipment is a movement, and only one of them
+  ended.
+- **SIT as a stop vs SIT as a service at a stop** (§9, item 2). A5/A3. — **CLOSED, by refusing the
+  framing.** [`A5` §3.3](A5-storage-in-transit.md) rules that both horns assume the stay is a
+  property of something and that it is not: it is an aggregate, and §1.2 and §7.4 had made it one
+  before this question was written down. The warehouse **visit** is a `stop` and the **stay** is a
+  `stay`; neither contains the other. The usable half of the Atlas observation is negative — SIT is
+  not a stop _type_ — and `src:sirva-ade`'s `STORAGE IN TRANSIT` location type is the contradiction
+  A5 resolves rather than inherits. [`A3` §5.1](A3-trip-stop-assignment.md) already reached this
+  answer; A5 ratifies it and no amendment to A3 follows.
 - **Directional stop-type pairs vs a bare `facilityTypeCode` role** (§9, item 1). A3.
 - **The reason vocabulary's content** — **CLOSED.** §2.4 fixed its shape; the list was A4's and
   [`A4-execution-events.md`](A4-execution-events.md) published it, 23 members at `specVersion`
   `0.2.0`. What A4 left open is narrower and is named there: the `roleClass` enum ([A8 §9 item 2],
   which A4 hands one concrete requirement — an explicit non-party member) and every remedy shape
-  beyond `newWindow`, of which the one that matters opens a SIT stay and is owed to A5.
+  beyond `newWindow`, of which the one that matters opens a SIT stay and was owed to A5. **That one
+  is now published**: [`A5` §3.2](A5-storage-in-transit.md) types it as `opensStay`, and no
+  remaining remedy shape has a named requester anywhere in the corpus, so the owed value was
+  discharged rather than re-owned.
 - **Custody authority's owner** (conflict #7) — **partially closed, and the cap has moved rather
   than lifted.** _(What `Custody` **is** is no longer open: §4.8 settles it as a projection, and
   `boundBy = CUSTODY` now resolves against the envelope. What remains open is whose assertions win,
