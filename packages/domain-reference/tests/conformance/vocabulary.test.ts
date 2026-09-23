@@ -297,11 +297,13 @@ describe('[SD §4.7] note 3 every authority cell is a role or the explicit owed 
     // medium". The count is the disclosure — [A8 §9 item 8] leaves most of the lifecycle side
     // undecided, and a reader who is not told how much assumes it is not much.
     //
-    // Nineteen since [SD §4.7.2f] §7.4: `handover`'s authority is owed and its `boundBy` is owed
-    // EXPRESSLY NOT `CUSTODY`, because a `CUSTODY` binding on the row the fold folds over is the
-    // circularity [SD §4.8.2] refuses. Recorded as F3 in `findings-from-alloy.md`.
-    expect(owed.length).toBe(19)
-    expect(owed.map((row) => row.type)).toContain('handover')
+    // Fourteen. `handover` was one of the nineteen — its `boundBy` was owed and EXPRESSLY NOT
+    // `CUSTODY`, because a `CUSTODY` binding on the row the fold folds over is the circularity
+    // [SD §4.8.2] refuses. **F3 closed it** at [A8 §5] row 12 with `boundBy = KEY`, which reads the
+    // fact's own qualifier instead of the fold.
+    expect(owed.length).toBe(14)
+    expect(owed.map((row) => row.type)).not.toContain('handover')
+    expect(owed.map((row) => row.type)).toContain('tripDelay')
     for (const row of owed) {
       expect(row.authority.scoring, `${row.type} is owed and scoreable`).toBe('do-not-score')
       // `conditional` is [SD §4.7.1]'s `pieceCount` row — assigned in one named scope and owed
@@ -381,12 +383,12 @@ describe('the data tables and the types agree in both directions', () => {
       expect(isAssertionType(row.type)).toBe(true)
       expect(row.citations.length, `[A8 §5] row ${row.row} cites nothing`).toBeGreaterThan(0)
     }
-    // [A8 §9 item 8]: eleven rows, and no completeness check — "every other fact class is
-    // uncovered". Asserted so that a table which quietly grew a row without A8 saying so is not
-    // mistaken for coverage.
-    expect(tables.authority.rows.size).toBe(11)
-    expect(tables.authority.byType.size).toBe(11)
+    // [A8 §9 item 8]: sixteen rows, and still no completeness check — the classes it does not
+    // reach are uncovered. Asserted so that a table which quietly grew a row without A8 saying so
+    // is not mistaken for coverage.
+    expect(tables.authority.rows.size).toBe(16)
+    expect(tables.authority.byType.size).toBe(16)
     const uncovered = ASSERTION_TYPES.filter((type) => !tables.authority.byType.has(type))
-    expect(uncovered.length).toBe(ASSERTION_TYPES.length - 11)
+    expect(uncovered.length).toBe(ASSERTION_TYPES.length - 16)
   })
 })

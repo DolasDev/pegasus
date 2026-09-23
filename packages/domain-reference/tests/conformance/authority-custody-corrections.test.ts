@@ -294,15 +294,21 @@ describe('[A8 §4.2] A8-INSTANT, and [A8 §7.6] why the origin agent loses', () 
 })
 
 describe('[A8 §5] the table', () => {
-  it('has eleven rows and marks every other fact class owed', () => {
+  it('has sixteen rows and still marks every fact class it does not reach owed', () => {
     const rowed = Object.values(AUTHORITY_TABLE).filter((entry) => 'a8Row' in entry)
-    expect(rowed).toHaveLength(11)
+    // Eleven at `0.1.0`; rows 12-16 closed the five of [A8 §9 item 8]'s owed rows the corpus
+    // supports — `handover` (F3), `weight.gross`, `weight.tare`, `packing`, `pieceCount`.
+    expect(rowed).toHaveLength(16)
     expect(hasAuthorityRow('arrival')).toBe(true)
-    expect(hasAuthorityRow('packing')).toBe(false)
-    // Owed is a VALUE, not an absence — an owed row still names what it is owed to.
-    const packing = AUTHORITY_TABLE.packing
-    expect(packing.row.owed).toBe('authorityRow')
-    expect(packing.row.owedTo).toContain('A8 §9 item 8')
+    expect(hasAuthorityRow('packing')).toBe(true)
+    expect(hasAuthorityRow('handover')).toBe(true)
+    // Owed is a VALUE, not an absence — an owed row still names what it is owed to. Fourteen
+    // remain, and `tripDelay` is one the corpus cannot close: no source binds a plan change to an
+    // asserting role ([A8 §9 item 8]).
+    expect(hasAuthorityRow('tripDelay')).toBe(false)
+    const tripDelay = AUTHORITY_TABLE.tripDelay
+    expect(tripDelay.row.owed).toBe('authorityRow')
+    expect(tripDelay.row.owedTo).toContain('A8 §9 item 8')
   })
 
   it('[A8 §4.4] A8-NAMED — the recency registry is empty, for every fact class', () => {
@@ -545,7 +551,7 @@ describe('[SD §6] corrections — every attempt recorded, no refusal path', () 
   })
 
   it('an owed row never silently authorises', () => {
-    expect(authorityToDeclare('packing', { kind: 'role', role: 'originAgent' }, context)).toEqual({
+    expect(authorityToDeclare('tripDelay', { kind: 'role', role: 'hauler' }, context)).toEqual({
       kind: 'UNAUTHORISED',
       because: 'NO_AUTHORITY_ROW_FOR_THIS_FACT_CLASS',
     })

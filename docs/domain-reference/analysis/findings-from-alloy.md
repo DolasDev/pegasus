@@ -237,8 +237,8 @@ rather than buried in a resolved finding's coda.
 
 ## F3 — `handover`'s `boundBy = CUSTODY` is circular, and [A8 §5] owes it a row
 
-**Status:** **open** · **Found:** while deciding F1 · **Against:** [SD §4.7.1] versus [SD §4.8.2],
-and [A8 §5]
+**Status:** **resolved** — [A8 §5] row 12, `boundBy = KEY` · **Found:** while deciding F1 ·
+**Against:** [SD §4.7.1] versus [SD §4.8.2], and [A8 §5]
 **Severity:** a contradiction between two published sentences, which F1's fix makes load-bearing.
 
 ### The mechanism
@@ -274,9 +274,38 @@ role named on that key's own `side` — the releasing role for `RELEASE`, the re
 `src:stedi-x12-reference`'s own arrangement (only the releasing carrier issues `J1`; only the
 receiving carrier issues `R1`).
 
-**Owed to [A8]:** whether that reading is right; whether it is a sixth `boundBy` member or `NONE`
-plus a named rule; and the [A8 §5] row itself, without which A8-NAMED has nothing for a handover
-resolution to name.
+### Resolved — all three questions answered
+
+**The provisional reading was right, and it is a sixth `boundBy` member rather than `NONE` plus a
+named rule.** [A8 §5] **row 12** carries it as **`boundBy = KEY`**, with **A8-KEY** stated at
+`src/rules/authority.ts`:
+
+> Where a fact's own `qualifier` names a role, authority for that fact belongs to **that** role.
+
+Why a member and not `NONE`: under `NONE` "no role is authoritative" and a value rule settles the
+fact ([A8 §5] row 6). Here **exactly one** role is authoritative and it is computable from the record
+alone, so `authoritative` is neither empty nor plural, **A8-NAMED never fires**, and there is no value
+rule to name. Calling it `NONE` would have meant inventing one. `AuthoritativeHolder` gains a
+`keySideRole` member — its own kind rather than `custodyHolder` with a different fold, which is the
+whole of the fix: `custodyHolder` resolves through the fold that reads `handover`.
+
+**A8-NAMED now has its row**, and it needs no tie-break for this fact class;
+`recencyIsPublishedFor('handover')` is still `false`.
+
+**What it does not claim.** Confidence is **medium**, not high. `src:stedi-x12-reference` sources the
+_arrangement_ — only the releasing carrier issues `J1`, only the receiving carrier issues `R1`, so
+which side may speak is already a property of the code — and **not the ranking**. No source in the
+corpus ranks two assertions about one transfer, because no source models a contest at all. Closing F3
+removes a contradiction between two published sentences; it does not turn a synthesis into a citation.
+
+**And it named a class rather than a special case**, which is the finding's lasting half: **an act
+that mints the thing a binding follows can never be bound to that thing.** `handover` mints custody,
+so not `CUSTODY`; `assignmentOffer` mints the assignment, so not `ASSIGNMENT`; `orderAward` mints the
+principal relation, so not `PRINCIPAL`. `KEY` rescues `handover` alone, because it is the only one
+whose **qualifier** names its actor — the other nine name theirs in `context[]`, which [SD §1.4]
+rule 1 forbids resolution from reading, and moving them into a qualifier would be
+`changedQualifierShape` (breaking). [A8 §9 item 8] now records that distinction instead of listing
+them all as simply unwritten.
 
 ### Reproduce
 
@@ -341,8 +370,8 @@ java -jar packages/domain-reference/alloy/.tools/org.alloytools.alloy.dist.jar \
 
 ## F5 — role-name spelling is now load-bearing, and the corpus spells it two ways
 
-**Status:** **open** · **Found:** while applying F1's fix · **Against:** [A8 §2] versus
-[SD §4.7.2f] and [A8 §7.6]
+**Status:** **resolved** — lower-camel is canonical and a role name is **case-significant on the
+wire** · **Found:** while applying F1's fix · **Against:** [A8 §2] versus [SD §4.7.2f] and [A8 §7.6]
 **Severity:** structural, and of a kind no test in this package can catch, because both spellings are
 well-formed strings.
 
@@ -381,9 +410,22 @@ word. [A8 §9 item 2] already owes _"the full role vocabulary as a versioned enu
 that debt now costs, because the enum's **spelling** is a fact-key component and not a presentation
 choice.
 
-**Owed to [A8]:** the canonical list, spelled once, with the ADE cast recorded as the _source_ of the
-names rather than as a second set of them — and a statement of whether a role name is
-case-significant on the wire.
+### Resolved
+
+**A8-NAME-1 wins, on the ground the pin already stated: it is a _rule_ and the ADE cast is a
+_citation_.** [A8 §2] now says so in a box rather than leaving two lists side by side, the ADE
+spellings stay as what they are — the **source** of the names and `src:sirva-ade`'s own wire spelling,
+which a mapping will have to fold — and [A8 §7.6]'s worked records are corrected: they carried
+`{releasing: OriginAgent, receiving: Hauler}` _inside a qualifier_, which is the defect itself rather
+than an example of it.
+
+**And the question the finding asked last is answered: yes, a role name is case-significant on the
+wire.** [catalog §2.3] classifies a change of spelling as **`changedRoleNameSpelling`** — breaking, a
+new major — and [catalog §5] records that the catalog already publishes the lower-camel enum. So
+settling it the other way was never free, and the pin was never only local.
+
+**What remains owed is narrower than this finding was:** [A8 §9 item 2] still owes the _full_ role
+vocabulary, including the roles [A8 §2] names but does not define. It no longer owes the spelling.
 
 ### Reproduce
 

@@ -176,6 +176,15 @@ sig Handover {
   custodyBasis  : one CustodyBasis,
   releasingParty: one PartyRole,
   receivingParty: one PartyRole,
+  /**
+   * The role that ASSERTED this handover — [SD §1.1]'s `assertedBy.role`.
+   *
+   * The model had no reason to carry it until **A8-KEY** ([A8 §5] row 12) existed: before F3 was
+   * closed there was no published rule that read the asserter, which is exactly what F3 recorded
+   * ("found no published rule to transcribe"). It is a `Role` and not a `PartyRole` because
+   * authority is a property of the role, never of the party ([A8 §3]).
+   */
+  assertedBy    : one Role,
   /** [SD §4.7.1]'s handover row: `context[]` carries "both `stop`s / `trip`s, **or the
    *  `externallyPerformedLeg`**". Reading the leg *reference* out of context is not reading a
    *  value out of it ([SD §1.4] rule 2) — the values come off the leg, a published record.
@@ -503,6 +512,60 @@ pred unknownCustodyLeavesAuthorityEmpty {
   some g: Goods, i: Instant | unknownAt[g, i] and no authorityAt[g, i]
 }
 run unknownCustodyLeavesAuthorityEmpty for 4 expect 1
+
+/**
+ * **Rule A8-KEY** — [A8 §5] row 12, `boundBy = KEY`, transcribed. This is what F3 could not write:
+ * "`alloy/custody.als` had to decide what `FactResolved` does with a handover contest in order to
+ * model F1's fix, and found no published rule to transcribe."
+ *
+ * > Authority for a handover key belongs to the role named on that key's own `side` — the releasing
+ * > role for a `RELEASE`, the receiving role for a `RECEIPT`.
+ *
+ * Note what it reads: `keySide`, `keyReleasing`, `keyReceiving` — all three are **fact-key**
+ * components, fixed when the record was minted. It does not read `holdersAt` or `authorityAt`, which
+ * is the whole of why it is not circular: [SD §4.8.2] refused a `CUSTODY` binding here because
+ * "A8-MOVE would be defined in terms of the thing it defines".
+ */
+pred a8Key {
+  all r: FactResolved | some r.selected implies
+    (r.keySide = RELEASE
+       implies r.selected.assertedBy = r.keyReleasing
+       else    r.selected.assertedBy = r.keyReceiving)
+}
+
+/**
+ * B0a. **The contest F1 made routine and F3 could not settle, now settled.** Two assertions on ONE
+ * key from opposite sides, and A8-KEY picks the key-side one — so `FactResolved` resolves it without
+ * A8-NAMED ([A8 §4.4]) having any tie-break to name.
+ */
+pred a8KeySettlesATwoSidedContest {
+  a8Key
+  some r: FactResolved |
+    some r.selected and
+    some h: r.considered | h != r.selected and h.assertedBy != r.selected.assertedBy
+}
+run a8KeySettlesATwoSidedContest for 4 expect 1
+
+/**
+ * B0b. **The cost of A8-KEY, surfaced rather than assumed away.** Where the key-side role never
+ * asserted and only the other side did, A8-KEY selects **nothing** — `selected` is `lone`, so an
+ * empty selection is representable, and `src/custody.ts`'s `selectedHandovers` skips it.
+ *
+ * That is not a defect in the rule; it is the rule declining to let the wrong side speak, which is
+ * the property [A8 §5] row 12 exists to guarantee. It matters because it is a second way to reach
+ * the state command A4 is about: a fold that goes quiet not because nobody asserted, but because
+ * the only assertion came from the side the key does not name. A consumer that reads an absent
+ * custody edge as "no transfer happened" would be wrong in both cases, and for different reasons.
+ */
+pred a8KeyLeavesTheFoldQuietWhenOnlyTheOtherSideAsserted {
+  a8Key
+  some r: FactResolved |
+    no r.selected and
+    some h: r.considered |
+      (r.keySide = RELEASE implies h.assertedBy != r.keyReleasing
+                            else   h.assertedBy != r.keyReceiving)
+}
+run a8KeyLeavesTheFoldQuietWhenOnlyTheOtherSideAsserted for 4 expect 1
 
 /* --------------------------------------------------------------------------------------------- *
  * PART B — whether the fold's own presupposition survives the fact key

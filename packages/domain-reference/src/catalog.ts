@@ -56,14 +56,19 @@ void _catalogIsTheVocabulary
  *
  * **[ORIGINAL]**, and deliberately pre-1.0: [SD §0]'s disclosure rule reaches the version string
  * too. A `1.0.0` would claim a settled contract, and the owed inventory — 19 of 31 authority rows,
- * three owed value shapes, three owed code vocabularies, F3/F4/F5 — is the evidence that it is not
- * one. This is the value an envelope's `specVersion` carries ([SD §1.1], "the catalog vocabulary version this
+ * three owed value shapes, three owed code vocabularies and F4 — is the evidence that it is not one. This is the value an envelope's `specVersion` carries ([SD §1.1], "the catalog vocabulary version this
  * record was minted under").
  *
  * `0.2.0` at A4: the reason vocabulary was published, which is {@link ADDITIVE_CHANGES} member
  * `publishedOwedVocabulary` and therefore a minor rather than a major ([A4 §7]).
+ *
+ * `0.3.0` at A8's authority rows: closing **F3** added `keySideRole` to `AuthoritativeHolder`, which
+ * `ObligationRecipient` references and the emitted schemas therefore publish — `newClosedEnumMember`,
+ * additive. The bump is here because the **schema diff** said so: `boundBy` is not on any record and
+ * `KEY` never reaches the wire, so the change looked internal until the emitted `$defs` were read
+ * ([A8 §11] revision 7).
  */
-export const CATALOG_VERSION = '0.2.0'
+export const CATALOG_VERSION = '0.3.0'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces

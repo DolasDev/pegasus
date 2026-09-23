@@ -427,11 +427,28 @@ and markdown and a generator that is not a fixed point turns its own gate into a
 ## 5. What the catalog does not yet publish
 
 Read the generated `Owed` section of [`../glossary.md`](../glossary.md) for the current list; it is
-derived from the code and cannot go stale. As at this version it holds: **21 declared owed values**, **3
+derived from the code and cannot go stale. As at this version it holds: **19 declared owed values**, **3
 closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` — the
-reason vocabulary was a fourth until A4), **19 of 31** record types whose authority row is owed in
+reason vocabulary was a fourth until A4), **14 of 31** record types whose authority row is owed in
 whole or in part, **2** whose fact-class family is owed, and **10** fact classes named in the corpus
 and absent from the vocabulary.
+
+**The authority rows went from 19 to 14, and that alone would not have moved `specVersion` — but
+something else did.** [A8 §5] rows 12-16 closed `handover`, `weight.gross`, `weight.tare`, `packing`
+and `pieceCount`. A shrinking owed inventory is the gap list getting shorter, not a vocabulary
+change: §2.3 classifies changes to what is **published**, and that is a change to what is admitted to
+be **missing**. The new `boundBy` member `KEY` is likewise invisible on the wire — no record carries
+`boundBy`, and it appears in `index.json` only inside the owed inventory's own rows.
+
+**What did move it: `keySideRole`.** Closing F3 needed a new `AuthoritativeHolder` member, and
+`AuthoritativeHolder` is referenced by `ObligationRecipient`, which the emitted schemas publish. So a
+record's `obligations[].recipient` may now carry a `kind` the previous version's schema rejected —
+`newClosedEnumMember`, additive, **`0.2.0` → `0.3.0`**.
+
+That is recorded in this much detail because the reasoning nearly went the other way. `boundBy` is not
+on a record and `KEY` is not on the wire, so the change _looked_ internal; it was the **schema diff**
+that said otherwise. A compatibility classification argued from which fields feel published is a
+classification waiting to be wrong — read the emitted `$defs`.
 
 Three of those bear directly on this catalog and are named here so they are not read as oversights:
 
@@ -448,23 +465,26 @@ Three of those bear directly on this catalog and are named here so they are not 
    needs an explicit non-party member — and every **remedy shape beyond `newWindow`**, of which the
    one that matters opens a storage-in-transit stay and belongs to A5.
 
-2. **F3, F4, F5**, open in [`findings-from-alloy.md`](findings-from-alloy.md). F5 is the one that
-   touches the published contract, and it does so directly enough to be stated as a commitment
-   rather than a caveat. Role names became fact-key components at F1, so their spelling is
-   load-bearing; [A8 §2] carries **two** spellings of one cast — A8-NAME-1's lower-camel rule
-   (`originAgent`, `sitAgent`) and, in the same section, `src:sirva-ade`'s capitalised cast
-   (`OriginAgent`, `SITAgent`, which is not even a pure case fold) — with nothing cross-checking
-   them.
+2. **F4 is the only open finding** in [`findings-from-alloy.md`](findings-from-alloy.md). **F3 and
+   F5 are both resolved**, and F5's resolution is the one that touches this contract.
 
-   `ROLE_NAMES` in `envelope.ts` pins the lower-camel spelling, on the ground that A8-NAME-1 is a
-   _rule_ and the ADE cast is a _citation_. **This catalog publishes that spelling on the wire**, as
-   a closed enum, and filter axis 10 filters on it. F5 is explicit that the pin "is a **local**
-   decision by an implementation, and it must not be mistaken for the answer"; [A8 §9 item 2] owes
-   the canonical list. So: if A8 settles on the other spelling, that is a
-   **`changedRoleNameSpelling`** change under §2.3 — breaking, and requiring a new major. It is
-   survivable here only because this is `0.1.0`, and it is recorded so that nobody later reads the
-   published enum as evidence the question was settled. **[SYNTHESIS]**: F5 states the defect and
-   the pin; naming the consequence for the published contract is this document's step.
+   Role names became fact-key components at F1, so their spelling is load-bearing, and [A8 §2]
+   carried **two** spellings of one cast — A8-NAME-1's lower-camel rule (`originAgent`, `sitAgent`)
+   and, in the same section, `src:sirva-ade`'s capitalised cast (`OriginAgent`, `SITAgent`, not even
+   a pure case fold) — with nothing cross-checking them. `ROLE_NAMES` in `envelope.ts` pinned
+   lower-camel, and **this catalog publishes that spelling on the wire** as a closed enum, with
+   filter axis 10 filtering on it.
+
+   **A8 has now settled it the way the pin guessed:** A8-NAME-1 wins because it is a _rule_ and the
+   ADE cast is a _citation_, the ADE spellings stay as the **source** of the names rather than as a
+   second set of them, and **a role name is case-significant on the wire**. So the
+   `changedRoleNameSpelling` risk this item used to carry is **discharged, not merely survivable** —
+   the published enum is now evidence the question was settled rather than evidence it was not.
+   What [A8 §9 item 2] still owes is the _full_ vocabulary, including roles [A8 §2] names but does
+   not define; a later **addition** to it is `newClosedEnumMember` and additive.
+
+   **F4** — `ExternallyPerformedLeg.performedBy` has no consumer — does not touch the published
+   contract: it is a question about the custody fold's inputs, not about what a record may carry.
 
 3. **`charge`, `condition` and `notification` carry owed values.** They are published members with a
    declared subject family and no value shape, and the emitted schemas say so with the owed marker

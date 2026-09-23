@@ -835,11 +835,22 @@ describe('OWED — [SD §10.5]: dwell classification to A5, custody authority to
     // F1's fix made the contradiction load-bearing, because the fold now depends on selecting among
     // paired handover assertions. [SD §4.7.2f] §7.4 resolves it: the binding is owed, expressly not
     // `CUSTODY`. Recorded as **F3** in `findings-from-alloy.md`, open.
-    expect(hasAuthorityRow('handover')).toBe(false)
-    expect(AUTHORITY_TABLE.handover.boundBy).not.toBe('CUSTODY')
-    expect(AUTHORITY_TABLE.handover.boundBy).toMatchObject({ owed: 'boundBy' })
-    expect(AUTHORITY_TABLE.handover.provisional).toContain("role named on that key's own `side`")
-    expect(AUTHORITY_TABLE.handover.provisional).toContain('do not score')
+    // **F3 is closed, and the half that mattered is the one this line still checks:** the binding
+    // is NOT `CUSTODY`. It is `KEY` — authority belongs to the role the fact's own qualifier names
+    // (A8-KEY, [A8 §5] row 12), which reads the key rather than the fold and so cannot define
+    // A8-MOVE in terms of the thing it defines.
+    expect(hasAuthorityRow('handover')).toBe(true)
+    const handover = AUTHORITY_TABLE.handover
+    expect(handover.boundBy).not.toBe('CUSTODY')
+    expect(handover.boundBy).toBe('KEY')
+    expect(handover.a8Row).toBe(12)
+    expect(handover.authoritative).toMatchObject({
+      kind: 'held',
+      primary: { kind: 'keySideRole' },
+    })
+    // Exactly one authoritative role, so A8-NAMED never fires and the row names no tie-break.
+    expect('tieBreak' in handover).toBe(false)
+    expect(recencyIsPublishedFor('handover')).toBe(false)
   })
 
   it('F2 — the receiving side now comes off an authoritative, LABELLED field', () => {

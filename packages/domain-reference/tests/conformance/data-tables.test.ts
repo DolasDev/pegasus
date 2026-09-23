@@ -72,12 +72,17 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
     // The count is the disclosure. [A8 §9 item 8] plus [SD §4.7.3]'s two provisional rows leave
     // most of the lifecycle side undecided, and a reader who is not told assumes otherwise.
     //
-    // Nineteen, not eighteen: [SD §4.7.2f] §7.4 moved `handover` from **assigned** to **owed**,
-    // because its `boundBy = CUSTODY` was circular — [SD §4.8.2] refuses that exact shape, "so
-    // A8-MOVE would be defined in terms of the thing it defines". An owed row here is not a
-    // regression; it is a contradiction stopping being hidden behind a filled-in cell. F3.
-    expect(owed.length).toBe(19)
-    expect(owed.map((row) => row.type)).toContain('handover')
+    // Fourteen. It was nineteen: [SD §4.7.2f] §7.4 had moved `handover` from **assigned** to
+    // **owed** because its `boundBy = CUSTODY` was circular ([SD §4.8.2]: "A8-MOVE would be defined
+    // in terms of the thing it defines"), which made the contradiction countable rather than hidden
+    // behind a filled-in cell. **F3 is now closed** — `handover` is row 12 at `boundBy = KEY`, and
+    // `weight.gross`, `weight.tare`, `packing` and `pieceCount` came with it.
+    expect(owed.length).toBe(14)
+    expect(owed.map((row) => row.type)).not.toContain('handover')
+    // The fourteen that remain, and twelve of them are blocked on the CORPUS rather than on effort:
+    // no external source binds a plan change, a membership offer, an assignment or an order award to
+    // an asserting role ([A8 §9 item 8]). `tripDelay` is the type that says so outright.
+    expect(owed.map((row) => row.type)).toContain('tripDelay')
     expect(owed.every((row) => row.authority.scoring === 'do-not-score')).toBe(true)
     for (const row of owed) {
       if (row.authority.status === 'owed') expect(row.authority.owedTo.length).toBeGreaterThan(0)
@@ -121,7 +126,9 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
 
   it('refuses an authority value that is neither a role nor owed', () => {
     const table = broken(canonicalSubjects)
-    const authority = rowFor(table, 'packing')['authority'] as Record<string, unknown>
+    // `packing` used to be the subject here; [A8 §5] row 15 closed it, so it no longer carries a
+    // provisional reading to tamper with. `tripDelay` is one the corpus cannot close.
+    const authority = rowFor(table, 'tripDelay')['authority'] as Record<string, unknown>
     const provisional = authority['provisional'] as Record<string, unknown>
     // A designation the role enum does not contain belongs in `unresolved` with what it is owed
     // to ([A8 §9 item 2]) — never in a roles list.
@@ -162,9 +169,9 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
 })
 
 describe('[A8 §5] the authority table', () => {
-  it('loads eleven rows and does not pretend to cover more', () => {
+  it('loads sixteen rows and does not pretend to cover more', () => {
     const table = loadAuthorityTable(authorityTable)
-    expect(table.rows.size).toBe(11)
+    expect(table.rows.size).toBe(16)
     // [A8 §9 item 8]: everything else is uncovered, so there is deliberately no completeness check.
     expect(table.byType.has('tripDelay')).toBe(false)
   })
@@ -411,18 +418,27 @@ describe('the three tables together', () => {
   it('load and agree', () => {
     const tables = loadDomainTables({ canonicalSubjects, authority: authorityTable, reasons })
     expect(tables.canonicalSubjects.rows.size).toBe(ASSERTION_TYPES.length)
-    expect(tables.authority.rows.size).toBe(11)
+    expect(tables.authority.rows.size).toBe(16)
     expect(tables.reasons.status).toBe('published')
   })
 
   it('refuses a cross-type A8 link that claims to be same-type', () => {
+    // **No row borrows another type's row any more.** `pieceCount` was the only one — it pointed at
+    // row 9 (`condition`), legitimately, because A8-JOINT reaches "condition AND the counts asserted
+    // with it" — and [A8 §5] row 16 gave it its own row, so the borrow is gone. The relationship is
+    // still recorded, in row 16's citations and in `jointRuleApplies`, but it is no longer a link.
+    const links = loadCanonicalSubjects(canonicalSubjects)
+    for (const row of links.rows.values()) {
+      if (row.authority.status === 'assigned' && row.authority.a8Row !== null) {
+        expect(row.authority.a8Row.sameType, `${row.type} borrows a row`).toBe(true)
+      }
+    }
+    // So the check is proved live by CREATING the defect rather than by relabelling one: point a
+    // row at another type's row and claim it is the same type. A link that hides the jump makes an
+    // uncovered fact class look covered, which is the whole reason the field exists.
     const table = broken(canonicalSubjects)
     const authority = rowFor(table, 'pieceCount')['authority'] as Record<string, unknown>
-    const link = authority['a8Row'] as Record<string, unknown>
-    link['sameType'] = true
-    // The link is to row 9, which is `condition`: legitimate, but only because A8-JOINT reaches
-    // "condition AND the counts asserted with it". A link that hides the jump makes an uncovered
-    // fact class look covered.
+    authority['a8Row'] = { row: 9, sameType: true, why: null }
     expect(() =>
       loadDomainTables({ canonicalSubjects: table, authority: authorityTable, reasons }),
     ).toThrow(/claims sameType/)

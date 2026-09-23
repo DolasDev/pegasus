@@ -270,12 +270,23 @@ describe('[SD §4.3] the resolution is published, append-only, and names its rul
     expect(WEIGHT_SOURCE_HIERARCHY_RULE_IS_OWED).toBe(true)
   })
 
-  it('OWED: R-WEIGHT-LOWER is a DoD program rule and is scoped to `weight.net` alone', () => {
+  it('R-WEIGHT-LOWER is a DoD program rule, scoped to `weight.net` — and the INPUTS now have rows', () => {
     // [SD §4.4]'s honest note: "this is a DoD program rule, not a universal one", and the versioned
     // rule ref is what lets a commercial tariff carry a different one over the same fact class.
-    // Its scope is visible in the table: the gross and tare rows do not carry it, and their
-    // authority is owed outright.
-    expect(AUTHORITY_TABLE['weight.gross'].row.owed).toBe('authorityRow')
-    expect(AUTHORITY_TABLE['weight.tare'].provisional).toContain('Do not score on this')
+    // Its scope is still `weight.net` alone. What changed is the other half: the gross and tare
+    // rows used to be owed outright, which read as though nobody could assert an input either.
+    // Rows 13 and 14 say who can — the party holding the goods at the weighing — while leaving the
+    // NET to the value rule. That distinction is the whole content of the two rows.
+    const gross = AUTHORITY_TABLE['weight.gross']
+    const tare = AUTHORITY_TABLE['weight.tare']
+    expect(gross.a8Row).toBe(13)
+    expect(tare.a8Row).toBe(14)
+    expect(gross.boundBy).toBe('CUSTODY')
+    expect(gross.authoritative).toMatchObject({ kind: 'held', primary: { kind: 'custodyHolder' } })
+    // `weighMaster` supplies the evidence and never the assertion — `src:cfr-49-375` §375.519.
+    expect(gross.corroborating).toEqual(['weighMaster'])
+    // The reweigh right is the shipper's (§375.517), and it is settled on the net by row 6.
+    expect(gross.competing).toContain('customer')
+    expect(AUTHORITY_TABLE['weight.net'].boundBy).toBe('NONE')
   })
 })

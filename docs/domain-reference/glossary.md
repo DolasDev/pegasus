@@ -309,8 +309,8 @@ The act of handing the goods over — [SD §4.7.1], prose alias _custody handoff
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** `{releasing, receiving, side, occurrence}` — [SD §4.7.2f] — the F1 decision. releasing/receiving are members of the published role vocabulary ([A8 §2]), NOT partyRole references: a partyRole is an aggregate with a fact class of its own, so two of those refs in a qualifier is the violation [SD §4.7.2d(3)] names, and that refusal stands. [SYNTHESIS]: src:open-trip-model's HandOver carries from/to actor refs and src:stedi-x12-reference element 1650's R1 names the counterparty's position ('Received from Prior Carrier'); rendering the two ends as key components is the join. side ∈ RELEASE | RECEIPT is §2's two-facts verdict — SOURCED that 1650 publishes the halves as two codes by two parties, [ORIGINAL] that they are one type with a qualifier. occurrence is a 1-based bilateral ordinal, absent = 1, [ORIGINAL] (rule H-OCCUR); it does not enumerate because its domain is 'integer ≥ 1', and the platform may never derive it (foreclosure 8). occurredAt is expressly NOT a component: it fails Q-KEY(iii) — it is the contested value, so keying on it would make a handover time the one act time that can be neither contested nor corrected (foreclosure 4).
 - **Prose aliases (never in a record):** `custody handoff`
-- **Authority:** **owed** — [A8 §5] has no handover row (recorded as F3 in findings-from-alloy.md), and boundBy is owed EXPRESSLY NOT CUSTODY: [SD §4.8.2] says of the identical shape that 'that row's binding would be CUSTODY, so A8-MOVE would be defined in terms of the thing it defines'. The fold breaks the circle, so handover's own authority cannot be decided by the fold.. `boundBy = owed`. Provisional reading [ORIGINAL], **do not score**: the role named on the key's own `side` is authoritative for that key — the releasing role for RELEASE, the receiving role for RECEIPT. It breaks the circle because it reads the KEY, not the fold, and it is src:stedi-x12-reference's own arrangement: only the releasing carrier issues J1, only the receiving carrier issues R1. Whether that is a sixth boundBy member or NONE plus a named rule is [A8]'s to decide. Do not score on this. Under A8-NAMED every handover FactResolved must name a rule, and [A8 §5] owes the row it would name.
-- **Scoring:** `do-not-score` ([SD §4.7] note 3)
+- **Authority:** **assigned**, `boundBy = KEY`. [A8 §5] row 12. the role the fact's own qualifier names — releasing for a RELEASE key, receiving for a RECEIPT key (A8-KEY). Exactly one, so A8-NAMED never fires. The other side corroborates and is never selected.
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[A3 §3.2]](analysis/A3-trip-stop-assignment.md#32-definitions) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §4.7.2f]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
 - **Corpus:** `src:stedi-x12-reference`
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
@@ -442,8 +442,8 @@ row is **owed** ([A8 §9 item 8] names packing performance among the uncovered c
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** none — the fact key is `(subject, type)`
 - **Prose aliases (never in a record):** `pack performance`
-- **Authority:** **owed** — [A8 §9 item 8] — names packing performance as not covered by [A8 §5]. `boundBy = CUSTODY`. Provisional reading [ORIGINAL], **do not score**: the mirror of loading (originAgent, or ADE's Packer where separately resourced, GSD pp.12-13), with customer competing on scope
-- **Scoring:** `do-not-score` ([SD §4.7] note 3)
+- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 15. packer; originAgent where no separate packer is resourced. customer, destinationAgent corroborating; customer competing on SCOPE (§375.503's opportunity to observe, verify and note in writing). The mirror of row 3, and the mirror is the authored step.
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[A8 §9 item 8]](analysis/A8-authority-skeleton.md) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
@@ -470,8 +470,8 @@ counts that sum to one total". **Sourced:** that they are separate and additive.
 
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** `{unitization}` — [SD §4.7.2a] — src:x12-212-trailer-manifest AT8-04 non-unitized and AT8-05 unitized are 'two separate counts that sum to one total'. SOURCED: that they are separate and additive. [ORIGINAL]: one type with a qualifier rather than two types.
-- **Authority:** **conditional**, `boundBy = CUSTODY`. [A8 §5] row 9 (borrowed — a row for a different type). Assigned at a custody boundary — jointly held, the releasing AND the receiving role, and selected[] may be empty; A8-JOINT covers 'condition AND the counts asserted with it'; **owed** away from a custody boundary — owed to [A8 §9 item 8] — which names piece count outright as a class [A8 §5] does not cover.
-- **Scoring:** `do-not-score` ([SD §4.7] note 3)
+- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 16. away from a custody boundary: the party holding the goods at the instant counted. AT a boundary it is row 9's — A8-JOINT reaches 'condition AND the counts asserted with it', so it is jointly held and selected[] may be empty. One type, two standings, split by A8-INSTANT.
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §7.3]](analysis/A8-authority-skeleton.md#73-there-is-exactly-one-instant-where-two-roles-are-jointly-authoritative-and-the-model-is-forbidden-to-pick) · [[SD §4.7.2a]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
 - **Corpus:** `src:x12-212-trailer-manifest`
@@ -583,8 +583,8 @@ authority row is **owed**, and [SD §4.7.1] marks its `boundBy` _unassigned_ rat
 
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** none — the fact key is `(subject, type)`
-- **Authority:** **owed** — [A8 §5] — no row. NOTE: [A8 §9 item 8]'s enumeration of uncovered classes does not name gross or tare weight either, so this row is owed by a ledger that does not list it.. `boundBy = unassigned`. Provisional reading [ORIGINAL], **do not score**: the weighing party (hauler/originAgent), with weighMaster as evidence
-- **Scoring:** `do-not-score` ([SD §4.7] note 3)
+- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 13. the party holding the goods at the weighing (custodyAt at that instant). weighMaster corroborating — it supplies the evidence, not the assertion. customer/accountParty competing on the reweigh right, settled on the NET by row 6's R-WEIGHT-LOWER.
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape) · [[SD §4.4]](analysis/00-shared-decisions.md#44-the-acceptance-test-duplicate-reweighs) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table)
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
@@ -612,8 +612,8 @@ different type, left absent and owed at [SD §4.7.3].
 
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** none — the fact key is `(subject, type)`
-- **Authority:** **owed** — [A8 §5] — no row; 'as weight.gross'. `boundBy = unassigned`. Provisional reading [ORIGINAL], **do not score**: as weight.gross — the weighing party (hauler/originAgent), with weighMaster as evidence
-- **Scoring:** `do-not-score` ([SD §4.7] note 3)
+- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 14. as weight.gross — the same weighing, the same scale, the same ticket (row 13, sameAs).
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape) · [[SD §4.7.2c]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
 - **Corpus:** `src:nmfta-ebol`
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
@@ -2004,12 +2004,10 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 ### Declared owed in `src/`
 
 - `amendmentWindowTable` — owed to [SD §6.2] / [SD §4.7.3] — the one published window governs `estimate`, which has no `type` _(`packages/domain-reference/src/rules/corrections.ts`)_
-- `authorityRow` — owed to [A8 §5] owes a `handover` row — F3 in `findings-from-alloy.md` _(`packages/domain-reference/src/rules/authority.ts`)_
 - `authorityRow` — owed to [A8 §9 item 8] — the fact class has no row in A8 §5 _(`packages/domain-reference/src/rules/authority.ts`)_
 - `boundBy` — owed to [SD §4.7.1] — NOT `CUSTODY`: a plan change is not a fact about the goods _(`packages/domain-reference/src/rules/authority.ts`)_
 - `boundBy` — owed to [SD §4.7.1] — NOT `CUSTODY`: an order is a commitment, not a fact about the goods _(`packages/domain-reference/src/rules/authority.ts`)_
 - `boundBy` — owed to [SD §4.7.1] — the binding is owed with the row _(`packages/domain-reference/src/rules/authority.ts`)_
-- `boundBy` — owed to [SD §4.7.2f] §7.4 — owed, and expressly NOT `CUSTODY`: the binding would be circular ([SD §4.8.2]) _(`packages/domain-reference/src/rules/authority.ts`)_
 - `chargeValue` — owed to A11 — charge facts [SD §4.7.3] _(`packages/domain-reference/src/assertions.ts`)_
 - `conditionValue` — owed to A4 / A10 — no document fixes the condition vocabulary _(`packages/domain-reference/src/assertions.ts`)_
 - `etaChange` — owed to [SD §4.7.3] — `eta` is absent-and-owed; [SD §4.5] reads it as `arrival` at basis = ESTIMATED _(`packages/domain-reference/src/rules/capture.ts`)_
@@ -2035,12 +2033,11 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 ### Record types whose authority row is owed
 
-19 of 31 declared types carry an authority that is owed in whole or in part. [A8 §9 item 8] is the ledger: "cube, piece count, packing performance, survey/estimate facts, ETA, seal integrity, tracer results, claim facts, and every A10/A11 class. **Each needs a row before its area can score a dependent decision high.**"
+14 of 31 declared types carry an authority that is owed in whole or in part, and [A8 §9 item 8] is the ledger. It used to read as a to-do list; it now separates the two reasons a row can be missing. **Twelve of these are blocked on the corpus**, not on effort — no external source binds a plan change, a membership offer, an assignment or an order award to an asserting role, so a row for one would be [ORIGINAL] and [SD §4.7] note 3 bars a provisional reading from scoring anyway. **Two are owed to A8 itself**: `partyRole` (the party entity and the role enum) and `notification` (a role resolved to a contactable address). Five came off this list at [A8 §5] rows 12-16 — `handover`, `weight.gross`, `weight.tare`, `packing` and `pieceCount`.
 
 - `assignmentOffer` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
 - `assignmentRelease` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
 - `assignmentResponse` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
-- `handover` — **owed**, owed to [A8 §5] has no handover row (recorded as F3 in findings-from-alloy.md), and boundBy is owed EXPRESSLY NOT CUSTODY: [SD §4.8.2] says of the identical shape that 'that row's binding would be CUSTODY, so A8-MOVE would be defined in terms of the thing it defines'. The fold breaks the circle, so handover's own authority cannot be decided by the fold. (`boundBy = owed`)
 - `membershipOffer` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
 - `membershipRelease` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
 - `membershipResponse` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
@@ -2048,14 +2045,10 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - `orderAward` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no order row (`boundBy = owed`)
 - `orderCancellation` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no order row (`boundBy = owed`)
 - `orderResponse` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no order row (`boundBy = owed`)
-- `packing` — **owed**, owed to [A8 §9 item 8] — names packing performance as not covered by [A8 §5] (`boundBy = CUSTODY`)
 - `partyRole` — **owed**, owed to [A8 §9 items 1-2] — both the party entity and the role enum are undefined (`boundBy = owed`)
-- `pieceCount` — **conditional**, owed to [A8 §9 item 8] — which names piece count outright as a class [A8 §5] does not cover (`boundBy = CUSTODY`)
 - `tripCancellation` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row (`boundBy = owed`)
 - `tripDelay` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row, and no source in the corpus binds a plan change to an asserting role (`boundBy = owed`)
 - `tripResequence` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row (`boundBy = owed`)
-- `weight.gross` — **owed**, owed to [A8 §5] — no row. NOTE: [A8 §9 item 8]'s enumeration of uncovered classes does not name gross or tare weight either, so this row is owed by a ledger that does not list it. (`boundBy = unassigned`)
-- `weight.tare` — **owed**, owed to [A8 §5] — no row; 'as weight.gross' (`boundBy = unassigned`)
 
 ### Record types whose fact-class family is owed
 

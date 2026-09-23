@@ -97,8 +97,10 @@ void _standingHasNoSuppressedMember
  * - `PRINCIPAL` — belongs to the party the arrangement is *for*; moves only when the principal
  *   changes (§7.5, `src:dp3-400ng` Item 17-2.5).
  * - `NONE` — no role is authoritative; a named value rule or a mandatory derivation settles it.
+ * - `KEY` — belongs to the role the fact's own **`qualifier`** names. Added to close **F3**; see
+ *   {@link A8_KEY} for the rule and for the general principle it is the first instance of.
  */
-export const BOUND_BY = ['CUSTODY', 'ASSIGNMENT', 'SCHEME', 'PRINCIPAL', 'NONE'] as const
+export const BOUND_BY = ['CUSTODY', 'ASSIGNMENT', 'SCHEME', 'PRINCIPAL', 'NONE', 'KEY'] as const
 
 export type BoundBy = (typeof BOUND_BY)[number]
 
@@ -208,6 +210,17 @@ export type AuthoritativeHolder =
    * **[ORIGINAL]** and provisional — **do not score** until A8 ratifies it ([SD §4.7] note 3).
    */
   | { readonly kind: 'releasingRoleAcrossTransferGap'; readonly holder: CustodyHolder }
+  /**
+   * [A8 §5] row 12, **A8-KEY**: the role the fact's own `qualifier` names — the releasing role for a
+   * `RELEASE` key, the receiving role for a `RECEIPT` key.
+   *
+   * Its own member rather than `custodyHolder` with a different fold, and that is the whole of F3's
+   * fix: `custodyHolder` resolves through {@link CustodyAt}, and `handover` is the record the fold
+   * reads, so resolving a handover contest through the fold would define A8-MOVE in terms of the
+   * thing it defines ([SD §4.8.2]). This member reads the **key**, which is fixed when the record is
+   * minted.
+   */
+  | { readonly kind: 'keySideRole' }
   /** A holder the role vocabulary cannot yet name — carried as owed, never as "nobody". */
   | { readonly kind: 'owedRole'; readonly owedRole: Owed<string, string> }
 
@@ -223,6 +236,12 @@ export const AUTHORITY_CONDITIONS = [
   'NO_SEPARATE_UNLOAD_AGENT_ASSIGNED',
   /** [SD §8.2] / [A8 §5] rows 1, 2, 5: the movement is an `ExternallyPerformedLeg`. */
   'EXTERNALLY_PERFORMED_LEG',
+  /**
+   * [A8 §5] row 15, the mirror of rows 3 and 4: `originAgent` where no separate packer is resourced.
+   * `src:sirva-ade` resources a `Packer` separately (GSD pp.12-13), so the circumstance is published
+   * even though the row that consumes it is [SYNTHESIS].
+   */
+  'NO_SEPARATE_PACKER_ASSIGNED',
   /** [A8 §6] / `src:sirva-ade` SOE pp.16-17: an `R19AuthNumber` licenses a substitute performer. */
   'REVERSE_RULE_19',
 ] as const
@@ -327,7 +346,7 @@ export type AuthorityRule<T extends AssertionType = AssertionType> = AuthorityRu
       }
   )
 
-export type A8Row = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11
+export type A8Row = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
 
 /**
  * A fact class [A8 §5] does not reach — [A8 §9 item 8] lists them: "cube, piece count, packing
@@ -371,6 +390,39 @@ export const PRINCIPAL_AT_ASPECT: RuleRef = ruleRef('PRINCIPAL-AT-ASPECT', '1')
 
 /** [A8 §5] row 7: [SD §5.2] M4's mandatory derivation. */
 export const SIT_ENTRY_DERIVED: RuleRef = ruleRef('SIT-ENTRY-DATE-DERIVED', '1')
+
+/**
+ * **Rule A8-KEY** — [A8 §5] row 12, and the rule that closes **F3**.
+ *
+ * > Where a fact's own `qualifier` names a role, authority for that fact belongs to **that** role.
+ * > `handover` is the one published member whose qualifier does: authority for a `RELEASE` key
+ * > belongs to the releasing role, and for a `RECEIPT` key to the receiving role.
+ *
+ * **Why this is a sixth `boundBy` and not `NONE` plus a tie-break.** Under `NONE` "no role is
+ * authoritative" and a value rule settles the fact ([A8 §5] row 6, `weight.net`). Here exactly
+ * **one** role is authoritative and it is computable from the record alone, so `authoritative` is
+ * neither empty nor plural, **A8-NAMED never fires**, and there is no value rule to name. Calling
+ * it `NONE` would have required inventing one.
+ *
+ * **Why it is not circular**, which is F3's whole complaint: it reads the **fact key**, fixed when
+ * the record was minted, and not {@link CustodyAt} — the fold that consumes the answer. [SD §4.8.2]
+ * refused a `custody` fact class for the identical shape, "so A8-MOVE would be defined in terms of
+ * the thing it defines".
+ *
+ * **Sourced**, and the arrangement is not ours: `src:stedi-x12-reference` issues the interline pair
+ * from opposite sides — only the **releasing** carrier issues `J1`, only the **receiving** carrier
+ * issues `R1` — so the side that may speak is already a property of the code in the source.
+ * **[SYNTHESIS]**: binding *authority* to it is this model's step.
+ *
+ * **The general principle, stated once because it explains the rows this does _not_ close.** An act
+ * that **mints** the thing a binding follows can never be bound to that thing. `handover` mints
+ * custody, so it cannot be `CUSTODY`; `assignmentOffer` mints the assignment, so it cannot be
+ * `ASSIGNMENT`; `orderAward` mints the principal relation, so it cannot be `PRINCIPAL`. F3 is the
+ * first instance of a class, not a special case. `KEY` rescues `handover` alone, because
+ * `handover` is the only one of them whose **qualifier** names its actor — the other nine name
+ * theirs in `context[]`, which [SD §1.4] forbids resolution from reading. See [A8 §9 item 8].
+ */
+export const A8_KEY: RuleRef = ruleRef('A8-KEY', '1')
 
 /**
  * **A8-NAMED's registry, and it is empty.**
@@ -662,65 +714,108 @@ export const AUTHORITY_TABLE = {
   /* ---- Everything else: owed. [A8 §9 item 8]. ----------------------------------------------- */
 
   packing: {
+    a8Row: 15,
     type: 'packing',
-    row: owed('authorityRow', '[A8 §9 item 8] — the fact class has no row in A8 §5'),
+    rule: AUTHORITATIVE_ROLE_AT_INSTANT,
     boundBy: 'CUSTODY',
-    provisional:
-      "[SD §4.7.1], [ORIGINAL] provisional: the mirror of `loading` (`OriginAgent`, or ADE's " +
-      '`Packer` where separately resourced, GSD pp.12-13), `customer` competing on scope. ' +
-      '**Do not score on this.**',
+    authoritative: {
+      kind: 'held',
+      primary: { kind: 'role', role: 'packer' },
+      alternates: [
+        { holder: { kind: 'role', role: 'originAgent' }, when: 'NO_SEPARATE_PACKER_ASSIGNED' },
+      ],
+    },
+    corroborating: ['customer', 'destinationAgent'],
+    // Sourced: `src:cfr-49-375` §375.503(a) requires an itemized inventory identifying "every
+    // carton and every uncartoned item" with the shipper given the opportunity to observe and
+    // verify, and §375.503(d) the same at delivery, in writing.
+    competing: ['customer'],
+    advisory: ['booker', 'hauler', 'platform'],
+    note:
+      'The mirror of row 3, and the mirror is the authored step (**[SYNTHESIS]**). The customer ' +
+      'competes on the SCOPE of what was packed, not on the performance — which is a Portion ' +
+      'question ([SD §3.4]), exactly as it is for loading.',
   },
 
   handover: {
+    a8Row: 12,
     type: 'handover',
-    row: owed('authorityRow', '[A8 §5] owes a `handover` row — F3 in `findings-from-alloy.md`'),
-    // **Changed by [SD §4.7.2f] §7.4, and the change is the point.** This read `CUSTODY`, which is
-    // circular — [SD §4.8.2] says so about the identical shape when it refuses a `custody` fact
-    // class: "that row's binding would be `CUSTODY`, so **A8-MOVE would be defined in terms of the
-    // thing it defines**. The fold breaks the circle — `handover`'s authority is decided on its own
-    // row." Those two sentences contradicted each other, and F1's fix made the contradiction
-    // load-bearing, because the fold now depends on selecting among paired handover assertions.
-    boundBy: owed(
-      'boundBy',
-      '[SD §4.7.2f] §7.4 — owed, and expressly NOT `CUSTODY`: the binding would be circular ([SD §4.8.2])',
-    ),
-    provisional:
-      '[SD §4.7.2f], [ORIGINAL] provisional, **do not score**: authority for a key belongs to the ' +
-      "role named on that key's own `side` — the releasing role for `RELEASE`, the receiving role " +
-      'for `RECEIPT`. That breaks the circle because it reads the KEY, not the fold, and it is ' +
-      "`src:stedi-x12-reference`'s own arrangement: only the releasing carrier issues `J1`, only the " +
-      'receiving carrier issues `R1`. Whether that is a sixth `boundBy` member or `NONE` plus a ' +
-      "named rule is [A8]'s to decide. Note the obligation this leaves open: under **A8-NAMED** " +
-      '([A8 §4.4]) every handover `FactResolved` must name a rule, and [A8 §5] has no row to name — ' +
-      'F3, open.',
+    // **F3, closed.** This entry read `row: owed(…)` with `boundBy` owed and expressly not
+    // `CUSTODY`, because [SD §4.7.1] gave the row `CUSTODY` while [SD §4.8.2] said of the identical
+    // shape that "that row's binding would be `CUSTODY`, so **A8-MOVE would be defined in terms of
+    // the thing it defines**". Two published sentences contradicting each other, made load-bearing
+    // by F1 — which gave `handover` a qualifier, so the fold now selects among a contested pair.
+    // {@link A8_KEY} resolves it by reading the qualifier instead of the fold.
+    rule: A8_KEY,
+    boundBy: 'KEY',
+    authoritative: { kind: 'held', primary: { kind: 'keySideRole' } },
+    corroborating: ['originAgent', 'destinationAgent', 'sitAgent'],
+    competing: [],
+    advisory: ['booker', 'platform'],
+    note:
+      'EXACTLY ONE authoritative role, computed from the record — so A8-NAMED never fires and no ' +
+      'tie-break is named. The other side of the same transfer may assert the same key and is ' +
+      'recorded in `considered[]`; it is never selected, because `src:stedi-x12-reference` issues ' +
+      'the interline pair from opposite sides (only the releasing carrier issues `J1`, only the ' +
+      'receiving carrier issues `R1`).',
   },
 
   'weight.gross': {
+    a8Row: 13,
     type: 'weight.gross',
-    row: owed('authorityRow', '[A8 §9 item 8] — the fact class has no row in A8 §5'),
-    boundBy: owed('boundBy', '[SD §4.7.1] — the binding is owed with the row'),
-    provisional:
-      '[SD §4.7.1], [ORIGINAL] provisional: the weighing party (`Hauler`/`OriginAgent`), `weighMaster` ' +
-      'as evidence. **Do not score on this.** Note R-WEIGHT-LOWER is scoped to `weight.net` and does ' +
-      'not reach here ([SD §4.4]).',
+    rule: AUTHORITATIVE_ROLE_AT_INSTANT,
+    boundBy: 'CUSTODY',
+    authoritative: { kind: 'held', primary: { kind: 'custodyHolder' } },
+    // `weighMaster` supplies the EVIDENCE, not the assertion — `src:cfr-49-375` §375.519(a)(1)-(6)
+    // puts the signature, the scale name and the scale location on the weigh master. As row 6.
+    corroborating: ['weighMaster'],
+    competing: ['customer', 'accountParty'],
+    advisory: ['booker', 'platform'],
+    note:
+      'Row 6 is `boundBy = NONE` because `R-WEIGHT-LOWER` picks the NET regardless of who ' +
+      'asserted it. That says nothing about who may assert an INPUT, and reading it as though ' +
+      'it did is what left this row owed by a ledger that does not list it. The reweigh right ' +
+      'belongs to the shipper (`src:cfr-49-375` §375.517), so `customer`/`accountParty` ' +
+      'compete, and the contest is settled on the net by row 6.',
   },
 
   'weight.tare': {
+    a8Row: 14,
     type: 'weight.tare',
-    row: owed('authorityRow', '[A8 §9 item 8] — the fact class has no row in A8 §5'),
-    boundBy: owed('boundBy', '[SD §4.7.1] — the binding is owed with the row'),
-    provisional: '[SD §4.7.1]: as `weight.gross`. **Do not score on this.**',
+    rule: AUTHORITATIVE_ROLE_AT_INSTANT,
+    boundBy: 'CUSTODY',
+    authoritative: { kind: 'held', primary: { kind: 'custodyHolder' } },
+    // `weighMaster` supplies the EVIDENCE, not the assertion — `src:cfr-49-375` §375.519(a)(1)-(6)
+    // puts the signature, the scale name and the scale location on the weigh master. As row 6.
+    corroborating: ['weighMaster'],
+    competing: ['customer', 'accountParty'],
+    advisory: ['booker', 'platform'],
+    note:
+      'As row 13: the same weighing, the same scale, the same ticket — [SD §4.7.1] states this ' +
+      'row as "as `weight.gross`".',
   },
 
   pieceCount: {
+    a8Row: 16,
     type: 'pieceCount',
-    row: owed('authorityRow', '[A8 §9 item 8] — the fact class has no row in A8 §5'),
+    rule: AUTHORITATIVE_ROLE_AT_INSTANT,
     boundBy: 'CUSTODY',
-    provisional:
-      '[SD §4.7.1]: **at a custody boundary this row is settled** — jointly held, releasing AND ' +
-      'receiving role, `selected` may be empty, because A8-JOINT covers "`condition` AND THE COUNTS ' +
-      'ASSERTED WITH IT". Away from a boundary it is owed ([A8 §9 item 8]). {@link jointRuleApplies} ' +
-      'carries the settled half; this row carries the owed half.',
+    // AWAY FROM a custody boundary, which is the half [SD §4.7.1] left owed. AT a boundary the
+    // answer is row 9's and is already computed by {@link jointRuleApplies} — A8-JOINT reaches
+    // "`condition` AND THE COUNTS ASSERTED WITH IT". One type, two standings, split by whether the
+    // instant is a boundary; the split is A8-INSTANT's to compute, which is why it needs no new
+    // `AuthoritativeSpec` kind.
+    authoritative: { kind: 'held', primary: { kind: 'custodyHolder' } },
+    corroborating: ['customer', 'originAgent', 'destinationAgent'],
+    competing: ['customer', 'accountParty'],
+    advisory: ['booker', 'platform'],
+    note:
+      'Every published counting duty falls on the party holding the goods: `src:cfr-49-375` ' +
+      '§375.503(a) (an itemized inventory numbering every carton and every uncartoned item) and ' +
+      '`src:dp3-400ng` Item 17.13 (a partial SIT withdrawal identified by INVENTORY ITEM NUMBERS, ' +
+      'with the TSP obtaining the actual weight). §375.503(d) gives the right to note missing ' +
+      "articles in writing, which is what makes `customer` competing, and [A4 §3]'s " +
+      '`GOODS_MISSING` is the reason code that records it.',
   },
 
   storeIn: {
@@ -867,14 +962,19 @@ export const AUTHORITY_TABLE = {
 
 /**
  * The table is complete over the vocabulary (a type with no entry does not compile, by `satisfies`
- * above) **and** carries exactly the eleven rows [A8 §5] publishes. If a twelfth row were written
- * here without a section to cite, this stops compiling — which is the disclosure rule, mechanised.
+ * above) **and** carries exactly the rows [A8 §5] publishes. If a row were written here without a
+ * section to cite, this stops compiling — which is the disclosure rule, mechanised.
+ *
+ * Eleven at `0.1.0`; **sixteen** now. Rows 12-16 closed `handover` (**F3**), `weight.gross`,
+ * `weight.tare`, `packing` and `pieceCount` — the five of [A8 §9 item 8]'s owed rows the corpus
+ * supports. The other fourteen are still owed and are still owed *here*: twelve of them are blocked
+ * on the corpus rather than on effort, which [A8 §9 item 8] now says in as many words.
  */
 type RowedTypes = {
   [T in AssertionType]: (typeof AUTHORITY_TABLE)[T] extends { readonly a8Row: A8Row } ? T : never
 }[AssertionType]
 
-type ElevenRows = Exact<
+type SixteenRows = Exact<
   RowedTypes,
   | 'arrival'
   | 'departure'
@@ -887,9 +987,14 @@ type ElevenRows = Exact<
   | 'condition'
   | 'identity'
   | 'charge'
+  | 'handover'
+  | 'weight.gross'
+  | 'weight.tare'
+  | 'packing'
+  | 'pieceCount'
 >
-const _elevenRows: ElevenRows = true
-void _elevenRows
+const _sixteenRows: SixteenRows = true
+void _sixteenRows
 
 /** Whether [A8 §5] reaches this fact class at all. An owed row is not a row. */
 export function hasAuthorityRow(type: AssertionType): boolean {
