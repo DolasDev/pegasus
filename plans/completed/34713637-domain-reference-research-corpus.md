@@ -1,5 +1,12 @@
 # Domain reference model — moving & storage
 
+> **ARCHIVED PLAN — not a record.** Its work landed in **`34713637`** (PR #705) and this file is the
+> plan **as it was written beforehand**, moved here on 2026-09-23 so `plans/in-progress/` stops
+> reading as in-flight. It was never rewritten into a post-hoc record the way
+> `domain-reference-a4-reasons.md`, `-a8-authority-rows.md` and `-a1-order-lifecycle.md` were, so
+> read it as intent rather than as an account of what shipped — where the two differ, the code and
+> the analysis documents win. What shipped is `docs/domain-reference/sources/` and `analysis/`.
+
 **Branch:** `docs/domain-reference` (worktree `../pegasus-domain-reference`)
 **Goal:** research external + internal sources and synthesize a technology-agnostic
 reference domain model that drives the Pegasus domain event catalog, its
