@@ -7,13 +7,13 @@ exits non-zero on any finding, so these are a gate, not a report.
 adjust an `expect` to go green without a corresponding revision to the document it was transcribed
 from.
 
-| #   | Finding                                                                 | Status                               |
-| --- | ----------------------------------------------------------------------- | ------------------------------------ |
-| F1  | `handover` has no qualifier, so custody can never change hands twice    | **resolved** — 2026-09-19            |
-| F2  | the fold read its `holder` off a non-authoritative `context[]`          | **resolved** — 2026-09-19, same edit |
-| F3  | `handover`'s `boundBy = CUSTODY` is circular, and [A8 §5] owes it a row | **open**                             |
-| F4  | `ExternallyPerformedLeg.performedBy` has no consumer                    | **open**                             |
-| F5  | role-name spelling is load-bearing and the corpus spells it two ways    | **open**                             |
+| #   | Finding                                                                 | Status                                  |
+| --- | ----------------------------------------------------------------------- | --------------------------------------- |
+| F1  | `handover` has no qualifier, so custody can never change hands twice    | **resolved** — 2026-09-19               |
+| F2  | the fold read its `holder` off a non-authoritative `context[]`          | **resolved** — 2026-09-19, same edit    |
+| F3  | `handover`'s `boundBy = CUSTODY` is circular, and [A8 §5] owes it a row | **resolved** — [A8 §5] row 12, `KEY`    |
+| F4  | `ExternallyPerformedLeg.performedBy` has no consumer                    | **open**                                |
+| F5  | role-name spelling is load-bearing and the corpus spells it two ways    | **resolved** — lower-camel, on the wire |
 
 ---
 
