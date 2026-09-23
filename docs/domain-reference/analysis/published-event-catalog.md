@@ -192,13 +192,14 @@ rule is named.
 
 **Additive** (a new `specVersion` within the same major):
 
-| Change                                                                                    | Why additive                                                                 |
-| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| A new `type` row, with its [SD §4.7]-shaped declaration                                   | The declaration is complete for the new version; no existing row moves       |
-| A new `aggregate` kind                                                                    | [SD §1.2] states exactly this: "open to _addition_ in a later `specVersion`" |
-| A new member of `CAPTURE_METHODS`, `BASES`, `OUTCOMES`, `REASON_SCOPES`, or a reason code | Same rule, generalised — **[SYNTHESIS]**                                     |
-| A new optional payload field                                                              | No record that validated stops validating                                    |
-| A new `context[]` member kind                                                             | `context[]` is non-authoritative ([SD §1.4]) and nothing keys on it          |
+| Change                                                                                    | Why additive                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A new `type` row, with its [SD §4.7]-shaped declaration                                   | The declaration is complete for the new version; no existing row moves                                                                                                                                                                                                                                         |
+| A new `aggregate` kind                                                                    | [SD §1.2] states exactly this: "open to _addition_ in a later `specVersion`"                                                                                                                                                                                                                                   |
+| A new member of `CAPTURE_METHODS`, `BASES`, `OUTCOMES`, `REASON_SCOPES`, or a reason code | Same rule, generalised — **[SYNTHESIS]**                                                                                                                                                                                                                                                                       |
+| **The first publication of a vocabulary that shipped owed** — `publishedOwedVocabulary`   | Not an addition but a **narrowing**, `string` → enum. Additive because the owed marker was itself published: `x-owed` states on the wire that "the members are not", so no conforming producer could have relied on a code being accepted, and no existing member's meaning moves — see below. **[SYNTHESIS]** |
+| A new optional payload field                                                              | No record that validated stops validating                                                                                                                                                                                                                                                                      |
+| A new `context[]` member kind                                                             | `context[]` is non-authoritative ([SD §1.4]) and nothing keys on it                                                                                                                                                                                                                                            |
 
 **Breaking** (a new major):
 
@@ -210,6 +211,14 @@ rule is named.
 | Changing what an existing member **means**               | [SD §1.2]: "never to reinterpretation"                                                                                               |
 | Moving a field between MANDATORY, OPTIONAL and FORBIDDEN | The envelope's obligations are the contract                                                                                          |
 | Changing a role name's spelling                          | F5 in [`findings-from-alloy.md`](findings-from-alloy.md): role names are fact-key components after F1, "so spelling is load-bearing" |
+
+**`publishedOwedVocabulary` carries a restriction, and it is recorded rather than absorbed.** The
+narrowing is safe on the **queried** face — a consumer is served a narrower type — and is a genuine
+restriction on the **captured** face: a producer sending an unrecognised code was valid and is now
+rejected. It is classified additive on the strength of the published `x-owed` annotation, not on the
+strength of nobody minding. A4 is the first use of the class ([A4 §7]); `roleClass`, `unitOfMeasure`
+and `identityScheme` are the three vocabularies still owed, and the glossary's Owed section lists
+them as such.
 
 **Deprecation is marked, never deleted.** Adopted from DCSA, whose fields "carry `deprecated: true`
 with a note saying what supersedes them and why they are still required", and whose old versions
@@ -228,10 +237,14 @@ stay in the repository. **[SYNTHESIS]** in adopting it.
 
 ### 2.4 The version this catalog is published at
 
-**`0.1.0`** — **[ORIGINAL]**, and deliberately pre-1.0. [SD §0]'s disclosure rule reaches the
+**`0.2.0`** — **[ORIGINAL]**, and deliberately pre-1.0. [SD §0]'s disclosure rule reaches the
 version string too: a `1.0.0` would claim a settled contract, and §5's inventory is the evidence
 that it is not one. The owed inventory is published inside the catalog itself (§4.2) so that a
 consumer reads it without reading this document.
+
+`0.1.0` → `0.2.0` at A4, which published the reason vocabulary: one `publishedOwedVocabulary` under
+§2.3, a minor and not a major. What caps the version now is the authority rows — 19 of 31 owed in
+whole or in part — and no amount of vocabulary work moves that.
 
 ---
 
@@ -414,19 +427,27 @@ and markdown and a generator that is not a fixed point turns its own gate into a
 ## 5. What the catalog does not yet publish
 
 Read the generated `Owed` section of [`../glossary.md`](../glossary.md) for the current list; it is
-derived from the code and cannot go stale. As at this version it holds: **21 declared owed values**,
-**19 of 31** record types whose authority row is owed in whole or in part, **2** whose fact-class
-family is owed, and **10** fact classes named in the corpus and absent from the vocabulary.
+derived from the code and cannot go stale. As at this version it holds: **21 declared owed values**, **3
+closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` — the
+reason vocabulary was a fourth until A4), **19 of 31** record types whose authority row is owed in
+whole or in part, **2** whose fact-class family is owed, and **10** fact classes named in the corpus
+and absent from the vocabulary.
 
 Three of those bear directly on this catalog and are named here so they are not read as oversights:
 
-1. **The A4 reason vocabulary.** `data/reasons.json` ships **shape-only**, with `codes: []` and a
-   loader that refuses a non-empty list while the status is `owed`. A catalog that publishes
-   outcomes without reasons is half a contract, and this is the half that is missing. The shape is
-   settled ([SD §2.4]), the evidence for the content is captured — Shippeo's two-axis grid, X12
-   element 1651's 86 values organised by responsible party, UNECE Rec 24's status list — and
-   **filling it is A4's job, not this document's.** [SD §10.4] lists it under what is explicitly not
-   settled.
+1. **The A4 reason vocabulary — landed, and this is what is left of it.**
+   [`A4-execution-events.md`](A4-execution-events.md) published 23 members at `0.2.0`, from the
+   evidence this section used to list as captured: Shippeo's two-axis grid, X12 element 1651's 86
+   values organised by responsible party, UNECE Rec 24's status list — and, for the `SITE` and
+   `ADMINISTRATIVE` members, `src:dp3-400ng` Items 125.1 and 33, which [A4 §4.4] found to be a
+   regulation-grade cause list where [SD §2.4]'s examples had suggested nothing was available.
+
+   Still owed, and the only two vocabulary gaps this contract now carries: the **`roleClass` enum**
+   ([A8 §9 item 2]), which publishes as an `x-owed-vocabulary` string and to which A4 hands one
+   concrete requirement — force majeure and an unknown cause both attribute to nobody, so the enum
+   needs an explicit non-party member — and every **remedy shape beyond `newWindow`**, of which the
+   one that matters opens a storage-in-transit stay and belongs to A5.
+
 2. **F3, F4, F5**, open in [`findings-from-alloy.md`](findings-from-alloy.md). F5 is the one that
    touches the published contract, and it does so directly enough to be stated as a commitment
    rather than a caveat. Role names became fact-key components at F1, so their spelling is

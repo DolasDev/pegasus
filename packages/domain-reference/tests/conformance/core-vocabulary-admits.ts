@@ -47,7 +47,7 @@ const delivery: CapturedAssertion<'delivery'> = {
     outcome: 'PARTIALLY_COMPLETED',
     reasons: [
       {
-        code: reasonCode('SHORT'),
+        code: reasonCode('GOODS_MISSING'),
         scope: 'GOODS',
         attribution: { roleClass: roleClass('unknown') },
         appliesTo: [subjectRef('portion', portionId('P2'))],
@@ -95,7 +95,7 @@ void eta
 const p: Portion = {
   portionId: portionId('P2'),
   shipment: S,
-  basis: reasonCode('SHORT'),
+  basis: reasonCode('GOODS_MISSING'),
   membership: 'ENUMERATED',
   enumeration: { items: [itemId('i1'), itemId('i2')] },
 }

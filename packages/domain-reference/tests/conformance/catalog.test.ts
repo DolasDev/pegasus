@@ -41,6 +41,7 @@ import {
   FILTER_AXIS_SOURCE,
   META_RECORD_TYPES,
   NON_ACT_TYPES,
+  REASON_CODES,
   REFUSED_FILTER_AXES,
   eventId,
   instant,
@@ -347,6 +348,32 @@ describe('the generated catalog', () => {
     },
     SLOW_MS,
   )
+
+  it('publishes the per-code reason discipline, which no schema can carry — [A4 §3]', () => {
+    // [A4 §0] rule 2 claims a consumer reading `index.json` sees the disclosure markers "without
+    // reading this file". It was written before anything emitted them, which made it a disclosure
+    // defect of exactly the kind [SD §0] is about; this is the check that keeps it true.
+    const manifest = JSON.parse(committedCatalogFile(CATALOG_FILES.index) ?? '{}') as {
+      reasons?: {
+        openMember?: { code?: string; remarkRequired?: boolean }
+        codes?: { code: string; scope: string; partyRequired: boolean; remedyRequired: boolean }[]
+      }
+    }
+    const codes = manifest.reasons?.codes ?? []
+    expect(codes.map((entry) => entry.code).sort()).toEqual([...REASON_CODES].sort())
+    expect(manifest.reasons?.openMember?.code).toBe('OTHER')
+    expect(manifest.reasons?.openMember?.remarkRequired).toBe(true)
+    // The two obligations the emitted schemas leave optional and the vocabulary does not.
+    expect(
+      codes
+        .filter((entry) => entry.remedyRequired)
+        .map((entry) => entry.code)
+        .sort(),
+    ).toEqual(['PARTY_ABSENT', 'PARTY_RESCHEDULED'])
+    expect(codes.filter((entry) => entry.partyRequired).every((e) => e.scope === 'PARTY')).toBe(
+      true,
+    )
+  })
 
   it('carries the do-not-edit header, naming the generator and the command', () => {
     for (const name of Object.values(CATALOG_FILES)) {

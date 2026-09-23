@@ -47,7 +47,8 @@ export * from './rules/resolution'
 export * from './catalog'
 
 // The tables that change on their own cadence — [SD §4.7.1]'s canonical subjects, [A8 §5]'s
-// authority rows, and the reason vocabulary's shape, whose content is owed to A4. They live in
+// authority rows, and the reason vocabulary: its shape from [SD §2.4] and, since [A4 §3], its 23
+// members with the per-code discipline no type carries. They live in
 // `data/` as JSON and are checked against everything above at load; this module is the loader, and
 // it is pure (it is handed parsed JSON and never reads a file).
 export * from './data'

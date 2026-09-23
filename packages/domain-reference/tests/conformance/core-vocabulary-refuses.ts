@@ -89,7 +89,7 @@ const a4: CapturedAssertion<'delivery'> = {
     // @ts-expect-error the reasons list is the error: COMPLETED forbids one
     reasons: [
       {
-        code: reasonCode('SHORT'),
+        code: reasonCode('GOODS_MISSING'),
         scope: 'GOODS',
         attribution: { roleClass: roleClass('carrier') },
       },
@@ -248,7 +248,7 @@ void r1
 const p1: Portion = {
   portionId: portionId('P1'),
   shipment: S,
-  basis: reasonCode('SHORT'),
+  basis: reasonCode('GOODS_MISSING'),
   membership: 'MEASURED',
   measure: { pieceCount: 2 },
   enumeration: { items: [itemId('i1')] },
@@ -259,7 +259,7 @@ void p1
 const p2: Portion = {
   portionId: portionId('P1'),
   shipment: S,
-  basis: reasonCode('SHORT'),
+  basis: reasonCode('GOODS_MISSING'),
   membership: 'ENUMERATED',
 }
 void p2
@@ -269,7 +269,7 @@ const p3: Portion = {
   portionId: portionId('P1'),
   // @ts-expect-error the property is the error: a Portion's shipment ref is a shipment, not a stop
   shipment: T,
-  basis: reasonCode('SHORT'),
+  basis: reasonCode('GOODS_MISSING'),
   membership: 'MEASURED',
   measure: { pieceCount: 2 },
 }

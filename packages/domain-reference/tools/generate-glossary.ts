@@ -55,6 +55,7 @@ const PACKAGE_DIR = fileURLToPath(new URL('../', import.meta.url))
 const SRC_DIR = `${PACKAGE_DIR}src/`
 const INDEX_FILE = `${SRC_DIR}index.ts`
 const CANONICAL_SUBJECTS_FILE = `${PACKAGE_DIR}data/canonical-subjects.json`
+const REASONS_FILE = `${PACKAGE_DIR}data/reasons.json`
 const ANALYSIS_DIR = fileURLToPath(
   new URL('../../../docs/domain-reference/analysis/', import.meta.url),
 )
@@ -191,6 +192,7 @@ function definitionOf(doc: string): string {
 const DOCUMENTS: Readonly<Record<string, string>> = {
   SD: '00-shared-decisions.md',
   A8: 'A8-authority-skeleton.md',
+  A4: 'A4-execution-events.md',
   A3: 'A3-trip-stop-assignment.md',
   'fork-order': 'fork-order-shipment-cardinality.md',
   'fork-time': 'fork-time-provenance-corrections.md',
@@ -569,6 +571,39 @@ function owedFromCode(model: Model): OwedEntry[] {
 }
 
 /**
+ * The **vocabularies** the model declares owed, as distinct from the values.
+ *
+ * `OwedCode<'reasonCode'>` is not an `Owed<…>` and never was, so until A4 landed the owed inventory
+ * counted 21 declared values and **no owed vocabularies at all** — while four closed enums were
+ * missing their members. That is precisely the "invites a reader to assume the answer is 'not much'"
+ * failure {@link owedFromCode} was written against, one construct over, and it went unnoticed because
+ * the ledger only knew one spelling. Found while landing A4, which was supposed to make the inventory
+ * shrink and did not ([A4 §7]).
+ *
+ * Read from the AST like the others: every `OwedCode<'x'>` type reference in `src/`, deduplicated by
+ * vocabulary name.
+ */
+function owedVocabulariesFromCode(model: Model): { name: string; where: string }[] {
+  const seen = new Map<string, { name: string; where: string }>()
+  for (const file of model.files) {
+    const where = repoPath(file)
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isTypeReferenceNode(node) &&
+        ts.isIdentifier(node.typeName) &&
+        node.typeName.text === 'OwedCode'
+      ) {
+        const name = literalText(node.typeArguments?.[0] ?? node)
+        if (name !== undefined && !seen.has(name)) seen.set(name, { name, where })
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(file)
+  }
+  return sortedBy([...seen.values()], (entry) => entry.name)
+}
+
+/**
  * The `FACT_CLASS_FAMILY` rows the [SYNTHESIS] could not make, read off the object literal.
  *
  * Two of the thirty-one types are marked `'owed'` rather than assigned a family — neither `charge`
@@ -636,6 +671,51 @@ function readCanonicalSubjects(): CanonicalTable {
     families: { members: Record<string, { members: string[] }> }
   }
   return { rows: raw.rows, families: raw.families.members }
+}
+
+/**
+ * `data/reasons.json`'s per-code table — [A4 §3].
+ *
+ * Joined onto the `reason code` entries for the same reason the canonical-subject table is joined
+ * onto the record types: the docstring carries the evidence and the table carries the discipline, and
+ * a reader who has to open two files to learn whether a code requires a remedy has been given half
+ * an answer. The loader already holds the two to one set ([SD §2.4]).
+ */
+export function readReasonCodeTable(): Map<string, ReasonRow> {
+  const raw = JSON.parse(readFileSync(REASONS_FILE, 'utf8')) as {
+    vocabulary: { codes: ReasonRow[] }
+  }
+  return new Map(raw.vocabulary.codes.map((row) => [row.code, row]))
+}
+
+export interface ReasonRow {
+  readonly code: string
+  readonly scope: string
+  readonly partyRequired: boolean
+  readonly remedyRequired: boolean
+  readonly remedyShape: string | null
+  readonly marker: string | null
+  readonly citation: string
+}
+
+function factsForReasonCode(row: ReasonRow | undefined): (readonly [string, string])[] {
+  if (row === undefined) return []
+  return [
+    ['Default scope', `\`${row.scope}\``],
+    [
+      'Attribution',
+      row.partyRequired
+        ? '`attribution.party` **required** — a party-side reason that cannot name the party is the ' +
+          '`DIV` overload [SD §2.3] invariant 2 removes'
+        : '`attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)',
+    ],
+    [
+      'Remedy',
+      row.remedyRequired
+        ? `**required** — \`${row.remedyShape ?? ''}\` ([SD §2.4] rule 5)`
+        : 'not required ([SD §2.4] rule 5, "for some codes")',
+    ],
+  ]
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -734,8 +814,25 @@ const VOCABULARIES: readonly {
       '`Reason.scope` — **[ORIGINAL]** in [SD §2.4]. "It exists so a consumer can separate ' +
       "'something is wrong with the goods' from 'something is wrong with the site' without reading " +
       "a code list, and because HHG's authoring gap is concentrated in `SITE` and " +
-      '`ADMINISTRATIVE`." The code list itself is owed to A4.',
+      '`ADMINISTRATIVE`." Every code below declares a default scope, and [A4 §4.4] is where that ' +
+      "gap turned out to be narrower than [SD §2.4]'s examples suggested: `src:dp3-400ng` Item " +
+      '125.1 enumerates the shuttle causes and Item 33 the impractical operations.',
     symbols: ['REASON_SCOPES'],
+  },
+  {
+    name: 'reason code',
+    heading: 'Reason codes',
+    blurb:
+      'The published reason vocabulary — the half of `(outcome, reason)` [SD §2.4] fixed the shape ' +
+      'of and left to A4: "the list itself is A4\'s job". Twenty-three members, which is rule 2\'s ' +
+      'magnitude ("~20 reasons × 5 outcomes, not ~100 types") and not a quota. Every member is ' +
+      "**orthogonal to the outcome** — `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA` _and_ its " +
+      '`REN/AVA`, one code under two outcomes — and **grain-independent**: a code does not change ' +
+      'when the subject changes grain. `OTHER` is not a member: it is declared by the shape itself ' +
+      '(rule 3) and carries a mandatory narrative the others do not. The per-code scope, attribution ' +
+      'discipline and remedy obligation are joined from ' +
+      '`packages/domain-reference/data/reasons.json`, which the loader holds to this list as a set.',
+    symbols: ['REASON_CODES'],
   },
   {
     name: 'role name',
@@ -962,6 +1059,13 @@ function entryFor(
       ? '_no document citation in the docstring_'
       : citations.map((citation) => linkFor(citation, anchors)).join(' · '),
   ])
+  // The corpus half of [SD §0]'s three citation forms, rendered rather than only counted. It was
+  // counted from the start — `hasCitation` has always accepted a `src:` reference — but not shown,
+  // so an entry whose whole evidence is external read as "no document citation in the docstring".
+  // That is exactly backwards for a vocabulary built from external sources, and A4's reason codes
+  // are where it became visible: eleven of twenty-three cite nothing but the corpus.
+  const corpus = [...new Set([...text.matchAll(CORPUS_CITATION)].map((match) => match[0]))].sort()
+  if (corpus.length > 0) facts.push(['Corpus', corpus.join(' · ')])
   facts.push(['Declared by', `\`${declaredBy}\` in \`${file}\``])
   return {
     term,
@@ -978,6 +1082,7 @@ function buildCategories(model: Model, anchors: AnchorIndex): Category[] {
   const exported = exportsOfIndex(model)
   const table = readCanonicalSubjects()
   const rowsByType = new Map(table.rows.map((row) => [row.type, row]))
+  const reasonRows = readReasonCodeTable()
   const categories: Category[] = []
 
   for (const vocabulary of VOCABULARIES) {
@@ -994,7 +1099,9 @@ function buildCategories(model: Model, anchors: AnchorIndex): Category[] {
         member.file,
         vocabulary.name === 'record type'
           ? factsForRecordType(rowsByType.get(member.value), table)
-          : [],
+          : vocabulary.name === 'reason code'
+            ? factsForReasonCode(reasonRows.get(member.value))
+            : [],
         anchors,
       ),
     )
@@ -1111,6 +1218,8 @@ export function collectDisclosureFailures(): DisclosureFailure[] {
 export interface OwedInventory {
   /** Every `owed(name, owedTo)` call and `Owed<Name, Owner>` type in `src/`, deduplicated. */
   readonly declared: readonly OwedEntry[]
+  /** Closed vocabularies whose members are owed — every `OwedCode<'x'>` in `src/`. [A4 §7] */
+  readonly vocabularies: readonly { readonly name: string; readonly where: string }[]
   /** Record types whose [A8 §5] authority row is owed in whole or in part. */
   readonly authorityRows: readonly {
     readonly type: string
@@ -1147,6 +1256,7 @@ export function collectOwedInventory(): OwedInventory {
 
   return {
     declared: sortedBy([...deduped.values()], (item) => `${item.what} ${item.owedTo}`),
+    vocabularies: owedVocabulariesFromCode(model),
     authorityRows: sortedBy(
       table.rows.filter((row) => row.authority.status !== 'assigned'),
       (row) => row.type,
@@ -1187,7 +1297,7 @@ function renderOwed(model: Model, table: CanonicalTable, lines: string[]): void 
     'This is the honest state of the model on one page. [SD §0] forbids guessing a value to make ' +
       'the types tidy, so a gap is carried as a gap and names who owes it. Every line below is ' +
       'read out of the code or the tables — the `owed(name, owedTo)` constructor, the ' +
-      '`Owed<Name, Owner>` type, and the authority column of ' +
+      "`Owed<Name, Owner>` type, the `OwedCode<'x'>` brand, and the authority column of " +
       '`packages/domain-reference/data/canonical-subjects.json`.',
   )
   lines.push('')
@@ -1205,6 +1315,21 @@ function renderOwed(model: Model, table: CanonicalTable, lines: string[]): void 
     (item) => `${item.what}\u0000${item.owedTo}`,
   )) {
     lines.push(`- \`${entry.what}\` — owed to ${entry.owedTo} _(\`${entry.where}\`)_`)
+  }
+  lines.push('')
+
+  lines.push('### Closed vocabularies whose members are owed')
+  lines.push('')
+  lines.push(
+    'A vocabulary whose **shape** is published and whose **members** are not, carried as ' +
+      "`OwedCode<'x'>` so that the gap is in the type rather than in a comment. The reason " +
+      'vocabulary was one of these until [A4 §3] published it; these are what is left. Each ' +
+      'publishes on the wire as a string with an `x-owed-vocabulary` annotation, and publishing one ' +
+      'is `publishedOwedVocabulary` under [catalog §2.3].',
+  )
+  lines.push('')
+  for (const entry of owedVocabulariesFromCode(model)) {
+    lines.push(`- \`${entry.name}\` _(\`${entry.where}\`)_`)
   }
   lines.push('')
 

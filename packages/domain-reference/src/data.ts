@@ -3,8 +3,9 @@
  *
  * Three things in this package change on their own cadence and are therefore **data validated
  * against the model**, not more types: [SD §4.7]'s canonical-subject table, [A8 §5]'s per-fact-class
- * authority table, and the reason vocabulary's shape ([SD §2.4]), whose *content* is owed to A4 and
- * is shipped empty rather than guessed.
+ * authority table, and the reason vocabulary — its shape from [SD §2.4] and, since [A4 §3], its 23
+ * members. The members are held to `REASON_CODES` as a set; what the table adds is the per-code
+ * discipline the types do not carry, which is why it is data and not a second enum.
  *
  * Why data and not types. [SD §4.7] note 3 says the authority column "is [A8]'s, **quoted, not
  * re-derived**", and [A8 §9] lists ten things A8 still owes. A table that will be rewritten as its
@@ -35,6 +36,7 @@ import { isAggregateKind, type AggregateKind } from './ids'
 import type { Exact, NonEmptyArray } from './primitives'
 import {
   OUTCOMES,
+  REASON_CODES,
   REASON_CODE_OTHER,
   REASON_SCOPES,
   reasonsAreRequired,
@@ -922,6 +924,19 @@ export interface ReasonShapeField {
 export interface ReasonCodeEntry {
   readonly code: string
   readonly scope: ReasonScope
+  /**
+   * Whether `attribution.party` must name a party — [SD §2.4] rule 6's discipline, per code.
+   *
+   * A boolean rather than a default `roleClass`, deliberately: the role enum is owed to
+   * [A8 §9 item 2] and a table that named a member of it would be guessing one into existence.
+   */
+  readonly partyRequired: boolean
+  /** Whether the code must carry a remedy — [SD §2.4] rule 5, "and for some codes must". */
+  readonly remedyRequired: boolean
+  /** The remedy shape the code carries, where one is typed. `null` where none is. [SD §2.4] rule 5 */
+  readonly remedyShape: string | null
+  /** `[ORIGINAL]` / `[SYNTHESIS]`, or `null` where the member is sourced outright. [SD §0] */
+  readonly marker: string | null
   readonly citation: string
 }
 
@@ -976,7 +991,10 @@ function readReasonCodeEntry(path: string, value: unknown): ReasonCodeEntry {
   if (code === REASON_CODE_OTHER) {
     // [SD §2.4] rule 3: OTHER is declared by the shape and carries an obligation the others do
     // not. A4 owning it too would make `remark`'s mandatory case a vocabulary decision.
-    fail(`${path}.code`, 'OTHER is declared by [SD §2.4] rule 3, not by the vocabulary A4 owes')
+    fail(
+      `${path}.code`,
+      'OTHER is declared by [SD §2.4] rule 3, not by the vocabulary A4 published',
+    )
   }
   const offending = outcomeWordIn(code)
   if (offending !== null) {
@@ -985,9 +1003,21 @@ function readReasonCodeEntry(path: string, value: unknown): ReasonCodeEntry {
       `names the outcome ${offending}; reasons are reused across outcomes ([SD §2.4] rule 1)`,
     )
   }
+  const remedyRequired = readBoolean(`${path}.remedyRequired`, object['remedyRequired'])
+  const remedyShape = readStringOrNull(`${path}.remedyShape`, object['remedyShape'])
+  if (remedyRequired && remedyShape === null) {
+    // [SD §2.4] rule 5 is "a reason may carry its own remedy, and for some codes must". A code that
+    // must carry one and names no shape is the incomplete record the rule exists to forbid —
+    // `src:shippeo`'s "a failed delivery that does not say when it will be retried".
+    fail(`${path}.remedyShape`, 'a code that requires a remedy must name the shape it requires')
+  }
   return {
     code,
     scope: readMember(`${path}.scope`, object['scope'], REASON_SCOPES),
+    partyRequired: readBoolean(`${path}.partyRequired`, object['partyRequired']),
+    remedyRequired,
+    remedyShape,
+    marker: readStringOrNull(`${path}.marker`, object['marker']),
     citation: readString(`${path}.citation`, object['citation']),
   }
 }
@@ -1013,12 +1043,27 @@ export function loadReasonVocabulary(raw: unknown): ReasonVocabulary {
     if (codes.length > 0) {
       fail(
         'reasons.vocabulary.codes',
-        'an owed vocabulary carries no codes — A4 has not been written',
+        'an owed vocabulary carries no codes; a table that has them is not owed',
       )
     }
     readString('reasons.vocabulary.owedTo', vocabulary['owedTo'])
   } else if (codes.length === 0) {
     fail('reasons.vocabulary.codes', 'a published vocabulary with no members is an owed one')
+  } else if (
+    !sameSet(
+      codes.map((entry) => entry.code),
+      REASON_CODES,
+    )
+  ) {
+    // The check with teeth, now that A4 has landed: the table and the enum are **one vocabulary**
+    // held in two places, and this is the line that says so. It is the same set comparison
+    // `scopesNote` describes for `REASON_SCOPES` — a code added in one place and not the other is a
+    // defect, not a widening ([catalog §2.3] classifies a genuine addition as
+    // `newClosedEnumMember`, which means both places change together).
+    fail(
+      'reasons.vocabulary.codes',
+      `does not declare exactly the ${String(REASON_CODES.length)} members of REASON_CODES ([A4 §3])`,
+    )
   }
 
   const shape = readObject('reasons.shape', root['shape'])

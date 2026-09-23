@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pegasus.invalid/domain-reference/catalog/0.1.0/captured.schema.json",
+  "$id": "https://pegasus.invalid/domain-reference/catalog/0.2.0/captured.schema.json",
   "title": "Household-goods moving & storage reference catalog — captured face",
   "description": "What anything asserting into the catalog must satisfy. `recordedAt` is server-authored and FORBIDDEN here ([SD §1.1]).",
   "x-generated": "GENERATED FILE — DO NOT EDIT BY HAND",
   "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
   "x-command": "npm run catalog -w @pegasus/domain-reference",
   "x-decided-by": "docs/domain-reference/analysis/published-event-catalog.md",
-  "x-spec-version": "0.1.0",
+  "x-spec-version": "0.2.0",
   "x-face": "captured",
   "x-rule": [
     "[SD §1.3] E-TYPE — a record carrying no `type`, a `type` outside the vocabulary for its `specVersion`, or any second classification alongside it, is rejected at the boundary.",
@@ -18556,6 +18556,19 @@
       "required": ["amount", "unit"],
       "additionalProperties": false
     },
+    "NewWindow": {
+      "type": "object",
+      "properties": {
+        "end": {
+          "$ref": "#/$defs/Instant"
+        },
+        "start": {
+          "$ref": "#/$defs/Instant"
+        }
+      },
+      "required": ["end", "start"],
+      "additionalProperties": false
+    },
     "ObligationRecipient": {
       "anyOf": [
         {
@@ -18670,6 +18683,20 @@
       "required": ["owed", "owedTo"],
       "additionalProperties": false
     },
+    "Owed.remedy": {
+      "type": "object",
+      "properties": {
+        "owed": {
+          "const": "remedy"
+        },
+        "owedTo": {
+          "const": "A5 — a remedy that opens a SIT stay; [SD §2.4] rule 5 types only newWindow"
+        },
+        "provisional": true
+      },
+      "required": ["owed", "owedTo"],
+      "additionalProperties": false
+    },
     "OwedCode.unitOfMeasure": {
       "type": "string",
       "x-brand": "owedCode:unitOfMeasure",
@@ -18761,7 +18788,31 @@
               "$ref": "#/$defs/Attribution"
             },
             "code": {
-              "$ref": "#/$defs/ReasonCode.reasonCode"
+              "enum": [
+                "GOODS_DAMAGED",
+                "GOODS_MISSING",
+                "GOODS_NOT_READY",
+                "GOODS_LOST_OR_STOLEN",
+                "OVERFLOW",
+                "PARTY_ABSENT",
+                "PARTY_REFUSED",
+                "PARTY_RESCHEDULED",
+                "PARTY_NOT_READY",
+                "INSTRUCTED_CHANGE",
+                "ADDRESS_INCORRECT",
+                "PAYMENT_NOT_RECEIVED",
+                "AUTHORISATION_MISSING",
+                "DOCUMENT_MISSING_OR_INCORRECT",
+                "SITE_INACCESSIBLE",
+                "SITE_HANDLING_EXCESS",
+                "SITE_ACCESS_RESTRICTED",
+                "RESOURCE_UNAVAILABLE",
+                "RESOURCE_FAILURE",
+                "LATE_ARRIVAL",
+                "FORCE_MAJEURE",
+                "OUT_OF_SEQUENCE",
+                "CAUSE_UNKNOWN"
+              ]
             },
             "remark": {
               "type": "string"
@@ -18778,25 +18829,22 @@
         }
       ]
     },
-    "ReasonCode.reasonCode": {
-      "type": "string",
-      "x-brand": "owedCode:reasonCode",
-      "x-owed-vocabulary": "reasonCode",
-      "x-owed": "the code list is owed; the shape is published and the members are not ([SD §0])"
-    },
     "Remedy": {
-      "type": "object",
-      "properties": {
-        "owed": {
-          "const": "remedy"
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "newWindow": {
+              "$ref": "#/$defs/NewWindow"
+            }
+          },
+          "required": ["newWindow"],
+          "additionalProperties": false
         },
-        "owedTo": {
-          "const": "A4 — the reason vocabulary [SD §2.4, §10.4]"
-        },
-        "provisional": true
-      },
-      "required": ["owed", "owedTo"],
-      "additionalProperties": false
+        {
+          "$ref": "#/$defs/Owed.remedy"
+        }
+      ]
     },
     "RoleClass.roleClass": {
       "type": "string",

@@ -1816,3 +1816,47 @@ false green**.
 - Fixed at the source in that file (escaped as `�`; the runtime string and the generated
   glossary are byte-identical), but any file can acquire a NUL the same way.
 - No CI job greps that file, so this was local-tooling only — worth checking if one ever does.
+
+## A generator that emits `*emphasis*` breaks its own prettier fixed point
+
+`packages/domain-reference/tools/generate-glossary.ts` writes markdown, and the pre-commit hook
+runs `prettier --write` over what it wrote. Prettier normalises markdown emphasis to `_x_`, so a
+blurb containing `*and*` makes the generated file **not a fixed point**: the staleness gate compares
+the generator's output against the committed file and passes, then the hook rewrites the committed
+file, and the next run of the gate fails on a change nobody made.
+
+- In any generated markdown, write `_x_`, never `*x*`. Same class of trap as
+  `JSON.stringify(x, null, 2)` not being a fixed point because prettier collapses short arrays.
+- The check is one command and it is worth running before every commit that touches a generator:
+  `npx prettier --check docs/domain-reference packages/domain-reference`.
+  (`packages/domain-reference/alloy/run.mjs` fails it on `main` already — pre-existing.)
+
+## The owed ledger was blind to an owed _vocabulary_ for the model's whole life
+
+`generate-glossary.ts`'s owed ledger read two spellings out of the AST — the `owed(name, owedTo)`
+constructor and the `Owed<Name, Owner>` type — and **not** `OwedCode<'x'>`, which is a brand rather
+than an object. So `catalog/index.json` and the glossary both reported 21 owed values and **zero owed
+vocabularies**, while four closed enums (`reasonCode`, `roleClass`, `unitOfMeasure`,
+`identityScheme`) had no members at all. The gap is the exact failure the ledger exists to prevent:
+"a reference model that cannot say **how much** is undecided invites a reader to assume the answer is
+'not much'".
+
+It surfaced only because landing A4 was _supposed_ to make the inventory shrink and did not. Fixed
+with `owedVocabulariesFromCode`, a glossary section and an `owed.vocabularies` field.
+
+**The general lesson:** when a change is supposed to move a generated count, check the count. A
+ledger that reads the AST reads the spellings someone thought of, and a new construct is invisible to
+it rather than an error.
+
+## JSON Schema cannot carry a per-code obligation — publish it as data
+
+`Reason.remedy` and `Reason.attribution.party` are optional on the record, and A4's vocabulary makes
+them **required for specific codes** (`PARTY_ABSENT` must carry a remedy; every `PARTY`-scope code
+must name a party). No JSON Schema keyword expresses "required when `code` is one of these", short of
+splitting the union into a branch per obligation — which changes the published shape.
+
+So the obligations are published as **data**, in `catalog/index.json`'s `reasons` block, with a note
+saying the schema is more permissive than the vocabulary. If a document claims a consumer can read
+something from a generated artifact, **open the artifact and check** — `A4 §0` made that claim before
+anything emitted it, which is a disclosure defect in the document that introduces the disclosure
+rule.

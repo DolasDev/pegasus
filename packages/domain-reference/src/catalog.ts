@@ -13,7 +13,9 @@
  * change.
  *
  * Nothing here reads a file, and nothing here mints a record type, a reason code or an authority
- * row: each of those has a home that already owes it ([catalog §0] rule 4).
+ * row: each of those has a home that already owes it ([catalog §0] rule 4). The reason vocabulary's
+ * home was A4 and it landed ([A4 §3]); this module's part in that was one new change class and a
+ * version bump ([A4 §7]).
  */
 
 import type { Exact } from './primitives'
@@ -54,11 +56,14 @@ void _catalogIsTheVocabulary
  *
  * **[ORIGINAL]**, and deliberately pre-1.0: [SD §0]'s disclosure rule reaches the version string
  * too. A `1.0.0` would claim a settled contract, and the owed inventory — 19 of 31 authority rows,
- * the A4 reason vocabulary, three owed value shapes, F3/F4/F5 — is the evidence that it is not one.
- * This is the value an envelope's `specVersion` carries ([SD §1.1], "the catalog vocabulary version
- * this record was minted under").
+ * three owed value shapes, three owed code vocabularies, F3/F4/F5 — is the evidence that it is not
+ * one. This is the value an envelope's `specVersion` carries ([SD §1.1], "the catalog vocabulary version this
+ * record was minted under").
+ *
+ * `0.2.0` at A4: the reason vocabulary was published, which is {@link ADDITIVE_CHANGES} member
+ * `publishedOwedVocabulary` and therefore a minor rather than a major ([A4 §7]).
  */
-export const CATALOG_VERSION = '0.1.0'
+export const CATALOG_VERSION = '0.2.0'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces
@@ -273,6 +278,31 @@ export const ADDITIVE_CHANGES = [
    * reason scope or a reason code. **[SYNTHESIS]**: [SD §1.2]'s rule for `aggregate`, generalised.
    */
   'newClosedEnumMember',
+  /**
+   * The **first** publication of a vocabulary that shipped as owed — the change A4 made to the reason
+   * codes, and the one every remaining owed vocabulary — `roleClass`, `unitOfMeasure`,
+   * `identityScheme` — will make.
+   *
+   * Distinguished from {@link ADDITIVE_CHANGES} member `newClosedEnumMember` because it is not an
+   * addition to a list: it **narrows a string to an enum**. An owed code publishes as
+   * `{"type": "string", "x-owed-vocabulary": …}`, so on the **queried** face this is a narrowing a
+   * consumer can only benefit from, and on the **captured** face it is a restriction — a producer
+   * sending an unrecognised code was valid and is now rejected.
+   *
+   * Additive rather than breaking because **the owed marker was itself published**: `x-owed` states
+   * on the wire that "the code list is owed; the shape is published and the members are not", so no
+   * conforming producer could have relied on a particular code being accepted, and no existing
+   * member's meaning moves — which is the property [SD §1.2]'s "never to reinterpretation" protects.
+   * **[SYNTHESIS]**, and the restriction is recorded with the class rather than left to be
+   * discovered ([A4 §7]).
+   *
+   * One emitted detail worth knowing before the next one of these: the owed code's `$defs` entry
+   * **disappears**. `ReasonCode.reasonCode` was a named string schema; a closed union of string
+   * literals inlines as an `enum` on the property, so a consumer pinning that `$ref` loses it. A4
+   * also publishes the obligations no schema can carry — which codes require a remedy or a named
+   * party — as data in `catalog/index.json`'s `reasons` block.
+   */
+  'publishedOwedVocabulary',
   /**
    * A new **optional** payload field. No record that validated stops validating, and [SD §1.1]'s
    * payload row — "typed per `type`", "per type" — already leaves the per-type shape to [SD §4.7]'s

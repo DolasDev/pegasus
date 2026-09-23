@@ -71,9 +71,15 @@ npm run alloy     -w @pegasus/domain-reference   # structural model-checking (ne
 ## Deliberately unfinished
 
 These are declared **owed** in the documents and are represented as owed here rather than guessed:
-the reason vocabulary's codes (A4), the order lifecycle's transition mapping (A1), shipment identity
-across a terminated storage stay (A2/A5), and most of A8's authority rows. A test asserts that
-everything owed is marked owed — so an unfilled gap is visible rather than silently defaulted.
+the order lifecycle's transition mapping (A1), shipment identity across a terminated storage stay
+(A2/A5), the `roleClass`, `unitOfMeasure` and `identityScheme` vocabularies, every remedy shape beyond
+`newWindow`, and most of A8's authority rows. A test asserts that everything owed is marked owed — so
+an unfilled gap is visible rather than silently defaulted, and the glossary's `Owed` section is the
+current list.
+
+The reason vocabulary's codes were on that list and are not any more:
+[`A4-execution-events.md`](../../docs/domain-reference/analysis/A4-execution-events.md) published 23
+members, which took the catalog to `specVersion` 0.2.0.
 
 ### Gaps writing the core vocabulary surfaced
 
@@ -92,8 +98,9 @@ declared:
 
 ### Gaps writing the data tables surfaced
 
-`data/` holds three tables — canonical subjects, A8's authority rows, and the reason vocabulary's
-shape — and `src/data.ts` is the loader that refuses a bad one. Filling them row by row surfaced
+`data/` holds three tables — canonical subjects, A8's authority rows, and the reason vocabulary
+(its shape, and since A4 its 23 members with their per-code scope, attribution discipline and remedy
+obligation) — and `src/data.ts` is the loader that refuses a bad one. Filling them row by row surfaced
 four things, each recorded in the table itself rather than smoothed over.
 
 - **Two rows are owed by a ledger that does not list them.** §4.7.1 marks `weight.gross` and

@@ -174,8 +174,12 @@ describe('[SD §4.7.2e] the cancellation is an act with an outcome', () => {
       outcome: 'NOT_COMPLETED',
       reasons: [
         {
-          code: reasonCode('ALREADY_PERFORMED'),
-          scope: 'ADMINISTRATIVE',
+          // [A4 §4.3]: `ALREADY_PERFORMED` was rejected for putting a completion verb in a closed
+          // enum, where `outcomeWordIn` cannot see it and only a reader can. `OUT_OF_SEQUENCE` names
+          // the request's place in the sequence — it arrived after the act it would have prevented —
+          // and its scope is `ACT`, not `ADMINISTRATIVE`: nothing is wrong on paper.
+          code: reasonCode('OUT_OF_SEQUENCE'),
+          scope: 'ACT',
           attribution: { roleClass: roleClass('carrier') },
         },
       ],

@@ -21,7 +21,9 @@ import {
   loadReasonVocabulary,
   owedAuthorityRows,
   ASSERTION_TYPES,
+  REASON_CODES,
   REASON_CODE_OTHER,
+  REASON_SCOPES,
 } from '../../src/index'
 
 import canonicalSubjects from '../../data/canonical-subjects.json'
@@ -235,17 +237,65 @@ describe('[A8 §5] the authority table', () => {
   })
 })
 
-describe('[SD §2.4] the reason vocabulary', () => {
-  it('ships the shape and no codes, because A4 has not been written', () => {
+describe('[SD §2.4], [A4 §3] the reason vocabulary', () => {
+  it('ships the shape AND the list, because A4 has been written', () => {
     const vocabulary = loadReasonVocabulary(reasons)
-    expect(vocabulary.status).toBe('owed')
-    expect(vocabulary.codes).toHaveLength(0)
-    expect(vocabulary.owedTo).toMatch(/A4/)
-    // The shape IS settled, and is shipped populated: six fields, six rules, six scopes.
+    expect(vocabulary.status).toBe('published')
+    expect(vocabulary.owedTo).toBeNull()
+    // [A4 §3]. [SD §2.4] rule 2's magnitude — "~20 reasons x 5 outcomes, not ~100 types" — and the
+    // table is the enum, which the set check below is what actually enforces.
+    expect(vocabulary.codes).toHaveLength(REASON_CODES.length)
+    expect(vocabulary.codes.map((entry) => entry.code).sort()).toEqual([...REASON_CODES].sort())
+    // The shape is unchanged: six fields, six rules, six scopes.
     expect(vocabulary.shapeFields).toHaveLength(6)
     expect(vocabulary.rules).toHaveLength(6)
     expect(vocabulary.scopes).toHaveLength(6)
     expect(vocabulary.openMemberCode).toBe(REASON_CODE_OTHER)
+  })
+
+  it('declares an attribution discipline and a remedy obligation for every member', () => {
+    const vocabulary = loadReasonVocabulary(reasons)
+    // `whenA4Lands` stated the contract for landing: "each member needs a code, a default scope, its
+    // attribution discipline, and whether it requires a remedy."
+    for (const entry of vocabulary.codes) {
+      expect(REASON_SCOPES).toContain(entry.scope)
+      expect(typeof entry.partyRequired).toBe('boolean')
+      expect(entry.citation).not.toBe('')
+    }
+    // [A4 §3]: `partyRequired` is true for every PARTY-scope member and no other, because a
+    // party-side reason that cannot name the party is the `DIV` overload invariant 2 removes.
+    const requiresParty = vocabulary.codes.filter((entry) => entry.partyRequired)
+    expect(requiresParty.every((entry) => entry.scope === 'PARTY')).toBe(true)
+    expect(vocabulary.codes.filter((entry) => entry.scope === 'PARTY')).toHaveLength(
+      requiresParty.length,
+    )
+    // [SD §2.4] rule 5's two codes, and the one shape a source states.
+    expect(
+      vocabulary.codes
+        .filter((entry) => entry.remedyRequired)
+        .map((entry) => entry.code)
+        .sort(),
+    ).toEqual(['PARTY_ABSENT', 'PARTY_RESCHEDULED'])
+    for (const entry of vocabulary.codes) {
+      if (entry.remedyRequired) expect(entry.remedyShape).toBe('newWindow')
+    }
+  })
+
+  it('discloses every authored member at the point of use', () => {
+    const vocabulary = loadReasonVocabulary(reasons)
+    // [SD §0]. Three members carry a marker and the rest are sourced outright; the markers are
+    // published in the table so a consumer reading `index.json` sees them without reading [A4].
+    const marked = new Map(
+      vocabulary.codes
+        .filter((entry) => entry.marker !== null)
+        .map((entry) => [entry.code, entry.marker]),
+    )
+    expect(marked.get('GOODS_MISSING')).toBe('[SYNTHESIS]')
+    expect(marked.get('SITE_HANDLING_EXCESS')).toBe('[SYNTHESIS]')
+    expect(marked.get('OUT_OF_SEQUENCE')).toBe('[ORIGINAL]')
+    // The shuttle reason is NOT authored: `src:dp3-400ng` Item 125.1 enumerates its causes and
+    // Item 33 adds impractical operations ([A4 §4.4]).
+    expect(marked.has('SITE_INACCESSIBLE')).toBe(false)
   })
 
   it('records the two-axis factorisation as five outcomes, reasons reused across them', () => {
@@ -262,28 +312,64 @@ describe('[SD §2.4] the reason vocabulary', () => {
     expect(vocabulary.forbiddenFields).toContain('outcome')
   })
 
-  it("keeps [SD §2.6]'s worked literals out of the vocabulary", () => {
+  it("keeps [SD §2.6]'s worked literals out of the vocabulary, and none of them is a member", () => {
     const vocabulary = loadReasonVocabulary(reasons)
     // "Three examples are not a vocabulary." They are kept so the scenario reads, in a field the
-    // loader refuses to merge with `codes`.
+    // loader refuses to merge with `codes` — and [A4 §4] found that all three had to be renamed
+    // anyway: `CONSIGNEE_ABSENT` bakes a role into the code ([SD §2.4] rule 6), `REFUSED_DAMAGE`
+    // encodes an outcome in a verb (rule 1), and `SHORT` is `GOODS_MISSING` under another name.
     expect(vocabulary.illustrativeOnly.map((entry) => entry.code)).toEqual([
       'CONSIGNEE_ABSENT',
       'REFUSED_DAMAGE',
       'SHORT',
     ])
-    expect(vocabulary.codes).toHaveLength(0)
+    for (const entry of vocabulary.illustrativeOnly) {
+      expect(REASON_CODES).not.toContain(entry.code)
+    }
   })
 
   it('refuses an owed vocabulary that has quietly acquired codes', () => {
     const table = broken(reasons)
     const vocabulary = table['vocabulary'] as Record<string, unknown>
-    ;(vocabulary['codes'] as unknown[]).push({
-      code: 'SHORT',
+    vocabulary['status'] = 'owed'
+    // [SD §0]: a guessed value that makes the table look finished is the defect, not the fix. The
+    // check is kept live after A4 because the next owed vocabulary — `roleClass`, `unitOfMeasure` —
+    // is loaded by the same reader.
+    expect(() => loadReasonVocabulary(table)).toThrow(/owed vocabulary carries no codes/)
+  })
+
+  it('refuses a published vocabulary that drifts from REASON_CODES, in either direction', () => {
+    // The tamper proof for the set check. It is the one gate A4 adds, and a gate that has not been
+    // watched to fail is a gate nobody knows is live.
+    const missing = broken(reasons)
+    const missingCodes = (missing['vocabulary'] as Record<string, unknown>)['codes'] as unknown[]
+    missingCodes.pop()
+    expect(() => loadReasonVocabulary(missing)).toThrow(/exactly the 23 members of REASON_CODES/)
+
+    const extra = broken(reasons)
+    ;((extra['vocabulary'] as Record<string, unknown>)['codes'] as unknown[]).push({
+      code: 'GOODS_MISLAID',
       scope: 'GOODS',
+      partyRequired: false,
+      remedyRequired: false,
+      remedyShape: null,
+      marker: null,
       citation: 'invented',
     })
-    // [SD §0]: a guessed value that makes the table look finished is the defect, not the fix.
-    expect(() => loadReasonVocabulary(table)).toThrow(/owed vocabulary carries no codes/)
+    expect(() => loadReasonVocabulary(extra)).toThrow(/exactly the 23 members of REASON_CODES/)
+  })
+
+  it('refuses a code that must carry a remedy and names no shape', () => {
+    const table = broken(reasons)
+    const codes = (table['vocabulary'] as Record<string, unknown>)['codes'] as Record<
+      string,
+      unknown
+    >[]
+    const absent = codes.find((entry) => entry['code'] === 'PARTY_ABSENT')
+    if (absent !== undefined) absent['remedyShape'] = null
+    // [SD §2.4] rule 5: "a failed delivery that does not say when it will be retried is an
+    // incomplete record", so a code that requires a remedy and names no shape is that record.
+    expect(() => loadReasonVocabulary(table)).toThrow(/must name the shape it requires/)
   })
 
   it('refuses a reason code that names an outcome', () => {
@@ -293,6 +379,10 @@ describe('[SD §2.4] the reason vocabulary', () => {
     ;(vocabulary['codes'] as unknown[]).push({
       code: 'CANCELLED_BY_SHIPPER',
       scope: 'PARTY',
+      partyRequired: true,
+      remedyRequired: false,
+      remedyShape: null,
+      marker: null,
       citation: 'invented',
     })
     // The mirror of A-TYPE ([SD §2.5]) one axis over. Partial by construction — it cannot catch
@@ -322,7 +412,7 @@ describe('the three tables together', () => {
     const tables = loadDomainTables({ canonicalSubjects, authority: authorityTable, reasons })
     expect(tables.canonicalSubjects.rows.size).toBe(ASSERTION_TYPES.length)
     expect(tables.authority.rows.size).toBe(11)
-    expect(tables.reasons.status).toBe('owed')
+    expect(tables.reasons.status).toBe('published')
   })
 
   it('refuses a cross-type A8 link that claims to be same-type', () => {
