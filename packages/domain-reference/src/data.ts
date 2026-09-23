@@ -3,8 +3,9 @@
  *
  * Three things in this package change on their own cadence and are therefore **data validated
  * against the model**, not more types: [SD §4.7]'s canonical-subject table, [A8 §5]'s per-fact-class
- * authority table, and the reason vocabulary's shape ([SD §2.4]), whose *content* is owed to A4 and
- * is shipped empty rather than guessed.
+ * authority table, and the reason vocabulary — its shape from [SD §2.4] and, since [A4 §3], its 23
+ * members. The members are held to `REASON_CODES` as a set; what the table adds is the per-code
+ * discipline the types do not carry, which is why it is data and not a second enum.
  *
  * Why data and not types. [SD §4.7] note 3 says the authority column "is [A8]'s, **quoted, not
  * re-derived**", and [A8 §9] lists ten things A8 still owes. A table that will be rewritten as its
@@ -990,7 +991,10 @@ function readReasonCodeEntry(path: string, value: unknown): ReasonCodeEntry {
   if (code === REASON_CODE_OTHER) {
     // [SD §2.4] rule 3: OTHER is declared by the shape and carries an obligation the others do
     // not. A4 owning it too would make `remark`'s mandatory case a vocabulary decision.
-    fail(`${path}.code`, 'OTHER is declared by [SD §2.4] rule 3, not by the vocabulary A4 owes')
+    fail(
+      `${path}.code`,
+      'OTHER is declared by [SD §2.4] rule 3, not by the vocabulary A4 published',
+    )
   }
   const offending = outcomeWordIn(code)
   if (offending !== null) {
@@ -1039,7 +1043,7 @@ export function loadReasonVocabulary(raw: unknown): ReasonVocabulary {
     if (codes.length > 0) {
       fail(
         'reasons.vocabulary.codes',
-        'an owed vocabulary carries no codes — A4 has not been written',
+        'an owed vocabulary carries no codes; a table that has them is not owed',
       )
     }
     readString('reasons.vocabulary.owedTo', vocabulary['owedTo'])

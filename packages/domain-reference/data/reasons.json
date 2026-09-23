@@ -223,7 +223,7 @@
       {
         "field": "code",
         "obligation": "MANDATORY",
-        "from": "the published, versioned reason vocabulary",
+        "from": "the published, versioned reason vocabulary — REASON_CODES, 23 members [A4 §3]",
         "marker": null,
         "citation": "[SD §2.4]"
       },
@@ -251,7 +251,7 @@
       {
         "field": "remedy",
         "obligation": "PER CODE",
-        "from": "typed per code — which codes require which remedy is part of the vocabulary A4 owes",
+        "from": "typed per code — `newWindow` is the one shape a source states and [A4 §3] makes it required on PARTY_ABSENT and PARTY_RESCHEDULED; every other shape is owed to A5",
         "marker": null,
         "citation": "[SD §2.4] rule 5"
       },
@@ -288,7 +288,7 @@
     "rule": "Reasons are ORTHOGONAL to outcomes and are reused across them. One reason code appears under several outcomes, and that is the point.",
     "sourceEvidence": "src:shippeo's MQP ('partially missing package') appears under four situations: ECH/MQP (loaded anyway, short), ENE/MQP (not loaded because short), LIV/MQP (DELIVERED anyway, short), REN/MQP (REFUSED because short). Four operationally different things, one reason code, no combinatorial explosion. Shippeo's own analysis calls REN/MQP vs LIV/MQP 'the most important single import' for HHG.",
     "sourceEvidenceIsNotOurVocabulary": true,
-    "sourceEvidenceNote": "MQP, ECH, ENE, LIV and REN are SHIPPEO's codes, quoted as the evidence for the rule. They are not members of our vocabulary and must not be read as a starting list — ours is owed to A4.",
+    "sourceEvidenceNote": "MQP, ECH, ENE, LIV and REN are SHIPPEO's codes, quoted as the evidence for the rule. They are not members of our vocabulary and must not be read as a starting list — ours is `vocabulary.codes` above, published by [A4 §3]. The mapping from Shippeo's codes to ours is in [A4 §3]'s evidence table; MQP and MQT deliberately collapse into one member ([A4 §4.1]).",
     "citation": "[SD §2.4] rule 1, [SD §2.1]"
   },
   "expectedMagnitude": {
