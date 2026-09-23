@@ -1,8 +1,14 @@
 # Domain reference — the remaining unwritten areas: plan and resumption state
 
-**Written 2026-09-23** to be read by a session with **no prior context**. Everything needed to resume
-is here or is named by path. Read this whole file before starting. It supersedes
-`domain-reference-a8-and-areas.md`, which is archived.
+**Written 2026-09-23, revised the same day once A1 merged**, to be read by a session with **no prior
+context**. Everything needed to resume is here or is named by path. Read this whole file before
+starting.
+
+It replaces `plans/in-progress/domain-reference-a8-and-areas.md`, which was **deleted** in PR #719,
+not archived — that round's record is `plans/completed/domain-reference-a8-authority-rows.md`. The
+convention in this effort is that a finished round leaves a **record** in `plans/completed/` and its
+**plan** is rewritten as the next round's, so do not go looking for an archived copy of a superseded
+plan.
 
 **Three deliverables have landed.** Read their records first; each is short and each carries findings
 worth not rediscovering:
@@ -44,14 +50,19 @@ What keeps it pre-1.0 is the **fourteen remaining authority rows**, and A1 has n
 | Published event catalog                | `docs/domain-reference/catalog/` + `src/catalog.ts`                   | `a4b0bd7f`, PR #713 |
 | A4 reason vocabulary, 23 members       | `analysis/A4-execution-events.md` + `src/outcomes.ts`                 | `20971ebe`, PR #716 |
 | A8 §5 rows 12-16, closing F3 and F5    | `analysis/A8-authority-skeleton.md`                                   | `984200cd`, PR #717 |
-| **A1, the order & service lifecycle**  | `analysis/A1-order-service-lifecycle.md` + `src/rules/order-stage.ts` | this branch         |
+| **A1, the order & service lifecycle**  | `analysis/A1-order-service-lifecycle.md` + `src/rules/order-stage.ts` | `1b9e5df3`, PR #719 |
 
 Repo: `github.com/DolasDev/pegasus`, primary checkout `~/repos/pegasus`.
 
 ### Gates, all green
 
-`tsc` silent · **336 tests in 19 files** · Alloy runner exits non-zero on a counterexample ·
-glossary is a prettier fixed point · catalog is a prettier fixed point and round-trip-validated.
+`tsc` silent · the vitest suite green · Alloy runner exits non-zero on a counterexample · glossary is
+a prettier fixed point · catalog is a prettier fixed point and round-trip-validated.
+
+**No count is written here on purpose.** The line under this one used to read "336 tests in 19 files"
+and was wrong within the hour, because two tests were added after it was typed. §4 item 10 is the
+rule: a number in prose is gated or it is deleted, and nothing gates this one — the commands below
+produce it in about five seconds.
 
 ```
 npm run test      -w @pegasus/domain-reference
@@ -236,20 +247,33 @@ API**. If you extend either:
   third-party material**.
 - **Extractors:** `pdf2txt.py` / `odt2txt.py` are **gone**. Recreate if source PDFs/ODTs must be
   re-read (pypdf in a venv; ODT is a zip containing `content.xml`). No poppler on this machine.
-- **Worktree slugs collide on the derived Postgres port.** `new-worktree.sh` hashes the slug into
-  5433-5492 and `area-a1` collides with the existing `domain-reference` worktree at 5433. Pick
-  another slug rather than tearing down someone else's container.
+- **Worktree slugs collide on the derived Postgres port.** `new-worktree.sh` computes it as
+  `5433 + (sum of the slug's character ordinals) % 60`, so two unrelated names can land on one port.
+  It fails **after** creating the worktree and branch, leaving partial state that
+  `scripts/rm-worktree.sh <slug>` clears. Only **5451** (`mobile-store-assets`) and 5432 (the shared
+  compose DB) are taken as of 2026-09-23, so a collision is unlikely now — but check rather than
+  assume, and pick another slug rather than tearing down someone else's container.
 
 ---
 
 ## 8. Housekeeping left over
 
-- **Worktrees on disk, merged and safe to remove — agents are barred from doing it**, so ask:
-  `scripts/rm-worktree.sh domain-reference` · `scripts/rm-worktree.sh domain-model` ·
-  `scripts/rm-worktree.sh event-catalogue`.
-- **A stale untracked plan copy on `main`** — `plans/in-progress/domain-reference-a4-reasons.md` is
-  the pre-landing draft of a plan already archived at `plans/completed/domain-reference-a4-reasons.md`.
-  Untracked, so deleting it is irreversible; ask before removing.
+**Two items that used to be here are DONE** (2026-09-23, after #719 merged), recorded so nobody
+re-raises them: the four merged worktrees were removed — `a1-lifecycle`, `domain-reference`,
+`domain-model`, `event-catalogue`, with their branches and Postgres containers — leaving only
+`pegasus-mobile-store-assets`, which belongs to a different workstream; and the stale untracked
+`plans/in-progress/domain-reference-a4-reasons.md` was deleted from `main`.
+
+What is actually left:
+
+- **Two spent plans are still sitting in `plans/in-progress/`, and they are not in-flight.** This is
+  the known trap that `plans/in-progress/` is **not** an in-flight signal (#567): the directory accumulates
+  plans whose work shipped. `domain-model.md` is the executable layer, which **landed** as
+  `5b7c2ccd` / PR #712; `domain-reference-model.md` is the research corpus, which **landed** as
+  `34713637` / PR #705. Both worktrees are gone. Neither has a record in `plans/completed/`, which
+  is why moving them is a judgement call rather than a chore — a plan is not a record, and this
+  effort's convention is that the session which finishes the work **rewrites** the plan as a record.
+  **Of the three `domain-reference*` files in `plans/in-progress/`, this one is the only live plan.**
 - **Separate repo, unrelated to this plan** — `~/repos/pegasus-workflows`,
   `platform/integrations/weichert/rules.json`: six rules carry `sourceRef: "Weichert API: …"` quoting
   sentences that appear nowhere in `weichert-api.odt`. Confirmed by the user: they came from
@@ -262,13 +286,28 @@ API**. If you extend either:
 
 ## 9. Starting the next session
 
+**State as of 2026-09-23:** `main` is at `1b9e5df3` (A1, PR #719), merged **and deployed** — `CI`,
+`Deploy` and `Push on main` all green. The primary checkout is clean and parked on `main`. Nothing is
+in flight. One unrelated worktree exists (`pegasus-mobile-store-assets`, port 5451).
+
 ```bash
 cd ~/repos/pegasus && git fetch && git pull --ff-only    # primary checkout, parked on main
 scripts/workstream-start.sh feat a5-storage plans/in-progress/domain-reference-areas-a2-a5.md
 ```
 
-Then work in the new worktree; the plan is seeded into `plans/in-progress/` there and commits with
-the implementation as **one PR**. Archive it to `plans/completed/<slug>.md` **before** opening the PR.
+`a5-storage` hashes to port **5485**, which is free — see §7's slug/port note before choosing any
+other name.
+
+Then work in the new worktree; commits land with the implementation as **one PR**, and the plan is
+archived to `plans/completed/<slug>.md` **before** opening it.
+
+> **Two things about `workstream-start.sh` that cost the A1 session time.** It **copies** the plan to
+> `plans/in-progress/<slug>.md` inside the worktree, so the worktree ends up with **two** copies — the
+> seeded one and this file. Do not edit both. The pattern that worked: write the new record at
+> `plans/completed/domain-reference-a5-<slug>.md`, write the **next** round's plan as a new
+> `plans/in-progress/domain-reference-<next>.md`, then delete the seeded copy and remove this file
+> from the index. And the script provisions Postgres **after** creating the worktree and branch, so a
+> port collision fails late and leaves partial state — `scripts/rm-worktree.sh <slug>` cleans it up.
 
 **Read before writing anything:**
 
