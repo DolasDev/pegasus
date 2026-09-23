@@ -55,9 +55,12 @@ void _catalogIsTheVocabulary
  * The catalog vocabulary version these artifacts are published at — [catalog §2.4].
  *
  * **[ORIGINAL]**, and deliberately pre-1.0: [SD §0]'s disclosure rule reaches the version string
- * too. A `1.0.0` would claim a settled contract, and the owed inventory — 19 of 31 authority rows,
- * three owed value shapes, three owed code vocabularies and F4 — is the evidence that it is not one. This is the value an envelope's `specVersion` carries ([SD §1.1], "the catalog vocabulary version this
- * record was minted under").
+ * too. A `1.0.0` would claim a settled contract, and the owed inventory — the owed authority rows,
+ * the owed value shapes, the owed code vocabularies and F4 — is the evidence that it is not one. The
+ * counts are not repeated here: they are generated into `catalog/index.json` and the glossary's Owed
+ * section from the code, and a count written twice is a count that rots. This is the value an
+ * envelope's `specVersion` carries ([SD §1.1], "the catalog vocabulary version this record was
+ * minted under").
  *
  * `0.2.0` at A4: the reason vocabulary was published, which is {@link ADDITIVE_CHANGES} member
  * `publishedOwedVocabulary` and therefore a minor rather than a major ([A4 §7]).
@@ -67,8 +70,14 @@ void _catalogIsTheVocabulary
  * additive. The bump is here because the **schema diff** said so: `boundBy` is not on any record and
  * `KEY` never reaches the wire, so the change looked internal until the emitted `$defs` were read
  * ([A8 §11] revision 7).
+ *
+ * `0.4.0` at A1: {@link REASON_CODES} gains `DEADLINE_LAPSED` ([A1 §3.6]), which the emitted schemas
+ * publish as an `enum` member on `Reason.code` — `newClosedEnumMember`, additive. A1's other
+ * deliverable, `orderStageAt`, moves nothing on the wire: a projection is a fold over records that
+ * already exist, exactly as `custodyAt` is, and [A1 §3.1] mints no type, aggregate, field or
+ * qualifier. The **schema diff** was read before this line was written ([catalog §5]).
  */
-export const CATALOG_VERSION = '0.3.0'
+export const CATALOG_VERSION = '0.4.0'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces

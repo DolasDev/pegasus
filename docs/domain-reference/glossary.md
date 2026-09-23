@@ -21,7 +21,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Capture methods](#capture-methods-7) — 7
 - [Outcomes](#outcomes-5) — 5
 - [Reason scopes](#reason-scopes-6) — 6
-- [Reason codes](#reason-codes-23) — 23
+- [Reason codes](#reason-codes-24) — 24
 - [Role names](#role-names-18) — 18
 - [Membership forms](#membership-forms-3) — 3
 - [Custody bases](#custody-bases-2) — 2
@@ -29,7 +29,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
 - [Compatibility change classes](#compatibility-change-classes-12) — 12
-- [Key functions and rules](#key-functions-and-rules-23) — 23
+- [Key functions and rules](#key-functions-and-rules-24) — 24
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
@@ -956,9 +956,9 @@ has". **[ORIGINAL]**, as `ACT`.
 - **Cited:** [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
 - **Declared by:** `REASON_SCOPES` in `packages/domain-reference/src/outcomes.ts`
 
-## Reason codes (23)
+## Reason codes (24)
 
-The published reason vocabulary — the half of `(outcome, reason)` [SD §2.4] fixed the shape of and left to A4: "the list itself is A4's job". Twenty-three members, which is rule 2's magnitude ("~20 reasons × 5 outcomes, not ~100 types") and not a quota. Every member is **orthogonal to the outcome** — `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA` _and_ its `REN/AVA`, one code under two outcomes — and **grain-independent**: a code does not change when the subject changes grain. `OTHER` is not a member: it is declared by the shape itself (rule 3) and carries a mandatory narrative the others do not. The per-code scope, attribution discipline and remedy obligation are joined from `packages/domain-reference/data/reasons.json`, which the loader holds to this list as a set.
+The published reason vocabulary — the half of `(outcome, reason)` [SD §2.4] fixed the shape of and left to A4: "the list itself is A4's job". Rule 2 bounds its magnitude magnitude ("~20 reasons × 5 outcomes, not ~100 types") and not a quota. Every member is **orthogonal to the outcome** — `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA` _and_ its `REN/AVA`, one code under two outcomes — and **grain-independent**: a code does not change when the subject changes grain. `OTHER` is not a member: it is declared by the shape itself (rule 3) and carries a mandatory narrative the others do not. The per-code scope, attribution discipline and remedy obligation are joined from `packages/domain-reference/data/reasons.json`, which the loader holds to this list as a set.
 
 ### `ADDRESS_INCORRECT` (reason code)
 
@@ -993,6 +993,18 @@ The act did not complete as intended and the asserter does not know why — defa
 - **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
 - **Cited:** [[A4 §4.5]](analysis/A4-execution-events.md#45-causeunknown-beside-other-and-the-tension-in-it) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
 - **Corpus:** `src:uncefact-rec24`
+- **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
+
+### `DEADLINE_LAPSED` (reason code)
+
+A deadline the act was held to ran out before the act was performed — default scope `ACT`.
+
+- **Default scope:** `ACT`
+- **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
+- **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A1 §3.6]](analysis/A1-order-service-lifecycle.md#36-the-reason-vocabulary-at-commitment-grain--owed-item-5) · [[A1 §Cross-area]](analysis/A1-order-service-lifecycle.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Corpus:** `src:alvys-api` · `src:dtr-part-iv` · `src:project44`
 - **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
 
 ### `DOCUMENT_MISSING_OR_INCORRECT` (reason code)
@@ -1752,7 +1764,7 @@ Removing or renaming a `type`. It is a component of the fact key ([SD §1.3] ite
 - **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
 - **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (23)
+## Key functions and rules (24)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
 
@@ -1997,6 +2009,14 @@ splitting a shipment." The SIT remainder is a Portion; the shipment is untouched
 - **Cited:** [[A8 §7.4(c)]](analysis/A8-authority-skeleton.md#74-what-happens-to-the-previous-holders-assertions) · [[SD §4.7.2f]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.8.3]](analysis/00-shared-decisions.md#483-the-fold-stated-so-it-is-testable) · [[SD §4.8]](analysis/00-shared-decisions.md#48-what-custody-is-a-projection-folded-from-handover)
 - **Declared by:** `custodyAt` in `packages/domain-reference/src/custody.ts`
 
+### `orderStageAt` (rule)
+
+The fold — [A1 §3.3], rule `ORDER-STAGE-AT` version 1.
+
+- **Kind:** the commitment fold
+- **Cited:** [[A1 §3.3]](analysis/A1-order-service-lifecycle.md#33-the-orders-stage-is-a-projection--owed-item-2)
+- **Declared by:** `orderStageAt` in `packages/domain-reference/src/rules/order-stage.ts`
+
 ## Owed — what the model declares undecided, and who owes it
 
 This is the honest state of the model on one page. [SD §0] forbids guessing a value to make the types tidy, so a gap is carried as a gap and names who owes it. Every line below is read out of the code or the tables — the `owed(name, owedTo)` constructor, the `Owed<Name, Owner>` type, the `OwedCode<'x'>` brand, and the authority column of `packages/domain-reference/data/canonical-subjects.json`.
@@ -2033,7 +2053,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 ### Record types whose authority row is owed
 
-14 of 31 declared types carry an authority that is owed in whole or in part, and [A8 §9 item 8] is the ledger. It used to read as a to-do list; it now separates the two reasons a row can be missing. **Twelve of these are blocked on the corpus**, not on effort — no external source binds a plan change, a membership offer, an assignment or an order award to an asserting role, so a row for one would be [ORIGINAL] and [SD §4.7] note 3 bars a provisional reading from scoring anyway. **Two are owed to A8 itself**: `partyRole` (the party entity and the role enum) and `notification` (a role resolved to a contactable address). Five came off this list at [A8 §5] rows 12-16 — `handover`, `weight.gross`, `weight.tare`, `packing` and `pieceCount`.
+14 of 31 declared types carry an authority that is owed in whole or in part, and [A8 §9 item 8] is the ledger. It used to read as a to-do list; it now separates **three** reasons a row can be missing, and the third was A1's finding. **Nine are blocked on the corpus**, not on effort — no external source binds a plan change, a membership offer or an assignment to an asserting role, so a row for one would be [ORIGINAL] and [SD §4.7] note 3 bars a provisional reading from scoring anyway. **Two are owed to A8 itself**: `partyRole` (the party entity and the role enum) and `notification` (a role resolved to a contactable address). **Three are the order lifecycle, and they are not all the same**: [A1 §Cross-area] shows the corpus names a party on every order transition, so what blocks `orderResponse` and `orderCancellation` is that [A8 §4.3]'s `boundBy` enum has no member for a role resolved by the order's own award — a schema question A8 can take today — while `orderAward` alone is blocked by A8's own mint principle. Five came off this list at [A8 §5] rows 12-16 — `handover`, `weight.gross`, `weight.tare`, `packing` and `pieceCount`.
 
 - `assignmentOffer` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
 - `assignmentRelease` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
@@ -2093,6 +2113,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`COMMITTED`](#committed-basis) — basis
 - [`COMPLETED`](#completed-outcome) — outcome
 - [`COMPLETED_WITH_EXCEPTION`](#completedwithexception-outcome) — outcome
+- [`DEADLINE_LAPSED`](#deadlinelapsed-reason-code) — reason code
 - [`DERIVED_BY_RULE`](#derivedbyrule-capture-method) — capture method
 - [`DEVICE_GEOFENCE`](#devicegeofence-capture-method) — capture method
 - [`DEVICE_TELEMETRY`](#devicetelemetry-capture-method) — capture method
@@ -2202,6 +2223,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`orderAward`](#orderaward-record-type) — record type
 - [`orderCancellation`](#ordercancellation-record-type) — record type
 - [`orderResponse`](#orderresponse-record-type) — record type
+- [`orderStageAt`](#orderstageat-rule) — rule
 - [`originAgent`](#originagent-role-name) — role name
 - [`outcome`](#outcome-filter-axis) — filter axis
 - [`packer`](#packer-role-name) — role name

@@ -38,6 +38,7 @@ import {
   isAssertionType,
   movesWithPrincipal,
   orderId,
+  orderStageAt,
   owed,
   partyId,
   reachesThePricedRecord,
@@ -51,9 +52,14 @@ import {
   subjectRef,
   tripId,
   type AuthorityContext,
+  AUTHORITATIVE_ROLE_AT_INSTANT,
+  ORDER_STAGE_AT_RULE,
   type CapturedAssertion,
   type CustodyEvidence,
+  type FactResolved,
   type OffsettingRecord,
+  type OrderCommitmentEvidence,
+  type OrderLifecycleType,
 } from '../../src/index'
 
 const spec = specVersion('1')
@@ -203,6 +209,73 @@ describe('[SD §4.7.2e] the cancellation is an act with an outcome', () => {
     expect(packed.value.occurredAt).toBe(packedAt)
     expect(packed).not.toHaveProperty('corrects')
     expect(Date.parse(cancelledAt)).toBeGreaterThan(Date.parse(packedAt))
+  })
+
+  /**
+   * [A1 §3.3] — the stage is a **projection**, so this scenario's "cancelled" is an answer the fold
+   * computes rather than a field anyone set. Both branches are run, because the interesting half of
+   * this scenario is that they are the same records with one outcome different.
+   */
+  const awarded: CapturedAssertion<'orderAward'> = {
+    eventId: eventId('OA-33051'),
+    type: 'orderAward',
+    specVersion: spec,
+    subject: order,
+    assertedBy: accountParty,
+    assertedAt: instant('2026-08-01T10:00:00Z'),
+    capturedBy: 'PARTNER_ASSERTED',
+    basis: 'ACTUAL',
+    value: { occurredAt: instant('2026-08-01T10:00:00Z'), outcome: 'COMPLETED' },
+  }
+
+  const accepted: CapturedAssertion<'orderResponse'> = {
+    eventId: eventId('OR-33051'),
+    type: 'orderResponse',
+    specVersion: spec,
+    subject: order,
+    assertedBy: originAgent,
+    assertedAt: instant('2026-08-02T11:00:00Z'),
+    capturedBy: 'PARTNER_ASSERTED',
+    basis: 'ACTUAL',
+    value: { occurredAt: instant('2026-08-02T11:00:00Z'), outcome: 'COMPLETED' },
+  }
+
+  function resolved(assertion: CapturedAssertion<OrderLifecycleType>): FactResolved {
+    return {
+      eventId: eventId(`FR-${assertion.eventId}`),
+      type: 'FactResolved',
+      specVersion: spec,
+      subject: order,
+      assertedBy: { party: partyId('P-PLATFORM'), role: 'platform' },
+      assertedAt: instant('2026-08-19T00:00:00Z'),
+      capturedBy: 'DERIVED_BY_RULE',
+      factRef: factRefOf(assertion),
+      selected: assertion.eventId,
+      considered: [assertion.eventId],
+      rule: AUTHORITATIVE_ROLE_AT_INSTANT,
+    } as unknown as FactResolved
+  }
+
+  function commitment(...acts: CapturedAssertion<OrderLifecycleType>[]): OrderCommitmentEvidence {
+    return { acts, resolutions: acts.map(resolved) }
+  }
+
+  const after = instant('2026-08-19T00:00:00Z')
+
+  it('[A1 §3.3] the stage is computed, not set — and the fold says CANCELLED', () => {
+    const stage = orderStageAt(order, after, commitment(awarded, accepted, cancelled))
+    expect(stage.stage).toBe('CANCELLED')
+    // [SD §4.8.3] rule 2: the answer names the rule that produced it.
+    expect(stage.rule).toEqual(ORDER_STAGE_AT_RULE)
+  })
+
+  it('[A1 §3.3] rule 3 — the refused branch leaves the order ACCEPTED', () => {
+    // Same three records, one outcome different, and the packing and the charge are untouched
+    // either way. This is [SD §4.7.2e] item 3's "needs no new mechanism", executed.
+    expect(
+      orderStageAt(order, after, commitment(awarded, accepted, cancellationRefused)).stage,
+    ).toBe('ACCEPTED')
+    expect(packed.value.occurredAt).toBe(packedAt)
   })
 
   it('FINDING: who ended the order is not carried by any authoritative field', () => {

@@ -237,14 +237,23 @@ stay in the repository. **[SYNTHESIS]** in adopting it.
 
 ### 2.4 The version this catalog is published at
 
-**`0.2.0`** — **[ORIGINAL]**, and deliberately pre-1.0. [SD §0]'s disclosure rule reaches the
-version string too: a `1.0.0` would claim a settled contract, and §5's inventory is the evidence
-that it is not one. The owed inventory is published inside the catalog itself (§4.2) so that a
-consumer reads it without reading this document.
+**Pre-1.0, deliberately, and the number itself is in the code** — `CATALOG_VERSION` in
+`src/catalog.ts`, emitted as `x-spec-version` on both faces. **[ORIGINAL]**: [SD §0]'s disclosure
+rule reaches the version string too, so a `1.0.0` would claim a settled contract and §5's inventory
+is the evidence that it is not one. The owed inventory is published inside the catalog itself (§4.2)
+so that a consumer reads it without reading this document, **and the counts are not restated here**:
+an earlier revision of this section carried "19 of 31" beside a generated count of 14 and read as
+current for a whole release ([A1 §9]).
 
-`0.1.0` → `0.2.0` at A4, which published the reason vocabulary: one `publishedOwedVocabulary` under
-§2.3, a minor and not a major. What caps the version now is the authority rows — 19 of 31 owed in
-whole or in part — and no amount of vocabulary work moves that.
+The bumps, and what each was classified as under §2.3:
+
+| From → To         | At                     | Change                                                                                                                                        | Class                     |
+| ----------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `0.1.0` → `0.2.0` | A4's reason vocabulary | The vocabulary shipped owed and was published — `string` → enum ([A4 §7])                                                                     | `publishedOwedVocabulary` |
+| `0.2.0` → `0.3.0` | A8's rows 12-16        | Closing F3 added `keySideRole` to `AuthoritativeHolder`, which `ObligationRecipient` references                                               | `newClosedEnumMember`     |
+| `0.3.0` → `0.4.0` | A1                     | `REASON_CODES` gains `DEADLINE_LAPSED` ([A1 §3.6]). A1's other deliverable, `orderStageAt`, is a **projection** and moves nothing on the wire | `newClosedEnumMember`     |
+
+What caps the version is the authority rows, and no amount of vocabulary work moves that.
 
 ---
 
@@ -427,11 +436,18 @@ and markdown and a generator that is not a fixed point turns its own gate into a
 ## 5. What the catalog does not yet publish
 
 Read the generated `Owed` section of [`../glossary.md`](../glossary.md) for the current list; it is
-derived from the code and cannot go stale. As at this version it holds: **19 declared owed values**, **3
-closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` — the
-reason vocabulary was a fourth until A4), **14 of 31** record types whose authority row is owed in
-whole or in part, **2** whose fact-class family is owed, and **10** fact classes named in the corpus
-and absent from the vocabulary.
+derived from the code and cannot go stale. As at this version it holds: **19 declared owed values**,
+**3 closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` —
+the reason vocabulary was a fourth until A4), **14 of 31** record types whose authority row is owed
+in whole or in part, **2** whose fact-class family is owed, and **10** fact classes named in the
+corpus and absent from the vocabulary.
+
+**These five numbers are the only counts this document may carry, and they are gated**:
+`tests/conformance/catalog.test.ts` reads them out of this section and compares them with
+`collectOwedInventory()`, so a stale one fails the build. The counts that went stale were the
+**ungated** copies elsewhere — [§2.4](#24-the-version-this-catalog-is-published-at)'s, and the
+generator's own hand-written note — and the fix for those was to delete them rather than to correct
+them ([A1 §9]).
 
 **The authority rows went from 19 to 14, and that alone would not have moved `specVersion` — but
 something else did.** [A8 §5] rows 12-16 closed `handover`, `weight.gross`, `weight.tare`, `packing`

@@ -925,12 +925,15 @@ function indexDocument(declarations: Declarations): Json {
       breaking: [...declarations.breakingChanges],
     },
     owed: {
+      // The counts below are read out of the model. This prose must never restate one: an earlier
+      // revision hard-coded "19 of 31" beside a `counts.authorityRows` of 14 and read as current
+      // for a whole release, which is the failure mode [A1 §9] records.
       note:
         'What the model declares undecided — [SD §0] forbids guessing a value to make the types ' +
         'tidy. Published here so a consumer sees the gaps without reading the analysis. The A4 ' +
         'reason vocabulary was the one that most affected this contract and it landed at `0.2.0` ' +
-        '([A4 §3]); what caps this version now is the authority rows, 19 of 31 of which are owed ' +
-        'in whole or in part.',
+        '([A4 §3]); what caps this version now is the authority rows, whose owed count is ' +
+        '`counts.authorityRows` of `counts.declaredRecordTypes` below.',
       counts: {
         declared: owed.declared.length,
         vocabularies: owed.vocabularies.length,

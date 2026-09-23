@@ -58,3 +58,42 @@ code being accepted. The restriction is recorded with the class. The owed code's
 `CATALOG_VERSION` is **`0.2.0`**; what keeps it pre-1.0 now is the authority rows — 19 of 31 — and three
 still-owed vocabularies (`roleClass`, `unitOfMeasure`, `identityScheme`), which the owed ledger could not
 even see until this work.
+
+## Domain reference — A1: the order's stage is a projection, and A8's order rows were misdiagnosed
+
+**The entries above are dated records of their own round.** Where one names a `specVersion` or an owed
+count, read it as "at that decision", not as current: the live numbers are `CATALOG_VERSION` in
+`packages/domain-reference/src/catalog.ts` and `owed.counts` in `docs/domain-reference/catalog/index.json`.
+A1 removed the copies of those numbers that were neither dated nor gated.
+
+**A1 (order & service lifecycle) is decided in `docs/domain-reference/analysis/A1-order-service-lifecycle.md`**
+(cited as `[A1 §x]`). It mints no type, aggregate, field or qualifier. What it adds:
+
+- **An order's stage is a projection, not a field and not a record** — `orderStageAt`, rule
+  `ORDER-STAGE-AT` v1, in `src/rules/order-stage.ts`. The second projection in the package and the same
+  shape as `custodyAt`, for the same reason: `00-shared-decisions.md` §1.1 forbids a mutable
+  current-state field on the envelope. Five stages — `UNAWARDED`, `AWARDED`, `ACCEPTED`, `DECLINED`,
+  `CANCELLED` — plus an `UNKNOWN` with six named reasons, against the corpus's eight- and nine-value
+  ladders: every value those spend on _who_ ended the order rides `reasons[].attribution` instead. The
+  fold does not read `context[]`, which is what makes an accepted order with **zero** shipments ordinary
+  rather than a special case.
+- **X12 element 558 mapped.** `A` Reservation Accepted → `COMPLETED`, **`B` Conditional Acceptance →
+  `COMPLETED_WITH_EXCEPTION`**, **`C` Counter Proposal → `NOT_COMPLETED`**, `D` → `orderCancellation`, a
+  different type. The discriminator is _does a commitment stand?_, and the test of the mapping is that
+  `A` and `B` reach the **same stage**.
+- **A refused cancellation does not govern**, so an order whose cancellation was refused is still
+  `ACCEPTED`. **A response with no award behind it is `UNKNOWN`** — `[ORIGINAL]`, the commitment-side
+  twin of the custody fold's C5, refusing to let a commitment exist on one party's word.
+- **One reason code, `DEADLINE_LAPSED`** (`newClosedEnumMember`, catalog → `0.4.0`), and three
+  deliberate refusals to mint: a price counter-proposal is a `charge` at `aspect = PROPOSED`, a
+  "this party does not handle this" fact needs the party entity A8 owes, and short fuse is a property
+  of the award rather than a reason on the answer.
+
+**And it corrected `[A8 §9 item 8(b)]`, which outranks it.** A8 said no source in the corpus attaches an
+authority to the order lifecycle. Four attach a **party** to every order transition — that is
+_permission_, not assertional authority, but it is the same kind of material A8 §10 says its own rows
+1-5, 8 and 11 were built from. What actually blocks `orderResponse` and `orderCancellation` is that A8
+§4.3's `boundBy` enum has **no member for a role resolved by the order's own award**; `orderAward` alone
+stays blocked by A8's own mint principle. A8 gained `(b-i)` and revision 8 in the same PR, and the
+corpus-blocked count went from twelve to nine. **A disagreement between two binding documents is a
+defect, so the correction lands in both or in neither.**

@@ -111,8 +111,10 @@ export type ReasonScope = (typeof REASON_SCOPES)[number]
  * "the list itself is A4's job". See [A4 §3] for the evidence table and [A4 §4] for what was
  * deliberately collapsed or refused.
  *
- * Twenty-three members, which is [SD §2.4] rule 2's **magnitude** ("~20 reasons × 5 outcomes, not
- * ~100 types") rather than a quota. Every member is orthogonal to the outcome (rule 1) and
+ * [SD §2.4] rule 2 bounds the **magnitude** — "~20 reasons × 5 outcomes, not ~100 types" — which
+ * [A4 §3] is explicit is "a magnitude, not a quota". The member count is not written here, because
+ * it is `REASON_CODES.length` and a count written beside the thing it counts is a count that rots
+ * ([A1 §9]). Every member is orthogonal to the outcome (rule 1) and
  * grain-independent (rule 4): the same code appears under several outcomes, and it does not change
  * when the subject changes grain. {@link ReasonCodesAreOutcomeFree} is rule 1's mechanical half.
  *
@@ -469,6 +471,29 @@ export const REASON_CODES = [
    * reader can ([A4 §4.3]).
    */
   'OUT_OF_SEQUENCE',
+  /**
+   * A deadline the act was held to ran out before the act was performed — default scope `ACT`.
+   *
+   * Minted by [A1 §3.6], and it is the only mint that area needed. Three independent sources
+   * publish a lapsing offer as a first-class terminal, in three different shapes, which is why the
+   * code carries a **[SYNTHESIS]** marker: `src:dtr-part-iv` §C.4.b makes non-response to an award
+   * a typed event — DPS charges an allocation, sends a "Notice of Non-Response" and offers the next
+   * TSP, and the PPSO must overtly confirm it was not a system fault before suspending;
+   * `src:project44` carries it as a status, _"a booking is `EXPIRED` if it sits in the `PROCESSING`
+   * or `UNDER_REVIEW` status upon the time which it is set to expire"_; and `src:alvys-api` carries
+   * it as a field, the tender's `ExpirationDate`.
+   *
+   * It names **the clock**, not the result. The outcome is `NOT_COMPLETED` and this says why, which
+   * is [SD §2.4] rule 1's split. And it is grain-independent on rule 4: a delivery window that
+   * expires unattempted is the same fact at the goods grain, which is why it is not spelled for the
+   * commitment side.
+   *
+   * The third member that attributes to **nobody**, after `FORCE_MAJEURE` and `CAUSE_UNKNOWN`, and
+   * the only one where a regulation says so outright — `src:dtr-part-iv` §C.4.b's non-response is
+   * caused by no party at all. [A8 §9 item 2] owes the `roleClass` enum an explicit non-party
+   * member, and this strengthens the requirement rather than repeating it ([A1 §Cross-area]).
+   */
+  'DEADLINE_LAPSED',
   /**
    * The act did not complete as intended and the asserter does not know why — default scope `ACT`.
    *

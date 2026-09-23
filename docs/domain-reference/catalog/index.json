@@ -3,7 +3,7 @@
   "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
   "x-command": "npm run catalog -w @pegasus/domain-reference",
   "catalog": {
-    "specVersion": "0.3.0",
+    "specVersion": "0.4.0",
     "decidedBy": "docs/domain-reference/analysis/published-event-catalog.md",
     "note": "The published catalog is the record vocabulary, exactly — [catalog §1]. There is no coarser published layer over these members, because a second classification axis is permanently forbidden by [SD §1.1].",
     "memberCount": 33,
@@ -322,6 +322,15 @@
         "citation": "[A4 §3], [A4 §4.5]. src:uncefact-rec24 265 Reason_unknown beside 125 No_status, which its analysis singles out as more honesty than most vocabularies offer. Distinct from OTHER: OTHER means the list has no code for a known reason and owes a narrative ([SD §2.4] rule 3); this means there is no reason to give yet."
       },
       {
+        "code": "DEADLINE_LAPSED",
+        "scope": "ACT",
+        "partyRequired": false,
+        "remedyRequired": false,
+        "remedyShape": null,
+        "marker": "[SYNTHESIS]",
+        "citation": "[A1 §3.6]. Three sources publish a lapsing offer as a first-class terminal, in three shapes, and the collapse into one grain-independent code is ours: src:dtr-part-iv §C.4.b (non-response to an award — a typed event caused by nobody, with a Notice of Non-Response and an escalation); src:project44 (`EXPIRED`, `:28434`); src:alvys-api (the tender's `ExpirationDate`). The third member that attributes to nobody, after FORCE_MAJEURE and CAUSE_UNKNOWN — [A8 §9 item 2]."
+      },
+      {
         "code": "DOCUMENT_MISSING_OR_INCORRECT",
         "scope": "ADMINISTRATIVE",
         "partyRequired": false,
@@ -590,7 +599,7 @@
     ]
   },
   "owed": {
-    "note": "What the model declares undecided — [SD §0] forbids guessing a value to make the types tidy. Published here so a consumer sees the gaps without reading the analysis. The A4 reason vocabulary was the one that most affected this contract and it landed at `0.2.0` ([A4 §3]); what caps this version now is the authority rows, 19 of 31 of which are owed in whole or in part.",
+    "note": "What the model declares undecided — [SD §0] forbids guessing a value to make the types tidy. Published here so a consumer sees the gaps without reading the analysis. The A4 reason vocabulary was the one that most affected this contract and it landed at `0.2.0` ([A4 §3]); what caps this version now is the authority rows, whose owed count is `counts.authorityRows` of `counts.declaredRecordTypes` below.",
     "counts": {
       "declared": 19,
       "vocabularies": 3,

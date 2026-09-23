@@ -193,6 +193,7 @@ const DOCUMENTS: Readonly<Record<string, string>> = {
   SD: '00-shared-decisions.md',
   A8: 'A8-authority-skeleton.md',
   A4: 'A4-execution-events.md',
+  A1: 'A1-order-service-lifecycle.md',
   A3: 'A3-trip-stop-assignment.md',
   'fork-order': 'fork-order-shipment-cardinality.md',
   'fork-time': 'fork-time-provenance-corrections.md',
@@ -824,7 +825,7 @@ const VOCABULARIES: readonly {
     heading: 'Reason codes',
     blurb:
       'The published reason vocabulary — the half of `(outcome, reason)` [SD §2.4] fixed the shape ' +
-      'of and left to A4: "the list itself is A4\'s job". Twenty-three members, which is rule 2\'s ' +
+      'of and left to A4: "the list itself is A4\'s job". Rule 2 bounds its magnitude ' +
       'magnitude ("~20 reasons × 5 outcomes, not ~100 types") and not a quota. Every member is ' +
       "**orthogonal to the outcome** — `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA` _and_ its " +
       '`REN/AVA`, one code under two outcomes — and **grain-independent**: a code does not change ' +
@@ -921,6 +922,10 @@ const RULES: readonly {
   readonly member?: readonly [string, string]
 }[] = [
   { term: 'custodyAt', what: 'the custody fold', export: 'custodyAt' },
+  // The second projection ([A1 §3.3]). Registered beside the first because a fold that is not
+  // in this list is a rule a consumer cannot find, and the whole point of a projection is that
+  // the answer names the rule that produced it.
+  { term: 'orderStageAt', what: 'the commitment fold', export: 'orderStageAt' },
   { term: 'E-CANON-STRICT', what: 'the subject-admission boundary', export: 'admitAtBoundary' },
   {
     term: 'E-CANON-RESOLVE',
@@ -1063,7 +1068,7 @@ function entryFor(
   // counted from the start — `hasCitation` has always accepted a `src:` reference — but not shown,
   // so an entry whose whole evidence is external read as "no document citation in the docstring".
   // That is exactly backwards for a vocabulary built from external sources, and A4's reason codes
-  // are where it became visible: eleven of twenty-three cite nothing but the corpus.
+  // are where it became visible: nearly half of them cite nothing but the corpus.
   const corpus = [...new Set([...text.matchAll(CORPUS_CITATION)].map((match) => match[0]))].sort()
   if (corpus.length > 0) facts.push(['Corpus', corpus.join(' · ')])
   facts.push(['Declared by', `\`${declaredBy}\` in \`${file}\``])
@@ -1339,13 +1344,18 @@ function renderOwed(model: Model, table: CanonicalTable, lines: string[]): void 
   lines.push(
     `${owedRows.length} of ${table.rows.length} declared types carry an authority that is owed in ` +
       'whole or in part, and [A8 §9 item 8] is the ledger. It used to read as a to-do list; it now ' +
-      'separates the two reasons a row can be missing. **Twelve of these are blocked on the ' +
-      'corpus**, not on effort — no external source binds a plan change, a membership offer, an ' +
-      'assignment or an order award to an asserting role, so a row for one would be [ORIGINAL] and ' +
-      '[SD §4.7] note 3 bars a provisional reading from scoring anyway. **Two are owed to A8 ' +
-      'itself**: `partyRole` (the party entity and the role enum) and `notification` (a role ' +
-      'resolved to a contactable address). Five came off this list at [A8 §5] rows 12-16 — ' +
-      '`handover`, `weight.gross`, `weight.tare`, `packing` and `pieceCount`.',
+      "separates **three** reasons a row can be missing, and the third was A1's finding. " +
+      '**Nine are blocked on the corpus**, not on effort — no external source binds a plan change, ' +
+      'a membership offer or an assignment to an asserting role, so a row for one would be ' +
+      '[ORIGINAL] and [SD §4.7] note 3 bars a provisional reading from scoring anyway. **Two are ' +
+      'owed to A8 itself**: `partyRole` (the party entity and the role enum) and `notification` (a ' +
+      'role resolved to a contactable address). **Three are the order lifecycle, and they are not ' +
+      'all the same**: [A1 §Cross-area] shows the corpus names a party on every order transition, ' +
+      "so what blocks `orderResponse` and `orderCancellation` is that [A8 §4.3]'s `boundBy` enum " +
+      "has no member for a role resolved by the order's own award — a schema question A8 can take " +
+      "today — while `orderAward` alone is blocked by A8's own mint principle. Five came off this " +
+      'list at [A8 §5] rows 12-16 — `handover`, `weight.gross`, `weight.tare`, `packing` and ' +
+      '`pieceCount`.',
   )
   lines.push('')
   for (const row of sortedBy(owedRows, (candidate) => candidate.type)) {

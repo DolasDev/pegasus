@@ -17,13 +17,13 @@ rubric, compared per domain area, and synthesized.
 The model is split by how often each layer changes. Keep them separate — mixing
 mappings into the core is what stops a reference model staying pure.
 
-| Layer                    | Where                        | What                                                                                                                                                                  | Changes                 |
-| ------------------------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| Sources                  | [`sources/`](sources/)       | Registry + stored material + per-source analysis                                                                                                                      | As sources are added    |
-| Analysis                 | [`analysis/`](analysis/)     | Per-area comparison and "best source" decisions. **Binding**, and [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) outranks every other file here | Per research round      |
-| Executable specification | `packages/domain-reference/` | The core model, as TypeScript that compiles and is model-checked: ubiquitous language, value objects, invariants, the record vocabulary, the capture rules            | Rarely                  |
-| Ubiquitous language      | [`glossary.md`](glossary.md) | **Generated** from the specification's docstrings — 15 closed vocabularies, and the owed ledger                                                                       | With the specification  |
-| Event catalog            | [`catalog/`](catalog/)       | **Published integration events, generated from the specification — live at `specVersion` 0.2.0**                                                                      | Deliberately, versioned |
+| Layer                    | Where                        | What                                                                                                                                                                      | Changes                 |
+| ------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| Sources                  | [`sources/`](sources/)       | Registry + stored material + per-source analysis                                                                                                                          | As sources are added    |
+| Analysis                 | [`analysis/`](analysis/)     | Per-area comparison and "best source" decisions. **Binding**, and [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) outranks every other file here     | Per research round      |
+| Executable specification | `packages/domain-reference/` | The core model, as TypeScript that compiles and is model-checked: ubiquitous language, value objects, invariants, the record vocabulary, the capture rules                | Rarely                  |
+| Ubiquitous language      | [`glossary.md`](glossary.md) | **Generated** from the specification's docstrings — 15 closed vocabularies, and the owed ledger                                                                           | With the specification  |
+| Event catalog            | [`catalog/`](catalog/)       | **Published integration events, generated from the specification.** Live; the current `specVersion` is in [`catalog/index.json`](catalog/index.json), never restated here | Deliberately, versioned |
 
 **There is no `model/` directory, and that is not a gap.** Most of what a `model/` layer would have
 held was written as the executable specification in `packages/domain-reference/` instead, which is
@@ -117,7 +117,7 @@ without repeating the research.
 | 3. Comparison          | `analysis/<area>.md` — best source per area, with reasons                                                                                                              | in progress — see the note in [`rubric.md`](rubric.md) |
 | 4. Core model          | `packages/domain-reference/` — not `model/`; see above                                                                                                                 | **live**, minus the context map, commands, lifecycles  |
 | 5. Validation          | `packages/domain-reference/tests/scenarios/` + the Alloy models in `alloy/`                                                                                            | **live** — nine scenarios, model-checked               |
-| 6. Event catalog       | [`catalog/`](catalog/) — two JSON Schema faces, a manifest, an owed inventory; decided in [`analysis/published-event-catalog.md`](analysis/published-event-catalog.md) | **live** at `0.2.0`                                    |
+| 6. Event catalog       | [`catalog/`](catalog/) — two JSON Schema faces, a manifest, an owed inventory; decided in [`analysis/published-event-catalog.md`](analysis/published-event-catalog.md) | **live**; the version is in `catalog/index.json`       |
 | 7. Mappings            | A separate workstream, no directory here                                                                                                                               | not started, deliberately                              |
 
 ## Conventions (for humans and agents)
