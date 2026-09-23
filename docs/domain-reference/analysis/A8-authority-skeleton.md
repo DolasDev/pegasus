@@ -819,8 +819,11 @@ file may be read as deciding them.
    [ORIGINAL] row closes nothing. The blocked twelve are the plan-, binding- and commitment-side
    lifecycle acts:
 
-   - `tripDelay`, `tripResequence`, `tripCancellation` — [shared §4.7.1](00-shared-decisions.md)
-     states it outright: **"no source in the corpus binds a plan change to an asserting role"**.
+   - `tripDelay`, `tripResequence`, `tripCancellation` — blocked for a **different** reason from the
+     other nine, and the plainest one: [shared §4.7.1](00-shared-decisions.md) states outright that
+     **"no source in the corpus binds a plan change to an asserting role"**. Their provisional reading
+     is role-based ("the `Hauler` holding the trip, or the `Booker` where it dispatches"), so nothing
+     about `context[]` or a qualifier stands in the way — there is simply no evidence.
    - `membershipOffer` / `Response` / `Release` and `assignmentOffer` / `Response` / `Release` —
      [A3 §7]'s own confidence table rates the membership lifecycle **"Low-to-medium — ORIGINAL,
      seeded"**, because Atlas's two-status-per-service is "structural evidence only (C2=1)" and
@@ -830,7 +833,8 @@ file may be read as deciding them.
      authority to it.
 
    **Why `KEY` does not rescue them, which is the finding worth keeping.** §4.3's new member reads
-   the role off a fact's own **qualifier**, and every one of these nine lifecycle acts names its
+   the role off a fact's own **qualifier**, and **nine of the twelve** — the offer / response /
+   release / award family, everything above except the three `trip` rows — name their
    actor in **`context[]`** instead — "the offering and responding `partyRole`s", "the `partyRole`
    the resource is offered to", "the awarding and the responding `partyRole`s". [Shared
    §1.4](00-shared-decisions.md) rule 1 forbids resolution from keying on `context[]`, and moving

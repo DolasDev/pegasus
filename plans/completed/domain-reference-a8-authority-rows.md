@@ -55,6 +55,29 @@ in `data/canonical-subjects.json`).
   _rule_, the ADE cast is a _citation_. `[A8 §7.6]`'s worked records carried the capitalised spelling
   **inside a qualifier** — the defect itself, not an example of it — and are corrected.
 
+## The regression this nearly shipped, and how it was caught
+
+Row 16's prose said `pieceCount` is joint at a custody boundary and `custodyHolder` away from one,
+"and the split is A8-INSTANT's to compute". **It was not computed anywhere.**
+`authoritativeHolderAt` dispatches on the spec's `kind`, and a plain `held`/`custodyHolder` spec would
+have **authorised one side at a boundary** — where row 9 and A8-JOINT say both sides are jointly
+authoritative and `selected[]` may be empty. While the row was owed, a boundary count was refused
+outright, so closing it this way would have been a behavioural regression, and none of the tests
+touched would have caught it: they were tamper tests on the JSON.
+
+Fixed with an `AuthoritativeSpec` kind that is genuinely instant-dependent —
+`jointAtCustodyBoundaryElse`, with `AuthorityContext.atCustodyBoundary` supplying the instant and
+`jointRuleApplies` (which already reached `pieceCount`) doing the deciding. The away-from-boundary arm
+resolves through the **same** extracted path a `held` spec takes, so the C5 amendment is not
+duplicated. Tamper-proved by reverting row 16 to a plain `held` spec and watching the boundary case
+flip from `joint` to `holder`.
+
+**The lesson, and it is the same one twice in this change:** a claim in prose beside a table is not a
+claim the code makes. "The split is A8-INSTANT's to compute" was true of the intent and false of the
+implementation, and only reading `authoritativeHolderAt`'s dispatch showed the difference. `[SD §4.7.1]`
+had the row as **`conditional`** rather than `owed` for exactly this reason — the shape was already
+telling us the type has two standings.
+
 ## Two things the count taught, both worth keeping
 
 1. **`authorityRows` did not budge from 19 until all three homes of the table agreed.** JSON rows and
@@ -72,7 +95,7 @@ editing both and nothing would have caught editing only one. Now guarded by `Exa
 
 ## Gates
 
-`tsc` silent · **307 tests in 18 files** · lint clean · Alloy: **A8-KEY is transcribed and
+`tsc` silent · **308 tests in 18 files** · lint clean · Alloy: **A8-KEY is transcribed and
 model-checked**, with `Handover` gaining the `assertedBy` role a rule finally reads. Two new commands:
 one shows A8-KEY settling the two-sided contest F1 made routine, the other shows what it costs — where
 only the side the key does _not_ name asserted, A8-KEY selects **nothing**, so the fold goes quiet for

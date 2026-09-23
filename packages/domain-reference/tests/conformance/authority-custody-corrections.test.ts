@@ -20,6 +20,7 @@ import {
   authorityMovesAtHandover,
   authorityToDeclare,
   authoritativeHolderAt,
+  jointRuleApplies,
   contestAfterRetraction,
   corroborationIsIndependent,
   custodyAt,
@@ -333,6 +334,39 @@ describe('[A8 §5] the table', () => {
     })
     // Asking without an aspect is asking which of a proposal and a price wins. It gets no holder.
     expect(authoritativeHolderAt('charge', base).kind).toBe('owed')
+  })
+
+  it('[A8 §5 r16] pieceCount has TWO standings, and the split is in the code not the prose', () => {
+    const base = {
+      at: factInstant('2026-03-10T00:00:00Z'),
+      custody: custodyAt(S, afterT1, evidence),
+    }
+    // AWAY from a custody boundary: the party holding the goods, resolved through the same path a
+    // `held` spec takes — so the C5 amendment is not duplicated.
+    expect(authoritativeHolderAt('pieceCount', base)).toMatchObject({
+      holder: { kind: 'custodyHolder' },
+    })
+    expect(
+      authoritativeHolderAt('pieceCount', { ...base, atCustodyBoundary: false }),
+    ).toMatchObject({ holder: { kind: 'custodyHolder' } })
+    // AT a boundary the answer is row 9's: A8-JOINT reaches "condition AND the counts asserted with
+    // it", so it is jointly held and NO single side may be selected.
+    expect(authoritativeHolderAt('pieceCount', { ...base, atCustodyBoundary: true }).kind).toBe(
+      'joint',
+    )
+    // The regression this guards against, stated so it cannot come back: while row 16 was owed, a
+    // boundary count was refused outright; a `held`/`custodyHolder` row would have AUTHORISED one
+    // side at a boundary, contradicting row 9. It must still refuse.
+    const claim = { kind: 'role', role: 'destinationAgent' } as const
+    expect(
+      authorityToDeclare('pieceCount', claim, { ...base, atCustodyBoundary: true }),
+    ).toMatchObject({ kind: 'UNAUTHORISED' })
+    // And the published predicate agrees with the table, which is the point of having both.
+    expect(jointRuleApplies('pieceCount', true)).toBe(true)
+    expect(jointRuleApplies('pieceCount', false)).toBe(false)
+    expect(jointRuleApplies('condition', true)).toBe(true)
+    // Absence of the flag is not a default that over-authorises: it reads as away-from-boundary.
+    expect(jointRuleApplies('loading', true)).toBe(false)
   })
 
   it('[A8 §7.5] A8-PRINCIPAL moves only what is bound to the principal', () => {

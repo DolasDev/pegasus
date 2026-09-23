@@ -278,6 +278,23 @@ export type AuthoritativeSpec =
     }
   /** [A8 §7.3] **A8-JOINT** — row 9, and the counts asserted with it. Deliberately plural. */
   | { readonly kind: 'jointAtCustodyBoundary' }
+  /**
+   * [A8 §5] row 16 — **one type, two standings, split by the instant**.
+   *
+   * `pieceCount` is A8-JOINT's at a custody boundary, because A8-JOINT reaches "`condition` **and
+   * the counts asserted with it**"; away from one it is the party holding the goods. Its own kind
+   * rather than prose beside a `held` spec, because the difference is **behavioural**: at a boundary
+   * the resolution may not select a single side, and a row that said so only in a note would let
+   * {@link authoritativeHolderAt} authorise one. That is exactly the regression this member exists to
+   * prevent — [SD §4.7.1] had the row as `conditional` for the same reason.
+   *
+   * The split is **A8-INSTANT's** ([A8 §4.2]): standing is a function of the instant the fact is
+   * about, so a type may have two. `AuthorityContext.atCustodyBoundary` is what supplies it.
+   */
+  | {
+      readonly kind: 'jointAtCustodyBoundaryElse'
+      readonly awayFromBoundary: AuthoritativeHolder
+    }
   /** [A8 §5] row 11 as corrected by [SD §4.7.2b]: three **fact keys**, not three authorities in
    * one contest. Without the `{aspect}` qualifier "an approval would compete with an amount". */
   | {
@@ -340,7 +357,7 @@ export type AuthorityRule<T extends AssertionType = AssertionType> = AuthorityRu
     | {
         readonly authoritative: Extract<
           AuthoritativeSpec,
-          { kind: 'none' | 'jointAtCustodyBoundary' }
+          { kind: 'none' | 'jointAtCustodyBoundary' | 'jointAtCustodyBoundaryElse' }
         >
         readonly tieBreak: TieBreak
       }
@@ -419,8 +436,10 @@ export const SIT_ENTRY_DERIVED: RuleRef = ruleRef('SIT-ENTRY-DATE-DERIVED', '1')
  * custody, so it cannot be `CUSTODY`; `assignmentOffer` mints the assignment, so it cannot be
  * `ASSIGNMENT`; `orderAward` mints the principal relation, so it cannot be `PRINCIPAL`. F3 is the
  * first instance of a class, not a special case. `KEY` rescues `handover` alone, because
- * `handover` is the only one of them whose **qualifier** names its actor — the other nine name
- * theirs in `context[]`, which [SD §1.4] forbids resolution from reading. See [A8 §9 item 8].
+ * `handover` is the only one whose **qualifier** names its actor. Nine of the others — the offer /
+ * response / release / award family — name theirs in `context[]`, which [SD §1.4] forbids resolution
+ * from reading; the three `trip` rows are blocked for a different reason again, having no sourced
+ * asserter at all. See [A8 §9 item 8], which keeps the two apart.
  */
 export const A8_KEY: RuleRef = ruleRef('A8-KEY', '1')
 
@@ -805,7 +824,11 @@ export const AUTHORITY_TABLE = {
     // "`condition` AND THE COUNTS ASSERTED WITH IT". One type, two standings, split by whether the
     // instant is a boundary; the split is A8-INSTANT's to compute, which is why it needs no new
     // `AuthoritativeSpec` kind.
-    authoritative: { kind: 'held', primary: { kind: 'custodyHolder' } },
+    authoritative: {
+      kind: 'jointAtCustodyBoundaryElse',
+      awayFromBoundary: { kind: 'custodyHolder' },
+    },
+    tieBreak: { kind: 'rule', rule: JOINT_AT_CUSTODY_BOUNDARY },
     corroborating: ['customer', 'originAgent', 'destinationAgent'],
     competing: ['customer', 'accountParty'],
     advisory: ['booker', 'platform'],
@@ -1035,6 +1058,16 @@ export interface AuthorityContext {
   readonly conditions?: readonly AuthorityCondition[]
   /** Row 11 resolves per `{aspect}`, because [SD §4.7.2b] makes the three aspects three fact keys. */
   readonly aspect?: ChargeAspect
+  /**
+   * Whether {@link at} is a custody boundary — row 16's split, and {@link jointRuleApplies}'s
+   * argument.
+   *
+   * Optional, and **its absence is not a default**: a caller that does not supply it is treated as
+   * away from a boundary, which is the narrower answer and the one that cannot over-authorise. A
+   * boundary is where A8-JOINT applies and a single side may **not** be selected, so guessing it
+   * true would be the error worth avoiding in the other direction.
+   */
+  readonly atCustodyBoundary?: boolean
 }
 
 export type AuthorityVerdict =
@@ -1079,6 +1112,13 @@ export function authoritativeHolderAt(
       }
     case 'jointAtCustodyBoundary':
       return { kind: 'joint', rule: row.rule }
+    case 'jointAtCustodyBoundaryElse':
+      // Row 16. `jointRuleApplies` is the published predicate and this is the caller that matters:
+      // at a boundary the answer is row 9's and no single side may be selected. Away from one it
+      // resolves through the same path a `held` spec does, so the C5 amendment is not duplicated.
+      return jointRuleApplies(type, context.atCustodyBoundary ?? false)
+        ? { kind: 'joint', rule: row.rule }
+        : heldHolderAt(spec.awayFromBoundary, [], row.rule, context)
     case 'perQualifierAspect': {
       // [SD §4.7.2b]: three fact keys. Asking row 11 for an authority without naming the aspect is
       // asking which of a proposal, an approval and a price wins — the contest the qualifier exists
@@ -1087,34 +1127,50 @@ export function authoritativeHolderAt(
       if (aspect === undefined) return { kind: 'owed', row: chargeNeedsAnAspect }
       return { kind: 'holder', holder: spec.by[aspect], rule: row.rule }
     }
-    case 'held': {
-      const conditions = context.conditions ?? []
-      for (const alternate of spec.alternates ?? []) {
-        if (conditions.includes(alternate.when)) {
-          return { kind: 'holder', holder: alternate.holder, rule: row.rule }
-        }
-      }
-      if (spec.primary.kind === 'custodyHolder' && context.custody.custody === 'UNKNOWN') {
-        // **A8-MOVE as amended** ([SD §4.7.2f] §7.3). One of the fold's three `UNKNOWN`s is not an
-        // authority gap: across a **C5 transfer gap** the releasing role stays authoritative until
-        // the receipt. The other two are — nothing published yet, and C6's tie — and both fall
-        // through to `custodyUnknown`, which is [SD §4.8.3] rule 3 propagating rather than a guess.
-        const gap = context.custody.why === 'IN_TRANSFER_GAP'
-        const authority = context.custodyAuthority
-        if (gap && authority !== undefined && authority.authority === 'HELD') {
-          return {
-            kind: 'holder',
-            holder: { kind: 'releasingRoleAcrossTransferGap', holder: authority.holder },
-            rule: row.rule,
-          }
-        }
-        return { kind: 'custodyUnknown', rule: row.rule }
-      }
-      return { kind: 'holder', holder: spec.primary, rule: row.rule }
-    }
+    case 'held':
+      return heldHolderAt(spec.primary, spec.alternates ?? [], row.rule, context)
     default:
       return assertNever(spec, 'authoritative spec')
   }
+}
+
+/**
+ * A `held` spec's holder at an instant — the alternates, then **A8-MOVE as amended**, then the
+ * primary.
+ *
+ * Extracted so row 16's away-from-boundary arm resolves through the same path rather than a second
+ * copy: a duplicate would be one edit away from disagreeing with the C5 amendment below, which is
+ * the class of defect this package keeps finding in its own tables.
+ */
+function heldHolderAt(
+  primary: AuthoritativeHolder,
+  alternates: readonly AuthorityAlternate[],
+  rule: RuleRef,
+  context: AuthorityContext,
+): AuthorityVerdict {
+  const conditions = context.conditions ?? []
+  for (const alternate of alternates) {
+    if (conditions.includes(alternate.when)) {
+      return { kind: 'holder', holder: alternate.holder, rule }
+    }
+  }
+  if (primary.kind === 'custodyHolder' && context.custody.custody === 'UNKNOWN') {
+    // **A8-MOVE as amended** ([SD §4.7.2f] §7.3). One of the fold's three `UNKNOWN`s is not an
+    // authority gap: across a **C5 transfer gap** the releasing role stays authoritative until the
+    // receipt. The other two are — nothing published yet, and C6's tie — and both fall through to
+    // `custodyUnknown`, which is [SD §4.8.3] rule 3 propagating rather than a guess.
+    const gap = context.custody.why === 'IN_TRANSFER_GAP'
+    const authority = context.custodyAuthority
+    if (gap && authority !== undefined && authority.authority === 'HELD') {
+      return {
+        kind: 'holder',
+        holder: { kind: 'releasingRoleAcrossTransferGap', holder: authority.holder },
+        rule,
+      }
+    }
+    return { kind: 'custodyUnknown', rule }
+  }
+  return { kind: 'holder', holder: primary, rule }
 }
 
 const chargeNeedsAnAspect: OwedAuthorityRow<'charge'> = {

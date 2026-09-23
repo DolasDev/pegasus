@@ -747,7 +747,7 @@
         "competing": {
           "roles": ["customer", "accountParty"],
           "unresolved": [],
-          "note": "A count is the thing a shortage claim is built on, so the right to contest it is the same right row 9 publishes: §375.503(d)'s opportunity to note missing articles IN WRITING and receive a copy of the notations. [A4 §3]'s GOODS_MISSING is the reason code that records the disagreement."
+          "note": "A count is the thing a shortage claim is built on, so the right to contest it is the same right row 9 publishes: §375.503(d)'s opportunity to note missing articles IN WRITING and receive a copy of the notations. [A4 §3]'s GOODS_MISSING is the reason code that records the disagreement. `accountParty` competes here and NOT on row 15, and the difference is deliberate: a count is a billing and claims input — the same reason row 6 has both `customer` and `accountParty` competing over weight — whereas packing performance is neither. Row 15 mirrors row 3, which has `customer` alone."
         },
         "advisory": {
           "roles": ["platform", "booker"],
