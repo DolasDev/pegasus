@@ -97,3 +97,46 @@ _permission_, not assertional authority, but it is the same kind of material A8 
 stays blocked by A8's own mint principle. A8 gained `(b-i)` and revision 8 in the same PR, and the
 corpus-blocked count went from twelve to nine. **A disagreement between two binding documents is a
 defect, so the correction lands in both or in neither.**
+
+## Domain reference — A2: the shipment boundary is the undertaking, and nothing publishes one
+
+**A2 (shipment structure) is decided in `docs/domain-reference/analysis/A2-shipment-structure.md`**
+(cited as `[A2 §x]`). It mints no type, aggregate, field, qualifier or reason code, and — a first —
+it **does not bump `CATALOG_VERSION`**, because both emitted schemas came out byte-identical. What it
+adds:
+
+- **Rule B-ONWARD, `shipmentContinuity` in `src/rules/shipment-continuity.ts`.** Onward movement of
+  the same goods continues the same shipment unless a **new undertaking** was made over them; the
+  transport document is the record a commitment leaves, never the thing that makes it new. Diversion,
+  a split at a transshipment point and delivery out of SIT keep the shipment; **reshipment after
+  termination is a second shipment**, because `src:dtr-part-iv` #81 makes a bill of lading the
+  contract by which the TSP agrees to furnish transportation and §E.4(4)(c) issues a new one. This
+  **closes `00-shared-decisions.md` §10.4 bullet 1**, the oldest open item in the model — A5 had
+  closed the stay half.
+- **B-DOC is sharpened, not reversed**, and gains a second reason it is `[ORIGINAL]` that
+  `fork-order` §3.2.2 did not carry: the system it was read off **separates award, survey and
+  document** (DTR §C.4; §F.1 NOTE), so reading identity off the document is not DoD's rule either.
+- **No shipment-type vocabulary, and `fork-order` §3.1's promise of one is withdrawn.** Six sources
+  publish a closed shipment-type enum and **no two decompose into the same facets**; three of the
+  facets are other aggregates' facts (`PPM`/`shipperType` → `partyRole`; `NTS`/`NTSR`/`LTS` → the
+  permanent-storage boundary `[A5 §3.4(c)]` put outside the model; `JobType` → services ordered) and
+  one is A12's (rate family). Each is a **rating or routing key**, not an ontology. `shipmentType` is
+  absent and owed; a union would be a cross-product and `[catalog §2.3]` makes a member's spelling
+  breaking.
+- **`00-shared-decisions.md` §11's mandatory Portion revisit check is run and passes.** No published
+  HHG model keeps enumerated and measured subsets as different entities — `src:dp3-400ng` Item 17.13
+  requires **both of one subset** — and the "Split Shipment" is **one** shipment, which is positive
+  evidence for `P-IDENTITY` rather than a strain on it.
+
+**The structural finding, which is the round's largest output: the `shipment` aggregate has no record
+of its own coming into existence.** Every act row in §4.7.1 presupposes one. So `fork-order` §5.2's
+**B-STAGE has been a projection with no input records since it was written**, B-ONWARD is decidable
+in prose and returns `COMMITMENT_NOT_PUBLISHED` in code, and an `[A1 §3.4]` `COMPLETE` rule cannot
+read the set it would quantify over. `shipmentCommitment` is recorded in `ABSENT_AND_OWED`, and its
+blocker is **not** A5's missing party entity: it is the same `[A8 §4.3]` `boundBy` gap A1 found, so
+**four things now wait on one enum member** — the cheapest remaining move on the owed count.
+
+**And it audited a claim the resumption plan made.** `00-shared-decisions.md` §10.2's seventeen
+required changes to `fork-order-shipment-cardinality.md` were described as A2's inheritance; all
+seventeen were **already applied** across that document's revisions 2-5. `[A2 §1]` carries the
+item-to-revision table. **Check what a plan says is owed before building on it.**
