@@ -95,3 +95,44 @@ describe('TripsFilter', () => {
     fireEvent.change(textInputs[0], { target: { value: '42' } })
   })
 })
+
+describe('TripsFilter — Rejected status option', () => {
+  const tripStatuses = [
+    { status_id: 1, status: 'Pending' },
+    { status_id: 2, status: 'Offered' },
+  ]
+
+  it('offers "Rejected" alongside the MasterTripStatus rows', () => {
+    renderWithStore(<TripsFilter />, {
+      preloadedState: {
+        trips: { query: { filters: {} } } as any,
+        common: { tripStatuses } as any,
+      },
+    })
+
+    // The Status field is the first combobox in the filter panel.
+    const [statusInput] = screen.getAllByRole('combobox')
+    fireEvent.mouseDown(statusInput!)
+    fireEvent.focus(statusInput!)
+
+    expect(screen.getByText('Pending')).toBeInTheDocument()
+    expect(screen.getByText('Rejected')).toBeInTheDocument()
+  })
+
+  it('stores the REJECTED sentinel on the query when picked', () => {
+    const { store } = renderWithStore(<TripsFilter />, {
+      preloadedState: {
+        trips: { query: { filters: {} } } as any,
+        common: { tripStatuses } as any,
+      },
+    })
+
+    const [statusInput] = screen.getAllByRole('combobox')
+    fireEvent.mouseDown(statusInput!)
+    fireEvent.focus(statusInput!)
+    fireEvent.click(screen.getByText('Rejected'))
+
+    const selected = (store.getState() as any).trips.query.filters.TripStatus_id
+    expect(selected).toEqual([{ value: 'REJECTED', label: 'Rejected' }])
+  })
+})
