@@ -19,6 +19,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  MEMBERSHIP_FORMS,
   PORTION_MEMBERSHIP_FACT_CLASS,
   SUBJECT_FAMILIES,
   admitSubject,
@@ -39,6 +40,7 @@ import {
   sameFactKey,
   sameIdentityFactKey,
   schemeName,
+  shipmentContinuity,
   shipmentId,
   specVersion,
   stopId,
@@ -293,6 +295,38 @@ describe('[SD §3.2] P-IDENTITY — one bill of lading, and it stays one', () =>
     // is added." Which is what keeps one BL across two load days: the interval is still open.
     expect(billOfLading.value).not.toHaveProperty('issuedAt')
     expect(billOfLading.value.effectiveTo).toBeUndefined()
+  })
+})
+
+describe('[A2 §3.5] the revisit check [SD §11] asked for, run against the corpus', () => {
+  it('the split shipment is ONE shipment, so P-IDENTITY holds where it is stressed hardest', () => {
+    // [A2 §3.2(b)]. `src:dp3-400ng` Item 17.9 defines a **Split Shipment** as "a shipment where only
+    // a portion is stored in transit enroute" — grammatically singular, and using the word
+    // `portion` to say why. `src:dtr-part-iv` #662 separates it "into increments, each identified
+    // and documented separately", and what documents them is a weight ticket and a SIT control
+    // number, not a new bill of lading. Item 17.9.b.2 then applies the 1,000-lb minimum to the
+    // **combined** weight of the separately-rated portions — a rating rule treating the parts as
+    // one rateable thing.
+    expect(shipmentContinuity('SPLIT_AT_TRANSSHIPMENT')).toEqual({
+      kind: 'determined',
+      verdict: 'SAME_SHIPMENT',
+    })
+    // Which is exactly what this scenario's own Portions already assume: one shipment field, no
+    // operation that changes it (**P-IDENTITY**, held in the type).
+    expect(firstHalfAtMint.shipment).toEqual(secondHalf.shipment)
+  })
+
+  it('[SD §11] no published HHG model keeps the two membership forms as different entities', () => {
+    // The mandatory check: "If A2 finds a published HHG model that keeps enumerated and measured
+    // subsets as **different** entities, revisit." It does not. `src:dp3-400ng` Item 17.13's partial
+    // withdrawal is identified by **inventory item numbers** AND requires "the actual weight of the
+    // portion withdrawn" — two membership forms, ONE subset, one tariff item, which is `BOTH`.
+    expect(MEMBERSHIP_FORMS).toContain('BOTH')
+    // And `src:sirva-ade`'s measured-only `Overflow` is not a counter-example either: it lacks the
+    // enumerated form rather than keeping it apart, which is **P-MEMBER**'s case and not a second
+    // entity. A Portion may learn its contents later without changing its id.
+    expect(isLegalMembershipTransition('MEASURED', 'BOTH')).toBe(true)
+    expect(isLegalMembershipTransition('BOTH', 'MEASURED')).toBe(false)
   })
 })
 

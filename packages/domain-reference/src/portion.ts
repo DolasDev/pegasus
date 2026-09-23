@@ -81,9 +81,16 @@ interface PortionCommon {
    * ([SD §3.2]): "A Portion never changes the shipment boundary. Minting a Portion is not
    * splitting a shipment." The SIT remainder is a Portion; the shipment is untouched.
    *
-   * Held in the type by there being one field and no operation that changes it. _(Whether a
-   * **terminated** stay that moves onward on a new BL is a new shipment is an A2/A5 question,
-   * explicitly not settled — [SD §3.2], [SD §10.4].)_
+   * Held in the type by there being one field and no operation that changes it.
+   *
+   * _(Whether a **terminated** stay that moves onward on a new BL is a new shipment was left open
+   * at [SD §3.2] and [SD §10.4] and is now settled: [A5 §3.4] rules that the **stay** is untouched,
+   * and [A2 §3.2]'s rule **B-ONWARD** rules that the onward movement is a **second shipment**,
+   * because `src:dtr-part-iv` §E.4(4)(c)'s new bill of lading is a new contract "whereby the TSP
+   * agrees to furnish transportation services" (#81) and therefore a new undertaking. Neither
+   * touches this field: a Portion still never spans shipments, and [A2 §3.2(b)] adds that the
+   * corpus's hardest split case — `src:dp3-400ng` Item 17.9's **Split Shipment** — is **one**
+   * shipment with Portions, which is positive evidence for P-IDENTITY rather than a strain on it.)_
    */
   readonly shipment: SubjectRef<'shipment'>
   /**

@@ -195,6 +195,7 @@ const DOCUMENTS: Readonly<Record<string, string>> = {
   A4: 'A4-execution-events.md',
   A1: 'A1-order-service-lifecycle.md',
   A5: 'A5-storage-in-transit.md',
+  A2: 'A2-shipment-structure.md',
   A3: 'A3-trip-stop-assignment.md',
   'fork-order': 'fork-order-shipment-cardinality.md',
   'fork-time': 'fork-time-provenance-corrections.md',
@@ -833,6 +834,30 @@ const VOCABULARIES: readonly {
     symbols: ['STAY_LOCATIONS'],
   },
   {
+    name: 'onward movement',
+    heading: 'Onward movements',
+    blurb:
+      'The interruptions the corpus names, and the input to **B-ONWARD** ([A2 §3.2]). Four are ' +
+      "`src:dtr-part-iv`'s — the diversion / termination / reshipment trichotomy its own analysis " +
+      'calls "worth adopting wholesale", plus the split at a transshipment point — and the fifth is ' +
+      'the boundary [A5 §3.4] closed. The enum is closed because [A2 §3.2] decides each member ' +
+      'individually and by citation: a sixth cause is a new decision, not a default, and ' +
+      '`shipmentContinuity` returns undetermined for it.',
+    symbols: ['ONWARD_MOVEMENTS'],
+  },
+  {
+    name: 'shipment continuity verdict',
+    heading: 'Shipment continuity verdicts',
+    blurb:
+      'What **B-ONWARD** answers, and why it often cannot ([A2 §3.2]). The two determinate verdicts ' +
+      'are whether onward movement continues the shipment or is a second one; the two undetermined ' +
+      "reasons are the honest half. `COMMITMENT_NOT_PUBLISHED` is [A2 §1]'s structural finding in " +
+      'executable form — **the `shipment` aggregate has no record of its own coming into ' +
+      "existence**, so the rule's discriminant is not readable off the catalog — and " +
+      "`LEAVES_THE_MODEL` is [A5 §3.4]'s permanent-storage boundary.",
+    symbols: ['SHIPMENT_CONTINUITY_VERDICTS', 'SHIPMENT_CONTINUITY_UNDETERMINED_REASONS'],
+  },
+  {
     name: 'reason code',
     heading: 'Reason codes',
     blurb:
@@ -997,6 +1022,13 @@ const RULES: readonly {
     path: 'PortionCommon.shipment',
   },
   { term: 'R-WEIGHT-LOWER', what: 'the one published value rule', export: 'R_WEIGHT_LOWER' },
+  // [A2 §3.2]. Registered as a rule and NOT beside the two folds above: it takes its discriminant
+  // as an input because no record publishes one, which is the whole of [A2 §1]'s finding.
+  {
+    term: 'B-ONWARD',
+    what: 'the shipment boundary across an interruption',
+    export: 'shipmentContinuity',
+  },
 ]
 
 /* ------------------------------------------------------------------------------------------------

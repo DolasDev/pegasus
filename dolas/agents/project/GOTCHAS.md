@@ -1899,3 +1899,41 @@ the long-lived `domain-reference` worktree already holds, so provisioning fails 
 the git worktree and branch — leaving partial state that `scripts/rm-worktree.sh <slug>` cleans up.
 Pick a different slug rather than tearing down another workstream's container; agents are barred from
 removing worktrees they did not create.
+
+## An `Exact<>` gate that IS assigned can still be a tautology (A2, PR #724)
+
+`packages/domain-reference/src/primitives.ts` exports
+`Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never`, used to make a
+hand-written table fail to compile when the vocabulary it is keyed on gains or loses a member.
+
+**A5 (PR #723) found the first trap:** `export type X = Exact<A, B>` on its own is a **comment** — an
+alias evaluating to `never` reports nothing. The convention is `const _x: X = true` on the next line,
+and that assignment is the whole gate.
+
+**A2 found the next one: the assignment does not always repair it.** An
+`Exact<keyof typeof TABLE, MEMBERS>` where `TABLE` is declared as a **mapped type** over `MEMBERS` —
+
+```ts
+const TABLE: { readonly [M in Members]: Verdict } = { ... }
+export type TableIsTotal = Exact<keyof typeof TABLE, Members> // can NEVER be `never`
+const _t: TableIsTotal = true // ...so this is `1 === 1`
+```
+
+— **can never fail**, because `keyof` a mapped type **is** its own key set by construction. Assigned
+or not, it asserts nothing.
+
+The mapped type was already the gate, and tampering proves it bites both ways:
+
+| Tamper                                        | `tsc`                                                      |
+| --------------------------------------------- | ---------------------------------------------------------- |
+| A new enum member with no row in the table    | `TS2741: Property '…' is missing in type`                  |
+| A row for a member the enum no longer carries | `TS2353: Object literal may only specify known properties` |
+
+**Rule:** an `Exact` earns its place only between two things declared **independently** — a
+hand-written `as const` table versus the vocabulary it mirrors, as at `src/catalog.ts:51`,
+`src/data.ts:281`, `src/assertions.ts:209` and `src/rules/authority.ts:1019`. Between a mapped type
+and its own key set there is nothing to drift, and a decorative assertion beside a gate that already
+bites is **worse than nothing**: it tells the next reader the coverage is checked twice.
+
+**Both halves of this were found only by tampering.** A passing build proves neither. Tamper every
+new compile-time gate and watch it fail before leaving it green.

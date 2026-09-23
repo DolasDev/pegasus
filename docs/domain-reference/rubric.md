@@ -31,18 +31,31 @@ but our configs and code that implement them do not.
 | A13 | Crew, driver & settlement      | context map | crew scheduling, driver/agent compensation, revenue splits                                                            |
 
 > **The `v1 detail` column is the plan, not the state.** Nine areas are _intended_ to be modelled in
-> detail; what exists is what `analysis/` holds. As things stand: **A1**, **A3**, **A5** and **A8**
-> have full area documents — A1 at [`analysis/A1-order-service-lifecycle.md`](analysis/A1-order-service-lifecycle.md),
+> detail; what exists is what `analysis/` holds. As things stand: **A1**, **A2**, **A3**, **A5** and
+> **A8** have full area documents — A1 at [`analysis/A1-order-service-lifecycle.md`](analysis/A1-order-service-lifecycle.md),
 > which records its weights at §3.7 and its owed items at §6, and A5 at
 > [`analysis/A5-storage-in-transit.md`](analysis/A5-storage-in-transit.md), which records its weights
-> at §3.7 and its owed items at §6 and is the first area to weight **C4** highest; **A4** has a
+> at §3.7 and its owed items at §6 and is the first area to weight **C4** highest, and A2 at
+> [`analysis/A2-shipment-structure.md`](analysis/A2-shipment-structure.md), which records its weights
+> at §3.7 and its owed items at §6 and is the first area to weight **C2** highest — because A2's
+> problem is disagreement rather than absence: more sources say something about shipment structure
+> than about any other v1 area, and no two of the six that publish a shipment-type enum decompose it
+> into the same facets ([A2 §2.12], [A2 §3.3]); **A4** has a
 > decision document covering its reason vocabulary only
 > ([`analysis/A4-execution-events.md`](analysis/A4-execution-events.md), whose own scope note says
-> so), and its execution-event and tracking model is not yet scored; **A2, A6, A7 and A9 have no
+> so), and its execution-event and tracking model is not yet scored; **A6, A7 and A9 have no
 > area analysis at all**, and a claim about one of them that is not traceable to
 > [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) or to a source analysis is
 > unbacked. A10-A13 are context-map-only by design and are not gaps. Recorded here because a column
 > reading "yes" for all nine invites exactly the assumption [SD §0] forbids.
+
+> **One observation about per-area scoring itself, from [A2 §3.7].** `src:dtr-part-iv` scores
+> `C3 = 1` **on A2** and decided the whole of [A2 §3.2] — because its A2 row scores the shipment
+> _structure_ it does not have, while the diversion / termination / reshipment trichotomy that
+> answers A2's hardest question is scored under **A1**, where the same source scores `C3 = 3`. **An
+> operation on a shipment's identity is scored in one area and lives in another.** That is a
+> property of scoring per area rather than a defect in either row, but a reader who compares area
+> scores to decide where the evidence is will be misled by it.
 
 ## Per-area criteria (score 0–3 each)
 
