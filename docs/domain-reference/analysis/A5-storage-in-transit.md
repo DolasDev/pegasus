@@ -1125,7 +1125,20 @@ after termination (Item 17-2); and the 1,000-lb minimum applied to the **combine
 separately-rated portions (Item 17.9.b.2). [SD §4.7.1]'s `charge` row already permits `stay` in
 `context[]`, so none of this needs a new mechanism — it needs A7.
 
-### To [A6]
+### To [A6] — **already discharged when A6 opened it**, see [`A6` §1](A6-documents-evidence.md)
+
+> **This hand-off was taken by [A8 §5] row 9 before A6 read it, and the correction is A5's to carry.**
+> Row 9's evidence column **opens** with the clause below — _"`src:dp3-400ng` Item 17.12.c — **both**
+> TSP and warehouseman must hold 'the condition of **each article** when received at and forwarded
+> from the storage location'"_ — and goes on to cite four of the five sources this section names,
+> including NTS §1.6.10, which [A8 §7.3] quotes verbatim as **A8-JOINT**'s source sentence. So the
+> boundary this section says A6 "has not yet looked at" is the boundary A8-JOINT was written for, and
+> [A5 §3.3]'s own decision that a stay is neither a stop nor a service at a stop already settles that
+> a `storeIn`/`storeOut` pair is where the goods change hands. **What survived for A6 was not a
+> `condition` question at all**: the published rule that makes Item 17.12 work in practice is
+> condition **by omission**, and [A6 §3.7] found the capture vocabulary cannot express it — handed to
+> A4, not answered here. Left in place rather than deleted because the reasoning below is sound and
+> only its premise was stale.
 
 `src:dp3-400ng` Item 17.12 is a **records-required** clause and it is the sharpest A6 material in the
 storage corpus: both the TSP and the warehouseman must hold an itemised property list carrying the BL

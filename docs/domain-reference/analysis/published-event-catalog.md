@@ -257,6 +257,7 @@ The bumps, and what each was classified as under §2.3:
 | `0.3.0` → `0.4.0` | A1                     | `REASON_CODES` gains `DEADLINE_LAPSED` ([A1 §3.6]). A1's other deliverable, `orderStageAt`, is a **projection** and moves nothing on the wire | `newClosedEnumMember`     |
 | `0.4.0` → `0.5.0` | A5                     | `Remedy`'s owed branch is replaced by `OpensStay` ([A5 §3.2]). A5's other deliverables mint no type, aggregate, field or qualifier            | `publishedOwedShape`      |
 | `0.5.0` → `0.5.0` | A2                     | **No bump.** Both emitted schemas are byte-identical across A2; the only published change is one more member of the owed inventory            | none — see below          |
+| `0.5.0` → `0.5.0` | A6                     | **No bump**, for the same reason and on stronger evidence — A6's central deliverable is a decision **not** to widen a published union         | none — see below          |
 
 **A2 is the first area to change nothing on the wire, and the rule that says so is already here.**
 [§5](#5-what-the-catalog-does-not-yet-publish) records of A8's round that a moving owed inventory
@@ -267,6 +268,16 @@ fact class (`shipmentCommitment`, [A2 §3.6]), and a set of refusals. `git diff`
 `captured.schema.json` and `queried.schema.json` is empty, which is the evidence rather than the
 claim. **A version bumped for a release that changes no published byte would tell a consumer to
 re-validate for nothing**, and [SD §0]'s disclosure rule reaches the version string (§2.4 above).
+
+**A6 is the second, and the non-bump is the deliverable rather than a side effect.** [A6 §3.2]'s rule
+**D-ID** files an assertion the published schema **already admits** — `record.identity` declares both
+`subject` and `context[]` as `SubjectRef.family.anyAggregate`, which includes `document` and
+`shipment` — and [A6 §3.5(c)]'s decision is explicitly a refusal to widen `EvidenceRef`, whose two
+branches are published with `additionalProperties: false`. So where A2 changed no byte because its
+output happened not to reach the wire, A6 changed none because **reaching the wire was the cost it
+declined to pay**: ratifying an ingest-local widening costs nothing, and widening a published union
+costs every consumer a re-validation. `absentFactClasses` moves 14 → 15 in `index.json` and both
+schemas are byte-identical, which is again the evidence rather than the claim.
 
 What caps the version is the authority rows, and no amount of vocabulary work moves that.
 
@@ -454,7 +465,7 @@ Read the generated `Owed` section of [`../glossary.md`](../glossary.md) for the 
 derived from the code and cannot go stale. As at this version it holds: **18 declared owed values**,
 **3 closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` —
 the reason vocabulary was a fourth until A4), **14 of 31** record types whose authority row is owed
-in whole or in part, **2** whose fact-class family is owed, and **14** fact classes named in the
+in whole or in part, **2** whose fact-class family is owed, and **15** fact classes named in the
 corpus and absent from the vocabulary.
 
 **Two of those five moved at A5, in opposite directions, and the pair is worth reading together.**
@@ -470,6 +481,15 @@ written on top of it. [A2 §1] is the finding: _the `shipment` aggregate has no 
 coming into existence_, which is why [`fork-order` §5.2]'s `B-STAGE` has been a projection with no
 input records since it was written. **An owed inventory that surfaces a hole this old is doing the
 job §2.4 keeps the version pre-1.0 for.**
+
+**And once more at A6, where the entry is the cheapest one on the list rather than the deepest.**
+[A6 §3.3] ran A2's check over the `document` aggregate and found the same shape — no row of
+[SD §4.7.1] records a document being issued, signed, corrected or cancelled — so `documentIssuance`
+joins the list. What makes it different from every entry above is that **its authority is already
+answered**: [A8 §5] row 10's `boundBy = SCHEME` determines its holder, so a row in [SD §4.7.1] and a
+row in [A8 §5] are all that is owed, with nothing owed underneath either. A5's three are blocked on a
+party class, A2's and A1's three on a `boundBy` member, and this one on minting alone — **a third kind
+of blocker, and the only one of the three that needs no prior decision.**
 
 **These five numbers are the only counts this document may carry, and they are gated**:
 `tests/conformance/catalog.test.ts` reads them out of this section and compares them with

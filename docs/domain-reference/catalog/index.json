@@ -607,7 +607,7 @@
       "authorityRows": 14,
       "declaredRecordTypes": 31,
       "factClassFamilies": 2,
-      "absentFactClasses": 14
+      "absentFactClasses": 15
     },
     "vocabularies": ["identityScheme", "roleClass", "unitOfMeasure"],
     "declared": [
@@ -792,6 +792,7 @@
     "absentFactClasses": [
       "claim",
       "cube",
+      "documentIssuance",
       "estimate",
       "eta",
       "resourceTareWeight",

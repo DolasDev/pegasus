@@ -888,6 +888,49 @@ export const ABSENT_AND_OWED = [
    * quantify over.
    */
   'shipmentCommitment',
+  /**
+   * The act that brings a **document** into existence — [A6 §3.3].
+   *
+   * Named as a regulated act in three regimes. `src:cfr-49-375` §375.505(a), **primary**: "Before
+   * you receive a shipment of household goods you will transport for an individual shipper, you must
+   * prepare and **issue** a bill of lading." `src:dtr-part-iv` A-413 §C.2, secondary: a BL "is only
+   * accountable when a number has been assigned to the form" — number assignment *is* issuance —
+   * gated on both sides by A-402 §F.1 NOTE ("the BL cannot be printed until pre-move survey weight
+   * and agreed pack/pickup dates are in DPS") and `src:dp3-tender-of-service` §C.3.n (not earlier
+   * than 2 GBD before the first pack date). `src:dcsa`, captured: `ISSU` is one of seventeen
+   * document-status values with `eventClassifierCode` forced to `ACT` — there is no estimated bill of
+   * lading issuance. `src:nmfta-ebol`, secondary: `bol.function` is required with one documented
+   * value, `Create`, and the response carries an acceptance identifier distinct from the document
+   * identifier.
+   *
+   * **Its blocker is a third kind, and it is the cheapest of the three.** [A5 §3.6]'s three storage
+   * classes are blocked on a party class [A8 §9 item 1] has not defined; `shipmentCommitment` above
+   * and A1's two order classes are blocked on [A8 §4.3]'s `boundBy` enum having no member meaning
+   * "resolved by the order's own award". This one is blocked on **minting alone**: [A8 §5] row 10
+   * binds `identity` with `boundBy = SCHEME`, _"the ISSUER of the scheme, and nobody else… Authority
+   * NEVER moves"_, and [A6 §3.2(b)] establishes that for the one document kind with a scheme of its
+   * own — the bill of lading, in both published regimes — the party controlling the number scheme is
+   * the party issuing the instrument. §375.103 defines a `Government bill of lading shipper`
+   * separately from a `commercial shipper` precisely because the carrier's BL and the GBL are two
+   * instruments, each issued by the party whose instrument it is; which instrument is in play
+   * determines the issuer, and the scheme is what says which instrument it is. So a row in [SD
+   * §4.7.1] and a row in [A8 §5] are all that is owed, with nothing owed underneath either.
+   *
+   * **What its absence costs**, [A6 §3.4] and [A6 §4]: a `documentStateAt` projection cannot be
+   * written, because a fold needs input records and there are none — which would be [A2 §3.6]'s
+   * `B-STAGE` a second time; retention, revision and `src:cfr-49-375` §375.505(b)(15)'s attachment
+   * containment ("each attachment is an integral part of the bill of lading contract") each have no
+   * date or artefact to attach to; and [A2 §Cross-area]'s "a correction is not a reissue" is
+   * decidable in prose and not in code.
+   *
+   * **A signature is a second, distinct act and is deliberately not listed here** ([A6 §3.3(b)]):
+   * §375.505(h) has the bill of lading signed "at least 3 days before" loading, at no custody
+   * boundary, and §375.505(g)(2) permits signing an **incomplete** document, so it is neither
+   * `handover` nor issuance. It is omitted because no source publishes what a signature *asserts* —
+   * four publish the procedure and none the proposition — and a fact class needs a value. [A6 §6]
+   * owes it to the user and to A10.
+   */
+  'documentIssuance',
 ] as const
 
 export type AbsentAndOwedClass = (typeof ABSENT_AND_OWED)[number]

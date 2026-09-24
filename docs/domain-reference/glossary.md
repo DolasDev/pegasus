@@ -24,6 +24,8 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Stay locations](#stay-locations-3) — 3
 - [Onward movements](#onward-movements-5) — 5
 - [Shipment continuity verdicts](#shipment-continuity-verdicts-4) — 4
+- [Identity subjects](#identity-subjects-3) — 3
+- [Whitelist residue reasons](#whitelist-residue-reasons-4) — 4
 - [Reason codes](#reason-codes-24) — 24
 - [Role names](#role-names-18) — 18
 - [Membership forms](#membership-forms-3) — 3
@@ -32,7 +34,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
 - [Compatibility change classes](#compatibility-change-classes-13) — 13
-- [Key functions and rules](#key-functions-and-rules-25) — 25
+- [Key functions and rules](#key-functions-and-rules-27) — 27
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
@@ -1082,6 +1084,74 @@ A new undertaking was made over the same goods, so a second shipment exists — 
 - **Corpus:** `src:dtr-part-iv`
 - **Declared by:** `SHIPMENT_CONTINUITY_VERDICTS` in `packages/domain-reference/src/rules/shipment-continuity.ts`
 
+## Identity subjects (3)
+
+Which subject an identifier found on a document attaches to — rule **D-ID** ([A6 §3.2]). The model has always admitted an assertion _about_ a document, because `identity`'s declared family is `anyAggregate` ([SD §7.1], "subject may be ANY aggregate kind") and that family includes `document`; what it has never said is which assertions those are. The discriminator is whether the scheme is one the issuer controls for the **form**: `src:cfr-49-375` §375.505(b)(16) makes "any identification or registration number you assign to the shipment" a required bill-of-lading field distinct from the bill of lading's own number, and §375.519(a)(6) offers the two as alternatives. It matters because [SD §1.3] pairs competing assertions on `(subject, type, qualifier?)`, so the same number filed both ways is **two fact keys** and the duplication is invisible.
+
+### `CARRIED_SUBJECT` (identity subject)
+
+The subject the carried identifier is an identifier _of_; the document rides in `context[]`,
+which is what [SD §4.7.1]'s `weight.net`, `pieceCount`, `condition` and `identity` rows already
+do ("document is the weight ticket", "the inventory", "the signed inventory", "the instrument
+the value appears on").
+
+- **Cited:** [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table)
+- **Corpus:** `src:cfr-49-375`
+- **Declared by:** `IDENTITY_SUBJECTS` in `packages/domain-reference/src/rules/documents.ts`
+
+### `DOCUMENT` (identity subject)
+
+The `document` itself. The scheme is one the issuer controls for the **form**, independently of
+any shipment.
+
+- **Cited:** _no document citation in the docstring_
+- **Corpus:** `src:dtr-part-iv`
+- **Declared by:** `IDENTITY_SUBJECTS` in `packages/domain-reference/src/rules/documents.ts`
+
+### `SCHEME_ACCOUNTABILITY_NOT_PUBLISHED` (identity subject)
+
+The scheme is not known to be document-accountable, or is not known at all.
+
+- **Cited:** [[A6 §3.2(a)]](analysis/A6-documents-evidence.md#32-a-documents-own-identity-and-the-identity-it-merely-carries--owed-item-1) · [[SD §0]](analysis/00-shared-decisions.md)
+- **Declared by:** `IDENTITY_SUBJECT_UNDETERMINED_REASONS` in `packages/domain-reference/src/rules/documents.ts`
+
+## Whitelist residue reasons (4)
+
+Why a row of `src:dtr-part-iv` Table A-402-4's published mutability whitelist has nowhere to land in the vocabulary ([A6 §3.6]). Four reasons, and the distinction between them is the finding: two of the four fields are owed elsewhere (`placeRef` to [SD §1.2], `partyRole`'s row to [A8 §9 items 1-2]), one needs a vocabulary a landed area **refused on evidence** ([A2 §3.3]'s `shipmentType`), and one is not a domain fact at all — so the sub-fact grain `authority.ts` used to ask for would move none of them.
+
+### `AGGREGATE_OWED` (whitelist residue reason)
+
+The fact exists in no aggregate the model carries — `placeRef` is owed to [SD §1.2].
+
+- **Cited:** [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Declared by:** `WHITELIST_RESIDUE_REASONS` in `packages/domain-reference/src/rules/documents.ts`
+
+### `AUTHORITY_OWED` (whitelist residue reason)
+
+The fact class exists and its authority row is owed — `partyRole`, [A8 §9 items 1-2].
+
+- **Cited:** [[A8 §9 items 1-2]](analysis/A8-authority-skeleton.md)
+- **Declared by:** `WHITELIST_RESIDUE_REASONS` in `packages/domain-reference/src/rules/documents.ts`
+
+### `NOT_A_DOMAIN_FACT` (whitelist residue reason)
+
+Not a fact about the goods, the plan or a party, at any grain — Table A-402-4's accounting codes
+and remarks. **[ORIGINAL]** as a classification: `src:dtr-part-iv` lists the fields without
+saying what any of them is a fact _about_, and its own trap note is the nearest support — _"the
+system is the model… large stretches describe what DPS does rather than what is true"_. [A6 §3.6].
+
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A6 §3.6]](analysis/A6-documents-evidence.md#36-the-mutability-whitelist-and-where-its-fields-land--owed-item-5)
+- **Corpus:** `src:dtr-part-iv`
+- **Declared by:** `WHITELIST_RESIDUE_REASONS` in `packages/domain-reference/src/rules/documents.ts`
+
+### `VOCABULARY_REFUSED` (whitelist residue reason)
+
+A landed area **refused** to publish the vocabulary the field would need — [A2 §3.3].
+
+- **Cited:** [[A2 §3.3]](analysis/A2-shipment-structure.md#33-the-shipments-kind--owed-item-2)
+- **Declared by:** `WHITELIST_RESIDUE_REASONS` in `packages/domain-reference/src/rules/documents.ts`
+
 ## Reason codes (24)
 
 The published reason vocabulary — the half of `(outcome, reason)` [SD §2.4] fixed the shape of and left to A4: "the list itself is A4's job". Rule 2 bounds its magnitude magnitude ("~20 reasons × 5 outcomes, not ~100 types") and not a quota. Every member is **orthogonal to the outcome** — `GOODS_DAMAGED` is `src:shippeo`'s `LIV/RCA` _and_ its `REN/AVA`, one code under two outcomes — and **grain-independent**: a code does not change when the subject changes grain. `OTHER` is not a member: it is declared by the shape itself (rule 3) and carries a mandatory narrative the others do not. The per-code scope, attribution discipline and remedy obligation are joined from `packages/domain-reference/data/reasons.json`, which the loader holds to this list as a set.
@@ -1898,7 +1968,7 @@ Removing or renaming a `type`. It is a component of the fact key ([SD §1.3] ite
 - **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
 - **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (25)
+## Key functions and rules (27)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
 
@@ -1975,6 +2045,24 @@ through, applied to **ordering** instead of to selection.
 - **Kind:** the custody tie
 - **Cited:** [[A8 §4.4]](analysis/A8-authority-skeleton.md#44-no-silent-recency) · [[SD §4.6.3]](analysis/00-shared-decisions.md#463-the-hard-case-a-shipment-phrased-arrival-against-a-van-with-two-candidate-stops)
 - **Declared by:** `CUSTODY_UNKNOWN_REASONS.AMBIGUOUS_ORDER_AT_INSTANT` in `packages/domain-reference/src/custody.ts`
+
+### `D-CITE` (rule)
+
+**D-CITE** — [A6 §3.5].
+
+- **Kind:** a citation is a pointer, never a claim
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A2 §9]](analysis/A2-shipment-structure.md) · [[A6 §3.5(c)]](analysis/A6-documents-evidence.md#35-what-evidence-means--owed-item-4) · [[A6 §3.5]](analysis/A6-documents-evidence.md#35-what-evidence-means--owed-item-4) · [[A6 §7]](analysis/A6-documents-evidence.md) · [[A6 §8]](analysis/A6-documents-evidence.md) · [[SD §6.1]](analysis/00-shared-decisions.md#61-three-outcomes-all-recorded)
+- **Corpus:** `src:cfr-49-375` · `src:dp3-tender-of-service`
+- **Declared by:** `CITATION_CLAIMS_NOTHING` in `packages/domain-reference/src/rules/documents.ts`
+
+### `D-ID` (rule)
+
+**D-ID** — [A6 §3.2]. Which subject does an identifier on a document attach to?
+
+- **Kind:** a document's own identity versus the identity it carries
+- **Cited:** [[A6 §3.2(d)]](analysis/A6-documents-evidence.md#32-a-documents-own-identity-and-the-identity-it-merely-carries--owed-item-1) · [[A6 §3.2]](analysis/A6-documents-evidence.md#32-a-documents-own-identity-and-the-identity-it-merely-carries--owed-item-1) · [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
+- **Declared by:** `documentIdentitySubject` in `packages/domain-reference/src/rules/documents.ts`
 
 ### `E-CANON-OBLIGATION` (rule)
 
@@ -2227,6 +2315,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 - `claim`
 - `cube`
+- `documentIssuance` — The act that brings a **document** into existence — [A6 §3.3].
 - `estimate`
 - `eta`
 - `resourceTareWeight` — [SD §4.7.2c] the equipment's own tare — a `resource`-subject fact needing its own type.
@@ -2251,19 +2340,24 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`ACTUAL`](#actual-basis) — basis
 - [`ADDRESS_INCORRECT`](#addressincorrect-reason-code) — reason code
 - [`ADMINISTRATIVE`](#administrative-reason-scope) — reason scope
+- [`AGGREGATE_OWED`](#aggregateowed-whitelist-residue-reason) — whitelist residue reason
 - [`ASSUMED_FROM_PLAN`](#assumedfromplan-capture-method) — capture method
 - [`AUTHORISATION_MISSING`](#authorisationmissing-reason-code) — reason code
+- [`AUTHORITY_OWED`](#authorityowed-whitelist-residue-reason) — whitelist residue reason
 - [`B-ONWARD`](#b-onward-rule) — rule
 - [`BOTH`](#both-membership-form) — membership form
 - [`C5`](#c5-rule) — rule
 - [`C6`](#c6-rule) — rule
 - [`CANCELLED`](#cancelled-outcome) — outcome
+- [`CARRIED_SUBJECT`](#carriedsubject-identity-subject) — identity subject
 - [`CAUSE_UNKNOWN`](#causeunknown-reason-code) — reason code
 - [`COMMITMENT_NOT_PUBLISHED`](#commitmentnotpublished-shipment-continuity-verdict) — shipment continuity verdict
 - [`COMMITTED`](#committed-basis) — basis
 - [`COMPLETED`](#completed-outcome) — outcome
 - [`COMPLETED_WITH_EXCEPTION`](#completedwithexception-outcome) — outcome
 - [`CONVERSION_TO_PERMANENT_STORAGE`](#conversiontopermanentstorage-onward-movement) — onward movement
+- [`D-CITE`](#d-cite-rule) — rule
+- [`D-ID`](#d-id-rule) — rule
 - [`DEADLINE_LAPSED`](#deadlinelapsed-reason-code) — reason code
 - [`DELIVERY_OUT_OF_STORAGE`](#deliveryoutofstorage-onward-movement) — onward movement
 - [`DERIVED_BY_RULE`](#derivedbyrule-capture-method) — capture method
@@ -2271,6 +2365,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`DEVICE_GEOFENCE`](#devicegeofence-capture-method) — capture method
 - [`DEVICE_TELEMETRY`](#devicetelemetry-capture-method) — capture method
 - [`DIVERSION`](#diversion-onward-movement) — onward movement
+- [`DOCUMENT`](#document-identity-subject) — identity subject
 - [`DOCUMENT_MISSING_OR_INCORRECT`](#documentmissingorincorrect-reason-code) — reason code
 - [`E-CANON-OBLIGATION`](#e-canon-obligation-rule) — rule
 - [`E-CANON-RESOLVE`](#e-canon-resolve-rule) — rule
@@ -2298,6 +2393,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`M6(b)`](#m6b-rule) — rule
 - [`M7`](#m7-rule) — rule
 - [`MEASURED`](#measured-membership-form) — membership form
+- [`NOT_A_DOMAIN_FACT`](#notadomainfact-whitelist-residue-reason) — whitelist residue reason
 - [`NOT_COMPLETED`](#notcompleted-outcome) — outcome
 - [`OBSERVED_BY_PERSON`](#observedbyperson-capture-method) — capture method
 - [`ORIGIN`](#origin-stay-location) — stay location
@@ -2323,12 +2419,14 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`RESOURCE_FAILURE`](#resourcefailure-reason-code) — reason code
 - [`RESOURCE_UNAVAILABLE`](#resourceunavailable-reason-code) — reason code
 - [`SAME_SHIPMENT`](#sameshipment-shipment-continuity-verdict) — shipment continuity verdict
+- [`SCHEME_ACCOUNTABILITY_NOT_PUBLISHED`](#schemeaccountabilitynotpublished-identity-subject) — identity subject
 - [`SECOND_SHIPMENT`](#secondshipment-shipment-continuity-verdict) — shipment continuity verdict
 - [`SITE`](#site-reason-scope) — reason scope
 - [`SITE_ACCESS_RESTRICTED`](#siteaccessrestricted-reason-code) — reason code
 - [`SITE_HANDLING_EXCESS`](#sitehandlingexcess-reason-code) — reason code
 - [`SITE_INACCESSIBLE`](#siteinaccessible-reason-code) — reason code
 - [`SPLIT_AT_TRANSSHIPMENT`](#splitattransshipment-onward-movement) — onward movement
+- [`VOCABULARY_REFUSED`](#vocabularyrefused-whitelist-residue-reason) — whitelist residue reason
 - [`accountParty`](#accountparty-role-name) — role name
 - [`actPerformance`](#actperformance-fact-class-family) — fact-class family
 - [`arrival`](#arrival-record-type) — record type

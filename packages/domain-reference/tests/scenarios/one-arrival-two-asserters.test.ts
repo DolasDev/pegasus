@@ -152,13 +152,38 @@ describe('[SD §4.6.2] E-CANON-RESOLVE at cardinality one — and then they comp
     expect(rephrased.resolvedBy).toEqual(subjectResolutionRule)
   })
 
-  it('FINDING: the inbound message cannot ride in a published `evidence[]`', () => {
-    // [SD §4.6.2] says "the inbound message goes in `evidence[]`", and `EvidenceRef` is a `document`
-    // aggregate or an assertion `eventId` — an unadmitted message is demonstrably neither. Ingest
-    // carries it in its own widened ref; the minted Assertion below therefore cannot. Recorded
-    // rather than papered over: this is `rules/e-canon.ts`'s own TODO, observed.
+  it('[A6 §3.5(c)] the inbound message rides on the boundary side, and that is the decision', () => {
+    // This test used to be the finding: [SD §4.6.2] says "the inbound message goes in `evidence[]`",
+    // `EvidenceRef` is a `document` aggregate or an assertion `eventId`, and an unadmitted message is
+    // demonstrably neither — E-CANON-STRICT gives it no `eventId`, and no source makes a transmission
+    // an instrument.
+    //
+    // [A6 §3.5(c)] RATIFIED the ingest-local widening rather than promoting it. Two grounds.
+    // `src:nmfta-ebol` is the one publisher that models both lodging a bill of lading and the bill of
+    // lading, and it returns an **acceptance identifier distinct from the document identifier** — so
+    // a submission and an instrument are different facts wherever anyone has modelled both. And the
+    // cost is asymmetric: `EvidenceRef` is published with `additionalProperties: false` on both
+    // branches, so widening it bills every consumer for a re-validation, while ratifying costs no
+    // published byte. [SD §4.6.2]'s sentence is therefore true HERE, on the boundary side.
     if (resolved.outcome !== 'ADMITTED_AFTER_RESOLUTION') return
     expect(resolved.submission.evidence[0]).toMatchObject({ kind: 'inboundMessage' })
+  })
+
+  it('[A6 §3.5(c)] and the boundary-side ref is not assignable to a published `evidence[]`', () => {
+    // The consequence A6 states rather than implies: E-CANON-OBLIGATION retains the message verbatim
+    // on the boundary side, so nothing is lost — but a consumer reading a published Assertion's
+    // `evidence[]` will not find it there.
+    //
+    // A first draft asserted `expect(agentArrival.evidence).toBeUndefined()`, which reads a fixture
+    // this file wrote and can never fail. The real gate is a type gate, because the claim is that one
+    // type is NOT assignable to another: `tests/conformance/document-evidence-refuses.ts`, tampered by
+    // widening `EvidenceRef` and watched to report both `@ts-expect-error` directives unused. What
+    // this test can honestly check is that the boundary ref really is the widened kind and therefore
+    // really is the value the type gate refuses.
+    if (resolved.outcome !== 'ADMITTED_AFTER_RESOLUTION') return
+    const carried = resolved.submission.evidence[0]
+    expect(carried?.kind).toBe('inboundMessage')
+    expect(['document', 'assertion']).not.toContain(carried?.kind)
   })
 
   /**

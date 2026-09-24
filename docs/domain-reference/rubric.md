@@ -43,10 +43,30 @@ but our configs and code that implement them do not.
 > into the same facets ([A2 §2.12], [A2 §3.3]); **A4** has a
 > decision document covering its reason vocabulary only
 > ([`analysis/A4-execution-events.md`](analysis/A4-execution-events.md), whose own scope note says
-> so), and its execution-event and tracking model is not yet scored; **A6, A7 and A9 have no
-> area analysis at all**, and a claim about one of them that is not traceable to
-> [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) or to a source analysis is
-> unbacked. A10-A13 are context-map-only by design and are not gaps. Recorded here because a column
+> so), and its execution-event and tracking model is not yet scored; and **A6** has a full area
+> document at [`analysis/A6-documents-evidence.md`](analysis/A6-documents-evidence.md), which records
+> its weights at §3.9 and its owed items at §6 and is the first area to weight **C7** highest — the
+> obvious call, since every one of its decisions is a provenance decision — with **C6** second, which
+> is not obvious: [A6 §3.2]'s identity rule is decidable only because two sources score `C6 = 3` on
+> A6. **A7 and A9 have no area analysis at all**, and a claim about one of them that is not traceable
+> to [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) or to a source analysis is
+> unbacked.
+
+> **One warning about the A6 row specifically, from [A6 §3.8].** The row reads as a list of eight
+> document classes to model — _"order for service, estimate, inventory, BOL, weight tickets, POD,
+> photos; documents as evidence for events"_ — and it is not. **Two of the eight are A6's** (the bill
+> of lading, and `evidence[]` itself); four are other areas' or are already carried as `context[]` on
+> a row of [SD §4.7.1]; and one, "order for service", **appears zero times** in `src:cfr-49-375`'s
+> captured text and is the excluded permanent-storage programme's ordering document in DP3. A reader
+> who took the row literally would mint six things the model does not need. The `Covers` column is a
+> prompt, not an inventory — which is the same caution as the `v1 detail` column's above.
+
+> **And one about the resumption plan rather than the rubric, recorded here because a later reader
+> will meet it here first.** `plans/in-progress/domain-reference-areas-a6.md` named
+> `src:dtr-part-iv` as A6's best source and did not name `src:dp3-tender-of-service`, which scores
+> the same or better on every A6 criterion and is **grade A** where `dtr-part-iv` is grade B
+> ([A6 §1]). Score rows are per area and evidence grade is per source; comparing the first without
+> reading the second is how the strongest source in an area gets left off a list. A10-A13 are context-map-only by design and are not gaps. Recorded here because a column
 > reading "yes" for all nine invites exactly the assumption [SD §0] forbids.
 
 > **One observation about per-area scoring itself, from [A2 §3.7].** `src:dtr-part-iv` scores

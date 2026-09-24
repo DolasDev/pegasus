@@ -428,7 +428,7 @@
         "citation": "[SD §7.1] — the I-KEY tuple. Neither field enumerates: scheme is an owed code list and vocabularyScope is a structure, so 'values' is null rather than an invented enum."
       },
       "context": ["document", "partyRole"],
-      "contextNote": "document is the instrument the value appears on (the BL, the weight ticket); partyRole is the counterparty echoing it back.",
+      "contextNote": "document is the instrument the value appears on (the BL, the weight ticket); partyRole is the counterparty echoing it back. [A6 §3.2] rule D-ID: this column describes the CARRIED_SUBJECT shape — an identifier the document merely carries, asserted about that identifier's own subject. The other shape is not a context question at all: an identifier assigned to the document as an accountable artefact is asserted with the DOCUMENT as `subject`, which the declared family `anyAggregate` already admits ([SD §7.1] 'subject may be ANY aggregate kind'), and the shipment then rides in this column. The discriminator is whether the scheme is one the issuer controls for the FORM: src:cfr-49-375 §375.505(b)(16) makes 'any identification or registration number you assign to the shipment' a required BL field distinct from the BL's own number, and §375.519(a)(6) offers 'the carrier's shipment registration OR bill of lading number' as alternatives; src:dtr-part-iv A-413 §C.2 accounts for BL numbers as stock assigned to the form. Whether a given scheme is document-accountable is `identityScheme`, owed to A9, so D-ID takes it as an input.",
       "authority": {
         "status": "assigned",
         "boundBy": "SCHEME",

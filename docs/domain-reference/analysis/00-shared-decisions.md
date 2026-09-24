@@ -186,9 +186,15 @@ Eleven of these are the set the critique requires (must-fix #1). Three are added
   (`src:x12-212-trailer-manifest` `MS2`: owner SCAC + **owner-assigned** equipment number + check
   digit, "equipment identity is owner-scoped"). Without it, §7's equipment grain has nothing to
   attach to.
-- **`document`** — A6 is not written, but weight tickets, the BOL and the inventory are asserted
-  about and evidenced against, and 400NG Item 4.10 makes a weight ticket a six-field record with
-  its own retention rules. **[ORIGINAL]** as an envelope decision; A6 may narrow it, never remove it.
+- **`document`** — weight tickets, the BOL and the inventory are asserted about and evidenced
+  against, and 400NG Item 4.10 makes a weight ticket a six-field record with its own retention rules.
+  **[ORIGINAL]** as an envelope decision; A6 may narrow it, never remove it. **Narrowed, and the
+  invitation is taken**: [`A6` §3.2](A6-documents-evidence.md) says which assertions may take a
+  `document` as their **subject** — rule **D-ID**, and `identity`'s declared family `anyAggregate`
+  already admitted it — and [`A6` §3.3](A6-documents-evidence.md) records that no row of §4.7.1
+  declares a `document` canonical subject family, so no act **on** a document has a record.
+  `documentIssuance` is §4.7.3-absent for that reason. Nothing is removed and the aggregate gains no
+  field.
 - **`externallyPerformedLeg`** — see §8.
 
 **A shipment is not privileged.** It is one member of this enum. An order-scoped, trip-scoped,
@@ -915,6 +921,17 @@ canonical subject per record type.
 > operator supplied the missing subject). **The claim is theirs; the resolution is ours; both are
 > visible on the record.**
 
+> **Narrowed by [`A6` §3.5(c)](A6-documents-evidence.md): _"the inbound message goes in `evidence[]`"_
+> is true on the **boundary** side and not of a minted Assertion's published `evidence[]`.** The
+> published `EvidenceRef` has two branches — a `document` aggregate or an assertion `eventId` — and an
+> unadmitted message is neither, because **E-CANON-STRICT** below gives it no `eventId`. A6 ratified
+> `rules/e-canon.ts`'s ingest-local `BoundaryEvidenceRef` rather than widening a union published with
+> `additionalProperties: false`, on the ground that `src:nmfta-ebol` — the one publisher that models
+> both lodging a bill of lading and the bill of lading — returns an **acceptance identifier distinct
+> from the document identifier**. **The link is not lost**: E-CANON-OBLIGATION immediately below
+> already retains the message verbatim, and that is where it lives. Held by
+> `tests/conformance/document-evidence-refuses.ts`.
+
 > **Rule E-CANON-OBLIGATION (what a rejection leaves behind).** A rejected submission is retained
 > outside the catalog — the inbound message verbatim, the `type` and `subject` it named, the
 > resolution rule attempted, the candidate set it returned, and the refusal — and emits a
@@ -965,6 +982,14 @@ resolution rule returns one candidate and step 2 succeeds. The record admitted i
 shape_ to step 5's — same `context[]`, same `evidence[]`, same `capturedBy` — which is the point:
 **the successful and the unsuccessful path produce the same kind of record, so the model has one
 behaviour with a cardinality gate, not two behaviours.**
+
+**One narrowing, from [`A6` §3.5(c)](A6-documents-evidence.md), and it strengthens the sentence rather
+than weakening it.** _"Same `evidence[]`"_ holds exactly: both paths produce the same published
+`evidence[]`, and in neither does the **inbound message** appear in it — the published `EvidenceRef`
+has no branch for an unadmitted message, and §4.6.2's own E-CANON-STRICT is why. The message rides in
+ingest's `BoundaryEvidenceRef` on both paths and is retained on the refusal path by
+E-CANON-OBLIGATION. So the two paths are identical on the wire, which is what this paragraph claims,
+and the identity is now held in the types rather than asserted.
 
 **The symmetric case, which is just as common and is settled the same way.** A driver's app naturally
 phrases _delivery_ against the stop it is standing at: `type = delivery`, `subject = stop:T`.
@@ -1508,6 +1533,34 @@ storage classes have.
   [`fork-order` §5.2](fork-order-shipment-cardinality.md)'s **B-STAGE** (a projection with no input
   records since it was written), and the shipment set an [`A1` §3.4](A1-order-service-lifecycle.md)
   `COMPLETE` rule would quantify over.
+
+**And one whose authority is already answered, added by [`A6` §3.3](A6-documents-evidence.md).** A6 ran
+the same check one aggregate over and found the `document` aggregate is likewise an object with no
+acts — no row here records a document being issued, signed, corrected or cancelled, and `document`
+appears in §4.7.1 only in six `context[]` columns. **`documentIssuance`** is **absent and owed** on
+the same terms as every entry above, and it is the first entry in this table whose blocker is neither
+A5's missing party class nor A2's and A1's missing `boundBy` member: it is **minting alone**.
+
+- **`documentIssuance`** — the act that brings a document into existence. `src:cfr-49-375`
+  §375.505(a): _"Before you receive a shipment of household goods you will transport for an individual
+  shipper, you must prepare and **issue** a bill of lading."_ `src:dtr-part-iv` A-413 §C.2 makes
+  number assignment the act itself — a BL _"is only accountable when a number has been assigned to the
+  form"_ — gated on both sides (A-402 §F.1 NOTE; `src:dp3-tender-of-service` §C.3.n). `src:dcsa`
+  publishes `ISSU` with `eventClassifierCode` forced to `ACT`; `src:nmfta-ebol`'s `bol.function` is
+  required with one documented value, `Create`. **Its authoritative role is already determined by an
+  existing `boundBy` member.** [`A8` §5](A8-authority-skeleton.md) row 10 binds `identity` with
+  `boundBy = SCHEME` — _"the ISSUER of the scheme, and nobody else… Authority NEVER moves"_ — and
+  [`A6` §3.2](A6-documents-evidence.md) establishes that for the one document kind with a scheme of its
+  own, the party controlling the number scheme is the party issuing the instrument, in both published
+  regimes: §375.103 defines a `Government bill of lading shipper` separately from a
+  `commercial shipper` because the carrier's BL and the GBL are two instruments, each issued by the
+  party whose instrument it is. So a row here and an [`A8` §5] row are all that is owed, with nothing
+  owed underneath either — which makes this the **cheapest** entry in this table to close. **A
+  signature is a second, distinct act and is deliberately not listed**: §375.505(h) has the bill of
+  lading signed _"at least 3 days before"_ loading, at no custody boundary, and §375.505(g)(2) permits
+  signing an **incomplete** document, so it is neither `handover` nor issuance — but no source
+  publishes what a signature _asserts_, and a fact class needs a value
+  ([`A6` §3.3(b)](A6-documents-evidence.md)).
 
 **And one that is absent because it is not a fact class at all: `custody`.** `fork-time` §8.8 asserts
 "a `custody` fact over the interval with `subject = shipment:S`". There is no such `type` and there
