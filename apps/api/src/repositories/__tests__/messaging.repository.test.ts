@@ -38,6 +38,11 @@ import { toPhoneNumber, type NormalizedMessage } from '@pegasus/domain'
 const hasDb = Boolean(process.env['DATABASE_URL'])
 
 const SLUG = 'test-messaging-repo'
+// Extra tenants for the forward-drain eligibility/fairness cases.
+const SLUG_NO_ONPREM = 'test-messaging-repo-no-onprem'
+const SLUG_EMPTY_ONPREM = 'test-messaging-repo-empty-onprem'
+const SLUG_BUSY = 'test-messaging-repo-busy'
+const ALL_SLUGS = [SLUG, SLUG_NO_ONPREM, SLUG_EMPTY_ONPREM, SLUG_BUSY]
 let tenantId: string
 
 const normalized = (overrides: Partial<NormalizedMessage> = {}): NormalizedMessage => ({
@@ -54,7 +59,7 @@ const normalized = (overrides: Partial<NormalizedMessage> = {}): NormalizedMessa
 afterAll(async () => {
   if (hasDb) {
     // FK cascade from tenant removes connections/subscriptions/cursors/messages/outbox/events.
-    await db.tenant.deleteMany({ where: { slug: SLUG } })
+    await db.tenant.deleteMany({ where: { slug: { in: ALL_SLUGS } } })
     await db.$disconnect()
   }
 })
@@ -63,8 +68,9 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
   beforeAll(async () => {
     const tenant = await db.tenant.upsert({
       where: { slug: SLUG },
-      create: { name: 'Messaging Repo Test', slug: SLUG },
-      update: {},
+      // The forward drain only returns rows for tenants with an on-prem target.
+      create: { name: 'Messaging Repo Test', slug: SLUG, mssqlConnectionString: 'Server=onprem;' },
+      update: { mssqlConnectionString: 'Server=onprem;' },
     })
     tenantId = tenant.id
   })
@@ -396,6 +402,62 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
       const msg = await db.message.findUnique({ where: { id: captured.id } })
       expect(msg?.forwardStatus).toBe('PENDING')
       expect(msg?.status).toBe('CAPTURED')
+    })
+  })
+
+  describe('listPendingForwards eligibility + fairness', () => {
+    const tenantWith = async (slug: string, mssqlConnectionString: string | null) =>
+      (
+        await db.tenant.upsert({
+          where: { slug },
+          create: { name: slug, slug, mssqlConnectionString },
+          update: { mssqlConnectionString },
+        })
+      ).id
+
+    it('skips rows of tenants with no (null or empty) on-prem connection string', async () => {
+      const noOnPrem = await tenantWith(SLUG_NO_ONPREM, null)
+      const emptyOnPrem = await tenantWith(SLUG_EMPTY_ONPREM, '')
+      const a = await captureMessage(db, noOnPrem, normalized({ externalId: 'no-onprem' }))
+      const b = await captureMessage(db, emptyOnPrem, normalized({ externalId: 'empty-onprem' }))
+      const c = await captureMessage(db, tenantId, normalized({ externalId: 'has-onprem' }))
+
+      const ids = (await listPendingForwards(db, 500)).map((r) => r.messageId)
+      expect(ids).toContain(c.id)
+      expect(ids).not.toContain(a.id)
+      expect(ids).not.toContain(b.id)
+
+      // Untouched, not parked: the rows stay PENDING and drain once configured.
+      const obx = await db.messageForwardOutbox.findUnique({ where: { messageId: a.id } })
+      expect(obx?.status).toBe('PENDING')
+      expect(obx?.attempts).toBe(0)
+      await tenantWith(SLUG_NO_ONPREM, 'Server=onprem;')
+      const afterConfig = (await listPendingForwards(db, 500)).map((r) => r.messageId)
+      expect(afterConfig).toContain(a.id)
+    })
+
+    it('caps the drain per tenant so one backlog cannot crowd out another', async () => {
+      const busy = await tenantWith(SLUG_BUSY, 'Server=busy;')
+      // The busy tenant's rows are all older-due than the quiet tenant's row.
+      for (let i = 0; i < 3; i++) {
+        await captureMessage(db, busy, normalized({ externalId: `busy-${i}` }))
+      }
+      await db.messageForwardOutbox.updateMany({
+        where: { tenantId: busy },
+        data: { nextAttemptAt: new Date(Date.now() - 3_600_000) },
+      })
+      await captureMessage(db, tenantId, normalized({ externalId: 'quiet' }))
+
+      const drained = await listPendingForwards(db, 2)
+      expect(drained.filter((r) => r.tenantId === busy)).toHaveLength(2)
+      // The other tenant still gets its turn in the same batch.
+      expect(drained.some((r) => r.tenantId === tenantId)).toBe(true)
+      for (const t of new Set(drained.map((r) => r.tenantId))) {
+        expect(drained.filter((r) => r.tenantId === t).length).toBeLessThanOrEqual(2)
+      }
+      // Oldest-due first across the combined batch.
+      const times = drained.map((r) => r.nextAttemptAt.getTime())
+      expect(times).toEqual([...times].sort((x, y) => x - y))
     })
   })
 

@@ -1980,3 +1980,18 @@ const asIngestSpellsIt = { kind: 'inboundMessage', ref: inboundMessageRef('x') }
 // @ts-expect-error — not a branch of the published union
 const refused: EvidenceRef = asIngestSpellsIt
 ```
+
+## A global oldest-first outbox drain + an infinite "park" = one tenant starves the rest
+
+**Symptom (prod 2026-09-24):** a tenant's RingCentral messages sat `PENDING` with `attempts = 0` for
+50+ minutes while the forwarder ran green every 5 minutes, logging `sent: 0, parked: 100`.
+
+**Cause:** `listPendingForwards` took the 100 globally oldest-due outbox rows. 1,467 rows belonged to
+a tenant with no `mssqlConnectionString` (captured by a since-deleted RingCentral connection). Each
+run parked all 100 for +5 min without spending an attempt — correct for an outage, but they never
+leave the queue, so they cycled forever and every other tenant waited a full ~75-min cycle.
+
+**Fix (`fix/ringcentral-forward-skip-unconfigured`):** filter unconfigured tenants out at the query,
+cap the drain per tenant, and stop calling a tenant's executor once it is unreachable within a run.
+**General rule:** any outbox whose "retry later" state never exhausts needs per-tenant fairness —
+a green cron with `sent: 0` is the tell.

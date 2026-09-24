@@ -36,7 +36,7 @@ import {
 
 const logger = createLogger('pegasus-ringcentral-forward')
 
-/** How many outbox rows to drain per run. */
+/** How many outbox rows to drain per tenant per run. */
 const BATCH_LIMIT = 100
 /** Delivery attempts before a row is dead-lettered (DEAD). */
 const MAX_ATTEMPTS = 8
@@ -78,8 +78,19 @@ export async function handler(): Promise<void> {
   })
   const connByTenant = new Map(tenants.map((t) => [t.id, t.mssqlConnectionString]))
 
+  // Tenants found unreachable this run: their remaining rows park without
+  // another executor call, so a dead tunnel costs one invoke, not one per row.
+  const unreachable = new Map<string, string>()
+
   const stats = { sent: 0, parked: 0, failed: 0, dead: 0 }
   for (const row of pending) {
+    const downReason = unreachable.get(row.tenantId)
+    if (downReason !== undefined) {
+      await parkForward(db, row.id, new Date(Date.now() + PARK_BACKOFF_MS), downReason)
+      stats.parked++
+      continue
+    }
+
     const connectionString = connByTenant.get(row.tenantId)
     if (!connectionString) {
       // No on-prem target configured for this tenant — park, don't burn attempts.
@@ -118,9 +129,11 @@ export async function handler(): Promise<void> {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       if (isOnPremUnreachable(err)) {
+        unreachable.set(row.tenantId, errorMessage)
         await parkForward(db, row.id, new Date(Date.now() + PARK_BACKOFF_MS), errorMessage)
         stats.parked++
-        logger.warn('On-prem unreachable — parked forward for retry', {
+        logger.warn("On-prem unreachable — parking the tenant's forwards for retry", {
+          tenantId: row.tenantId,
           outboxId: row.id,
           error: errorMessage,
         })

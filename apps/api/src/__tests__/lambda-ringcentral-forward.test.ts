@@ -6,9 +6,7 @@ const h = vi.hoisted(() => {
   class MssqlExecError extends Error {
     constructor(
       public readonly code:
-        | 'EXECUTOR_NOT_CONFIGURED'
-        | 'EXECUTOR_INVOKE_FAILED'
-        | 'EXECUTOR_QUERY_ERROR',
+        'EXECUTOR_NOT_CONFIGURED' | 'EXECUTOR_INVOKE_FAILED' | 'EXECUTOR_QUERY_ERROR',
       message: string,
     ) {
       super(message)
@@ -164,5 +162,35 @@ describe('lambda-ringcentral-forward', () => {
     expect(h.executeSql).toHaveBeenCalledTimes(2) // did not abort after the first row
     expect(h.markForwardFailed).toHaveBeenCalledTimes(1)
     expect(h.markForwardSent).toHaveBeenCalledTimes(1)
+  })
+  it('stops calling a tenant whose on-prem is unreachable for the rest of the run', async () => {
+    const msg = outboxRow().message
+    h.listPendingForwards.mockResolvedValue([
+      outboxRow({ id: 'obx-1', message: { ...msg, id: 'msg-1' } }),
+      outboxRow({ id: 'obx-2', message: { ...msg, id: 'msg-2', externalId: 'ext-2' } }),
+      outboxRow({
+        id: 'obx-3',
+        tenantId: 't2',
+        message: { ...msg, id: 'msg-3', externalId: 'ext-3' },
+      }),
+      outboxRow({ id: 'obx-4', message: { ...msg, id: 'msg-4', externalId: 'ext-4' } }),
+    ])
+    h.findMany.mockResolvedValue([
+      { id: 't1', mssqlConnectionString: 'Server=t1;' },
+      { id: 't2', mssqlConnectionString: 'Server=t2;' },
+    ])
+    h.executeSql.mockImplementation(async (conn: string) => {
+      if (conn === 'Server=t1;') throw new MssqlExecError('EXECUTOR_INVOKE_FAILED', 'tunnel down')
+      return { recordset: [], recordsets: [], rowsAffected: [1] }
+    })
+
+    await handler()
+
+    const calls = h.executeSql.mock.calls.map((c) => c[0])
+    expect(calls.filter((c) => c === 'Server=t1;')).toHaveLength(1) // not retried per row
+    expect(calls.filter((c) => c === 'Server=t2;')).toHaveLength(1) // other tenant unaffected
+    expect(h.parkForward.mock.calls.map((c) => c[1])).toEqual(['obx-1', 'obx-2', 'obx-4'])
+    expect(h.markForwardSent).toHaveBeenCalledTimes(1)
+    expect(h.markForwardFailed).not.toHaveBeenCalled()
   })
 })

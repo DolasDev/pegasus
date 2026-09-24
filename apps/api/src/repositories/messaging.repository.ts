@@ -407,14 +407,40 @@ export async function captureMessage(
  * DEAD only re-opens via an explicit manual redrive. The `nextAttemptAt <= now`
  * clause enforces the backoff. Base-client — the forwarder cron resolves the
  * tenant's on-prem connection string per row.
+ *
+ * Two guards keep one tenant from starving the rest (prod 2026-09-24: 1,467
+ * rows of a tenant with no on-prem target filled every oldest-first batch and
+ * delayed a configured tenant by over an hour):
+ *   • rows of a tenant with no (null/empty) `mssqlConnectionString` are not
+ *     returned at all — they wait untouched and drain once it is configured;
+ *   • `limit` is applied PER TENANT, so a large backlog can't crowd out another
+ *     tenant's rows. The combined batch is ordered oldest-due first.
  */
-export async function listPendingForwards(db: PrismaClient, limit: number, now: Date = new Date()) {
-  return db.messageForwardOutbox.findMany({
-    where: { status: { in: ['PENDING', 'FAILED'] }, nextAttemptAt: { lte: now } },
-    orderBy: { nextAttemptAt: 'asc' },
-    take: limit,
-    include: { message: true },
-  })
+export async function listPendingForwards(
+  db: PrismaClient,
+  limitPerTenant: number,
+  now: Date = new Date(),
+) {
+  const where = {
+    status: { in: ['PENDING', 'FAILED'] },
+    nextAttemptAt: { lte: now },
+    tenant: {
+      AND: [{ mssqlConnectionString: { not: null } }, { NOT: { mssqlConnectionString: '' } }],
+    },
+  } satisfies Prisma.MessageForwardOutboxWhereInput
+
+  const tenants = await db.messageForwardOutbox.groupBy({ by: ['tenantId'], where })
+  const perTenant = await Promise.all(
+    tenants.map(({ tenantId }) =>
+      db.messageForwardOutbox.findMany({
+        where: { ...where, tenantId },
+        orderBy: { nextAttemptAt: 'asc' },
+        take: limitPerTenant,
+        include: { message: true },
+      }),
+    ),
+  )
+  return perTenant.flat().sort((a, b) => a.nextAttemptAt.getTime() - b.nextAttemptAt.getTime())
 }
 
 /**
