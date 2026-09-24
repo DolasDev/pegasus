@@ -1207,13 +1207,23 @@ about goods.
 
 ### To [SD] — one narrowing, one count deleted, one row annotated
 
-1. **[SD §1.2]'s invitation is taken.** _"A6 may narrow it, never remove it"_ — narrowed at §3.2
-   (which assertions may take a `document` subject) and §3.3 (what acts on a document the model does
-   not carry). `document` stays an aggregate and gains no field.
-2. **[SD §4.6.2]'s sentence is narrowed, not contradicted.** _"the inbound message goes in
-   `evidence[]`"_ is true on the **boundary** side, where `BoundaryEvidenceRef` carries it. It is not
-   true of a minted Assertion's published `evidence[]`, and §3.5(c) says why and where the link lives
-   instead.
+1. **[SD §1.2]'s invitation is taken, and its bullet is edited.** _"A6 may narrow it, never remove
+   it"_ — narrowed at §3.2 (which assertions may take a `document` subject) and §3.3 (what acts on a
+   document the model does not carry). `document` stays an aggregate and gains no field. The bullet's
+   opening clause, _"A6 is not written, but…"_, was stale binding text the moment this document
+   landed, and is replaced with a pointer to §3.2 and §3.3 for the same reason as item 2: a
+   subordinate document does not get to leave [SD] describing a state of the world that has changed.
+2. **[SD §4.6.2]'s sentence is narrowed, not contradicted — and the narrowing is written into [SD],
+   not asserted from below.** _"the inbound message goes in `evidence[]`"_ is true on the **boundary**
+   side, where `BoundaryEvidenceRef` carries it; it is not true of a minted Assertion's published
+   `evidence[]`. Because **[SD] outranks this document** (§0's status line), a narrowing that lived
+   only here would be a disagreement with binding text rather than a refinement of it — which is
+   [A2 §3.2]'s precedent, where closing `[SD §10.4]` bullet 1 meant **editing [SD §10.4]**. So a
+   bracketed note now stands at **[SD §4.6.2]** beside E-CANON-RESOLVE's sentence, and a second at
+   **[SD §4.6.3]**'s _"same `evidence[]`"_, where the narrowing turns out to **strengthen** the claim:
+   both the admitted and the refused path produce the same published `evidence[]` and neither carries
+   the message, so the paragraph's "one behaviour with a cardinality gate" is now held in the types
+   rather than asserted.
 3. **[SD §4.7.3] gains `documentIssuance`**, with its blocker recorded as the **third kind** — not a
    missing party entity ([A5]'s three), not a missing `boundBy` member ([A1]'s two and [A2]'s one),
    but minting alone, because `boundBy = SCHEME` already determines its holder (§3.3(a)).
@@ -1344,17 +1354,46 @@ column is a plan, not a state.
 
 ## 9. What this puts in the executable specification, and how each part is held
 
-| What                      | Where                                                                                                                                         | How it is held                                                                                                                                                                   |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **D-ID**                  | `documentIdentitySubject` + `IDENTITY_SUBJECT_UNDETERMINED_REASONS` in `src/rules/documents.ts`                                               | A total function over an input discriminant with an `undetermined` branch, exhaustively switched — B-ONWARD's shape ([A2 §3.2])                                                  |
-| **D-CITE**                | `src/assertions.ts`'s `EvidenceRef` docstring, rewritten from a TODO into the decision; `CITATION_CLAIMS_NOTHING` in `src/rules/documents.ts` | The rule is a semantics decision, so what is _held_ is the refusal to widen: `EvidenceRef`'s two branches are unchanged and the ingest-side widening is ratified in `e-canon.ts` |
-| **`documentIssuance`**    | `ABSENT_AND_OWED` in `src/vocabulary.ts`, `[SD §4.7.3]`'s prose, and `AS_WRITTEN` in `tests/conformance/documents.test.ts`                    | The three-file gate every absent class passes: a member, a phrase in the shared document, and a test-table entry                                                                 |
-| **The state refusal**     | `DOCUMENT_STATE_IS_NOT_COMPUTABLE` in `src/rules/documents.ts`                                                                                | A constant a scenario asserts against, A2's pattern for `SHIPMENT_BOUNDARY_STAGE_IS_NOT_COMPUTABLE`                                                                              |
-| **The capture gap**       | `CONDITION_BY_OMISSION_IS_NOT_EXPRESSIBLE` in `src/rules/documents.ts`, held by `Exact<CaptureMethod, …>`                                     | **A gate, not a comment.** The seven member names are re-declared here independently of `envelope.ts`, so an eighth member makes the assertion `never` and stops compiling       |
-| **The whitelist mapping** | `TABLE_A_402_4_LANDINGS` in `src/rules/documents.ts`; `authority.ts`'s `Instrument.grants` TODO taken                                         | A table whose rows name either a real `AssertionType` or the owed thing they cannot reach, typed so a row cannot name a non-member                                               |
-| **The deleted count**     | `src/rules/corrections.ts`                                                                                                                    | Deleted, with §375.505(h) recorded beside it, per [A1 §9]                                                                                                                        |
-| Registration              | `A6` in `DOCUMENTS`; the new vocabularies in `VOCABULARIES`; `D-ID` and `D-CITE` in `RULES` — all in `tools/generate-glossary.ts`             | None is auto-discovered                                                                                                                                                          |
-| Version                   | **Unchanged.** No emitted schema byte changes — see below                                                                                     | `[catalog §2.4]`'s non-bump row, precedent set by [A2]                                                                                                                           |
+| What                      | Where                                                                                                                                         | How it is held                                                                                                                                                                                                                                                                                                |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D-ID**                  | `documentIdentitySubject` + `IDENTITY_SUBJECT_UNDETERMINED_REASONS` in `src/rules/documents.ts`                                               | A total function over an input discriminant with an `undetermined` branch, exhaustively switched — B-ONWARD's shape ([A2 §3.2])                                                                                                                                                                               |
+| **D-CITE**                | `src/assertions.ts`'s `EvidenceRef` docstring, rewritten from a TODO into the decision; `CITATION_CLAIMS_NOTHING` in `src/rules/documents.ts` | The rule is a semantics decision, so what is _held_ is the **refusal to widen**, and it is held in `tests/conformance/document-evidence-refuses.ts` — two `@ts-expect-error` directives that go unused the moment `EvidenceRef` gains a branch. See the note below the table: the first draft did not do this |
+| **`documentIssuance`**    | `ABSENT_AND_OWED` in `src/vocabulary.ts`, `[SD §4.7.3]`'s prose, and `AS_WRITTEN` in `tests/conformance/documents.test.ts`                    | The three-file gate every absent class passes: a member, a phrase in the shared document, and a test-table entry                                                                                                                                                                                              |
+| **The state refusal**     | `DOCUMENT_STATE_IS_NOT_COMPUTABLE` in `src/rules/documents.ts`                                                                                | A constant a scenario asserts against, A2's pattern for `SHIPMENT_BOUNDARY_STAGE_IS_NOT_COMPUTABLE`                                                                                                                                                                                                           |
+| **The capture gap**       | `CONDITION_BY_OMISSION_IS_NOT_EXPRESSIBLE` in `src/rules/documents.ts`, held by `Exact<CaptureMethod, …>`                                     | **A gate, not a comment.** The seven member names are re-declared here independently of `envelope.ts`, so an eighth member makes the assertion `never` and stops compiling                                                                                                                                    |
+| **The whitelist mapping** | `TABLE_A_402_4_LANDINGS` in `src/rules/documents.ts`; `authority.ts`'s `Instrument.grants` TODO taken                                         | A table whose rows name either a real `AssertionType` or the owed thing they cannot reach, typed so a row cannot name a non-member                                                                                                                                                                            |
+| **The deleted count**     | `src/rules/corrections.ts`                                                                                                                    | Deleted, with §375.505(h) recorded beside it, per [A1 §9]                                                                                                                                                                                                                                                     |
+| Registration              | `A6` in `DOCUMENTS`; the new vocabularies in `VOCABULARIES`; `D-ID` and `D-CITE` in `RULES` — all in `tools/generate-glossary.ts`             | None is auto-discovered                                                                                                                                                                                                                                                                                       |
+| Version                   | **Unchanged.** No emitted schema byte changes — see below                                                                                     | `[catalog §2.4]`'s non-bump row, precedent set by [A2]                                                                                                                                                                                                                                                        |
+
+### The round's own lesson, applied to the round's own tests
+
+**A6's first draft did not hold its central refusal, and the defect was the exact one this document
+generalises.** Two tests were written for §3.5(c): one asserted
+`expect(['document','assertion']).not.toContain('inboundMessage')` over a hand-written array that
+reads `EvidenceRef` not at all, and one asserted `expect(fixture.evidence).toBeUndefined()` over a
+fixture the test itself had written. **Neither could fail.** That is [A2 §9]'s tautology in a second
+costume — a decorative assertion beside a gate that does not exist — committed inside the round whose
+§9 states the rule against it.
+
+The fix is the rule: **the gap has an edge the types can see, so it gets a gate.** Widening
+`EvidenceRef` is that edge, and the house pattern for it is a `-refuses.ts` file, so
+`tests/conformance/document-evidence-refuses.ts` now carries two `@ts-expect-error` directives — the
+ingest-side type is not assignable to the published union, and neither is the message literal. The
+tamper is §9's eighth: widening `EvidenceRef` reports **both** directives unused and the package stops
+compiling. One runtime assertion that could not fail is deleted outright; the other is rewritten to
+check what it can honestly check, with the reason stated where the next reader meets it.
+
+There is a smaller finding inside the fix. `@ts-expect-error` suppresses the errors on **one** line,
+and an inline `EvidenceRef` literal with the wrong `kind` reports on its **`ref`** property rather
+than on its `kind` — so a directive written above the literal sits above the wrong line and the file
+compiles with the directive silently unused-but-tolerated. Naming the value first and annotating the
+**assignment** puts the one error on the one line the directive covers. Recorded because the first
+attempt at the gate had this shape and `tsc` caught it.
+
+Worth writing down because it happened in the round that named the rule: **a refusal is not held by
+an assertion that the refused thing is absent from a list you wrote.** It is held by asking the
+compiler to refuse it.
 
 ### Why there is no version bump, and it is the same reason A2 had
 
@@ -1372,7 +1411,7 @@ not a disappointment; it is what a settled envelope looks like when a new area l
 
 ### Gates tampered and watched to fail
 
-Seven, restored after each. Every one is a gate A6 added or a count A6 moved.
+Eight, restored after each. Every one is a gate A6 added or a count A6 moved.
 
 1. **An eighth `CAPTURE_METHODS` member** (`'ASSERTED_BY_OMISSION'`) → `src/rules/documents.ts`
    `TS2322: Type 'true' is not assignable to type 'never'`. This is the one that matters: it is the
@@ -1399,6 +1438,9 @@ Seven, restored after each. Every one is a gate A6 added or a count A6 moved.
    failures: the residue collapses to three kinds, and the refused-row assertion names the wrong
    field. §3.6's conclusion depends on the residue being four **kinds** rather than four instances of
    one, so this is the tamper that protects the argument rather than the data.
+8. **`EvidenceRef` widened with an `inboundMessage` branch** → `document-evidence-refuses.ts` reports
+   **both** `@ts-expect-error` directives unused (`TS2578`, twice). The gate behind §3.5(c), added
+   after the first draft shipped two assertions that could not fail — see the note below.
 
 ### A recorded gap should be a gate wherever the gap has an edge — the next case along from [A2 §9]
 

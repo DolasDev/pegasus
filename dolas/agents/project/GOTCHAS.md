@@ -1937,3 +1937,46 @@ bites is **worse than nothing**: it tells the next reader the coverage is checke
 
 **Both halves of this were found only by tampering.** A passing build proves neither. Tamper every
 new compile-time gate and watch it fail before leaving it green.
+
+## …and the other half: gate a recorded gap only when the gap has an edge the types can see
+
+The entry above says when an `Exact` is worthless. A6 (`docs/domain-reference/analysis/A6-documents-evidence.md` §9)
+supplies the positive case and the boundary, because the model now carries three constants that record
+a gap and only **one** of them should be a gate:
+
+| Constant                                    | Held by                                   | Why                                                                                            |
+| ------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `CONDITION_BY_OMISSION_IS_NOT_EXPRESSIBLE`  | `Exact<CaptureMethod, …the seven names…>` | Its claim is **false the moment `CAPTURE_METHODS` gains a member** — an edge `tsc` can see     |
+| `DOCUMENT_STATE_IS_NOT_COMPUTABLE`          | a plain `= true`                          | False only when a fact class is **minted**, which already touches three files and a test table |
+| `SHIPMENT_BOUNDARY_STAGE_IS_NOT_COMPUTABLE` | a plain `= true`                          | Same                                                                                           |
+
+**Rule:** gate it when the gap has an edge the types can see, and **say why in the docstring when it
+does not**. Do not copy the `= true` pattern reflexively — ask first whether the claim has an edge.
+
+## A refusal is not held by asserting the refused thing is absent from a list you wrote
+
+A6's first draft "held" its central refusal (the published `EvidenceRef` union must not gain an
+`inboundMessage` branch) with two vitest assertions that **could not fail**:
+
+```ts
+const kinds: readonly string[] = ['document', 'assertion']
+expect(kinds).not.toContain('inboundMessage') // reads EvidenceRef not at all
+expect(handWrittenFixture.evidence).toBeUndefined() // reads a fixture the test wrote
+```
+
+Both passed for the same reason the tautological `Exact` above passed: nothing independent was
+compared. The fix is the house pattern — a `tests/conformance/*-refuses.ts` file whose
+`@ts-expect-error` directives go **unused** (`TS2578`) when the illegal state becomes legal. Widening
+the union reports both directives unused and the package stops compiling.
+
+**And one mechanical trap inside that fix.** `@ts-expect-error` suppresses errors on **one** line, and
+an inline union literal with a wrong discriminant reports on a **different property** than the one you
+expect — an `EvidenceRef` literal with `kind: 'inboundMessage'` reports on its `ref`, not its `kind`.
+A directive written above the literal therefore sits above the wrong line. **Name the value first and
+annotate the assignment**, so the one error lands on the one line the directive covers:
+
+```ts
+const asIngestSpellsIt = { kind: 'inboundMessage', ref: inboundMessageRef('x') } as const
+// @ts-expect-error — not a branch of the published union
+const refused: EvidenceRef = asIngestSpellsIt
+```

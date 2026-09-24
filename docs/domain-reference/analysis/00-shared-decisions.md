@@ -186,9 +186,15 @@ Eleven of these are the set the critique requires (must-fix #1). Three are added
   (`src:x12-212-trailer-manifest` `MS2`: owner SCAC + **owner-assigned** equipment number + check
   digit, "equipment identity is owner-scoped"). Without it, §7's equipment grain has nothing to
   attach to.
-- **`document`** — A6 is not written, but weight tickets, the BOL and the inventory are asserted
-  about and evidenced against, and 400NG Item 4.10 makes a weight ticket a six-field record with
-  its own retention rules. **[ORIGINAL]** as an envelope decision; A6 may narrow it, never remove it.
+- **`document`** — weight tickets, the BOL and the inventory are asserted about and evidenced
+  against, and 400NG Item 4.10 makes a weight ticket a six-field record with its own retention rules.
+  **[ORIGINAL]** as an envelope decision; A6 may narrow it, never remove it. **Narrowed, and the
+  invitation is taken**: [`A6` §3.2](A6-documents-evidence.md) says which assertions may take a
+  `document` as their **subject** — rule **D-ID**, and `identity`'s declared family `anyAggregate`
+  already admitted it — and [`A6` §3.3](A6-documents-evidence.md) records that no row of §4.7.1
+  declares a `document` canonical subject family, so no act **on** a document has a record.
+  `documentIssuance` is §4.7.3-absent for that reason. Nothing is removed and the aggregate gains no
+  field.
 - **`externallyPerformedLeg`** — see §8.
 
 **A shipment is not privileged.** It is one member of this enum. An order-scoped, trip-scoped,
@@ -915,6 +921,17 @@ canonical subject per record type.
 > operator supplied the missing subject). **The claim is theirs; the resolution is ours; both are
 > visible on the record.**
 
+> **Narrowed by [`A6` §3.5(c)](A6-documents-evidence.md): _"the inbound message goes in `evidence[]`"_
+> is true on the **boundary** side and not of a minted Assertion's published `evidence[]`.** The
+> published `EvidenceRef` has two branches — a `document` aggregate or an assertion `eventId` — and an
+> unadmitted message is neither, because **E-CANON-STRICT** below gives it no `eventId`. A6 ratified
+> `rules/e-canon.ts`'s ingest-local `BoundaryEvidenceRef` rather than widening a union published with
+> `additionalProperties: false`, on the ground that `src:nmfta-ebol` — the one publisher that models
+> both lodging a bill of lading and the bill of lading — returns an **acceptance identifier distinct
+> from the document identifier**. **The link is not lost**: E-CANON-OBLIGATION immediately below
+> already retains the message verbatim, and that is where it lives. Held by
+> `tests/conformance/document-evidence-refuses.ts`.
+
 > **Rule E-CANON-OBLIGATION (what a rejection leaves behind).** A rejected submission is retained
 > outside the catalog — the inbound message verbatim, the `type` and `subject` it named, the
 > resolution rule attempted, the candidate set it returned, and the refusal — and emits a
@@ -965,6 +982,14 @@ resolution rule returns one candidate and step 2 succeeds. The record admitted i
 shape_ to step 5's — same `context[]`, same `evidence[]`, same `capturedBy` — which is the point:
 **the successful and the unsuccessful path produce the same kind of record, so the model has one
 behaviour with a cardinality gate, not two behaviours.**
+
+**One narrowing, from [`A6` §3.5(c)](A6-documents-evidence.md), and it strengthens the sentence rather
+than weakening it.** _"Same `evidence[]`"_ holds exactly: both paths produce the same published
+`evidence[]`, and in neither does the **inbound message** appear in it — the published `EvidenceRef`
+has no branch for an unadmitted message, and §4.6.2's own E-CANON-STRICT is why. The message rides in
+ingest's `BoundaryEvidenceRef` on both paths and is retained on the refusal path by
+E-CANON-OBLIGATION. So the two paths are identical on the wire, which is what this paragraph claims,
+and the identity is now held in the types rather than asserted.
 
 **The symmetric case, which is just as common and is settled the same way.** A driver's app naturally
 phrases _delivery_ against the stop it is standing at: `type = delivery`, `subject = stop:T`.

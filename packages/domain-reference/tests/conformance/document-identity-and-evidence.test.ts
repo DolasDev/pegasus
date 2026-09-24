@@ -229,13 +229,18 @@ describe('[A6 §3.5] D-CITE — a citation is a pointer, never a claim', () => {
     expect(Object.keys(assertion.evidence?.[0] ?? {}).sort()).toEqual(['kind', 'ref'])
   })
 
-  it('[A6 §3.5(c)] `EvidenceRef` has exactly two branches, and the inbound message is not one', () => {
-    // The refusal, held where it can be seen. Widening this union is a published-schema change
-    // (`additionalProperties: false` on both branches); ratifying `e-canon.ts`'s ingest-local
-    // `BoundaryEvidenceRef` is not. `src:nmfta-ebol` — the one publisher that models both — keeps the
-    // acceptance identifier distinct from the document identifier.
-    const kinds: readonly string[] = ['document', 'assertion']
-    expect(kinds).not.toContain('inboundMessage')
+  it('[A6 §3.5(c)] the refusal is a TYPE fact, and it is held in `document-evidence-refuses.ts`', () => {
+    // Deliberately not asserted here, and this test exists to say so. A first draft wrote
+    // `expect(['document','assertion']).not.toContain('inboundMessage')` — an assertion over a
+    // hand-written array that reads `EvidenceRef` not at all and can never fail. That is precisely
+    // the defect [A2 §9] named and [A6 §9] generalised, committed inside the round that generalised
+    // it. Widening `EvidenceRef` is an edge the types can see, so the gate is a `@ts-expect-error`
+    // in `document-evidence-refuses.ts`, tampered by widening the union and watched to report both
+    // directives unused.
+    //
+    // What IS worth asserting at runtime is the observable consequence, and it is one line above:
+    // the shape of an entry is `{kind, ref}` and carries no standing field. D-CITE is why.
+    expect(CITATION_CLAIMS_NOTHING).toBe(true)
   })
 })
 

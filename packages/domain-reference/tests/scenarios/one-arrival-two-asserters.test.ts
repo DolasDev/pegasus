@@ -169,12 +169,21 @@ describe('[SD §4.6.2] E-CANON-RESOLVE at cardinality one — and then they comp
     expect(resolved.submission.evidence[0]).toMatchObject({ kind: 'inboundMessage' })
   })
 
-  it('[A6 §3.5(c)] and the link survives on `RetainedSubmission`, not in the minted `evidence[]`', () => {
-    // The consequence A6 states rather than implies. E-CANON-OBLIGATION already requires the message
-    // to be retained verbatim on the boundary side, so nothing is lost — but a consumer reading a
-    // published Assertion's `evidence[]` will not find it there, and `agentArrival` below is the
-    // shape they get. Asserted so the narrowing is visible where a reader meets it.
-    expect(agentArrival.evidence).toBeUndefined()
+  it('[A6 §3.5(c)] and the boundary-side ref is not assignable to a published `evidence[]`', () => {
+    // The consequence A6 states rather than implies: E-CANON-OBLIGATION retains the message verbatim
+    // on the boundary side, so nothing is lost — but a consumer reading a published Assertion's
+    // `evidence[]` will not find it there.
+    //
+    // A first draft asserted `expect(agentArrival.evidence).toBeUndefined()`, which reads a fixture
+    // this file wrote and can never fail. The real gate is a type gate, because the claim is that one
+    // type is NOT assignable to another: `tests/conformance/document-evidence-refuses.ts`, tampered by
+    // widening `EvidenceRef` and watched to report both `@ts-expect-error` directives unused. What
+    // this test can honestly check is that the boundary ref really is the widened kind and therefore
+    // really is the value the type gate refuses.
+    if (resolved.outcome !== 'ADMITTED_AFTER_RESOLUTION') return
+    const carried = resolved.submission.evidence[0]
+    expect(carried?.kind).toBe('inboundMessage')
+    expect(['document', 'assertion']).not.toContain(carried?.kind)
   })
 
   /**

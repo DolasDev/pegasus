@@ -131,7 +131,7 @@ against `git show main:`, not assumed).
 
 ## Gates tampered and watched to fail
 
-Seven, restored after each. `[A6 §9]` carries them in full; three are worth repeating here.
+Eight, restored after each. `[A6 §9]` carries them in full; four are worth repeating here.
 
 1. **An eighth `CAPTURE_METHODS` member** → `TS2322: Type 'true' is not assignable to type 'never'`.
    The only compile-time gate in the round, and without the tamper there would be no evidence the
@@ -144,10 +144,50 @@ Seven, restored after each. `[A6 §9]` carries them in full; three are worth rep
    This is the assertion that corrected §3.3's own first draft, so its tamper is the round's clearest
    case of a gate being worth more than a reading.
 
+4. **`EvidenceRef` widened with an `inboundMessage` branch** → `document-evidence-refuses.ts` reports
+   **both** `@ts-expect-error` directives unused, twice over. **This gate did not exist in the first
+   draft**, and that is the round's sharpest self-inflicted finding — see below.
+
 The other four: a `document`-only subject family added; `[catalog §5]`'s count reverted to 14; a
 whitelist row naming a non-member `AssertionType` (`tsc`); and the Code-of-Service row's reason
 changed from `VOCABULARY_REFUSED` to `AGGREGATE_OWED`, which collapses the residue to three kinds and
 breaks the argument §3.6 rests on rather than the data.
+
+## The round committed its own named defect, and the fix is the rule
+
+**A6's first draft did not hold its central refusal.** Two tests were written for §3.5(c) — one
+asserting `expect(['document','assertion']).not.toContain('inboundMessage')` over a hand-written array
+that reads `EvidenceRef` not at all, and one asserting `expect(fixture.evidence).toBeUndefined()` over
+a fixture the test itself wrote. **Neither could fail.** That is `[A2 §9]`'s tautology in a second
+costume, committed inside the round whose §9 states the rule against it.
+
+Fixed by applying the rule: widening `EvidenceRef` is an edge the types can see, so the gate is a
+`-refuses.ts` file with two `@ts-expect-error` directives, tampered and watched. One runtime assertion
+was deleted; the other rewritten to check what it honestly can.
+
+A smaller finding came out of building it: **`@ts-expect-error` covers one line, and an inline
+`EvidenceRef` literal with the wrong `kind` reports on its `ref` property**, so a directive above the
+literal sits above the wrong line. Name the value first and annotate the **assignment**.
+
+> **A refusal is not held by an assertion that the refused thing is absent from a list you wrote.**
+> It is held by asking the compiler to refuse it. `[A6 §9]` carries this beside §9's other two
+> constants, because the three together are the whole of the rule.
+
+## [SD] was edited, not merely cited
+
+`[SD]` outranks every area document, so a narrowing that lived only in A6 would be a **disagreement
+with binding text** rather than a refinement of it — which is `[A2 §3.2]`'s precedent, where closing
+`[SD §10.4]` bullet 1 meant editing `[SD §10.4]`. Three passages were therefore amended in `[SD]`
+itself, beyond the `[SD §4.7.3]` entry:
+
+- **§1.2's `document` bullet** opened _"A6 is not written, but…"_ — stale the moment this document
+  landed. Replaced with a pointer to §3.2 and §3.3.
+- **§4.6.2's E-CANON-RESOLVE** says the inbound message _"goes in `evidence[]`"_. A bracketed note now
+  records that this is true on the **boundary** side, why the published union is not widened, and that
+  E-CANON-OBLIGATION immediately below is where the link lives.
+- **§4.6.3's _"same `evidence[]`"_**, where the narrowing **strengthens** the claim: both the admitted
+  and the refused path produce the same published `evidence[]` and neither carries the message, so
+  that paragraph's "one behaviour with a cardinality gate" is now held in the types.
 
 ## A recorded gap should be a gate wherever the gap has an edge — the next case along from [A2 §9]
 
