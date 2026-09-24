@@ -135,6 +135,27 @@ missing or its schema drifted). To recover:
    The matching `messages.forward_status` is kept in lock-step by the forwarder
    on its next attempt.
 
+## Forwarder fairness
+
+Each 5-minute forwarder run drains up to 100 due rows **per tenant** (oldest-due
+first), so one tenant's backlog never delays another's. Rows of a tenant with no
+`Tenant.mssqlConnectionString` are **not picked up at all** — they wait
+`PENDING` with no attempts spent and drain on the first run after the
+connection string is set. They still count toward `pegasus-rc-outbox-backlog`,
+so a backlog alarm with healthy WireGuard usually means a tenant has captured
+messages but no on-prem target. Check which tenant:
+
+```sql
+SELECT t.name, count(*)
+FROM message_forward_outbox o JOIN tenants t ON t.id = o.tenant_id
+WHERE o.status IN ('PENDING', 'FAILED')
+GROUP BY 1 ORDER BY 2 DESC;
+```
+
+When a tenant's on-prem is unreachable, the run parks that tenant's remaining
+rows after the first failed call instead of invoking `mssql-executor` once per
+row.
+
 ## Retention (PII)
 
 Neon is a transient buffer; on-prem is authoritative once a message is `SENT`.
