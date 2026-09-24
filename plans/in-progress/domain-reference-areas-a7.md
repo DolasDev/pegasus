@@ -22,9 +22,11 @@ worth not rediscovering:
   discharged** (§1 of A6's record); the lesson is in §5 below.
 - `plans/completed/domain-reference-a2-shipment.md` — the `Exact<>`-is-a-tautology finding, and the
   instruction to every later area to check whether its own central act has a record.
-- `plans/completed/domain-reference-a6-documents.md` — **the most recent.** Two refusals, two rules,
-  a third kind of authority blocker, and the second consecutive release that changes no published
-  byte. §4 item 12 and §5 below both come from it.
+- `plans/completed/domain-reference-a6-documents.md` — **the most recent, and the one whose
+  _mistakes_ matter most to A7.** Two refusals, two rules, a third kind of authority blocker, and the
+  second consecutive release that changes no published byte. **It also shipped the defect it
+  generalised and had to fix it on review** — §4 items 12-14 and §5 and §7 below all come from that
+  half of the round, not from its decisions.
 
 **Next deliverable:** **A7** (charges & billing hooks), then A9. §6 says why, and says what makes A7
 different from every area written so far.
@@ -57,7 +59,7 @@ needs no prior decision at all, which is the cheapest remaining move in the mode
 | A1, the order & service lifecycle      | `analysis/A1-order-service-lifecycle.md` + `src/rules/order-stage.ts`    | `1b9e5df3`, PR #719 |
 | A5, storage-in-transit                 | `analysis/A5-storage-in-transit.md` + `OpensStay` in `src/outcomes.ts`   | `d4fb4c3f`, PR #723 |
 | A2, shipment structure                 | `analysis/A2-shipment-structure.md` + `src/rules/shipment-continuity.ts` | `4dbd3b17`, PR #724 |
-| **A6, documents & evidence**           | `analysis/A6-documents-evidence.md` + `src/rules/documents.ts`           | _this round_        |
+| A6, documents & evidence               | `analysis/A6-documents-evidence.md` + `src/rules/documents.ts`           | `a614b016`, PR #725 |
 
 Repo: `github.com/DolasDev/pegasus`, primary checkout `~/repos/pegasus`.
 
@@ -182,6 +184,29 @@ Follow this order.
     `DOCUMENT_STATE_IS_NOT_COMPUTABLE` is a plain `= true`, because it is false only when a fact class
     is minted, and a mint already touches three files and a test table. **Do not copy A2's `= true`
     pattern reflexively** — ask first whether the claim has an edge.
+13. **A refusal is not held by asserting the refused thing is absent from a list you wrote.** A6
+    shipped exactly that and only caught it on review: two vitest assertions for its central
+    refusal — `expect(['document','assertion']).not.toContain('inboundMessage')` over a
+    hand-written array, and `expect(handWrittenFixture.evidence).toBeUndefined()` — **neither of
+    which could fail**, and both of which read nothing. Same family as item 11's tautology, in the
+    round that generalised item 11. The house pattern for a refusal is a
+    `tests/conformance/*-refuses.ts` file whose `@ts-expect-error` directives go **unused**
+    (`TS2578`) when the illegal state becomes legal; `document-evidence-refuses.ts` and
+    `core-vocabulary-refuses.ts` are the models. **Then tamper it** — that is what proves it.
+    **And one mechanical trap inside it:** `@ts-expect-error` covers **one** line, and an inline
+    union literal with a wrong discriminant reports on a _different_ property than you expect (an
+    `EvidenceRef` literal with `kind: 'inboundMessage'` reports on its **`ref`**), so a directive
+    above the literal sits above the wrong line. **Name the value first and annotate the
+    assignment.**
+14. **If your decision narrows a sentence in `[SD]`, EDIT `[SD]`.** `[SD]` outranks every area
+    document (§0's status line in each), so a narrowing recorded only in your own §Cross-area is a
+    **disagreement with binding text** rather than a refinement of it — and the next reader meets the
+    stale sentence first. [A2 §3.2] is the precedent: closing `[SD §10.4]` bullet 1 meant editing
+    `[SD §10.4]`. A6 claimed five consequences for `[SD]` and had applied one; three more passages
+    had to be amended on review (§1.2's stale _"A6 is not written, but…"_, and bracketed notes at
+    §4.6.2 and §4.6.3). **Before opening the PR, re-read your own To-[SD] list and check each item
+    was actually written into `[SD]`** — `documents.test.ts` and the glossary gate the citations, not
+    the claims.
 
 ---
 
@@ -225,6 +250,15 @@ publishes what a signature **asserts**, so there is no value for a fact class to
 > fact, and does it publish who owns the scheme or the instrument that fixes it?"** A7 will meet this
 > immediately, because a charge has an amount and the corpus publishes amounts in tariffs A7 is
 > explicitly not allowed to model.
+
+### And one procedural lesson, which is A6's and is not about authority at all
+
+A6's decisions came out sound; **its first draft's gates and its peer edits did not**, and both were
+caught only by a deliberate review pass after the PR was already open. A round is not done when the
+suite is green — it is done when **(a)** every refusal is held by something that can fail, and
+**(b)** every consequence the §Cross-area section claims for another document has actually been
+written into that document. §4 items 13 and 14 are those two checks in imperative form. **Run them
+before opening the PR, not after.**
 
 ### Three pieces of the old `model/` layer are still missing
 
@@ -362,6 +396,11 @@ another, and A6's warning that the `Covers` column is a prompt rather than an in
   search over a section rather than over the bullet it looks like it checks. Only the tamper found
   any of the three.
 - **Prefer a gate that enumerates over one that counts.** §4 item 10.
+- **Hold a refusal in the type system, not in a runtime assertion over a literal you wrote.** §4
+  item 13. `tests/conformance/*-refuses.ts` is where every "this must not compile" claim lives, and
+  an unused `@ts-expect-error` is the failure mode that reports it. A6 needed a review pass to learn
+  this about its own central decision.
+- **Re-read your own To-[SD] list before opening the PR.** §4 item 14.
 - **Read the existing tests for the records you are writing about.** An `OWED` label or a test title
   naming your own area is a to-do item in the test suite. A2's was a scenario title; **A6's was a
   test called `FINDING: the inbound message cannot ride in a published evidence[]`**, and turning it
@@ -465,11 +504,15 @@ archived to `plans/completed/<slug>.md` **before** opening it.
 **Read before writing anything:**
 
 1. `plans/completed/domain-reference-a6-documents.md` — the most recent, and the source of §4 items
-   10 and 12, §5's fourth blocker kind, and the discipline of auditing what is owed against the
-   **code** rather than against a plan.
+   **10 and 12-14**, §5's fourth blocker kind and its procedural lesson, and the discipline of
+   auditing what is owed against the **code** rather than against a plan. Its last two sections are
+   the round's own mistakes; read those before its decisions.
 2. `docs/domain-reference/analysis/A6-documents-evidence.md` — the closest model for an area whose
    honest output is mostly refusals, and for a source survey that marks primary vs secondary per
-   source. §1, §2 and §3.8 are the three sections to copy.
+   source. §1, §2 and §3.8 are the three sections to copy. **And §9 is the one to read twice**: its
+   three recorded-gap constants are the worked example of §4 item 12, and the note beside them — _"the
+   round's own lesson, applied to the round's own tests"_ — is §4 item 13's source, written by the
+   round that needed it.
 3. `docs/domain-reference/analysis/A2-shipment-structure.md` — the model for a refusal argued from a
    facet analysis, and where A7's billable-weight question is written down.
 4. `docs/domain-reference/glossary.md`, the **Owed** section — the honest state, always current.
