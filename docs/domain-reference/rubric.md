@@ -50,7 +50,8 @@ but our configs and code that implement them do not.
 > is not obvious: [A6 §3.2]'s identity rule is decidable only because two sources score `C6 = 3` on
 > A6. **A7 and A9 have no area analysis at all**, and a claim about one of them that is not traceable
 > to [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) or to a source analysis is
-> unbacked.
+> unbacked. A10-A13 are context-map-only by design and are not gaps. Recorded here because a column
+> reading "yes" for all nine invites exactly the assumption [SD §0] forbids.
 
 > **One warning about the A6 row specifically, from [A6 §3.8].** The row reads as a list of eight
 > document classes to model — _"order for service, estimate, inventory, BOL, weight tickets, POD,
@@ -62,12 +63,14 @@ but our configs and code that implement them do not.
 > prompt, not an inventory — which is the same caution as the `v1 detail` column's above.
 
 > **And one about the resumption plan rather than the rubric, recorded here because a later reader
-> will meet it here first.** `plans/in-progress/domain-reference-areas-a6.md` named
+> will meet it here first.** A6's own resumption plan named
 > `src:dtr-part-iv` as A6's best source and did not name `src:dp3-tender-of-service`, which scores
 > the same or better on every A6 criterion and is **grade A** where `dtr-part-iv` is grade B
 > ([A6 §1]). Score rows are per area and evidence grade is per source; comparing the first without
-> reading the second is how the strongest source in an area gets left off a list. A10-A13 are context-map-only by design and are not gaps. Recorded here because a column
-> reading "yes" for all nine invites exactly the assumption [SD §0] forbids.
+> reading the second is how the strongest source in an area gets left off a list. (The plan itself is
+> **gone** — this effort rewrites a finished round's plan as the next round's, so the record is
+> `plans/completed/domain-reference-a6-documents.md` and the live plan is
+> [`../../plans/in-progress/domain-reference-areas-a7.md`](../../plans/in-progress/domain-reference-areas-a7.md).)
 
 > **One observation about per-area scoring itself, from [A2 §3.7].** `src:dtr-part-iv` scores
 > `C3 = 1` **on A2** and decided the whole of [A2 §3.2] — because its A2 row scores the shipment
