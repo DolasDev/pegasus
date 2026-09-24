@@ -1509,6 +1509,34 @@ storage classes have.
   records since it was written), and the shipment set an [`A1` §3.4](A1-order-service-lifecycle.md)
   `COMPLETE` rule would quantify over.
 
+**And one whose authority is already answered, added by [`A6` §3.3](A6-documents-evidence.md).** A6 ran
+the same check one aggregate over and found the `document` aggregate is likewise an object with no
+acts — no row here records a document being issued, signed, corrected or cancelled, and `document`
+appears in §4.7.1 only in six `context[]` columns. **`documentIssuance`** is **absent and owed** on
+the same terms as every entry above, and it is the first entry in this table whose blocker is neither
+A5's missing party class nor A2's and A1's missing `boundBy` member: it is **minting alone**.
+
+- **`documentIssuance`** — the act that brings a document into existence. `src:cfr-49-375`
+  §375.505(a): _"Before you receive a shipment of household goods you will transport for an individual
+  shipper, you must prepare and **issue** a bill of lading."_ `src:dtr-part-iv` A-413 §C.2 makes
+  number assignment the act itself — a BL _"is only accountable when a number has been assigned to the
+  form"_ — gated on both sides (A-402 §F.1 NOTE; `src:dp3-tender-of-service` §C.3.n). `src:dcsa`
+  publishes `ISSU` with `eventClassifierCode` forced to `ACT`; `src:nmfta-ebol`'s `bol.function` is
+  required with one documented value, `Create`. **Its authoritative role is already determined by an
+  existing `boundBy` member.** [`A8` §5](A8-authority-skeleton.md) row 10 binds `identity` with
+  `boundBy = SCHEME` — _"the ISSUER of the scheme, and nobody else… Authority NEVER moves"_ — and
+  [`A6` §3.2](A6-documents-evidence.md) establishes that for the one document kind with a scheme of its
+  own, the party controlling the number scheme is the party issuing the instrument, in both published
+  regimes: §375.103 defines a `Government bill of lading shipper` separately from a
+  `commercial shipper` because the carrier's BL and the GBL are two instruments, each issued by the
+  party whose instrument it is. So a row here and an [`A8` §5] row are all that is owed, with nothing
+  owed underneath either — which makes this the **cheapest** entry in this table to close. **A
+  signature is a second, distinct act and is deliberately not listed**: §375.505(h) has the bill of
+  lading signed _"at least 3 days before"_ loading, at no custody boundary, and §375.505(g)(2) permits
+  signing an **incomplete** document, so it is neither `handover` nor issuance — but no source
+  publishes what a signature _asserts_, and a fact class needs a value
+  ([`A6` §3.3(b)](A6-documents-evidence.md)).
+
 **And one that is absent because it is not a fact class at all: `custody`.** `fork-time` §8.8 asserts
 "a `custody` fact over the interval with `subject = shipment:S`". There is no such `type` and there
 will not be one. Custody is a **projection** over the `handover` row above; **§4.8** is the decision,

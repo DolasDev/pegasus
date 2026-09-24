@@ -197,6 +197,7 @@ const DOCUMENTS: Readonly<Record<string, string>> = {
   A5: 'A5-storage-in-transit.md',
   A2: 'A2-shipment-structure.md',
   A3: 'A3-trip-stop-assignment.md',
+  A6: 'A6-documents-evidence.md',
   'fork-order': 'fork-order-shipment-cardinality.md',
   'fork-time': 'fork-time-provenance-corrections.md',
   F1: 'F1-handover-qualifier-decision.md',
@@ -858,6 +859,34 @@ const VOCABULARIES: readonly {
     symbols: ['SHIPMENT_CONTINUITY_VERDICTS', 'SHIPMENT_CONTINUITY_UNDETERMINED_REASONS'],
   },
   {
+    name: 'identity subject',
+    heading: 'Identity subjects',
+    blurb:
+      'Which subject an identifier found on a document attaches to — rule **D-ID** ([A6 §3.2]). ' +
+      "The model has always admitted an assertion _about_ a document, because `identity`'s " +
+      'declared family is `anyAggregate` ([SD §7.1], "subject may be ANY aggregate kind") and that ' +
+      'family includes `document`; what it has never said is which assertions those are. The ' +
+      'discriminator is whether the scheme is one the issuer controls for the **form**: ' +
+      '`src:cfr-49-375` §375.505(b)(16) makes "any identification or registration number you assign ' +
+      'to the shipment" a required bill-of-lading field distinct from the bill of lading\'s own ' +
+      'number, and §375.519(a)(6) offers the two as alternatives. It matters because [SD §1.3] pairs ' +
+      'competing assertions on `(subject, type, qualifier?)`, so the same number filed both ways is ' +
+      '**two fact keys** and the duplication is invisible.',
+    symbols: ['IDENTITY_SUBJECTS', 'IDENTITY_SUBJECT_UNDETERMINED_REASONS'],
+  },
+  {
+    name: 'whitelist residue reason',
+    heading: 'Whitelist residue reasons',
+    blurb:
+      "Why a row of `src:dtr-part-iv` Table A-402-4's published mutability whitelist has nowhere to " +
+      'land in the vocabulary ([A6 §3.6]). Four reasons, and the distinction between them is the ' +
+      "finding: two of the four fields are owed elsewhere (`placeRef` to [SD §1.2], `partyRole`'s " +
+      'row to [A8 §9 items 1-2]), one needs a vocabulary a landed area **refused on evidence** ' +
+      "([A2 §3.3]'s `shipmentType`), and one is not a domain fact at all — so the sub-fact grain " +
+      '`authority.ts` used to ask for would move none of them.',
+    symbols: ['WHITELIST_RESIDUE_REASONS'],
+  },
+  {
     name: 'reason code',
     heading: 'Reason codes',
     blurb:
@@ -1028,6 +1057,20 @@ const RULES: readonly {
     term: 'B-ONWARD',
     what: 'the shipment boundary across an interruption',
     export: 'shipmentContinuity',
+  },
+  // [A6 §3.2] and [A6 §3.5]. D-ID is B-ONWARD's shape for the same structural reason one aggregate
+  // over, and takes its discriminant as an input because `identityScheme` is A9's. D-CITE is a
+  // semantics decision, so what is registered is the constant that carries it — the refusal to widen
+  // `EvidenceRef` is held by the union's own two branches.
+  {
+    term: 'D-ID',
+    what: "a document's own identity versus the identity it carries",
+    export: 'documentIdentitySubject',
+  },
+  {
+    term: 'D-CITE',
+    what: 'a citation is a pointer, never a claim',
+    export: 'CITATION_CLAIMS_NOTHING',
   },
 ]
 

@@ -897,6 +897,30 @@ file may be read as deciding them.
    and the role enum are both undefined) and `notification` on item 6 (nothing here resolves a role
    to a contactable address). Those are owed to A8, and they are the only two that are.
 
+   **(e) And one absent class arrives with its authority already answered — a fourth category, added by
+   [`A6` §3.3](A6-documents-evidence.md), and the cheapest of the four.** A6 ran [`A2` §3.6]'s check
+   over the `document` aggregate and found the same shape: no row of
+   [shared §4.7.1](00-shared-decisions.md) records a document being issued, signed, corrected or
+   cancelled, and `document` appears in that table only in six `context[]` columns. So
+   **`documentIssuance`** joins (c)'s absent list — but **not** on (c)'s terms, because its
+   authoritative role is determinable **today** from a member §4.3 already carries. **§5 row 10** binds
+   `identity` with `boundBy = SCHEME`: _"the ISSUER of the scheme, and nobody else, for the value under
+   that scheme. Authority NEVER moves."_ [A6 §3.2] establishes that for the one document kind in the
+   corpus with a scheme of its own — the bill of lading — the party controlling the number scheme **is**
+   the party issuing the instrument, in both published regimes: `src:dtr-part-iv` A-413 §C.2 accounts
+   for BL numbers as stock assigned to the form and audited, while `src:cfr-49-375` §375.505(a) has the
+   carrier issue its own and §375.103 defines a `Government bill of lading shipper` separately from a
+   `commercial shipper` — two instruments, each issued by the party whose instrument it is.
+
+   **A6 is therefore not asking this document for research; it is asking it to accept a reading.** The
+   ledger now separates four reasons a row can be missing: the corpus does not bind one (nine rows,
+   (b)); A8 itself owes the party (two rows, (d)); **§4.3**'s `boundBy` enum has no member for _the
+   role resolved by the order's own award_ ([`A1` §Cross-area](A1-order-service-lifecycle.md)'s two and
+   [`A2` §3.6](A2-shipment-structure.md)'s one); and **minting alone** — this one, where nothing is owed
+   underneath either row. A6 also takes this document's `Instrument.grants` TODO rather than sharpening
+   it: [A6 §3.6] mapped Table A-402-4's eight rows and found **four of the eight fields are not facts
+   the model carries at any grain**, so the sub-fact grain the TODO asked for would move none of them.
+
 9. **`src:stedi-x12-reference` element 98 is still unread**, and it remains the one list that would
    let our role vocabulary be checked against an industry one. Stedi's own open question 1 flags it
    as blocking A8; [shared §10.3 item 13](00-shared-decisions.md) requires the fact to be recorded at

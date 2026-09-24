@@ -39,6 +39,12 @@ export * from './rules/order-stage'
 // its discriminant as an input and reports `COMMITMENT_NOT_PUBLISHED` where it cannot.
 export * from './rules/shipment-continuity'
 
+// And A6's two, which are the same shape for the same reason one aggregate over: the `document`
+// aggregate has no record of its own coming into existence either ([A6 §3.3]), so **D-ID** takes its
+// discriminant as an input, and the two gaps A6 declines to fill are carried as recorded values
+// rather than as prose ([A6 §3.4], [A6 §3.7]).
+export * from './rules/documents'
+
 // The rules the boundary runs — subject admission ([SD §4.6]) and capture ([SD §5]). They are
 // separate from the vocabulary because they are checks *over* it: the vocabulary says what a record
 // may be, and these say what may be admitted.

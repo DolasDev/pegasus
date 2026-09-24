@@ -361,6 +361,38 @@ billing."
    is a reason and an ETA is a fact — but `OVERFLOW`'s natural companion ("weight exceeds estimate,
    reweigh required") is a `weighing` fact that has no type to carry it. Recorded, not resolved.
 
+6. **An eighth capture method, handed here by [`A6` §3.7](A6-documents-evidence.md) — and A6 is
+   explicit that **M1 should not be relaxed**.** The published rule is that the **omission** of an
+   exception symbol on a signed inventory is an affirmative assertion of good condition with the
+   rebuttal burden assigned: `src:dp3-tender-of-service` §C.9.a(14) — _"the omission of these symbols
+   will indicate good condition except for normal wear"_ — and NTS §1.6.2, where absent condition
+   codes mean _"failure of electronic items will be assumed to be transit related"_ and the escape
+   code "Mechanical Condition Unknown" still does not bar a claim. `src:cfr-49-375` gives the same
+   shape twice in **primary** text: §375.515(a)'s shipper who elects not to observe a weighing _"is
+   presumed to have waived that right"_, and §375.701(b)'s _"except as noted"_.
+
+   [SD §5.1]'s seven capture methods cannot say it. The semantically closest is `ASSUMED_FROM_PLAN`,
+   and **M1 forbids it at `basis = ACTUAL`** — which is the only basis a condition at a boundary can
+   carry, since [SD §2.3] invariant 1 puts an act's outcome there. **The sources' rule is not M1's
+   case**: what makes the omission answerable is that a physically present party signed the page,
+   **per line item and per page**, having been offered the chance to annotate every exception
+   (§C.9.a(4)-(11)), with the burden assigned to a named party. That is a challengeable assertion
+   whose challenge window was offered and declined, not an unchallenged plan — so M1's reason (_"a
+   planned value that nothing contradicted is indistinguishable from an observation"_) is untouched.
+
+   A6 did not mint the member: `CAPTURE_METHODS` is published as a seven-member `enum` on every record
+   type in both emitted schemas, and the fact class it would serve is **`conditionValue`, owed to A4
+   and A10**. A6 left a gate rather than a comment — `CaptureMethodsAreTheSeven` in
+   `src/rules/documents.ts` re-declares the seven names independently, so adding an eighth stops the
+   package compiling and sends whoever added it to [A6 §3.7]. **Mint it beside `conditionValue`, not
+   before it**: a capture method with no fact class to attach to is the mirror of [`A2` §3.6](A2-shipment-structure.md)'s B-STAGE.
+
+7. **One column A6 read and did not take.** `src:dp3-tender-of-service`'s forty-three-row obligation
+   catalogue — the material [A4 §4.4] calls the source round 1 could not find — carries **the document
+   each obligation is recorded in** as a column. When A4's execution-event model is written, that
+   column is the evidence for `evidence[]`'s per-obligation use, and
+   [`A6` §3.5](A6-documents-evidence.md)'s **D-CITE** is what stops a citation becoming a claim.
+
 ---
 
 ## 6. Acceptance

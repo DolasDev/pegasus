@@ -45,10 +45,24 @@ import { SUBJECT_FAMILIES, admitSubject } from '../vocabulary'
  * The inbound message, verbatim — [SD §4.6.2] E-CANON-OBLIGATION retains it, and E-CANON-RESOLVE
  * puts it in `evidence[]`.
  *
- * TODO([SD §4.6.2] / `assertions.ts`): `EvidenceRef` is a `document` aggregate or an assertion
- * `eventId`, and an inbound message is demonstrably neither — it has not been admitted, so it has
- * no `eventId`, and no document says an inbound message is a `document`. Carried as its own opaque
- * ref rather than widening `EvidenceRef` on inference; the widening below is local to ingest.
+ * `EvidenceRef` is a `document` aggregate or an assertion `eventId`, and an inbound message is
+ * demonstrably neither — it has not been admitted, so it has no `eventId`, and no document says an
+ * inbound message is a `document`. Carried as its own opaque ref rather than widening `EvidenceRef`
+ * on inference; the widening below is local to ingest.
+ *
+ * **[A6 §3.5(c)] ratified that rather than promoting it**, so this is the decision and no longer a
+ * placeholder. `src:nmfta-ebol` — the one publisher that models both lodging a document and the
+ * document — returns an **acceptance identifier distinct from the document identifier**, so a
+ * submission and an instrument are different facts where anyone has modelled both. The only argument
+ * the other way is `src:stedi-x12-reference`'s "the document *is* the message", an observation about
+ * an encoding in an area its own analysis scores `1` on C1. And the asymmetry is decisive:
+ * ratifying costs no published byte, widening `EvidenceRef` costs every consumer a re-validation.
+ *
+ * **The consequence, stated rather than implied.** The link from an admitted Assertion back to the
+ * message that carried it does *not* survive the boundary in `evidence[]`. It survives here, on
+ * {@link RetainedSubmission}, which E-CANON-OBLIGATION already requires to retain the message
+ * verbatim. [SD §4.6.2]'s "the inbound message goes in `evidence[]`" is therefore true on the
+ * boundary side, and [A6 §Cross-area] records the narrowing against [SD].
  */
 export type InboundMessageRef = Brand<string, 'inboundMessage'>
 

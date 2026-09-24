@@ -94,9 +94,34 @@ export type PlanBasis = Exclude<Basis, 'ACTUAL'>
  * than structural (the notification that carries an ETA; the weight ticket behind a weighing)" —
  * [SD §1.1], which is half the reason the generic `correlation` bag could be deleted.
  *
- * TODO([SD §4.6.2]): E-CANON-RESOLVE puts "the inbound message" in `evidence[]`. An inbound
- * message is not obviously a `document` aggregate, and no document says which it is. Left as the
- * two sourced members rather than widened on inference.
+ * **What a reference here claims: nothing. Rule D-CITE, [A6 §3.5].**
+ *
+ * > "A reference in `evidence[]` is a pointer and never a claim. Citing a document asserts nothing
+ * > about the document, and asserts nothing about whether the document establishes the fact it is
+ * > cited for. Evidentiary standing is a rule over the (document kind, fact class) pair, and the
+ * > corpus publishes it per pair."
+ *
+ * Sourced three times, once in primary text: `src:cfr-49-375` §375.519(d) makes true copies of the
+ * weight tickets a precondition of **collecting** a weight-dependent charge — a rule naming the pair
+ * — while `src:dp3-tender-of-service` §C.9.a(24) denies standing to a signed check-off sheet ("does
+ * not indicate proof of delivery") and §C.9.a(22) makes a vague carton description waive the right to
+ * contest. Signature plus relevance is not standing, and content quality changes what may be argued
+ * from the same instrument. The step from "citation does not confer standing" to "a citation claims
+ * nothing" is **[ORIGINAL]** and [A6 §7] records it as such; it is what lets a party cite another
+ * party's document without tripping [SD §6.1]'s `UNAUTHORISED` row.
+ *
+ * **Two branches, and the union is deliberately not widened** ([A6 §3.5(c)]). [SD §4.6.2]'s
+ * E-CANON-RESOLVE says the inbound message "goes in `evidence[]`", and an unadmitted message is
+ * neither of these — E-CANON-STRICT gives it no `eventId`, and no source makes a transmission an
+ * instrument. `rules/e-canon.ts` carries it in an ingest-local `BoundaryEvidenceRef` and A6 ratifies
+ * that rather than promoting it: `src:nmfta-ebol`, the one publisher that models both, returns **an
+ * acceptance identifier distinct from the document identifier**, and `src:stedi-x12-reference`'s "the
+ * document *is* the message" is an observation about an encoding in an area its own analysis scores
+ * `1` on C1 and calls "structurally thin". Ratifying costs no published byte; widening a union
+ * published with `additionalProperties: false` on both branches costs every consumer a
+ * re-validation. So [SD §4.6.2]'s sentence is true on the **boundary** side, where
+ * E-CANON-OBLIGATION already retains the message verbatim on `RetainedSubmission`, and A6 narrows it
+ * there.
  */
 export type EvidenceRef =
   | { readonly kind: 'document'; readonly ref: SubjectRef<'document'> }

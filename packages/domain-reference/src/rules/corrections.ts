@@ -82,10 +82,21 @@ export type WindowClosure = (typeof WINDOW_CLOSURES)[number]
 /**
  * **Owed — and the gap has a sharp edge worth naming.**
  *
- * The corpus publishes exactly one amendment window (§375.401(i)), and it governs the **estimate**
- * — which `vocabulary.ts` lists in `ABSENT_AND_OWED` on [SD §4.7.3]'s instruction, because no `type`
- * for it has been minted. So the only sourced window in the corpus attaches to a fact class the
+ * The window the corpus publishes over a **fact class** is §375.401(i)'s, and it governs the
+ * **estimate** — which `vocabulary.ts` lists in `ABSENT_AND_OWED` on [SD §4.7.3]'s instruction,
+ * because no `type` for it has been minted. So a sourced window attaches to a fact class the
  * vocabulary cannot yet express, and every other fact class's window is unpublished.
+ *
+ * **The count that used to stand here is deleted rather than corrected** — [A1 §9]'s rule, because no
+ * gate reads it. [A6 §3.6] found a second primary window in the same source: `src:cfr-49-375`
+ * §375.505(h) gives the individual shipper three days after signing to rescind the **bill of lading**,
+ * with an explicit non-restart clause — changes flowing from a new estimate "do not require a new
+ * 3-day period", so a permitted upstream amendment does not reopen the downstream document's window.
+ * Whether a rescission right is an *amendment* window is genuinely arguable; what is not arguable is
+ * that the window is keyed to a **document** rather than to a fact class, so even read as one it has
+ * nowhere in this table to go. And [A6 §Cross-area] hands the act itself to A1: rescinding the bill of
+ * lading withdraws the undertaking ([A2 §3.2]), which is `orderCancellation`'s subject matter. The
+ * clock it runs from is the document's signature, for which [A6 §3.3(b)] found no record type.
  *
  * Consequently the window is an **input** to {@link decideCorrection} rather than a table it looks
  * up. A caller that does not know the window cannot be given a default here: an assumed-open window

@@ -24,6 +24,7 @@ import {
   authoritativeHolderAt,
   custodyAt,
   documentId,
+  documentIdentitySubject,
   eventId,
   factResolvedSubjectMatches,
   instant,
@@ -41,6 +42,8 @@ import {
   specVersion,
   stopId,
   subjectRef,
+  CITATION_CLAIMS_NOTHING,
+  DOCUMENT_KIND_IDENTITY_SUBJECTS,
   supersedesIsWellFormed,
   type AuthorityContext,
   type CapturedAssertion,
@@ -288,5 +291,38 @@ describe('[SD §4.3] the resolution is published, append-only, and names its rul
     // The reweigh right is the shipper's (§375.517), and it is settled on the net by row 6.
     expect(gross.competing).toContain('customer')
     expect(AUTHORITY_TABLE['weight.net'].boundBy).toBe('NONE')
+  })
+
+  describe('[A6] the two tickets — D-CITE and D-ID on this scenario', () => {
+    it('D-CITE: the reweigh party cites the original weigher’s ticket without asserting it', () => {
+      // [A6 §3.5]. Under any reading where a citation is a claim, this record would be [SD §6.1]'s
+      // `UNAUTHORISED` row: a party with no authority over the original weighing has pointed at the
+      // original weigher's document. Under D-CITE it is not — the assertion is about the weight, and
+      // the ticket is a pointer. `src:cfr-49-375` §375.519(a) makes each ticket a separate document
+      // signed by the weigh master, so there genuinely are two and they belong to two parties.
+      expect(CITATION_CLAIMS_NOTHING).toBe(true)
+      expect(reweigh.evidence).toEqual([
+        { kind: 'document', ref: subjectRef('document', documentId('TICKET-REWEIGH-7712')) },
+      ])
+      // And the standing rule is NOT here: §375.519(d) makes true copies of ALL the tickets a
+      // precondition of COLLECTING a weight-dependent charge, which [A6 §6] hands to A7.
+      expect(original.evidence).toEqual([
+        { kind: 'document', ref: subjectRef('document', documentId('TICKET-ORIGIN-3391')) },
+      ])
+    })
+
+    it('D-ID: a weight ticket has no identity of its own, so it can only ever be `context[]`', () => {
+      // [A6 §3.2(b)]. §375.519(a)'s six items give the ticket no number: it is identified by the
+      // scale's name and location, the date, and "the carrier's shipment registration or bill of
+      // lading number". So D-ID returns `CARRIED_SUBJECT` for every scheme a ticket carries, which is
+      // exactly what [SD §4.7.1]'s `weight.net` row already does ("document is the weight ticket").
+      const ticket = DOCUMENT_KIND_IDENTITY_SUBJECTS.find((row) => row.kind === 'weight ticket')
+      // `null` would mean "out of the model" ([A5 §3.4(c)]'s warehouse receipt); a ticket is scored.
+      expect(ticket?.accountableScheme).toBe(false)
+      expect(documentIdentitySubject(ticket?.accountableScheme ?? undefined)).toEqual({
+        kind: 'determined',
+        subject: 'CARRIED_SUBJECT',
+      })
+    })
   })
 })

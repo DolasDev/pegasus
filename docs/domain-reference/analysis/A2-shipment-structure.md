@@ -1034,7 +1034,20 @@ question 2 (§3.6). **(c)** `src:dp3-400ng` Item 17.9.b.2's **1,000-lb minimum o
 of separately-rated portions** is a rating rule that reads across Portions of one shipment; A5 handed
 A7 the storage charges and this is the structural constraint on them.
 
-### To [A6]
+### To [A6] — **answered**, at [`A6` §3.6](A6-documents-evidence.md)
+
+> **Taken, and it needed no new mechanism.** [A6 §3.6] mapped Table A-402-4's eight rows onto the
+> vocabulary and found the regime is already carried by [A8 §8]'s `Instrument.grants` plus [SD §6] —
+> so A6 added no rule beside `instrumentReaches`. What it added is the mapping, and the mapping
+> changed the question: **four of the eight fields are not facts this model carries at any grain**
+> (the addresses need `placeRef`; the agent code needs `partyRole`'s row; the **Code of Service needs
+> the `shipmentType` §3.3 withdrew**; accounting codes and remarks are not domain facts), so the
+> sub-fact grain `authority.ts`'s TODO asked for would move none of them. A2's note that "a
+> correction is not a reissue" is kept and sharpened: with no `documentIssuance` record it is
+> decidable in prose and not in code — [A6 §3.3] found the `document` aggregate has no minting act
+> either, which is **this document's §3.6 finding one aggregate over**. A6 also ran the check A2 asked
+> for and reports its own result: `document` has **no** canonical subject family and appears in
+> [SD §4.7.1] only in six `context[]` columns.
 
 `src:dtr-part-iv`'s **SF 1200 Government Bill of Lading Correction Notice** is A2-adjacent and A6's:
 Table A-402-4 enumerates _exactly which bill-of-lading fields are correctable_ — a closed whitelist

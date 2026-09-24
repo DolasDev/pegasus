@@ -1474,9 +1474,19 @@ export interface Instrument {
    * The fact classes this instrument reaches. `'ALL'` is legal but rare; Table A-402-4 is the
    * published precedent for an instrument scoped by what it may touch.
    *
-   * TODO([A8 §6]): Table A-402-4's granularity is **field-level within one fact class** (agent code,
-   * COS, dates, member identity, TCN…). The vocabulary has no sub-fact grain, so a whitelist is
-   * represented here at fact-class grain and is coarser than its source.
+   * **Taken by [A6 §3.6], and the answer changes the question.** This TODO read Table A-402-4's
+   * granularity as *field-level within one fact class* and concluded the vocabulary was missing a
+   * sub-fact grain. A6 mapped all eight rows of the table onto the vocabulary
+   * ({@link TABLE_A_402_4_LANDINGS}) and found that is not why the whitelist is coarse: **four of the
+   * eight fields are not facts this model carries at any grain.** The four addresses need `placeRef`,
+   * owed to [SD §1.2]; the agent code needs `partyRole`'s row, owed to [A8 §9 items 1-2]; the Code of
+   * Service needs `shipmentType`, which [A2 §3.3] **withdrew on evidence** rather than left owed; and
+   * accounting codes and remarks are not domain facts. A sub-fact grain would move none of them.
+   *
+   * So a whitelist is represented here at fact-class grain because that is the finest grain at which
+   * the table's landable rows *are* facts — the dates, the authorized weight, member identity and the
+   * TCN — and the residue is a mapping gap rather than a granularity gap. `instrumentReaches` below
+   * is the gate and A6 adds no rule beside it.
    */
   readonly grants: readonly AssertionType[] | 'ALL'
   /** Instruments are evaluated at an instant ([A8 §8]): "the same act that is `UNAUTHORISED` on day

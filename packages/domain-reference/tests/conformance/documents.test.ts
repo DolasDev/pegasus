@@ -464,6 +464,9 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     // [A2 §3.6]'s one. Its blocker is a schema gap in [A8 §4.3]'s `boundBy` enum rather than A5's
     // missing party entity, which §4.7.3 records at the point of use.
     shipmentCommitment: '`shipmentCommitment`',
+    // [A6 §3.3]'s one. The first entry in §4.7.3 whose blocker is minting alone: [A8 §5] row 10's
+    // `boundBy = SCHEME` already determines its holder, so nothing is owed underneath the row.
+    documentIssuance: '`documentIssuance`',
   }
 
   it('names each absent class in §4.7.3, so its absence is not read as an oversight', () => {
