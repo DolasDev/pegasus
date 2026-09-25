@@ -222,4 +222,48 @@ describe('syncConnection — thread store', () => {
     )
     expect(h.saveSyncCursor).toHaveBeenCalledWith(db, 'tnt-1', 'conn-1', 'THREAD', 'thr-tok')
   })
+
+  it('on ISync, emits for an explicit Inbound entry but not a direction-less one', async () => {
+    const READ = '/restapi/v1.0/account/~/message-threads/thread-2'
+    h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
+      Promise.resolve(store === 'THREAD' ? { syncToken: 'prev' } : null),
+    )
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH) return Promise.resolve({ records: [], syncInfo: { syncToken: 'v1' } })
+      if (path === THREAD_PATH)
+        return Promise.resolve({
+          records: [
+            {
+              id: 200,
+              type: 'SMS',
+              threadId: 'thread-2',
+              direction: 'Inbound',
+              text: 'YES',
+              creationTime: '2026-06-02T10:00:00.000Z',
+            },
+            {
+              id: 201,
+              type: 'SMS',
+              threadId: 'thread-2',
+              text: '?',
+              creationTime: '2026-06-02T10:01:00.000Z',
+            },
+          ],
+          syncInfo: { syncToken: 'thr-tok' },
+        })
+      if (path === READ)
+        return Promise.resolve({ id: 'thread-2', recipients: [{ phoneNumber: '+12015550123' }] })
+      return Promise.reject(new Error(`unexpected path ${path}`))
+    })
+
+    await syncConnection(db, connection)
+
+    const flagFor = (externalId: string) =>
+      h.captureMessage.mock.calls.find(
+        (c) => (c[2] as { externalId: string }).externalId === externalId,
+      )![4]
+    expect(flagFor('200')).toEqual({ emitReceivedEvent: true })
+    // Still captured (and forwarded), but a missing direction never fires a workflow.
+    expect(flagFor('201')).toEqual({ emitReceivedEvent: false })
+  })
 })

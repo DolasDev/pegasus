@@ -434,7 +434,29 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
           data: { dispatchedAt: new Date() },
         }) // after cutoff
 
-        expect(await purgeReceivedEventBodies(db, cutoff, 1)).toBeGreaterThanOrEqual(1)
+        // A custom event derived from the old sms.received (dispatcher copies the
+        // payload), and an unrelated derived event that must be left alone.
+        const derived = await db.domainEvent.create({
+          data: {
+            tenantId,
+            eventType: 'reply.yes',
+            payload: { ...(eOld!.payload as object), _derivedFrom: eOld!.id },
+            occurredAt: before,
+            dispatchedAt: before,
+          },
+        })
+        const other = await db.domainEvent.create({
+          data: {
+            tenantId,
+            eventType: 'quote.big',
+            payload: { body: 'not an sms', _derivedFrom: '00000000-0000-0000-0000-000000000000' },
+            occurredAt: before,
+            dispatchedAt: before,
+          },
+        })
+
+        // batchSize 1 exercises keyset paging past the skipped unrelated row.
+        expect(await purgeReceivedEventBodies(db, cutoff, 1)).toBe(2)
         expect(await purgeReceivedEventBodies(db, cutoff)).toBe(0) // idempotent
 
         const [aOld] = await eventsFor(old.id)
@@ -449,6 +471,10 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
         expect((await eventsFor(fresh.id))[0]!.payload).toMatchObject({
           body: 'hello from the shared inbox',
         })
+        const dAfter = await db.domainEvent.findUnique({ where: { id: derived.id } })
+        expect(dAfter!.payload).toMatchObject({ body: null, _derivedFrom: eOld!.id })
+        const oAfter = await db.domainEvent.findUnique({ where: { id: other.id } })
+        expect(oAfter!.payload).toMatchObject({ body: 'not an sms' })
       })
 
       it('does not emit for the same text captured from the other store', async () => {

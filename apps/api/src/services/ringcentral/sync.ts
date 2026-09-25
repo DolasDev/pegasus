@@ -203,6 +203,9 @@ async function syncThreadStore(
       external = await resolveThreadExternalNumber(client, threadId, connection.ownerNumber)
       externalByThread.set(threadId, external)
     }
+    // A missing direction is captured as Inbound (forwarding unchanged) but never
+    // announced: if a workflow's own reply came back direction-less, emitting it
+    // would re-trigger that workflow in a loop.
     const direction = entry.direction ?? 'Inbound'
     const phones: ThreadPhonePair =
       direction === 'Inbound'
@@ -215,7 +218,7 @@ async function syncThreadStore(
         connection,
         () => normalizeThreadJson(entry, threadId, phones),
         entry.id,
-        incremental,
+        incremental && entry.direction != null,
       )
     ) {
       captured++

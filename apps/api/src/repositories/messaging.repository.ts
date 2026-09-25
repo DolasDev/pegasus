@@ -578,8 +578,10 @@ export async function purgeForwardedBodies(db: PrismaClient, now: Date = new Dat
  * event has been dispatched and is older than `olderThan`, so the copy made for
  * workflow triggers obeys the same ~72h PII window as `messages.body`. The
  * workflow received the payload at dispatch; domain_events is otherwise never
- * purged. Undispatched events keep their body until they fire. Idempotent — the
- * JSON-null check skips already-purged rows. Returns the events purged.
+ * purged. Also covers custom events DERIVED from `sms.received` (the dispatcher
+ * copies the source payload plus `_derivedFrom`). Undispatched events keep their
+ * body until they fire. Idempotent — the JSON-null check skips already-purged
+ * rows. Returns the events purged.
  */
 export async function purgeReceivedEventBodies(
   db: PrismaClient,
@@ -587,28 +589,63 @@ export async function purgeReceivedEventBodies(
   batchSize = 500,
 ): Promise<number> {
   let purged = 0
+  let after: string | undefined
   for (;;) {
     const rows = await db.domainEvent.findMany({
       where: {
-        eventType: 'sms.received',
+        ...(after ? { id: { gt: after } } : {}),
         dispatchedAt: { not: null },
         occurredAt: { lt: olderThan },
-        // Matches a present, non-null `body` (a missing key never matches).
-        payload: { path: ['body'], not: Prisma.JsonNull },
+        AND: [
+          // A present, non-null `body` (a missing key never matches).
+          { payload: { path: ['body'], not: Prisma.JsonNull } },
+          {
+            OR: [
+              { eventType: 'sms.received' },
+              { payload: { path: ['_derivedFrom'], not: Prisma.AnyNull } },
+            ],
+          },
+        ],
       },
-      select: { id: true, payload: true },
+      select: { id: true, eventType: true, payload: true },
+      // Keyset paging: derived rows of OTHER sources match the query but are
+      // skipped below, so re-querying from the start could spin on them. (Not
+      // Prisma `cursor` — it misbehaves once the cursor row, just purged, no
+      // longer matches the filter.)
+      orderBy: { id: 'asc' },
       take: batchSize,
     })
+    if (rows.length === 0) return purged
+
+    const derivedFrom = rows
+      .filter((r) => r.eventType !== 'sms.received')
+      .map((r) => (r.payload as Record<string, unknown>)['_derivedFrom'])
+      .filter((id): id is string => typeof id === 'string')
+    const smsSources = new Set(
+      derivedFrom.length === 0
+        ? []
+        : (
+            await db.domainEvent.findMany({
+              where: { id: { in: derivedFrom }, eventType: 'sms.received' },
+              select: { id: true },
+            })
+          ).map((r) => r.id),
+    )
+
     // Prisma can't patch one JSON key in bulk, so each row is rewritten.
     for (const row of rows) {
-      const payload = { ...(row.payload as Record<string, unknown>), body: null }
+      const payload = row.payload as Record<string, unknown>
+      const isSms =
+        row.eventType === 'sms.received' || smsSources.has(payload['_derivedFrom'] as string)
+      if (!isSms) continue
       await db.domainEvent.update({
         where: { id: row.id },
-        data: { payload: payload as Prisma.InputJsonValue },
+        data: { payload: { ...payload, body: null } as Prisma.InputJsonValue },
       })
+      purged++
     }
-    purged += rows.length
     if (rows.length < batchSize) return purged
+    after = rows[rows.length - 1]!.id
   }
 }
 
