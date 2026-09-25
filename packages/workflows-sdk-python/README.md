@@ -151,6 +151,12 @@ Read entity ids from `arg["payload"]["quoteId"]` etc. The `payload` is a pointer
 — always re-fetch authoritative state from the Pegasus API using those ids rather than relying on the
 payload alone.
 
+Built-in event types: `quote.accepted`, `move.status_changed`, `invoice.paid`, `customer.created`,
+`pegasus_event.received`, `feedback.submitted` (see [Soliciting feedback](#soliciting-feedback-magic-link-surveys)),
+and `sms.received` (see [Receiving an SMS](#receiving-an-sms-smsreceived) — its payload carries the
+message text). Integration events `pegii.shipment.opened`, `pegii.shipment.closed`, `pegii.sale.saved`
+and your tenant's registered custom event types are also triggerable.
+
 **2. Manual run** — `POST /api/v1/workflows/:id/run` passes:
 
 ```python
@@ -213,6 +219,54 @@ required_actions = ["SendSms"]
 `send_sms` raises `PegasusApiError` (403) if `SendSms` is absent from `required_actions`,
 or (404) if the tenant has no SMS provider connected. The `to` number must be E.164
 (e.g. `"+16308868537"`).
+
+### Receiving an SMS (`sms.received`)
+
+When a text arrives on the tenant's connected RingCentral number, the platform
+emits the built-in **`sms.received`** event — once per inbound message. Bind a
+workflow to it with an `EVENT` trigger to parse the reply and automate the next
+step (confirm a move date, flag a complaint, answer with `send_sms`). The payload
+carries the message text itself, so no follow-up read is needed:
+
+```python
+{
+    "domainEventId": "<uuid>",
+    "eventType": "sms.received",
+    "occurredAt": "<ISO-8601>",
+    "payload": {
+        "messageId": "<uuid>",            # Pegasus message id
+        "fromNumber": "+16308868537",     # the sender (E.164)
+        "toNumber": "+12015550123",       # the tenant's RingCentral number
+        "body": "YES, Tuesday works",     # the text (may be null for an empty MMS-style entry)
+        "rcCreationTime": "<ISO-8601>",   # when RingCentral received it
+        "threadId": "<id or null>",       # RingCentral conversation, when known
+        "source": "THREAD_STORE",         # which RingCentral store it came from
+        "externalId": "<RingCentral id>",
+        "connectionId": "<uuid>",
+    },
+}
+```
+
+Attach the trigger (a `filter` is optional — this one fires only for replies
+containing "YES"; `contains` is case-sensitive):
+
+```python
+client.create_trigger(
+    workflow_id,
+    kind="EVENT",
+    event_type="sms.received",
+    filter={"path": "body", "op": "contains", "value": "YES"},
+)
+```
+
+Guarantees: only **inbound** texts fire it — the outbound SMS your workflow sends
+with `send_sms` never re-triggers the workflow. Each text fires **at most once**,
+even though the platform receives it via both the webhook and a safety-net sync.
+History is not replayed: texts pulled in when a number is first connected (the
+initial backfill) do not fire the event. Latency: the workflow typically starts
+within about a minute of the text arriving (the trigger dispatcher runs every
+minute); if RingCentral's webhook is missed, the 15-minute safety-net sync picks
+the text up and the event fires then.
 
 ### Soliciting feedback (magic-link surveys)
 

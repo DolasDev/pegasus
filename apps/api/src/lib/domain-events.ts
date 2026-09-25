@@ -26,6 +26,15 @@ export const DOMAIN_EVENT_TYPES = [
   // subject: { type, id }, response }. A workflow EVENT trigger subscribes to it
   // (v2 dot-path filters can match on formKey / subject.type).
   'feedback.submitted',
+  // Emitted once per NEW inbound SMS captured from a tenant's RingCentral
+  // connection (repositories/messaging.repository.ts captureMessage). Only
+  // incremental syncs emit — a connect-time backfill does not replay history.
+  // Payload: { messageId, source, externalId, threadId, fromNumber, toNumber,
+  // body, rcCreationTime, connectionId }. Carries `body` (a snapshot, unlike
+  // the pointer-only events) because the message body is purged 72h after
+  // on-prem forwarding and there is no message read endpoint. The buffer-purge
+  // cron nulls payload.body 72h after dispatch (purgeReceivedEventBodies).
+  'sms.received',
 ] as const
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]

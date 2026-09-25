@@ -168,6 +168,22 @@ The buffer-purge cron (`RingCentralBufferPurgeFunction`, every 6h) enforces:
 - **Tombstone delete** — `SENT` message rows captured more than 30 days ago are
   hard-deleted (the FK cascade drops their outbox rows). `PENDING`/`FAILED` rows
   (still being delivered) and `DEAD` rows (kept for investigation) are retained.
+- **Event-body purge** — every new inbound SMS also emits an `sms.received`
+  DomainEvent whose payload carries the text (the workflow trigger input). Once
+  dispatched and 72h past its occurrence, its `payload.body` is nulled by the same
+  cron; the rest of the payload (ids, numbers, time) is kept.
+
+## Workflow event (`sms.received`)
+
+`captureMessage` emits `sms.received` in the capture transaction when **all** hold:
+the message is `INBOUND`; this call inserted its outbox row (first capture — a
+webhook/sync race emits once); the capturing pull was an **ISync** (first-run
+FSync, connect-time backfill, and the invalid-token FSync fallback never emit);
+and no INBOUND twin with the same numbers + body within ±60s was already captured
+from the **other** store. The trigger dispatcher (1-min cron) then starts any
+workflow with an `EVENT` trigger on it. A missing workflow run therefore means:
+check the message's `direction`, whether the connection's sync cursor was reset
+(FSync), then `domain_events` for the row and its `dispatched_at`.
 
 ## Disabling
 
