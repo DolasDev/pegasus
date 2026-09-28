@@ -1,5 +1,29 @@
 # AI Chat Assistant — role-scoped Q&A over the Pegasus API
 
+> ## ⏸ PAUSED 2026-09-28 — parked in `plans/todo/`
+>
+> **Phase 0 shipped** 2026-08-21 (#651, #652). Phases 1–3 are **not started**: no
+> assistant code, no infrastructure, no AWS account provisioning. The only thing on
+> `main` is Phase 0's eval scaffold, which nothing imports at runtime.
+>
+> **Why paused, not abandoned:** nothing here failed. Phase 1 needs two inputs that
+> did not arrive — the ops admin's eval set (still the three placeholder cases, five
+> weeks on) and the AWS Lambda quota increase. Both are other people's clocks.
+>
+> **To resume, in this order:**
+>
+> 1. **Request the Lambda concurrency increase.** Multi-day lead time, and it now
+>    gates writing the infra at all — see "Infrastructure" below. Start it first,
+>    regardless of anything else.
+> 2. **Get the eval set authored** (Phase 0 step 4). Gates Phase 1's prompt work,
+>    independent of (1), so the two can run in parallel.
+> 3. **Answer the three infra unknowns** in "Infrastructure" before writing CDK.
+> 4. Then Phase 1.
+>
+> **Read "Infrastructure — designed on paper only" before writing any code.** The
+> original plan's one-line infra sketch was optimistic; the section below records what
+> was verified since, including one item that makes the plan-as-written undeployable.
+
 ## Context
 
 Tenant users today answer questions about their own operations by navigating to the right
@@ -82,17 +106,85 @@ mode**, bypassing API Gateway entirely. 15-minute ceiling, real token streaming.
 > platform API. Open the AWS limit-increase request immediately (it takes days), and set
 > **reserved concurrency** on the assistant function so it can never consume the shared pool.
 > This gates phase 3, not phase 1 — but the lead time means it must start first.
+>
+> **CORRECTION (2026-09-18): the last sentence is wrong — it gates phase 1's infra.** See
+> below.
+
+---
+
+## Infrastructure — designed on paper only
+
+Verified 2026-09-18 against `packages/infra`: **zero** hits for bedrock, anthropic, claude,
+`FunctionUrl`, `RESPONSE_STREAM` or `reservedConcurren*`. The entire infra design is the single
+"Critical files" bullet about `api-stack.ts`. Per this repo's own rule — a feature is not shipped
+until it is wired into CDK — the LLM backend does not exist in any form.
+
+Four things were established after the plan was written. The first two are blocking.
+
+### 1. Reserved concurrency CANNOT be set at the current quota — this is now a phase-1 blocker
+
+AWS only permits reserving up to **unreserved account concurrency minus 100**; the last 100 units
+must stay unreserved. Both accounts are capped at **10**, so the reservable amount is negative:
+`reservedConcurrentExecutions` cannot be set at any value and a CDK deploy specifying it **fails
+outright**.
+
+So the quota increase is not a GA checkbox — it is a prerequisite for the infra being _writable_.
+And until it lands, the protection this whole design leans on (held streaming connections cannot
+starve the platform API) is unavailable at **any** value: ten concurrent chats consume the entire
+account pool. Land somewhere ≥ 500 so reserving a meaningful slice is possible at all.
+Refs: [AWS docs](https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html),
+[re:Post](https://repost.aws/questions/QU7NV9YgI3RGaqVOFdrZYnSQ/concurrency-limits-for-lambda-does-not-allow-to-reserve).
+
+### 2. Claude Platform on AWS provisioning is not IaC, and the IAM grant is unpinned
+
+Workspace provisioning and AWS Marketplace billing are console/account actions CDK cannot express —
+a manual prerequisite before any IAM grant means anything. And the plan asserts "SigV4 from the
+Lambda role" **without pinning which IAM actions and resources**. Bedrock's
+`bedrock:InvokeModelWithResponseStream` on a model ARN is a _different_ grant from
+Anthropic-operated Claude Platform on AWS. The grant cannot be written until the account is
+provisioned and the real auth surface is observed. Do not guess it into CDK.
+
+### 3. A Function URL with custom JWT auth is internet-exposed — undecided
+
+Verifying the Cognito token in-function means `authType: NONE`: a public endpoint outside API
+Gateway and whatever the CDN stack fronts. The plan covers CORS and never addresses the exposure
+itself. Decide deliberately before writing it.
+
+### 4. Smaller, but each has bitten this repo before
+
+- **Bundling.** `NodejsFunction` bundles CJS, and an ESM-only dependency once caused a silent
+  Lambda INIT crash that ran undetected for two months with synth and deploy both green
+  (`project_lambda_esm_bundling_init_crash`). Check `@anthropic-ai/sdk` against that specifically.
+- **The kill switch is not real until it is in CDK.** `ASSISTANT_ENABLED` is listed under phase 3,
+  but an env flag absent from `packages/infra` is not a lever — the exact trap the
+  flag-gated-feature rule exists for.
+- **Unspecified:** timeout and memory for a streaming function (billed on wall-clock, not compute),
+  and any infra-level spend alarm. The per-tenant budget in phase 3 is application-level only.
+
+### Placement decision — make this before phase 1 writes a line
+
+The "Critical files" list puts the adapter at `apps/api/src/assistant/provider.ts`. **Put it
+somewhere neutral instead** — `apps/api/src/lib/inference/` or its own package — and let
+`assistant/` be one consumer among others. See "Phase 4" below: a second consumer is already
+foreseeable, and burying the adapter inside the assistant feature forces either a cross-feature
+import or a reimplementation. Five minutes now; a refactor under pressure later.
 
 ---
 
 ## Phase 0 — Ops-admin enablement (near-zero engineering, start today)
 
-> **Status: engineering side DONE** (branch `feat/assistant-phase0`). Shipped: the
+> **Status: SHIPPED 2026-08-21** (#651 `2dec87fa`, #652 `30009f40`). Delivered: the
 > onboarding doc `docs/ai-assistant-ops-admin-onboarding.md`, and the eval-set
 > scaffold `apps/api/src/assistant/evals/` (zod schema + CI-enforced validation +
 > authoring README + `ops-baseline.json` with three worked examples).
-> **Still owed by people, not code:** mint the key (step 1), the ops manager's
-> Claude Code seat (step 3), and the eval set itself (step 4) — which gates Phase 1.
+>
+> **Still owed by people, not code** — unchanged as of 2026-09-28: mint the key
+> (step 1), the ops manager's Claude Code seat (step 3), and the eval set itself
+> (step 4). `ops-baseline.json` still holds only the three worked examples, so
+> **Phase 1's acceptance gate does not yet exist.**
+>
+> If authoring stalls on Git friction rather than on the questions themselves, a
+> simple upload path is a small piece of work and removes the only real barrier.
 
 Unblocks the ops manager while phase 1 is built, and produces the eval set that phase 1 needs.
 
@@ -246,7 +338,58 @@ Four panes:
 
 ---
 
+## Phase 4 (sketch, 2026-09-25) — LLM calls from inside workflows
+
+Not committed to; recorded so phase 1 does not foreclose it. Question asked: could this backend
+also be the foundation for using LLMs from within tenant-authored workflows? **Yes — but the reuse
+is concentrated in the slow, expensive parts and is near-zero in the visible ones.**
+
+**Carries over (the long-lead items):** Claude Platform on AWS workspace + Marketplace billing
+(one-time, account-level); the SigV4-from-execution-role credential model — same grant shape for a
+Temporal worker task role as for a Lambda; the `InferenceProvider` seam (model ids, region,
+retries, throttling, token accounting); the Lambda quota increase. Most of the pain, done once.
+
+**Does NOT carry over:**
+
+- **Streaming.** Function URL + `RESPONSE_STREAM` exists so a _browser_ paints tokens
+  progressively. A workflow has no human watching a spinner and wants request/response.
+- **Cedar per-user tool filtering — the assistant's entire premise.** Tools are filtered by the
+  _human caller's_ role. A workflow runs as `workflow_runtime`, a service account. The model is not
+  merely unused here, it is the wrong shape: workflow capability is governed by the manifest's
+  `required_actions`, a different mechanism that already exists.
+- The Assistant Lab, conversation/turn persistence, and the DB-backed prompt store. A workflow's
+  prompt belongs in its own source, versioned with its artifact.
+
+**The structural fact is a language boundary.** This backend is TypeScript on Lambda; workflows are
+Python, sandboxed, on Temporal workers. A workflow cannot import the provider — it reaches it over
+HTTP, exactly as every other workflow capability does. **`send_sms` is the template**
+(`packages/workflows-sdk-python/pegasus_workflows/api.py:851`): SDK method → POST to an **m2m**
+endpoint on the runtime `vnd_` key, gated by a Cedar action (`SendSms`) _and_ by the manifest
+declaring `required_actions`, with dry-run capture via `_capture_mutation` so
+`pegasus-workflows test` does not fire for real. Its docstring already states the constraint an LLM
+call needs anyway — **"for use inside workflow activities only, never in workflow code"** — because
+a non-deterministic call cannot live in Temporal workflow code. Inherited, not invented.
+
+So the shape is fully determined by precedent: a new Cedar action, one m2m endpoint over the
+**shared** adapter, an SDK method, a manifest declaration, dry-run capture — plus the CLAUDE.md
+discoverability tax (SDK README, the authoring repo's `CLAUDE.md`, MCP resources, CLI `--help`,
+OpenAPI). A capability not reachable through the SDK is a gap, not a feature.
+
+**Two asymmetries that bite workflows harder than chat:**
+
+- **Cost governance is day-one here, not phase 3.** Chat's caller is a human typing, self-limiting
+  at ~30 turns/hour. A workflow's caller is arbitrary tenant-authored code that can loop an LLM
+  call ten thousand times. A per-execution token budget and per-tenant cap are the _first_ thing to
+  build, not the last.
+- **Activity retries cost money.** A slow call that trips an activity timeout and retries bills
+  twice for one logical call. Retry policy and idempotency need deliberate thought.
+
+---
+
 ## Critical files
+
+> **Superseded in one place:** `provider.ts` moves OUT of `assistant/` to a neutral location —
+> see "Placement decision" under Infrastructure. The rest of this list stands.
 
 **New:** `apps/api/src/assistant/{provider,loop,prompt}.ts`, `apps/api/src/assistant/tools/*`,
 `apps/api/src/lambda-assistant.ts`, `apps/tenant-web/src/routes/assistant-lab.tsx`,
@@ -290,7 +433,17 @@ helper), `packages/api-http/src/index.ts` (add `streamFetch`), `packages/infra/l
 
 ## Open items
 
-- [ ] **AWS Lambda concurrency limit increase — open the request now.** Gates phase 3.
+Ordered by what unblocks what. The first three are the resume checklist from the header.
+
+- [ ] **AWS Lambda concurrency limit increase.** ~~Gates phase 3.~~ **Gates writing the infra at
+      all** — reserved concurrency is unsettable at a quota of 10. Multi-day lead time, so it is
+      the long pole and nothing else waits on it. Target ≥ 500.
+- [ ] **The eval set** (Phase 0 step 4) — still three placeholder cases. Gates phase 1's prompt
+      work. Independent of the quota item; both can run at once.
+- [ ] **Decide the Function URL exposure** (`authType: NONE`, public, outside API Gateway).
+- [ ] Claude Platform on AWS workspace provisioning + Marketplace billing — **and then observe the
+      real IAM action/resource names** before writing the grant.
 - [ ] Confirm tenant-PII-to-inference-provider posture, and whether any tenant contract excludes it.
-- [ ] Claude Platform on AWS workspace provisioning + Marketplace billing enablement.
+      Blocks phase 2, not phase 1.
 - [ ] Ops manager's Claude Code seat.
+- [ ] Check `@anthropic-ai/sdk` for the ESM/CJS bundling trap before it reaches a Lambda.

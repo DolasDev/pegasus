@@ -2,7 +2,11 @@
 
 How the operations administrator gets hands on the Pegasus API, what they can
 and cannot reach, and what they produce. This is Phase 0 of
-`plans/in-progress/assistant-phase0.md`.
+`plans/todo/ai-chat-assistant.md`.
+
+> **Project paused 2026-09-28.** The deliverable below (the eval set) is still
+> exactly what's wanted — it is the first thing needed on resume, and it can be
+> written at any time. Nothing else about this doc has changed.
 
 **The goal is not to build anything.** It is to put the person who knows what
 users actually ask in front of the real data surface, and have them write down
