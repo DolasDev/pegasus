@@ -3,7 +3,7 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.38.2
 
 ### Documented — the `sms.received` event
 
@@ -11,8 +11,10 @@ The platform now emits a built-in `sms.received` event for every new inbound tex
 on a tenant's connected RingCentral number; bind a workflow to it with an `EVENT`
 trigger (`create_trigger(..., kind="EVENT", event_type="sms.received")`). The
 payload carries `fromNumber`, `toNumber`, `body`, `rcCreationTime` and ids. See
-README → "Receiving an SMS". No SDK code change — the README now also lists
-every built-in event type.
+README → "Receiving an SMS". No API/CLI behavior change: `create_trigger` already
+accepted any event name. What ships is discoverability — the README and the MCP
+`pegasus://guide/input-contract` resource now list every built-in event type and
+document the `sms.received` payload.
 
 ## 0.38.1
 
