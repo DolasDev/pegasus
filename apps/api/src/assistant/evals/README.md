@@ -1,7 +1,7 @@
 # AI Chat Assistant — eval set
 
 `ops-baseline.json` is the acceptance gate for the AI Chat Assistant. Every later
-phase of `plans/in-progress/assistant-phase0.md` is judged against it, and every
+phase of `plans/todo/ai-chat-assistant.md` is judged against it, and every
 prompt edit the operations administrator makes is scored on it. It is the
 difference between tuning the assistant's context deliberately and tuning it on
 vibes.

@@ -2,7 +2,7 @@
 // AI Chat Assistant — eval-set schema.
 //
 // The eval set is Phase 0's deliverable and the acceptance gate for every later
-// phase (see plans/in-progress/assistant-phase0.md). It is authored by the
+// phase (see plans/todo/ai-chat-assistant.md). It is authored by the
 // operations administrator, not by engineering: each case is a question a real
 // ops user would type, the answer that is actually correct, and where a human
 // reads that answer today.
