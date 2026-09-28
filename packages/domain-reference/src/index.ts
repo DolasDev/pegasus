@@ -45,6 +45,13 @@ export * from './rules/shipment-continuity'
 // rather than as prose ([A6 §3.4], [A6 §3.7]).
 export * from './rules/documents'
 
+// And A7's one, which is D-CITE generalised past documents ([A7 §3.7]): four of the seven published
+// collection preconditions gate on something that is not a document at all, so the pair is
+// (charge, gating fact) and the gating fact's aggregate kind varies. Its neighbour here is a
+// refusal rather than a rule — [A7 §3.3] declines to publish a charge- or invoice-state vocabulary,
+// on [A2 §3.3]'s ground with eleven disagreeing publishers instead of six.
+export * from './rules/charges'
+
 // The rules the boundary runs — subject admission ([SD §4.6]) and capture ([SD §5]). They are
 // separate from the vocabulary because they are checks *over* it: the vocabulary says what a record
 // may be, and these say what may be admitted.

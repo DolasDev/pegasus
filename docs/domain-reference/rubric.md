@@ -48,8 +48,14 @@ but our configs and code that implement them do not.
 > its weights at §3.9 and its owed items at §6 and is the first area to weight **C7** highest — the
 > obvious call, since every one of its decisions is a provenance decision — with **C6** second, which
 > is not obvious: [A6 §3.2]'s identity rule is decidable only because two sources score `C6 = 3` on
-> A6. **A7 and A9 have no area analysis at all**, and a claim about one of them that is not traceable
-> to [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) or to a source analysis is
+> A6. **A7** has a full area document at
+> [`analysis/A7-charges-billing.md`](analysis/A7-charges-billing.md), which records its weights at
+> §3.11 and its owed items at §6 and weights **C3** highest, as [A1 §3.7] does — because every one
+> of its decisions turns on whether a published rule is testable, and because here the heaviest
+> criterion and the best-evidenced one are the same one, which [A2 §3.7]'s weighting shows is not
+> the usual case. **A9 has no
+> area analysis at all**, and a claim about it that is not traceable to
+> [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) or to a source analysis is
 > unbacked. A10-A13 are context-map-only by design and are not gaps. Recorded here because a column
 > reading "yes" for all nine invites exactly the assumption [SD §0] forbids.
 
@@ -62,6 +68,18 @@ but our configs and code that implement them do not.
 > who took the row literally would mint six things the model does not need. The `Covers` column is a
 > prompt, not an inventory — which is the same caution as the `v1 detail` column's above.
 
+> **And one about the A7 row, from [A7 §3.10], which is the second instance of the same caution.**
+> The row reads as three deliverables — _"line-haul vs accessorials, charge events, invoice
+> issued/paid"_ — and it is one deliverable, one refusal and one absence. Charge **events** split:
+> propose, decide and rate are records that already exist, and bill, collect and pay are absent
+> ([A7 §3.2]). Line-haul versus accessorials is **refused as a vocabulary** — `src:cfr-49-375`
+> Appendix A's five names cut on at least three different facets, so a shipment can carry one charge
+> that is three of the five at once ([A7 §3.4]). Invoice issued/paid is **not expressible**, and the
+> blocker is an aggregate rather than a field. **The parenthesis does more work in this row than any
+> other in the table**: _"detail of rating out of scope"_ removes the part of the area the corpus
+> covers best — every source scoring `C1 = 3` on A7 scores it on rating — which is why A7's honest
+> output is shorter than its evidence.
+
 > **And one about the resumption plan rather than the rubric, recorded here because a later reader
 > will meet it here first.** A6's own resumption plan named
 > `src:dtr-part-iv` as A6's best source and did not name `src:dp3-tender-of-service`, which scores
@@ -70,7 +88,7 @@ but our configs and code that implement them do not.
 > reading the second is how the strongest source in an area gets left off a list. (The plan itself is
 > **gone** — this effort rewrites a finished round's plan as the next round's, so the record is
 > `plans/completed/domain-reference-a6-documents.md` and the live plan is
-> [`../../plans/in-progress/domain-reference-areas-a7.md`](../../plans/in-progress/domain-reference-areas-a7.md).)
+> [`../../plans/in-progress/domain-reference-areas-a9.md`](../../plans/in-progress/domain-reference-areas-a9.md).)
 
 > **One observation about per-area scoring itself, from [A2 §3.7].** `src:dtr-part-iv` scores
 > `C3 = 1` **on A2** and decided the whole of [A2 §3.2] — because its A2 row scores the shipment

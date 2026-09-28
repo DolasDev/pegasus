@@ -1283,7 +1283,27 @@ calls the material round 1 could not find — carries **the document each obliga
 a column. When A4 is written, that column is the evidence for `evidence[]`'s per-obligation use, and
 §3.5's D-CITE is what stops it becoming a claim.
 
-### To [A7]
+### To [A7] — **taken**, at [`A7` §3.7](A7-charges-billing.md), and the pair turned out not to be a document pair
+
+> **Taken, and generalised.** A7 read the corpus for rules of this shape and found **seven** — from
+> three sources, two of which are the same DP3 programme, so the genuinely independent publisher
+> count is **two** and [A7 §7] rates the rule medium for that reason. **Four of the seven gate on
+> something that is not a document**:
+> a notification (`src:dp3-tender-of-service` §C.3.h, where the PPSO _denies_ the SIT and
+> delivery-out charges for want of the 24-hour notice), the existence of a weight assertion
+> (`src:dp3-400ng` Item 4.11.c, no invoicing until the reweigh is recorded), the shipment's own
+> outcome (§375.709, total loss ⇒ no freight charges at all), and a moment (§375.401(f)). So §3.5's
+> pair generalises: it is a **(charge, gating fact)** pair and the gating fact's aggregate kind
+> varies — though only over two kinds, because [SD]'s families put all four of those on the
+> `shipment`.
+> That is **A-COLLECT**, [A7 §3.7], and it is D-CITE's argument one aggregate over — collectability
+> is a rule over pairs, not a property of the charge and not carried in `evidence[]`.
+>
+> **And §375.519(d) has a sting A6 could not see from the document side.** It gates the **freight
+> bill**, and [A7 §3.2] establishes the model has no `invoice` and no `payment` aggregate, so the
+> corpus's cleanest collection rule names a document on one side and an artefact the model cannot
+> express on the other. Item 2 below lands the same way: §C.12's document package is a precondition
+> expressed as a document **set**, and D-CITE's pair has no plural on its document side.
 
 1. **§375.519(d) is a collection rule and A7 owns it**: _"All freight bills… must include true copies
    of all weight tickets… **in order to collect** any shipment charges dependent upon the weight

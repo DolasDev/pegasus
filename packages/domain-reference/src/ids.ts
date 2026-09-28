@@ -102,7 +102,13 @@ export const AGGREGATE_KINDS = [
    * fact about it into three aspects (propose / decide / rate).
    *
    * **[ORIGINAL]** as a gloss: no document in the binding layer defines the aggregate's own
-   * internals, and [SD §4.7.3] leaves the charge `value` owed to A11.
+   * internals, and [SD §4.7.3] leaves the charge `value` owed — to **A7 / A12** since [A7 §6],
+   * which found the previous owner (A11) is a claims area and re-pointed it.
+   *
+   * **There is no `invoice` and no `payment` beside it**, and [A7 §3.2] records that as a decision:
+   * seven publishers group charges into an invoice and no two group the same things, two of them
+   * across shipments. So no act on a charge has a record, and the blocker is here rather than in
+   * the record vocabulary.
    */
   'charge',
   /**

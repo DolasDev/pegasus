@@ -2009,3 +2009,30 @@ original capture treated the FSync page as the whole backfill.
 `…/message-store` (`perPage=1000`, `dateTo` = oldest FSync record) with resumable progress on the
 cursor. **General rule:** check every RingCentral "full" response for a truncation flag
 (`olderRecordsExist`, `navigation.nextPage`) before trusting its size.
+
+## An `Owed<>` marker's `owedTo` is a published schema `const`, not a comment
+
+**Symptom (domain-reference A7, 2026-09-28):** correcting `chargeValue`'s owner from `A11` to
+`A7 / A12` — a one-word fix to a piece of the model's own bookkeeping, in a value the model
+explicitly does not publish — turned out to be a **wire change**, and moved `CATALOG_VERSION`
+`0.5.0` → `0.6.0`. The round's actual decisions moved nothing.
+
+**Cause:** `tools/generate-catalog.ts` renders `Owed<Name, Owner>` with **both** type parameters as
+`const` subschemas, on the captured _and_ the queried face. So a producer emitting the old `owedTo`
+string is rejected by the new schema. The reasoning had gone the other way first — an owed marker's
+owner _feels_ internal, and the two preceding rounds (A2, A6) had both shipped with empty schema
+diffs — and only `git diff` over `catalog/*.schema.json` said otherwise.
+
+**General rules, both from `[catalog §5]`:**
+
+- **Read the emitted `$defs` before classifying any change.** "A compatibility classification argued
+  from which fields feel published is a classification waiting to be wrong." This is now the third
+  time it has changed an answer, after `keySideRole` at A8 and the two non-bumps at A2 and A6.
+- **The published schema and the data table differ in _both_ directions.** A6 found a narrower
+  `context` list in `data/canonical-subjects.json` that reaches no consumer; A7 found a docstring-ish
+  string that reaches every consumer. Neither direction is the default.
+
+Classified `repointedOwedOwner` at `[catalog §2.3]` — additive, because `owedTo` carries no domain
+content and sits inside a branch the wire already marks undecided. Two gaps recorded there and not
+closed: `[catalog §2.3]` has **no rule for a breaking change while pre-1.0**, and **every future
+owner-correction will cost a bump** for the same reason this one did.

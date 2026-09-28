@@ -387,6 +387,17 @@ billing."
    package compiling and sends whoever added it to [A6 §3.7]. **Mint it beside `conditionValue`, not
    before it**: a capture method with no fact class to attach to is the mirror of [`A2` §3.6](A2-shipment-structure.md)'s B-STAGE.
 
+   > **A second instance, from a different area and a different source — [`A7` §8](A7-charges-billing.md)
+   > scenario 6.** `src:cfr-49-375` §375.403(a)(7), **primary**: _"Once you load a shipment, failure
+   > to execute a new binding estimate or a non-binding estimate signifies you have **reaffirmed the
+   > original**."_ A **price** is reaffirmed by **not acting**, at a moment another aggregate's act
+   > defines — §375.401(i) permits amending the estimate only before loading, so loading closes the
+   > window and the silence inside it becomes the assertion. That is the same "silence is a positive
+   > assertion" shape as condition-by-omission, on a fact class in a different family, in a different
+   > area, from a source that is not one of the four above. **It is evidence for the member A4 is
+   > owed, not a second request**: A7 mints nothing and asks for nothing, and records it here because
+   > a gap named twice by unrelated corpora is a different kind of gap from one named once.
+
 7. **One column A6 read and did not take.** `src:dp3-tender-of-service`'s forty-three-row obligation
    catalogue — the material [A4 §4.4] calls the source round 1 could not find — carries **the document
    each obligation is recorded in** as a column. When A4's execution-event model is written, that
@@ -460,13 +471,24 @@ written and gated ([A1 §9]).
 
 ## 8. Confidence
 
-| Decision                                       | Confidence      | What would move it                                                                                                                               |
-| ---------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The 23 members as a set                        | **Medium-high** | An HHG-native reason vocabulary from an external publisher. None exists in the corpus; `src:sirva-ade` is a van line's own contract and has none |
-| §4.1 `MQP`/`MQT` collapsed                     | **High**        | A case where the outcome axis cannot carry the magnitude. [SD §3.4] is the argument it can                                                       |
-| §4.4 The `SITE` members are sourced            | **High**        | Nothing short of Item 125.1 not saying what it says                                                                                              |
-| §4.2 `OVERFLOW` scoped `RESOURCE`              | **Medium**      | A consumer that filters on scope and wants overflow under `GOODS`. The scope axis is **[ORIGINAL]** and its members are glossed, not defined     |
-| §4.5 `CAUSE_UNKNOWN` published                 | **Medium**      | Evidence that producers use it to avoid recording a reason they know. That is a capture-rule question ([SD §5]), not a vocabulary one            |
-| §4.6 `INSTRUCTED_CHANGE` over the tariff split | **Medium-high** | A7 deciding it needs the distinction at capture time rather than deriving it                                                                     |
-| §5.1 `roleClass` left owed                     | **High**        | [A8 §9 item 2] landing                                                                                                                           |
-| §7 `publishedOwedVocabulary` as additive       | **Medium**      | A real consumer broken by the narrowing on the captured face. Survivable at `0.2.0` either way                                                   |
+| Decision                                       | Confidence                                                      | What would move it                                                                                                                                                 |
+| ---------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The 23 members as a set                        | **Medium-high**                                                 | An HHG-native reason vocabulary from an external publisher. None exists in the corpus; `src:sirva-ade` is a van line's own contract and has none                   |
+| §4.1 `MQP`/`MQT` collapsed                     | **High**                                                        | A case where the outcome axis cannot carry the magnitude. [SD §3.4] is the argument it can                                                                         |
+| §4.4 The `SITE` members are sourced            | **High**                                                        | Nothing short of Item 125.1 not saying what it says                                                                                                                |
+| §4.2 `OVERFLOW` scoped `RESOURCE`              | **Medium**                                                      | A consumer that filters on scope and wants overflow under `GOODS`. The scope axis is **[ORIGINAL]** and its members are glossed, not defined                       |
+| §4.5 `CAUSE_UNKNOWN` published                 | **Medium**                                                      | Evidence that producers use it to avoid recording a reason they know. That is a capture-rule question ([SD §5]), not a vocabulary one                              |
+| §4.6 `INSTRUCTED_CHANGE` over the tariff split | **High**, up from medium-high — the condition is **discharged** | [`A7` §3.9](A7-charges-billing.md) decided it does **not** need the distinction at capture time, so the row is settled rather than conditional. See the note below |
+| §5.1 `roleClass` left owed                     | **High**                                                        | [A8 §9 item 2] landing                                                                                                                                             |
+| §7 `publishedOwedVocabulary` as additive       | **Medium**                                                      | A real consumer broken by the narrowing on the captured face. Survivable at `0.2.0` either way                                                                     |
+
+> **§4.6's discharge, in full** ([`A7` §3.9](A7-charges-billing.md)). Item 28.4's three exclusion
+> conditions each turn on a fact the recording party does not hold: whether the shipment had
+> **moved** when the instruction arrived; whether the new address is outside the **BPC of the
+> original destination**, in a geography table keyed to the rating address frozen at award; and
+> whether the shipment is already in **destination SIT**. Under [`A7` §3.4] the tariff category is a
+> **`RATED`** fact whose authority is the tariff owner's ([A8 §5] row 11), so a capture-time field
+> would put a tariff owner's determination in a field asserted by whoever recorded the instruction.
+> The tariff's own item codes corroborate: a diversion is billed under **28B with a note** rather
+> than under 28C (Item 28.4.f), and reweigh fees under **226A** rather than 4A/4B (Item 4.4) — the
+> tariff does not partition its own categories by item code either.

@@ -1143,7 +1143,20 @@ needs the two to part company, A1's stage is not the mechanism.
 committed shipments' terminal acts needs a settled reading of the **zero-shipment** order, which is
 a consequence of [`fork-order` §3.1]'s cardinality and not of anything A2 has decided yet.
 
-### To [A7]
+### To [A7] — **answered**, at [`A7` §3.6](A7-charges-billing.md), and answered **for** this document
+
+> **It reaches it, and §3.6's placement stands unchanged.** The answer is in [A8 §4.3]'s own
+> definition rather than in row 11's summary: `PRINCIPAL` is _"authority belongs to the party the
+> arrangement is **for**, and moves only when the principal changes"_ — it resolves against a party
+> and an arrangement and **names no record**, which is exactly what separates it from `CUSTODY`
+> (resolved against `handover` assertions) and `ASSIGNMENT`. So the absence of an `order` instance
+> is not an obstacle. [A7 §3.6] adds the corpus half: both roles are named pre-commitment three ways
+> — `src:cfr-49-375` §375.401 has the carrier prepare an estimate signed by both parties before the
+> bill of lading exists and §375.409 lets a broker do it; §375.403(a)(8) states the propose/decide
+> pair in a regulation; `src:alvys-api` fires `tender.bid.submitted` with a `bidAmount` on an
+> unaccepted tender; and `src:stedi-x12-reference` puts `L9 Charge Detail` **in the 990**, so a
+> priced line can exist on the answer to an offer. **Nothing is asked of [A8], and row 11 needs no
+> amendment.**
 
 §3.6 places a price counter-proposal on the `charge` fact key at `aspect = PROPOSED` rather than on
 the reason axis. A7 should know that [A8 §5 row 11]'s proposal authority is now being asked to carry

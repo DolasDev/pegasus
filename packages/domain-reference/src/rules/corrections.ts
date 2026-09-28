@@ -196,8 +196,14 @@ export interface OffsettingRecord {
  * `ValueByType['charge']` is **owed** ([SD §4.7.3] — "no document gives any of the three a shape"),
  * so there is no value to read off a charge assertion yet.
  *
- * TODO([SD §4.7.2b] / A11): when the charge value lands, this should take the two assertions and
- * read them, and should be evaluated per `{aspect}` fact key rather than per shipment.
+ * TODO([SD §4.7.2b] / A7 / A12): when the charge value lands, this should take the two assertions
+ * and read them, and should be evaluated per `{aspect}` fact key rather than per shipment. **The
+ * owner is no longer A11** — [A7 §6] records that A11 is a claims area and re-points the value
+ * shape to A7 / A12, blocked on the corpus. And [A7 §3.8] gives the fact-key direction a second
+ * argument: ADE states the
+ * zero-out invariant _per shipment_, so a **cross-subject set-off** — `src:dp3-tender-of-service`
+ * NTS §5.8.2, where the PPSO recovers one shipment's extra cost against a different carrier's own
+ * BL — breaks the shipment reading of this invariant and not the fact-key one.
  */
 export function cancellationZeroesOut(originalTotal: number, cancelTotal: number): boolean {
   return originalTotal + cancelTotal === 0

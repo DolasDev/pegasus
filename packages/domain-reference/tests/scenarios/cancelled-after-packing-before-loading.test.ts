@@ -114,10 +114,16 @@ const proposedCharge: CapturedAssertion<'charge'> = {
   context: [shipment, order, residence],
   qualifier: { aspect: 'PROPOSED' },
   basis: 'ACTUAL',
-  // **Owed.** [SD §4.7.3]: "No document gives any of the three a shape."
-  value: owed('chargeValue', 'A11 — charge facts [SD §4.7.3]', {
-    note: 'cartons, dish packs, paper and tape, as the crew listed them on the pack sheet',
-  }),
+  // **Owed.** [SD §4.7.3]: "No document gives any of the three a shape." The owner read A11 until
+  // [A7 §6] found A11 is a claims area and the value of a charge is not a claim; it is re-pointed
+  // to A7 / A12 on `conditionValue`'s `A4 / A10` precedent, with the blocker in the reason half.
+  value: owed(
+    'chargeValue',
+    'A7 / A12 — the corpus publishes gross/net/discount as field names and defines them nowhere',
+    {
+      note: 'cartons, dish packs, paper and tape, as the crew listed them on the pack sheet',
+    },
+  ),
 }
 
 describe('[SD §8.4] the pack day is a Trip with one Stop, so the packing anchors', () => {
@@ -377,7 +383,13 @@ describe('OWED — the charge exists, is anchored, and has no value', () => {
     // materials already charged" and the model cannot say how much. The amount rides as a
     // provisional payload on the owed marker, which [SD §0] makes explicitly non-normative.
     expect(proposedCharge.value.owed).toBe('chargeValue')
-    expect(proposedCharge.value.owedTo).toContain('A11')
+    // The owner read A11 and [A7 §6] found it is the wrong area — A11 is claims and valuation, and
+    // the value of a charge is not a claim. Re-pointed to A7 / A12 on `conditionValue`'s `A4 / A10`
+    // precedent, with the blocker in the reason half. Both halves are asserted, because the whole
+    // point of the correction is that an owner alone was not enough.
+    expect(proposedCharge.value.owedTo).toContain('A7')
+    expect(proposedCharge.value.owedTo).toContain('defines them nowhere')
+    expect(proposedCharge.value.owedTo).not.toContain('A11')
     expect(proposedCharge.value.provisional).toBeDefined()
   })
 

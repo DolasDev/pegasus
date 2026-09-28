@@ -649,6 +649,13 @@ where the mint would cost more than the gap.
   §Cross-area to [A7], which owns whether the cap is a `charge` at `aspect = DECIDED` or a fourth
   thing.
 
+  > **Overturned by [A7 §3.5].** The first half of this bullet stands — a decided weight is not one
+  > of [SD §4.2]'s five bases — and the conclusion does not follow. [SD §4.1]'s `measure` family row
+  > quotes element 187 with **`B` billed** beside `G`, `N` and `T`, which is the axis the model maps
+  > to `type`; and [SD §4.4]'s `R-WEIGHT-LOWER` is sourced by `src:dp3-400ng` Item 4.11.d, _"invoice
+  > on the lesser weight"_, so the reweigh case these sources are about is already resolved as
+  > `weight.net`. §Cross-area to [A7] carries the full argument and what it leaves.
+
 **Services ordered: a rubric-vs-binding-text conflict, surfaced rather than resolved by preference.**
 The rubric puts services ordered in A2. The binding fork puts it on the **order** — [`fork-order`
 §3.1] defines an order as _"one commitment, to one performing party, to perform **a named set of
@@ -814,14 +821,14 @@ the act and [SD §4.7.1] has no row for it. Nobody invented the gap; it was simp
 
 ### Owed, with an owner
 
-| Owed                                                                      | Owner                            | What it needs                                                                                                        |
-| ------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **`shipmentCommitment`** — a [SD §4.7.1] row and an [A8 §5] row           | [SD] + [A8 §9 items 3, 8]        | A `boundBy` member meaning _"resolved by the order's own award"_ — the same one [A1 §Cross-area] asks for. §3.6      |
-| **`shipmentType`** — a facet set, then a row                              | A2, re-opened, after A8          | Facets settled; `partyRole` carrying who performs and who pays ([A8 §9 items 1-2]); A12 owning the rate family. §3.3 |
-| **`cube`** — a row                                                        | [SD §4.7.3], with a units module | The `unitOfMeasure` vocabulary, which is one of the three owed closed vocabularies. §3.6                             |
-| **Whether a billable-weight cap is a `charge` at `aspect = DECIDED`**     | A7                               | [A8 §5] row 11's `PRINCIPAL` binding, and whether a cap with a justification is a decision or a fourth aspect. §3.6  |
-| **Services ordered at shipment grain**                                    | A7, with [`fork-order` §6] q2    | Whether an order's two shipments may carry different service sets. §3.6                                              |
-| **The terminal act of a shipment whose warehouse became its destination** | A4                               | §3.2(f). There is no record type for it and A2 does not mint one                                                     |
+| Owed                                                                                               | Owner                            | What it needs                                                                                                                                                                                               |
+| -------------------------------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`shipmentCommitment`** — a [SD §4.7.1] row and an [A8 §5] row                                    | [SD] + [A8 §9 items 3, 8]        | A `boundBy` member meaning _"resolved by the order's own award"_ — the same one [A1 §Cross-area] asks for. §3.6                                                                                             |
+| **`shipmentType`** — a facet set, then a row                                                       | A2, re-opened, after A8          | Facets settled; `partyRole` carrying who performs and who pays ([A8 §9 items 1-2]); A12 owning the rate family. §3.3                                                                                        |
+| **`cube`** — a row                                                                                 | [SD §4.7.3], with a units module | The `unitOfMeasure` vocabulary, which is one of the three owed closed vocabularies. §3.6                                                                                                                    |
+| **Whether a billable-weight cap is a `charge` at `aspect = DECIDED`** — **answered NO**, [A7 §3.5] | ~~A7~~ → [SD §4.1]               | The reweigh case was already resolved by [SD §4.4]; what is left is a shipment-subject, authority-decided quantity with **no family** in [SD §4.1]'s table — the same gap `charge` has. §Cross-area to [A7] |
+| **Services ordered at shipment grain**                                                             | A7, with [`fork-order` §6] q2    | Whether an order's two shipments may carry different service sets. §3.6                                                                                                                                     |
+| **The terminal act of a shipment whose warehouse became its destination**                          | A4                               | §3.2(f). There is no record type for it and A2 does not mint one                                                                                                                                            |
 
 ### What only the user can decide
 
@@ -1023,7 +1030,33 @@ record type** (§3.2f) — the shipment did not arrive anywhere and was not deli
 **§3.4's `COMPLETE` fork now names A4 as one of two remaining blockers** rather than one of three
 areas jointly owning it.
 
-### To [A7]
+### To [A7] — **answered**, at [`A7` §3.5](A7-charges-billing.md), and (a) is answered **against** this document
+
+> **§3.6's placement is overturned, on binding text this document did not read against its own
+> question — which is the delegation below working rather than a disagreement.** Two passages in
+> [SD] decide it, and the second is the decisive one. **[SD §4.1]'s `measure` family row quotes the
+> very element (a) cites, with `B` billed among its kinds beside `G`, `N` and `T`** — _"`G` gross,
+> `N` actual net, `T` tare, `E` estimated net, **`B` billed**…"_ That is an argument column rather
+> than the family's Examples column, so read narrowly it declares nothing; what it does is put `B`
+> on the axis the model maps to **`type`** (net/gross/tare), not the one it maps to **`basis`**
+> (actual/estimated). §3.6 ruled out a fourth **basis**, correctly, and never considered a fourth
+> **type**. And then **[SD §4.4]'s `R-WEIGHT-LOWER` is sourced by a _billing_ rule** — its middle
+> row is `src:dp3-400ng` Item 4.11.d, _"invoice on the lesser weight"_ — so in the case all three of
+> (a)'s sources are about, an original weighing and a reweigh, the billed weight is not a separate
+> fact at all: **it is `weight.net` resolved**, which is why `weight.net`'s authority row reads
+> `boundBy = NONE`.
+>
+> [A7 §3.5(c)] records what that leaves, and it is three things wearing one name rather than one:
+> a **tariff minimum or proration** (A12's arithmetic over an already-resolved weight — which
+> answers **(c)** below, and is where the 1,000-lb minimum lands); a **regulatory proration**
+> (§375.403(a)(11), §375.707(b)); and an **authority's cap with a justification**
+> (`billableWeightCap`), which is genuinely a decision and whose subject is a **shipment**, not a
+> charge — all three of (a)'s sources put it at shipment grain, and one cap feeds every weight-based
+> charge on the shipment. A7 mints nothing, because a shipment-subject authority-decided quantity
+> has no family in [SD §4.1]'s table, which is the same gap `charge` itself has.
+>
+> **(b) services ordered** is untouched: it remains A7's on this document's placement and is
+> [`fork-order` §6]'s user question 2, which no external source answers.
 
 Three, in the order A7 will meet them. **(a)** `src:milmove-mymove`'s `billableWeightCap` with its
 **justification** field, `src:uncefact-mmt-rdm`'s `ChargeableWeightMeasure` and

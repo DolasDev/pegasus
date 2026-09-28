@@ -222,8 +222,30 @@ export interface ValueByType {
    * `src:cfr-49-375` §375.503's itemized inventory) — the condition vocabulary is nobody's yet. */
   condition: Owed<'conditionValue', 'A4 / A10 — no document fixes the condition vocabulary'>
   /** Owed: [SD §4.7.2b] splits the fact into three aspects (propose / decide / rate) whose values
-   * are an amount, an approval and a price. No document gives any of the three a shape. */
-  charge: Owed<'chargeValue', 'A11 — charge facts [SD §4.7.3]'>
+   * are an amount, an approval and a price. No document gives any of the three a shape.
+   *
+   * **The owner was A11 and A11 is a claims area** — [A7 §6]. A11's rubric row is "released vs full
+   * value protection, claims lifecycle", and the value of a charge is not a claim. The likely cause
+   * of the mis-assignment is one word wide: `src:cfr-49-375` Appendix A defines a **valuation
+   * charge** — a charge _for_ the liability level — which is genuinely A11's neighbour, and "the
+   * valuation charge" and "the value of a charge" are easy to fuse.
+   *
+   * It re-points to **`A7 / A12`** on `conditionValue`'s precedent — `'A4 / A10'`, where A4 is
+   * written and A10 is context-map-only, so the convention names the areas whose **subject** it is
+   * rather than the area that will publish it next. A7 owns the charge and A12 owns the rating
+   * shape, and the reason half records what actually blocks it: the corpus publishes gross / net /
+   * discount in **field names** (`src:sirva-ade`'s `GrossChargeAmt`/`NetChargeAmt`/`DiscountPer`,
+   * `src:atlas-world-group-api`'s `IRatingLineItem`, `src:uncefact-scrdm`'s
+   * `Trade_ Allowance Charge`) and **defines** them nowhere — `src:sirva-ade`'s own analysis calls
+   * its trio _"genuinely ambiguous"_.
+   *
+   * **Changing this string is a published change**, which [A7 §9] found by reading the emitted
+   * diff: `owedTo` is rendered as a `const` on both faces. `repointedOwedOwner` at
+   * [catalog §2.3]. */
+  charge: Owed<
+    'chargeValue',
+    'A7 / A12 — the corpus publishes gross/net/discount as field names and defines them nowhere'
+  >
   /** Owed, and known to be incomplete: "**The recipient has no field.** [A8 §9 item 6] owes 'the
    * party as a notification target', and [SD §6.5]'s obligations cannot name a contactable party
    * until it lands." ([SD §4.7.3]) */
