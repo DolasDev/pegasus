@@ -1115,7 +1115,27 @@ hand-off 1 below is the constraint that kept the two halves from collapsing into
 3. **The reshipment path is documentary**: `src:dtr-part-iv` §E.4(4)(c)'s new BL, and §E.1's
    diversion exclusion for shipments already in destination SIT.
 
-### To [A7]
+### To [A7] — **triaged**, at [`A7` §3.10](A7-charges-billing.md)
+
+> **A7 answers all five, and four of them go to A12.** The prediction below is confirmed — none of
+> it needs a mechanism, because [SD §4.7.1]'s `charge` row already permits `stay` in `context[]`.
+> What A7 found is that four of the five items are **rating arithmetic** and so are out of scope by
+> the rubric's own parenthesis: the first-day / additional-days / delivery-out triple (four
+> publishers name the buckets and all four **price** them), the re-entry first-day rule, the
+> accrual-ceases rule — whose 5th-GBD cut-off is the sharpest illustration that a charge can stop
+> accruing on a date the goods' location does not determine — and the 25% post-termination discount.
+> The fifth, Item 17.9.b.2's **1,000-lb minimum on the combined weight of separately-rated
+> portions**, is answered at [A7 §3.5(c)]: it is a tariff minimum, which is neither a weight (no
+> party asserts the goods weigh 1,000 lb) nor a charge decision.
+>
+> And one **negative** A7 hands back rather than solves: `src:dp3-tender-of-service` §C.3.h makes
+> the 24-hour notice the precondition of collecting the SIT and delivery-out charges, and that is a
+> row of [A7 §3.7]'s `A-COLLECT` table whose gating fact is a **notification** — whose recipient has
+> no field ([SD §4.7.3], [A8 §9 item 6]). So the storage area's one collection rule cannot be
+> evaluated, for a reason that is neither A5's nor A7's. **And the row is scoped to the `shipment`,
+> not to the `stay`**, which is the tempting answer: [SD §4.7.3] gives `notification` the canonical
+> subject family `goods`, and what the rule tests is whether the notice was given rather than
+> anything about the storage that followed.
 
 The whole of A5's charge surface, deliberately left: the first-day / additional-days / delivery-out
 triple (`src:dp3-400ng` Items 17.5, 210A-F; `src:weichert-supplier-api` odt:561-568;

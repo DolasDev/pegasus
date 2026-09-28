@@ -1,0 +1,73 @@
+{
+  "table": "collection-preconditions",
+  "declaredBy": "[A7 §3.7]",
+  "note": "The rules the corpus publishes under A-COLLECT ([A7 §3.7]): a charge that is well-formed, properly authorised and correctly rated, and that may still not be collected because of a fact about a DIFFERENT aggregate. Each row names the gating fact's aggregate kind, which is the whole point — [A6 §3.5]'s D-CITE scopes evidentiary standing to a (document kind, fact class) pair, and four of these gate on something that is not a document at all.",
+  "notAVocabulary": "This table is NOT a published vocabulary and is not emitted in either schema. [A7 §3.7] is explicit that the list is neither complete nor generalised beyond the programmes that publish it: FOUR of the seven rows are DoD programme rules, and src:dp3-400ng's own analysis warns against promoting programme rules into the core model. The THREE src:cfr-49-375 rows are federal law and reach every US interstate consumer move.",
+  "publisherNote": "Three sources carry these seven rows, and two of the three — src:dp3-tender-of-service and src:dp3-400ng — are the SAME programme (DP3), so the genuinely independent publisher count is TWO: US federal consumer-protection law, and the DoD household-goods programme. Recorded because seven rows reads like broader agreement than the corpus actually supplies, and [A7 §7] rates A-COLLECT medium for this reason. charges.test.ts gates the counts.",
+  "primaryNote": "`primary` is true where the quotation is from a source we hold a captured/ directory for. Only src:cfr-49-375 among the sources below has one, so three rows are primary and four are secondary — the source analysis's text, not the source's. [A7 §0] item 4 is the rule.",
+  "rows": [
+    {
+      "id": "WEIGHT_TICKETS_WITH_THE_FREIGHT_BILL",
+      "gates": "any shipment charge dependent upon the weight transported",
+      "gatingFactAbout": "document",
+      "source": "src:cfr-49-375",
+      "primary": true,
+      "citation": "§375.519(d) — \"All freight bills… must include true copies of all weight tickets… in order to collect any shipment charges dependent upon the weight transported.\" Handed to A7 by [A6 §Cross-area]; it is D-CITE's third supporting quotation and the only one that states a consequence.",
+      "note": "The sharpest row in the table, and the one that shows the gap. It gates the FREIGHT BILL, which [A7 §3.2] establishes the model cannot express — so the corpus's cleanest collection rule names a document on one side and a missing artefact on the other."
+    },
+    {
+      "id": "TOTAL_LOSS_COLLECTS_NOTHING",
+      "gates": "every freight charge, including accessorial and terminal charges, except a specific valuation charge",
+      "gatingFactAbout": "shipment",
+      "source": "src:cfr-49-375",
+      "primary": true,
+      "citation": "§375.709 — on a total loss in transit the carrier is forbidden to collect any freight charges, unless the loss was caused by the shipper.",
+      "note": "The one row where A7 and A11 meet: the valuation charge is the single exception, and valuation is A11's. [A7 §Cross-area] records the meeting point rather than claiming it."
+    },
+    {
+      "id": "ACCESSORIALS_DETERMINED_BEFORE_THE_BILL_OF_LADING",
+      "gates": "accessorial charges such as elevator and long-carry charges",
+      "gatingFactAbout": "shipment",
+      "source": "src:cfr-49-375",
+      "primary": true,
+      "citation": "§375.401(f) — accessorial charges must be determined before preparing the bill of lading; if the carrier fails to ask, it must deliver and bill after 30 days.",
+      "note": "A moment rather than an artefact: the gate is whether the determination preceded a named act on the shipment. The remedy is a deferral, not a forfeiture, which is why it reads differently from the other six."
+    },
+    {
+      "id": "SIT_DENIED_FOR_WANT_OF_THE_TWENTY_FOUR_HOUR_NOTICE",
+      "gates": "the SIT and delivery-out charges",
+      "gatingFactAbout": "shipment",
+      "source": "src:dp3-tender-of-service",
+      "primary": false,
+      "citation": "§C.3.h — \"If PPSO determines the TSP did not provide at least 24 hour notice to the customer before placing shipment in SIT, PPSO will deny the SIT and delivery out charges.\"",
+      "note": "The gating fact is a NOTIFICATION, and `shipment` is here because [SD §4.7.3] declares `notification`'s canonical subject family **`goods`** — the duty is stated per shipment. It is NOT `stay`: what the rule tests is whether the notice was given, not anything about the storage that followed. Recorded because `stay` is the tempting answer and would make this the only row of its kind. And the rule cannot be evaluated for a second, unrelated reason: `notification`'s recipient has no field ([SD §4.7.3], [A8 §9 item 6])."
+    },
+    {
+      "id": "NO_INVOICING_BEFORE_THE_REWEIGH_IS_RECORDED",
+      "gates": "any service on a direct-delivery shipment, and destination invoicing generally",
+      "gatingFactAbout": "shipment",
+      "source": "src:dp3-400ng",
+      "primary": false,
+      "citation": "Item 4.11.c — the TSP \"cannot invoice for any services until reweigh has been performed and DPS reweigh information updated\"; Item 4.12.b adds that reweigh tickets must reach the origin PPSO before destination invoicing.",
+      "note": "The gating fact is a WEIGHT ASSERTION about the shipment — the existence of the reweigh, not its value. Its value is settled separately by R-WEIGHT-LOWER ([SD §4.4]), whose middle source row is the same tariff's Item 4.11.d."
+    },
+    {
+      "id": "DOCUMENT_PACKAGE_TO_THE_PPSO_WITHIN_SEVEN_GBD",
+      "gates": "invoicing of the shipment",
+      "gatingFactAbout": "document",
+      "source": "src:dp3-tender-of-service",
+      "primary": false,
+      "citation": "§C.12.a-b — the full document set within 7 GBD of pickup: weighted BL, weight tickets, DD 619, inventories, third-party invoices.",
+      "note": "A precondition expressed as a document SET rather than a document kind. D-CITE's pair does not have a plural on its document side; recorded rather than resolved."
+    },
+    {
+      "id": "THIRD_PARTY_CHARGES_NEED_A_RECEIPT_AND_A_PRE_APPROVAL",
+      "gates": "a charge for a service performed by a third party",
+      "gatingFactAbout": "document",
+      "source": "src:dp3-400ng",
+      "primary": false,
+      "citation": "Item 35.1 — paid original receipts and prior PPSO pre-approval, with one reimbursement per receipt.",
+      "note": "Half of this row is already carried: the pre-approval is a `charge` at aspect = DECIDED ([A8 §5] row 11, whose evidence column cites src:dtr-part-iv's pre-approval-as-a-typed-record). What is left is the receipt, which is a document. The reimbursement itself is a NEW charge and not an offsetting record — [A7 §3.8]."
+    }
+  ]
+}

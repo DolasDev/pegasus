@@ -198,6 +198,7 @@ const DOCUMENTS: Readonly<Record<string, string>> = {
   A2: 'A2-shipment-structure.md',
   A3: 'A3-trip-stop-assignment.md',
   A6: 'A6-documents-evidence.md',
+  A7: 'A7-charges-billing.md',
   'fork-order': 'fork-order-shipment-cardinality.md',
   'fork-time': 'fork-time-provenance-corrections.md',
   F1: 'F1-handover-qualifier-decision.md',
@@ -1071,6 +1072,15 @@ const RULES: readonly {
     term: 'D-CITE',
     what: 'a citation is a pointer, never a claim',
     export: 'CITATION_CLAIMS_NOTHING',
+  },
+  // [A7 §3.7]. D-CITE one aggregate over, and the constant is what is registered for the same
+  // reason D-CITE's is: it is a semantics decision, and what the types hold is the refusal that
+  // follows from it — a `collectable` field would be the mutable current-state field [SD §1.1]
+  // forbids, and `evidence[]` is where D-CITE says standing is NOT.
+  {
+    term: 'A-COLLECT',
+    what: 'collectability is a rule over (charge, gating fact) pairs',
+    export: 'COLLECTABILITY_IS_A_RULE_OVER_PAIRS',
   },
 ]
 

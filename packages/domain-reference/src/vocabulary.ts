@@ -237,8 +237,15 @@ export const NON_ACT_TYPES = [
    * A money fact about one charge — family `charge`, with the qualifier `{aspect}` ∈ `PROPOSED` |
    * `DECIDED` | `RATED` ([SD §4.7.2b]), which **corrects [A8 §5] row 11**: without it the fact key
    * "would put a _proposal_, an _approval_ and a _price_ into **one** contest, where an approval
-   * would compete with an amount". Its `value` shape is owed to A11 ([SD §4.7.3]), and financial
-   * facts are corrected only by an offsetting record ([SD §6.3]).
+   * would compete with an amount". Its `value` shape is owed to **A7 / A12** and is blocked on the
+   * corpus — the owner read A11 until [A7 §6] found that A11 is a claims area and the value of a
+   * charge is not a claim — and financial facts are corrected only by an offsetting record
+   * ([SD §6.3]).
+   *
+   * **No act on a charge has a record** ([A7 §3.2]): nothing here says a charge was billed,
+   * collected, paid, disputed, denied or set off, and the blocker is that [SD §1.2] has no
+   * `invoice` and no `payment` aggregate. `chargeCollection` below records it. What a charge's
+   * collectability depends on is **A-COLLECT**, a rule over pairs and not a field ([A7 §3.7]).
    */
   'charge',
   /**
@@ -931,6 +938,45 @@ export const ABSENT_AND_OWED = [
    * owes it to the user and to A10.
    */
   'documentIssuance',
+  /**
+   * The act by which a charge is **billed and collected** — the freight bill presented, the amount
+   * tendered, the possession relinquished. [A7 §3.2].
+   *
+   * Named as a regulated act, with deadlines and an arithmetic, by the one A7 source we hold as
+   * primary. `src:cfr-49-375` §375.807(a): the carrier must present its invoice "within 15 days,
+   * exclusive of Saturdays, Sundays, and Federal holidays" of delivery, with §375.807(b)-(c)'s
+   * credit ladder running from it; §375.407(a) makes relinquishing possession conditional on a
+   * **tender of payment** of the lawful maximum; §375.801 makes the "balance due invoice" the
+   * trigger of the Subpart H collection regime. Secondary corroboration: `src:milmove-mymove`'s
+   * `PaymentRequest` runs six states with a timestamp each and closes the task order on `isFinal`;
+   * `src:dtr-part-iv` chooses between **DD 139 and DD 1131 by pay status**, which is the corpus's
+   * only published statement that the instrument of collection varies.
+   *
+   * **Its blocker is a kind none of the entries above has, and the model has met it once before:
+   * the SUBJECT does not exist.** [A5 §3.6]'s three storage classes are blocked on a party class
+   * [A8 §9 item 1] has not defined; `shipmentCommitment` and A1's two order classes are blocked on
+   * [A8 §4.3]'s `boundBy` enum; `documentIssuance` above is blocked on minting alone. This one never
+   * reaches the authority ledger at all, because [SD §1.2]'s fourteen aggregate kinds contain no `invoice`
+   * and no `payment`. The model's other instance of the same shape is `placeRef`, owed to
+   * [SD §1.2] because there is no `place` aggregate.
+   *
+   * **Why the aggregate is not minted here, although it is the cheapest mint available.**
+   * [SD §1.2] is "open to _addition_ in a later `specVersion`" and [catalog §2.3] classes a new
+   * aggregate kind as **additive**. It is refused on [A5 §3.6]'s discriminator: minting `invoice`
+   * alone produces exactly [A6 §3.3]'s `document` — a subject with no facts — and giving it facts
+   * means minting a fact class whose value is `chargeValue`, which is itself owed. That trades one
+   * gap for three. And the grain is not settled: [A7 §3.2] reads seven publishers' invoice
+   * groupings and no two group the same things, with two of them (`src:alvys-api`'s
+   * `SummaryInvoice`, `src:sirva-ade`'s per-half-month statement) grouping **across shipments**,
+   * which no aggregate in [SD §1.2] can be a subject of.
+   *
+   * **What its absence costs**, [A7 §3.3] and [A7 §3.7]: a `chargeStateAt` projection cannot be
+   * written, for [A2 §3.6]'s `B-STAGE` reason a third time; and **`A-COLLECT`'s rules have nowhere
+   * to run** — `src:cfr-49-375` §375.519(d) gates the **freight bill**, and the freight bill is
+   * precisely what is missing, so the corpus's cleanest collection rule names a document on one
+   * side and an artefact the model cannot express on the other.
+   */
+  'chargeCollection',
 ] as const
 
 export type AbsentAndOwedClass = (typeof ABSENT_AND_OWED)[number]

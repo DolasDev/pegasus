@@ -467,6 +467,10 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     // [A6 §3.3]'s one. The first entry in §4.7.3 whose blocker is minting alone: [A8 §5] row 10's
     // `boundBy = SCHEME` already determines its holder, so nothing is owed underneath the row.
     documentIssuance: '`documentIssuance`',
+    // [A7 §3.2]'s one, and its blocker is a kind none of the entries above has: the SUBJECT does
+    // not exist, so the question never reaches [A8 §9 item 8]'s ledger at all. `placeRef` is the
+    // model's other instance of the same shape.
+    chargeCollection: '`chargeCollection`',
   }
 
   it('names each absent class in §4.7.3, so its absence is not read as an oversight', () => {

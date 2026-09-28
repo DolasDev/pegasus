@@ -83,8 +83,20 @@ void _catalogIsTheVocabulary
  * wire: the three absent fact classes are a change to what the model admits is **missing**, which
  * [catalog §5] already distinguishes from a change to what is published, and [A5 §3.3]-[A5 §3.5]
  * mint no type, aggregate, field or qualifier at all.
+ *
+ * `0.5.0` at A2 and again at A6: **no bump**, both times because the emitted schemas were
+ * byte-identical — see [catalog §2.4]'s two non-bump rows.
+ *
+ * `0.6.0` at A7: `repointedOwedOwner`, additive, and a class this bump adds. **A7's decisions move
+ * nothing on the wire** — §3.2 mints no aggregate, §3.3 and §3.4 publish no vocabulary, and
+ * `chargeCollection` is a change to what the model admits is **missing**. What moves it is the
+ * round's **audit** finding: [A7 §6] corrected `chargeValue`'s owner from A11 to `A7 / A12`, and
+ * `owedTo` is rendered as a **`const`** on both faces, so the diff is one line in each schema. The
+ * schema diff was read before this line was written, which is [catalog §5]'s rule and the third
+ * time it has changed an answer — after `keySideRole` at A8, and after A2's and A6's empty diffs
+ * being the evidence for their non-bumps.
  */
-export const CATALOG_VERSION = '0.5.0'
+export const CATALOG_VERSION = '0.6.0'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces

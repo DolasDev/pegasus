@@ -1254,6 +1254,69 @@ export function loadReasonVocabulary(raw: unknown): ReasonVocabulary {
   }
 }
 
+/* ──────────────────────  A7's collection preconditions  ─────────────────── */
+
+/**
+ * One published rule under **A-COLLECT** ([A7 §3.7]): a fact about some *other* aggregate that
+ * stands between a well-formed, authorised, rated charge and its collection.
+ */
+export interface CollectionPrecondition {
+  readonly id: string
+  /** What the rule gates, in the source's own terms. */
+  readonly gates: string
+  /**
+   * The aggregate kind the **gating fact** is about. The whole point of the table: [A6 §3.5]'s
+   * D-CITE scopes standing to a _(document kind, fact class)_ pair, and four of these rows gate on
+   * something that is not a document.
+   */
+  readonly gatingFactAbout: AggregateKind
+  readonly source: string
+  /** True where we hold a `captured/` directory for the source, so the quotation is primary. */
+  readonly primary: boolean
+  readonly citation: string
+  readonly note: string
+}
+
+export interface CollectionPreconditionTable {
+  readonly rows: ReadonlyMap<string, CollectionPrecondition>
+}
+
+/**
+ * Load A7's table.
+ *
+ * **Not a published vocabulary**, and nothing here emits it: [A7 §3.7] records that the list is
+ * neither complete nor generalised beyond the programs that publish it. What the loader enforces is
+ * that every row names a real aggregate kind, because a rule whose gating fact is about nothing the
+ * model has is not a rule this model can hold — and that is the defect the table exists to make
+ * visible.
+ */
+export function loadCollectionPreconditions(raw: unknown): CollectionPreconditionTable {
+  const root = readObject('collection-preconditions', raw)
+  const rows = new Map<string, CollectionPrecondition>()
+
+  for (const [index, item] of readArray('collection-preconditions.rows', root['rows']).entries()) {
+    const at = `collection-preconditions.rows[${String(index)}]`
+    const object = readObject(at, item)
+    const id = readString(`${at}.id`, object['id'])
+    if (rows.has(id)) fail(`${at}.id`, `${id} is declared twice`)
+    rows.set(id, {
+      id,
+      gates: readString(`${at}.gates`, object['gates']),
+      gatingFactAbout: readAggregateKind(`${at}.gatingFactAbout`, object['gatingFactAbout']),
+      source: readString(`${at}.source`, object['source']),
+      primary: readBoolean(`${at}.primary`, object['primary']),
+      citation: readString(`${at}.citation`, object['citation']),
+      note: readString(`${at}.note`, object['note']),
+    })
+  }
+
+  if (rows.size === 0) {
+    fail('collection-preconditions.rows', 'A-COLLECT with no published rule is not a finding')
+  }
+
+  return { rows }
+}
+
 /* ────────────────────────────  the three, joined  ───────────────────────── */
 
 export interface DomainTables {

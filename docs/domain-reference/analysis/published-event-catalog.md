@@ -192,15 +192,16 @@ rule is named.
 
 **Additive** (a new `specVersion` within the same major):
 
-| Change                                                                                    | Why additive                                                                                                                                                                                                                                                                                                                                                                                  |
-| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A new `type` row, with its [SD §4.7]-shaped declaration                                   | The declaration is complete for the new version; no existing row moves                                                                                                                                                                                                                                                                                                                        |
-| A new `aggregate` kind                                                                    | [SD §1.2] states exactly this: "open to _addition_ in a later `specVersion`"                                                                                                                                                                                                                                                                                                                  |
-| A new member of `CAPTURE_METHODS`, `BASES`, `OUTCOMES`, `REASON_SCOPES`, or a reason code | Same rule, generalised — **[SYNTHESIS]**                                                                                                                                                                                                                                                                                                                                                      |
-| **The first publication of a vocabulary that shipped owed** — `publishedOwedVocabulary`   | Not an addition but a **narrowing**, `string` → enum. Additive because the owed marker was itself published: `x-owed` states on the wire that "the members are not", so no conforming producer could have relied on a code being accepted, and no existing member's meaning moves — see below. **[SYNTHESIS]**                                                                                |
-| **The first publication of a value _shape_ that shipped owed** — `publishedOwedShape`     | The sibling of the row above, one level up the type: A5 replaced `Remedy`'s `Owed` branch with `OpensStay` ([A5 §3.2]). Additive on the same ground — the emitted union carried an `Owed.remedy` branch whose `owedTo` was a `const` naming A5, so the wire said the branch was a placeholder. It removes one `anyOf` branch and adds another rather than narrowing a string. **[SYNTHESIS]** |
-| A new optional payload field                                                              | No record that validated stops validating                                                                                                                                                                                                                                                                                                                                                     |
-| A new `context[]` member kind                                                             | `context[]` is non-authoritative ([SD §1.4]) and nothing keys on it                                                                                                                                                                                                                                                                                                                           |
+| Change                                                                                    | Why additive                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A new `type` row, with its [SD §4.7]-shaped declaration                                   | The declaration is complete for the new version; no existing row moves                                                                                                                                                                                                                                                                                                                                                                                                             |
+| A new `aggregate` kind                                                                    | [SD §1.2] states exactly this: "open to _addition_ in a later `specVersion`"                                                                                                                                                                                                                                                                                                                                                                                                       |
+| A new member of `CAPTURE_METHODS`, `BASES`, `OUTCOMES`, `REASON_SCOPES`, or a reason code | Same rule, generalised — **[SYNTHESIS]**                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **The first publication of a vocabulary that shipped owed** — `publishedOwedVocabulary`   | Not an addition but a **narrowing**, `string` → enum. Additive because the owed marker was itself published: `x-owed` states on the wire that "the members are not", so no conforming producer could have relied on a code being accepted, and no existing member's meaning moves — see below. **[SYNTHESIS]**                                                                                                                                                                     |
+| **The first publication of a value _shape_ that shipped owed** — `publishedOwedShape`     | The sibling of the row above, one level up the type: A5 replaced `Remedy`'s `Owed` branch with `OpensStay` ([A5 §3.2]). Additive on the same ground — the emitted union carried an `Owed.remedy` branch whose `owedTo` was a `const` naming A5, so the wire said the branch was a placeholder. It removes one `anyOf` branch and adds another rather than narrowing a string. **[SYNTHESIS]**                                                                                      |
+| **Correcting the _owner_ of a value that stays owed** — `repointedOwedOwner`              | A7's, and the third and **weakest** use of the two rows above's argument. `owedTo` is rendered as a **`const`** on both faces, so amending it changes a published constraint — but the value it constrains carries **no domain content**: it is the model's bookkeeping about its own incompleteness. Unlike the two rows above it has **no `x-owed` annotation** to lean on (see below). [A7 §6] re-pointed `chargeValue` from A11, a claims area, to `A7 / A12`. **[SYNTHESIS]** |
+| A new optional payload field                                                              | No record that validated stops validating                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| A new `context[]` member kind                                                             | `context[]` is non-authoritative ([SD §1.4]) and nothing keys on it                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 **Breaking** (a new major):
 
@@ -213,7 +214,7 @@ rule is named.
 | Moving a field between MANDATORY, OPTIONAL and FORBIDDEN | The envelope's obligations are the contract                                                                                          |
 | Changing a role name's spelling                          | F5 in [`findings-from-alloy.md`](findings-from-alloy.md): role names are fact-key components after F1, "so spelling is load-bearing" |
 
-**Both owed-publication classes carry a restriction, and it is recorded rather than absorbed.** The
+**All three owed classes carry a restriction, and it is recorded rather than absorbed.** The
 narrowing is safe on the **queried** face — a consumer is served a narrower type — and is a genuine
 restriction on the **captured** face: a producer sending an unrecognised code was valid and is now
 rejected. It is classified additive on the strength of the published `x-owed` annotation, not on the
@@ -222,6 +223,36 @@ and `identityScheme` are the three vocabularies still owed, and the glossary's O
 them as such. A5 is the first use of `publishedOwedShape` ([A5 §3.2]), which removes one `anyOf`
 branch rather than narrowing a string; the branch it removed was itself annotated as owed on the
 wire, which is why the two classes share an argument.
+
+**`repointedOwedOwner` is the third and the weakest use of that argument, and it is weakest because
+it resolves nothing.** A4 and A5 each closed a gap; A7 corrected a gap's **label** and left the gap
+open. Its restriction is the same shape and is narrower: a producer or a consumer that pinned the
+exact `owedTo` text is broken, and nothing else is.
+
+**It is classified additive on one ground rather than two, and the missing ground is recorded rather
+than glossed.** The ground it stands on is that **`owedTo` carries no domain content**:
+`primitives.ts` states its purpose as naming _"the document or area that owes it, so the gap is
+queryable rather than silently defaulted"_, and its sibling `provisional` is documented _"never
+normative"_. The ground it does **not** have is the one A4's and A5's classes lean on. Those rest on
+the published **`x-owed` annotation**, and the emitted `Owed.*` branches **do not carry one** — the
+generator attaches `x-owed` to `OwedCode` (the owed _vocabularies_) and not to `Owed` (the owed
+_values_), so an `Owed.chargeValue` branch announces itself only by being **named** `owed` /
+`owedTo`. That is legible to a human reading the schema and is not an annotation. A7 checked this
+against the emitted `$defs` rather than assuming the two owed shapes were annotated alike; the
+asymmetry is recorded below as a gap and is not closed here.
+
+**Three things this class surfaces and A7 does not close**, all of them properties of the generator
+or of this document rather than of any area's decision:
+
+1. **§2.3 has no rule for a breaking change while the catalog is pre-1.0.** The Breaking column says
+   _"a new major"_, and §2.4 forbids a `1.0.0` while §5's inventory stands. A7 does not need the
+   rule — it classifies additive — so it records the gap rather than inventing the answer.
+2. **`owedTo` is emitted as a `const`, so every future owner-correction is a version bump.**
+3. **The two owed shapes are annotated asymmetrically.** `OwedCode` gets `x-owed` and
+   `x-owed-vocabulary`; `Owed` gets neither, although it is the one whose **whole content** is a
+   statement about the model's incompleteness. Closing this would mean emitting an `x-owed` on the
+   `Owed` branches too — which would itself be an additive schema change, and is a generator
+   question rather than an area's.
 
 **Deprecation is marked, never deleted.** Adopted from DCSA, whose fields "carry `deprecated: true`
 with a note saying what supersedes them and why they are still required", and whose old versions
@@ -258,6 +289,7 @@ The bumps, and what each was classified as under §2.3:
 | `0.4.0` → `0.5.0` | A5                     | `Remedy`'s owed branch is replaced by `OpensStay` ([A5 §3.2]). A5's other deliverables mint no type, aggregate, field or qualifier            | `publishedOwedShape`      |
 | `0.5.0` → `0.5.0` | A2                     | **No bump.** Both emitted schemas are byte-identical across A2; the only published change is one more member of the owed inventory            | none — see below          |
 | `0.5.0` → `0.5.0` | A6                     | **No bump**, for the same reason and on stronger evidence — A6's central deliverable is a decision **not** to widen a published union         | none — see below          |
+| `0.5.0` → `0.6.0` | A7                     | `chargeValue`'s `owedTo` corrected from A11 to `A7 / A12` ([A7 §6]). **None of A7's decisions moves a byte**; the round's **audit** does      | `repointedOwedOwner`      |
 
 **A2 is the first area to change nothing on the wire, and the rule that says so is already here.**
 [§5](#5-what-the-catalog-does-not-yet-publish) records of A8's round that a moving owed inventory
@@ -278,6 +310,18 @@ output happened not to reach the wire, A6 changed none because **reaching the wi
 declined to pay**: ratifying an ingest-local widening costs nothing, and widening a published union
 costs every consumer a re-validation. `absentFactClasses` moves 14 → 15 in `index.json` and both
 schemas are byte-identical, which is again the evidence rather than the claim.
+
+**A7 breaks the run of two, and it is worth reading beside them because it inverts the pattern.**
+A2 and A6 each made decisions and moved no byte. A7's decisions likewise move nothing — [A7 §3.2]
+mints no aggregate, [A7 §3.3] and [A7 §3.4] publish no vocabulary, and `chargeCollection` is one
+more member of the owed inventory, which §5 has already distinguished from a change to what is
+published. **What moved the version is the round's §1 audit**: [A7 §6] found `chargeValue` owed to
+A11, a claims area, corrected it to `A7 / A12`, and the `owedTo` is rendered as a **`const`** on
+both faces. So the diff is one line per schema, and it is a line no decision in the document put
+there. Read the emitted `$defs`: a classification argued from which fields feel published is a
+classification waiting to be wrong, and this is the third time that has been the operative sentence
+— after A8's `keySideRole`, and after A2's and A6's empty diffs being the evidence rather than the
+claim.
 
 What caps the version is the authority rows, and no amount of vocabulary work moves that.
 
@@ -465,7 +509,7 @@ Read the generated `Owed` section of [`../glossary.md`](../glossary.md) for the 
 derived from the code and cannot go stale. As at this version it holds: **18 declared owed values**,
 **3 closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` —
 the reason vocabulary was a fourth until A4), **14 of 31** record types whose authority row is owed
-in whole or in part, **2** whose fact-class family is owed, and **15** fact classes named in the
+in whole or in part, **2** whose fact-class family is owed, and **16** fact classes named in the
 corpus and absent from the vocabulary.
 
 **Two of those five moved at A5, in opposite directions, and the pair is worth reading together.**
@@ -490,6 +534,24 @@ answered**: [A8 §5] row 10's `boundBy = SCHEME` determines its holder, so a row
 row in [A8 §5] are all that is owed, with nothing owed underneath either. A5's three are blocked on a
 party class, A2's and A1's three on a `boundBy` member, and this one on minting alone — **a third kind
 of blocker, and the only one of the three that needs no prior decision.**
+
+**And once more at A7, where the entry is blocked by something none of the others is.** [A7 §3.2]
+ran the same check over the `charge` aggregate and got the best-provisioned starting point yet — a
+declared type, a declared qualifier, a six-member `context[]` and an **assigned** authority row —
+and still found no record of a charge being billed, collected, paid, disputed, denied or set off, so
+`chargeCollection` joins the list. What blocks it is one level above this inventory: [SD §1.2] has
+no `invoice` and no `payment` aggregate, so the question **never reaches the authority ledger at
+all**. The model's other instance of that shape is `placeRef`, owed to [SD §1.2] because there is no
+`place` aggregate. A5's three are blocked on a party class, A2's and A1's three on a `boundBy`
+member, A6's on minting alone, and this one on the **subject**.
+
+**And [A7 §6] corrected an owner in this inventory rather than adding to it**, which is a thing no
+previous round has done and which turned out to cost a version — see §2.4. `chargeValue` was owed to
+**A11**, a claims-and-valuation area, and the value of a charge is not a claim; it is re-pointed to
+`A7 / A12` on `conditionValue`'s `A4 / A10` precedent. **An owed inventory is a set of claims like
+any other and is auditable like any other**, which is the half of [A1 §9]'s rule that had not been
+exercised: the counts here have been gated since A1, and the _contents_ had not been checked against
+the areas they name.
 
 **These five numbers are the only counts this document may carry, and they are gated**:
 `tests/conformance/catalog.test.ts` reads them out of this section and compares them with

@@ -34,7 +34,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
 - [Compatibility change classes](#compatibility-change-classes-13) — 13
-- [Key functions and rules](#key-functions-and-rules-27) — 27
+- [Key functions and rules](#key-functions-and-rules-28) — 28
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
@@ -59,7 +59,7 @@ record is "a first-class record with no shipment on it at all", and [SD §4.7.2b
 fact about it into three aspects (propose / decide / rate).
 
 - **Marker:** [ORIGINAL]
-- **Cited:** [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref) · [[SD §4.7.2b]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
+- **Cited:** [[A7 §3.2]](analysis/A7-charges-billing.md#32-propose-decide-and-rate-have-records-bill-collect-and-pay-do-not--owed-item-1) · [[A7 §6]](analysis/A7-charges-billing.md) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref) · [[SD §4.7.2b]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `document` (aggregate)
@@ -253,14 +253,16 @@ structure only ([A3 §3.2], C2=1).
 A money fact about one charge — family `charge`, with the qualifier `{aspect}` ∈ `PROPOSED` |
 `DECIDED` | `RATED` ([SD §4.7.2b]), which **corrects [A8 §5] row 11**: without it the fact key
 "would put a _proposal_, an _approval_ and a _price_ into **one** contest, where an approval
-would compete with an amount". Its `value` shape is owed to A11 ([SD §4.7.3]), and financial
-facts are corrected only by an offsetting record ([SD §6.3]).
+would compete with an amount". Its `value` shape is owed to **A7 / A12** and is blocked on the
+corpus — the owner read A11 until [A7 §6] found that A11 is a claims area and the value of a
+charge is not a claim — and financial facts are corrected only by an offsetting record
+([SD §6.3]).
 
 - **Canonical subject family:** `charge` = {`charge`}
 - **Qualifier:** `{aspect}` — [SD §4.7.2b] — and it CORRECTS [A8 §5 row 11]: without the qualifier the fact key 'would put a proposal, an approval and a price into ONE contest, where an approval would compete with an amount'. [ORIGINAL] as the mechanism; A8's three-way split is the finding.
 - **Authority:** **assigned**, `boundBy = PRINCIPAL`. [A8 §5] row 11. Two-sided, three ways: propose = the performing role; decide = the accountParty; rate = the tariff owner. settlingAgent/setoffAgent corroborate. Three fact keys, not one contest.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
-- **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md) · [[SD §4.7.2b]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them) · [[SD §6.3]](analysis/00-shared-decisions.md#63-the-priced-record)
+- **Cited:** [[A7 §3.2]](analysis/A7-charges-billing.md#32-propose-decide-and-rate-have-records-bill-collect-and-pay-do-not--owed-item-1) · [[A7 §3.7]](analysis/A7-charges-billing.md#37-collection-preconditions-d-cite-generalised-past-documents--owed-item-6) · [[A7 §6]](analysis/A7-charges-billing.md) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref) · [[SD §4.7.2b]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §6.3]](analysis/00-shared-decisions.md#63-the-priced-record)
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `condition` (record type)
@@ -1968,9 +1970,23 @@ Removing or renaming a `type`. It is a component of the fact key ([SD §1.3] ite
 - **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
 - **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (27)
+## Key functions and rules (28)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
+
+### `A-COLLECT` (rule)
+
+Rule **A-COLLECT**, [A7 §3.7]:
+
+> "A charge's collectability is determined by a rule naming a **(charge, gating fact)** pair. It
+> is not a property of the charge assertion, it is not an `{aspect}` value, and it is not carried
+> in `evidence[]`."
+
+- **Kind:** collectability is a rule over (charge, gating fact) pairs
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A1 §9]](analysis/A1-order-service-lifecycle.md) · [[A6 §3.5]](analysis/A6-documents-evidence.md#35-what-evidence-means--owed-item-4) · [[A7 §3.3]](analysis/A7-charges-billing.md#33-charge-and-invoice-state-is-refused-and-the-projection-is-refused-harder--owed-item-2) · [[A7 §3.7]](analysis/A7-charges-billing.md#37-collection-preconditions-d-cite-generalised-past-documents--owed-item-6) · [[A7 §7]](analysis/A7-charges-billing.md) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Corpus:** `src:cfr-49-375` · `src:dp3-400ng` · `src:dp3-tender-of-service`
+- **Declared by:** `COLLECTABILITY_IS_A_RULE_OVER_PAIRS` in `packages/domain-reference/src/rules/charges.ts`
 
 ### `A8-AFTER` (rule)
 
@@ -2261,7 +2277,7 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - `boundBy` — owed to [SD §4.7.1] — NOT `CUSTODY`: a plan change is not a fact about the goods _(`packages/domain-reference/src/rules/authority.ts`)_
 - `boundBy` — owed to [SD §4.7.1] — NOT `CUSTODY`: an order is a commitment, not a fact about the goods _(`packages/domain-reference/src/rules/authority.ts`)_
 - `boundBy` — owed to [SD §4.7.1] — the binding is owed with the row _(`packages/domain-reference/src/rules/authority.ts`)_
-- `chargeValue` — owed to A11 — charge facts [SD §4.7.3] _(`packages/domain-reference/src/assertions.ts`)_
+- `chargeValue` — owed to A7 / A12 — the corpus publishes gross/net/discount as field names and defines them nowhere _(`packages/domain-reference/src/assertions.ts`)_
 - `conditionValue` — owed to A4 / A10 — no document fixes the condition vocabulary _(`packages/domain-reference/src/assertions.ts`)_
 - `etaChange` — owed to [SD §4.7.3] — `eta` is absent-and-owed; [SD §4.5] reads it as `arrival` at basis = ESTIMATED _(`packages/domain-reference/src/rules/capture.ts`)_
 - `itemAccepted` — owed to [SD §4.7.1] — M2 names it in the possession-changing list and no type carries it _(`packages/domain-reference/src/rules/capture.ts`)_
@@ -2313,6 +2329,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 [SD §4.7.3] lists these "so their absence is not read as an oversight". Each needs a row in [SD §4.7.1] **and** an [A8 §5] row before its area can score a dependent decision high.
 
+- `chargeCollection` — The act by which a charge is **billed and collected** — the freight bill presented, the amount tendered, the possession relinquished. [A7 §3.2].
 - `claim`
 - `cube`
 - `documentIssuance` — The act that brings a **document** into existence — [A6 §3.3].
@@ -2333,6 +2350,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 - [`349`](#349-custody-basis) — custody basis
 - [`41`](#41-custody-basis) — custody basis
+- [`A-COLLECT`](#a-collect-rule) — rule
 - [`A8-AFTER`](#a8-after-rule) — rule
 - [`A8-INSTANT`](#a8-instant-rule) — rule
 - [`A8-MOVE`](#a8-move-rule) — rule

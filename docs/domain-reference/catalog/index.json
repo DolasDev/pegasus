@@ -3,7 +3,7 @@
   "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
   "x-command": "npm run catalog -w @pegasus/domain-reference",
   "catalog": {
-    "specVersion": "0.5.0",
+    "specVersion": "0.6.0",
     "decidedBy": "docs/domain-reference/analysis/published-event-catalog.md",
     "note": "The published catalog is the record vocabulary, exactly — [catalog §1]. There is no coarser published layer over these members, because a second classification axis is permanently forbidden by [SD §1.1].",
     "memberCount": 33,
@@ -607,7 +607,7 @@
       "authorityRows": 14,
       "declaredRecordTypes": 31,
       "factClassFamilies": 2,
-      "absentFactClasses": 15
+      "absentFactClasses": 16
     },
     "vocabularies": ["identityScheme", "roleClass", "unitOfMeasure"],
     "declared": [
@@ -638,7 +638,7 @@
       },
       {
         "what": "chargeValue",
-        "owedTo": "A11 — charge facts [SD §4.7.3]",
+        "owedTo": "A7 / A12 — the corpus publishes gross/net/discount as field names and defines them nowhere",
         "where": "packages/domain-reference/src/assertions.ts"
       },
       {
@@ -790,6 +790,7 @@
     ],
     "factClassFamilies": ["charge", "notification"],
     "absentFactClasses": [
+      "chargeCollection",
       "claim",
       "cube",
       "documentIssuance",
