@@ -105,8 +105,8 @@ function CreateEventTypeDialog({ onClose }: { onClose: () => void }) {
           New custom event type
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Define an event your workflows can trigger on. Emit it from an external system, a
-          workflow, or automatically from a Pegasus domain condition.
+          Define an event your automations can trigger on. Emit it from an external system, an
+          automation, or automatically from a Pegasus domain condition.
         </p>
 
         <label htmlFor="et-name" className="mt-4 block text-xs font-medium text-foreground">
@@ -319,8 +319,8 @@ export function EventTypesSettingsPage() {
 
       <p className="mt-2 text-sm text-muted-foreground">
         Custom events extend the built-in taxonomy that{' '}
-        <Link to="/settings/workflows" className="text-primary hover:underline">
-          workflows
+        <Link to="/settings/automations" className="text-primary hover:underline">
+          automations
         </Link>{' '}
         can trigger on. Author and push them with the{' '}
         <Link to="/settings/developer" className="text-primary hover:underline">
@@ -339,7 +339,7 @@ export function EventTypesSettingsPage() {
         ) : data.length === 0 ? (
           <EmptyState
             title="No custom event types"
-            description="Define an event your workflows can trigger on, beyond the built-in ones."
+            description="Define an event your automations can trigger on, beyond the built-in ones."
             action={createButton}
           />
         ) : (

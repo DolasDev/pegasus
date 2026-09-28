@@ -217,7 +217,7 @@ export function WorkflowsPage() {
       {/* Page header — deep-link into Temporal Cloud for execution inspection */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-lg font-semibold text-foreground">Workflows</h1>
+          <h1 className="text-lg font-semibold text-foreground">Automations</h1>
           <a
             href={TEMPORAL_CLOUD_URL}
             target="_blank"
@@ -240,10 +240,10 @@ export function WorkflowsPage() {
       {/* Global workflow library */}
       <section className="space-y-4">
         <div className="space-y-1">
-          <h2 className="text-base font-semibold text-foreground">Global workflow library</h2>
+          <h2 className="text-base font-semibold text-foreground">Global automation library</h2>
           <p className="text-sm text-muted-foreground">
-            Every workflow flagged <span className="font-mono">GLOBAL</span> across the platform.
-            These rows belong to the singleton platform tenant; tenant-private workflows are not
+            Every automation flagged <span className="font-mono">GLOBAL</span> across the platform.
+            These rows belong to the singleton platform tenant; tenant-private automations are not
             surfaced here. Use this view to verify CI pushes from{' '}
             <span className="font-mono">packages/workflows-stdlib/</span> landed correctly.
           </p>
@@ -258,16 +258,16 @@ export function WorkflowsPage() {
             role="alert"
             className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
           >
-            {error instanceof Error ? error.message : 'Failed to load workflows.'}
+            {error instanceof Error ? error.message : 'Failed to load automations.'}
           </div>
         )}
 
         {!isPending && !isError && data && data.length === 0 && (
           <div className="rounded-md border border-border bg-card px-6 py-12 text-center">
-            <p className="text-sm font-medium text-foreground">No GLOBAL workflows yet</p>
+            <p className="text-sm font-medium text-foreground">No GLOBAL automations yet</p>
             <p className="mt-1 text-sm text-muted-foreground">
               No tenant is currently flagged as the platform tenant, or the platform tenant
-              hasn&rsquo;t uploaded any workflows. Promote a tenant from its detail page to start
+              hasn&rsquo;t uploaded any automations. Promote a tenant from its detail page to start
               populating the library.
             </p>
           </div>
@@ -278,7 +278,7 @@ export function WorkflowsPage() {
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Workflow</th>
+                  <th className="px-4 py-2 font-medium">Automation</th>
                   <th className="px-4 py-2 font-medium">Version</th>
                   <th className="px-4 py-2 font-medium">Owning tenant</th>
                   <th className="px-4 py-2 font-medium">Uploaded</th>

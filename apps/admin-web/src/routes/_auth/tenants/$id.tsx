@@ -348,7 +348,7 @@ function PlatformTenantSection({ tenant }: { tenant: TenantDetail }) {
           </span>
         </div>
         <p className="text-sm text-muted-foreground">
-          The platform tenant owns the <span className="font-mono">GLOBAL</span> workflow library
+          The platform tenant owns the <span className="font-mono">GLOBAL</span> automation library
           shown to every other tenant. Anything this tenant uploads via{' '}
           <span className="font-mono">/api/v1/workflows</span> becomes visible platform-wide. At
           most one tenant can hold this role; promoting another tenant automatically demotes the
@@ -379,7 +379,7 @@ function PlatformTenantSection({ tenant }: { tenant: TenantDetail }) {
             </button>
             <p className="text-sm text-muted-foreground">
               {tenant.status === 'ACTIVE'
-                ? 'Future workflow uploads from this tenant become GLOBAL.'
+                ? 'Future automation uploads from this tenant become GLOBAL.'
                 : 'Tenant must be ACTIVE to be promoted.'}
             </p>
           </div>
@@ -431,7 +431,7 @@ function WorkflowKillSwitchSection({ tenant }: { tenant: TenantDetail }) {
   return (
     <section className="space-y-3">
       <div className="flex items-center gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Workflow execution</h2>
+        <h2 className="text-sm font-semibold text-foreground">Automation runs</h2>
         <span
           className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
             tenant.workflowsDisabled ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
@@ -442,9 +442,9 @@ function WorkflowKillSwitchSection({ tenant }: { tenant: TenantDetail }) {
         </span>
       </div>
       <p className="text-sm text-muted-foreground">
-        When disabled, all new workflow starts (manual, event-triggered, and scheduled) are refused
+        When disabled, all new automation runs (manual, event-triggered, and scheduled) are refused
         immediately. Existing <span className="font-mono">RUNNING</span> executions are allowed to
-        finish. Toggle this switch to block or unblock workflow execution for this tenant without
+        finish. Toggle this switch to block or unblock automation runs for this tenant without
         offboarding them.
       </p>
       {tenant.workflowsDisabled ? (
@@ -454,9 +454,9 @@ function WorkflowKillSwitchSection({ tenant }: { tenant: TenantDetail }) {
             disabled={isPending}
             className="rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {enableMutation.isPending ? 'Enabling…' : 'Enable workflows'}
+            {enableMutation.isPending ? 'Enabling…' : 'Enable automations'}
           </button>
-          <p className="text-sm text-muted-foreground">Resumes normal workflow execution.</p>
+          <p className="text-sm text-muted-foreground">Resumes normal automation runs.</p>
         </div>
       ) : (
         <div className="flex items-center gap-3">
@@ -465,10 +465,10 @@ function WorkflowKillSwitchSection({ tenant }: { tenant: TenantDetail }) {
             disabled={isPending}
             className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {disableMutation.isPending ? 'Disabling…' : 'Disable workflows'}
+            {disableMutation.isPending ? 'Disabling…' : 'Disable automations'}
           </button>
           <p className="text-sm text-muted-foreground">
-            Blocks all new workflow starts. Running executions finish normally.
+            Blocks all new automation runs. Running executions finish normally.
           </p>
         </div>
       )}

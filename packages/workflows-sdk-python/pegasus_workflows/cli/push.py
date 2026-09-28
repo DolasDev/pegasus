@@ -1,6 +1,6 @@
-"""``pegasus-workflows push`` — package, upload, and finalize each workflow.
+"""``pegasus-workflows push`` — package, upload, and finalize each Automation.
 
-Drives the server's two-step publish flow per workflow:
+Drives the server's two-step publish flow per Automation:
 
 1. ``POST /api/v1/workflows/upload-url`` → presigned S3 PUT.
 2. Raw S3 ``PUT`` of the zip with the signed ``Content-Type``/``Content-Length``.
@@ -42,7 +42,7 @@ def push_command(
         dir_okay=True,
     ),
 ) -> None:
-    """Package and publish every workflow in the project to Pegasus."""
+    """Package and publish every Automation in the project to Pegasus."""
     token, base_url = resolve_credentials(token, base_url, profile)
 
     project_dir = project_dir.resolve()
@@ -85,7 +85,7 @@ def push_command(
             )
 
             # The artifact is already published; a ledger-write failure (disk
-            # full, perms) must not abort the remaining workflows or surface as a
+            # full, perms) must not abort the remaining Automations or surface as a
             # traceback — warn and carry on. The id is still recoverable via the
             # API, the ledger is a convenience cache.
             try:

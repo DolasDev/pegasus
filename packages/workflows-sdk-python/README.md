@@ -1,13 +1,19 @@
 # Pegasus Workflows SDK
 
 `pegasus-workflows-sdk` is the Python SDK and CLI for authoring, packaging, and
-publishing **Pegasus workflows** — Temporal workflows that automate
-cross-domain operations (move lifecycle, billing follow-ups, dispatch
-decisions) against the Pegasus public API.
+publishing **Pegasus Automations** — short, sandboxed Temporal workflows that
+automate cross-domain operations (move lifecycle, billing follow-ups, dispatch
+decisions) against the Pegasus public API, firing on their own from a trigger
+(an event, a schedule, or a manual run).
 
-Phase 1 ships the **developer flow**: write a workflow locally, run it against a
-Dockerized Temporal, package it, and upload it. There is no server-side
-execution yet — the API stores the artifact and lists it.
+> Long-running, durable **Workflows** — with signals, queries, and waits, for
+> lifecycles that span days or weeks — are a separate capability planned for
+> later. They don't exist yet; everything below is about Automations, which do.
+
+The **developer flow**: write an Automation locally, test it against a
+Dockerized Temporal, package it, and push it. The platform then runs it in a
+per-tenant sandbox — manually, from a trigger, or as a dry run — and you can
+inspect its executions from the CLI or the tenant app.
 
 ## Install
 
@@ -100,16 +106,18 @@ pegasus-workflows package
 pegasus-workflows push --profile default
 ```
 
-> A workflow **diagram** (`<source_dir>/workflow.mmd`) is required to publish. `init`
-> ships a starter one; `pegasus-workflows diagram` prints a prompt you feed to your
-> own coding agent (Claude Code, Cursor, …) to draw it — no API key or extra needed.
-> Business users view it in the Pegasus tenant UI to confirm the workflow matches
-> their business rules. See [Visualizing workflows](#visualizing-workflows).
+> An Automation **diagram** (`<source_dir>/workflow.mmd`) is required to publish.
+> `init` ships a starter one; `pegasus-workflows diagram` prints a prompt you feed
+> to your own coding agent (Claude Code, Cursor, …) to draw it — no API key or
+> extra needed. Business users view it in the Pegasus tenant UI to confirm the
+> Automation matches their business rules. See
+> [Visualizing Automations](#visualizing-automations).
 
 ## Authoring
 
-Import the Temporal authoring primitives from `pegasus_workflows` and mark your
-workflow class with `@pegasus_workflow`:
+An Automation is authored as a Temporal workflow class — import the Temporal
+authoring primitives from `pegasus_workflows` and mark your workflow class with
+`@pegasus_workflow`:
 
 ```python
 from datetime import timedelta
@@ -131,9 +139,16 @@ class HelloWorkflow:
 `@pegasus_workflow` wraps `temporalio.workflow.defn` and records the
 `(name, version)` used by the manifest.
 
+> **What "Automation" means at runtime.** You write a real Temporal workflow
+> class, but the platform runs it as a single sandboxed unit with a 900-second
+> ceiling — not as a durable, long-lived Temporal workflow. Signals, queries, and
+> `workflow.wait_condition` are not supported in Automations; using them will not
+> work. (Durable, long-running Workflows with those capabilities are a separate,
+> future capability — see the note at the top of this README.)
+
 ### Input contract: how `run()` receives its argument
 
-Your `run()` method receives a **single positional argument** whose shape depends on how the workflow
+Your `run()` method receives a **single positional argument** whose shape depends on how the Automation
 was started:
 
 **1. Trigger-fired (domain-event trigger)** — the dispatcher passes the full event envelope:
@@ -179,9 +194,9 @@ def _resolve_quote_id(payload: dict | str) -> str:
 
 ### Sending an SMS
 
-Inside a workflow activity, call `client.send_sms` to send an outbound text message
+Inside an Automation activity, call `client.send_sms` to send an outbound text message
 via the tenant's configured SMS provider. The platform holds the provider credentials —
-no credential needs to appear in the workflow source or manifest.
+no credential needs to appear in the Automation source or manifest.
 
 ```python
 from pegasus_workflows import activity
@@ -217,10 +232,10 @@ or (404) if the tenant has no SMS provider connected. The `to` number must be E.
 ### Soliciting feedback (magic-link surveys)
 
 Ask a customer or driver for feedback via a tokenized link, then act on the
-response. You author a versioned form once (via the `feedback-form` CLI), then a
-workflow **mints a per-recipient link** and sends it. When the recipient submits,
+response. You author a versioned form once (via the `feedback-form` CLI), then an
+Automation **mints a per-recipient link** and sends it. When the recipient submits,
 the platform records the response and emits the built-in `feedback.submitted`
-domain event — so a second workflow with an `EVENT` trigger on `feedback.submitted`
+domain event — so a second Automation with an `EVENT` trigger on `feedback.submitted`
 picks up and routes it (alert on a low rating, log a testimonial, etc.).
 
 Author the form (once), from a working directory holding `form.json`:
@@ -242,7 +257,7 @@ pegasus-workflows feedback-form validate post-move-csat   # dry-run the definiti
 pegasus-workflows feedback-form publish  post-move-csat   # publish v1
 ```
 
-Then, inside a workflow activity, mint + send the link:
+Then, inside an Automation activity, mint + send the link:
 
 ```python
 @activity.defn
@@ -287,10 +302,10 @@ async def send_order_to_partner(order: dict) -> dict:
     return result
 ```
 
-The delivery URL and API key come from the workflow's own config/secret (`SEND_URL`
+The delivery URL and API key come from the Automation's own config/secret (`SEND_URL`
 config, `SEND_API_KEY` secret by default — override with `url_config` /
 `api_key_secret` / `headers_config` / `group`), so no partner URL or key appears in
-the workflow source. Declare `required_actions = ["DeliverToExternal"]` in the
+the Automation source. Declare `required_actions = ["DeliverToExternal"]` in the
 manifest. Returns `{delivered, status, response, dryRun}`; raises `PegasusApiError`
 on 403 (missing action), 404 (unknown integration, or the URL config / API-key
 secret is not set), or 400 (a delivery URL pointing at a private/loopback host).
@@ -298,7 +313,7 @@ secret is not set), or 400 (a delivery URL pointing at a private/loopback host).
 **It is one fixed request, on purpose.** A single JSON `POST` to the whole URL in
 `SEND_URL`, always sent with `Authorization: Bearer <SEND_API_KEY>` — no
 per-request path, and the bearer isn't optional (no `SEND_API_KEY`, no delivery).
-That narrowness is what makes it two config entries and one line of workflow code.
+That narrowness is what makes it two config entries and one line of Automation code.
 Use [`call_external`](#calling-a-partner-api-authenticated-reads--writes) instead
 as soon as you need a per-request path, a non-bearer credential (a named header /
 `AUTH_MODE=apikey`, OAuth2, or `none`), or more than one credential header —
@@ -325,7 +340,7 @@ Settings → Developer → Configs summary. Read the resolved status back with
 
 `map_to_external` is the **outbound** direction (entity → partner body). To go the
 other way — normalize a partner's **native** payload into the platform's canonical
-entity — use `client.map_from_external`. This is the step an **ingest workflow**
+entity — use `client.map_from_external`. This is the step an **ingest Automation**
 runs on an inbound webhook event (see "Inbound integration ingress"): map the raw
 partner payload to the canonical shape, then persist it (e.g. to a projection).
 
@@ -361,7 +376,7 @@ the same floor serves any partner of that type.
 platform performs the call **server-side** against the integration's configured
 `BASE_URL`, authenticating per its `AUTH_MODE`. For `oauth2_client_credentials` it
 mints, caches, and re-mints (on a partner `401`) an OAuth2 token server-side — so
-`client_id`/`client_secret` never appear in workflow code.
+`client_id`/`client_secret` never appear in Automation code.
 
 ```python
 @activity.defn
@@ -399,14 +414,14 @@ override the method-based default when a partner overloads a verb.
 Two maps, split by **trust level** — this split is the point, so pick the right one:
 
 - `headers` — literal values, **non-secret by construction** (they come from your
-  workflow code): `{"On-Behalf-Of": "jdoe"}`.
+  Automation code): `{"On-Behalf-Of": "jdoe"}`.
 - `secret_headers` — header name → **secret key name**. The platform resolves the
-  value from the encrypted store, so the credential never appears in workflow
+  value from the encrypted store, so the credential never appears in Automation
   source, logs, or a captured dry-run payload:
   `{"X-Partner-Token": "PARTNER_TOKEN"}`.
 
 `Authorization`, `Host`, `Content-Length` and `Content-Type` are owned by the
-platform and rejected with a `400` — allowing an override would let a workflow
+platform and rejected with a `400` — allowing an override would let an Automation
 bypass `AUTH_MODE` entirely. Header names must be RFC 7230 tokens and values may
 not contain CR/LF.
 
@@ -461,12 +476,12 @@ client.call_external(
 with `AUTH_MODE=none` if neither header is the integration's configured auth, or
 `AUTH_MODE=apikey` if one of them is (then name only the _other_ here). The values
 are secret **key names**, resolved server-side from the encrypted store — the
-credential itself never enters workflow code, a dry-run capture, or a log.
+credential itself never enters Automation code, a dry-run capture, or a log.
 
 ### Transferring documents (blobs)
 
-A workflow can stage a file to upload or land a file it fetched without holding
-the bytes in workflow memory — `put_blob`/`get_blob` stream **runner↔S3 directly**
+An Automation can stage a file to upload or land a file it fetched without holding
+the bytes in Automation memory — `put_blob`/`get_blob` stream **runner↔S3 directly**
 (presigned URLs), so they aren't bounded by the API payload limit. Declare
 `required_actions = ["WriteBlob"]` (put) / `["ReadBlob"]` (get).
 
@@ -511,7 +526,7 @@ pegasus-workflows ingress rotate sirva_ade_shipment
 pegasus-workflows ingress list   sirva_ade_shipment
 ```
 
-The workflow that handles the events binds to the emitted domain event with an
+The Automation that handles the events binds to the emitted domain event with an
 ordinary **EVENT trigger**. The emitted event type, the dedup key path, the body
 **`validation`**, and the **ack template** (the partner's `Result{…}` envelope)
 are published as part of the integration definition — an `inbound` block on the
@@ -543,7 +558,7 @@ integration config:
 ```
 
 The ack is derived from **ingestion** (accepted + durably queued), never from the
-bound workflow finishing. Managing ingress needs a `vnd_` key with `ManageIngress`
+bound Automation finishing. Managing ingress needs a `vnd_` key with `ManageIngress`
 (the `workflow_developer` / `tenant_admin` role). With no `inbound` block, the
 endpoint accepts any body and returns a generic `{status:"accepted"}` ack (no
 validation, no partner envelope).
@@ -572,11 +587,11 @@ a body matching none gets the `failure` ack. Pair it with an array `dedupKeyPath
 
 ### Secrets & configuration
 
-A workflow reads two kinds of per-tenant key/value data at runtime — **secrets**
+An Automation reads two kinds of per-tenant key/value data at runtime — **secrets**
 (write-once, encrypted at rest; e.g. a third-party API key) and **config** (plain,
 editable; e.g. a region or base URL). Both are scoped to the whole tenant, so every
-workflow the tenant owns reads the same namespace. Values live in the platform — they
-never appear in the workflow source or artifact.
+Automation the tenant owns reads the same namespace. Values live in the platform — they
+never appear in the Automation source or artifact.
 
 **1. Publish the values once** with a `vnd_` key holding the manage actions (the
 `workflow_developer` or `tenant_admin` role), via the CLI:
@@ -591,7 +606,7 @@ or from Python (`client.set_secret(...)`, `client.set_config(...)`,
 `client.list_secrets()`, `client.delete_secret(...)`). Secrets are write-once —
 delete then set again to rotate; `set_config` is an idempotent upsert.
 
-**2. Declare the read actions** your workflow needs in `pegasus-workflows.toml`,
+**2. Declare the read actions** your Automation needs in `pegasus-workflows.toml`,
 and — recommended — the specific keys it reads, so the tenant sees up front which
 values to provide and whether they are set:
 
@@ -601,11 +616,11 @@ name = "charge-on-quote-accepted"
 version = "0.1.0"
 entry_points = ["charge.workflow:ChargeWorkflow"]
 required_actions = ["ReadWorkflowSecret", "ReadWorkflowConfig"]
-# Which keys this workflow reads. Each is a table with a required `key`, an
+# Which keys this Automation reads. Each is a table with a required `key`, an
 # optional `group` (default "global"), and an optional `description`. Purely
 # informational — it does not gate execution — but it drives the tenant UI's
 # "keys still needed" view in Settings → Developer → Configs and the badges on
-# the workflow's detail page.
+# the Automation's detail page.
 required_secrets = [{ key = "STRIPE_API_KEY", group = "billing", description = "Stripe secret key" }]
 required_configs = [{ key = "DEFAULT_REGION" }]
 ```
@@ -639,13 +654,13 @@ async def charge_customer(amount_cents: int) -> str:
 
 ### Integration projections (cached external state)
 
-When a workflow syncs an external system, it can cache each record's last-known
+When an Automation syncs an external system, it can cache each record's last-known
 state as a **projection** — keyed by `(integration, entity_type, key)` within the
 tenant. The Pegasus **integration validator** reads the matching record's cached
 `state` back as the `prior` input when pre-validating an update, so transition
 rules stay accurate without the caller resupplying prior state.
 
-Declare the actions your workflow needs, then read/write inside an activity:
+Declare the actions your Automation needs, then read/write inside an activity:
 
 ```toml
 [[workflow]]
@@ -713,9 +728,9 @@ binding). **Check it if you depend on reading back by local id** — the write c
 succeed while the binding did not. Supplying only one of the two arguments raises
 `ValueError` before any request is made.
 
-### Reading operational entities (inside a workflow)
+### Reading operational entities (inside an Automation)
 
-A running workflow authenticates with its `workflow_runtime` service-account key
+A running Automation authenticates with its `workflow_runtime` service-account key
 (`PegasusClient.from_runtime()`), which is granted read access to the core
 operational records. These helpers return `{data, meta: {total, count, limit,
 offset}}` and take `limit` (≤100) / `offset`:
@@ -732,7 +747,7 @@ client.list_events("order.completed")    # ReadEvent — poll pending inbound ev
 They read the m2m `/api/v1/runtime/*` surface (the browser `/api/v1/*` CRUD routes
 are Cognito-only and reject a `vnd_` key). `list_events` polls the inbound
 platform-event queue, which is keyed by type, so an event type is required.
-(Inventory has no runtime read grant — a workflow that needs item-level data reads
+(Inventory has no runtime read grant — an Automation that needs item-level data reads
 it from the move it is processing.)
 
 The pegII operational surface (legacy orders + tasks + salesmen) has its own reads/mutation:
@@ -765,10 +780,10 @@ client.map_from_external("demo_partner", native)        # native → canonical +
 No hand-pasting the raw payload. `get_order` without `shape` returns the projected
 row; `shape="native"` returns the raw serialized object for mapping.
 
-### Emitting a custom event (workflow-to-workflow chaining)
+### Emitting a custom event (Automation-to-Automation chaining)
 
-A workflow can fire a tenant-defined event type, which any workflow bound to it via
-an EVENT trigger will run — the in-platform way to chain automations without an
+An Automation can fire a tenant-defined event type, which any Automation bound to it via
+an EVENT trigger will run — the in-platform way to chain Automations without an
 outside queue. Requires `EmitTenantEvent`.
 
 ```python
@@ -807,13 +822,13 @@ use the typed methods — they route through the dry-run capture path, which a g
 call would bypass. `api_get` is likewise **not** stubbed by the offline test harness
 (use a typed read helper there); it's meant for ops/reconciliation on a real client.
 
-## Visualizing workflows
+## Visualizing Automations
 
-A workflow is published as opaque Python, so the Pegasus tenant UI can't infer
-what it does. Instead, each workflow ships a **Mermaid diagram** at
-`<source_dir>/workflow.mmd` that business users view to confirm the workflow
+An Automation is published as opaque Python, so the Pegasus tenant UI can't infer
+what it does. Instead, each Automation ships a **Mermaid diagram** at
+`<source_dir>/workflow.mmd` that business users view to confirm the Automation
 matches their business rules. The UI pairs it with a _verified envelope_ drawn
-from data the platform actually stores and trusts — the workflow's triggers, its
+from data the platform actually stores and trusts — the Automation's triggers, its
 declared `required_actions`, and the secret/config keys it touches — so the
 diagram (author-declared) sits next to the permission boundary (platform-guaranteed).
 
@@ -824,12 +839,12 @@ your own subscription. `init` scaffolds a starter `workflow.mmd` so a new projec
 publishes out of the box.
 
 The `diagram` command never calls an LLM and needs no API key. It assembles a
-ready-to-use prompt — your workflow's Python source plus the exact output path and
+ready-to-use prompt — your Automation's Python source plus the exact output path and
 formatting rules — for your agent to act on:
 
 ```
-pegasus-workflows diagram                  # print the prompt for all workflows
-pegasus-workflows diagram -w my-workflow   # just one workflow
+pegasus-workflows diagram                  # print the prompt for all Automations
+pegasus-workflows diagram -w my-workflow   # just one Automation
 pegasus-workflows diagram -o diagram.txt   # write the prompt to a file instead
 ```
 
@@ -876,7 +891,7 @@ observes it); `retry` starts a **new** execution from the stored input of a
 terminal-failed one (FAILED / TIMED_OUT / CANCELLED), leaving the original row
 untouched. Both need the `workflow_developer` role.
 
-> ⚠️ **Keep PII out of workflow inputs and results.** Temporal stores execution
+> ⚠️ **Keep PII out of Automation inputs and results.** Temporal stores execution
 > payloads (input, result, and the full event history) and renders them in its
 > UI, and platform engineers can read them cross-tenant in the Temporal Cloud
 > console. Pass **entity ids**, not raw personal data — look the details up inside
@@ -946,9 +961,9 @@ falls back to `http://localhost:3000` for local dev.
 
 ## Deployment ledger — `deployments.toml`
 
-Workflow ids are **environment-specific** — publishing the same workflow to QA and
+Automation ids are **environment-specific** — publishing the same Automation to QA and
 prod yields different ids. After a successful `push`, the SDK records where each
-workflow landed in a `deployments.toml` beside the manifest, so post-publish
+Automation landed in a `deployments.toml` beside the manifest, so post-publish
 actions (`run`, `executions`, fork, rollback) read the id instead of scraping it
 from scrollback:
 
@@ -964,8 +979,8 @@ published_at = "2026-06-29T21:05:48Z"
 - The environment key is derived from the API host, or set explicitly with
   `push --env NAME`.
 - Re-publishing to the same env **updates the entry in place** (no duplicates);
-  a second env adds a table. A multi-workflow project nests each record under the
-  workflow name (`[prod.send_order_saved_sms]`).
+  a second env adds a table. A multi-Automation project nests each record under the
+  Automation name (`[prod.send_order_saved_sms]`).
 - The file is **safe to commit** — it holds ids and URLs only, never a token.
 
 ## CLI
@@ -973,14 +988,14 @@ published_at = "2026-06-29T21:05:48Z"
 | Command                                                                            | What it does                                                   |
 | ---------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `pegasus-workflows setup [--profile <name>] [--print-mcp-config]`                  | First-run bootstrap: seed a profile + register the MCP server. |
-| `pegasus-workflows init <name>`                                                    | Scaffold a new workflow project.                               |
+| `pegasus-workflows init <name>`                                                    | Scaffold a new Automation project.                             |
 | `pegasus-workflows configure [--profile <name>]`                                   | Store a credential profile in `~/.pegasus/credentials` (0600). |
 | `pegasus-workflows profile list`                                                   | List stored profile names + api_root (never the key).          |
 | `pegasus-workflows diagram [-C <dir>] [-w <name>] [-o <file>]`                     | Print a prompt for your coding agent to draw `workflow.mmd`.   |
-| `pegasus-workflows package`                                                        | Zip each declared workflow into `dist/<name>-<version>.zip`.   |
+| `pegasus-workflows package`                                                        | Zip each declared Automation into `dist/<name>-<version>.zip`. |
 | `pegasus-workflows push [--profile <name>] [--env <name>] [--token=…]`             | Package → upload → finalize; records `deployments.toml`.       |
-| `pegasus-workflows test <workflow>`                                                | Start local Temporal and run the workflow with a stub input.   |
-| `pegasus-workflows executions list <wf-id> --token=<vnd_…>`                        | List recent executions of a workflow (newest first).           |
+| `pegasus-workflows test <workflow>`                                                | Start local Temporal and run the Automation with a stub input. |
+| `pegasus-workflows executions list <wf-id> --token=<vnd_…>`                        | List recent executions of an Automation (newest first).        |
 | `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`              | Show one execution's input/result/error + history timeline.    |
 | `pegasus-workflows integration-config validate <id> [-C <dir>]`                    | Dry-run the publish gate for a config (no write).              |
 | `pegasus-workflows integration-config publish <id> [-C <dir>]`                     | Gate then publish a new config version.                        |
@@ -994,8 +1009,8 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows config set <key> <value> [-d <desc>]`                           | Publish a config value (idempotent upsert).                    |
 | `pegasus-workflows config list` / `config delete <key>`                            | List config key/values / delete a config entry.                |
 | `pegasus-workflows requirements [--missing-only] [--json]`                         | Which declared secret/config keys are set, and what's missing. |
-| `pegasus-workflows schedule create <wf-id> --cron "<5-field UTC>"`                 | Attach a cron SCHEDULE trigger that runs the workflow.         |
-| `pegasus-workflows schedule list <wf-id>` / `schedule delete <wf-id> <trigger-id>` | List / remove a workflow's schedule triggers.                  |
+| `pegasus-workflows schedule create <wf-id> --cron "<5-field UTC>"`                 | Attach a cron SCHEDULE trigger that runs the Automation.       |
+| `pegasus-workflows schedule list <wf-id>` / `schedule delete <wf-id> <trigger-id>` | List / remove an Automation's schedule triggers.               |
 | `pegasus-workflows ingress create <id>` / `rotate <id>` / `list <id>`              | Provision / rotate / inspect a partner-ingress bearer.         |
 | `pegasus-workflows feedback-form validate <key> [-d <dir>]`                        | Dry-run a feedback form definition (no write).                 |
 | `pegasus-workflows feedback-form publish <key> [-d <dir>]`                         | Publish a new feedback form version.                           |
@@ -1196,7 +1211,7 @@ The Temporal Web UI is then at <http://localhost:8080>.
 
 ## Testing activities offline
 
-`pegasus-workflows test` runs a workflow end-to-end against a local Temporal, but
+`pegasus-workflows test` runs an Automation end-to-end against a local Temporal, but
 it injects **no** runtime client — so every activity that builds one via
 `PegasusClient.from_runtime()` gets nothing and falls back to a hand-written stub,
 exercising control flow only. To run an activity's **real** body — a real mapping,
@@ -1233,18 +1248,18 @@ Cedar `required_actions` gating enforces, and the same `is_dry_run` /
 `record_side_effect` surface the server-side dry-run mode exposes.
 
 **Rehearse the real thing with `--dry-run`.** The offline harness runs one
-activity; to rehearse a whole workflow end-to-end on the platform — real reads,
+activity; to rehearse a whole Automation end-to-end on the platform — real reads,
 mutations captured, nothing performed — start it in dry-run mode:
 
 ```
 pegasus-workflows run send_order_to_partner --dry-run --input '{"saleId":"S-123"}'
 ```
 
-The workflow runs on the tenant runner exactly as a live run would, but the
+The Automation runs on the tenant runner exactly as a live run would, but the
 runtime injects a dry-run client (`client.is_dry_run` is `True`), so reads hit
 the live API while every mutation is captured instead of performed. The result
 carries the per-activity trace and the capture log of would-be side effects.
-Only tenant-runner workflows support it (a curated workflow returns 422
+Only tenant-runner Automations support it (a curated Automation returns 422
 `DRY_RUN_UNSUPPORTED`).
 
 ## Using the SDK with an AI coding agent
@@ -1303,24 +1318,24 @@ any additional setup.
 
 ### Resources (read-only context)
 
-| URI                              | Description                                                                                                           |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `pegasus://guide/authoring`      | Authoring guide: import surface, determinism rule, input contract pointer.                                            |
-| `pegasus://guide/input-contract` | The three `run()` input shapes (trigger-fired, manual run, CLI test) + a worked resolver example.                     |
-| `pegasus://guide/secrets-config` | How to publish and use per-tenant workflow secrets & configuration (manifest actions, CLI/SDK publish, runtime read). |
-| `pegasus://reference/manifest`   | Manifest fields and constraints generated from `manifest.py` constants — stays in sync automatically.                 |
-| `pegasus://reference/api`        | `PegasusClient` method signatures and docstrings generated by introspection — stays in sync automatically.            |
+| URI                              | Description                                                                                                             |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `pegasus://guide/authoring`      | Authoring guide: import surface, determinism rule, input contract pointer.                                              |
+| `pegasus://guide/input-contract` | The three `run()` input shapes (trigger-fired, manual run, CLI test) + a worked resolver example.                       |
+| `pegasus://guide/secrets-config` | How to publish and use per-tenant Automation secrets & configuration (manifest actions, CLI/SDK publish, runtime read). |
+| `pegasus://reference/manifest`   | Manifest fields and constraints generated from `manifest.py` constants — stays in sync automatically.                   |
+| `pegasus://reference/api`        | `PegasusClient` method signatures and docstrings generated by introspection — stays in sync automatically.              |
 
 ### Tools (safe actions — no network writes)
 
-| Tool                                                                                   | Description                                                                                            |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `scaffold_workflow(name, dest)`                                                        | Scaffold a new workflow project at `dest/name`. Wraps `pegasus-workflows init`.                        |
-| `validate_manifest(path_or_toml)`                                                      | Validate a manifest file path or raw TOML text. Returns structured errors or the parsed manifest.      |
-| `package_project(project_dir)`                                                         | Package declared workflows into `dist/`. Returns `{name, version, zip_path, size_bytes}` per workflow. |
-| `validate_integration_config(integration_id, mapping, rules, corpus, base_url, token)` | Dry-run the integration config publish gate. No state change.                                          |
-| `list_deployments(project_dir)`                                                        | Read a project's `deployments.toml` ledger (no network, no write).                                     |
-| `list_profiles()`                                                                      | List credential profile names + api_root. **Never** returns `api_key`.                                 |
+| Tool                                                                                   | Description                                                                                                |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `scaffold_workflow(name, dest)`                                                        | Scaffold a new Automation project at `dest/name`. Wraps `pegasus-workflows init`.                          |
+| `validate_manifest(path_or_toml)`                                                      | Validate a manifest file path or raw TOML text. Returns structured errors or the parsed manifest.          |
+| `package_project(project_dir)`                                                         | Package declared Automations into `dist/`. Returns `{name, version, zip_path, size_bytes}` per Automation. |
+| `validate_integration_config(integration_id, mapping, rules, corpus, base_url, token)` | Dry-run the integration config publish gate. No state change.                                              |
+| `list_deployments(project_dir)`                                                        | Read a project's `deployments.toml` ledger (no network, no write).                                         |
+| `list_profiles()`                                                                      | List credential profile names + api_root. **Never** returns `api_key`.                                     |
 
 Network-mutating operations (`push`, `publish_integration_config`, `run`) are
 intentionally **not exposed** — keep those human-gated via the CLI. Secrets never
@@ -1336,14 +1351,14 @@ Without the extra installed, the command exits non-zero with an install hint.
 
 ## Keeping the SDK in sync (maintainers)
 
-The SDK is the **external product boundary** for integration/workflow authors —
+The SDK is the **external product boundary** for integration/Automation authors —
 they and their AI agents must be able to use the **full** platform functionality
 without platform source, via this README, the authoring repo's `CLAUDE.md`, the MCP
 `pegasus://reference/*` resources, CLI `--help`, and the API's OpenAPI spec
 (`/openapi.json`). The `CLAUDE.md` above is the one in the **workflow-authoring
 consumer repo** — a separate repo from `packages/workflows-sdk-python`, so looking
 for it inside the SDK or platform source will come up empty. So whenever an
-integrations/workflows platform feature is added or changed (a new route, floor,
+integrations/Automations platform feature is added or changed (a new route, floor,
 rule operator, config field, or capability):
 
 1. Expose it in the SDK (a `PegasusClient` method / CLI command / config-file surface).

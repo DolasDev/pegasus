@@ -1,14 +1,14 @@
 """``pegasus-workflows requirements`` — which declared secret/config keys are set.
 
 The read half of ``required_secrets`` / ``required_configs``. Declaring them (in
-a workflow manifest, or on an integration config) records WHICH keys are read at
-runtime; this command resolves those declarations against the tenant's store and
-says which are still missing — the same view the tenant sees under
+an Automation manifest, or on an integration config) records WHICH keys are read
+at runtime; this command resolves those declarations against the tenant's store
+and says which are still missing — the same view the tenant sees under
 Settings → Developer → Configs, from the terminal.
 
 Merges both planes in one call:
 
-* workflows    — ``GET /api/v1/workflows/requirements-summary`` (``ReadWorkflow``)
+* Automations  — ``GET /api/v1/workflows/requirements-summary`` (``ReadWorkflow``)
 * integrations — ``GET /api/v1/integrations/requirements-summary``
   (``ReadIntegrationConfig``)
 
@@ -58,7 +58,7 @@ def _rows(client: PegasusClient) -> tuple[list[dict[str, Any]], list[str]]:
                     }
                 )
     except PegasusApiError as exc:
-        unreadable.append(f"workflows: {exc}")
+        unreadable.append(f"Automations: {exc}")
 
     try:
         summary = client.integration_requirements_summary()

@@ -131,7 +131,7 @@ interface AddPrefill {
 function ConsumerLink({ consumer }: { consumer: VariableConsumer }) {
   return consumer.type === 'workflow' ? (
     <Link
-      to="/settings/workflows/$workflowId"
+      to="/settings/automations/$workflowId"
       params={{ workflowId: consumer.id }}
       className="text-primary hover:underline"
     >
@@ -359,9 +359,9 @@ function SecretsSection({
       </div>
       <Separator className="mb-3" />
       <p className="mb-3 text-xs text-muted-foreground">
-        Encrypted, write-once values your workflows read at runtime via{' '}
+        Encrypted, write-once values your automations read at runtime via{' '}
         <code className="font-mono">get_secret()</code>. Values are never shown again after creation
-        — to rotate, delete and recreate. A workflow must declare{' '}
+        — to rotate, delete and recreate. An automation must declare{' '}
         <code className="font-mono">ReadWorkflowSecret</code> in its manifest. Organize related keys
         into <span className="font-medium">groups</span>; anything left ungrouped lives in{' '}
         <code className="font-mono">{DEFAULT_GROUP}</code>.
@@ -457,7 +457,7 @@ function SecretsSection({
       ) : secrets.length === 0 ? (
         <EmptyState
           title="No secrets"
-          description="Add a secret your workflows can read at runtime."
+          description="Add a secret your automations can read at runtime."
         />
       ) : (
         <div className="overflow-hidden rounded-md border border-border bg-card">
@@ -620,7 +620,7 @@ function ConfigsSection({
       <Separator className="mb-3" />
       <p className="mb-3 text-xs text-muted-foreground">
         Plain, editable key/value pairs your workflows read at runtime via{' '}
-        <code className="font-mono">get_config()</code>. A workflow must declare{' '}
+        <code className="font-mono">get_config()</code>. An automation must declare{' '}
         <code className="font-mono">ReadWorkflowConfig</code> in its manifest. Organize related keys
         into <span className="font-medium">groups</span>; anything left ungrouped lives in{' '}
         <code className="font-mono">{DEFAULT_GROUP}</code>.
@@ -703,7 +703,7 @@ function ConfigsSection({
       ) : configs.length === 0 ? (
         <EmptyState
           title="No configuration"
-          description="Add a config value your workflows can read."
+          description="Add a config value your automations can read."
         />
       ) : (
         <div className="overflow-hidden rounded-md border border-border bg-card">
@@ -872,7 +872,7 @@ export function WorkflowSecretsConfigsPanel() {
     return (
       <EmptyState
         title="No access"
-        description="You don't have permission to manage workflow secrets or configuration. Ask a tenant admin for the workflow_secret:manage or workflow_config:manage permission."
+        description="You don't have permission to manage automation secrets or configuration. Ask a tenant admin for the workflow_secret:manage or workflow_config:manage permission."
       />
     )
   }

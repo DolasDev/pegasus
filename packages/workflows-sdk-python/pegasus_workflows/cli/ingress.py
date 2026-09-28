@@ -8,7 +8,7 @@ command mints, rotates, and inspects that credential:
 * ``ingress rotate <integration>`` — mints a new token (old stops working).
 * ``ingress list   <integration>`` — the URL + token prefix + status.
 
-The workflow that handles the events binds to the emitted domain event with an
+The Automation that handles the events binds to the emitted domain event with an
 ordinary EVENT trigger. Auth mirrors ``push``: a ``vnd_`` key holding
 ``ManageIngress`` (the ``workflow_developer`` / ``tenant_admin`` role).
 """

@@ -1,8 +1,8 @@
 """``pegasus-workflows run`` — trigger a server-side execution.
 
-Looks up a workflow by ``name@version`` (or ``name`` if there is only one
+Looks up an Automation by ``name@version`` (or ``name`` if there is only one
 version visible), POSTs ``/api/v1/workflows/{id}/run``, and prints the
-returned execution row. A workflow that is not executable is refused by the
+returned execution row. An Automation that is not executable is refused by the
 server with 400 ``WORKFLOW_NOT_EXECUTABLE``.
 
 The resolved row is the one that RUNS: the runner installs that published
@@ -47,7 +47,7 @@ def _find_workflow(
     name: str,
     version: str | None,
 ) -> dict[str, Any]:
-    """Find the workflow row matching ``name`` (and optional ``version``).
+    """Find the Automation row matching ``name`` (and optional ``version``).
 
     Prefers the caller's tenant rows over GLOBAL when both exist with the
     same (name, version) — a fork is the more explicit choice.
@@ -58,7 +58,7 @@ def _find_workflow(
         candidates = [r for r in candidates if r.get("version") == version]
     if not candidates:
         raise typer.BadParameter(
-            f"no visible workflow matches {name}"
+            f"no visible Automation matches {name}"
             + (f"@{version}" if version else "")
         )
     # Prefer TENANT (more specific) over GLOBAL when multiple match.
@@ -74,28 +74,28 @@ def run_command(
     workflow: str = typer.Argument(
         ...,
         help=(
-            "Workflow name or name@version "
+            "Automation name or name@version "
             "(e.g. send_quote_followup or send_quote_followup@0.1.0)."
         ),
     ),
     input_json: str = typer.Option(
         "{}",
         "--input",
-        help="JSON-encoded input payload passed to the workflow.",
+        help="JSON-encoded input payload passed to the Automation.",
     ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
         help=(
-            "Benign rehearsal: run the real workflow with reads live but "
-            "mutations captured, never performed. Tenant-runner workflows only."
+            "Benign rehearsal: run the real Automation with reads live but "
+            "mutations captured, never performed. Tenant-runner Automations only."
         ),
     ),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
 ) -> None:
-    """Run a curated workflow against the Pegasus runtime."""
+    """Run a curated Automation against the Pegasus runtime."""
     token, base_url = resolve_credentials(token, base_url, profile)
 
     try:

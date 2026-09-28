@@ -1,4 +1,4 @@
-"""``pegasus-workflows init`` — scaffold a new workflow project.
+"""``pegasus-workflows init`` — scaffold a new Automation project.
 
 Copies the files under ``pegasus_workflows/templates/`` into a fresh project
 directory, substituting the chosen project name. The scaffold is a working
@@ -45,10 +45,10 @@ def _template_files() -> dict[str, str]:
 
 
 def render_project(name: str, dest: Path) -> Path:
-    """Materialise a workflow project named *name* into *dest*.
+    """Materialise an Automation project named *name* into *dest*.
 
     Args:
-        name: Project / workflow name. Must match the workflow name regex.
+        name: Project / Automation name. Must match the Automation name regex.
         dest: Parent directory; the project is created at ``dest/name``.
 
     Returns:
@@ -77,7 +77,7 @@ def render_project(name: str, dest: Path) -> Path:
 
 
 def init_command(
-    name: str = typer.Argument(..., help="Workflow project name (lowercase, e.g. 'demo')."),
+    name: str = typer.Argument(..., help="Automation project name (lowercase, e.g. 'demo')."),
     dest: Path = typer.Option(
         Path("."),
         "--dest",
@@ -85,14 +85,14 @@ def init_command(
         help="Parent directory to create the project under.",
     ),
 ) -> None:
-    """Scaffold a new workflow project named NAME."""
+    """Scaffold a new Automation project named NAME."""
     try:
         project_dir = render_project(name, dest.resolve())
     except (ValueError, FileExistsError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
-    typer.secho(f"created workflow project at {project_dir}", fg=typer.colors.GREEN)
+    typer.secho(f"created Automation project at {project_dir}", fg=typer.colors.GREEN)
     typer.echo("next steps:")
     typer.echo(f"  cd {project_dir}")
     typer.echo("  pegasus-workflows package")

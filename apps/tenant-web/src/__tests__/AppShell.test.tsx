@@ -78,7 +78,7 @@ vi.mock('@/auth/permissions', () => ({
 
 import { AppShell } from '@/components/AppShell'
 
-const SETTINGS_LABELS = ['Users', 'SSO Providers', 'Developer', 'Workflows']
+const SETTINGS_LABELS = ['Users', 'SSO Providers', 'Developer', 'Automations']
 
 describe('AppShell — Settings nav visibility', () => {
   beforeEach(() => {

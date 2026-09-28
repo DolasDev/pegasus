@@ -8,6 +8,11 @@ import { LoginCallbackPage } from '@/routes/login.callback'
 import { LoginSignedOutPage } from '@/routes/login.signed-out'
 import { AuthLayout } from '@/routes/_auth'
 import { authGuard } from '@/auth/guard'
+import {
+  redirectLegacyWorkflowDetail,
+  redirectLegacyWorkflowsList,
+  validateAutomationDetailSearch,
+} from '@/lib/legacy-workflow-redirects'
 import { requireRole, OPERATIONS_ROLES, DISPATCH_ACTIVITIES_ROLES } from '@/auth/role-guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
@@ -278,20 +283,40 @@ const developerIntegrationsRoute = createRoute({
   component: DeveloperIntegrationsPage,
 })
 
-const workflowsSettingsRoute = createRoute({
+// Automations — the short, sandboxed runs (the `workflows` table / `/workflows`
+// API). The product concept was renamed from "Workflows" to "Automations"; the
+// wire names were deliberately kept (plans/in-progress/
+// long-running-workflows-and-automations.md, D3). "Workflows" is reserved for
+// the upcoming long-running, durable kind.
+const automationsSettingsRoute = createRoute({
   getParentRoute: () => settingsLayout,
-  path: '/settings/workflows',
+  path: '/settings/automations',
   component: WorkflowsSettingsPage,
 })
 
-const workflowDetailRoute = createRoute({
+const automationDetailRoute = createRoute({
   getParentRoute: () => settingsLayout,
-  path: '/settings/workflows/$workflowId',
+  path: '/settings/automations/$workflowId',
   component: WorkflowDetailPage,
   // Optional `?tab=executions` deep-links straight to the Executions tab (e.g.
-  // the "View executions" link on the workflows list). Anything else is dropped.
-  validateSearch: (search: Record<string, unknown>): { tab?: 'executions' } =>
-    search.tab === 'executions' ? { tab: 'executions' } : {},
+  // the "View executions" link on the automations list). Anything else is dropped.
+  validateSearch: validateAutomationDetailSearch,
+})
+
+// Pre-rename paths redirect so existing bookmarks and links keep working. When
+// long-running Workflows get their own page (Phase 4 of the plan above), that
+// page replaces these redirects.
+const legacyWorkflowsSettingsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/workflows',
+  beforeLoad: redirectLegacyWorkflowsList,
+})
+
+const legacyWorkflowDetailRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/workflows/$workflowId',
+  validateSearch: validateAutomationDetailSearch,
+  beforeLoad: redirectLegacyWorkflowDetail,
 })
 
 const eventTypesSettingsRoute = createRoute({
@@ -471,8 +496,10 @@ const routeTree = rootRoute.addChildren([
       developerSettingsRoute,
       developerConfigsRoute,
       developerIntegrationsRoute,
-      workflowsSettingsRoute,
-      workflowDetailRoute,
+      automationsSettingsRoute,
+      automationDetailRoute,
+      legacyWorkflowsSettingsRoute,
+      legacyWorkflowDetailRoute,
       eventTypesSettingsRoute,
       feedbackFormsSettingsRoute,
       ringCentralRoute,

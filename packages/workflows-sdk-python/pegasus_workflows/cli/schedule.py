@@ -1,17 +1,17 @@
-"""``pegasus-workflows schedule`` — attach cron schedules to a workflow.
+"""``pegasus-workflows schedule`` — attach cron schedules to an Automation.
 
 A thin terminal wrapper over the workflow-trigger management API. A SCHEDULE
-trigger fires its workflow on a 5-field UTC cron cadence, evaluated each minute
+trigger fires its Automation on a 5-field UTC cron cadence, evaluated each minute
 by the platform dispatcher — the on-platform replacement for an external cron
 calling ``pegasus-workflows run`` (sdk-feedback/0023).
 
 * ``schedule create <workflow> --cron "*/5 * * * *"`` — attach a schedule.
-* ``schedule list   <workflow>`` — list the workflow's schedules.
+* ``schedule list   <workflow>`` — list the Automation's schedules.
 * ``schedule delete <workflow> <trigger-id>`` — remove one.
 
 Each firing passes a ``{"scheduledAt": "<ISO8601>", "schedule": "<cron>",
 "triggerId": "..."}`` envelope (at ``arg["input"]``) — a documented input shape
-distinct from event-fired / manual / CLI-test runs, which the workflow's input
+distinct from event-fired / manual / CLI-test runs, which the Automation's input
 resolver keys on ``scheduledAt``.
 
 Auth mirrors ``push``: a ``vnd_`` API key via ``--token`` /
@@ -33,7 +33,7 @@ __all__ = ["schedule_app"]
 
 schedule_app = typer.Typer(
     name="schedule",
-    help="Attach cron schedules to a workflow.",
+    help="Attach cron schedules to an Automation.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -56,7 +56,7 @@ def _fmt(value: Any) -> str:
 @schedule_app.command("create")
 def schedule_create_command(
     workflow: str = typer.Argument(
-        ..., help="Workflow name or name@version to attach the schedule to."
+        ..., help="Automation name or name@version to attach the schedule to."
     ),
     cron: str = typer.Option(
         ..., "--cron", "-c", help='5-field UTC cron, e.g. "*/5 * * * *" (every 5 min).'
@@ -68,7 +68,7 @@ def schedule_create_command(
     base_url: str = base_url_option(),
     profile: str = profile_option(),
 ) -> None:
-    """Attach a cron schedule to a workflow."""
+    """Attach a cron schedule to an Automation."""
     client = _client(token, base_url, profile)
     try:
         row = _resolve_workflow(client, workflow)
@@ -89,12 +89,12 @@ def schedule_create_command(
 
 @schedule_app.command("list")
 def schedule_list_command(
-    workflow: str = typer.Argument(..., help="Workflow name or name@version."),
+    workflow: str = typer.Argument(..., help="Automation name or name@version."),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
 ) -> None:
-    """List a workflow's cron schedules."""
+    """List an Automation's cron schedules."""
     client = _client(token, base_url, profile)
     try:
         row = _resolve_workflow(client, workflow)
@@ -115,13 +115,13 @@ def schedule_list_command(
 
 @schedule_app.command("delete")
 def schedule_delete_command(
-    workflow: str = typer.Argument(..., help="Workflow name or name@version."),
+    workflow: str = typer.Argument(..., help="Automation name or name@version."),
     trigger_id: str = typer.Argument(..., help="The schedule (trigger) id to delete."),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
 ) -> None:
-    """Delete a workflow's cron schedule by trigger id."""
+    """Delete an Automation's cron schedule by trigger id."""
     client = _client(token, base_url, profile)
     try:
         row = _resolve_workflow(client, workflow)
