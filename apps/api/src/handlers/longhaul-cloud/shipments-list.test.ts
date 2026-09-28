@@ -1065,4 +1065,135 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(res.status).toBe(500)
     expect(((await res.json()) as { code: string }).code).toBe('INTERNAL_ERROR')
   })
+
+  // -------------------------------------------------------------------------
+  // ORDER BY whitelist. An ORDER BY identifier cannot be parameterized, so the
+  // SORTABLE_COLUMNS map is the only thing between `sortBy.value` and SQL
+  // injection — `filters` is JSON.parse'd from the query string and the
+  // `as ShipmentQuery` cast erases at runtime. Mirrors the pair in
+  // activities-list.test.ts.
+  // -------------------------------------------------------------------------
+  describe('sort ordering', () => {
+    /** The base query is the round trip that selects FROM the shipments view. */
+    function baseSql(): string {
+      const call = executeSqlMock.mock.calls.find(
+        (c: unknown[]) =>
+          typeof c[1] === 'string' && (c[1] as string).includes('FROM v_longhaul_shipments_v2'),
+      )
+      return (call?.[1] as string) ?? ''
+    }
+
+    function requestWithSort(sortBy: unknown) {
+      const qs = '?filters=' + encodeURIComponent(JSON.stringify({ sortBy }))
+      return buildApp().request('/onprem/longhaul/shipments' + qs)
+    }
+
+    beforeEach(() => {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({})
+    })
+
+    it('honors a whitelisted sort column and direction', async () => {
+      await requestWithSort({ value: 'shipper_city', order: 'desc' })
+
+      expect(baseSql()).toContain(
+        'ORDER BY v_longhaul_shipments_v2.shipper_city DESC, v_longhaul_shipments_v2.shipper_name ASC',
+      )
+    })
+
+    it('honors every column the two UI surfaces can emit', async () => {
+      // Card view (containers/Shipments) + table view (containers/ShipmentsTable).
+      // A key missing from the whitelist would silently stop sorting.
+      const emitted = [
+        'shipper_name',
+        'shipper_city',
+        'shipper_state',
+        'consignee_city',
+        'consignee_state',
+        'total_est_wt',
+        'pack_date2',
+        'load_date2',
+        'del_date2',
+        'shaul',
+        'company',
+        'driver_name',
+      ]
+      for (const col of emitted) {
+        // Every emitted key must also really exist on the view.
+        expect(LONGHAUL_SHIPMENT_VIEW_COLUMNS).toContain(col)
+
+        vi.clearAllMocks()
+        findUnique.mockResolvedValue({
+          mssqlConnectionString: 'Server=a,1433',
+          longhaulClient: 'nwi',
+        })
+        stubExecutor({})
+
+        await requestWithSort({ value: col, order: 'asc' })
+
+        expect(baseSql(), `sort key ${col} should be whitelisted`).toContain(
+          `ORDER BY v_longhaul_shipments_v2.${col} ASC`,
+        )
+      }
+    })
+
+    it('falls back to the default ordering for a column not on the whitelist', async () => {
+      await requestWithSort({ value: 's.id; DROP TABLE TripMaster--', order: 'asc' })
+
+      expect(baseSql()).toContain(
+        'ORDER BY v_longhaul_shipments_v2.plan_load ASC, v_longhaul_shipments_v2.shipper_name ASC',
+      )
+      expect(baseSql()).not.toContain('DROP TABLE')
+    })
+
+    it('does not let a stacked statement reach the SQL', async () => {
+      await requestWithSort({
+        value: "shipper_name; EXEC xp_cmdshell 'whoami'--",
+        order: 'asc',
+      })
+
+      expect(baseSql()).not.toContain('xp_cmdshell')
+      expect(baseSql()).toContain('ORDER BY v_longhaul_shipments_v2.plan_load ASC')
+    })
+
+    it('falls back when order is supplied without a value', async () => {
+      // The old guard keyed off `order`, so this produced `.undefined` and a SQL error.
+      await requestWithSort({ order: 'desc' })
+
+      expect(baseSql()).toContain('ORDER BY v_longhaul_shipments_v2.plan_load ASC')
+      expect(baseSql()).not.toContain('undefined')
+    })
+
+    it('rejects inherited Object.prototype keys as sort columns', async () => {
+      // A bare `MAP[value]` lookup returns a truthy function for 'constructor',
+      // 'toString', 'valueOf' etc., which would sail past the whitelist.
+      for (const key of ['constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
+        vi.clearAllMocks()
+        findUnique.mockResolvedValue({
+          mssqlConnectionString: 'Server=a,1433',
+          longhaulClient: 'nwi',
+        })
+        stubExecutor({})
+
+        const res = await requestWithSort({ value: key, order: 'asc' })
+
+        expect(res.status, `${key} should not 500`).toBe(200)
+        expect(baseSql(), `${key} should fall back`).toContain(
+          'ORDER BY v_longhaul_shipments_v2.plan_load ASC',
+        )
+        expect(baseSql()).not.toContain('native code')
+      }
+    })
+
+    it('does not throw when order is not a string', async () => {
+      // `order.toUpperCase()` used to assume a string; a JSON number threw a 500.
+      const res = await requestWithSort({ value: 'shipper_city', order: 7 })
+
+      expect(res.status).toBe(200)
+      expect(baseSql()).toContain('ORDER BY v_longhaul_shipments_v2.shipper_city ASC')
+    })
+  })
 })
