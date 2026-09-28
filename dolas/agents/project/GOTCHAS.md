@@ -1995,3 +1995,17 @@ leave the queue, so they cycled forever and every other tenant waited a full ~75
 cap the drain per tenant, and stop calling a tenant's executor once it is unreachable within a run.
 **General rule:** any outbox whose "retry later" state never exhausts needs per-tenant fairness —
 a green cron with `sent: 0` is the tell.
+
+## RingCentral FSync silently caps at 250 records
+
+**Symptom (prod 2026-09-25):** a tenant connected with a 90-day backfill window; exactly 250 messages
+arrived in the first minute and nothing older, although RingCentral held 5,100 SMS for the window.
+
+**Cause:** `GET …/message-sync?syncType=FSync&dateFrom=…` returns at most 250 records, newest first,
+with `syncInfo.olderRecordsExist: true`. There is no page parameter; the next call must be ISync. The
+original capture treated the FSync page as the whole backfill.
+
+**Fix (`fix/ringcentral-backfill-pagination`):** keep FSync for the sync token, then page
+`…/message-store` (`perPage=1000`, `dateTo` = oldest FSync record) with resumable progress on the
+cursor. **General rule:** check every RingCentral "full" response for a truncation flag
+(`olderRecordsExist`, `navigation.nextPage`) before trusting its size.

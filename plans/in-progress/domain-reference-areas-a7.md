@@ -60,6 +60,7 @@ needs no prior decision at all, which is the cheapest remaining move in the mode
 | A5, storage-in-transit                 | `analysis/A5-storage-in-transit.md` + `OpensStay` in `src/outcomes.ts`   | `d4fb4c3f`, PR #723 |
 | A2, shipment structure                 | `analysis/A2-shipment-structure.md` + `src/rules/shipment-continuity.ts` | `4dbd3b17`, PR #724 |
 | A6, documents & evidence               | `analysis/A6-documents-evidence.md` + `src/rules/documents.ts`           | `a614b016`, PR #725 |
+| ↳ A6 follow-ups                        | `rubric.md` paragraph repair (§7's third instance)                       | `a3b84942`, PR #727 |
 
 Repo: `github.com/DolasDev/pegasus`, primary checkout `~/repos/pegasus`.
 
@@ -207,6 +208,17 @@ Follow this order.
     §4.6.2 and §4.6.3). **Before opening the PR, re-read your own To-[SD] list and check each item
     was actually written into `[SD]`** — `documents.test.ts` and the glossary gate the citations, not
     the claims.
+15. **When you insert into an existing paragraph, re-read the whole paragraph afterwards.** A6
+    inserted two blockquotes into `rubric.md` with a scripted string replace that cut the host
+    blockquote at _"unbacked."_ — and left its closing two sentences orphaned onto the end of an
+    unrelated blockquote three paragraphs down, where they follow a sentence about evidence grades and
+    mean nothing. **No gate catches this**: the markdown is valid, prettier is happy, and
+    `documents.test.ts` checks citations rather than prose. It survived the PR, the merge queue and a
+    green `main`, and was found four days later only by reading the merged file. Repaired at
+    `a3b84942` (#727). Two habits prevent it: **anchor a scripted replace on a whole paragraph rather
+    than on a sentence inside one**, and **read the rendered diff of every prose file you touched**
+    before opening the PR — which is what `git diff` is for, and the one step this round skipped three
+    times.
 
 ---
 
@@ -401,6 +413,14 @@ another, and A6's warning that the `Covers` column is a prompt rather than an in
   an unused `@ts-expect-error` is the failure mode that reports it. A6 needed a review pass to learn
   this about its own central decision.
 - **Re-read your own To-[SD] list before opening the PR.** §4 item 14.
+- **Read the rendered diff of every prose file you touched.** §4 item 15. **No gate in this package
+  reads prose for sense**, so a scripted edit that splits a paragraph ships green — A6 did it to
+  `rubric.md` and it took four days and a fresh read of `main` to notice.
+- **Every defect A6 shipped had one shape**: an edit or an assertion that looked right and that
+  nothing could contradict — two unfalsifiable tests, a set of peer edits claimed and not made, and a
+  split paragraph. (No count here on purpose, §4 item 10; the record enumerates them.) A green suite
+  is evidence about the code, not about the prose — so budget a deliberate read-the-diff pass before
+  the PR, not after.
 - **Read the existing tests for the records you are writing about.** An `OWED` label or a test title
   naming your own area is a to-do item in the test suite. A2's was a scenario title; **A6's was a
   test called `FINDING: the inbound message cannot ride in a published evidence[]`**, and turning it

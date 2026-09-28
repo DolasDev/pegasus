@@ -3,7 +3,10 @@
 //
 // Pulls SMS from both stores using the RingCentral sync API and the stored
 // per-store cursors, normalizes them, and idempotently captures them:
-//   - v1.0 message-store  → ISync (or FSync on first run / SYNC_TOKEN_INVALID)
+//   - v1.0 message-store  → ISync (or FSync on first run / SYNC_TOKEN_INVALID).
+//     FSync returns at most 250 records; when RC reports `olderRecordsExist`, the
+//     rest of the backfill window is paged from the message list, a few pages
+//     per run, resuming from the cursor's saved progress.
 //   - Thread Messaging     → ISync entries; entries omit phone numbers, so we
 //     resolve the from/to pair via Read Thread (cached per thread per run)
 //
@@ -27,16 +30,21 @@ import {
 import {
   getSyncCursor,
   saveSyncCursor,
+  saveBackfillProgress,
   captureMessage,
 } from '../../repositories/messaging.repository'
 
 const logger = createLogger('pegasus-ringcentral-sync')
 
 const V1_MESSAGE_SYNC = '/restapi/v1.0/account/~/extension/~/message-sync'
+const V1_MESSAGE_LIST = '/restapi/v1.0/account/~/extension/~/message-store'
 const THREAD_ENTRIES_SYNC = '/restapi/v1.0/account/~/message-threads/entries/sync'
 const READ_THREAD = (threadId: string) => `/restapi/v1.0/account/~/message-threads/${threadId}`
 
 const DEFAULT_BACKFILL_DAYS = 90
+/** Message-list page size (RC maximum) and pages paged per sync run. */
+const BACKFILL_PAGE_SIZE = 1000
+const MAX_BACKFILL_PAGES_PER_RUN = 3
 
 /** A connection's fields the sync needs. */
 export interface SyncConnection {
@@ -48,10 +56,16 @@ export interface SyncConnection {
 
 interface SyncInfo {
   syncToken?: string
+  /** FSync only: true when the 250-record cap left older records unreturned. */
+  olderRecordsExist?: boolean
 }
 interface MessageSyncResponse {
   records?: RawV1Message[]
   syncInfo?: SyncInfo
+}
+interface MessageListResponse {
+  records?: RawV1Message[]
+  navigation?: { nextPage?: unknown }
 }
 interface ThreadEntriesSyncResponse {
   records?: Array<RawThreadEntry & { threadId?: string; conversationId?: string }>
@@ -132,6 +146,9 @@ async function syncV1Store(
     messageType: 'SMS',
   })
 
+  // Only an incremental pull announces messages as newly received; a full sync
+  // re-reads up to `backfillDays` of history (see CaptureOptions).
+  let incremental = !!cursor?.syncToken
   let res: MessageSyncResponse
   try {
     res = await client.get<MessageSyncResponse>(
@@ -141,16 +158,94 @@ async function syncV1Store(
   } catch (err) {
     if (!isSyncTokenInvalid(err)) throw err
     logger.warn('v1 sync token invalid — falling back to FSync', { connectionId: connection.id })
+    incremental = false
     res = await client.get<MessageSyncResponse>(V1_MESSAGE_SYNC, fsyncParams())
   }
 
   let captured = 0
   for (const record of res.records ?? []) {
-    if (await captureOne(db, connection, () => normalizeV1Json(record), record.id)) captured++
+    if (await captureOne(db, connection, () => normalizeV1Json(record), record.id, incremental)) {
+      captured++
+    }
   }
   if (res.syncInfo?.syncToken) {
     await saveSyncCursor(db, connection.tenantId, connection.id, 'V1', res.syncInfo.syncToken)
   }
+
+  // Backfill owed beyond the FSync cap: freshly reported by this FSync, or saved
+  // by an earlier run that hit the per-run page limit.
+  let owed: BackfillWindow | null = null
+  if (!incremental && res.syncInfo?.olderRecordsExist) {
+    owed = {
+      from: new Date(isoDaysAgo(backfillDays, now)),
+      before: oldestCreationTime(res.records ?? []) ?? new Date(now),
+    }
+  } else if (cursor?.backfillFrom && cursor.backfillBefore) {
+    owed = { from: cursor.backfillFrom, before: cursor.backfillBefore }
+  }
+  if (owed) captured += await backfillV1(db, client, connection, owed)
+  return captured
+}
+
+interface BackfillWindow {
+  from: Date
+  before: Date
+}
+
+function oldestCreationTime(records: RawV1Message[]): Date | null {
+  const times = records
+    .map((r) => (r.creationTime ? Date.parse(r.creationTime) : NaN))
+    .filter((t) => !Number.isNaN(t))
+  return times.length ? new Date(Math.min(...times)) : null
+}
+
+/**
+ * Pages the v1 message list (newest first) over `[from, before)` and captures
+ * every record as history (no `sms.received`). Stops after
+ * MAX_BACKFILL_PAGES_PER_RUN pages and saves the oldest time seen so the next
+ * run resumes below it; clears the saved progress once the list is exhausted.
+ * Overlap at the resume boundary is harmless — capture is idempotent.
+ */
+async function backfillV1(
+  db: PrismaClient,
+  client: RingCentralClient,
+  connection: SyncConnection,
+  window: BackfillWindow,
+): Promise<number> {
+  let captured = 0
+  let oldest = window.before
+  for (let page = 1; page <= MAX_BACKFILL_PAGES_PER_RUN; page++) {
+    const res = await client.get<MessageListResponse>(V1_MESSAGE_LIST, {
+      messageType: 'SMS',
+      dateFrom: window.from.toISOString(),
+      dateTo: window.before.toISOString(),
+      perPage: String(BACKFILL_PAGE_SIZE),
+      page: String(page),
+    })
+    const records = res.records ?? []
+    for (const record of records) {
+      if (await captureOne(db, connection, () => normalizeV1Json(record), record.id, false)) {
+        captured++
+      }
+    }
+    const pageOldest = oldestCreationTime(records)
+    if (pageOldest && pageOldest < oldest) oldest = pageOldest
+
+    if (!res.navigation?.nextPage || records.length === 0) {
+      await saveBackfillProgress(db, connection.tenantId, connection.id, 'V1', null)
+      logger.info('v1 backfill complete', { connectionId: connection.id, captured })
+      return captured
+    }
+  }
+  await saveBackfillProgress(db, connection.tenantId, connection.id, 'V1', {
+    from: window.from,
+    before: oldest,
+  })
+  logger.info('v1 backfill paused at page cap — resumes next run', {
+    connectionId: connection.id,
+    captured,
+    resumeBefore: oldest.toISOString(),
+  })
   return captured
 }
 
@@ -169,6 +264,7 @@ async function syncThreadStore(
     ? { syncType: 'ISync', syncToken: cursor.syncToken }
     : { syncType: 'FSync' }
 
+  let incremental = !!cursor?.syncToken
   let res: ThreadEntriesSyncResponse
   try {
     res = await client.get<ThreadEntriesSyncResponse>(THREAD_ENTRIES_SYNC, params)
@@ -177,6 +273,7 @@ async function syncThreadStore(
     logger.warn('thread sync token invalid — falling back to FSync', {
       connectionId: connection.id,
     })
+    incremental = false
     res = await client.get<ThreadEntriesSyncResponse>(THREAD_ENTRIES_SYNC, { syncType: 'FSync' })
   }
 
@@ -195,6 +292,9 @@ async function syncThreadStore(
       external = await resolveThreadExternalNumber(client, threadId, connection.ownerNumber)
       externalByThread.set(threadId, external)
     }
+    // A missing direction is captured as Inbound (forwarding unchanged) but never
+    // announced: if a workflow's own reply came back direction-less, emitting it
+    // would re-trigger that workflow in a loop.
     const direction = entry.direction ?? 'Inbound'
     const phones: ThreadPhonePair =
       direction === 'Inbound'
@@ -202,7 +302,13 @@ async function syncThreadStore(
         : { from: connection.ownerNumber, to: external }
 
     if (
-      await captureOne(db, connection, () => normalizeThreadJson(entry, threadId, phones), entry.id)
+      await captureOne(
+        db,
+        connection,
+        () => normalizeThreadJson(entry, threadId, phones),
+        entry.id,
+        incremental && entry.direction != null,
+      )
     ) {
       captured++
     }
@@ -244,10 +350,13 @@ async function captureOne(
   connection: SyncConnection,
   normalize: () => ReturnType<typeof normalizeV1Json>,
   rawId: string | number,
+  emitReceivedEvent: boolean,
 ): Promise<boolean> {
   try {
     const normalized = normalize()
-    await captureMessage(db, connection.tenantId, normalized, connection.id)
+    await captureMessage(db, connection.tenantId, normalized, connection.id, {
+      emitReceivedEvent,
+    })
     return true
   } catch (err) {
     if (err instanceof DomainError) {

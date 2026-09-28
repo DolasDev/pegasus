@@ -70,6 +70,7 @@ describe('emitDomainEvent', () => {
       'customer.created',
       'pegasus_event.received',
       'feedback.submitted',
+      'sms.received',
     ]
     expect([...DOMAIN_EVENT_TYPES]).toEqual([...expected])
   })

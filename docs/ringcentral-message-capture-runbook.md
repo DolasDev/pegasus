@@ -135,6 +135,25 @@ missing or its schema drifted). To recover:
    The matching `messages.forward_status` is kept in lock-step by the forwarder
    on its next attempt.
 
+## Backfill beyond 250 messages
+
+RingCentral's v1 full sync (FSync) returns at most **250** records and reports
+`olderRecordsExist` when there are more. The sync then pages the v1 message list
+(1,000 per page, newest first) over the rest of the backfill window, **3 pages
+per sync run**, saving its position on the V1 cursor (`backfill_from`,
+`backfill_before`) and resuming on the next 15-minute run. Both columns go back
+to null when the window is exhausted. Backfilled messages never emit
+`sms.received`.
+
+To re-run a backfill for a connection without disturbing its sync token:
+
+```sql
+UPDATE ringcentral_sync_cursors
+SET backfill_from = now() - interval '90 days',
+    backfill_before = (SELECT min(rc_creation_time) FROM messages WHERE connection_id = '<connection>')
+WHERE connection_id = '<connection>' AND store = 'V1';
+```
+
 ## Forwarder fairness
 
 Each 5-minute forwarder run drains up to 100 due rows **per tenant** (oldest-due
@@ -168,6 +187,22 @@ The buffer-purge cron (`RingCentralBufferPurgeFunction`, every 6h) enforces:
 - **Tombstone delete** — `SENT` message rows captured more than 30 days ago are
   hard-deleted (the FK cascade drops their outbox rows). `PENDING`/`FAILED` rows
   (still being delivered) and `DEAD` rows (kept for investigation) are retained.
+- **Event-body purge** — every new inbound SMS also emits an `sms.received`
+  DomainEvent whose payload carries the text (the workflow trigger input). Once
+  dispatched and 72h past its occurrence, its `payload.body` is nulled by the same
+  cron; the rest of the payload (ids, numbers, time) is kept.
+
+## Workflow event (`sms.received`)
+
+`captureMessage` emits `sms.received` in the capture transaction when **all** hold:
+the message is `INBOUND`; this call inserted its outbox row (first capture — a
+webhook/sync race emits once); the capturing pull was an **ISync** (first-run
+FSync, connect-time backfill, and the invalid-token FSync fallback never emit);
+and no INBOUND twin with the same numbers + body within ±60s was already captured
+from the **other** store. The trigger dispatcher (1-min cron) then starts any
+workflow with an `EVENT` trigger on it. A missing workflow run therefore means:
+check the message's `direction`, whether the connection's sync cursor was reset
+(FSync), then `domain_events` for the row and its `dispatched_at`.
 
 ## Disabling
 

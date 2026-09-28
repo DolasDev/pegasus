@@ -246,6 +246,18 @@ The dispatcher injects the full event envelope:
 Read ids from ``arg["payload"]["quoteId"]`` etc. The payload is a pointer,
 not a snapshot — always re-fetch authoritative state from the Pegasus API.
 
+Built-in event types: ``quote.accepted``, ``move.status_changed``,
+``invoice.paid``, ``customer.created``, ``pegasus_event.received``,
+``feedback.submitted``, ``sms.received``; plus ``pegii.shipment.opened``,
+``pegii.shipment.closed``, ``pegii.sale.saved`` and the tenant's registered
+custom event types.
+
+``sms.received`` fires once per NEW inbound text on the tenant's RingCentral
+number (never for outbound, never for a connect-time backfill). Unlike the
+pointer payloads, it carries the text so the Automation can parse it directly:
+``{messageId, fromNumber, toNumber, body, rcCreationTime, threadId, source,
+externalId, connectionId}``. Reply with ``client.send_sms(to=payload["fromNumber"], ...)``.
+
 ## Shape 2 — Manual run
 
 ``POST /api/v1/workflows/:id/run`` passes:

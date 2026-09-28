@@ -189,6 +189,28 @@ itself, beyond the `[SD §4.7.3]` entry:
   and the refused path produce the same published `evidence[]` and neither carries the message, so
   that paragraph's "one behaviour with a cardinality gate" is now held in the types.
 
+## A third defect, found four days later, and it completes the pattern
+
+The two above were caught by a review pass while the PR was open. **A third was not.** A6 inserted two
+blockquotes into `docs/domain-reference/rubric.md` with a scripted string replace anchored on a
+sentence — _"…or to a source analysis is unbacked."_ — rather than on the whole paragraph. That cut
+the host blockquote in half and left its closing two sentences (_"A10-A13 are context-map-only by
+design and are not gaps…"_) orphaned onto the end of an unrelated blockquote three paragraphs down,
+where they follow a sentence about evidence grades and mean nothing.
+
+**Nothing caught it.** The markdown is valid, prettier is a fixed point, `documents.test.ts` checks
+citations rather than prose, 369 tests passed, the merge queue passed, `main` went green. It was found
+only by reading the merged file four days later, and repaired at **`a3b84942` (#727)** — which also
+fixed a second consequence of the same edit: the note cited
+`plans/in-progress/domain-reference-areas-a6.md`, a path the A6 PR itself deleted.
+
+> **All three of the round's shipped defects have one shape: something that looked right and that
+> nothing could contradict.** Two unfalsifiable assertions, a set of peer edits claimed and not made,
+> and a split paragraph. The suite is evidence about the code and says nothing about the prose, and in
+> each case the missing step was the same one — **reading the rendered diff of what was actually
+> changed.** `plans/in-progress/domain-reference-areas-a7.md` §4 items 13-15 and §7 carry all three
+> forward as checks to run _before_ opening the PR.
+
 ## A recorded gap should be a gate wherever the gap has an edge — the next case along from [A2 §9]
 
 `[A5 §9]`: a bare `Exact<>` alias is a comment until something is assigned to it. `[A2 §9]`: an

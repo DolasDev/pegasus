@@ -290,3 +290,7 @@ Known limitation, by design: the other filters (dates, states, planner,
 dispatcher, weight) are SQL predicates against `TripMaster` and do **not** apply
 to the Postgres snapshots. Selecting "Rejected" with no driver lists every
 snapshot in the tenant.
+
+## Emitting a domain event from an idempotent ingest path
+
+When the write that should fire a workflow is an idempotent **re-capture** (webhook + safety-net sync converging, e.g. `captureMessage` → `sms.received`), emit only on the call that actually **created** the row, and decide that inside the same transaction with `createMany({ skipDuplicates: true })` on a 1:1 child row. That's `ON CONFLICT DO NOTHING`, so a concurrent twin blocks on the row lock and gets `count: 0`. Don't use `upsert` (it doesn't report create vs update), and don't `create` + catch `P2002`, because a unique violation aborts the whole interactive Postgres transaction. Also gate on the **pull mode**: a full re-read (FSync/backfill) creates "new" rows for old history and must not emit. Finally, `domain_events` is never purged and has **no tenant cascade**: a snapshot payload carrying PII needs its own purge step, and tests that emit must delete their events before deleting the tenant.

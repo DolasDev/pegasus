@@ -23,9 +23,11 @@ import {
   updateSubscription,
   getSyncCursor,
   saveSyncCursor,
+  saveBackfillProgress,
   recordWebhookEvent,
   markWebhookEventProcessed,
   captureMessage,
+  purgeReceivedEventBodies,
   listPendingForwards,
   markForwardSent,
   markForwardFailed,
@@ -58,6 +60,8 @@ const normalized = (overrides: Partial<NormalizedMessage> = {}): NormalizedMessa
 
 afterAll(async () => {
   if (hasDb) {
+    // domain_events has no tenant cascade (sms.received rows) — clear them first.
+    await db.domainEvent.deleteMany({ where: { tenant: { slug: { in: ALL_SLUGS } } } })
     // FK cascade from tenant removes connections/subscriptions/cursors/messages/outbox/events.
     await db.tenant.deleteMany({ where: { slug: { in: ALL_SLUGS } } })
     await db.$disconnect()
@@ -273,6 +277,28 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
       const v1 = await getSyncCursor(db, tenantId, conn.id, 'V1')
       expect(v1?.syncToken).toBe('token-B') // independent store
     })
+    it('records and clears v1 backfill progress without touching the sync token', async () => {
+      const conn = await upsertConnection(db, tenantId, {
+        rcAccountId: 'acct-bf',
+        rcExtensionId: 'ext-bf',
+        ownerNumber: '+19085760908',
+      })
+      await saveSyncCursor(db, tenantId, conn.id, 'V1', 'tok-bf')
+      const from = new Date('2026-06-30T12:00:00.000Z')
+      const before = new Date('2026-09-22T00:00:00.000Z')
+
+      await saveBackfillProgress(db, tenantId, conn.id, 'V1', { from, before })
+      const owed = await getSyncCursor(db, tenantId, conn.id, 'V1')
+      expect(owed?.backfillFrom).toEqual(from)
+      expect(owed?.backfillBefore).toEqual(before)
+      expect(owed?.syncToken).toBe('tok-bf')
+
+      await saveBackfillProgress(db, tenantId, conn.id, 'V1', null)
+      const done = await getSyncCursor(db, tenantId, conn.id, 'V1')
+      expect(done?.backfillFrom).toBeNull()
+      expect(done?.backfillBefore).toBeNull()
+      expect(done?.syncToken).toBe('tok-bf')
+    })
   })
 
   // -------------------------------------------------------------------------
@@ -334,6 +360,171 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
       const after = await db.message.findUnique({ where: { id: m.id } })
       expect(after?.body).toBeNull() // PII stays purged
       expect(after?.forwardStatus).toBe('SENT') // not re-queued
+    })
+
+    describe('sms.received event', () => {
+      const EMIT = { emitReceivedEvent: true }
+      const eventsFor = (messageId: string) =>
+        db.domainEvent.findMany({
+          where: {
+            tenantId,
+            eventType: 'sms.received',
+            payload: { path: ['messageId'], equals: messageId },
+          },
+        })
+
+      it('emits exactly once for a first-time inbound capture, with a parse-ready payload', async () => {
+        const msg = normalized({ externalId: 'evt-in', body: 'YES confirm Tuesday' })
+        const m = await captureMessage(db, tenantId, msg, undefined, EMIT)
+        await captureMessage(db, tenantId, msg, undefined, EMIT) // webhook + sync converge
+
+        const events = await eventsFor(m.id)
+        expect(events).toHaveLength(1)
+        expect(events[0]!.payload).toMatchObject({
+          messageId: m.id,
+          source: 'THREAD_STORE',
+          externalId: msg.externalId,
+          fromNumber: '+19085760908',
+          toNumber: '+12015550123',
+          body: 'YES confirm Tuesday',
+          rcCreationTime: '2026-06-02T10:00:00.000Z',
+        })
+      })
+
+      it('emits once when two captures of the same message race', async () => {
+        const msg = normalized({ externalId: 'evt-race' })
+        const results = await Promise.allSettled([
+          captureMessage(db, tenantId, msg, undefined, EMIT),
+          captureMessage(db, tenantId, msg, undefined, EMIT),
+        ])
+        const ok = results.find(
+          (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof captureMessage>>> =>
+            r.status === 'fulfilled',
+        )!
+        expect(await eventsFor(ok.value.id)).toHaveLength(1)
+      })
+
+      it('never emits for an outbound message (a workflow reply must not re-trigger it)', async () => {
+        const m = await captureMessage(
+          db,
+          tenantId,
+          normalized({ externalId: 'evt-out', direction: 'OUTBOUND' }),
+          undefined,
+          EMIT,
+        )
+        expect(await eventsFor(m.id)).toHaveLength(0)
+      })
+
+      it('does not emit unless asked (full sync / backfill)', async () => {
+        const m = await captureMessage(db, tenantId, normalized({ externalId: 'evt-backfill' }))
+        expect(await eventsFor(m.id)).toHaveLength(0)
+      })
+
+      it('purges the text from dispatched events past the cutoff, keeping the rest', async () => {
+        const cutoff = new Date('2026-06-10T00:00:00.000Z')
+        const old = await captureMessage(
+          db,
+          tenantId,
+          normalized({ externalId: 'p-old' }),
+          undefined,
+          EMIT,
+        )
+        const pend = await captureMessage(
+          db,
+          tenantId,
+          normalized({ externalId: 'p-pend' }),
+          undefined,
+          EMIT,
+        )
+        const fresh = await captureMessage(
+          db,
+          tenantId,
+          normalized({ externalId: 'p-new' }),
+          undefined,
+          EMIT,
+        )
+        const [eOld] = await eventsFor(old.id)
+        const [ePend] = await eventsFor(pend.id)
+        const [eFresh] = await eventsFor(fresh.id)
+        const before = new Date(cutoff.getTime() - 1000)
+        await db.domainEvent.update({
+          where: { id: eOld!.id },
+          data: { occurredAt: before, dispatchedAt: before },
+        })
+        await db.domainEvent.update({ where: { id: ePend!.id }, data: { occurredAt: before } }) // not dispatched
+        await db.domainEvent.update({
+          where: { id: eFresh!.id },
+          data: { dispatchedAt: new Date() },
+        }) // after cutoff
+
+        // A custom event derived from the old sms.received (dispatcher copies the
+        // payload), and an unrelated derived event that must be left alone.
+        const derived = await db.domainEvent.create({
+          data: {
+            tenantId,
+            eventType: 'reply.yes',
+            payload: { ...(eOld!.payload as object), _derivedFrom: eOld!.id },
+            occurredAt: before,
+            dispatchedAt: before,
+          },
+        })
+        const other = await db.domainEvent.create({
+          data: {
+            tenantId,
+            eventType: 'quote.big',
+            payload: { body: 'not an sms', _derivedFrom: '00000000-0000-0000-0000-000000000000' },
+            occurredAt: before,
+            dispatchedAt: before,
+          },
+        })
+
+        // batchSize 1 exercises keyset paging past the skipped unrelated row.
+        expect(await purgeReceivedEventBodies(db, cutoff, 1)).toBe(2)
+        expect(await purgeReceivedEventBodies(db, cutoff)).toBe(0) // idempotent
+
+        const [aOld] = await eventsFor(old.id)
+        expect(aOld!.payload).toMatchObject({
+          messageId: old.id,
+          body: null,
+          fromNumber: '+19085760908',
+        })
+        expect((await eventsFor(pend.id))[0]!.payload).toMatchObject({
+          body: 'hello from the shared inbox',
+        })
+        expect((await eventsFor(fresh.id))[0]!.payload).toMatchObject({
+          body: 'hello from the shared inbox',
+        })
+        const dAfter = await db.domainEvent.findUnique({ where: { id: derived.id } })
+        expect(dAfter!.payload).toMatchObject({ body: null, _derivedFrom: eOld!.id })
+        const oAfter = await db.domainEvent.findUnique({ where: { id: other.id } })
+        expect(oAfter!.payload).toMatchObject({ body: 'not an sms' })
+      })
+
+      it('does not emit for the same text captured from the other store', async () => {
+        const at = new Date('2026-06-03T09:00:00.000Z')
+        const body = 'cross-store twin'
+        const t = await captureMessage(
+          db,
+          tenantId,
+          normalized({ source: 'THREAD_STORE', externalId: 'twin-t', body, rcCreationTime: at }),
+          undefined,
+          EMIT,
+        )
+        const v = await captureMessage(
+          db,
+          tenantId,
+          normalized({
+            source: 'V1_STORE',
+            externalId: 'twin-v',
+            body,
+            rcCreationTime: new Date(at.getTime() + 2_000),
+          }),
+          undefined,
+          EMIT,
+        )
+        expect(await eventsFor(t.id)).toHaveLength(1)
+        expect(await eventsFor(v.id)).toHaveLength(0)
+      })
     })
 
     it('thread and v1 stores with the same external id do not collide', async () => {
