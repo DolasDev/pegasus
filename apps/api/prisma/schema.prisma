@@ -2635,6 +2635,11 @@ model RingCentralSyncCursor {
   syncToken  String?     @map("sync_token")
   lastSyncAt DateTime?   @map("last_sync_at")
 
+  /// v1 backfill still owed beyond RingCentral's 250-record FSync cap: page the
+  /// message list for [backfillFrom, backfillBefore). Both null = no backfill owed.
+  backfillFrom   DateTime? @map("backfill_from") @db.Timestamptz(6)
+  backfillBefore DateTime? @map("backfill_before") @db.Timestamptz(6)
+
   tenant     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   connection RingCentralConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 

@@ -135,6 +135,25 @@ missing or its schema drifted). To recover:
    The matching `messages.forward_status` is kept in lock-step by the forwarder
    on its next attempt.
 
+## Backfill beyond 250 messages
+
+RingCentral's v1 full sync (FSync) returns at most **250** records and reports
+`olderRecordsExist` when there are more. The sync then pages the v1 message list
+(1,000 per page, newest first) over the rest of the backfill window, **3 pages
+per sync run**, saving its position on the V1 cursor (`backfill_from`,
+`backfill_before`) and resuming on the next 15-minute run. Both columns go back
+to null when the window is exhausted. Backfilled messages never emit
+`sms.received`.
+
+To re-run a backfill for a connection without disturbing its sync token:
+
+```sql
+UPDATE ringcentral_sync_cursors
+SET backfill_from = now() - interval '90 days',
+    backfill_before = (SELECT min(rc_creation_time) FROM messages WHERE connection_id = '<connection>')
+WHERE connection_id = '<connection>' AND store = 'V1';
+```
+
 ## Forwarder fairness
 
 Each 5-minute forwarder run drains up to 100 due rows **per tenant** (oldest-due

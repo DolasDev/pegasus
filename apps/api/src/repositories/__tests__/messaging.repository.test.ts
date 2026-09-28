@@ -23,6 +23,7 @@ import {
   updateSubscription,
   getSyncCursor,
   saveSyncCursor,
+  saveBackfillProgress,
   recordWebhookEvent,
   markWebhookEventProcessed,
   captureMessage,
@@ -275,6 +276,28 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
 
       const v1 = await getSyncCursor(db, tenantId, conn.id, 'V1')
       expect(v1?.syncToken).toBe('token-B') // independent store
+    })
+    it('records and clears v1 backfill progress without touching the sync token', async () => {
+      const conn = await upsertConnection(db, tenantId, {
+        rcAccountId: 'acct-bf',
+        rcExtensionId: 'ext-bf',
+        ownerNumber: '+19085760908',
+      })
+      await saveSyncCursor(db, tenantId, conn.id, 'V1', 'tok-bf')
+      const from = new Date('2026-06-30T12:00:00.000Z')
+      const before = new Date('2026-09-22T00:00:00.000Z')
+
+      await saveBackfillProgress(db, tenantId, conn.id, 'V1', { from, before })
+      const owed = await getSyncCursor(db, tenantId, conn.id, 'V1')
+      expect(owed?.backfillFrom).toEqual(from)
+      expect(owed?.backfillBefore).toEqual(before)
+      expect(owed?.syncToken).toBe('tok-bf')
+
+      await saveBackfillProgress(db, tenantId, conn.id, 'V1', null)
+      const done = await getSyncCursor(db, tenantId, conn.id, 'V1')
+      expect(done?.backfillFrom).toBeNull()
+      expect(done?.backfillBefore).toBeNull()
+      expect(done?.syncToken).toBe('tok-bf')
     })
   })
 

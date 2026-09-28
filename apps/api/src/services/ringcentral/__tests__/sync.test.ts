@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   getSyncCursor: vi.fn(),
   saveSyncCursor: vi.fn(),
   captureMessage: vi.fn(),
+  saveBackfillProgress: vi.fn(),
 }))
 
 vi.mock('../client', async (importActual) => {
@@ -16,6 +17,7 @@ vi.mock('../../../repositories/messaging.repository', () => ({
   getSyncCursor: h.getSyncCursor,
   saveSyncCursor: h.saveSyncCursor,
   captureMessage: h.captureMessage,
+  saveBackfillProgress: h.saveBackfillProgress,
 }))
 
 import { syncConnection } from '../sync'
@@ -32,6 +34,7 @@ const connection = {
 
 const V1_PATH = '/restapi/v1.0/account/~/extension/~/message-sync'
 const THREAD_PATH = '/restapi/v1.0/account/~/message-threads/entries/sync'
+const V1_LIST_PATH = '/restapi/v1.0/account/~/extension/~/message-store'
 
 let getMock: ReturnType<typeof vi.fn>
 
@@ -46,6 +49,7 @@ beforeEach(() => {
   h.getSyncCursor.mockResolvedValue(null) // no cursor → FSync by default
   h.captureMessage.mockResolvedValue({})
   h.saveSyncCursor.mockResolvedValue({})
+  h.saveBackfillProgress.mockResolvedValue({})
 })
 
 const v1Sms = (id: number) => ({
@@ -151,6 +155,155 @@ describe('syncConnection — v1 store', () => {
     const { captured } = await syncConnection(db, connection)
     expect(captured).toBe(1) // only the SMS
     expect(h.captureMessage).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('syncConnection — v1 backfill beyond the FSync cap', () => {
+  const NOW = Date.parse('2026-09-28T12:00:00.000Z')
+  const at = (iso: string, id: number) => ({ ...v1Sms(id), creationTime: iso })
+  const listPages = (pages: Array<{ records: unknown[]; last?: boolean }>) => {
+    let page = 0
+    return () => {
+      const p = pages[page++]!
+      return Promise.resolve({
+        records: p.records,
+        navigation: p.last ? {} : { nextPage: { uri: 'next' } },
+      })
+    }
+  }
+
+  it('pages the message list when FSync reports older records, then clears progress', async () => {
+    const nextList = listPages([
+      { records: [at('2026-09-20T00:00:00.000Z', 10), at('2026-08-01T00:00:00.000Z', 11)] },
+      { records: [at('2026-07-01T00:00:00.000Z', 12)], last: true },
+    ])
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH)
+        return Promise.resolve({
+          records: [at('2026-09-22T00:00:00.000Z', 1)],
+          syncInfo: { syncToken: 'v1-tok', olderRecordsExist: true },
+        })
+      if (path === V1_LIST_PATH) return nextList()
+      return Promise.resolve({ records: [], syncInfo: { syncToken: 't' } })
+    })
+
+    const { captured } = await syncConnection(db, connection, { now: NOW })
+
+    expect(captured).toBe(4)
+    const listCalls = getMock.mock.calls.filter((c) => c[0] === V1_LIST_PATH)
+    expect(listCalls).toHaveLength(2)
+    // Bounded by the backfill window and the oldest FSync record; newest first.
+    expect(listCalls[0]![1]).toMatchObject({
+      messageType: 'SMS',
+      dateFrom: '2026-06-30T12:00:00.000Z',
+      dateTo: '2026-09-22T00:00:00.000Z',
+      perPage: '1000',
+      page: '1',
+    })
+    expect(listCalls[1]![1]).toMatchObject({ page: '2' })
+    // History never fires workflows.
+    for (const call of h.captureMessage.mock.calls) {
+      expect(call[4]).toEqual({ emitReceivedEvent: false })
+    }
+    expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
+  })
+
+  it('bounds the backfill by now when FSync returned no records, and tolerates odd pages', async () => {
+    const nextList = listPages([
+      // A record with no creationTime is skipped by the normalizer and ignored
+      // for the resume boundary; an empty follow-up page ends the backfill.
+      { records: [{ ...v1Sms(20), creationTime: undefined }] },
+      { records: [] },
+    ])
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH)
+        return Promise.resolve({ syncInfo: { syncToken: 'v1-tok', olderRecordsExist: true } })
+      if (path === V1_LIST_PATH) return nextList()
+      return Promise.resolve({ records: [], syncInfo: { syncToken: 't' } })
+    })
+
+    const { captured } = await syncConnection(db, connection, { now: NOW })
+
+    expect(captured).toBe(0)
+    const listCalls = getMock.mock.calls.filter((c) => c[0] === V1_LIST_PATH)
+    expect(listCalls[0]![1]).toMatchObject({ dateTo: new Date(NOW).toISOString() })
+    expect(listCalls).toHaveLength(2)
+    expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
+  })
+
+  it('does not page when FSync returned everything', async () => {
+    getMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === V1_PATH
+          ? { records: [v1Sms(1)], syncInfo: { syncToken: 'v1-tok', olderRecordsExist: false } }
+          : { records: [], syncInfo: { syncToken: 't' } },
+      ),
+    )
+
+    await syncConnection(db, connection, { now: NOW })
+
+    expect(getMock.mock.calls.some((c) => c[0] === V1_LIST_PATH)).toBe(false)
+    expect(h.saveBackfillProgress).not.toHaveBeenCalled()
+  })
+
+  it('stops at the per-run page cap and saves where to resume', async () => {
+    const full = Array.from({ length: 3 }, (_, i) => ({
+      records: [at(`2026-0${9 - i}-01T00:00:00.000Z`, 100 + i)],
+    }))
+    const nextList = listPages(full)
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH)
+        return Promise.resolve({
+          records: [at('2026-09-22T00:00:00.000Z', 1)],
+          syncInfo: { syncToken: 'v1-tok', olderRecordsExist: true },
+        })
+      if (path === V1_LIST_PATH) return nextList()
+      return Promise.resolve({ records: [], syncInfo: { syncToken: 't' } })
+    })
+
+    await syncConnection(db, connection, { now: NOW })
+
+    expect(getMock.mock.calls.filter((c) => c[0] === V1_LIST_PATH)).toHaveLength(3)
+    expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', {
+      from: new Date('2026-06-30T12:00:00.000Z'),
+      before: new Date('2026-07-01T00:00:00.000Z'),
+    })
+  })
+
+  it('resumes a saved backfill on a later incremental run', async () => {
+    h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
+      Promise.resolve(
+        store === 'V1'
+          ? {
+              syncToken: 'prev',
+              backfillFrom: new Date('2026-06-30T12:00:00.000Z'),
+              backfillBefore: new Date('2026-07-01T00:00:00.000Z'),
+            }
+          : null,
+      ),
+    )
+    const nextList = listPages([{ records: [at('2026-06-30T20:00:00.000Z', 200)], last: true }])
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH) return Promise.resolve({ records: [], syncInfo: { syncToken: 'x' } })
+      if (path === V1_LIST_PATH) return nextList()
+      return Promise.resolve({ records: [], syncInfo: { syncToken: 'x' } })
+    })
+
+    await syncConnection(db, connection, { now: NOW })
+
+    const listCall = getMock.mock.calls.find((c) => c[0] === V1_LIST_PATH)!
+    expect(listCall[1]).toMatchObject({
+      dateFrom: '2026-06-30T12:00:00.000Z',
+      dateTo: '2026-07-01T00:00:00.000Z',
+    })
+    expect(h.captureMessage).toHaveBeenCalledWith(
+      db,
+      'tnt-1',
+      expect.objectContaining({ externalId: '200' }),
+      'conn-1',
+      { emitReceivedEvent: false },
+    )
+    expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
   })
 })
 
