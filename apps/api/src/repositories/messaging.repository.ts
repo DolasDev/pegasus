@@ -273,6 +273,25 @@ export async function getSyncCursor(
   })
 }
 
+/**
+ * Records (or clears, with `null`) the v1 backfill still owed beyond RingCentral's
+ * 250-record FSync cap: the window `[from, before)` the next sync run pages.
+ */
+export async function saveBackfillProgress(
+  db: PrismaClient,
+  tenantId: string,
+  connectionId: string,
+  store: 'THREAD' | 'V1',
+  progress: { from: Date; before: Date } | null,
+) {
+  const data = { backfillFrom: progress?.from ?? null, backfillBefore: progress?.before ?? null }
+  return db.ringCentralSyncCursor.upsert({
+    where: { tenantId_connectionId_store: { tenantId, connectionId, store } },
+    create: { tenantId, connectionId, store, ...data },
+    update: data,
+  })
+}
+
 /** Persists the latest sync token for a store and stamps lastSyncAt. */
 export async function saveSyncCursor(
   db: PrismaClient,
