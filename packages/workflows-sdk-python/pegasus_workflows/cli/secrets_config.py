@@ -1,4 +1,4 @@
-"""``pegasus-workflows secrets`` / ``config`` — publish per-tenant workflow
+"""``pegasus-workflows secrets`` / ``config`` — publish per-tenant Automation
 secrets and configuration through the real management API.
 
 Two small Typer groups over the workflow-secrets-configs endpoints
@@ -7,7 +7,7 @@ Two small Typer groups over the workflow-secrets-configs endpoints
 * ``secrets set|list|delete`` — write-once, encrypted-at-rest secret values.
 * ``config  set|list|delete`` — plain, editable configuration values.
 
-A workflow reads these at runtime via ``PegasusClient.get_secret`` /
+An Automation reads these at runtime via ``PegasusClient.get_secret`` /
 ``get_config`` inside an activity, having declared ``ReadWorkflowSecret`` /
 ``ReadWorkflowConfig`` in its manifest ``required_actions``.
 
@@ -31,14 +31,14 @@ __all__ = ["secrets_app", "config_app"]
 
 secrets_app = typer.Typer(
     name="secrets",
-    help="Publish per-tenant workflow secrets (write-once, encrypted at rest).",
+    help="Publish per-tenant Automation secrets (write-once, encrypted at rest).",
     no_args_is_help=True,
     add_completion=False,
 )
 
 config_app = typer.Typer(
     name="config",
-    help="Publish per-tenant workflow configuration (plain, editable).",
+    help="Publish per-tenant Automation configuration (plain, editable).",
     no_args_is_help=True,
     add_completion=False,
 )

@@ -16,7 +16,7 @@ Resources
 ``pegasus://guide/input-contract``
     The three input shapes + a worked resolver example.
 ``pegasus://guide/secrets-config``
-    How to publish and use per-tenant workflow secrets & configuration.
+    How to publish and use per-tenant Automation secrets & configuration.
 ``pegasus://reference/manifest``
     Manifest fields and constraints, generated from ``manifest.py`` constants.
 ``pegasus://reference/api``
@@ -33,14 +33,14 @@ Resources
 Tools
 -----
 ``scaffold_workflow(name, dest)``
-    Scaffold a new workflow project (wraps ``pegasus-workflows init``).
+    Scaffold a new Automation project (wraps ``pegasus-workflows init``).
 ``validate_manifest(path_or_toml)``
     Validate a manifest file path or raw TOML text.
 ``diagram_prompt(project_dir, workflow=None)``
     Build the bring-your-own-agent prompt(s) for drawing each ``workflow.mmd`` —
     the calling agent produces the Mermaid diagram itself (read-only, no network).
 ``package_project(project_dir)``
-    Package declared workflows into ``dist/`` (wraps ``pegasus-workflows package``).
+    Package declared Automations into ``dist/`` (wraps ``pegasus-workflows package``).
 ``validate_integration_config(integration_id, mapping, rules, corpus, base_url, token)``
     Dry-run the publish gate — no write (wraps ``PegasusClient.validate_integration_config``).
 ``list_deployments(project_dir)``
@@ -143,7 +143,15 @@ def _mcp_import_error_msg() -> str:
 def resource_guide_authoring() -> str:
     """Authoring guide: import surface, determinism rule, and input contract pointer."""
     return """\
-# Pegasus Workflow Authoring Guide
+# Pegasus Automation Authoring Guide
+
+An Automation is authored as a Temporal workflow class — the same
+``@pegasus_workflow`` + ``@workflow.run`` shape as any Temporal workflow — but the
+platform runs it as a single sandboxed unit with a 900-second ceiling. Signals,
+queries, and ``workflow.wait_condition`` are not supported in Automations. (A
+separate, future capability — long-running, durable **Workflows**, with signals,
+queries, and waits — is planned but not available yet; this guide covers
+Automations, which exist today.)
 
 ## Import surface
 
@@ -178,7 +186,7 @@ Use ``PegasusClient`` only inside activities, never inside workflow methods.
 Build the client with ``PegasusClient.from_runtime()`` — it reads the two env
 vars the tenant runner injects (``PEGASUS_API_BASE_URL`` /
 ``PEGASUS_RUNTIME_TOKEN``), so you never hardcode a base URL or token. A future
-rename of those vars is then a one-line SDK fix, not a per-workflow break, and a
+rename of those vars is then a one-line SDK fix, not a per-Automation break, and a
 run outside the runner fails with a clear named error instead of a bare
 ``KeyError``.
 
@@ -202,13 +210,13 @@ To read per-tenant secrets or config at runtime, declare ``ReadWorkflowSecret``
 ``client.get_secret(...)`` / ``client.get_config(...)`` inside an activity. See
 ``pegasus://guide/secrets-config`` for publishing and usage.
 
-## Workflow diagram (required to publish)
+## Automation diagram (required to publish)
 
-Every workflow must ship a Mermaid diagram at ``<source_dir>/workflow.mmd``. The
-tenant UI renders it so business users can confirm the workflow matches their
+Every Automation must ship a Mermaid diagram at ``<source_dir>/workflow.mmd``. The
+tenant UI renders it so business users can confirm the Automation matches their
 rules, and ``package`` / ``push`` fail without it. There is no AI service that
 draws it for you — **you, the coding agent, draw it.** Call the ``diagram_prompt``
-tool to get each workflow's source plus the exact output path and formatting
+tool to get each Automation's source plus the exact output path and formatting
 rules, produce a Mermaid ``flowchart TD`` that faithfully reflects the control
 flow (no invented steps), and write it to the path the tool names.
 ``scaffold_workflow`` seeds a starter ``workflow.mmd`` so a fresh project already
@@ -219,10 +227,10 @@ publishes; refine it before publishing for real.
 def resource_guide_input_contract() -> str:
     """The three input shapes + a worked resolver example."""
     return """\
-# Pegasus Workflow Input Contract
+# Pegasus Automation Input Contract
 
 Your ``run()`` method receives a single positional argument. Its shape depends
-on how the workflow was started:
+on how the Automation was started:
 
 ## Shape 1 — Trigger-fired (domain-event trigger)
 
@@ -246,7 +254,7 @@ custom event types.
 
 ``sms.received`` fires once per NEW inbound text on the tenant's RingCentral
 number (never for outbound, never for a connect-time backfill). Unlike the
-pointer payloads, it carries the text so the workflow can parse it directly:
+pointer payloads, it carries the text so the Automation can parse it directly:
 ``{messageId, fromNumber, toNumber, body, rcCreationTime, threadId, source,
 externalId, connectionId}``. Reply with ``client.send_sms(to=payload["fromNumber"], ...)``.
 
@@ -271,7 +279,7 @@ cadence, passing a tick envelope in the run input:
      "input": {"scheduledAt": "<ISO-8601>", "schedule": "<cron>", "triggerId": "<id>"}}
 
 Read it from ``arg["input"]``; detect a scheduled tick by the ``scheduledAt``
-key. A tick carries no entity — the workflow does its own work (e.g. advance a
+key. A tick carries no entity — the Automation does its own work (e.g. advance a
 cursor and poll). It is distinct from a manual run, whose ``input`` is your own
 business data.
 
@@ -296,19 +304,19 @@ worker context:
 
 
 def resource_guide_secrets_config() -> str:
-    """How to publish and use per-tenant workflow secrets & configuration."""
+    """How to publish and use per-tenant Automation secrets & configuration."""
     return """\
-# Pegasus Workflow Secrets & Configuration
+# Pegasus Automation Secrets & Configuration
 
-A workflow reads two kinds of per-tenant key/value data at runtime:
+An Automation reads two kinds of per-tenant key/value data at runtime:
 
 - **Secrets** — write-once, encrypted at rest, the plaintext is only ever handed
-  to the workflow runtime (e.g. a third-party API key). Read action:
+  to the Automation runtime (e.g. a third-party API key). Read action:
   ``ReadWorkflowSecret``.
 - **Config** — plain, editable values (e.g. a region, a feature flag, a base URL).
   Read action: ``ReadWorkflowConfig``.
 
-Both are scoped to the whole tenant: every workflow the tenant owns reads the
+Both are scoped to the whole tenant: every Automation the tenant owns reads the
 same namespace. A secret and a config entry may share a key — they are separate
 namespaces.
 
@@ -332,7 +340,7 @@ organizational only; they are not an access-control boundary.
     client.set_config("DEFAULT_REGION", "us-east-1", group="billing")
     region = client.get_config("DEFAULT_REGION", group="billing")
 
-## 1. Declare what your workflow needs (manifest)
+## 1. Declare what your Automation needs (manifest)
 
 Add the read actions to ``required_actions`` in ``pegasus-workflows.toml`` so the
 runtime service account is authorized to read them. Also — recommended — list the
@@ -355,12 +363,12 @@ To see which of those declared keys the tenant has actually set, read them back
     pegasus-workflows requirements --missing-only --token vnd_... --base-url https://api...
 
 or from code, ``PegasusClient.requirements_summary()``. The same resolution backs
-the tenant's own view (Settings -> Developer -> Configs and the workflow detail
-page), which additionally shows which workflows/integrations use each key.
+the tenant's own view (Settings -> Developer -> Configs and the Automation detail
+page), which additionally shows which Automations/integrations use each key.
 
 ## 2. Publish values (one-time, by a developer/admin)
 
-Values are NOT part of the workflow artifact — publish them out of band with a
+Values are NOT part of the Automation artifact — publish them out of band with a
 token holding ``ManageWorkflowSecrets`` / ``ManageWorkflowConfigs`` (the
 ``workflow_developer`` or ``tenant_admin`` role), via the CLI:
 
@@ -418,10 +426,10 @@ def resource_reference_manifest() -> str:
         "## Timeout constraint\n\n"
         f"``timeout_seconds`` max: ``{MANIFEST_TIMEOUT_MAX_SECONDS}`` s.\n"
         "The manifest may LOWER the platform default, never raise it.\n\n"
-        "## Packaging requirement — workflow diagram\n\n"
-        f"Every workflow must ship a Mermaid diagram at ``<source_dir>/{DIAGRAM_FILENAME}``.\n"
+        "## Packaging requirement — Automation diagram\n\n"
+        f"Every Automation must ship a Mermaid diagram at ``<source_dir>/{DIAGRAM_FILENAME}``.\n"
         "``package`` (and ``push``) hard-fail without it. Through MCP, call the\n"
-        "``diagram_prompt`` tool to get each workflow's source + exact output path,\n"
+        "``diagram_prompt`` tool to get each Automation's source + exact output path,\n"
         "draw the ``flowchart TD`` yourself, and write it to that path before\n"
         "``package_project``. ``scaffold_workflow`` seeds a starter diagram so a\n"
         "fresh project already packages.\n\n"
@@ -656,7 +664,7 @@ def resource_reference_openapi() -> str:
     header = (
         "# Pegasus API — OpenAPI 3.1 spec (live)\n\n"
         f"Live: ``GET {base}/openapi.json`` · Swagger UI: ``{base}/docs``\n\n"
-        "Covers the SDK-facing (vnd_) surface (integrations authoring, workflows, "
+        "Covers the SDK-facing (vnd_) surface (integrations authoring, Automations, "
         "documents, the operational read surface, …) incl. auth (vnd_ Bearer key) and "
         "request/response shapes. Any GET here is callable with no dedicated helper via "
         "``PegasusClient.api_get(path, **params)`` (read-only) — e.g. the paged/filtered "
@@ -674,7 +682,7 @@ def resource_reference_openapi() -> str:
 
 
 def tool_scaffold_workflow(name: str, dest: str) -> dict[str, Any]:
-    """Scaffold a new workflow project at ``dest/name``.
+    """Scaffold a new Automation project at ``dest/name``.
 
     Wraps :func:`pegasus_workflows.cli.init.render_project`.
 
@@ -750,14 +758,14 @@ def _manifest_to_dict(m: Manifest) -> dict[str, Any]:
 
 
 def tool_diagram_prompt(project_dir: str, workflow: str | None = None) -> dict[str, Any]:
-    """Build the bring-your-own-agent diagram prompt(s) for a project's workflows.
+    """Build the bring-your-own-agent diagram prompt(s) for a project's Automations.
 
     Returns the same prompt the ``pegasus-workflows diagram`` CLI prints — each
-    workflow's Python source plus the exact ``<source_dir>/workflow.mmd`` output
+    Automation's Python source plus the exact ``<source_dir>/workflow.mmd`` output
     path and Mermaid formatting rules — so the calling agent draws the
     ``flowchart TD`` itself and writes it to that path. A ``workflow.mmd`` is
     required to package/publish. Read-only: gathers source and returns text, no
-    network and no write. Pass *workflow* to scope to a single workflow name.
+    network and no write. Pass *workflow* to scope to a single Automation name.
 
     Returns:
         ``{"ok": True, "prompts": [{"workflow", "out_path", "exists", "prompt"}, ...]}``
@@ -772,7 +780,7 @@ def tool_diagram_prompt(project_dir: str, workflow: str | None = None) -> dict[s
     if workflow is not None:
         manifests = [m for m in manifests if m.name == workflow]
         if not manifests:
-            return {"ok": False, "error": f"no workflow named {workflow!r} in this project"}
+            return {"ok": False, "error": f"no Automation named {workflow!r} in this project"}
 
     prompts: list[dict[str, Any]] = []
     for m in manifests:
@@ -780,7 +788,7 @@ def tool_diagram_prompt(project_dir: str, workflow: str | None = None) -> dict[s
         if not source_dir.is_dir():
             return {
                 "ok": False,
-                "error": f"workflow {m.name}: source_dir '{m.source_dir}' not found",
+                "error": f"Automation {m.name}: source_dir '{m.source_dir}' not found",
             }
         out_path = f"{m.source_dir}/{DIAGRAM_FILENAME}"
         prompts.append(
@@ -795,7 +803,7 @@ def tool_diagram_prompt(project_dir: str, workflow: str | None = None) -> dict[s
 
 
 def tool_package_project(project_dir: str) -> dict[str, Any]:
-    """Package every workflow declared in ``project_dir`` into ``dist/``.
+    """Package every Automation declared in ``project_dir`` into ``dist/``.
 
     Wraps :func:`pegasus_workflows.cli.package.package_project`.
 
@@ -816,8 +824,8 @@ def tool_package_project(project_dir: str) -> dict[str, Any]:
                 "ok": False,
                 "error": message,
                 "remedy": (
-                    f"A workflow diagram ({DIAGRAM_FILENAME}) is required to package. "
-                    "Call the `diagram_prompt` tool to get each workflow's source and "
+                    f"An Automation diagram ({DIAGRAM_FILENAME}) is required to package. "
+                    "Call the `diagram_prompt` tool to get each Automation's source and "
                     "output path, draw the Mermaid `flowchart TD` yourself, write it to "
                     "the path the tool names, then call `package_project` again."
                 ),
@@ -920,9 +928,9 @@ def _build_server(FastMCP: type) -> Any:  # type: ignore[type-arg]
     server = FastMCP(
         "pegasus-workflows",
         instructions=(
-            "Use the resources to understand Pegasus workflow authoring rules "
+            "Use the resources to understand Pegasus Automation authoring rules "
             "and the tools to scaffold, validate, package, and dry-run-gate "
-            "workflows without triggering any network writes."
+            "Automations without triggering any network writes."
         ),
     )
 
@@ -960,7 +968,7 @@ def _build_server(FastMCP: type) -> Any:  # type: ignore[type-arg]
 
     @server.tool()
     def scaffold_workflow(name: str, dest: str) -> dict:  # type: ignore[type-arg]
-        """Scaffold a new workflow project at dest/name (wraps pegasus-workflows init)."""
+        """Scaffold a new Automation project at dest/name (wraps pegasus-workflows init)."""
         return tool_scaffold_workflow(name, dest)
 
     @server.tool()
@@ -975,7 +983,7 @@ def _build_server(FastMCP: type) -> Any:  # type: ignore[type-arg]
 
     @server.tool()
     def package_project(project_dir: str) -> dict:  # type: ignore[type-arg]
-        """Package every workflow in project_dir into dist/ (wraps pegasus-workflows package)."""
+        """Package every Automation in project_dir into dist/ (wraps pegasus-workflows package)."""
         return tool_package_project(project_dir)
 
     @server.tool()
@@ -1014,7 +1022,7 @@ def mcp_command() -> None:
     """Start a stdio MCP server for AI coding agents.
 
     Exposes SDK resources and safe tools so any MCP-compatible agent can
-    scaffold, validate, and package Pegasus workflows without network side
+    scaffold, validate, and package Pegasus Automations without network side
     effects.  Network-mutating operations (push, publish, run) are not exposed
     and remain human-gated via the CLI.
 

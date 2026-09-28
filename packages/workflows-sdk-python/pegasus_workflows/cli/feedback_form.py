@@ -1,10 +1,10 @@
 """``pegasus-workflows feedback-form`` — author magic-link feedback surveys.
 
 A tenant authors a versioned feedback form (a question list) and publishes it
-through the real publish path, then a workflow mints a per-recipient capability
+through the real publish path, then an Automation mints a per-recipient capability
 link with ``client.create_feedback_request(...)`` and sends it (e.g. via
 ``send_sms``). A submitted response emits the built-in ``feedback.submitted``
-domain event a workflow EVENT trigger subscribes to.
+domain event an Automation's EVENT trigger subscribes to.
 
 A small Typer group over the feedback-forms endpoints
 (``apps/api/src/handlers/feedback-forms.ts``):

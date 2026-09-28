@@ -53,7 +53,7 @@ function apiKeyGet(
 const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> = {
   '/api/v1/workflows': apiKeyGet(
     'listWorkflows',
-    'List workflows visible to the tenant (∪ GLOBAL)',
+    'List automations visible to the tenant (∪ GLOBAL)',
     {
       tags: ['Workflows'],
       responseDescription: '{data: WorkflowResponse[]}',
@@ -61,29 +61,29 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
   ),
   '/api/v1/workflows/requirements-summary': apiKeyGet(
     'getWorkflowRequirementsSummary',
-    "For each visible workflow, its manifest-declared secret/config keys tagged present/missing against the tenant's store (presence only, no values) (ReadWorkflow)",
+    "For each visible automation, its manifest-declared secret/config keys tagged present/missing against the tenant's store (presence only, no values) (ReadWorkflow)",
     {
       tags: ['Workflows'],
       responseDescription: '{data: {workflows: [...], totalMissing: number}}',
     },
   ),
-  '/api/v1/workflows/{id}': apiKeyGet('getWorkflow', 'Get a workflow by id', {
+  '/api/v1/workflows/{id}': apiKeyGet('getWorkflow', 'Get an automation by id', {
     tags: ['Workflows'],
     path: ['id'],
   }),
   '/api/v1/workflows/{id}/download-url': apiKeyGet(
     'getWorkflowDownloadUrl',
-    'Presigned URL for a workflow artifact (ReadWorkflow)',
+    'Presigned URL for an automation artifact (ReadWorkflow)',
     { tags: ['Workflows'], path: ['id'] },
   ),
   '/api/v1/workflows/{id}/triggers': apiKeyGet(
     'listTriggers',
-    "List a workflow's SCHEDULE + EVENT triggers (ReadWorkflow)",
+    "List an automation's SCHEDULE + EVENT triggers (ReadWorkflow)",
     { tags: ['Workflows'], path: ['id'] },
   ),
   '/api/v1/workflows/{id}/executions': apiKeyGet(
     'listExecutions',
-    "List a workflow's executions, newest first (ReadWorkflow)",
+    "List an automation's executions, newest first (ReadWorkflow)",
     {
       tags: ['Workflows'],
       path: ['id'],
@@ -258,6 +258,13 @@ export function getOpenApiSpec() {
       description:
         'The SDK-facing (vnd_ / m2m) Pegasus API surface — the endpoints a PegasusClient key can call, including the operational read surface reachable via api_get. Cognito-only browser routes and worker-internal (broker-secret) endpoints are intentionally excluded.',
     },
+    tags: [
+      {
+        name: 'Workflows',
+        description:
+          'Automations: short, sandboxed Python runs (up to 900 s each) started manually, by a domain event, or on a schedule. The product concept was renamed from "workflows" to "Automations"; the `/workflows` paths, operation ids, and Cedar action names (e.g. ReadWorkflow) keep their original names for compatibility. Long-running, event-driven Workflows are a separate, upcoming capability.',
+      },
+    ],
     paths: {
       ...OPERATIONAL_READ_PATHS,
       '/health': {

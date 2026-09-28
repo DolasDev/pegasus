@@ -217,6 +217,6 @@ def setup_command(
     # 3. Next steps.
     typer.echo("")
     typer.secho("setup complete — next steps:", fg=typer.colors.GREEN)
-    typer.echo("  pegasus-workflows init <name>      # scaffold a workflow")
+    typer.echo("  pegasus-workflows init <name>      # scaffold an Automation")
     typer.echo("  # then author with your MCP-connected agent, and:")
     typer.echo("  pegasus-workflows push --profile " + profile)

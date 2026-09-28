@@ -17,7 +17,7 @@ import {
   Play,
   Plus,
   Trash2,
-  Workflow as WorkflowIcon,
+  Zap as AutomationIcon,
   XCircle,
 } from 'lucide-react'
 import { DryRunBadge } from '@/components/DryRunBadge'
@@ -101,7 +101,7 @@ function ExecutabilityBadge({ workflow }: { workflow: Workflow }) {
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-      title="This workflow has not passed artifact validation. Re-upload the artifact to enable execution."
+      title="This automation has not passed artifact validation. Re-upload the artifact to enable execution."
     >
       <XCircle className="h-3 w-3" />
       Not executable
@@ -124,7 +124,7 @@ function friendlyRunError(error: unknown): string {
     return 'Your account has reached the daily execution quota. The quota resets at midnight UTC.'
   }
   if (error.code === 'WORKFLOWS_DISABLED') {
-    return 'Workflow execution is currently disabled for your account. Contact your platform administrator.'
+    return 'Automation runs are currently disabled for your account. Contact your platform administrator.'
   }
   return error.message || 'Failed to start run.'
 }
@@ -230,7 +230,7 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: Workflow; onClose:
             <span className="font-medium">Test run (dry run)</span> — run for real but{' '}
             <span className="font-medium">capture</span> every side effect instead of performing it.
             Reads still hit live data; no SMS is sent, no task closed, nothing delivered. Only
-            tenant-runner workflows support this.
+            tenant-runner automations support this.
           </span>
         </label>
         <div className="mt-4 flex justify-end gap-2">
@@ -250,7 +250,7 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: Workflow; onClose:
             ) : (
               <Play className="mr-1.5 h-3.5 w-3.5" />
             )}
-            {dryRun ? 'Run test' : 'Run workflow'}
+            {dryRun ? 'Run test' : 'Run automation'}
           </Button>
         </div>
       </div>
@@ -426,7 +426,7 @@ function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClos
           Add trigger to <span className="font-mono">{workflow.name}</span>
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Triggers run this workflow automatically — either when a domain event fires or on a cron
+          Triggers run this automation automatically — either when a domain event fires or on a cron
           schedule.
         </p>
 
@@ -770,8 +770,8 @@ function TriggersSection({ workflow }: { workflow: Workflow }) {
 
       {!isPending && !isError && triggers.length === 0 && (
         <p className="py-2 text-xs text-muted-foreground">
-          No triggers yet. Triggers run this workflow automatically when a domain event fires or on
-          a cron schedule.
+          No triggers yet. Triggers run this automation automatically when a domain event fires or
+          on a cron schedule.
         </p>
       )}
 
@@ -831,7 +831,7 @@ function WorkflowRow({ workflow, nested = false }: { workflow: Workflow; nested?
     forkError =
       forkMutation.error instanceof ApiError
         ? forkMutation.error.message
-        : 'Failed to fork workflow.'
+        : 'Failed to fork automation.'
   }
 
   return (
@@ -840,7 +840,7 @@ function WorkflowRow({ workflow, nested = false }: { workflow: Workflow; nested?
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              to="/settings/workflows/$workflowId"
+              to="/settings/automations/$workflowId"
               params={{ workflowId: workflow.id }}
               className="font-mono text-sm font-medium text-foreground hover:underline"
             >
@@ -874,7 +874,7 @@ function WorkflowRow({ workflow, nested = false }: { workflow: Workflow; nested?
           {executability === 'not-executable' && (
             <p className="mt-1 flex items-center gap-1 text-xs text-amber-700">
               <Info className="h-3 w-3 shrink-0" />
-              This workflow has not passed artifact validation. Re-upload the artifact to enable
+              This automation has not passed artifact validation. Re-upload the artifact to enable
               execution.
             </p>
           )}
@@ -894,7 +894,7 @@ function WorkflowRow({ workflow, nested = false }: { workflow: Workflow; nested?
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <Link
-            to="/settings/workflows/$workflowId"
+            to="/settings/automations/$workflowId"
             params={{ workflowId: workflow.id }}
             search={{ tab: 'executions' }}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
@@ -906,7 +906,7 @@ function WorkflowRow({ workflow, nested = false }: { workflow: Workflow; nested?
             <span
               title={
                 runDisabled
-                  ? 'Re-upload the artifact to enable execution for this workflow.'
+                  ? 'Re-upload the artifact to enable execution for this automation.'
                   : undefined
               }
             >
@@ -933,7 +933,7 @@ function WorkflowRow({ workflow, nested = false }: { workflow: Workflow; nested?
               ) : (
                 <Copy className="mr-1.5 h-3.5 w-3.5" />
               )}
-              Fork to my workflows
+              Fork to my automations
             </Button>
           )}
           <Button
@@ -1030,19 +1030,24 @@ export function WorkflowsSettingsPage() {
 
   return (
     <div className="container mx-auto max-w-4xl py-8">
-      <PageHeader title="Workflows" breadcrumbs={[{ label: 'Settings' }, { label: 'Workflows' }]} />
+      <PageHeader
+        title="Automations"
+        breadcrumbs={[{ label: 'Settings' }, { label: 'Automations' }]}
+      />
 
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <WorkflowIcon className="h-4 w-4" />
-            About workflows
+            <AutomationIcon className="h-4 w-4" />
+            About automations
           </CardTitle>
           <CardDescription>
-            Workflows are Python programs you author locally against the Pegasus SDK and upload
-            here. They run server-side and can call the Pegasus API on your tenant&rsquo;s behalf.
-            The platform team publishes a shared library you can use as-is, or download the source
-            and re-upload your own customized version.
+            Automations are Python programs you author locally against the Pegasus SDK and upload
+            here. Each run is a short, self-contained job (up to 15 minutes) that runs server-side
+            and can call the Pegasus API on your tenant&rsquo;s behalf. Run one manually, or add a
+            trigger to run it when a domain event fires or on a schedule. The platform team
+            publishes a shared library you can use as-is, or download the source and re-upload your
+            own customized version.
           </CardDescription>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link to="/settings/developer" className="text-primary hover:underline">
@@ -1058,7 +1063,7 @@ export function WorkflowsSettingsPage() {
       {isPending && (
         <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Loading workflows…
+          Loading automations…
         </div>
       )}
 
@@ -1068,7 +1073,7 @@ export function WorkflowsSettingsPage() {
           className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
         >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{error instanceof Error ? error.message : 'Failed to load workflows.'}</span>
+          <span>{error instanceof Error ? error.message : 'Failed to load automations.'}</span>
         </div>
       )}
 
@@ -1086,8 +1091,8 @@ export function WorkflowsSettingsPage() {
             <Separator className="mb-3" />
             {platformLibrary.length === 0 ? (
               <EmptyState
-                title="No platform workflows yet"
-                description="The Pegasus platform team hasn't published any curated workflows yet. Check back later, or contact support if you expected to see workflows here."
+                title="No platform automations yet"
+                description="The Pegasus platform team hasn't published any curated automations yet. Check back later, or contact support if you expected to see automations here."
               />
             ) : (
               <div className="rounded-md border border-border bg-card px-4">
@@ -1102,7 +1107,7 @@ export function WorkflowsSettingsPage() {
           <section>
             <div className="mb-3 flex items-center gap-2">
               <Lock className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold text-foreground">Your workflows</h2>
+              <h2 className="text-sm font-semibold text-foreground">Your automations</h2>
               <Badge variant="secondary" className="text-xs">
                 {tenantWorkflows.length}
               </Badge>
@@ -1110,8 +1115,8 @@ export function WorkflowsSettingsPage() {
             <Separator className="mb-3" />
             {tenantWorkflows.length === 0 ? (
               <EmptyState
-                title="No workflows yet"
-                description="Your team hasn't uploaded any workflows. Workflows are authored locally with the Pegasus Workflows SDK and pushed via the CLI using an API token with the workflow_developer role."
+                title="No automations yet"
+                description="Your team hasn't uploaded any automations. Automations are authored locally with the Pegasus Workflows SDK and pushed via the CLI using an API token with the workflow_developer role."
               />
             ) : (
               <div className="rounded-md border border-border bg-card px-4">

@@ -1,21 +1,21 @@
 """The ``pegasus-workflows`` command-line interface.
 
-A Typer application wiring together the workflow developer flow:
+A Typer application wiring together the Automation developer flow:
 
-* ``init`` — scaffold a new workflow project.
+* ``init`` — scaffold a new Automation project.
 * ``diagram`` — emit a prompt for your own coding agent to draw the Mermaid
-  workflow diagram (no LLM/API key needed — bring your own agent).
-* ``package`` — zip each declared workflow into ``dist/``.
+  Automation diagram (no LLM/API key needed — bring your own agent).
+* ``package`` — zip each declared Automation into ``dist/``.
 * ``push`` — package, then upload + finalize against the Pegasus API.
-* ``run`` — trigger a server-side execution of a curated workflow.
-* ``executions`` — inspect workflow executions (list / show) from the terminal.
-* ``test`` — start local Temporal and run a workflow with stubbed inputs.
+* ``run`` — trigger a server-side execution of a curated Automation.
+* ``executions`` — inspect Automation executions (list / show) from the terminal.
+* ``test`` — start local Temporal and run an Automation with stubbed inputs.
 * ``integration-config`` — author the integration-validator config (mapping +
   rules) for an integration (publish / pull / versions / rollback).
-* ``secrets`` / ``config`` — publish per-tenant workflow secrets & configuration
-  (set / list / delete) that workflows read at runtime.
+* ``secrets`` / ``config`` — publish per-tenant Automation secrets & configuration
+  (set / list / delete) that Automations read at runtime.
 * ``requirements`` — show which declared secret/config keys are set and which are
-  still missing, across workflows AND integrations.
+  still missing, across Automations AND integrations.
 * ``setup`` — one guided first-run bootstrap: seed a credential profile + wire
   the MCP server into your agent host (the ``--setup``/``--configure`` front door).
 * ``configure`` / ``profile`` — store & list named credential profiles
@@ -49,7 +49,7 @@ app = typer.Typer(
     # First-timers guess `--setup` / `--configure`; name the real command in the
     # top-level help so those guesses land on `pegasus-workflows setup`.
     help=(
-        "Author, package, and publish Pegasus workflows.\n\n"
+        "Author, package, and publish Pegasus Automations.\n\n"
         "First time here? Run `pegasus-workflows setup` — the one-shot bootstrap "
         "(this is the --setup / --configure you're looking for)."
     ),

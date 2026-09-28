@@ -165,15 +165,15 @@ export function FeedbackFormsSettingsPage() {
           </CardTitle>
           <CardDescription>
             Feedback forms are surveys you author with the Pegasus Workflows SDK/CLI (
-            <code className="font-mono">feedback-form publish</code>) and publish here. A workflow
-            mints a per-recipient link with{' '}
+            <code className="font-mono">feedback-form publish</code>) and publish here. An
+            automation mints a per-recipient link with{' '}
             <code className="font-mono">create_feedback_request()</code> and sends it (e.g. by SMS);
             when the recipient submits, a <code className="font-mono">feedback.submitted</code>{' '}
-            event fires any workflow subscribed to it. This page is read-only.
+            event fires any automation subscribed to it. This page is read-only.
           </CardDescription>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <Link to="/settings/workflows" className="text-primary hover:underline">
-              Workflows
+            <Link to="/settings/automations" className="text-primary hover:underline">
+              Automations
             </Link>
             <Link to="/settings/developer" className="text-primary hover:underline">
               SDK &amp; API keys

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "__WORKFLOW_NAME__"
 version = "0.1.0"
-description = "A Pegasus workflow project."
+description = "A Pegasus Automation project."
 requires-python = ">=3.11"
 dependencies = ["pegasus-workflows-sdk>=0.1.0"]
 

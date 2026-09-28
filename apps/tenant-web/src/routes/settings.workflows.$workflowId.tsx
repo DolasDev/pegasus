@@ -56,7 +56,7 @@ export function WorkflowDetailPage() {
   if (isLoading) {
     return (
       <div className="container mx-auto max-w-4xl py-8">
-        <p className="text-muted-foreground text-sm">Loading workflow…</p>
+        <p className="text-muted-foreground text-sm">Loading automation…</p>
       </div>
     )
   }
@@ -65,7 +65,7 @@ export function WorkflowDetailPage() {
     return (
       <div className="container mx-auto max-w-4xl py-8">
         <EmptyState
-          title="Workflow not found"
+          title="Automation not found"
           description="It may have been removed, or you don't have access."
         />
         <BackLink />
@@ -107,11 +107,11 @@ export function WorkflowDetailPage() {
 function BackLink() {
   return (
     <Link
-      to="/settings/workflows"
+      to="/settings/automations"
       className="text-muted-foreground hover:text-foreground inline-flex items-center text-sm"
     >
       <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-      Back to workflows
+      Back to automations
     </Link>
   )
 }
@@ -132,7 +132,7 @@ function OverviewTab({ workflowId, workflow }: { workflowId: string; workflow: W
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Workflow diagram</CardTitle>
+          <CardTitle>Automation diagram</CardTitle>
           <CardDescription>
             Author-declared flowchart of what this workflow does. {workflow.manifest.description}
           </CardDescription>
@@ -142,7 +142,7 @@ function OverviewTab({ workflowId, workflow }: { workflowId: string; workflow: W
             <MermaidDiagram chart={diagram} />
           ) : (
             <p className="text-muted-foreground text-sm">
-              No diagram was published with this workflow. Re-publish with the latest SDK (
+              No diagram was published with this automation. Re-publish with the latest SDK (
               <code>pegasus-workflows diagram</code>) to add one.
             </p>
           )}
@@ -153,7 +153,7 @@ function OverviewTab({ workflowId, workflow }: { workflowId: string; workflow: W
         <CardHeader>
           <CardTitle>Verified envelope</CardTitle>
           <CardDescription>
-            What the platform guarantees about this workflow, independent of the diagram.
+            What the platform guarantees about this automation, independent of the diagram.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -164,7 +164,7 @@ function OverviewTab({ workflowId, workflow }: { workflowId: string; workflow: W
             </h4>
             {triggers.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                No triggers — this workflow only runs when started manually.
+                No triggers — this automation only runs when started manually.
               </p>
             ) : (
               <ul className="space-y-1.5">
@@ -186,7 +186,7 @@ function OverviewTab({ workflowId, workflow }: { workflowId: string; workflow: W
             </h4>
             {requiredActions.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                This workflow declared no platform actions — it cannot read or write tenant data.
+                This automation declared no platform actions — it cannot read or write tenant data.
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
@@ -225,7 +225,7 @@ function RequiredValuesSection({ requirements }: { requirements: ResolvedWorkflo
       </h4>
       {requirements.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          This workflow declared no required secrets or configuration.
+          This automation declared no required secrets or configuration.
         </p>
       ) : (
         <>
@@ -309,7 +309,7 @@ function ExecutionsTab({ workflowId }: { workflowId: string }) {
     return (
       <EmptyState
         title="No executions yet"
-        description="Run this workflow, or wait for a trigger to fire one."
+        description="Run this automation, or wait for a trigger to fire one."
       />
     )
   }

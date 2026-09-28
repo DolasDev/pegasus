@@ -1,7 +1,7 @@
 # SDK spec — Long-running, event-correlated workflows (deliver domain events to a running execution; lift the 900s ceiling)
 
 - **Origin:** pegasus-workflows repo (`~/repos/pegasus-workflows`), `sdk-feedback/0008-long-running-event-correlated-workflows.md`
-- **Status:** Proposed
+- **Status:** Superseded (2026-09-25) by `plans/in-progress/long-running-workflows-and-automations.md` — Workflows become a separate, durable, tenant-authored kind; today's runs are renamed Automations
 - **Filed:** 2026-06-29
 - **SDK version when filed:** 0.6.0
 - **SDK version that addresses it:** <!-- fill in when shipped -->

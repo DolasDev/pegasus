@@ -1,12 +1,12 @@
-# __WORKFLOW_NAME__
+# **WORKFLOW_NAME**
 
-A Pegasus workflow project, scaffolded with `pegasus-workflows init`.
+A Pegasus Automation project, scaffolded with `pegasus-workflows init`.
 
 ## Layout
 
-- `pegasus-workflows.toml` — the manifest. Declares each workflow's name,
+- `pegasus-workflows.toml` — the manifest. Declares each Automation's name,
   version, and entry points.
-- `__WORKFLOW_NAME__/workflow.py` — the workflow definition.
+- `__WORKFLOW_NAME__/workflow.py` — the Automation definition.
 
 ## Develop
 
@@ -16,7 +16,7 @@ pegasus-workflows test __WORKFLOW_NAME__    # run locally against Dockerized Tem
 ```
 
 > **Input contract:** your `run()` method receives a single positional argument whose shape depends on
-> how the workflow is started:
+> how the Automation is started:
 >
 > - **Trigger-fired** (domain-event): the event envelope
 >   `{"domainEventId", "eventType", "occurredAt", "payload": {...}}` — read entity ids from
@@ -37,5 +37,6 @@ pegasus-workflows push --token=vnd_... --base-url=https://api.pegasus.example
 ```
 
 `push` validates the manifest locally, requests a presigned upload URL,
-PUTs the artifact to S3, and finalizes the `Workflow` row. A `409` means
-that `name@version` already exists for your tenant — bump the version.
+PUTs the artifact to S3, and finalizes the `Workflow` row (the published
+Automation). A `409` means that `name@version` already exists for your
+tenant — bump the version.

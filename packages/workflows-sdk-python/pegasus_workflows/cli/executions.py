@@ -1,4 +1,4 @@
-"""``pegasus-workflows executions`` — inspect workflow executions from the terminal.
+"""``pegasus-workflows executions`` — inspect Automation executions from the terminal.
 
 A read-only window onto the same tenant-scoped execution data the tenant web UI
 shows, for developers who live in the terminal:
@@ -25,7 +25,7 @@ __all__ = ["executions_app"]
 
 executions_app = typer.Typer(
     name="executions",
-    help="Inspect workflow executions (read-only).",
+    help="Inspect Automation executions (read-only).",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -42,13 +42,13 @@ def _fmt(value: Any) -> str:
 
 @executions_app.command("list")
 def executions_list_command(
-    workflow_id: str = typer.Argument(..., help="The workflow whose executions to list."),
+    workflow_id: str = typer.Argument(..., help="The Automation whose executions to list."),
     limit: int = typer.Option(20, "--limit", "-n", help="Maximum rows to show (1..200)."),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
 ) -> None:
-    """List recent executions of a workflow, newest first."""
+    """List recent executions of an Automation, newest first."""
     client = _client(token, base_url, profile)
     try:
         rows = client.list_executions(workflow_id, limit=limit)
@@ -72,7 +72,7 @@ def executions_list_command(
 
 @executions_app.command("show")
 def executions_show_command(
-    workflow_id: str = typer.Argument(..., help="The workflow the execution belongs to."),
+    workflow_id: str = typer.Argument(..., help="The Automation the execution belongs to."),
     execution_id: str = typer.Argument(..., help="The execution to inspect."),
     token: str = token_option(),
     base_url: str = base_url_option(),

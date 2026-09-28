@@ -504,12 +504,12 @@ function WorkflowsSdkCard() {
           <CardTitle>Workflows SDK</CardTitle>
         </div>
         <CardDescription>
-          Workflows are Python programs you author locally with the Pegasus Workflows SDK, then
+          Automations are Python programs you author locally with the Pegasus Workflows SDK, then
           package and upload with the <code className="font-mono">pegasus-workflows</code> CLI. They
           run server-side and can call the Pegasus API on your tenant&rsquo;s behalf. Manage
-          uploaded workflows under{' '}
-          <Link to="/settings/workflows" className="text-primary hover:underline">
-            Settings → Workflows
+          uploaded automations under{' '}
+          <Link to="/settings/automations" className="text-primary hover:underline">
+            Settings → Automations
           </Link>
           .
         </CardDescription>
@@ -530,7 +530,7 @@ function WorkflowsSdkCard() {
             <code className="font-mono">0600</code>) — so later commands need no{' '}
             <code className="font-mono">--token</code>. It also registers the authoring MCP server
             in <code className="font-mono">.mcp.json</code> so your AI coding agent (Claude Code,
-            Cursor, …) gets full workflow-authoring context. Your API key is written only to the
+            Cursor, …) gets full automation-authoring context. Your API key is written only to the
             credentials file, never to <code className="font-mono">.mcp.json</code>. It performs no
             network calls. Re-run it any time; add{' '}
             <code className="font-mono">--print-mcp-config</code> to just emit the MCP stanza, or{' '}
@@ -542,8 +542,8 @@ function WorkflowsSdkCard() {
           <p className="text-sm font-medium">3. Scaffold, test, package, and push</p>
           <CopyableBlock code={quickStartCmd} />
           <p className="text-xs text-muted-foreground">
-            <code className="font-mono">test</code> runs the workflow against a local Dockerized
-            Temporal; <code className="font-mono">package</code> zips each workflow declared in{' '}
+            <code className="font-mono">test</code> runs the automation against a local Dockerized
+            Temporal; <code className="font-mono">package</code> zips each automation declared in{' '}
             <code className="font-mono">pegasus-workflows.toml</code>;{' '}
             <code className="font-mono">push</code> uploads it to this tenant using the profile{' '}
             <code className="font-mono">setup</code> seeded.

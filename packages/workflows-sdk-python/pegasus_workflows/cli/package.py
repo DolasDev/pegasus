@@ -1,7 +1,7 @@
-"""``pegasus-workflows package`` — zip each declared workflow into ``dist/``.
+"""``pegasus-workflows package`` — zip each declared Automation into ``dist/``.
 
 One zip per ``[[workflow]]`` table, named ``<name>-<version>.zip``. The zip
-contains the workflow's ``source_dir`` tree plus the manifest, so the server
+contains the Automation's ``source_dir`` tree plus the manifest, so the server
 stores a self-describing artifact.
 """
 
@@ -22,7 +22,7 @@ from ..manifest import (
 
 __all__ = ["package_command", "package_workflow", "package_project"]
 
-#: Files/directories never included in a workflow artifact.
+#: Files/directories never included in an Automation artifact.
 _EXCLUDE_DIRS = {"__pycache__", ".git", "dist", ".venv", "venv", ".pytest_cache"}
 _EXCLUDE_SUFFIXES = {".pyc", ".pyo"}
 
@@ -36,32 +36,32 @@ def _should_include(rel_path: Path) -> bool:
 
 
 def package_workflow(project_dir: Path, manifest: Manifest, dist_dir: Path) -> Path:
-    """Zip a single workflow into ``dist/<name>-<version>.zip``.
+    """Zip a single Automation into ``dist/<name>-<version>.zip``.
 
     Args:
         project_dir: Project root (holds ``pegasus-workflows.toml``).
-        manifest: The workflow to package.
+        manifest: The Automation to package.
         dist_dir: Output directory for the zip.
 
     Returns:
         Path to the written zip.
 
     Raises:
-        ManifestError: If the workflow's ``source_dir`` does not exist.
+        ManifestError: If the Automation's ``source_dir`` does not exist.
     """
     source_dir = project_dir / manifest.source_dir
     if not source_dir.is_dir():
         raise ManifestError(
-            f"workflow {manifest.name}: source_dir '{manifest.source_dir}' not found"
+            f"Automation {manifest.name}: source_dir '{manifest.source_dir}' not found"
         )
 
-    # A workflow diagram is required at publish time (the server rejects a
+    # An Automation diagram is required at publish time (the server rejects a
     # manifest without one). Catch its absence here so `package`/`push` fail with
     # a clear, actionable message instead of a server 400. Write it by hand or have
     # your coding agent draw it — `pegasus-workflows diagram` prints a prompt for it.
     if not (source_dir / DIAGRAM_FILENAME).is_file():
         raise ManifestError(
-            f"workflow {manifest.name}: {manifest.source_dir}/{DIAGRAM_FILENAME} not found "
+            f"Automation {manifest.name}: {manifest.source_dir}/{DIAGRAM_FILENAME} not found "
             f"— write the Mermaid diagram (or run `pegasus-workflows diagram` for a prompt) first"
         )
 
@@ -85,13 +85,13 @@ def package_workflow(project_dir: Path, manifest: Manifest, dist_dir: Path) -> P
 
 
 def package_project(project_dir: Path) -> list[tuple[Manifest, Path]]:
-    """Package every workflow declared in a project.
+    """Package every Automation declared in a project.
 
     Args:
         project_dir: Project root.
 
     Returns:
-        ``(manifest, zip_path)`` pairs, one per declared workflow.
+        ``(manifest, zip_path)`` pairs, one per declared Automation.
     """
     manifests = load_manifest(project_dir)
     dist_dir = project_dir / "dist"
@@ -109,7 +109,7 @@ def package_command(
         dir_okay=True,
     ),
 ) -> None:
-    """Zip every declared workflow into ``dist/``."""
+    """Zip every declared Automation into ``dist/``."""
     try:
         results = package_project(project_dir.resolve())
     except ManifestError as exc:

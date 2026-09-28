@@ -1,8 +1,8 @@
-"""``pegasus-workflows test`` — run a workflow against local Temporal.
+"""``pegasus-workflows test`` — run an Automation against local Temporal.
 
-Resolves the named workflow from the project manifest, ensures a local
+Resolves the named Automation from the project manifest, ensures a local
 Temporal server is running (starting ``docker-compose.temporal.yml`` if
-needed), spins up an in-process worker, and executes the workflow once with
+needed), spins up an in-process worker, and executes the Automation once with
 stub inputs. This is the Phase-1 local-dev loop — there is no server-side
 execution yet.
 """
@@ -92,7 +92,7 @@ def _ensure_temporal(project_dir: Path) -> None:
 
 
 def _resolve_workflow(project_dir: Path, name: str) -> tuple[Manifest, type, list]:
-    """Import the workflow class and its activities for *name*.
+    """Import the Automation's workflow class and its activities for *name*.
 
     Returns:
         ``(manifest, workflow_class, activity_callables)``.
@@ -101,7 +101,7 @@ def _resolve_workflow(project_dir: Path, name: str) -> tuple[Manifest, type, lis
     manifest = next((m for m in manifests if m.name == name), None)
     if manifest is None:
         known = ", ".join(m.name for m in manifests) or "(none)"
-        raise ManifestError(f"workflow '{name}' not in manifest. Declared: {known}")
+        raise ManifestError(f"Automation '{name}' not in manifest. Declared: {known}")
 
     if str(project_dir) not in sys.path:
         sys.path.insert(0, str(project_dir))
@@ -125,7 +125,7 @@ def _resolve_workflow(project_dir: Path, name: str) -> tuple[Manifest, type, lis
 
 
 async def _run(workflow_cls: type, activities: list, stub_input: str) -> object:
-    """Start a worker and execute the workflow once, returning its result."""
+    """Start a worker and execute the Automation once, returning its result."""
     from temporalio.client import Client
     from temporalio.worker import Worker
 
@@ -147,7 +147,7 @@ async def _run(workflow_cls: type, activities: list, stub_input: str) -> object:
 
 
 def test_command(
-    workflow_name: str = typer.Argument(..., help="Workflow name from the manifest."),
+    workflow_name: str = typer.Argument(..., help="Automation name from the manifest."),
     project_dir: Path = typer.Option(
         Path("."),
         "--project-dir",
@@ -160,7 +160,7 @@ def test_command(
     stub_input: str = typer.Option(
         "world",
         "--input",
-        help="Stub input passed as the workflow's first argument.",
+        help="Stub input passed as the Automation's first argument.",
     ),
 ) -> None:
     """Run WORKFLOW_NAME locally against Dockerized Temporal."""
@@ -171,7 +171,7 @@ def test_command(
         typer.secho(f"manifest error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     except (ImportError, AttributeError) as exc:
-        typer.secho(f"could not load workflow: {exc}", fg=typer.colors.RED, err=True)
+        typer.secho(f"could not load Automation: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
     _ensure_temporal(project_dir)
@@ -180,7 +180,7 @@ def test_command(
     try:
         result = asyncio.run(_run(workflow_cls, activities, stub_input))
     except Exception as exc:  # noqa: BLE001 - surface any runtime failure to the user
-        typer.secho(f"workflow run failed: {exc}", fg=typer.colors.RED, err=True)
+        typer.secho(f"Automation run failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
     typer.secho(f"result: {result!r}", fg=typer.colors.GREEN)

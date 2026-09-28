@@ -17,7 +17,7 @@ resulting `Status` back into the source.
 | [post-publish-deployment-recording.md](post-publish-deployment-recording.md)             | Shipped (0.6.0)  | CLI (`push`) / packaging / MCP      |
 | [named-credential-profiles.md](named-credential-profiles.md)                             | Shipped (0.6.0)  | CLI / auth / MCP                    |
 | [runtime-env-var-names-wrong.md](runtime-env-var-names-wrong.md)                         | Shipped (0.6.0)  | docs / PegasusClient                |
-| [long-running-event-correlated-workflows.md](long-running-event-correlated-workflows.md) | Proposed         | authoring API / manifest / platform |
+| [long-running-event-correlated-workflows.md](long-running-event-correlated-workflows.md) | Superseded‡      | authoring API / manifest / platform |
 | [task-lifecycle-and-order-reads.md](task-lifecycle-and-order-reads.md)                   | Shipped (0.8.0)† | PegasusClient / docs                |
 | [unified-setup-bootstrap.md](unified-setup-bootstrap.md)                                 | Shipped (0.8.0)  | CLI / tooling (MCP) / docs          |
 | [mcp-server-guidance-stale.md](mcp-server-guidance-stale.md)                             | Shipped (0.8.0)  | tooling (MCP) / docs / CLI          |
@@ -27,3 +27,9 @@ resulting `Status` back into the source.
 `CloseTask` Cedar actions shipped; the `/api/v1/pegii/*` order+task API is a
 pegII-bound **stub** (`apps/api/src/handlers/pegii-runtime.ts` +
 `services/pegii-orders.ts` / `pegii-tasks.ts`) pending the real pegII API bridge.
+
+‡ `long-running-event-correlated-workflows` (0008): superseded by
+`plans/in-progress/long-running-workflows-and-automations.md`. Long-running
+Workflows become their own durable, tenant-authored kind (signal-with-start event
+delivery, no 900 s cap); today's short runs are renamed **Automations**. Mirror
+this status back to `~/repos/pegasus-workflows/sdk-feedback/0008-*.md`.

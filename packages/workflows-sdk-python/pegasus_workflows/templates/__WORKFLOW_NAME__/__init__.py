@@ -1,1 +1,1 @@
-"""Scaffolded Pegasus workflow package."""
+"""Scaffolded Pegasus Automation package."""

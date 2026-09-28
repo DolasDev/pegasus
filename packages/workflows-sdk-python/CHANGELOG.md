@@ -3,6 +3,33 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed — "workflow" the product is now "Automation"
+
+The platform is introducing a new, separate capability — long-running,
+durable, event-driven **Workflows** (real Temporal workflows with signals,
+queries, and waits) — and reserving the word "Workflow" for it. What this SDK
+has always published and run is being renamed, in user-facing text only, to
+**Automation**: a short, sandboxed run (≤900 s, one unit of work, no
+signals/queries/`wait_condition`) fired from a trigger (event, schedule, or
+manual run).
+
+This is a **presentation-only** rename. Nothing that code depends on changed:
+the `pegasus-workflows` PyPI package and CLI binary, the `pegasus_workflows`
+module, the `pegasus-workflows.toml` manifest (including its `[[workflow]]`
+table), decorators (`@pegasus_workflow`, `@workflow.run`), CLI command and
+flag names, `pegasus://` MCP resource URIs, JSON field names (`workflowId`,
+`consumerKind: "workflow"`, …), and Cedar-style action/role names
+(`ReadWorkflowSecret`, `workflow_developer`, …) are all unchanged. Updated:
+the README, CLI `--help` text and error messages, and the MCP server's
+guide/reference resources, which now say "Automation" wherever they mean the
+published/run thing, and reserve "workflow" for the underlying Temporal
+construct. The README's authoring guide also gains an explicit note that an
+Automation is authored as a Temporal workflow class but runs as a single
+sandboxed unit, so the "coming later" long-running Workflow capability isn't
+confused with what ships today.
+
 ## 0.38.2
 
 ### Documented — the `sms.received` event
