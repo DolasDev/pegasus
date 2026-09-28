@@ -21,7 +21,7 @@ trigger on to parse the reply and run automation.
 - **ISync only:** FSync (first run, 90-day backfill, invalid-token fallback) re-reads
   history, so it doesn't replay.
 - **Cross-store guard:** skip if an INBOUND twin (same numbers + body, ±60s) was already
-  captured from the other RC store. (Prod overlap unmeasured — SSO was expired.)
+  captured from the other RC store. Prod (2026-09-28) holds only `V1_STORE` rows — 181 inbound, 253 outbound, zero thread-store — so the guard is dormant today and kept as a safety net.
 - **Payload is a snapshot incl. `body`**. There's no message read endpoint and bodies purge
   72h after forward. To keep the PII window, the buffer-purge cron nulls `payload.body`
   on dispatched `sms.received` events and on custom events derived from them, 72h after
