@@ -101,7 +101,8 @@ these.
 
 ## Gates tampered and watched to fail
 
-**Eight, restored after each**, and the ones worth repeating:
+**Seven gates, eight tampers** — item 4 below was run twice, as a half-tamper and then a full one —
+restored after each. The ones worth repeating:
 
 1. **A fourth `{aspect}` member** → `charges.ts: TS2322: Type 'true' is not assignable to type
 'never'`. The round's only compile-time gate, and without the tamper there would be no evidence
@@ -137,10 +138,18 @@ owner is a published change, and every future owner-correction will cost a bump 
 
 Classified **`repointedOwedOwner`**, additive, `0.5.0` → `0.6.0` — a new class at `[catalog §2.3]`,
 and the third use of the argument A4's `publishedOwedVocabulary` and A5's `publishedOwedShape` share.
-It is the **weakest** of the three and the document says so: A4 and A5 each closed a gap; A7
-corrected a gap's label and left the gap open. Two consequences are recorded and neither is closed —
-**`[catalog §2.3]` has no rule for a breaking change while pre-1.0** (not needed, since this is
-additive), and the `const` problem above.
+It is the **weakest** of the three and the document says so twice over. A4 and A5 each closed a gap;
+A7 corrected a gap's label and left the gap open. **And A7's first draft claimed a second ground it
+does not have**: it argued the change is safe partly because the branch is marked undecided on the
+wire — but checking the emitted `$defs` rather than assuming shows the generator attaches `x-owed`
+to `OwedCode` (the owed _vocabularies_) and **not** to `Owed` (the owed _values_). A4's and A5's
+classes lean on that annotation in as many words; A7's cannot, so it stands on the one ground that
+`owedTo` carries no domain content. **The same discipline that found the bump found the overclaim in
+the argument for it.**
+
+Three consequences recorded and none closed: `[catalog §2.3]` has **no rule for a breaking change
+while pre-1.0** (not needed, since this is additive), the `const` problem above, and the `x-owed`
+asymmetry — all three generator questions rather than any area's.
 
 "A compatibility classification argued from which fields feel published is a classification waiting
 to be wrong — read the emitted `$defs`" is now operative for the **third** time, after A8's

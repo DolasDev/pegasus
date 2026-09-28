@@ -430,10 +430,16 @@ API**. If you extend either:
 
 ```bash
 cd ~/repos/pegasus && git fetch && git pull --ff-only    # primary checkout, parked on main
-python3 -c "s='a9-identity'; print(5433 + sum(ord(c) for c in s) % 60)"   # check that port is free
+python3 -c "s='a9-identity'; print(5433 + sum(ord(c) for c in s) % 60)"   # → 5486
 ss -ltn | grep -E ':(54[3-9][0-9])'                                        # …against what is listening
 scripts/workstream-start.sh feat a9-identity plans/in-progress/domain-reference-areas-a9.md
 ```
+
+> **`a9-identity` derives port 5486, and it was free when this plan was written** (only the A7
+> worktree's 5463 and one other were listening). **Re-run the two commands anyway** — the point of
+> the check is what is listening _now_, and this note is a convenience rather than a substitute.
+> Note also that `a9-identifiers` collides with `a9-identity` on 5486, so do not "improve" the slug
+> without recomputing.
 
 Then work in the new worktree; commits land with the implementation as **one PR**, and the plan is
 archived to `plans/completed/<slug>.md` **before** opening it.

@@ -21,7 +21,6 @@
  */
 import type { AggregateKind } from '../../src/ids'
 import type { AssertionType } from '../../src/vocabulary'
-import { ABSENT_AND_OWED } from '../../src/vocabulary'
 
 /* ------------------------------------------------------------------------------------------------
  * [SD §1.2] — the aggregate enum has no invoice and no payment
@@ -72,17 +71,17 @@ void paymentIsNotAnAggregate
  * ---------------------------------------------------------------------------------------------- */
 
 /**
- * `chargeCollection` is in `ABSENT_AND_OWED` and **not** in the published record vocabulary. The
- * assertion below is the pair that says so: it is a member of the first list, and assigning it to
- * `AssertionType` must not compile.
+ * `chargeCollection` is in `ABSENT_AND_OWED` and **not** in the published record vocabulary. Only
+ * the second half is held here: assigning it to `AssertionType` must not compile. **Its membership
+ * of `ABSENT_AND_OWED` is deliberately NOT asserted in this file** — a boolean computed from a list
+ * we wrote, read by nothing, is [A6 §9]'s defect in the file that exists to avoid it. `charges.test.ts`
+ * checks membership at runtime, where it can fail.
  *
  * If someone mints it, the directive goes unused and this file stops compiling — which is the point,
  * because a mint is a two-file change plus a test-table entry ([SD §4.7.3], the `AS_WRITTEN` table)
  * and whoever makes it should be sent to [A7 §3.2] to read why the subject is the blocker.
  */
 const theAbsentAct = 'chargeCollection'
-const itIsOnTheAbsentList: boolean = (ABSENT_AND_OWED as readonly string[]).includes(theAbsentAct)
-void itIsOnTheAbsentList
 
 // @ts-expect-error [A7 §3.2] — `chargeCollection` is absent and owed, not a published `type`.
 const chargeCollectionIsNotAType: AssertionType = theAbsentAct
