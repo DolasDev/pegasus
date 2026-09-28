@@ -208,6 +208,29 @@ describe('syncConnection — v1 backfill beyond the FSync cap', () => {
     expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
   })
 
+  it('bounds the backfill by now when FSync returned no records, and tolerates odd pages', async () => {
+    const nextList = listPages([
+      // A record with no creationTime is skipped by the normalizer and ignored
+      // for the resume boundary; an empty follow-up page ends the backfill.
+      { records: [{ ...v1Sms(20), creationTime: undefined }] },
+      { records: [] },
+    ])
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH)
+        return Promise.resolve({ syncInfo: { syncToken: 'v1-tok', olderRecordsExist: true } })
+      if (path === V1_LIST_PATH) return nextList()
+      return Promise.resolve({ records: [], syncInfo: { syncToken: 't' } })
+    })
+
+    const { captured } = await syncConnection(db, connection, { now: NOW })
+
+    expect(captured).toBe(0)
+    const listCalls = getMock.mock.calls.filter((c) => c[0] === V1_LIST_PATH)
+    expect(listCalls[0]![1]).toMatchObject({ dateTo: new Date(NOW).toISOString() })
+    expect(listCalls).toHaveLength(2)
+    expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
+  })
+
   it('does not page when FSync returned everything', async () => {
     getMock.mockImplementation((path: string) =>
       Promise.resolve(
