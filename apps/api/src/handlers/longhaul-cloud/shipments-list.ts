@@ -51,6 +51,9 @@ import {
   type ExtraLocationRow,
 } from '../../lib/longhaul-shipment-enrich'
 import { buildShipmentActivities } from '../../lib/longhaul-build-activities'
+// The view's column manifest — typing the sort whitelist against it makes a
+// typo a compile error instead of a silently dead sort header.
+import type { LonghaulShipmentViewColumn } from '@pegasus/longhaul-contracts'
 
 // Mirrors the legacy guard in shipment.service.ts:57-58.
 const SHIPMENT_RESULT_LIMIT = 1000
@@ -59,6 +62,33 @@ const SHIPMENT_RESULT_LIMIT = 1000
 const BASE_QUERY_ROW_CAP = 1001
 
 const SHIPMENTS_TABLE = 'v_longhaul_shipments_v2'
+
+/**
+ * Sortable columns, whitelisted: an ORDER BY identifier cannot be parameterized,
+ * so this map is the only thing standing between `sortBy.value` and SQL
+ * injection. `filters` arrives as a JSON string on the query and is cast with
+ * `as ShipmentQuery`, which erases at runtime — the value is attacker-controlled.
+ * Same guard as activities-list.ts.
+ *
+ * Keys are what the two UI surfaces emit: the card view's `headers`
+ * (containers/Shipments) and the table view's `tableConfig`
+ * (containers/ShipmentsTable). Values are typed against the view manifest, so a
+ * column that is not on `v_longhaul_shipments_v2` fails the build.
+ */
+const SORTABLE_COLUMNS: Record<string, LonghaulShipmentViewColumn> = {
+  shipper_name: 'shipper_name',
+  shipper_city: 'shipper_city',
+  shipper_state: 'shipper_state',
+  consignee_city: 'consignee_city',
+  consignee_state: 'consignee_state',
+  total_est_wt: 'total_est_wt',
+  pack_date2: 'pack_date2',
+  load_date2: 'load_date2',
+  del_date2: 'del_date2',
+  shaul: 'shaul',
+  company: 'company',
+  driver_name: 'driver_name',
+}
 
 interface ShipmentFilters {
   order_num?: Array<{ value: unknown }>
@@ -320,14 +350,22 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag): string {
   }
 
   // Ordering — mirrors the repo: a caller-supplied sortBy, else plan_load asc.
-  let orderBy: string
-  if (query.sortBy?.order) {
-    const col = query.sortBy.value
-    const dir = query.sortBy.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
-    orderBy = `${S}.${col} ${dir}, ${S}.shipper_name ASC`
-  } else {
-    orderBy = `${S}.plan_load ASC, ${S}.shipper_name ASC`
-  }
+  // Keyed off the whitelist lookup, not off `order`: the previous guard tested
+  // `sortBy?.order`, so an `order` with no `value` built `.undefined` and threw.
+  // `order` is read defensively because it too comes from parsed JSON and is not
+  // necessarily a string.
+  // Object.hasOwn, not a bare index: a plain object literal inherits from
+  // Object.prototype, so `sortBy.value = 'constructor'` (or toString/valueOf)
+  // returns a truthy function and would sail past the whitelist into the SQL.
+  const requested = query.sortBy?.value
+  const sortCol =
+    typeof requested === 'string' && Object.hasOwn(SORTABLE_COLUMNS, requested)
+      ? SORTABLE_COLUMNS[requested]
+      : undefined
+  const orderBy = sortCol
+    ? `${S}.${sortCol} ${String(query.sortBy?.order).toUpperCase() === 'DESC' ? 'DESC' : 'ASC'}` +
+      `, ${S}.shipper_name ASC`
+    : `${S}.plan_load ASC, ${S}.shipper_name ASC`
 
   const whereSql = where.length ? `\nWHERE ${where.join('\n  AND ')}` : ''
   // TOP enforces the base-query row cap (mssql has no LIMIT).
