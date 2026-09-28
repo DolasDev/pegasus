@@ -106,12 +106,7 @@ export interface WorkflowDownload {
 }
 
 export type WorkflowExecutionStatus =
-  | 'QUEUED'
-  | 'RUNNING'
-  | 'COMPLETED'
-  | 'FAILED'
-  | 'TIMED_OUT'
-  | 'CANCELLED'
+  'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'TIMED_OUT' | 'CANCELLED'
 
 /** How an execution was started: a user's manual run, an EVENT trigger
  * matching a domain event, or a SCHEDULE trigger's cron fire. */
@@ -216,7 +211,7 @@ export function asDryRunResult(result: unknown): DryRunResult | null {
 export type WorkflowTriggerKind = 'EVENT' | 'SCHEDULE'
 
 /**
- * The five launch domain-event types an EVENT trigger can subscribe to.
+ * The built-in domain-event types an EVENT trigger can subscribe to.
  * KEEP IN SYNC with `DOMAIN_EVENT_TYPES` in `apps/api/src/lib/domain-events.ts`
  * — tenant-web cannot import from apps/api, so the taxonomy is duplicated
  * here. The names are a public contract (renames are breaking), so drift
@@ -228,6 +223,8 @@ export const DOMAIN_EVENT_TYPES = [
   'invoice.paid',
   'customer.created',
   'pegasus_event.received',
+  'feedback.submitted',
+  'sms.received',
 ] as const
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]

@@ -76,6 +76,7 @@ describe('syncConnection — v1 store', () => {
       'tnt-1',
       expect.objectContaining({ source: 'V1_STORE', externalId: '1' }),
       'conn-1',
+      { emitReceivedEvent: false },
     )
     expect(h.saveSyncCursor).toHaveBeenCalledWith(db, 'tnt-1', 'conn-1', 'V1', 'v1-tok')
   })
@@ -84,12 +85,26 @@ describe('syncConnection — v1 store', () => {
     h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
       Promise.resolve(store === 'V1' ? { syncToken: 'prev' } : null),
     )
-    getMock.mockResolvedValue({ records: [], syncInfo: { syncToken: 'x' } })
+    getMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === V1_PATH
+          ? { records: [v1Sms(4)], syncInfo: { syncToken: 'x' } }
+          : { records: [], syncInfo: { syncToken: 'x' } },
+      ),
+    )
 
     await syncConnection(db, connection)
 
     const v1Call = getMock.mock.calls.find((c) => c[0] === V1_PATH)!
     expect(v1Call[1]).toMatchObject({ syncType: 'ISync', syncToken: 'prev' })
+    // Incremental pull ⇒ a first-time inbound capture announces sms.received.
+    expect(h.captureMessage).toHaveBeenCalledWith(
+      db,
+      'tnt-1',
+      expect.objectContaining({ externalId: '4' }),
+      'conn-1',
+      { emitReceivedEvent: true },
+    )
   })
 
   it('falls back to FSync on SYNC_TOKEN_INVALID', async () => {
@@ -113,6 +128,14 @@ describe('syncConnection — v1 store', () => {
     expect(getMock.mock.calls.filter((c) => c[0] === V1_PATH)[1]![1]).toMatchObject({
       syncType: 'FSync',
     })
+    // The FSync fallback re-reads history — it must not fire workflows.
+    expect(h.captureMessage).toHaveBeenCalledWith(
+      db,
+      'tnt-1',
+      expect.objectContaining({ externalId: '2' }),
+      'conn-1',
+      { emitReceivedEvent: false },
+    )
   })
 
   it('skips a non-SMS record without aborting the sync', async () => {
@@ -182,6 +205,7 @@ describe('syncConnection — thread store', () => {
         toNumber: '+19085760908',
       }),
       'conn-1',
+      { emitReceivedEvent: false },
     )
     // Outbound: from company, to external.
     expect(h.captureMessage).toHaveBeenCalledWith(
@@ -194,7 +218,52 @@ describe('syncConnection — thread store', () => {
         toNumber: '+12015550123',
       }),
       'conn-1',
+      { emitReceivedEvent: false },
     )
     expect(h.saveSyncCursor).toHaveBeenCalledWith(db, 'tnt-1', 'conn-1', 'THREAD', 'thr-tok')
+  })
+
+  it('on ISync, emits for an explicit Inbound entry but not a direction-less one', async () => {
+    const READ = '/restapi/v1.0/account/~/message-threads/thread-2'
+    h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
+      Promise.resolve(store === 'THREAD' ? { syncToken: 'prev' } : null),
+    )
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH) return Promise.resolve({ records: [], syncInfo: { syncToken: 'v1' } })
+      if (path === THREAD_PATH)
+        return Promise.resolve({
+          records: [
+            {
+              id: 200,
+              type: 'SMS',
+              threadId: 'thread-2',
+              direction: 'Inbound',
+              text: 'YES',
+              creationTime: '2026-06-02T10:00:00.000Z',
+            },
+            {
+              id: 201,
+              type: 'SMS',
+              threadId: 'thread-2',
+              text: '?',
+              creationTime: '2026-06-02T10:01:00.000Z',
+            },
+          ],
+          syncInfo: { syncToken: 'thr-tok' },
+        })
+      if (path === READ)
+        return Promise.resolve({ id: 'thread-2', recipients: [{ phoneNumber: '+12015550123' }] })
+      return Promise.reject(new Error(`unexpected path ${path}`))
+    })
+
+    await syncConnection(db, connection)
+
+    const flagFor = (externalId: string) =>
+      h.captureMessage.mock.calls.find(
+        (c) => (c[2] as { externalId: string }).externalId === externalId,
+      )![4]
+    expect(flagFor('200')).toEqual({ emitReceivedEvent: true })
+    // Still captured (and forwarded), but a missing direction never fires a workflow.
+    expect(flagFor('201')).toEqual({ emitReceivedEvent: false })
   })
 })

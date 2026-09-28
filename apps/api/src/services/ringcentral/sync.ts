@@ -132,6 +132,9 @@ async function syncV1Store(
     messageType: 'SMS',
   })
 
+  // Only an incremental pull announces messages as newly received; a full sync
+  // re-reads up to `backfillDays` of history (see CaptureOptions).
+  let incremental = !!cursor?.syncToken
   let res: MessageSyncResponse
   try {
     res = await client.get<MessageSyncResponse>(
@@ -141,12 +144,15 @@ async function syncV1Store(
   } catch (err) {
     if (!isSyncTokenInvalid(err)) throw err
     logger.warn('v1 sync token invalid — falling back to FSync', { connectionId: connection.id })
+    incremental = false
     res = await client.get<MessageSyncResponse>(V1_MESSAGE_SYNC, fsyncParams())
   }
 
   let captured = 0
   for (const record of res.records ?? []) {
-    if (await captureOne(db, connection, () => normalizeV1Json(record), record.id)) captured++
+    if (await captureOne(db, connection, () => normalizeV1Json(record), record.id, incremental)) {
+      captured++
+    }
   }
   if (res.syncInfo?.syncToken) {
     await saveSyncCursor(db, connection.tenantId, connection.id, 'V1', res.syncInfo.syncToken)
@@ -169,6 +175,7 @@ async function syncThreadStore(
     ? { syncType: 'ISync', syncToken: cursor.syncToken }
     : { syncType: 'FSync' }
 
+  let incremental = !!cursor?.syncToken
   let res: ThreadEntriesSyncResponse
   try {
     res = await client.get<ThreadEntriesSyncResponse>(THREAD_ENTRIES_SYNC, params)
@@ -177,6 +184,7 @@ async function syncThreadStore(
     logger.warn('thread sync token invalid — falling back to FSync', {
       connectionId: connection.id,
     })
+    incremental = false
     res = await client.get<ThreadEntriesSyncResponse>(THREAD_ENTRIES_SYNC, { syncType: 'FSync' })
   }
 
@@ -195,6 +203,9 @@ async function syncThreadStore(
       external = await resolveThreadExternalNumber(client, threadId, connection.ownerNumber)
       externalByThread.set(threadId, external)
     }
+    // A missing direction is captured as Inbound (forwarding unchanged) but never
+    // announced: if a workflow's own reply came back direction-less, emitting it
+    // would re-trigger that workflow in a loop.
     const direction = entry.direction ?? 'Inbound'
     const phones: ThreadPhonePair =
       direction === 'Inbound'
@@ -202,7 +213,13 @@ async function syncThreadStore(
         : { from: connection.ownerNumber, to: external }
 
     if (
-      await captureOne(db, connection, () => normalizeThreadJson(entry, threadId, phones), entry.id)
+      await captureOne(
+        db,
+        connection,
+        () => normalizeThreadJson(entry, threadId, phones),
+        entry.id,
+        incremental && entry.direction != null,
+      )
     ) {
       captured++
     }
@@ -244,10 +261,13 @@ async function captureOne(
   connection: SyncConnection,
   normalize: () => ReturnType<typeof normalizeV1Json>,
   rawId: string | number,
+  emitReceivedEvent: boolean,
 ): Promise<boolean> {
   try {
     const normalized = normalize()
-    await captureMessage(db, connection.tenantId, normalized, connection.id)
+    await captureMessage(db, connection.tenantId, normalized, connection.id, {
+      emitReceivedEvent,
+    })
     return true
   } catch (err) {
     if (err instanceof DomainError) {

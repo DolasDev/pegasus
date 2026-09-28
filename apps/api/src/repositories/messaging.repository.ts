@@ -11,9 +11,10 @@
 // on it, and the per-message outbox row is enqueued exactly once.
 // ---------------------------------------------------------------------------
 
-import type { PrismaClient, Prisma } from '@prisma/client'
+import { Prisma, type PrismaClient } from '@prisma/client'
 import type { Message, NormalizedMessage, ForwardStatus, PhoneNumber } from '@pegasus/domain'
 import { toMessageId, toSmsThreadId, deriveMessageStatus } from '@pegasus/domain'
+import { emitDomainEvent } from '../lib/domain-events'
 
 // ---------------------------------------------------------------------------
 // Mappers
@@ -336,18 +337,39 @@ export async function markWebhookEventFailed(db: PrismaClient, id: string, error
 // Message + transactional outbox
 // ---------------------------------------------------------------------------
 
+/** Window within which an INBOUND row in the OTHER store is treated as the same SMS. */
+const CROSS_STORE_TWIN_WINDOW_MS = 60_000
+
+export type CaptureOptions = {
+  /**
+   * Emit the `sms.received` domain event when this call is the FIRST capture of
+   * an INBOUND message. Callers pass true only for incremental (ISync) pulls:
+   * a full sync (first run, 90-day backfill, invalid-token fallback) re-reads
+   * history and must not fire a workflow per historical text.
+   */
+  emitReceivedEvent?: boolean
+}
+
 /**
  * Idempotently captures a normalized SMS: upserts the Message on
  * (tenantId, source, externalId) and ensures exactly one outbox row exists for
  * on-prem forwarding. Safe to call repeatedly from the webhook path and the
  * safety-net sync — both converge on the same row, and the outbox enqueue is a
  * no-op when a row already exists (so an already-SENT message is not re-queued).
+ *
+ * With `emitReceivedEvent`, a first-time INBOUND capture also appends an
+ * `sms.received` DomainEvent in the same transaction, so workflows triggered on
+ * it fire exactly once per text. "First time" is decided by the outbox insert:
+ * `skipDuplicates` is ON CONFLICT DO NOTHING, so of two concurrent captures of
+ * one message (webhook + safety-net sync) only one inserts the row. OUTBOUND
+ * never emits — a workflow replying via send_sms must not re-trigger itself.
  */
 export async function captureMessage(
   db: PrismaClient,
   tenantId: string,
   normalized: NormalizedMessage,
   connectionId?: string,
+  opts: CaptureOptions = {},
 ): Promise<Message> {
   // An SMS's text/direction/parties are immutable for a given RC message id, so
   // they are written only on create. Re-capture (webhook + safety-net sync
@@ -385,13 +407,53 @@ export async function captureMessage(
       update: onReCapture,
     })
 
-    // Ensure a single outbox row. update:{} keeps an already-SENT/FAILED row
-    // untouched, so re-capture never re-queues or resets delivery state.
-    await tx.messageForwardOutbox.upsert({
-      where: { messageId: message.id },
-      create: { tenantId, messageId: message.id },
-      update: {},
+    // Ensure a single outbox row. skipDuplicates leaves an already-SENT/FAILED
+    // row untouched, so re-capture never re-queues or resets delivery state; the
+    // insert count doubles as the "first capture" signal (the outbox row lives
+    // and dies with its message — FK cascade).
+    const { count: enqueued } = await tx.messageForwardOutbox.createMany({
+      data: [{ tenantId, messageId: message.id }],
+      skipDuplicates: true,
     })
+
+    if (opts.emitReceivedEvent && enqueued === 1 && message.direction === 'INBOUND') {
+      // The same text can surface in both RingCentral stores under different
+      // ids; if its twin was already captured (and emitted), don't emit again.
+      const at = message.rcCreationTime.getTime()
+      const twin = await tx.message.findFirst({
+        where: {
+          tenantId,
+          id: { not: message.id },
+          source: { not: message.source },
+          direction: 'INBOUND',
+          fromNumber: message.fromNumber,
+          toNumber: message.toNumber,
+          body: message.body,
+          rcCreationTime: {
+            gte: new Date(at - CROSS_STORE_TWIN_WINDOW_MS),
+            lte: new Date(at + CROSS_STORE_TWIN_WINDOW_MS),
+          },
+        },
+        select: { id: true },
+      })
+      if (!twin) {
+        await emitDomainEvent(tx, {
+          tenantId,
+          eventType: 'sms.received',
+          payload: {
+            messageId: message.id,
+            source: message.source,
+            externalId: message.externalId,
+            threadId: message.threadId,
+            fromNumber: message.fromNumber,
+            toNumber: message.toNumber,
+            body: message.body,
+            rcCreationTime: message.rcCreationTime.toISOString(),
+            connectionId: message.connectionId,
+          },
+        })
+      }
+    }
 
     return message
   })
@@ -509,6 +571,82 @@ export async function purgeForwardedBodies(db: PrismaClient, now: Date = new Dat
     data: { body: null, bodyPurgedAt: now },
   })
   return count
+}
+
+/**
+ * Nulls the SMS text carried in `sms.received` DomainEvent payloads once the
+ * event has been dispatched and is older than `olderThan`, so the copy made for
+ * workflow triggers obeys the same ~72h PII window as `messages.body`. The
+ * workflow received the payload at dispatch; domain_events is otherwise never
+ * purged. Also covers custom events DERIVED from `sms.received` (the dispatcher
+ * copies the source payload plus `_derivedFrom`). Undispatched events keep their
+ * body until they fire. Idempotent — the JSON-null check skips already-purged
+ * rows. Returns the events purged.
+ */
+export async function purgeReceivedEventBodies(
+  db: PrismaClient,
+  olderThan: Date,
+  batchSize = 500,
+): Promise<number> {
+  let purged = 0
+  let after: string | undefined
+  for (;;) {
+    const rows = await db.domainEvent.findMany({
+      where: {
+        ...(after ? { id: { gt: after } } : {}),
+        dispatchedAt: { not: null },
+        occurredAt: { lt: olderThan },
+        AND: [
+          // A present, non-null `body` (a missing key never matches).
+          { payload: { path: ['body'], not: Prisma.JsonNull } },
+          {
+            OR: [
+              { eventType: 'sms.received' },
+              { payload: { path: ['_derivedFrom'], not: Prisma.AnyNull } },
+            ],
+          },
+        ],
+      },
+      select: { id: true, eventType: true, payload: true },
+      // Keyset paging: derived rows of OTHER sources match the query but are
+      // skipped below, so re-querying from the start could spin on them. (Not
+      // Prisma `cursor` — it misbehaves once the cursor row, just purged, no
+      // longer matches the filter.)
+      orderBy: { id: 'asc' },
+      take: batchSize,
+    })
+    if (rows.length === 0) return purged
+
+    const derivedFrom = rows
+      .filter((r) => r.eventType !== 'sms.received')
+      .map((r) => (r.payload as Record<string, unknown>)['_derivedFrom'])
+      .filter((id): id is string => typeof id === 'string')
+    const smsSources = new Set(
+      derivedFrom.length === 0
+        ? []
+        : (
+            await db.domainEvent.findMany({
+              where: { id: { in: derivedFrom }, eventType: 'sms.received' },
+              select: { id: true },
+            })
+          ).map((r) => r.id),
+    )
+
+    // Prisma can't patch one JSON key in bulk, so each row is rewritten.
+    for (const row of rows) {
+      const payload = row.payload as Record<string, unknown>
+      const isSms =
+        row.eventType === 'sms.received' || smsSources.has(payload['_derivedFrom'] as string)
+      if (!isSms) continue
+      await db.domainEvent.update({
+        where: { id: row.id },
+        data: { payload: { ...payload, body: null } as Prisma.InputJsonValue },
+      })
+      purged++
+    }
+    if (rows.length < batchSize) return purged
+    after = rows[rows.length - 1]!.id
+  }
 }
 
 /**
