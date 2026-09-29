@@ -11,7 +11,7 @@
   workflows, tenant-authored in Python) as a new capability, and rebrand what
   exists today as **Automations**: short sandboxed runs that fire on their own
   from triggers or run as steps called by a Workflow.
-- **Status:** Approved 2026-09-25. Phase 1 in progress.
+- **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 next.
 - **Supersedes:** `plans/sdk/long-running-event-correlated-workflows.md`
   (spec 0008, Proposed since 2026-06-29). Marked superseded in
   `plans/sdk/README.md` and the spec itself by Phase 1. Still owed: mirror
@@ -133,8 +133,29 @@ table.
      live with a third party.
 - **Owner of revisiting:** whoever runs Phase 2 records the spike's outcome
   against trigger 1 here, before Phase 3 starts.
+- **Trigger 1 outcome (Phase 2, 2026-09-29): not met.** A live test showed a
+  namespace-scoped Write key refused by another namespace on every RPC
+  probed, through both the namespace and the regional endpoints, with a
+  control proving the probe detects leaks. Cloud isolates tenants, so we stay
+  on Cloud. Evidence: `plans/completed/2b1e2147-durable-workflow-isolation-spike.md`.
 
-### D5: Isolation approach (decided by the Phase 2 spike)
+### D5: Isolation approach: **resolved to option A** (Phase 2, 2026-09-29)
+
+**Decision: A, one Temporal Cloud namespace per tenant** with a
+namespace-scoped **Write** service-account key. Verified live (see
+`plans/completed/2b1e2147-durable-workflow-isolation-spike.md`, §3–§5). It holds only under these conditions, which Phase 3 carries:
+(1) tenant Automations move into the tenant namespace too, so the runner
+holds _only_ the scoped key and the platform key leaves tenant containers;
+(2) a new account-scoped platform service account gains Write on each
+tenant namespace at provisioning (today's platform keys are
+namespace-scoped and can't reach new namespaces); (3) provisioning waits
+out a ~90 s authorization delay; (4) the 100-namespace cap covers staging
+and prod together, so ask Temporal to raise it early. **Residual risk:**
+every scoped key must keep account-level Read, which exposes the Cloud
+account's user list to tenant code. The mitigation is to block
+`saas-api.tmprl.cloud` from the runner VPC.
+
+Candidates as considered, in order of preference:
 
 Candidates, in order of preference:
 
@@ -162,8 +183,10 @@ Candidates, in order of preference:
   and the runtime service account. The manifest gains `kind = "workflow"`.
   Prisma model names may be renamed in code without a migration (`@@map`
   already pins the tables), but that's optional and not part of this plan.
-- **Automations:** unchanged at runtime. They keep the subprocess, the 900s
-  cap, the concurrency cap of 5 and the daily quota.
+- **Automations:** keep the subprocess, the 900s cap, the concurrency cap of
+  5 and the daily quota. **One change (D5 condition 1, added by Phase 2):**
+  they move from the platform namespace into each tenant's own namespace, so
+  the tenant runner holds only its tenant-scoped key.
 - **Workflows:** run on a **long-lived tenant workflow worker**. This is a
   hardened subprocess inside the tenant runner (the same hardening as today,
   but persistent rather than one per execution) holding the isolation-scoped
@@ -277,7 +300,10 @@ Low risk. No change to wire names or behavior.
 
 A time-boxed investigation. Its output is a written decision, not production code.
 
-- [ ] Temporal Cloud questions to answer (confirm against current Cloud docs,
+Done 2026-09-29. Evidence, transcripts and probe scripts are in
+`plans/completed/2b1e2147-durable-workflow-isolation-spike.md`.
+
+- [x] Temporal Cloud questions to answer (confirm against current Cloud docs,
       not memory):
   - The namespace limit per account and how to raise it.
   - Pricing per namespace and any minimums.
@@ -287,15 +313,13 @@ A time-boxed investigation. Its output is a written decision, not production cod
     `tcld` or Terraform.
   - Whether the API Lambda can start and signal across namespaces with one
     platform key.
-- [ ] Prototype option A in a throwaway namespace: a worker holding a
-      namespace-scoped key must fail to reach a second namespace.
-- [ ] If A fails: prototype option B's allowed list of RPCs and try to break
-      out of it (listing or describing other workflows, polling other task
-      queues, visibility queries).
-- [ ] Record the result as the resolution of D5, and the result of D4's
-      revisit trigger 1.
-- [ ] Record the effect on the tenant runner's hardening: the Temporal key
-      becomes visible to tenant code. Update the `security-review` notes.
+- [x] Prototype option A in a throwaway namespace: a worker holding a
+      namespace-scoped key must fail to reach a second namespace. Passed.
+- [x] If A fails: prototype option B. Not needed.
+- [x] Record the result as the resolution of D5, and the result of D4's
+      revisit trigger 1. See D5 and D4 above.
+- [x] Record the effect on the tenant runner's hardening. See the archived
+      Phase 2 file, §5–§7.
 - **Stop point:** if neither A nor B is acceptable, return to the user before
   Phase 3. Self-hosting (D4) or declarative Workflows (D1's rejected
   option) come back up for discussion.
@@ -315,10 +339,52 @@ A time-boxed investigation. Its output is a written decision, not production cod
       which versioning API Cloud currently supports as GA). The runner serves
       every artifact version that still has open executions, and retires a
       version when its last execution closes.
-- [ ] Provisioning: the per-tenant namespace or key (option A) or the proxy
-      (option B), created at tenant or Workflow onboarding. Infra goes in
+- [ ] Provisioning (D5 = option A): per tenant, create the namespace
+      (API-key auth), then a namespace-scoped **Write** service account, then
+      its key, then **retry until authorized** (about 90 s seen in Phase 2),
+      and only then launch the runner. Do it through the Cloud Ops API.
+      Rotate keys before their maximum 2-year lifetime. Infra goes in
       `packages/infra/lib/stacks/temporal-worker-stack.ts` (owns the tenant
       runner task definition) plus secrets.
+- [ ] **New platform service account:** account-scoped (not
+      namespace-scoped), gaining Write on each tenant namespace at
+      provisioning. Today's `pegasus-{prod,staging}-service-account` are
+      namespace-scoped Admin accounts and can't reach new namespaces.
+- [ ] **Move Automations into the tenant namespace.** The API starts each
+      tenant's Automations in that tenant's namespace, so the runner polls
+      only there and holds **only** the tenant-scoped key. Without this, the
+      runner keeps the platform key _and_ tenant code gets a live Temporal
+      connection in the same container, which is worse than today. This is a
+      migration of existing Automation routing: drain in-flight runs before
+      cutting over.
+- [ ] **Check the regional endpoint** (`us-east-1.aws.api.temporal.io:7233`
+      takes the namespace per request). If one platform key there serves
+      every tenant namespace, the API Lambda needs one connection, not N.
+      Phase 2 proved only the refusal side.
+- [ ] **Block the Cloud management API from tenant runners:** deny
+      `saas-api.tmprl.cloud` in the runner VPC (e.g. Route 53 Resolver DNS
+      Firewall). Scoped keys must keep account-level Read, which exposes the
+      Cloud account's user list.
+- [ ] **Namespace cap:** ask Temporal support to raise the account's
+      100-namespace cap (it counts staging and prod together) before
+      onboarding approaches it.
+- [ ] Re-run the Phase 2 probes (`probe.py`, `control.py`,
+      `cloudops_probe.sh`) against namespaces created by the real provisioning
+      code, as an acceptance check.
+- [ ] **Downgrade worker keys from namespace Admin to Write** (found in
+      Phase 2; the user chose to roll it in here, 2026-09-29). Today the
+      tenant runner and the stdlib worker both hold
+      `pegasus-{prod,staging}-service-account`'s key, which has namespace
+      **Admin** (delete namespace, manage access). Workers need only Write.
+      Every key issued in this phase is Write-level from the start: the
+      tenant-scoped keys, and a separate Write key for any worker still
+      polling the platform namespace. Keep Admin only where namespace
+      administration is actually done, never in a task definition. A
+      namespace-scoped account's permission level can be changed (only its
+      namespace can't), per the docs (untested in Phase 2), so an existing
+      account may also be lowered in place.
+      Verify with a probe that a worker key gets `PERMISSION_DENIED` on an
+      admin-only call.
 - [ ] Waking: extend the dispatcher sweep (task-queue backlog →
       `ensureTenantRunner`).
 - [ ] Remove the `wait_condition` "unsupported in v1" path for the
@@ -399,7 +465,7 @@ A time-boxed investigation. Its output is a written decision, not production cod
 
 ## 6. Open questions
 
-1. D5: the outcome of the isolation spike (Phase 2).
+1. ~~D5: the outcome of the isolation spike (Phase 2).~~ **Resolved: option A** (see D5).
 2. **Worker granularity and runtime-token lifetime.** `vnd_` runtime tokens
    are delivered per execution over stdin today. A weeks-long Workflow's
    activities (including `run_automation`) need a token that outlives that,
