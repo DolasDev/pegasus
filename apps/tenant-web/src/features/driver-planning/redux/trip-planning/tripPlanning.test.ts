@@ -486,7 +486,11 @@ describe('tripPlanning slice — reducer (pure)', () => {
       expect(ids).toEqual(['first', 'middle', 'third'])
     })
 
-    it('removes the chosen entry from extraActivities (delete leaves a hole)', () => {
+    it('removes the chosen entry from extraActivities without leaving an undefined slot', () => {
+      // Regression: the reducer used `delete extraActivities[idx]`. Immer turns
+      // a delete on a draft array into `arr[idx] = undefined` (not a hole), so
+      // the AddActivity menu's `.map` hit `undefined.activityType` on the next
+      // open and the whole page fell to the ErrorBoundary (NWI trip 16992).
       const state = seedStateWithShipment(
         {
           extraActivities: [
@@ -505,13 +509,9 @@ describe('tripPlanning slice — reducer (pure)', () => {
           activityIdx: 0,
         }),
       )
-      // `delete arr[0]` does not shift; index 1 remains, index 0 becomes empty.
-      // Immer turns the deleted slot into `undefined`.
-      expect(next.trip.shipments[0].extraActivities[0]).toBeUndefined()
-      expect(next.trip.shipments[0].extraActivities[1]).toEqual({
-        id: 'x1',
-        activityType: { sequencePriority: 4 },
-      })
+      expect(next.trip.shipments[0].extraActivities).toEqual([
+        { id: 'x1', activityType: { sequencePriority: 4 } },
+      ])
     })
   })
 

@@ -98,6 +98,42 @@ describe('AddActivity', () => {
     expect(state.tripPlanning.trip.shipments[0].activities[0].activityType.abbreviation).toBe('PU')
   })
 
+  it('reopens the menu after adding an activity (regression: NWI trip 16992)', () => {
+    const seedShipment = {
+      order_num: 1,
+      activities: [],
+      extraActivities: [
+        { ActivityType_code: 'PACK', activityType: { abbreviation: 'Pack', sequencePriority: 10 } },
+        { ActivityType_code: 'LOAD', activityType: { abbreviation: 'Load', sequencePriority: 20 } },
+      ],
+    }
+    const { store, rerender } = renderWithStore(
+      <AddActivity shipment={seedShipment as any} shipmentIndex={0} />,
+      {
+        preloadedState: {
+          tripPlanning: {
+            trip: {
+              shipments: [seedShipment],
+              status: { id: 1, status_id: 1, status: 'Pending' },
+            },
+            unsavedTrip: null,
+            shipmentToTrips: {},
+          } as any,
+        },
+      },
+    )
+    fireEvent.click(screen.getByText('+'))
+    fireEvent.click(screen.getByText('Pack'))
+    // PendingTrips re-renders AddActivity with the shipment from the store.
+    const shipment = (store.getState() as any).tripPlanning.trip.shipments[0]
+    rerender(<AddActivity shipment={shipment} shipmentIndex={0} />)
+    fireEvent.click(screen.getByText('+'))
+    expect(screen.queryByText('Pack')).toBeNull()
+    fireEvent.click(screen.getByText('Load'))
+    const activities = (store.getState() as any).tripPlanning.trip.shipments[0].activities
+    expect(activities.map((a: any) => a.ActivityType_code)).toEqual(['PACK', 'LOAD'])
+  })
+
   it('handles missing extraActivities gracefully', () => {
     const shipmentNoExtras: any = {
       order_num: 2,
