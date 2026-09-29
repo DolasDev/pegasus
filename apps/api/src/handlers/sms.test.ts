@@ -576,6 +576,29 @@ describe('POST /sms/messages/:id/read', () => {
     )
   })
 
+  it('maps a RingCentral rate limit to 429 with Retry-After, other RC errors to 502', async () => {
+    const { RateLimitError } = await import('../services/ringcentral/client')
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockSetReadStatus.mockRejectedValueOnce(new RateLimitError(30_000))
+    let res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBe('30')
+    mockSetReadStatus.mockRejectedValueOnce(new RingCentralOAuthError('RingCentral API 500', 500))
+    res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(res.status).toBe(502)
+    expect((await json(res))['code']).toBe('UPSTREAM_ERROR')
+  })
+
+  it('400 for a non-uuid id and 503 when RingCentral is disabled', async () => {
+    expect((await buildApp().request('/sms/messages/nope/read', { method: 'POST' })).status).toBe(
+      400,
+    )
+    mockReadOAuthConfig.mockReturnValueOnce(null)
+    expect((await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })).status).toBe(
+      503,
+    )
+  })
+
   it('403 for a persona without UpdateTextMessage', async () => {
     const res = await buildApp(['workflow_developer']).request(`/sms/messages/${ID}/read`, {
       method: 'POST',
