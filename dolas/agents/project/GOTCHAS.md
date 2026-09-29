@@ -2036,3 +2036,62 @@ Classified `repointedOwedOwner` at `[catalog §2.3]` — additive, because `owed
 content and sits inside a branch the wire already marks undecided. Two gaps recorded there and not
 closed: `[catalog §2.3]` has **no rule for a breaking change while pre-1.0**, and **every future
 owner-correction will cost a bump** for the same reason this one did.
+
+## npm overrides: two mechanics that look identical to success until they aren't
+
+Both found on 2026-09-29 while clearing the dependency-alert backlog. The repo's `//overrides`
+notes already carried half of each rule; this records the other half.
+
+### 1. Deleting a lockfile key PRUNES the package — it does not re-resolve it
+
+The gotcha the override notes repeat most often is "editing `overrides` alone does nothing — npm
+caches the old resolution, so delete the `*/node_modules/<pkg>` keys from `package-lock.json`
+first." That is **only true when the goal is collapsing duplicate nested copies** (the `hono`,
+`prisma`, `@prisma/client` entries — there, deletion forces npm to re-hoist).
+
+When the goal is **raising one copy's version floor**, deletion does the opposite. Deleting
+`node_modules/protobufjs` and `node_modules/qs`, then `npm install`, printed
+`added 7 packages, removed 27 packages` and left `npm ls protobufjs` reporting `(empty)` — npm
+took the missing key as "this package is not needed" and pruned it, breaking `@grpc/proto-loader`
+and `typed-rest-client` outright. The `fast-uri` note already says this ("deleting the lock key
+just prunes the package entirely"); it just wasn't stated as the general rule.
+
+**Rule:** raising a floor → `npm update <pkg> --package-lock-only`, then `npm install`.
+Collapsing duplicate copies → delete the keys. Either way, confirm with `npm ls <pkg>` that the
+version actually moved, and finish with a real `npm ci` (exit 0), which is what CI runs — an
+`install` can succeed against a lockfile `ci` rejects.
+
+### 2. A nested override matches a DIRECT child only, not a subtree
+
+`"@react-navigation/core": { "nanoid": ">=3.3.17 <4" }` works because `nanoid` is a direct
+dependency of `@react-navigation/core`. Copying that shape for a different package silently did
+nothing: `"@react-navigation/core": { "decode-uri-component": ">=0.5.0" }` resolved
+`decode-uri-component@0.2.2` unchanged, because the real path is
+`@react-navigation/core > query-string@7.1.3 > decode-uri-component` — a **grandchild**. npm's
+nested form names a dependency _path_, so a grandchild needs the intermediate spelled out:
+`{"@react-navigation/core": {"query-string": {"decode-uri-component": "..."}}}`.
+
+**Rule:** before parent-scoping an override, run `npm ls <pkg> --all` and scope to the package
+that _directly_ declares it. A no-op override is indistinguishable from a working one except by
+`npm ls`.
+
+### 3. "The fix version exists" is not the same as "the fix is installable"
+
+Three of the alerts in that backlog had a published patch that could not be used, each for a
+reason only visible by reading the consumer:
+
+- **decode-uri-component 0.5.0** is ESM-only (`"type": "module"`, one `export default`), but both
+  vulnerable copies sit under the CJS `query-string@7.1.3`, which does
+  `const decodeComponent = require('decode-uri-component')`. Under Node 24 that `require()`
+  returns `{__esModule, default}` and the call site dies with `decodeComponent is not a function`.
+  Same shape as the nanoid-4 trap the `nanoid` override note documents.
+- **image-size 2.0.3** dropped file-path input from its main entry (it moved to an async
+  `fromFile`), but `metro@0.83.7` passes a path string at `src/Assets.js:177`. It throws
+  `TypeError: The "list" argument must be an instance of ... ArrayBufferView`.
+- **uuid 11.1.1** is a fix for a bug in `v3`/`v5`/`v6` _when a `buf` argument is passed_. Both
+  vulnerable consumers (`exceljs`, `xcode`) call only `v4()` with no arguments, so the patch would
+  cost three-to-four forced majors to fix a path neither one executes.
+
+**Rule:** a two-minute probe settles this where an hour of reasoning does not — `npm i <pkg>@<fix>`
+in a scratch dir and call it the way the consumer does. Record the finding in `audit-ci.jsonc`
+with the call site (`file:line`) so the next reader does not re-derive it.

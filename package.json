@@ -54,7 +54,7 @@
     "flatted": "security fix",
     "@xmldom/xmldom": "CVE-2022-39353 XML parsing (>=0.8.10 has fix; 0.9.x breaks @expo/plist mimeType API)",
     "defu": "prototype pollution fix",
-    "undici": "HTTP request smuggling fixes + GHSA-vmh5-mc38-953g (improper cert validation, fixed in 7.28.0). Raised to >=7.29.0 on 2026-08-05 for GHSA-4cwx-7wf7-3272 (high, cross-user information disclosure + parse-time crash via degenerate private cache directives, vulnerable >=7.0.0 <7.29.0), which also clears four moderates in the same release (GHSA-8xcm/-m8rv/-jr45/-v3r7). Reachable copies are transitive: jsdom (admin-web test env) and expo-server-sdk (api push). Stays inside 7.x — jsdom@29 declares undici ^7.",
+    "undici": "HTTP request smuggling fixes + GHSA-vmh5-mc38-953g (improper cert validation, fixed in 7.28.0). Raised to >=7.29.1 on 2026-09-29 for GHSA-3wwx-pv8p-q78v (moderate, DoS via an unhandled error in WebSocket permessage-deflate decompression, vulnerable >=7.28.0 <7.29.1) - the advisory landed on the very release the previous floor pinned to, so expect to raise it again. Previously raised to >=7.29.0 on 2026-08-05 for GHSA-4cwx-7wf7-3272 (high, cross-user information disclosure + parse-time crash via degenerate private cache directives, vulnerable >=7.0.0 <7.29.0), which also clears four moderates in the same release (GHSA-8xcm/-m8rv/-jr45/-v3r7). Reachable copies are transitive: jsdom (admin-web test env) and expo-server-sdk (api push). Stays inside 7.x — jsdom@29 declares undici ^7.",
     "path-to-regexp": "ReDoS vulnerability",
     "picomatch": "ReDoS vulnerability",
     "shell-quote": "GHSA-395f-4hp3-45gv (high, quadratic-complexity DoS in parse(), range <=1.8.4). react-native@0.83.6 > react-devtools-core pins shell-quote@1.8.4 (dev/debug tooling); force >=1.9.0 (resolves 1.10.0, API-compatible). Remove once react-devtools-core ships a patched shell-quote.",
@@ -83,8 +83,10 @@
     "nanoid": "GHSA-2v37-7h3g-55p8 (high, custom generators loop indefinitely when size is zero; vulnerable <3.3.17). Every reachable copy is transitive on the 3.x line — postcss (^3.3.16) plus @react-navigation/* and expo-router (^3.3.8/^3.3.11) — and resolved to 3.3.16. Scoped to each PARENT, not a version-scoped `nanoid@3` key: that key mis-applies exactly as `js-yaml@3` did before #595 — it let postcss float to nanoid@6.0.1, violating its own ^3.3.16 range (nanoid 4+ is ESM-only, so that breaks every CJS consumer). Parent scoping pins each to >=3.3.17 <4 (resolves 3.3.18) and leaves the legitimate 6.x line alone. Remove once these packages ship nanoid >=3.3.17.",
     "@expo/log-box": "Monorepo hoisting (paired with babel-preset-expo above): expo-router@55.0.17 has an exact peer @expo/log-box@55.0.13, which itself pulls @expo/dom-webview → expo → @expo/log-box (circular peer). npm couldn't dedupe the two identical 55.0.13 copies to root, so expo-router stayed nested in apps/mobile and the root babel-preset-expo still couldn't resolve('expo-router'). Pinning @expo/log-box to one version collapses the circular copies so expo-router hoists. Remove alongside the babel-preset-expo override once expo-router's peer tree dedupes on its own.",
     "hono": "@prisma/dev hard-depends on hono ^4.12.8, so as soon as apps/api moves to 4.13.x npm keeps 4.12.x hoisted at the root for prisma and nests 4.13.x under apps/api. The @hono/* companions (swagger-ui, zod-openapi, zod-validator, node-server) hoist to the root and bind their peer hono to the ROOT copy, while app.ts imports Hono from the nested one - two distinct type identities for Context/Env, so app.get('/docs', swaggerUI(...)) fails typecheck with 'MiddlewareHandler<Env> is not assignable'. Forcing one hono line collapses both copies; this is why the hono and prisma dependabot PRs (#601/#530/#545/#501) sat unmergeable for weeks. Kept as a RANGE, not a pin, so routine 4.x bumps do not re-block on this entry. GOTCHA: editing this alone is not enough - npm caches the old resolution, so delete the */node_modules/hono keys from package-lock.json before npm install. Remove once @prisma/dev's hono dep catches up.",
-    "prisma": "apps/api and apps/e2e declare the SAME @prisma/client range, yet npm still installs a private copy in each workspace instead of hoisting. With nothing at the root, node_modules/.bin/prisma is never created - and that is the path the build invokes, so Typecheck/Test/E2E die with 'Cannot find module node_modules/.bin/prisma'. On the older pinned version it happened to hoist, which is why this only appeared when dependabot bumped it (#545/#501 sat unmergeable). Same hoisting quirk as babel-preset-expo and @expo/log-box above; same remedy - pin one version so it hoists. Kept as a RANGE so routine 7.x bumps do not re-block. GOTCHA: editing this alone is not enough - delete the */node_modules/prisma and */node_modules/@prisma/client keys from package-lock.json before npm install. Remove once npm hoists these on its own.",
+    "prisma": "Two things in one entry, via npm's combined override form (same shape as postcss above - do NOT re-split these into two `prisma` keys, duplicate JSON keys mean the last one silently wins). `mysql2` is GHSA-3f6p-5ww8-9rcr (high, auth-plugin downgrade to mysql_clear_password leaks plaintext credentials, vulnerable <3.22.0): the prisma CLI pins mysql2 at an EXACT 3.15.3, so a plain bump cannot reach the fix and an override is the only route. It is dev-scope and unreachable in practice - this repo talks to PostgreSQL (Neon) and MSSQL, never MySQL, so prisma never loads the driver - but the fix is a clean in-range patch on the 3.x line. Force >=3.22.0 <4. Remove once prisma bumps its mysql2 pin. The version floor itself: apps/api and apps/e2e declare the SAME @prisma/client range, yet npm still installs a private copy in each workspace instead of hoisting. With nothing at the root, node_modules/.bin/prisma is never created - and that is the path the build invokes, so Typecheck/Test/E2E die with 'Cannot find module node_modules/.bin/prisma'. On the older pinned version it happened to hoist, which is why this only appeared when dependabot bumped it (#545/#501 sat unmergeable). Same hoisting quirk as babel-preset-expo and @expo/log-box above; same remedy - pin one version so it hoists. Kept as a RANGE so routine 7.x bumps do not re-block. GOTCHA: editing this alone is not enough - delete the */node_modules/prisma and */node_modules/@prisma/client keys from package-lock.json before npm install. Remove once npm hoists these on its own.",
     "browserslist": "GHSA-73wf-gq98-2v4g and GHSA-c83g-rgw3-j3cx (both high, vulnerable <=4.28.6): unbounded memory growth from an uncached query cache, and an uncaught crash / prototype write. Reachable only through build tooling — apps/mobile > @babel/preset-env > @babel/helper-compilation-targets and core-js-compat — which reads our own committed browserslist config, so there is no untrusted input; the floor is still worth holding because the fix is a clean in-range patch. Force >=4.28.7 (resolves 4.28.8). Added 2026-09-02. Remove once the babel toolchain ships browserslist >=4.28.7.",
+    "@grpc/proto-loader": "protobufjs: GHSA-j3f2-48v5-ccww (moderate, DoS via an infinite loop in .proto option parsing, vulnerable >=7.5.0 <=7.6.4). Scoped to the PARENT deliberately: @temporalio/{common,proto} already resolve protobufjs 8.8.0, which is outside the advisory entirely, and only @grpc/proto-loader's 7.x copy (7.6.3, via @grpc/grpc-js < @temporalio/client) is vulnerable. A tree-wide `protobufjs` entry with a <8 ceiling would drag the healthy 8.x copies backwards - that is exactly the shape that left #661 unmergeable for weeks. Force >=7.6.5 <8 so it stays on the 7.x line proto-loader declares. Remove once @grpc/proto-loader ships protobufjs >=7.6.5.",
+    "typed-rest-client": "qs: GHSA-q8mj-m7cp-5q26 (moderate, remotely triggerable DoS - qs.stringify throws a TypeError on null/undefined entries in comma-format arrays when encodeValuesOnly is set; vulnerable >=6.11.1 <=6.15.1). typed-rest-client pins qs at an EXACT 6.15.1, so Dependabot reports security_update_not_possible and can never fix this on its own - an override is the only route. Dev-scope: the only path is packages/domain > @stryker-mutator/core > typed-rest-client (mutation testing), which never runs in production. Parent-scoped rather than tree-wide because this is the sole copy and that exact pin is the whole reason the entry exists. Remove once typed-rest-client relaxes or bumps its qs pin.",
     "@prisma/client": "Paired with the prisma override above - both must move together or the client and CLI can land on different copies."
   },
   "overrides": {
@@ -98,7 +100,7 @@
       "@xmldom/xmldom": "^0.8.10"
     },
     "defu": ">=6.1.5",
-    "undici": ">=7.29.0 <8.0.0",
+    "undici": ">=7.29.1 <8.0.0",
     "path-to-regexp": ">=8.4.0",
     "picomatch": ">=4.0.4",
     "shell-quote": ">=1.9.0",
@@ -150,9 +152,18 @@
       "nanoid": ">=3.3.17 <4"
     },
     "hono": ">=4.13.3 <5",
-    "prisma": ">=7.9.1 <8",
+    "prisma": {
+      ".": ">=7.9.1 <8",
+      "mysql2": ">=3.22.0 <4"
+    },
     "@prisma/client": ">=7.9.1 <8",
-    "browserslist": ">=4.28.7 <5"
+    "browserslist": ">=4.28.7 <5",
+    "@grpc/proto-loader": {
+      "protobufjs": ">=7.6.5 <8"
+    },
+    "typed-rest-client": {
+      "qs": ">=6.15.2 <7"
+    }
   },
   "engines": {
     "node": ">=24 <25",
