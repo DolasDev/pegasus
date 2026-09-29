@@ -26,7 +26,10 @@
 import { db } from './db'
 import { createLogger } from './lib/logger'
 import { executeSql, MssqlExecError } from './lib/mssql-executor-client'
-import { buildInboundMessageMerge } from './services/ringcentral/onprem-merge'
+import {
+  buildInboundMessageMerge,
+  buildInboundAttachmentMerge,
+} from './services/ringcentral/onprem-merge'
 import {
   listPendingForwards,
   markForwardSent,
@@ -53,6 +56,20 @@ function backoffFor(attempts: number): Date {
   const base = Math.min(BASE_BACKOFF_MS * 2 ** attempts, MAX_BACKOFF_MS)
   const jitter = Math.random() * base * 0.2
   return new Date(Date.now() + base + jitter)
+}
+
+/**
+ * The on-prem attachment-reference table hasn't been created yet. The message
+ * row itself landed, so treat this like an outage — park (no attempt spent) —
+ * rather than dead-lettering the message over a missing optional table. The
+ * re-run re-MERGEs the message (idempotent) and retries the attachments.
+ */
+function isAttachmentTableMissing(err: unknown): boolean {
+  return (
+    err instanceof MssqlExecError &&
+    err.code === 'EXECUTOR_QUERY_ERROR' &&
+    /Invalid object name 'dbo\.inbound_message_attachments'/i.test(err.message)
+  )
 }
 
 /** A transient on-prem/infra failure parks the row; a query error counts an attempt. */
@@ -119,6 +136,22 @@ export async function handler(): Promise<void> {
         rcLastModifiedTime: message.rcLastModifiedTime,
       })
       await executeSql(connectionString, sql, { params })
+      // MMS attachment references, always after their parent message row (the
+      // on-prem FK needs it). References only — the file stays in RingCentral.
+      for (const a of message.attachments ?? []) {
+        const merge = buildInboundAttachmentMerge({
+          tenantId: row.tenantId,
+          source: message.source,
+          externalId: message.externalId,
+          attachmentId: a.attachmentId,
+          contentType: a.contentType,
+          sizeBytes: a.sizeBytes,
+          width: a.width,
+          height: a.height,
+          rcUri: a.rcUri,
+        })
+        await executeSql(connectionString, merge.sql, { params: merge.params })
+      }
       await markForwardSent(
         db,
         row.id,
@@ -128,6 +161,15 @@ export async function handler(): Promise<void> {
       stats.sent++
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
+      if (isAttachmentTableMissing(err)) {
+        await parkForward(db, row.id, new Date(Date.now() + PARK_BACKOFF_MS), errorMessage)
+        stats.parked++
+        logger.warn('On-prem dbo.inbound_message_attachments is missing — parked forward', {
+          tenantId: row.tenantId,
+          outboxId: row.id,
+        })
+        continue
+      }
       if (isOnPremUnreachable(err)) {
         unreachable.set(row.tenantId, errorMessage)
         await parkForward(db, row.id, new Date(Date.now() + PARK_BACKOFF_MS), errorMessage)

@@ -31,6 +31,16 @@ export interface RawV1Message {
   subject?: string
   from?: { phoneNumber?: string }
   to?: Array<{ phoneNumber?: string }>
+  /** Text part + one MmsAttachment part per MMS file. */
+  attachments?: Array<{
+    id?: number | string
+    type?: string
+    contentType?: string
+    size?: number
+    width?: number
+    height?: number
+    uri?: string
+  }>
 }
 
 /** A Thread Messaging entry (…/message-threads/entries/sync). */
@@ -64,6 +74,7 @@ export function normalizeV1Json(raw: RawV1Message): NormalizedMessage {
     ...(raw.subject !== undefined ? { subject: raw.subject } : {}),
     ...(raw.from !== undefined ? { from: raw.from } : {}),
     ...(raw.to !== undefined ? { to: raw.to } : {}),
+    ...(raw.attachments !== undefined ? { attachments: raw.attachments } : {}),
   }
   return normalizeV1Message(input)
 }

@@ -100,6 +100,7 @@ import {
 import { workflowStateHandler } from './handlers/workflow-state'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
+import { ringcentralAttachmentsHandler } from './handlers/integrations/ringcentral-attachments'
 import { ingressHandler, ingressManagementHandler } from './handlers/ingress'
 import { feedbackFormsHandler } from './handlers/feedback-forms'
 import { feedbackRequestsHandler } from './handlers/feedback-requests'
@@ -443,6 +444,10 @@ v1.route('/settings', settingsCompaniesHandler)
 // and no consent redirect. The webhook is mounted pre-tenant above. Connect is
 // flag-gated inside the handler; list/disconnect are not.
 v1.route('/integrations/ringcentral', ringcentralOauthHandler)
+// MMS attachment lookup by reference (on-prem clients hold no RingCentral
+// credentials; Pegasus fetches the file through the tenant's connection and
+// stores nothing). Shares the /integrations/ringcentral prefix.
+v1.route('/integrations/ringcentral', ringcentralAttachmentsHandler)
 // Read-only list of integration-validator integrations for the Developer page's
 // Integrations card. Mounted AFTER the more-specific /integrations/ringcentral
 // route; this sub-app only registers GET /, so it never shadows ringcentral.

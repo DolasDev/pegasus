@@ -51,6 +51,28 @@ function apiKeyGet(
 // events, blobs, integration reads, legacy orders). Enforced complete by
 // lib/openapi-spec.coverage.test.ts. `q` = the ?query= param the SDK's api_get can pass.
 const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> = {
+  '/api/v1/integrations/ringcentral/messages/{source}/{externalId}/attachments/{attachmentId}':
+    apiKeyGet(
+      'getRingCentralAttachment',
+      'Fetch an MMS attachment from RingCentral by reference (ReadRingCentralAttachment). ' +
+        'Pegasus stores only references (on-prem: dbo.inbound_message_attachments); the file is ' +
+        "fetched through the tenant's RingCentral connection and never stored. source must be V1_STORE. " +
+        'Errors: 400 UNSUPPORTED_SOURCE/INVALID_ID/UNSUPPORTED_FORMAT, 404 NO_RINGCENTRAL_CONNECTION/' +
+        'ATTACHMENT_NOT_FOUND, 502 ATTACHMENT_TOO_LARGE/UPSTREAM_ERROR, 503 RATE_LIMITED (Retry-After).',
+      {
+        tags: ['Integrations'],
+        path: ['source', 'externalId', 'attachmentId'],
+        query: [
+          {
+            name: 'format',
+            description:
+              "Omit for a JSON envelope {data:{contentType,sizeBytes,contentBase64,…}}; 'raw' returns the bytes.",
+          },
+        ],
+        responseDescription:
+          '{data: {source, externalId, attachmentId, contentType, sizeBytes, contentBase64}} — or the raw bytes with ?format=raw',
+      },
+    ),
   '/api/v1/workflows': apiKeyGet(
     'listWorkflows',
     'List automations visible to the tenant (∪ GLOBAL)',

@@ -305,6 +305,7 @@ model Tenant {
   ringCentralSyncCursors   RingCentralSyncCursor[]
   inboundWebhookEvents     InboundWebhookEvent[]
   messages                 Message[]
+  messageAttachments       MessageAttachment[]
   messageForwardOutbox     MessageForwardOutbox[]
 
   // Push notifications
@@ -2862,14 +2863,44 @@ model Message {
   capturedAt DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant     Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  connection RingCentralConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  outbox     MessageForwardOutbox?
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connection  RingCentralConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  outbox      MessageForwardOutbox?
+  attachments MessageAttachment[]
 
   @@unique([tenantId, source, externalId])
   @@index([tenantId, forwardStatus])
   @@index([tenantId, rcCreationTime])
   @@map("messages")
+  @@schema("public")
+}
+
+/// A reference to one MMS attachment on a captured Message — never the bytes.
+/// The file stays in RingCentral; the forwarder copies this reference on-prem
+/// (dbo.inbound_message_attachments) and clients fetch the file on demand
+/// through the tenant's RingCentral connection. Deleted with its Message.
+model MessageAttachment {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  messageId    String @map("message_id")
+  /// RingCentral attachment id, unique within its message.
+  attachmentId String @map("attachment_id")
+  contentType  String @map("content_type")
+  sizeBytes    Int?   @map("size_bytes")
+  width        Int?
+  height       Int?
+  /// RingCentral's content URL (opening it needs a RingCentral access token).
+  rcUri        String @map("rc_uri")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([messageId, attachmentId])
+  @@index([tenantId])
+  @@map("message_attachments")
   @@schema("public")
 }
 

@@ -183,6 +183,24 @@ export interface Message {
 }
 
 /**
+ * A reference to one MMS attachment (image, video) on a captured message.
+ *
+ * Only the reference is kept — never the bytes. The file stays in RingCentral
+ * and is looked up on demand by (message externalId, attachmentId) through the
+ * tenant's RingCentral connection; `rcUri` is RingCentral's own content URL,
+ * kept for traceability (it needs a RingCentral access token to open).
+ */
+export interface MessageAttachmentRef {
+  /** RingCentral attachment id, unique within its message. */
+  readonly attachmentId: string
+  readonly contentType: string
+  readonly sizeBytes?: number
+  readonly width?: number
+  readonly height?: number
+  readonly rcUri: string
+}
+
+/**
  * The output of normalizing a raw RingCentral record — the shape the repository
  * idempotently upserts. Excludes capture-side lifecycle fields (status,
  * forwardStatus) which are owned by the persistence layer.
@@ -197,6 +215,8 @@ export interface NormalizedMessage {
   readonly body?: string
   readonly rcCreationTime: Date
   readonly rcLastModifiedTime?: Date
+  /** MMS attachment references (empty for a plain SMS). SMS text stays in `body`. */
+  readonly attachments?: readonly MessageAttachmentRef[]
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +270,23 @@ export interface V1MessageInput {
   readonly subject?: string
   readonly from?: { readonly phoneNumber?: string }
   readonly to?: ReadonlyArray<{ readonly phoneNumber?: string }>
+  /**
+   * The record's parts. An MMS arrives as `type: 'SMS'` with one `Text` part
+   * (the same text as `subject`) plus one `MmsAttachment` part per file.
+   */
+  readonly attachments?: ReadonlyArray<V1AttachmentInput>
+}
+
+/** One part of a v1.0 message-store record. */
+export interface V1AttachmentInput {
+  readonly id?: string | number
+  /** `Text` | `MmsAttachment` | … — only `MmsAttachment` is kept. */
+  readonly type?: string
+  readonly contentType?: string
+  readonly size?: number
+  readonly width?: number
+  readonly height?: number
+  readonly uri?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +380,29 @@ export function normalizeThreadEntry(
 }
 
 /**
+ * Keeps the `MmsAttachment` parts of a v1 record as lookup references. The
+ * `Text` part is the SMS body (already in `subject`) and is dropped; a part
+ * missing the id, content type or uri needed to look it up is dropped too.
+ */
+function toAttachmentRefs(
+  parts: ReadonlyArray<V1AttachmentInput> | undefined,
+): MessageAttachmentRef[] {
+  const refs: MessageAttachmentRef[] = []
+  for (const p of parts ?? []) {
+    if (p.type !== 'MmsAttachment' || p.id == null || !p.contentType || !p.uri) continue
+    refs.push({
+      attachmentId: String(p.id),
+      contentType: p.contentType,
+      ...(p.size != null ? { sizeBytes: p.size } : {}),
+      ...(p.width != null ? { width: p.width } : {}),
+      ...(p.height != null ? { height: p.height } : {}),
+      rcUri: p.uri,
+    })
+  }
+  return refs
+}
+
+/**
  * Normalizes a v1.0 message-store record into a NormalizedMessage.
  *
  * @throws {DomainError} `INVALID_PHONE_NUMBER` if from/to is missing or not E.164.
@@ -367,6 +427,7 @@ export function normalizeV1Message(msg: V1MessageInput): NormalizedMessage {
   return {
     source: 'V1_STORE',
     externalId: String(msg.id),
+    attachments: toAttachmentRefs(msg.attachments),
     direction: toDirection(msg.direction),
     fromNumber: toPhoneNumber(fromRaw),
     toNumber: toPhoneNumber(toRaw),

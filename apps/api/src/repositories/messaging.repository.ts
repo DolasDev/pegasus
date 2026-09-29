@@ -426,6 +426,24 @@ export async function captureMessage(
       update: onReCapture,
     })
 
+    // MMS attachment references (never bytes). Idempotent on (message,
+    // attachment), so webhook + sync re-captures converge without duplicates.
+    if (normalized.attachments?.length) {
+      await tx.messageAttachment.createMany({
+        data: normalized.attachments.map((a) => ({
+          tenantId,
+          messageId: message.id,
+          attachmentId: a.attachmentId,
+          contentType: a.contentType,
+          sizeBytes: a.sizeBytes ?? null,
+          width: a.width ?? null,
+          height: a.height ?? null,
+          rcUri: a.rcUri,
+        })),
+        skipDuplicates: true,
+      })
+    }
+
     // Ensure a single outbox row. skipDuplicates leaves an already-SENT/FAILED
     // row untouched, so re-capture never re-queues or resets delivery state; the
     // insert count doubles as the "first capture" signal (the outbox row lives
@@ -517,7 +535,7 @@ export async function listPendingForwards(
         where: { ...where, tenantId },
         orderBy: { nextAttemptAt: 'asc' },
         take: limitPerTenant,
-        include: { message: true },
+        include: { message: { include: { attachments: true } } },
       }),
     ),
   )
