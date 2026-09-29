@@ -22,6 +22,9 @@ vi.mock('../../../middleware/rbac', () => ({
     return (_c: unknown, next: () => unknown) => next()
   },
 }))
+vi.mock('../../../middleware/dual-auth', () => ({
+  dualAuthMiddleware: (_c: unknown, next: () => unknown) => next(),
+}))
 vi.mock('../../../repositories/messaging.repository', () => ({
   listConnectionsByTenant: h.listConnectionsByTenant,
 }))

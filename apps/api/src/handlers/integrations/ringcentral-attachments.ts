@@ -9,6 +9,10 @@
 // it up through the tenant's RingCentral connection and pass the bytes straight
 // back. Nothing is stored.
 //
+// Auth: dual — a Cognito session or a `vnd_` API key (the on-prem client's).
+// Mounted on the pre-tenant m2m router with the middleware ROUTE-level, so the
+// other /integrations/ringcentral/* paths (Cognito-only) still fall through.
+//
 // Response modes (mirrors handlers/pegii-reports.ts):
 //   • default        — JSON envelope with `contentBase64` (the proven transport).
 //   • ?format=raw    — the bytes with their content type. Binary through the
@@ -18,6 +22,7 @@
 
 import { Hono } from 'hono'
 import { requirePermission } from '../../middleware/rbac'
+import { dualAuthMiddleware } from '../../middleware/dual-auth'
 import { Actions } from '../../authz/actions'
 import type { AppEnv } from '../../types'
 import { logger } from '../../lib/logger'
@@ -53,6 +58,7 @@ function safeContentType(contentType: string): string {
 
 ringcentralAttachmentsHandler.get(
   '/messages/:source/:externalId/attachments/:attachmentId',
+  dualAuthMiddleware,
   requirePermission(Actions.ReadRingCentralAttachment),
   async (c) => {
     const tenantId = c.get('tenantId')

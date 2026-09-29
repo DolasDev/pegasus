@@ -361,6 +361,12 @@ m2mV1.route('/', blobsHandler)
 // POSTs to the pre-tenant ingress endpoint. Dual-auth + RBAC (ManageIngress).
 // See handlers/ingress.ts.
 m2mV1.route('/', ingressManagementHandler)
+// MMS attachment lookup by reference, for the on-prem client's `vnd_` key (and
+// tenant sessions): Pegasus fetches the file from RingCentral through the
+// tenant's connection and stores nothing. Dual-auth + RBAC
+// (ReadRingCentralAttachment) applied route-level inside the handler, so the
+// Cognito-only /integrations/ringcentral/* routes on `v1` still fall through.
+m2mV1.route('/integrations/ringcentral', ringcentralAttachmentsHandler)
 // Feedback surveys: author versioned forms (ManageFeedbackForms / ReadFeedbackForms)
 // and mint capability links (CreateFeedbackRequest, granted to workflow_runtime).
 // Dual-auth + RBAC applied inside each handler; feature-gated by FEEDBACK_ENABLED.
@@ -444,10 +450,6 @@ v1.route('/settings', settingsCompaniesHandler)
 // and no consent redirect. The webhook is mounted pre-tenant above. Connect is
 // flag-gated inside the handler; list/disconnect are not.
 v1.route('/integrations/ringcentral', ringcentralOauthHandler)
-// MMS attachment lookup by reference (on-prem clients hold no RingCentral
-// credentials; Pegasus fetches the file through the tenant's connection and
-// stores nothing). Shares the /integrations/ringcentral prefix.
-v1.route('/integrations/ringcentral', ringcentralAttachmentsHandler)
 // Read-only list of integration-validator integrations for the Developer page's
 // Integrations card. Mounted AFTER the more-specific /integrations/ringcentral
 // route; this sub-app only registers GET /, so it never shadows ringcentral.
