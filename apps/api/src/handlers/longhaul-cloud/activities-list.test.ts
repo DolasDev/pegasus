@@ -406,5 +406,25 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
       expect(sentSql()).toContain('ORDER BY a.estimated_date ASC, a.id ASC')
       expect(sentSql()).not.toContain('DROP TABLE')
     })
+
+    it('rejects inherited Object.prototype keys as sort columns', async () => {
+      // A bare `MAP[value]` lookup returns a truthy function for 'constructor',
+      // 'toString', 'valueOf' etc., which would sail past the whitelist and
+      // interpolate a function's source into the ORDER BY.
+      for (const key of ['constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
+        vi.clearAllMocks()
+        withRows([])
+
+        const res = await buildApp().request(
+          '/onprem/longhaul/activities' + filtersQs({}, { sortBy: { value: key, order: 'asc' } }),
+        )
+
+        expect(res.status, `${key} should not 500`).toBe(200)
+        expect(sentSql(), `${key} should fall back`).toContain(
+          'ORDER BY a.estimated_date ASC, a.id ASC',
+        )
+        expect(sentSql()).not.toContain('native code')
+      }
+    })
   })
 })

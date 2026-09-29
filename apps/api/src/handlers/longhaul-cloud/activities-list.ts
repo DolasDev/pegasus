@@ -252,7 +252,18 @@ function buildActivitiesSql(query: ActivityQuery, bag: ParamBag): string {
     }
   }
 
-  const sortCol = query.sortBy?.value ? SORTABLE_COLUMNS[query.sortBy.value] : undefined
+  // Object.hasOwn, not a bare index: a plain object literal inherits from
+  // Object.prototype, so `sortBy.value = 'constructor'` (or toString/valueOf/
+  // hasOwnProperty) returns a truthy *function* and would sail past the
+  // whitelist, interpolating its source into the ORDER BY. `value` is also
+  // type-checked at runtime because the whole query is `JSON.parse(...) as
+  // ActivityQuery` — the cast erases, nothing validates it. Same guard as
+  // shipments-list.ts (#736).
+  const requested = query.sortBy?.value
+  const sortCol =
+    typeof requested === 'string' && Object.hasOwn(SORTABLE_COLUMNS, requested)
+      ? SORTABLE_COLUMNS[requested]
+      : undefined
   const orderBy = sortCol
     ? `${sortCol} ${query.sortBy?.order === 'desc' ? 'DESC' : 'ASC'}, ${A}.id ASC`
     : DEFAULT_ORDER_BY
