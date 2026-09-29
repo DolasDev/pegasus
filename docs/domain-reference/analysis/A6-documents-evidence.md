@@ -548,6 +548,17 @@ parameter and returns `undetermined` when it is unknown, which is exactly **B-ON
 ([A2 §3.2]) and for the same reason: the rule is decidable, its input is not published, and a default
 would be a guess in the one place [SD §0] forbids one.
 
+> **A9 has now answered, and the answer keeps this branch permanent rather than temporary.**
+> [A9 §3.2] declines to publish `identityScheme` at all — five sources ship a closed identifier list
+> and every one ships an open slot beside it, two with a warning attached — so what A9 supplies is
+> a **partial function**, rule **I-ACCOUNT** ([A9 §3.4]), over the twenty schemes the external
+> corpus witnesses. `schemeAccountabilityForDId` hands D-ID its `boolean | undefined` directly.
+> **Nothing in D-ID changes**: the signature, the three-valued parameter and the
+> `SCHEME_ACCOUNTABILITY_NOT_PUBLISHED` branch all stand. What changes is how to read the branch —
+> it is not waiting for a vocabulary, and while `identityScheme` stays open a scheme outside the
+> table is always possible, so the branch is reachable **forever**. §3.2(a)'s reasoning for taking
+> the discriminant as a parameter is strengthened by that, not superseded.
+
 #### (b) Running it over every document kind in the corpus, `undetermined` is the normal case
 
 | Document kind                   | Does it carry a scheme assigned to the form?                                                                                                                                                             | D-ID's verdict                                                                                                                        |

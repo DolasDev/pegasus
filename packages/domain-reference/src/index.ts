@@ -52,6 +52,15 @@ export * from './rules/documents'
 // on [A2 §3.3]'s ground with eleven disagreeing publishers instead of six.
 export * from './rules/charges'
 
+// And A9's one, which supplies the input A6's D-ID declared and could not fill ([A6 §3.2(a)]).
+// I-ACCOUNT is a **partial function** rather than a lookup, because [A9 §3.2] refuses to close
+// `identityScheme` at all: five sources publish a closed identifier list and every one of them
+// publishes an open slot beside it, two of them with a warning attached. Its neighbour here is the
+// gate that holds that refusal, and the five party-grain rows of [A9 §3.3]'s table are the round's
+// structural finding — the best-witnessed scheme in the corpus identifies the one thing [SD §1.2]
+// has no aggregate for, and [A8 §9 item 1] already owes it.
+export * from './rules/identity-schemes'
+
 // The rules the boundary runs — subject admission ([SD §4.6]) and capture ([SD §5]). They are
 // separate from the vocabulary because they are checks *over* it: the vocabulary says what a record
 // may be, and these say what may be admitted.

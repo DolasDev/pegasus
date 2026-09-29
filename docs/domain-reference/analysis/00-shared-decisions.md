@@ -2155,6 +2155,21 @@ A scheme may have an authority and no meaningful issuer distinction (a governmen
 or an issuer under a vocabulary nobody owns. Both fields stay mandatory; where they coincide, they
 coincide explicitly rather than by a reader's inference.
 
+> **A second, independent witness, added by [A9 §3.1].** The split was argued here from `MS2` alone,
+> which leaves it looking like a property of equipment. It is not: `src:nmfta-ebol`'s **PRO** is
+> _"pre-assigned by the shipper from a carrier-issued block, or auto-assigned by the carrier if
+> absent"_ (`:257`–`:261`), so the assigning party and the vocabulary's owner are routinely
+> different parties for a **document's** own number in a regime with no equipment in it.
+> [A9 §3.3]'s table records the two as the only rows where `issuerIsTheAuthority` is false, and the
+> enumeration is gated.
+
+> **And one of these fields has a subject the model cannot express, which [A9 §3.6] records rather
+> than fixes.** `vocabularyScope.authority` and `issuer` are both a `PartyId`, and a `PartyId` is
+> _"an identifier with no aggregate behind it"_ until [A8 §9 item 1] lands. That costs nothing here
+> — neither field is a `subject` — but it means an identity assertion **about** a party (a SCAC, a
+> USDOT number, a GBLOC) has nowhere to go. [A9 §3.6] is the finding and it mints nothing, because
+> [A8 §9 item 1] already owes the entity and already names those identifiers among its fields.
+
 ### 7.2 The effective interval — sourced twice
 
 - `src:x12-212-trailer-manifest` **`BLR`** on loop 0200: a carrier SCAC **per shipment**, on a
@@ -2168,6 +2183,11 @@ coincide explicitly rather than by a reader's inference.
   **reassigned mid-life**, with a transfer list and effective dates that TSPs must cross-reference
   for invoicing previous GBLOCs on shipment BLs." A second, independent, regulation-grade instance
   of a dated identifier attribution that moves.
+  **[A9 §3.6] notes one thing about this witness and changes nothing here**: a GBLOC identifies an
+  _office_, so it is one of the party-grain schemes the model has no `subject` for. The interval is
+  right and the first witness above is a shipment-grain attribution the model expresses exactly —
+  but a reader who reaches for the GBLOC as the worked example will find it is the one A9 cannot
+  write down.
 
 ### 7.3 The vocabulary scope — sourced, with the inference marked
 
@@ -2224,6 +2244,12 @@ coincide explicitly rather than by a reader's inference.
   **published policy**, forbidden from mutating `value`. A canonical match is an Assertion with a
   resolvable verdict, never a truth. The failure mode is a false positive, which is worse than a
   miss.
+  **[A9 §3.1] finds the "never to store" half load-bearing for a case it was not adopted for.**
+  Three of the schemes [A9 §3.3] witnesses are **constructed** — the SIT control number (`YY` +
+  Julian day + intra-day sequence, §7.4), the TCN (position 15 typed by shipment kind) and
+  `src:sirva-ade`'s `Brand + RegNumber + RegYear` triple — and a canonicaliser that stripped leading
+  zeros _in storage_ would destroy a Julian day. The policy was adopted on a false-positive
+  argument; it survives a second, independent test on a different failure mode.
 - **Echo the counterparty's key back.** `src:dcsa` states the obligation: references are provided
   by the shipper at booking and "carriers share it back when providing track and trace event
   updates." `src:sirva-ade` does it (`ExternalReference` = "Agent's internal lead reference",

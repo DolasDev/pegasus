@@ -199,6 +199,7 @@ const DOCUMENTS: Readonly<Record<string, string>> = {
   A3: 'A3-trip-stop-assignment.md',
   A6: 'A6-documents-evidence.md',
   A7: 'A7-charges-billing.md',
+  A9: 'A9-identity-cross-references.md',
   'fork-order': 'fork-order-shipment-cardinality.md',
   'fork-time': 'fork-time-provenance-corrections.md',
   F1: 'F1-handover-qualifier-decision.md',
@@ -1081,6 +1082,20 @@ const RULES: readonly {
     term: 'A-COLLECT',
     what: 'collectability is a rule over (charge, gating fact) pairs',
     export: 'COLLECTABILITY_IS_A_RULE_OVER_PAIRS',
+  },
+  // [A9 §3.4]. The input D-ID declared and could not fill, supplied as a PARTIAL function rather
+  // than a lookup: [A9 §3.2] refuses to close `identityScheme`, so a scheme outside the witnessed
+  // table is unknown rather than illegal, and the rule's third branch is that distinction. Its
+  // neighbour is a refusal held in the type — `IdentitySchemeStaysOwed` — registered below.
+  {
+    term: 'I-ACCOUNT',
+    what: 'whether a scheme is document-accountable, answered only where the corpus says',
+    export: 'schemeAccountability',
+  },
+  {
+    term: 'IdentitySchemeStaysOwed',
+    what: '[A9 §3.2] refuses to close `identityScheme`, and the refusal is a type',
+    export: 'IdentitySchemeStaysOwed',
   },
 ]
 

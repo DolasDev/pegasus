@@ -1,0 +1,515 @@
+{
+  "$comment": "A9 §3.3 — the witnessed-scheme table. NOT a closed vocabulary: [A9 §3.2] refuses to close `identityScheme`, and this table is the catalogue of the schemes the external corpus actually witnesses, not the list of the schemes that exist. `documentAccountable` is the one bit [A6 §3.2(a)] asks A9 for, and rule I-ACCOUNT ([A9 §3.4]) is the partial function over it that D-ID takes as an input. Grades follow [A6 §2] and [A7 §2]: `primary` = quoted from captured material in this repo, `secondary` = quoted from the source's own analysis.md. Every row's `identifies` is an [SD §1.2] aggregate kind or the literal `party`, which is not one — and a `party` row therefore carries a blocker naming [A8 §9 item 1], which already owes the party entity and already names SCAC and DOT/MC among its fields.",
+  "schemes": [
+    {
+      "scheme": "bolCarrier",
+      "corpusName": "the carrier's bill of lading number",
+      "identifies": "document",
+      "authority": "the carrier that prepares and issues the bill of lading",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": true,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": "BOL/PRO",
+      "witnesses": [
+        {
+          "source": "cfr-49-375",
+          "grade": "primary",
+          "cite": "§375.505(a) \"you must prepare and issue a bill of lading\"; §375.519(a)(6) \"The carrier's shipment registration or bill of lading number\" — captured/cfr-49-375.xml:442"
+        },
+        {
+          "source": "nmfta-ebol",
+          "grade": "secondary",
+          "cite": "`bol[]` among the ten positionally-typed reference kinds — analysis.md:256-260"
+        },
+        {
+          "source": "project44",
+          "grade": "secondary",
+          "cite": "`BILL_OF_LADING` in the 70-value LogisticsIdentifierTypeEnum — analysis.md:394"
+        },
+        {
+          "source": "stedi-x12-reference",
+          "grade": "secondary",
+          "cite": "\"PRO, SCAC and BOL are literally our identifiers\" — analysis.md:407"
+        }
+      ],
+      "note": "[A6 §3.2(b)] row 1 decided the accountability bit for this scheme before A9 opened; A9 records it rather than re-deciding it."
+    },
+    {
+      "scheme": "bolGovernment",
+      "corpusName": "the PPGBL / Government bill of lading number",
+      "identifies": "document",
+      "authority": "the issuing Government transportation office, against serially pre-assigned accountable stock",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": true,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": "BOL/PRO",
+      "witnesses": [
+        {
+          "source": "dtr-part-iv",
+          "grade": "secondary",
+          "cite": "A-413 §C.2 — numbers serially pre-assigned; a laser-generated BL \"is only accountable when a number has been assigned to the form\"; lost, stolen and void numbers reported to DoW PPA; audits every 180 days — analysis.md:330-333"
+        },
+        {
+          "source": "cfr-49-375",
+          "grade": "primary",
+          "cite": "§375.103 defines a `Government bill of lading shipper` as one whose property moves under a GBL \"issued by any department or agency of the Federal government\""
+        },
+        {
+          "source": "dp3-400ng",
+          "grade": "secondary",
+          "cite": "BL number among the identifier families; GBLOCs cross-referenced on shipment BLs — analysis.md:389"
+        }
+      ],
+      "note": "A separate row from `bolCarrier` and not a second witness for it. [A6 §3.3] settles why that is not a conflict: §375.103 defines the Government bill of lading shipper separately from the commercial shipper \"precisely because the carrier's BL and the GBL are two instruments, each issued by the party whose instrument it is\". Two instruments, two authorities, two schemes under I-KEY."
+    },
+    {
+      "scheme": "pro",
+      "corpusName": "the PRO number",
+      "identifies": "document",
+      "authority": "the carrier, which issues the number block",
+      "issuerIsTheAuthority": false,
+      "documentAccountable": true,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": "BOL/PRO",
+      "witnesses": [
+        {
+          "source": "nmfta-ebol",
+          "grade": "secondary",
+          "cite": "\"The PRO is the document identity, in the URL\" — the resource key, not a searchable field; pre-assigned by the shipper from a carrier-issued block or auto-assigned by the carrier if absent; a print form with a check digit — analysis.md:246-255"
+        },
+        {
+          "source": "stedi-x12-reference",
+          "grade": "secondary",
+          "cite": "`B10-01` Reference Identification, \"Carrier-assigned reference/PRO number\" — analysis.md:351"
+        },
+        {
+          "source": "project44",
+          "grade": "secondary",
+          "cite": "`PRO` in the LogisticsIdentifierTypeEnum — analysis.md:394"
+        }
+      ],
+      "note": "The one row where `issuerIsTheAuthority` is false for a document-accountable scheme, and the corpus states the mechanism rather than leaving it to be inferred: the carrier owns the numbering and the shipper may draw from a block the carrier issued it, so the assigning party and the vocabulary's owner are routinely different parties. [SD §7.1]'s `issuer` / `vocabularyScope.authority` split is exactly this case, sourced here a second time and outside the `MS2` equipment case it was first argued from."
+    },
+    {
+      "scheme": "shipmentRegistrationCarrier",
+      "corpusName": "the carrier's shipment registration number",
+      "identifies": "shipment",
+      "authority": "the carrier",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": "registration no.",
+      "witnesses": [
+        {
+          "source": "cfr-49-375",
+          "grade": "primary",
+          "cite": "§375.505(b)(16) \"Any identification or registration number you assign to the shipment\" — captured/cfr-49-375.xml:373; and §375.519(a)(6) offers it as an alternative to the bill of lading number — captured/cfr-49-375.xml:442"
+        }
+      ],
+      "note": "ONE witness, and it is primary and captured. [A6 §3.2] already reads §375.505(b)(16) as the model case of a scheme a document merely CARRIES: a required field IN the bill of lading, distinct from the bill of lading's own number, which is why `documentAccountable` is false here and true for `bolCarrier`. This is NOT the van-line registration number — see `vanlineRegistration`, whose authority, scope structure and witness are all different. The rubric's `Covers` column spells both \"registration no.\"."
+    },
+    {
+      "scheme": "vanlineRegistration",
+      "corpusName": "the van line's registration number, scoped Brand + RegNumber + RegYear",
+      "identifies": "shipment",
+      "authority": "the van line",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": "registration no.",
+      "witnesses": [
+        {
+          "source": "sirva-ade",
+          "grade": "secondary",
+          "cite": "`RegNumber` (6 digits) \"is the unique shipment identifier\"; `Brand` (AVL/NVL) \"scopes every id\"; the addressable key is the triple Brand + RegNumber + RegYear because \"reg numbers recycle across years and brands\" — GSD p.5, p.15, via analysis.md:122-124 and [SD §7.3]"
+        }
+      ],
+      "note": "ONE witness in the whole external corpus, it is a partner contract, it has no `captured/` directory, and its absence elsewhere is stated rather than merely observed: `src:weichert-supplier-api`'s own analysis records \"no SCAC, PRO, BOL, registration or driver id — the van-line identifier set is entirely absent\" (analysis.md:367). `src:pegii-longhaul`'s `avl_reg` and `src:pegasus-integration-floors`' `{Brand}:{Number}:{Year}` are the same scheme in our own systems and are `role: mapping-only`, so neither is evidence for what the domain is ([SD §0], rubric §Scope). The scheme the rubric names as the HHG-defining one is the thinnest-witnessed row in this table."
+    },
+    {
+      "scheme": "shipmentIdShipper",
+      "corpusName": "the shipper-assigned shipment identification number",
+      "identifies": "shipment",
+      "authority": "the shipper",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "stedi-x12-reference",
+          "grade": "secondary",
+          "cite": "`B10-02` Shipment Identification Number, \"Shipper-assigned shipment identifier; no blanks/special characters\" — analysis.md:352-353"
+        },
+        {
+          "source": "x12-858-implementation-guide",
+          "grade": "secondary",
+          "cite": "`BX04`, \"assigned to the shipment by the shipper that uniquely identifies the shipment from origin to ultimate destination and is not subject to modification\" (p.8) — assigner, scope and immutability in one sentence — analysis.md:328"
+        }
+      ],
+      "note": "A scheme over the same subject as `shipmentRegistrationCarrier` with a different authority, and the corpus keeps them side by side rather than collapsing them: `B10` carries the carrier's PRO and the shipper's shipment number in adjacent elements. Not in the rubric's five."
+    },
+    {
+      "scheme": "orderNumber",
+      "corpusName": "the order / move / job number",
+      "identifies": "order",
+      "authority": "varies — see the note; the corpus witnesses three different ones for the one rubric name",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": false,
+      "blocker": null,
+      "rubricCovers": "order no.",
+      "witnesses": [
+        {
+          "source": "atlas-world-group-api",
+          "grade": "secondary",
+          "cite": "`ord_number` / `orderNumber`, \"the human-facing order number; the only path parameter on GET /shipments/{orderNumber}\", beside the surrogate `ord_hdrnumber` — analysis.md:156-157"
+        },
+        {
+          "source": "weichert-supplier-api",
+          "grade": "secondary",
+          "cite": "`moveNumber`, \"Related move record number, for example M-C-12345-1\" (odt:114); seven typed prefixed id classes O- HHG- M-C- LTS- B- NA- A- — analysis.md:108, :367"
+        },
+        {
+          "source": "milmove-mymove",
+          "grade": "primary",
+          "cite": "`locator` and `referenceId` exist in the captured swagger; the six-kinds-with-an-audience reading, the non-word alphabet and the `SM%04d` safety-move prefix are the analysis's reading of move.go:47-51, 250-261, 352-393 — analysis.md:301-308"
+        }
+      ],
+      "note": "`definedNotMerelyNamed` is FALSE: three publishers name an order number and none defines what makes one order one order — that is A1's question, and A1 answered it without minting an identifier. Three authorities for one rubric name (the van line's, the RMC's, the Government's), which is why [SD §7.1]'s `vocabularyScope.authority` is part of the key and a bare scheme name is not a naming system. [A1 §Cross-area] to [A9] also warns that the award and the acceptance are separately dated in the corpus's one published protocol; see `shipmentConfirmationNumber`."
+    },
+    {
+      "scheme": "serviceOrderNumber",
+      "corpusName": "the service order number",
+      "identifies": "order",
+      "authority": "varies — the Government (DD Form 1164) or the relocation management company",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": "service order no.",
+      "witnesses": [
+        {
+          "source": "dtr-part-iv",
+          "grade": "secondary",
+          "cite": "the DD 1164 service order number, paired with the warehouseman's lot number as \"the NTS identity pair\", printed into the BL's block 19 when a shipment originates from NTS (§F.10.a(19)(b)) — analysis.md:341-343"
+        },
+        {
+          "source": "weichert-supplier-api",
+          "grade": "secondary",
+          "cite": "`serviceOrderNumber` / `serviceOrderName`, \"Service order record identifier, for example O-66673\" (odt:72, 696, 2386) — analysis.md:102"
+        },
+        {
+          "source": "milmove-mymove",
+          "grade": "primary",
+          "cite": "`serviceOrderNumber` is present in the captured swagger as a bare nullable string with no description — captured/swagger-def/definitions/MTOShipment.yaml:188. Its reading as \"the counterparty's identifier carried on our record\" is the analysis's, from mto_shipments.go:158 — analysis.md:312-313"
+        },
+        {
+          "source": "dp3-tender-of-service",
+          "grade": "secondary",
+          "cite": "\"DD 1164 service order number\" among the identifier families — analysis.md:448"
+        }
+      ],
+      "note": "The best-witnessed of the rubric's five after SCAC, and the milmove row is the table's clearest instance of a capture that proves a field EXISTS and defines nothing: `type: string`, `x-nullable: true`, no description. Grade `primary` is about provenance, not about semantic strength — the rubric's own scoring rule says evidence grade caps C2, and here the captured evidence supports C1 alone."
+    },
+    {
+      "scheme": "shipmentConfirmationNumber",
+      "corpusName": "the acceptance / shipment confirmation number",
+      "identifies": "document",
+      "authority": "the carrier that accepts the bill of lading",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": "undetermined",
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "nmfta-ebol",
+          "grade": "secondary",
+          "cite": "`shipmentConfirmationNumber`, \"Number provided by the carrier to acknowledge they accepted the BOL\" (:1308) — a separate acceptance id — analysis.md:310"
+        }
+      ],
+      "note": "[A6 §Cross-area] to [A9] calls this \"the model case of a scheme over the LODGING rather than over the document\", and that is exactly why its bit is `undetermined` rather than false: the subject the corpus names is an ACT — the carrier's acceptance — and [SD §1.2] has no aggregate for an act of accepting. `identifies` is recorded as `document` because the number is carried on the BOL and the BOL is the only subject in the model the sentence can attach to; the honest statement is that the scheme's real subject is not expressible, and A9 records that rather than defaulting the bit. [A1 §Cross-area] to [A9] asked A9 not to collapse the award and the acceptance: this row is where the acceptance survives as its own scheme instead of becoming a second value under `bolCarrier`."
+    },
+    {
+      "scheme": "scac",
+      "corpusName": "the Standard Carrier Alpha Code",
+      "identifies": "party",
+      "authority": "the National Motor Freight Traffic Association",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": false,
+      "blocker": "[A8 §9 item 1] — no party entity, so a SCAC assertion has no `subject`",
+      "rubricCovers": "SCAC",
+      "witnesses": [
+        {
+          "source": "dtr-part-iv",
+          "grade": "secondary",
+          "cite": "\"SCAC — the four-letter carrier code from NMFTA\" (dtr_definitions.pdf #665) — analysis.md:334"
+        },
+        {
+          "source": "dp3-400ng",
+          "grade": "secondary",
+          "cite": "SCAC, Acronyms p.10 — analysis.md:389 and the A9-tagged field row"
+        },
+        {
+          "source": "stedi-x12-reference",
+          "grade": "secondary",
+          "cite": "`B10-03` SCAC, \"mandatory in the 214\" — analysis.md:354"
+        },
+        {
+          "source": "x12-212-trailer-manifest",
+          "grade": "secondary",
+          "cite": "`BLR` Transportation Carrier Identification, \"the identifying SCAC code and effective date for the data\", naming a carrier PER SHIPMENT on loop 0200 — analysis.md:186. The capture is structure notes only: it lists `BLR` at position 030 of the detail loop and does not carry the element definitions — captured/stedi-212-215-structure-notes.md:83"
+        },
+        {
+          "source": "nmfta-ebol",
+          "grade": "secondary",
+          "cite": "`scac`, \"4-letter, Standard Carrier Alpha Code, returned by the carrier\" — returned, not claimed (:1314) — analysis.md:147"
+        },
+        {
+          "source": "project44",
+          "grade": "secondary",
+          "cite": "`CARRIER_SCAC` in the LogisticsIdentifierTypeEnum — analysis.md:394"
+        }
+      ],
+      "note": "The best-witnessed scheme in the table — six independent publishers across three regimes — and the model cannot express an assertion of it, because what it identifies is a PARTY and [SD §1.2] has no party aggregate. The blocker is not A9's to mint: [A8 §9 item 1] already owes the party entity and already names \"DOT/MC number, SCAC (`src:dtr-part-iv` #665), agent code\" among the fields it would carry, and `ids.ts` already says `PartyId` \"is an identifier with no aggregate behind it\". `definedNotMerelyNamed` is FALSE and that is the round's sharpest gap: six sources USE the code and none defines the issuing authority's own rules, because the source that would — `src:nmfta-scac`, the only registry entry whose `areas:` is `[A9]` and nothing else — is `status: candidate` and has never been fetched."
+    },
+    {
+      "scheme": "usDotNumber",
+      "corpusName": "the USDOT number",
+      "identifies": "party",
+      "authority": "the Federal Motor Carrier Safety Administration",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": false,
+      "blocker": "[A8 §9 item 1] — no party entity, so a USDOT assertion has no `subject`",
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "cfr-49-375",
+          "grade": "primary",
+          "cite": "Appendix A item 2, \"The names, telephone numbers, addresses, and USDOT Numbers of any motor carriers, when known, who will participate in transportation of the shipment\" — captured/cfr-49-375.xml:751; and \"Type in the USDOT or MC number for the motor carrier\" — :858"
+        },
+        {
+          "source": "dp3-tender-of-service",
+          "grade": "secondary",
+          "cite": "\"US DOT number of the actual hauler\" among the identifier families — analysis.md:448"
+        }
+      ],
+      "note": "Two witnesses, one of them primary and captured, and the same blocker as `scac`. The DP3 reading is worth keeping for A8 rather than A9: the number names the ACTUAL hauler, which is a statement about subcontracting and therefore about roles."
+    },
+    {
+      "scheme": "mcNumber",
+      "corpusName": "the MC (motor carrier operating authority) number",
+      "identifies": "party",
+      "authority": "the Federal Motor Carrier Safety Administration",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": false,
+      "blocker": "[A8 §9 item 1] — no party entity, so an MC assertion has no `subject`",
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "cfr-49-375",
+          "grade": "primary",
+          "cite": "\"Type in the USDOT or MC number for the motor carrier\" — captured/cfr-49-375.xml:858"
+        }
+      ],
+      "note": "One witness, primary. Carried in the table rather than folded into `usDotNumber` because the regulation offers them as alternatives, which under I-KEY makes them two vocabularies and not two values."
+    },
+    {
+      "scheme": "gbloc",
+      "corpusName": "the Government Bill of Lading Office Code (BLOC / GBLOC)",
+      "identifies": "party",
+      "authority": "the Department of Defense personal-property programme",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": "[A8 §9 item 1] — no party entity, so a GBLOC assertion has no `subject`",
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "dp3-400ng",
+          "grade": "secondary",
+          "cite": "\"responsibility for a GBLOC can be transferred between offices with an effective date, and TSPs must cross-reference the transfer list for invoicing previous GBLOCs on shipment BLs\" — Regionalization p.17; 400NG 2024 Change 5 p.9 — analysis.md, A9-tagged field row"
+        },
+        {
+          "source": "dtr-part-iv",
+          "grade": "secondary",
+          "cite": "\"BLOC — Bill of Lading Office Code; the identity of the OFFICE, and the scope unit for suspensions and blackouts\" — analysis.md:335-336"
+        }
+      ],
+      "note": "The row that costs the model something already spent. [SD §7.2] sources the identifier's EFFECTIVE INTERVAL twice, and the second of the two is this scheme's mid-life reassignment — so the shared layer leans on a scheme whose subject it cannot express. Nothing here reopens [SD §7.2]: the interval is right and the evidence for it stands. What A9 records is that the worked example behind it is one of the six party-grain rows, and the blocker is [A8 §9 item 1]'s."
+    },
+    {
+      "scheme": "agentCode",
+      "corpusName": "the van line's agent code",
+      "identifies": "party",
+      "authority": "the van line",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": "[A8 §9 item 1] — no party entity, so an agent-code assertion has no `subject`",
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "sirva-ade",
+          "grade": "secondary",
+          "cite": "a 7-digit hierarchical agent id whose trailing three digits are the branch, plus `SvcProvDataRecipient` naming the receiving branch per push (SOE p.2) — analysis.md:363, and quoted in [A8 §9 item 1]"
+        },
+        {
+          "source": "atlas-world-group-api",
+          "grade": "secondary",
+          "cite": "`parentAgentCode` and `/Agents/{agentCode}/Family` — column names only, per [A8 §9 item 1] — analysis.md"
+        }
+      ],
+      "note": "The one party-grain scheme whose structure the corpus publishes: the code CARRIES the branch, so the identifier encodes a hierarchy the model would otherwise have to store. Recorded for A8, which owes both the party entity and the branch grain, and not acted on here."
+    },
+    {
+      "scheme": "sitControlNumber",
+      "corpusName": "the SIT control number",
+      "identifies": "stay",
+      "authority": "the Department of Defense personal-property programme",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "dtr-part-iv",
+          "grade": "secondary",
+          "cite": "A-406 §A.11 p.5 / A-402 §D.5.a(2) p.17 — 9 digits, YY + Julian day of entry + a 4-digit sequence within that day; a split shipment gets its own control number per increment — analysis.md:337-338, and [SD §7.4]"
+        },
+        {
+          "source": "dp3-tender-of-service",
+          "grade": "secondary",
+          "cite": "\"SIT control number\" among the identifier families — analysis.md:448"
+        }
+      ],
+      "note": "Already spent: [SD §7.4] uses this scheme to answer `fork-order`'s foreclosure #3 — the stay grain does not need an identifier of our own because the industry publishes one. [A5 §Cross-area] to [A9] says so and hands it on. A9 adds only that it is one of the three CONSTRUCTED schemes in the table (with `tcn` and `vanlineRegistration`'s triple), where the value's own positions carry meaning — and that [SD §7.5]'s canonicalise-to-match policy is safe over a constructed value precisely because it is forbidden from mutating `value`."
+    },
+    {
+      "scheme": "tcn",
+      "corpusName": "the Transportation Control Number",
+      "identifies": "shipment",
+      "authority": "the Department of Defense",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "dtr-part-iv",
+          "grade": "secondary",
+          "cite": "17 positions, with position 15 typed by shipment kind (B = UB DPM, J = UB TGBL, H = HHG DPM, K = HHG TGBL, P = POV) — A-402 §F.10.a(15) p.32 — analysis.md:339-340"
+        }
+      ],
+      "note": "A constructed scheme whose position 15 classifies the shipment. Worth one sentence to A2 and no more: the classification is IN the identifier, so a consumer that parses it is deriving a shipment type from a value [SD §7.5] forbids canonicalising and [A2 §3.3] refuses to publish a vocabulary for. A9 reads the position as evidence about the scheme, never as a fact about the shipment."
+    },
+    {
+      "scheme": "inventoryItemNumber",
+      "corpusName": "the inventory item number",
+      "identifies": "item",
+      "authority": "the packing agent that prepares the inventory",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "cfr-49-375",
+          "grade": "primary",
+          "cite": "§375.503(a) numbers EACH ARTICLE, not the document — the reading [A6 §3.2(b)] already makes of the same passage"
+        },
+        {
+          "source": "dtr-part-iv",
+          "grade": "secondary",
+          "cite": "\"inventory item numbers\" among the identifier families — analysis.md:344-345"
+        },
+        {
+          "source": "dp3-tender-of-service",
+          "grade": "secondary",
+          "cite": "\"inventory item numbers and page N of M\" — analysis.md:448"
+        }
+      ],
+      "note": "The table's only `item`-grain scheme, and the row where [A6 §3.2]'s discriminator does the most work: the inventory document has no number of its own, so a number found on it is about the article, not about the form. The \"page N of M\" that travels beside it is NOT a scheme — [A6 §Cross-area] to [A9] warns against reading positional addressing into a document as an identity scheme, and it is right; it is excluded here for that reason."
+    },
+    {
+      "scheme": "equipmentNumber",
+      "corpusName": "the owner-assigned equipment or container number",
+      "identifies": "resource",
+      "authority": "the equipment owner's own numbering",
+      "issuerIsTheAuthority": false,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": true,
+      "blocker": null,
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "x12-212-trailer-manifest",
+          "grade": "secondary",
+          "cite": "`MS2`, \"to specify the owner, the identification number assigned by that owner, and the type of equipment\", plus a check digit; \"trailer 12345 is only unique inside its owner's numbering\" — analysis.md:179 and [SD §7.4]. The capture lists `MS2` as a mandatory segment at position 150 of loop 0150 and carries no element definitions — captured/stedi-212-215-structure-notes.md:71"
+        },
+        {
+          "source": "stedi-x12-reference",
+          "grade": "secondary",
+          "cite": "`MS2`, \"the owner, the identification number ASSIGNED BY THAT OWNER, and the type of equipment\" — analysis.md:361-363"
+        }
+      ],
+      "note": "The case [SD §7.1] argues the `issuer` / `authority` split from, recorded here as a table row so the split has a witness in the data and not only in the prose. Both witnesses are the same X12 segment read by two analyses, so the independent publisher count is ONE."
+    },
+    {
+      "scheme": "tripNumber",
+      "corpusName": "the trip number",
+      "identifies": "trip",
+      "authority": "the van line — and the corpus witnesses TWO of its systems issuing under separate schemes",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": false,
+      "blocker": null,
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "sirva-ade",
+          "grade": "secondary",
+          "cite": "`QPDTripNumber` (10 digits) and `CamisTripNumber` (5 digits), both carried on every trip-bearing event (SOE p.2) — one trip, two schemes, both authoritative — analysis.md:374 and [SD §7.4]"
+        }
+      ],
+      "note": "Already spent by [SD §7.4] as the worked case for arity N per I-KEY. Carried as ONE row rather than two because what the corpus publishes is two number FORMATS from one authority with no statement of which vocabulary is which — `definedNotMerelyNamed` is false for that reason. Splitting it into two schemes here would be an authored decision dressed as a reading."
+    },
+    {
+      "scheme": "sealNumber",
+      "corpusName": "the tamper-evident seal number",
+      "identifies": "resource",
+      "authority": "the packing agent that applies the seal",
+      "issuerIsTheAuthority": true,
+      "documentAccountable": false,
+      "definedNotMerelyNamed": false,
+      "blocker": null,
+      "rubricCovers": null,
+      "witnesses": [
+        {
+          "source": "dp3-tender-of-service",
+          "grade": "secondary",
+          "cite": "applied at the residence for international/Code 2 containers, with \"seal numbers annotated on the inventory cross-referencing the container number\" — HHG §C.11.i pp.43-44 — the A9-tagged field row"
+        },
+        {
+          "source": "x12-212-trailer-manifest",
+          "grade": "secondary",
+          "cite": "`M7` Seal Numbers, a segment at position 160 of loop 0150 beside `MS2` — captured/stedi-212-215-structure-notes.md:72. The capture proves the segment exists in the structure and carries no definition."
+        }
+      ],
+      "note": "Two witnesses from unrelated regimes, and the DP3 one publishes a CROSS-REFERENCE obligation rather than a scheme: the seal number is annotated against the container number. That is [A9 §3.5]'s subject — a correlation the corpus states as an obligation on a document, which the model expresses as two identity assertions and no link."
+    }
+  ]
+}
