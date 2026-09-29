@@ -212,3 +212,128 @@ describe('pegiiApiErrorToHttp', () => {
     ).toMatchObject({ status: 502, code: 'PEGII_SOURCE_BAD_RESPONSE' })
   })
 })
+
+/** Stub the tunnel with a sequence of upstream responses, one per call. */
+function stubSequence(responses: Array<{ status: number; body: string }>) {
+  const send = vi.fn()
+  for (const r of responses) {
+    send.mockResolvedValueOnce({
+      Payload: fakeInvokePayload({ status: r.status, headers: {}, body: r.body }),
+    })
+  }
+  setTunnelLambdaClient({ send } as unknown as LambdaClient)
+  return send
+}
+
+const sentPayload = (send: ReturnType<typeof vi.fn>, i: number) => {
+  const cmd = send.mock.calls[i]![0] as { input: { Payload: Uint8Array } }
+  return JSON.parse(new TextDecoder().decode(cmd.input.Payload)) as {
+    method: string
+    url: string
+    body?: string
+    headers: Record<string, string>
+  }
+}
+
+describe('createPegiiApiClient.post / put', () => {
+  it('POSTs a JSON body and unwraps { data }', async () => {
+    const send = stubSequence([{ status: 200, body: JSON.stringify({ data: { sent: true } }) }])
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://10.200.7.1:65274' })
+    expect(await client.post('/api/v1/pegii/email/send', { to: ['a@b.test'] })).toEqual({
+      sent: true,
+    })
+    const p = sentPayload(send, 0)
+    expect(p.method).toBe('POST')
+    expect(JSON.parse(p.body!)).toEqual({ to: ['a@b.test'] })
+    expect(p.headers['content-type']).toBe('application/json')
+  })
+
+  it('PUTs with the same contract', async () => {
+    const send = stubSequence([{ status: 200, body: JSON.stringify({ data: 1 }) }])
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x' })
+    await client.put('/p', { a: 1 })
+    expect(sentPayload(send, 0).method).toBe('PUT')
+  })
+
+  it('carries pegII’s own error code on a 409', async () => {
+    stubSequence([
+      { status: 409, body: JSON.stringify({ error: 'dup', code: 'IDEMPOTENCY_KEY_REUSED' }) },
+    ])
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x' })
+    await expect(client.post('/p', {})).rejects.toMatchObject({
+      code: 'PEGII_API_HTTP_ERROR',
+      status: 409,
+      upstreamCode: 'IDEMPOTENCY_KEY_REUSED',
+    })
+  })
+})
+
+describe('createPegiiApiClient with a service-user token provider', () => {
+  const provider = () => {
+    let n = 0
+    return { getToken: vi.fn(async () => `tok-${++n}`), invalidate: vi.fn() }
+  }
+
+  it('sends the provider’s token as a bearer', async () => {
+    const send = stubSequence([{ status: 200, body: JSON.stringify({ data: {} }) }])
+    const auth = provider()
+    await createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x', auth }).get('/p')
+    expect(sentPayload(send, 0).headers['authorization']).toBe('Bearer tok-1')
+  })
+
+  it('on 401 invalidates, logs in again and retries once', async () => {
+    const send = stubSequence([
+      { status: 401, body: '' },
+      { status: 200, body: JSON.stringify({ data: 'ok' }) },
+    ])
+    const auth = provider()
+    const out = await createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x', auth }).get('/p')
+    expect(out).toBe('ok')
+    expect(auth.invalidate).toHaveBeenCalledTimes(1)
+    expect(sentPayload(send, 1).headers['authorization']).toBe('Bearer tok-2')
+  })
+
+  it('gives up with PEGII_API_AUTH_FAILED when the fresh token is rejected too', async () => {
+    stubSequence([
+      { status: 401, body: '' },
+      { status: 401, body: '' },
+    ])
+    const auth = provider()
+    await expect(
+      createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x', auth }).get('/p'),
+    ).rejects.toMatchObject({ code: 'PEGII_API_AUTH_FAILED', status: 401 })
+  })
+})
+
+describe('pegiiApiErrorToHttp — new cases', () => {
+  it('passes 400/409/422 through with pegII’s code', () => {
+    expect(
+      pegiiApiErrorToHttp(
+        new PegiiApiError('PEGII_API_HTTP_ERROR', 'x', 409, 'IDEMPOTENCY_KEY_REUSED'),
+      ),
+    ).toMatchObject({ status: 409, code: 'IDEMPOTENCY_KEY_REUSED' })
+    expect(pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_HTTP_ERROR', 'x', 400))).toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+    })
+    expect(
+      pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_HTTP_ERROR', 'x', 422, 'ORDER_CLOSED')),
+    ).toMatchObject({ status: 422, code: 'ORDER_CLOSED' })
+  })
+
+  it('maps auth and capability failures to named 502/503s', () => {
+    expect(pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_AUTH_FAILED', 'x'))).toMatchObject({
+      status: 502,
+      code: 'PEGII_SOURCE_AUTH_FAILED',
+    })
+    expect(pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_AUTH_UNAVAILABLE', 'x'))).toMatchObject(
+      {
+        status: 503,
+        code: 'PEGII_AUTH_UNAVAILABLE',
+      },
+    )
+    expect(
+      pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'x')),
+    ).toMatchObject({ status: 503, code: 'PEGII_CAPABILITY_MISSING' })
+  })
+})

@@ -11,9 +11,9 @@
 
 - [x] **Phase 0** — Spikes: done 2026-09-29 (findings summarised under each S-item below; S5 still needs a human)
 - [x] **Phase 1** — [pegasus] Workflow state store → SDK 0.39.0 — MERGED #743 (`807057e0`), PUBLISHED to PyPI 2026-09-29; authoring `CLAUDE.md` updated
-- [~] **Phase 2** — [pegasus] 2a–2c MERGED #747, SDK 0.40.0 PUBLISHED; 2d (mark-read at RingCentral) built on `feat/sms-mark-read` → SDK 0.41.0
+- [x] **Phase 2** — [pegasus] 2a–2c MERGED #747 (SDK 0.40.0), 2d MERGED #748 (SDK 0.41.0); both PUBLISHED
 - [ ] **Phase 3** — [pegasus → pegII] `send_email` **through the pegII API's SMTP email endpoint** (re-routed 2026-09-29; SES prod access was denied) → SDK 0.42.0. Needs Phase 4 (auth + the endpoint extension)
-- [~] **Phase 4** — [movemanager, on `dev`] pegII API foundations: **JWT service-user auth** (dev's existing JWT), envelope/error contract, idempotency + task-meta tables, version endpoint, email endpoint extension. APPROVED 2026-09-29; plan being revised against `dev` on `feat/pegasus-api-write-foundations`
+- [~] **Phase 4** — [movemanager, on `dev`] pegII API foundations: **JWT service-user auth** (dev's existing JWT), envelope/error contract, idempotency + task-meta tables, version endpoint, email endpoint extension. APPROVED 2026-09-29. movemanager side is being implemented on `feat/pegasus-api-write-foundations`, including the hub-user admin endpoints. Cloud side is on `feat/pegii-client-auth`: service-user login, POST/PUT, 401 retry, error pass-through, `/version` capability gate, IAM read grant
 - [ ] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.43.0
 - [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK 0.44.0 (+ one-line desktop guard fix)
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
@@ -258,8 +258,21 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
   - `lib/pegii-api-client.ts`: add `postJson`/`putJson`, bearer-token injection from a cached service-user login (per tenant; re-login on 401), and pass-through of pegII `code` for 400/404/409/422.
   - `pegiiApiErrorToHttp`: map those statuses through instead of 502.
   - The per-tenant service-user credential secret in Secrets Manager.
+  - **As built (cloud):**
+    - `lib/pegii-auth.ts`: reads `{username, password}` from the ARN in `Tenant.pegiiApiKeyRef`, logs in, and caches the JWT until 5 min before `exp`. A 401 at login drops the cached secret so a rotation is picked up.
+    - `lib/pegii-api-client.ts`: `post`/`put`, bearer from the provider, and one re-login plus retry on 401. `upstreamCode` is carried. A non-ARN `apiKey` still goes out as a raw bearer, as before.
+    - `lib/pegii-capabilities.ts`: an unauthenticated `/version` probe, cached for 5 min. A 404 means no capabilities.
+    - `pegiiApiErrorToHttp`: 400/409/422 pass through with pegII's code. Auth and capability failures return named 502/503s.
+    - IAM: `secretsmanager:GetSecretValue` on `pegasus/<env>/pegii/*` only.
+  - **Provisioning runbook (per tenant):**
+    1. On the site, the hub admin (seeded via `Api:Auth:BootstrapAdmin`) calls `POST /api/v1/pegii/hub/users` to create `pegasus-cloud`, with a generated password.
+    2. `aws secretsmanager create-secret --name pegasus/<env>/pegii/<tenantId> --secret-string '{"username":"pegasus-cloud","password":"…"}'`.
+    3. Set the tenant's `pegiiApiKeyRef` to that secret's ARN via `PATCH /settings/pegii`.
+    4. Confirm `/version` lists `pegii.auth.v1`.
 
 ## Phase 5 — Order reads: KeyMoveDates normalization + live order search → SDK 0.43.0
+
+**Decided 2026-09-29:** the serialized order and salesman reads and the new search all go behind `RequireAuthorization()` in this phase. The cloud already sends the service-user bearer on every call from Phase 4. Ship it only after the site has JWT and the hub DB configured and the cloud's credential secret is set; otherwise those reads start returning 404. Gate the change on the site advertising `pegii.auth.v1`.
 
 **movemanager** (plan `order-read-normalization-and-search.md`):
 
