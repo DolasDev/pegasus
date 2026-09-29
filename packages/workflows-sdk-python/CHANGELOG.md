@@ -3,6 +3,15 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.41.0
+
+### Added
+
+- `mark_text_message_read(message_id)` (`UpdateTextMessage`) — mark a captured
+  inbound text read at RingCentral, which owns read state (the desktop app
+  mirrors it, so this clears a coordinator's unread badge). Idempotent
+  (`alreadyRead`). API: `POST /api/v1/sms/messages/{id}/read`.
+
 ## 0.40.0
 
 ### Added — SMS opt-outs, send idempotency, inbound message read

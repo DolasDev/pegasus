@@ -281,7 +281,10 @@ step (confirm a move date, flag a complaint, answer with `send_sms`). The payloa
 carries the message text itself; `client.get_text_message(payload["messageId"])`
 (needs `ReadTextMessage`) re-reads the authoritative row, including `bodyPurged`
 — bodies are purged 72h after the text is forwarded on-prem, so read it in the
-run the event starts:
+run the event starts. For a reply that needs no human attention (e.g. a bare
+rating), `client.mark_text_message_read(payload["messageId"])` (needs
+`UpdateTextMessage`) marks it read at RingCentral — which is what clears the
+coordinator's unread badge in the desktop app:
 
 ```python
 {

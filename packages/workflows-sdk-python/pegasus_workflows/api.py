@@ -964,6 +964,37 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def mark_text_message_read(self, message_id: str) -> dict[str, Any]:
+        """Mark a captured inbound text read. Requires ``UpdateTextMessage``.
+
+        The write goes to RingCentral, which owns read state — the legacy
+        desktop mirrors it, so this is what clears the unread badge a
+        coordinator sees. Use it for replies that need no human attention (e.g.
+        a rating-only reply). Idempotent.
+
+        Args:
+            message_id: The ``messageId`` from an ``sms.received`` event.
+
+        Returns:
+            ``{id, readStatus, alreadyRead}``.
+
+        Raises:
+            PegasusApiError: On 404 (unknown message), 409
+                ``UNSUPPORTED_SOURCE`` / ``NO_CONNECTION``, 403, 429 or other non-2xx.
+        """
+        captured = self._capture_mutation(
+            "UpdateTextMessage",
+            "mark_text_message_read",
+            {"message_id": message_id},
+            {"id": message_id, "readStatus": "Read", "alreadyRead": False, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post(f"/api/v1/sms/messages/{message_id}/read")
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def get_sms_opt_out(self, phone: str) -> dict[str, Any]:
         """Opt-out state for one E.164 number. Requires ``ReadSmsOptOut``.
 

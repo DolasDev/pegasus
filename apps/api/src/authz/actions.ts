@@ -249,6 +249,11 @@ export const Actions = {
     resourceType: 'Notification',
     permission: 'sms_message:read',
   },
+  UpdateTextMessage: {
+    id: 'UpdateTextMessage',
+    resourceType: 'Notification',
+    permission: 'sms_message:update',
+  },
   ReadSmsOptOut: {
     id: 'ReadSmsOptOut',
     resourceType: 'Notification',
