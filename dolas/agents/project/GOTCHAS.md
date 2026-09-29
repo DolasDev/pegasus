@@ -2036,3 +2036,134 @@ Classified `repointedOwedOwner` at `[catalog §2.3]` — additive, because `owed
 content and sits inside a branch the wire already marks undecided. Two gaps recorded there and not
 closed: `[catalog §2.3]` has **no rule for a breaking change while pre-1.0**, and **every future
 owner-correction will cost a bump** for the same reason this one did.
+
+## npm overrides: two mechanics that look identical to success until they aren't
+
+Both found on 2026-09-29 while clearing the dependency-alert backlog. The repo's `//overrides`
+notes already carried half of each rule; this records the other half.
+
+### 1. Deleting a lockfile key PRUNES the package — it does not re-resolve it
+
+The gotcha the override notes repeat most often is "editing `overrides` alone does nothing — npm
+caches the old resolution, so delete the `*/node_modules/<pkg>` keys from `package-lock.json`
+first." That is **only true when the goal is collapsing duplicate nested copies** (the `hono`,
+`prisma`, `@prisma/client` entries — there, deletion forces npm to re-hoist).
+
+When the goal is **raising one copy's version floor**, deletion does the opposite. Deleting
+`node_modules/protobufjs` and `node_modules/qs`, then `npm install`, printed
+`added 7 packages, removed 27 packages` and left `npm ls protobufjs` reporting `(empty)` — npm
+took the missing key as "this package is not needed" and pruned it, breaking `@grpc/proto-loader`
+and `typed-rest-client` outright. The `fast-uri` note already says this ("deleting the lock key
+just prunes the package entirely"); it just wasn't stated as the general rule.
+
+**Rule:** raising a floor → `npm update <pkg> --package-lock-only`, then `npm install`.
+Collapsing duplicate copies → delete the keys. Either way, confirm with `npm ls <pkg>` that the
+version actually moved, and finish with a real `npm ci` (exit 0), which is what CI runs — an
+`install` can succeed against a lockfile `ci` rejects.
+
+### 2. A nested override matches a DIRECT child only, not a subtree
+
+`"@react-navigation/core": { "nanoid": ">=3.3.17 <4" }` works because `nanoid` is a direct
+dependency of `@react-navigation/core`. Copying that shape for a different package silently did
+nothing: `"@react-navigation/core": { "decode-uri-component": ">=0.5.0" }` resolved
+`decode-uri-component@0.2.2` unchanged, because the real path is
+`@react-navigation/core > query-string@7.1.3 > decode-uri-component` — a **grandchild**. npm's
+nested form names a dependency _path_, so a grandchild needs the intermediate spelled out:
+`{"@react-navigation/core": {"query-string": {"decode-uri-component": "..."}}}`.
+
+**Rule:** before parent-scoping an override, run `npm ls <pkg> --all` and scope to the package
+that _directly_ declares it. A no-op override is indistinguishable from a working one except by
+`npm ls`.
+
+### 3. "The fix version exists" is not the same as "the fix is installable"
+
+Three of the alerts in that backlog had a published patch that could not be used, each for a
+reason only visible by reading the consumer:
+
+- **decode-uri-component 0.5.0** is ESM-only (`"type": "module"`, one `export default`), but both
+  vulnerable copies sit under the CJS `query-string@7.1.3`, which does
+  `const decodeComponent = require('decode-uri-component')`. Under Node 24 that `require()`
+  returns `{__esModule, default}` and the call site dies with `decodeComponent is not a function`.
+  Same shape as the nanoid-4 trap the `nanoid` override note documents.
+- **image-size 2.0.3** dropped file-path input from its main entry (it moved to an async
+  `fromFile`), but `metro@0.83.7` passes a path string at `src/Assets.js:177`. It throws
+  `TypeError: The "list" argument must be an instance of ... ArrayBufferView`.
+- **uuid 11.1.1** is a fix for a bug in `v3`/`v5`/`v6` _when a `buf` argument is passed_. Both
+  vulnerable consumers (`exceljs`, `xcode`) call only `v4()` with no arguments, so the patch would
+  cost three-to-four forced majors to fix a path neither one executes.
+
+**Rule:** a two-minute probe settles this where an hour of reasoning does not — `npm i <pkg>@<fix>`
+in a scratch dir and call it the way the consumer does. Record the finding in `audit-ci.jsonc`
+with the call site (`file:line`) so the next reader does not re-derive it.
+
+## `optional-auth.test.ts` times out under a parallel `turbo test` — flake, not a failure
+
+**Symptom (2026-09-29):** `@pegasus/api#test` fails only under a full-tree
+`turbo run typecheck test` (which is what the `.husky/pre-push` hook runs across 16 packages),
+with exactly one failure:
+
+```
+FAIL src/__tests__/optional-auth.test.ts > SKIP_AUTH mode >
+     bypasses auth and returns 200 on /api/v1 routes when SKIP_AUTH=true
+Error: Test timed out in 15000ms.
+```
+
+Same tree passed twice and failed twice, so it is load-sensitive, not a regression.
+`turbo test --filter=@pegasus/api` alone passes every time.
+
+**Cause:** the suite is fully mocked — `../db`, `../lib/prisma` and `jose` are all `vi.mock`ed, so
+there is no I/O to be slow. What is slow is `await import('../app')`: the file calls
+`vi.resetModules()` in `beforeEach` because SKIP_AUTH is read at module-evaluation time, so each
+test re-imports and re-transforms the **entire** API module graph. The failing test is the
+**first** of the three; the other two then run in ~1s each off the warm transform cache. Under a
+full-tree run every workspace's vitest workers are competing for the same cores, and that first
+cold import crosses the 15s default `testTimeout`.
+
+**What to do:** re-running is legitimate here (a diagnosed flake, not a red pipeline). The real
+fix is a per-test timeout on that first case — `it('…', async () => {…}, 30_000)` — since the cost
+it pays is transform time that the other two do not. Note `testTimeout` covers test **bodies**
+only; if this ever moves into a hook it needs `hookTimeout` instead (see #701).
+
+## `tenant-picker.test.tsx` TENANT-03 times out in CI only — and ejects PRs from the merge queue
+
+**Symptom (2026-09-29):** `@pegasus/mobile#test` fails in CI with
+
+```
+FAIL __tests__/app/(auth)/tenant-picker.test.tsx (29.3 s)
+  ● TenantPickerScreen › calls selectTenant … when a company is tapped (TENANT-03)
+    thrown: "Exceeded timeout of 15000 ms for a test."
+```
+
+Hit 3 of 4 runs on one PR, including a `merge_group` run — which means it does not merely fail a
+PR check, it **ejects the PR from the merge queue** (`removed_from_merge_queue` by
+`github-merge-queue[bot]`). **Diagnosing a queue ejection starts in the wrong place by default:**
+the failing run is not among the PR's own checks. Find it with `gh run list --event merge_group`
+and look for the `gh-readonly-queue/main/pr-<N>-<base>` branch.
+
+**Does not reproduce locally.** The full suite passes 3/3 in ~1s per run
+(`cd apps/mobile && npx jest --forceExit`), so a fix cannot be verified off-runner.
+
+**Diagnosis:** the test is fully mocked — no network, no storage. It hangs inside
+
+```tsx
+await act(async () => {
+  fireEvent.press(getByText('Acme Moving Co'))
+})
+```
+
+`fireEvent.press` is synchronous and RNTL already wraps it in `act`; the outer **async** `act`
+then drives React's async work loop, which competes with `VirtualizedList`'s real ~50ms
+`_updateCellsToRender` batching timers. The run log carries the matching "An update to
+VirtualizedList inside a test was not wrapped in act(…)" warning with a stack ending at
+`Timeout._onTimeout`. On a saturated 2-core runner each drain cycle waits on a real timer and the
+loop outlives jest's 15s default.
+
+**Likely fix, UNVERIFIED:** drop the outer async `act` and use the documented RNTL idiom —
+`fireEvent.press(...)` then `await waitFor(() => expect(mockSelectTenant).toHaveBeenCalledWith(…))`.
+`waitFor` polls with a bounded timeout instead of draining VirtualizedList's timer loop. Four
+tests in that file share the pattern. Recorded rather than applied, because it cannot be
+reproduced locally — it needs its own PR and several real CI runs to confirm.
+
+**Note the CI `Test` job runs `turbo run test` with no `--affected` and no filter**, so the mobile
+suite runs on every code PR and in every merge-queue group. This flake is reachable from a change
+that touches nothing in `apps/mobile` — a dependency-only PR hit it.
