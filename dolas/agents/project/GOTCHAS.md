@@ -2123,3 +2123,47 @@ cold import crosses the 15s default `testTimeout`.
 fix is a per-test timeout on that first case — `it('…', async () => {…}, 30_000)` — since the cost
 it pays is transform time that the other two do not. Note `testTimeout` covers test **bodies**
 only; if this ever moves into a hook it needs `hookTimeout` instead (see #701).
+
+## `tenant-picker.test.tsx` TENANT-03 times out in CI only — and ejects PRs from the merge queue
+
+**Symptom (2026-09-29):** `@pegasus/mobile#test` fails in CI with
+
+```
+FAIL __tests__/app/(auth)/tenant-picker.test.tsx (29.3 s)
+  ● TenantPickerScreen › calls selectTenant … when a company is tapped (TENANT-03)
+    thrown: "Exceeded timeout of 15000 ms for a test."
+```
+
+Hit 3 of 4 runs on one PR, including a `merge_group` run — which means it does not merely fail a
+PR check, it **ejects the PR from the merge queue** (`removed_from_merge_queue` by
+`github-merge-queue[bot]`). **Diagnosing a queue ejection starts in the wrong place by default:**
+the failing run is not among the PR's own checks. Find it with `gh run list --event merge_group`
+and look for the `gh-readonly-queue/main/pr-<N>-<base>` branch.
+
+**Does not reproduce locally.** The full suite passes 3/3 in ~1s per run
+(`cd apps/mobile && npx jest --forceExit`), so a fix cannot be verified off-runner.
+
+**Diagnosis:** the test is fully mocked — no network, no storage. It hangs inside
+
+```tsx
+await act(async () => {
+  fireEvent.press(getByText('Acme Moving Co'))
+})
+```
+
+`fireEvent.press` is synchronous and RNTL already wraps it in `act`; the outer **async** `act`
+then drives React's async work loop, which competes with `VirtualizedList`'s real ~50ms
+`_updateCellsToRender` batching timers. The run log carries the matching "An update to
+VirtualizedList inside a test was not wrapped in act(…)" warning with a stack ending at
+`Timeout._onTimeout`. On a saturated 2-core runner each drain cycle waits on a real timer and the
+loop outlives jest's 15s default.
+
+**Likely fix, UNVERIFIED:** drop the outer async `act` and use the documented RNTL idiom —
+`fireEvent.press(...)` then `await waitFor(() => expect(mockSelectTenant).toHaveBeenCalledWith(…))`.
+`waitFor` polls with a bounded timeout instead of draining VirtualizedList's timer loop. Four
+tests in that file share the pattern. Recorded rather than applied, because it cannot be
+reproduced locally — it needs its own PR and several real CI runs to confirm.
+
+**Note the CI `Test` job runs `turbo run test` with no `--affected` and no filter**, so the mobile
+suite runs on every code PR and in every merge-queue group. This flake is reachable from a change
+that touches nothing in `apps/mobile` — a dependency-only PR hit it.
