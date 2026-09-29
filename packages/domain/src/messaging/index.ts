@@ -134,7 +134,8 @@ export type SmsKeyword = 'OPT_OUT' | 'OPT_IN'
  * cancel the storage?" as CANCEL.
  */
 export function classifySmsKeyword(body: string | null | undefined): SmsKeyword | null {
-  const first = (body ?? '').trim().split(/\s+/, 1)[0] ?? ''
+  // Everything from the first whitespace on is dropped, leaving the first token.
+  const first = (body ?? '').trim().replace(/\s[\s\S]*$/, '')
   const token = first.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, '').toUpperCase()
   if (!token) return null
   if (SMS_OPT_OUT_KEYWORDS.includes(token)) return 'OPT_OUT'
