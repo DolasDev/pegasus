@@ -275,10 +275,19 @@ function buildWhere(filters: TripFilters | undefined): {
 
 /** Build the ORDER BY clause from a whitelisted `sortBy` value, or '' if absent. */
 function buildOrderBy(sortBy: TripSortBy | undefined): string {
-  if (!sortBy?.order || !sortBy.value) return ''
-  const column = SORTABLE_COLUMNS[sortBy.value]
-  if (!column) return ''
-  const direction = sortBy.order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
+  if (!sortBy?.order) return ''
+  // Object.hasOwn, not a bare index: a plain object literal inherits from
+  // Object.prototype, so `sortBy.value = 'constructor'` (or toString/valueOf/
+  // hasOwnProperty) returns a truthy *function* and `if (!column)` waves it
+  // through, interpolating its source into the ORDER BY. `value` and `order`
+  // are also type-checked at runtime because the whole query is
+  // `JSON.parse(...) as TripQuery` — the cast erases, nothing validates it, and
+  // a JSON number for `order` threw on `.toUpperCase()`. Same guard as
+  // shipments-list.ts (#736).
+  const requested = sortBy.value
+  if (typeof requested !== 'string' || !Object.hasOwn(SORTABLE_COLUMNS, requested)) return ''
+  const column = SORTABLE_COLUMNS[requested]
+  const direction = String(sortBy.order).toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
   return ` ORDER BY ${column} ${direction}`
 }
 

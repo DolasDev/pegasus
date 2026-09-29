@@ -331,6 +331,47 @@ describe('GET longhaul/trips (cloud-direct LIST)', () => {
     expect(sql).not.toContain('ORDER BY')
   })
 
+  it('rejects inherited Object.prototype keys as sort columns', async () => {
+    // A bare `MAP[value]` lookup returns a truthy function for 'constructor',
+    // 'toString', 'valueOf' etc., which would sail past the whitelist and
+    // interpolate a function's source into the ORDER BY.
+    for (const key of ['constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
+      vi.clearAllMocks()
+      findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+      executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+
+      const query = JSON.stringify({ filters: {}, sortBy: { value: key, order: 'desc' } })
+      const res = await buildApp().request(
+        `/onprem/longhaul/trips?filters=${encodeURIComponent(query)}`,
+      )
+
+      expect(res.status, `${key} should not 500`).toBe(200)
+      const [, sql] = executeSqlMock.mock.calls[0] as [string, string, unknown]
+      // trips-list has no default ordering: a rejected sort means no ORDER BY.
+      expect(sql, `${key} should fall back`).not.toContain('ORDER BY')
+      expect(sql).not.toContain('native code')
+    }
+  })
+
+  it('does not throw when order is not a string', async () => {
+    // `order.toUpperCase()` assumed a string, but the whole query is
+    // `JSON.parse(...) as TripQuery` — a JSON number is truthy and threw a 500.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+
+    const query = JSON.stringify({
+      filters: {},
+      sortBy: { value: 'planned_first_day', order: 7 },
+    })
+    const res = await buildApp().request(
+      `/onprem/longhaul/trips?filters=${encodeURIComponent(query)}`,
+    )
+
+    expect(res.status).toBe(200)
+    const [, sql] = executeSqlMock.mock.calls[0] as [string, string, unknown]
+    expect(sql).toContain('ORDER BY TripMaster.planned_first_day ASC')
+  })
+
   it('returns 400 for malformed filters JSON', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
 
