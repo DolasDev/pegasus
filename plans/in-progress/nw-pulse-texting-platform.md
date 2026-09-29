@@ -10,7 +10,7 @@
 ## Execution status (resume here)
 
 - [ ] **Phase 0** — Spikes (no code): S1–S7
-- [ ] **Phase 1** — [pegasus] Workflow state store (atomic insert + compare-and-set) → SDK 0.39.0
+- [~] **Phase 1** — [pegasus] Workflow state store (atomic insert + compare-and-set) → SDK 0.39.0 — built on `feat/workflow-state-store` (PR pending); then tag + publish 0.39.0 and update `pegasus-workflows/CLAUDE.md`
 - [ ] **Phase 2** — [pegasus] Inbound text read, opt-out, `send_sms` idempotency, mark-read at RingCentral → SDK 0.40.0
 - [ ] **Phase 3** — [pegasus] `send_email` (SES) → SDK 0.41.0
 - [ ] **Phase 4** — [movemanager] pegII API foundations: write auth, envelope/error contract, idempotency + task-meta tables, version endpoint
@@ -163,7 +163,7 @@ Also required by the scope, though absent from the proposals:
 Unblocks the send ledger, the phone-day reservation, reply matching and daily-check step 3. The spec says step 3 "runs as soon as proposal 8 ships".
 
 **Model** `WorkflowState` (tenant-scoped, added to `TENANT_SCOPED_MODELS` in `lib/prisma.ts`):
-`id, tenantId, namespace, key, state Json, version Int @default(1), expiresAt DateTime?, createdAt, updatedAt, updatedByWorkflowId?` · `@@unique([tenantId, namespace, key])` · index `[tenantId, namespace, updatedAt]`.
+`id, tenantId, namespace, key, state Json, version Int @default(1), updatedByUserId, createdAt, updatedAt` (as built) · `@@unique([tenantId, namespace, key])` · index `[tenantId, namespace, updatedAt]`.
 The namespace is tenant-wide rather than per workflow, because the three pulse workflows share one ledger.
 
 **Semantics**
@@ -172,13 +172,15 @@ The namespace is tenant-wide rather than per workflow, because the three pulse w
 - `expected_version=N` → `updateMany({where:{…, version:N}, data:{…, version:{increment:1}}})`; `count===0` → **409 `STATE_VERSION_CONFLICT`** with the current row. This is the compare-and-set that scope §3.4 needs for "reclaim back to pending". The interface doc only listed `if_absent`, so this is an addition — tell the workflow author.
 - Neither flag → an upsert that still bumps `version`.
 - `delete(expected_version?)`; `list(namespace, prefix?, updated_since?, limit, cursor)` paginated with `key > last` (the #730 cursor lesson). A prefix list covers the ledger lookups "pulses sent to +1… in the last 24h" and "open follow-ups". Recommend keys like `pulse/<order>/<phase>` plus an index row `phone/<e164>/<iso-ts>`.
-- 256 KB state cap (same as projections). Optional `expires_at`, swept by a daily cron; the ledger itself is kept (it is pilot measurement data).
+- 256 KB state cap (same as projections). **As built: no TTL/expiry.** Nothing in the spec asked for one, and the ledger is pilot measurement data. Add it only when a consumer needs it.
 
 **Surface:** `/api/v1/workflow-state/:namespace/:key` (GET/PUT/DELETE) + `/api/v1/workflow-state/:namespace` (list). Actions `ReadWorkflowState` / `WriteWorkflowState`, granted to `workflow-runtime`.
-**SDK:** `get_workflow_state` (None on miss), `list_workflow_state`, `put_workflow_state(namespace, key, state, *, if_absent=False, expected_version=None)` raising a typed `StateConflict` (with `.existing`) on 409, `delete_workflow_state`. Dry-run: `put` is captured with `{created: True, version: 1}`. For reads in dry-run, decide whether the harness returns an in-process fake store so a dry-run of the send run is meaningful. **Recommendation: yes**, a per-run in-memory store that is clearly labelled.
-**Tests:** a repo integration test with two concurrent `if_absent` claims (exactly one wins) and a CAS race (exactly one wins); a tenant-isolation test; route tests (409 bodies); SDK tests; harness parity.
+**SDK:** `get_workflow_state` (None on miss), `list_workflow_state`, `put_workflow_state(namespace, key, state, *, if_absent=False, expected_version=None)` raising a typed `WorkflowStateConflict` (a `PegasusApiError`, with `.current`) on 409, `delete_workflow_state`.
 
-**Files:** `apps/api/prisma/schema.prisma` + migration · `lib/prisma.ts` · `repositories/workflow-state.repository.ts` (new) · `handlers/workflow-state.ts` (new) · `app.ts` · `authz/{actions.ts,cedar.schema.json,policies/30-personas/workflow-runtime.cedar}` · `lib/openapi-spec.ts` · `lambda-*-purge` (the expiry sweep; reuse an existing daily cron if one fits) + infra schedule · SDK files in the discoverability checklist.
+- **Dry-run, as built:** pure capture with no read-back overlay. The offline harness delegates mutations to a no-network dry-run client, and a live existence check would break its byte-identical parity. Instead, a captured claim returns `version` 1 and a captured compare-and-set returns `expected_version + 1`, so claim → set flows still run.
+  **Tests:** a repo integration test with two concurrent `if_absent` claims (exactly one wins) and a CAS race (exactly one wins); a tenant-isolation test; route tests (409 bodies); SDK tests; harness parity.
+
+**Files:** `apps/api/prisma/schema.prisma` + migration · `lib/prisma.ts` · `repositories/workflow-state.repository.ts` (new) · `handlers/workflow-state.ts` (new) · `app.ts` · `authz/{actions.ts,cedar.schema.json,policies/30-personas/workflow-runtime.cedar}` · `lib/openapi-spec.ts` · SDK files in the discoverability checklist.
 
 ---
 

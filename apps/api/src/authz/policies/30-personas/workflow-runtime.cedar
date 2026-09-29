@@ -14,6 +14,8 @@
 // its manifest required_actions; it can read but never manage them.
 // Read/WriteIntegrationProjection let a running workflow maintain the per-record
 // external-state cache that the integration validator reads back as `prior`.
+// Read/WriteWorkflowState let a running workflow keep its own durable state
+// (send ledgers, atomic claims, compare-and-set reclaims) in a tenant-wide store.
 // ReadOrder/ReadTask let a lifecycle workflow re-fetch authoritative order and
 // task state from an order.* event pointer; CloseTask lets it close out an
 // order's operational task (e.g. date_confirmation) when the triggering event
@@ -50,6 +52,8 @@ permit (
     Pegasus::Action::"ReadWorkflowConfig",
     Pegasus::Action::"ReadIntegrationProjection",
     Pegasus::Action::"WriteIntegrationProjection",
+    Pegasus::Action::"ReadWorkflowState",
+    Pegasus::Action::"WriteWorkflowState",
     Pegasus::Action::"ReadBlob",
     Pegasus::Action::"WriteBlob",
     Pegasus::Action::"CreateFeedbackRequest"

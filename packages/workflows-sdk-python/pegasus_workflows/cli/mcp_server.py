@@ -210,6 +210,26 @@ To read per-tenant secrets or config at runtime, declare ``ReadWorkflowSecret``
 ``client.get_secret(...)`` / ``client.get_config(...)`` inside an activity. See
 ``pegasus://guide/secrets-config`` for publishing and usage.
 
+## Durable state, claims and dedup (workflow state)
+
+For state an Automation keeps for itself — a send ledger, "already done?"
+records, one-per-day reservations — use the workflow-state store, not a
+projection (projections are tied to a partner integration and are
+last-write-wins). Declare ``ReadWorkflowState`` / ``WriteWorkflowState``.
+
+    row = client.put_workflow_state("ns", "pulse:123:pack", {"status": "pending"},
+                                    if_absent=True)          # atomic claim
+    client.put_workflow_state("ns", "pulse:123:pack", {"status": "sent"},
+                              expected_version=row["version"])  # compare-and-set
+
+A lost condition raises ``WorkflowStateConflict`` (HTTP 409; ``.code`` is
+``STATE_EXISTS`` or ``STATE_VERSION_CONFLICT``, ``.current`` is the stored row
+or ``None``). Claim BEFORE any side effect you must not repeat — overlapping
+scheduled runs and retried activities are normal. Keys match
+``[A-Za-z0-9._:-]{1,256}``; compose with ``:`` and read slices with
+``list_workflow_state(ns, prefix=...)``. In dry-run, writes are captured and
+not visible to later reads.
+
 ## Automation diagram (required to publish)
 
 Every Automation must ship a Mermaid diagram at ``<source_dir>/workflow.mmd``. The

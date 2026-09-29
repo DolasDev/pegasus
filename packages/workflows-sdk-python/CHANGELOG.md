@@ -3,7 +3,25 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.39.0
+
+### Added — workflow state with atomic claims and compare-and-set
+
+A tenant-wide key/value store for state an Automation keeps for itself (send
+ledgers, idempotency claims, per-day reservations), shared across overlapping
+runs and cooperating Automations. Requires `ReadWorkflowState` /
+`WriteWorkflowState` in `required_actions`.
+
+- `get_workflow_state(namespace, key)` → row or `None`.
+- `list_workflow_state(namespace, prefix=, updated_since=, page_size=)` — follows
+  every page.
+- `put_workflow_state(namespace, key, state, if_absent=, expected_version=)` —
+  `if_absent=True` is an atomic claim (exactly one concurrent caller wins);
+  `expected_version=N` is a compare-and-set. A lost condition raises the new
+  `WorkflowStateConflict` (a `PegasusApiError`, HTTP 409) carrying `.current`.
+- `delete_workflow_state(namespace, key, expected_version=)`.
+- API: `GET/PUT/DELETE /api/v1/workflow-state/{namespace}/{key}` and
+  `GET /api/v1/workflow-state/{namespace}` (in `/openapi.json`).
 
 ### Changed — "workflow" the product is now "Automation"
 

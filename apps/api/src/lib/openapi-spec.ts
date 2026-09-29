@@ -267,6 +267,168 @@ export function getOpenApiSpec() {
     ],
     paths: {
       ...OPERATIONAL_READ_PATHS,
+      '/api/v1/workflow-state/{namespace}': {
+        get: {
+          operationId: 'listWorkflowState',
+          summary: 'List a workflow-state namespace, keyset-paged by key (ReadWorkflowState)',
+          description:
+            'Tenant-wide key/value state that running workflows keep for themselves (ledgers, claims, reservations). Compose hierarchical keys with ":" and narrow with `prefix`. Returns {data, nextCursor}; pass nextCursor back as `cursor` for the next page.',
+          tags: ['Workflow State'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            {
+              name: 'namespace',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,256}$' },
+            },
+            {
+              name: 'prefix',
+              in: 'query',
+              required: false,
+              schema: { type: 'string' },
+              description: 'only keys starting with this',
+            },
+            {
+              name: 'updatedSince',
+              in: 'query',
+              required: false,
+              schema: { type: 'string', format: 'date-time' },
+              description: 'only rows written at/after this instant',
+            },
+            {
+              name: 'limit',
+              in: 'query',
+              required: false,
+              schema: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
+            },
+            {
+              name: 'cursor',
+              in: 'query',
+              required: false,
+              schema: { type: 'string' },
+              description: 'the nextCursor of the previous page (exclusive)',
+            },
+          ],
+          responses: {
+            '200': { description: '{data: WorkflowState[], nextCursor: string | null}' },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
+      '/api/v1/workflow-state/{namespace}/{key}': {
+        get: {
+          operationId: 'getWorkflowState',
+          summary: 'Read one workflow-state row (ReadWorkflowState)',
+          tags: ['Workflow State'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            {
+              name: 'namespace',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,256}$' },
+            },
+            {
+              name: 'key',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,256}$' },
+            },
+          ],
+          responses: {
+            '200': {
+              description:
+                '{data: {namespace, key, state, version, updatedByUserId, createdAt, updatedAt}}',
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+        put: {
+          operationId: 'putWorkflowState',
+          summary:
+            'Write a workflow-state row: atomic claim, compare-and-set, or upsert (WriteWorkflowState)',
+          description:
+            'Body { state, ifAbsent?, expectedVersion? } (state ≤ 256 KB; the two flags are mutually exclusive). ifAbsent:true inserts only when the key is free — 201, or 409 STATE_EXISTS with data.current — and is the atomic claim that stops overlapping runs from both acting. expectedVersion:N writes only while the stored version is N — 200, or 409 STATE_VERSION_CONFLICT with data.current (null when the key is gone). With neither, an unconditional upsert: 201 created / 200 overwritten. Every write bumps `version`.',
+          tags: ['Workflow State'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            {
+              name: 'namespace',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,256}$' },
+            },
+            {
+              name: 'key',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,256}$' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['state'],
+                  additionalProperties: false,
+                  properties: {
+                    state: { description: 'any JSON value' },
+                    ifAbsent: { type: 'boolean' },
+                    expectedVersion: { type: 'integer', minimum: 1 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: '{data, created: false} — overwritten / compare-and-set applied',
+            },
+            '201': { description: '{data, created: true} — created (or claimed)' },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '409': {
+              description:
+                'STATE_EXISTS or STATE_VERSION_CONFLICT; body.data.current is the stored row (or null)',
+            },
+            '413': { description: 'state exceeds 256 KB' },
+          },
+        },
+        delete: {
+          operationId: 'deleteWorkflowState',
+          summary:
+            'Delete a workflow-state row, optionally only at an expected version (WriteWorkflowState)',
+          tags: ['Workflow State'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            {
+              name: 'namespace',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,256}$' },
+            },
+            {
+              name: 'key',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,256}$' },
+            },
+            {
+              name: 'expectedVersion',
+              in: 'query',
+              required: false,
+              schema: { type: 'integer', minimum: 1 },
+            },
+          ],
+          responses: {
+            '204': { description: 'Deleted' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '409': { description: 'STATE_VERSION_CONFLICT; body.data.current is the stored row' },
+          },
+        },
+      },
       '/health': {
         get: {
           operationId: 'getHealth',

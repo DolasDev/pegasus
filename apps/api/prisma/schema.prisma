@@ -289,6 +289,7 @@ model Tenant {
   workflowSecretConfigs   WorkflowSecretConfig[]
   integrationProjections  IntegrationProjection[]
   integrationCorrelations IntegrationCorrelation[]
+  workflowStates          WorkflowState[]
   outboundOAuthTokens     OutboundOAuthToken[]
   brokerCredential        TenantBrokerCredential?
   vpnPeer                 VpnPeer?
@@ -2072,6 +2073,47 @@ model IntegrationProjection {
   @@unique([tenantId, integrationId, entityType, entityKey])
   @@index([tenantId, integrationId, entityType])
   @@map("integration_projections")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// WorkflowState — a tenant-wide key/value store that running workflows use for
+// their own durable state: send ledgers, idempotency claims, per-day
+// reservations. Unlike IntegrationProjection it is not tied to a partner
+// integration, and its writes can be CONDITIONAL:
+//
+//   - insert-if-absent: a plain create; the unique key makes it the atomic claim
+//     (two overlapping runs racing for the same key → exactly one wins).
+//   - compare-and-set: update only while `version` still equals the caller's
+//     expected value (updateMany + count), so a stale reader cannot clobber a
+//     newer write.
+//
+// `namespace` is tenant-wide rather than per workflow on purpose: cooperating
+// workflows (e.g. a scheduled sender and an event-driven reply handler) share
+// one ledger. Purely tenant-owned, so the model lives in TENANT_SCOPED_MODELS.
+// ---------------------------------------------------------------------------
+model WorkflowState {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  namespace String
+  key       String
+
+  /// Arbitrary JSON written by the workflow (serialized size capped at 256 KB).
+  state Json
+
+  /// Starts at 1 and increments on every write — the compare-and-set token.
+  version Int @default(1)
+
+  /// workflow_runtime service-account user id that last wrote the row.
+  updatedByUserId String   @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, namespace, key], map: "workflow_states_key")
+  @@index([tenantId, namespace, updatedAt])
+  @@map("workflow_states")
   @@schema("public")
 }
 

@@ -301,6 +301,8 @@ _MUTATION_CALLS = [
     lambda c: c.close_task(order_id="S-1", task_type="date_confirmation", reason="done"),
     lambda c: c.put_projection("demo_partner", "order", "S-1", {"x": 1}),
     lambda c: c.delete_projection("demo_partner", "order", "S-1"),
+    lambda c: c.put_workflow_state("nw_pulse", "pulse:1:pack", {"s": "pending"}, if_absent=True),
+    lambda c: c.delete_workflow_state("nw_pulse", "pulse:1:pack", expected_version=2),
     lambda c: c.publish_integration_config("demo_partner", mapping={}, rules={}, corpus=[]),
     lambda c: c.rollback_integration_config("demo_partner", version=2),
     lambda c: c.fork_integration_config("demo_partner"),

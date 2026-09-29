@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from temporalio import activity, workflow
 
 if TYPE_CHECKING:
-    from .api import PegasusApiError, PegasusClient
+    from .api import PegasusApiError, PegasusClient, WorkflowStateConflict
     from .manifest import Manifest, ManifestError, load_manifest
 
 __all__ = [
@@ -36,6 +36,7 @@ __all__ = [
     "pegasus_workflow",
     "PegasusClient",
     "PegasusApiError",
+    "WorkflowStateConflict",
     "Manifest",
     "ManifestError",
     "load_manifest",
@@ -51,6 +52,7 @@ __all__ = [
 _LAZY_EXPORTS = {
     "PegasusClient": "api",
     "PegasusApiError": "api",
+    "WorkflowStateConflict": "api",
     "Manifest": "manifest",
     "ManifestError": "manifest",
     "load_manifest": "manifest",
