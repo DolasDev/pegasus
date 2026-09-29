@@ -141,6 +141,7 @@ _MUTATIONS: dict[str, str] = {
     "emit_event": "EmitTenantEvent",
     "send_sms": "SendSms",
     "record_sms_opt_out": "ManageSmsOptOut",
+    "mark_text_message_read": "UpdateTextMessage",
     "close_task": "CloseTask",
     "put_projection": "WriteIntegrationProjection",
     "delete_projection": "WriteIntegrationProjection",

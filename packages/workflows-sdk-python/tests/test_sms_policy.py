@@ -89,3 +89,12 @@ def test_record_sms_opt_out_posts_and_dry_run_captures() -> None:
     )
     dry.record_sms_opt_out("+15551234567")
     assert dry.captured[-1]["capability"] == "ManageSmsOptOut"
+
+
+def test_mark_text_message_read_posts_and_returns_data() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert (request.method, request.url.path) == ("POST", "/api/v1/sms/messages/m-1/read")
+        data = {"id": "m-1", "readStatus": "Read", "alreadyRead": False}
+        return httpx.Response(200, json={"data": data})
+
+    assert _client_with(handler).mark_text_message_read("m-1")["readStatus"] == "Read"

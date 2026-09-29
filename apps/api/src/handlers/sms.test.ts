@@ -37,6 +37,11 @@ vi.mock('../repositories/sms-opt-out.repository', () => ({
   createSmsOptOutRepository: vi.fn(() => mockOptOuts),
 }))
 
+const mockSetReadStatus = vi.hoisted(() => vi.fn())
+vi.mock('../services/ringcentral/message-store', () => ({
+  setMessageReadStatus: mockSetReadStatus,
+}))
+
 vi.mock('../repositories/sms-send.repository', () => ({
   createSmsSendRepository: vi.fn(() => mockSends),
 }))
@@ -511,5 +516,93 @@ describe('/sms/opt-outs', () => {
     expect((await buildApp().request('/sms/opt-outs', post({ phone: '555-1212' }))).status).toBe(
       400,
     )
+  })
+})
+
+describe('POST /sms/messages/:id/read', () => {
+  const ID = '6f1c2b8e-0d3a-4c1e-9f7a-2b3c4d5e6f70'
+  const message = (overrides: Record<string, unknown> = {}) => ({
+    id: ID,
+    source: 'V1_STORE',
+    externalId: '4455',
+    connectionId: 'conn-1',
+    ...overrides,
+  })
+
+  beforeEach(() => {
+    mockListConnections.mockResolvedValue([ACTIVE_CONNECTION])
+  })
+
+  it('marks the message read at RingCentral using the capturing connection', async () => {
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockSetReadStatus.mockResolvedValue({ readStatus: 'Read', changed: true })
+    const res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual({ id: ID, readStatus: 'Read', alreadyRead: false })
+    expect(mockSetReadStatus).toHaveBeenCalledWith(ACTIVE_CONNECTION, '4455', 'Read')
+  })
+
+  it('reports alreadyRead for a message that was already read', async () => {
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockSetReadStatus.mockResolvedValue({ readStatus: 'Read', changed: false })
+    const res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(((await json(res))['data'] as JsonBody)['alreadyRead']).toBe(true)
+  })
+
+  it('409 UNSUPPORTED_SOURCE for a thread-store message', async () => {
+    mockMessageFindFirst.mockResolvedValue(message({ source: 'THREAD_STORE' }))
+    const res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(res.status).toBe(409)
+    expect((await json(res))['code']).toBe('UNSUPPORTED_SOURCE')
+    expect(mockSetReadStatus).not.toHaveBeenCalled()
+  })
+
+  it('409 NO_CONNECTION when the tenant has no active connection', async () => {
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockListConnections.mockResolvedValue([])
+    const res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect((await json(res))['code']).toBe('NO_CONNECTION')
+  })
+
+  it('404 for an unknown message, locally or at RingCentral', async () => {
+    mockMessageFindFirst.mockResolvedValueOnce(null)
+    expect((await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })).status).toBe(
+      404,
+    )
+    mockMessageFindFirst.mockResolvedValueOnce(message())
+    mockSetReadStatus.mockRejectedValueOnce(new RingCentralOAuthError('RingCentral API 404', 404))
+    expect((await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })).status).toBe(
+      404,
+    )
+  })
+
+  it('maps a RingCentral rate limit to 429 with Retry-After, other RC errors to 502', async () => {
+    const { RateLimitError } = await import('../services/ringcentral/client')
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockSetReadStatus.mockRejectedValueOnce(new RateLimitError(30_000))
+    let res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBe('30')
+    mockSetReadStatus.mockRejectedValueOnce(new RingCentralOAuthError('RingCentral API 500', 500))
+    res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(res.status).toBe(502)
+    expect((await json(res))['code']).toBe('UPSTREAM_ERROR')
+  })
+
+  it('400 for a non-uuid id and 503 when RingCentral is disabled', async () => {
+    expect((await buildApp().request('/sms/messages/nope/read', { method: 'POST' })).status).toBe(
+      400,
+    )
+    mockReadOAuthConfig.mockReturnValueOnce(null)
+    expect((await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })).status).toBe(
+      503,
+    )
+  })
+
+  it('403 for a persona without UpdateTextMessage', async () => {
+    const res = await buildApp(['workflow_developer']).request(`/sms/messages/${ID}/read`, {
+      method: 'POST',
+    })
+    expect(res.status).toBe(403)
   })
 })

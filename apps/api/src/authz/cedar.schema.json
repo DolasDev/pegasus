@@ -339,6 +339,9 @@
       "ReadTextMessage": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },
+      "UpdateTextMessage": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
+      },
       "ReadSmsOptOut": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },

@@ -9,15 +9,15 @@
 
 ## Execution status (resume here)
 
-- [ ] **Phase 0** — Spikes (no code): S1–S7
+- [x] **Phase 0** — Spikes: done 2026-09-29 (findings summarised under each S-item below; S5 still needs a human)
 - [x] **Phase 1** — [pegasus] Workflow state store → SDK 0.39.0 — MERGED #743 (`807057e0`), PUBLISHED to PyPI 2026-09-29; authoring `CLAUDE.md` updated
-- [~] **Phase 2** — [pegasus] 2a–2c (message read, opt-out, `send_sms` dedup) built on `feat/sms-optout-read-dedup` → SDK 0.40.0; **2d (mark-read at RingCentral) pending S2**
-- [ ] **Phase 3** — [pegasus] `send_email` (SES) → SDK 0.41.0
-- [ ] **Phase 4** — [movemanager] pegII API foundations: write auth, envelope/error contract, idempotency + task-meta tables, version endpoint
-- [ ] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.42.0
-- [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK 0.43.0 (+ one-line desktop guard fix)
-- [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.44.0
-- [ ] **Phase 8** — NW enablement + end-to-end test move (ops)
+- [~] **Phase 2** — [pegasus] 2a–2c MERGED #747, SDK 0.40.0 PUBLISHED; 2d (mark-read at RingCentral) built on `feat/sms-mark-read` → SDK 0.41.0
+- [ ] **Phase 3** — [pegasus → pegII] `send_email` **through the pegII API's SMTP email endpoint** (re-routed 2026-09-29; SES prod access was denied) → SDK 0.42.0. Needs Phase 4 (auth + the endpoint extension)
+- [~] **Phase 4** — [movemanager, on `dev`] pegII API foundations: **JWT service-user auth** (dev's existing JWT), envelope/error contract, idempotency + task-meta tables, version endpoint, email endpoint extension. APPROVED 2026-09-29; plan being revised against `dev` on `feat/pegasus-api-write-foundations`
+- [ ] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.43.0
+- [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK 0.44.0 (+ one-line desktop guard fix)
+- [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
+- [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
 
 **Order and parallelism:**
 
@@ -135,23 +135,23 @@ Also required by the scope, though absent from the proposals:
 
 ## Phase 0 — Spikes (findings recorded back into this plan)
 
-- [ ] **S1 NW client + snapshot versions.**
+- [x] **S1 NW client + snapshot versions.** _Result: no client version is recorded in the DB; snapshot versions measured (see the findings file). v1 normalization in Phase 5 stands._
   - Which MoveManager build is NW's desktop on (≥ Beta 9.2.2 writes v2)?
   - What share of NW's active COD orders still have `schema_version = 1`?
   - Which channel is NW's `update-api.ps1` on, and what API version is deployed (the `GET /` page)?
-- [ ] **S2 RingCentral.**
+- [x] **S2 RingCentral.** _Result: STOP reaches the message store; opted-out sends return `SMS-RC/UP/CAR-413` (possibly never for NW's number, so keyword capture is the real enforcement); read-status PUT works; the cloud and the desktop send from the same number, so 2d stands._
   - Does an inbound STOP still reach the message store?
   - Does RC or the carrier auto-answer STOP/HELP?
   - What `errorCode` does RC return when sending to an opted-out number?
   - **Is the cloud connection's extension the same one the desktop reconciles?** Read state is per extension, which decides whether the Phase 2 RingCentral PUT is visible to coordinators.
-- [ ] **S3 SES prod readiness.** Is the account out of the sandbox? Is `pegasus.dolas.dev` DKIM-verified? What is the state of `plans/todo/ses-dmarc-records.md`? Which From display name?
-- [ ] **S4 NW QA tunnel.** Diagnose the 502 "tunnel proxy fetch failed".
+- [x] **S3 SES prod readiness.** _Result: domain + DKIM verified, but production access was DENIED. Phase 3 re-routed through the pegII API's SMTP email endpoint._ Is the account out of the sandbox? Is `pegasus.dolas.dev` DKIM-verified? What is the state of `plans/todo/ses-dmarc-records.md`? Which From display name?
+- [x] **S4 NW QA tunnel.** _Result: the NW QA site's tunnel has never connected — an on-site ops task, not code. Testing uses NW Prod in dry-run until it's fixed._ Diagnose the 502 "tunnel proxy fetch failed".
 - [ ] **S5 Arrival window.** Is #668's longhaul activity window what was described at the 09.25 review?
   - If yes, add a follow-on: a read-only pegII API endpoint plus `get_activity_arrival_window`. #668 deferred its SDK surface "to the workflow that consumes it".
   - Either way, the pilot keeps the fixed 4–7 PM window.
-- [ ] **S6 Desktop task hazard exposure.** How many NW COD orders reach pack day with **zero** `Tasks` rows? That sizes hazard (a) until the Phase 6 desktop guard fix ships.
+- [x] **S6 Desktop task hazard exposure.** _Result: 0 of 36 active COD orders have zero task rows today, so the D3 fallback is a safety net. "DEL ACTUAL ENTERED" comes from the `sales` update trigger, confirming the live-read requirement._ How many NW COD orders reach pack day with **zero** `Tasks` rows? That sizes hazard (a) until the Phase 6 desktop guard fix ships.
   - Also find the DB trigger that writes `del_actual` and the "DEL ACTUAL ENTERED" `dispatch_log` row (`sys.triggers` on NW), confirming the live-read requirement.
-- [ ] **S7 Link + identity facts.**
+- [x] **S7 Link + identity facts.** _Result: `recipient_textconversation.RecipientCode` holds the ORDER NUMBER. Employee 1001 "PEGASUS GENERATED" exists — use it for `created_by`/`completed_by` (`who_called` = that string; `task_coord_id` stays the order's coordinator). The memo type is still NW's call._
   - Does `recipient_textconversation.RecipientCode` for Shipper hold an order number or a normalized phone? The code and the d765877 plan disagree.
   - Which employee code should API-originated writes carry (`created_by`, `who_called`, `completed_by`)? A dedicated "PEGASUS" system employee is recommended.
   - Which memo type does NW want for ratings: General (4) or Operations (5)?
@@ -219,15 +219,17 @@ The namespace is tenant-wide rather than per workflow, because the three pulse w
 
 ---
 
-## Phase 3 — [pegasus] `send_email` (SES) → SDK 0.41.0
+## Phase 3 — [pegasus → pegII] `send_email` through the pegII API → SDK 0.42.0
 
-- `POST /api/v1/email/send`, action `SendEmail`, body `{to[], cc[]?, subject, body, bodyType: text|html, dedupKey?}` → `{id, status, alreadySent}`. Idempotency via an `EmailSend` table (same claim pattern as 2c).
-- **Recipient policy ("internal only") — decision D2:** every address must match the tenant's **allowed recipient domains**, a tenant-admin-managed setting (not writable by a workflow runtime) → 400 `RECIPIENT_NOT_ALLOWED`. Caps: ≤10 recipients, ≤100 KB body, per-tenant daily limit.
-- **Transport:** `SESv2Client.SendEmail` from the API Lambda. From = `no-reply@pegasus.<domain>` with the tenant display name; optional `Reply-To` = the coordinator.
-- **Infra:** add the `ses:SendEmail` IAM grant scoped to the identity ARN, plus the `EMAIL_FROM` env, to the API Lambda, **gated by env name like `ringcentralEnabled`** (`envName === 'prod'` / staging), **not** a `-c` context flag, because CI `deploy:ci` passes only `-c env=` (the same trap as `pegasusSesEmail`). Off → 503 `EMAIL_NOT_CONFIGURED`.
-- Add a `grep -r EMAIL_ packages/infra` check to the PR checklist (standing lesson: a flag-gated feature isn't shipped until wired).
-- **Files:** `schema.prisma` + migration · `services/email/ses.ts` (new) · `handlers/email.ts` (new) · `repositories/email-send.repository.ts` (new) · tenant setting for allowed domains (model/handler + tenant-web Settings field) · `packages/infra/lib/stacks/api-stack.ts` + `bin/app.ts` · infra tests · authz trio · `openapi-spec.ts` · SDK checklist.
-- **Risk:** deliverability until DMARC lands (S3); NW's mail filters may quarantine `no-reply@pegasus…`. Mitigation: pre-announce the address to NW IT.
+**Re-routed 2026-09-29.** SES production access was denied (S3), so email goes out through the pegII API's SMTP endpoint (`POST /api/v1/pegii/email/send`). It exists on movemanager `dev` (commit `70ca9fce`), is JWT-protected, and nothing uses it yet, so it may change. Phase 4 extends it to take `to[]`, `cc[]` and `body_type`.
+
+- `POST /api/v1/email/send`, action `SendEmail`, body `{to[], cc[]?, subject, body, bodyType: text|html, dedupKey?}` → `{id, status, alreadySent}`.
+- **Idempotency is cloud-side:** an `EmailSend` table, using the same claim pattern as `SmsSend` in 2c. The pegII endpoint stays stateless.
+- **Recipient policy (D2):** every address must match the tenant's allowed recipient domains, a tenant-admin setting → 400 `RECIPIENT_NOT_ALLOWED`. Caps: ≤10 recipients, ≤100 KB body, a per-tenant daily limit.
+- **Transport:** the pegII gateway (Phase 4 client work: POST + JWT service-user token) → the site's SMTP account. From is the site's configured default address, which the endpoint doesn't let the caller override.
+- **Capability gate:** `/version` must list `email.send`, else 503 `PEGII_CAPABILITY_MISSING`.
+- **Files:** `schema.prisma` + migration (`EmailSend`) · `repositories/email-send.repository.ts` · `services/email/outbound.ts` · `handlers/email.ts` · `gateways/pegii-email.gateway.ts` · tenant allowed-domains setting (model/handler + tenant-web Settings field) · authz trio · `openapi-spec.ts` · SDK checklist. **No SES, no infra change.**
+- **Risk:** deliverability depends on NW's own SMTP account; confirm with NW IT that automated mail from it to coordinators isn't filtered.
 
 ---
 
@@ -235,12 +237,11 @@ The namespace is tenant-wide rather than per workflow, because the three pulse w
 
 Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
-- [ ] **Write auth (prerequisite for any mutating route).**
-  - Middleware requires `X-Pegasus-Api-Key` on every `/api/v1/pegii/*` route, reads included (D1), because orders carry PII.
-  - The key is compared in constant time against a value in `appsettings.Production.json` / environment on the site server.
-  - The cloud stores it per tenant in Secrets Manager, alongside the pegII overlay target, and `tunnelFetch` injects it.
-  - Roll out as **warn-only first** (log missing keys), then enforce, so an old cloud client never bricks reads.
-  - Reconcile the deploy README with the actual listener configuration.
+- [ ] **Auth (D1, revised 2026-09-29): JWT service user on `dev`.** `dev` already has JWT bearer auth (`/api/v1/pegii/auth/login`, a hub user store, enabled when `Api:Jwt:SigningKey` is set) and is retiring header keys.
+  - Every new cloud-facing endpoint is `RequireAuthorization()`.
+  - The cloud logs in as a dedicated service hub user; the password lives only in AWS Secrets Manager. The cloud caches the token and re-logs in on 401.
+  - Sites need JWT + the hub DB configured. The movemanager plan states the exact site config and the membership the service user needs for NW's spoke.
+- [ ] **Email endpoint extension** (for Phase 3): `to` as a list (a single string still accepted), optional `cc`, `body_type` text|html, a ≤10-recipient cap, envelope errors.
 - [ ] **Envelope/error contract for new endpoints.**
   - Every response is enveloped, errors included.
   - Status codes: 400 `VALIDATION_ERROR`, 404 `NOT_FOUND` / `ORDER_NOT_FOUND`, 409 with a specific code, 422 `DomainError`.
@@ -252,13 +253,13 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
     - A sidecar, so the legacy `Tasks` table and the VB converters are untouched.
 - [ ] **`GET /api/v1/pegii/version`** → `{version, schemaVersions: {sale: 2}, capabilities: [...]}`. The cloud uses it to refuse cleanly (503 `PEGII_CAPABILITY_MISSING`) when a site hasn't auto-updated yet.
 - [ ] **API endpoint test harness.** Add a `WebApplicationFactory` + LocalDB test project (or extend `Pegasus.Tests.Integration.Warehousing`), and an API test step in `azure-pipelines.yml` `BuildApi` (pre-authorized server-stage edit). Today the API stage runs no tests.
-- Files: `Pegasus.Api/{Program.cs, Middleware/ApiKeyMiddleware.cs (new), Endpoints/VersionEndpoints.cs (new), appsettings.json}` · `Pegasus.Infrastructure/Persistence` migrations · `Pegasus.Domain/Shared` idempotency contract · test project · `azure-pipelines.yml` (API stage only).
+- Files: see the movemanager plan (it supersedes this list): `Pegasus.Api/{Program.cs, Endpoints/VersionEndpoints.cs (new), Endpoints/EmailEndpoints.cs, Contracts/EmailContracts.cs}` · `Pegasus.Infrastructure/Persistence` migrations · `Pegasus.Domain/Shared` idempotency contract · test project · `azure-pipelines.yml` (API stage only).
 - pegasus side, same phase or first in Phase 5:
-  - `lib/pegii-api-client.ts`: add `postJson`/`putJson`, header injection, and pass-through of pegII `code` for 400/404/409/422.
+  - `lib/pegii-api-client.ts`: add `postJson`/`putJson`, bearer-token injection from a cached service-user login (per tenant; re-login on 401), and pass-through of pegII `code` for 400/404/409/422.
   - `pegiiApiErrorToHttp`: map those statuses through instead of 502.
-  - The per-tenant pegII key secret.
+  - The per-tenant service-user credential secret in Secrets Manager.
 
-## Phase 5 — Order reads: KeyMoveDates normalization + live order search → SDK 0.42.0
+## Phase 5 — Order reads: KeyMoveDates normalization + live order search → SDK 0.43.0
 
 **movemanager** (plan `order-read-normalization-and-search.md`):
 
@@ -280,7 +281,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 - [ ] Update `gateways/pegii/pegii-order.dto.ts`: `Delivery` → `DelResidence` (analysis.md Trap #1).
 - [ ] Discoverability checklist.
 
-## Phase 6 — Tasks → SDK 0.43.0
+## Phase 6 — Tasks → SDK 0.44.0
 
 **movemanager** (plan `api-task-create-close.md`):
 
@@ -310,7 +311,9 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 - [ ] SDK `create_task(...)` with `dedup_key` → pegII `idempotencyKey`; `list_tasks` gains filters; `close_task(task_id=…)`.
 - [ ] Discoverability checklist.
 
-## Phase 7 — Memos + text read-mirror + conversation links → SDK 0.44.0
+## Phase 7 — Memos + text read-mirror + conversation links → SDK 0.45.0
+
+**Constraint (S7):** a trigger on `memos` matches `%REJECTED%` in `action` and spawns a system memo, so `action` must carry a fixed template, never raw customer text. Put the reply excerpt in `regarding` or `next_action`, whichever the desktop shows. Confirm which one in the movemanager plan.
 
 **movemanager** (plan `api-memos-and-text-read.md`):
 
@@ -329,7 +332,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
 ## Phase 8 — NW enablement + end-to-end test move (ops)
 
-- [ ] S4 resolved. NW QA and Prod pegII API on a release containing Phases 4–7, with the API key set on both ends and `/version` capabilities confirmed. Enforce auth after warn-only shows zero misses.
+- [ ] **Test on NW Prod in dry-run** (decided 2026-09-29; NW QA's tunnel isn't connected). NW Prod's pegII API on a `dev`-derived release containing Phases 4–7, with JWT + the hub DB configured, the service user provisioned, and `/version` capabilities confirmed. All workflow runs stay `--dry-run` (every mutation captured, nothing sent) until NW signs off on a live test. Live steps, when approved, use `TEST_PHONES` only.
 - [ ] NW desktop on the MSIX build with the Phase 6 guard fix; then lift the 409 `ORDER_TASKS_NOT_INITIALIZED` fallback.
 - [ ] Tenant config:
   - `nw_pulse` CONFIG group: `PILOT_COORDINATORS`, `CS_PHONE`, `SAFETY_NET_EMAIL`, `HOLIDAYS`, `HELP_REPLY`, per-phase on/off.
@@ -342,7 +345,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
   - names: `sms.received`, `get_text_message` + `get_text_message_links`, `search_orders`, `expected_version`, `dedup_key`
   - the S-spike field answers, including "the salesman has `extension`+`email` but **no direct phone** ⇒ `[Coordinator Phone]` always takes the CS-number + extension fallback"
   - **We do not publish their workflows or configs** (standing rule).
-- [ ] Test move on `TEST_PHONES`:
+- [ ] Test move (dry-run on NW Prod first, then live on `TEST_PHONES` once approved):
   1. pack → reply "5" → ack + memo + marked read in both RingCentral and the desktop
   2. load → reply "2" → task in the desktop + email + memo
   3. STOP → opt-out → next send 409
@@ -350,10 +353,10 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
 ---
 
-## Decisions (approved by Steve 2026-09-29 — recommendations accepted)
+## Decisions (approved 2026-09-29; D1 and Phase 3 transport revised the same day)
 
-- **D1 pegII API auth:** a shared-secret `X-Pegasus-Api-Key` header, warn-only first, then enforced (Phase 4).
-- **D2 Email recipients:** restricted to a tenant-admin-managed allowed-domain list → 400 `RECIPIENT_NOT_ALLOWED` (Phase 3).
+- **D1 pegII API auth (REVISED):** JWT, via a dedicated cloud service user on movemanager `dev`'s existing auth (`/auth/login`), with credentials in AWS Secrets Manager. This replaces the shared-secret header originally approved, because `dev` is retiring header keys. movemanager work targets `dev`.
+- **D2 Email recipients** (unchanged; now enforced before the pegII call): restricted to a tenant-admin-managed allowed-domain list → 400 `RECIPIENT_NOT_ALLOWED` (Phase 3).
 - **D3 Task-less orders:** until NW's desktop has the Phase 6 guard fix, `POST /tasks` returns 409 `ORDER_TASKS_NOT_INITIALIZED` for an order with zero task rows, and the reply workflow escalates by email only.
 - **D4 `list_orders`:** deprecated in favour of `search_orders`. The SDK emits a `DeprecationWarning` pointing at `search_orders`; the route and method are removed in a later minor.
 - **D5 SDK cadence:** one minor per pegasus phase, tagged and published on merge.

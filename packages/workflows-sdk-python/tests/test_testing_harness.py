@@ -298,6 +298,7 @@ def test_fake_client_is_fakeclient_instance() -> None:
 _MUTATION_CALLS = [
     lambda c: c.send_sms(to="+15551234567", body="hi"),
     lambda c: c.record_sms_opt_out("+15551234567"),
+    lambda c: c.mark_text_message_read("m-1"),
     lambda c: c.emit_event("order.saved", {"id": 1}),
     lambda c: c.close_task(order_id="S-1", task_type="date_confirmation", reason="done"),
     lambda c: c.put_projection("demo_partner", "order", "S-1", {"x": 1}),

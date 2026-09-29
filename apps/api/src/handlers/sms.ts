@@ -3,6 +3,7 @@
 //
 //   POST /send                    SendSms          { to, body, dedupKey? }
 //   GET  /messages/:id            ReadTextMessage  one captured message (cloud buffer)
+//   POST /messages/:id/read       UpdateTextMessage mark it read at RingCentral
 //   GET  /opt-outs/:phoneE164     ReadSmsOptOut    opt-out state for a number
 //   POST /opt-outs                ManageSmsOptOut  { phone, optedOut?, source? }
 //
@@ -32,6 +33,9 @@ import { RingCentralOAuthError } from '../services/ringcentral/oauth'
 import { RateLimitError } from '../services/ringcentral/client'
 import { sendTenantSms } from '../services/sms/outbound'
 import { createSmsOptOutRepository } from '../repositories/sms-opt-out.repository'
+import { listConnectionsByTenant } from '../repositories/messaging.repository'
+import { readOAuthConfig } from '../services/ringcentral/oauth'
+import { setMessageReadStatus } from '../services/ringcentral/message-store'
 
 const SendSmsBody = z.object({
   /** Destination phone number in E.164 format (e.g. +15005550006). */
@@ -183,6 +187,77 @@ smsHandler.get('/messages/:id', requirePermission(Actions.ReadTextMessage), asyn
       capturedAt: row.capturedAt.toISOString(),
     },
   })
+})
+
+// ---------------------------------------------------------------------------
+// POST /messages/:id/read — mark a captured inbound text read AT RINGCENTRAL.
+//
+// RingCentral owns read state: the legacy desktop copies it into its own store
+// on every reconciliation and marks read by writing here first, so this is the
+// write that clears the unread badge coordinators see. Idempotent — an already
+// read message reports `alreadyRead: true` and costs no write.
+//
+//   200 { data: { id, readStatus: 'Read', alreadyRead } }
+//   404 NOT_FOUND            unknown message id (or RingCentral no longer has it)
+//   409 UNSUPPORTED_SOURCE   a thread-store message (not addressable here)
+//   409 NO_CONNECTION        the tenant has no active RingCentral connection
+//   429 / 502 / 503          as for /send
+// ---------------------------------------------------------------------------
+smsHandler.post('/messages/:id/read', requirePermission(Actions.UpdateTextMessage), async (c) => {
+  const id = c.req.param('id') ?? ''
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    return c.json({ error: 'id must be a message uuid', code: 'VALIDATION_ERROR' }, 400)
+  }
+  if (!readOAuthConfig()) {
+    return c.json(
+      { error: 'RingCentral integration is not enabled', code: 'SERVICE_UNAVAILABLE' },
+      503,
+    )
+  }
+  const db = c.get('db')
+  const message = await db.message.findFirst({ where: { id } })
+  if (!message) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404)
+  if (message.source !== 'V1_STORE') {
+    return c.json(
+      {
+        error: 'Only RingCentral message-store messages can be marked read',
+        code: 'UNSUPPORTED_SOURCE',
+      },
+      409,
+    )
+  }
+
+  // Prefer the connection that captured the message; any active one otherwise.
+  const active = (await listConnectionsByTenant(db, c.get('tenantId'))).filter(
+    (conn) => conn.tokenStatus === 'ACTIVE' && conn.tokenSecretArn != null,
+  )
+  const connection = active.find((conn) => conn.id === message.connectionId) ?? active[0]
+  if (!connection) {
+    return c.json(
+      { error: 'RingCentral is not connected for this account', code: 'NO_CONNECTION' },
+      409,
+    )
+  }
+
+  try {
+    const result = await setMessageReadStatus(connection, message.externalId, 'Read')
+    return c.json({
+      data: { id, readStatus: result.readStatus, alreadyRead: !result.changed },
+    })
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return c.json({ error: err.message }, 429, {
+        'Retry-After': String(Math.ceil(err.retryAfterMs / 1000)),
+      })
+    }
+    if (err instanceof RingCentralOAuthError && err.status === 404) {
+      return c.json({ error: 'RingCentral has no such message', code: 'NOT_FOUND' }, 404)
+    }
+    if (err instanceof RingCentralOAuthError) {
+      return c.json({ error: err.message, code: 'UPSTREAM_ERROR' }, 502)
+    }
+    throw err
+  }
 })
 
 // ---------------------------------------------------------------------------

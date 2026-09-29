@@ -329,6 +329,27 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/sms/messages/{id}/read': {
+        post: {
+          operationId: 'markTextMessageRead',
+          summary: 'Mark a captured inbound text read at RingCentral (UpdateTextMessage)',
+          description:
+            'RingCentral owns read state; the legacy desktop mirrors it, so this is the write that clears the unread badge coordinators see. Idempotent: an already-read message returns alreadyRead:true. 409 UNSUPPORTED_SOURCE for thread-store messages; 409 NO_CONNECTION when the tenant has no active RingCentral connection; 404 when the id is unknown here or at RingCentral.',
+          tags: ['SMS'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          responses: {
+            '200': { description: '{data: {id, readStatus: "Read", alreadyRead}}' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '409': { description: 'UNSUPPORTED_SOURCE | NO_CONNECTION' },
+            '429': { description: 'RingCentral rate limit; honour Retry-After' },
+            '502': { description: 'UPSTREAM_ERROR' },
+            '503': { description: 'SERVICE_UNAVAILABLE' },
+          },
+        },
+      },
       '/api/v1/sms/opt-outs/{phone}': {
         get: {
           operationId: 'getSmsOptOut',
