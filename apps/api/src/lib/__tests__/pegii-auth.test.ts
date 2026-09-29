@@ -140,3 +140,64 @@ describe('createPegiiTokenProvider', () => {
     await expect(provider().getToken()).rejects.toMatchObject({ code: 'PEGII_API_BAD_ENVELOPE' })
   })
 })
+
+describe('createPegiiTokenProvider — default secret reader and failures', () => {
+  it('reads {username,password} from Secrets Manager when no fetchSecret is injected', async () => {
+    const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager')
+    const sendSpy = vi.spyOn(SecretsManagerClient.prototype, 'send').mockResolvedValue({
+      SecretString: JSON.stringify({ username: 'svc', password: 'test-only' }),
+    } as never)
+    const send = stubLogins([loginOk(jwt(clock / 1000 + 3600))])
+    const p = createPegiiTokenProvider({
+      tenantId: 't9',
+      baseUrl: 'http://x',
+      secretArn: ARN,
+      now: () => clock,
+    })
+    await p.getToken()
+    expect(sendSpy).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(
+      JSON.parse(
+        new TextDecoder().decode(
+          (send.mock.calls[0]![0] as { input: { Payload: Uint8Array } }).input.Payload,
+        ),
+      ).body as string,
+    ) as Record<string, string>
+    expect(body['username']).toBe('svc')
+    sendSpy.mockRestore()
+  })
+
+  it('refuses a secret missing username/password', async () => {
+    const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager')
+    const sendSpy = vi
+      .spyOn(SecretsManagerClient.prototype, 'send')
+      .mockResolvedValue({ SecretString: JSON.stringify({ username: 'svc' }) } as never)
+    const p = createPegiiTokenProvider({
+      tenantId: 't10',
+      baseUrl: 'http://x',
+      secretArn: ARN,
+      now: () => clock,
+    })
+    await expect(p.getToken()).rejects.toMatchObject({ code: 'PEGII_API_AUTH_FAILED' })
+    sendSpy.mockRestore()
+  })
+
+  it('maps a tunnel failure during login to PEGII_API_TUNNEL_ERROR', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValue({ FunctionError: 'Unhandled', Payload: new TextEncoder().encode('{}') })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+    await expect(provider().getToken()).rejects.toMatchObject({ code: 'PEGII_API_TUNNEL_ERROR' })
+  })
+
+  it('falls back to a short reuse window when the token has no readable exp', async () => {
+    const send = stubLogins([loginOk('opaque-token'), loginOk('opaque-token-2')])
+    const p = provider()
+    expect(await p.getToken()).toBe('opaque-token')
+    expect(await p.getToken()).toBe('opaque-token')
+    clock += 6 * 60 * 1000
+    expect(await p.getToken()).toBe('opaque-token-2')
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(jwtExpiryMs('a.%%%notbase64json.c')).toBeNull()
+  })
+})
