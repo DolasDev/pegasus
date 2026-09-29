@@ -2095,3 +2095,31 @@ reason only visible by reading the consumer:
 **Rule:** a two-minute probe settles this where an hour of reasoning does not — `npm i <pkg>@<fix>`
 in a scratch dir and call it the way the consumer does. Record the finding in `audit-ci.jsonc`
 with the call site (`file:line`) so the next reader does not re-derive it.
+
+## `optional-auth.test.ts` times out under a parallel `turbo test` — flake, not a failure
+
+**Symptom (2026-09-29):** `@pegasus/api#test` fails only under a full-tree
+`turbo run typecheck test` (which is what the `.husky/pre-push` hook runs across 16 packages),
+with exactly one failure:
+
+```
+FAIL src/__tests__/optional-auth.test.ts > SKIP_AUTH mode >
+     bypasses auth and returns 200 on /api/v1 routes when SKIP_AUTH=true
+Error: Test timed out in 15000ms.
+```
+
+Same tree passed twice and failed twice, so it is load-sensitive, not a regression.
+`turbo test --filter=@pegasus/api` alone passes every time.
+
+**Cause:** the suite is fully mocked — `../db`, `../lib/prisma` and `jose` are all `vi.mock`ed, so
+there is no I/O to be slow. What is slow is `await import('../app')`: the file calls
+`vi.resetModules()` in `beforeEach` because SKIP_AUTH is read at module-evaluation time, so each
+test re-imports and re-transforms the **entire** API module graph. The failing test is the
+**first** of the three; the other two then run in ~1s each off the warm transform cache. Under a
+full-tree run every workspace's vitest workers are competing for the same cores, and that first
+cold import crosses the 15s default `testTimeout`.
+
+**What to do:** re-running is legitimate here (a diagnosed flake, not a red pipeline). The real
+fix is a per-test timeout on that first case — `it('…', async () => {…}, 30_000)` — since the cost
+it pays is transform time that the other two do not. Note `testTimeout` covers test **bodies**
+only; if this ever moves into a hook it needs `hookTimeout` instead (see #701).
