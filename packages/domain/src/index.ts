@@ -172,6 +172,7 @@ export type {
   ThreadEntryInput,
   ThreadPhonePair,
   V1MessageInput,
+  SmsKeyword,
 } from './messaging/index'
 export {
   toMessageId,
@@ -191,4 +192,7 @@ export {
   deriveMessageStatus,
   isWebhookValidationHandshake,
   VALIDATION_TOKEN_HEADER,
+  classifySmsKeyword,
+  SMS_OPT_OUT_KEYWORDS,
+  SMS_OPT_IN_KEYWORDS,
 } from './messaging/index'

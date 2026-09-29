@@ -33,6 +33,7 @@ import {
   saveBackfillProgress,
   captureMessage,
 } from '../../repositories/messaging.repository'
+import { applyInboundKeyword } from '../sms/opt-out-keywords'
 
 const logger = createLogger('pegasus-ringcentral-sync')
 
@@ -354,9 +355,20 @@ async function captureOne(
 ): Promise<boolean> {
   try {
     const normalized = normalize()
-    await captureMessage(db, connection.tenantId, normalized, connection.id, {
+    const message = await captureMessage(db, connection.tenantId, normalized, connection.id, {
       emitReceivedEvent,
     })
+    // Opt-out keywords apply in EVERY sync mode (not only when sms.received
+    // fires). Non-fatal: a failure here must never abort capture.
+    try {
+      await applyInboundKeyword(db, connection.tenantId, message)
+    } catch (keywordErr) {
+      logger.error('failed to apply inbound SMS keyword', {
+        connectionId: connection.id,
+        rawId: String(rawId),
+        error: keywordErr instanceof Error ? keywordErr.message : String(keywordErr),
+      })
+    }
     return true
   } catch (err) {
     if (err instanceof DomainError) {

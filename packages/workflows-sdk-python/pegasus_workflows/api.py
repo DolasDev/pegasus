@@ -884,36 +884,134 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
-    def send_sms(self, to: str, body: str) -> dict[str, Any]:
+    def send_sms(self, to: str, body: str, *, dedup_key: str | None = None) -> dict[str, Any]:
         """Send an outbound SMS via the tenant's configured provider.
 
         For use inside workflow activities only (never in workflow code —
         httpx is sandboxed there). Requires the workflow's manifest to declare
         ``required_actions = ["SendSms"]``.
 
+        **Opt-outs are enforced by the platform.** A number that has opted out
+        (it texted STOP or a similar keyword, the provider refused it as opted
+        out, or an opt-out was recorded) is refused with HTTP 409
+        ``SMS_OPTED_OUT`` — for every caller, not just this method. Check first
+        with :meth:`get_sms_opt_out` if you want to skip quietly.
+
+        **Pass ``dedup_key`` for any text you must not send twice.** Activities
+        are retried; without a key a retry texts the customer again. With one,
+        a repeat call returns the first send (``alreadySent: True``) instead.
+        The same key with a different ``to``/``body`` is refused (409
+        ``IDEMPOTENCY_KEY_REUSED``); a key whose first attempt is still in flight
+        returns 409 ``SMS_SEND_IN_PROGRESS`` (retry later), and one whose outcome
+        is unknown returns 409 ``SMS_SEND_IN_DOUBT`` (it is never resent
+        automatically — decide from your own records). A key whose previous
+        attempt failed is retried.
+
         Args:
             to: Destination phone number in E.164 form (e.g. ``"+16308868537"``).
-            body: Message text.
+            body: Message text (1–1000 characters).
+            dedup_key: Optional idempotency key, ``[A-Za-z0-9._:-]{1,200}``,
+                e.g. ``"pulse:490317:pack:ack"``.
 
         Returns:
-            The API's parsed JSON, e.g. ``{"data": {"id": ..., "status": ...}}``.
+            The API's parsed JSON, e.g. ``{"data": {"id": ..., "status": ...,
+            "alreadySent": False}}``. ``id`` is the provider's message id.
 
         Raises:
-            PegasusApiError: On 404 (no provider connected for the tenant),
-                403 (manifest lacks ``SendSms``), or any other non-2xx.
+            PegasusApiError: On 409 (codes above), 404 (no provider connected),
+                403 (manifest lacks ``SendSms``), 429 (rate limited) or any other
+                non-2xx.
         """
+        args: dict[str, Any] = {"to": to, "body": body}
+        payload: dict[str, Any] = {"to": to, "body": body}
+        if dedup_key is not None:
+            args["dedup_key"] = dedup_key
+            payload["dedupKey"] = dedup_key
         captured = self._capture_mutation(
             "SendSms",
             "send_sms",
-            {"to": to, "body": body},
+            args,
             {"data": {"id": "dry-run", "status": "captured", "dryRun": True}},
         )
         if captured is not _NOT_CAPTURED:
             return captured
         with self._client() as client:
-            response = client.post("/api/v1/sms/send", json={"to": to, "body": body})
+            response = client.post("/api/v1/sms/send", json=payload)
         _raise_for_status(response)
         return response.json()
+
+    def get_text_message(self, message_id: str) -> dict[str, Any] | None:
+        """Read one captured SMS by the ``messageId`` an ``sms.received`` event carries.
+
+        Requires ``ReadTextMessage``. Use it to re-read the authoritative message
+        instead of trusting the event payload.
+
+        Returns:
+            ``{id, source, externalId, threadId, direction, fromNumber, toNumber,
+            body, bodyPurged, createdAt, capturedAt}`` — ``externalId`` is the
+            provider (RingCentral) message id. The body is purged 72h after the
+            message is forwarded on-prem (``body`` ``None``, ``bodyPurged``
+            ``True``), so read it in the run the event triggers. ``None`` when
+            the id is unknown.
+
+        Raises:
+            PegasusApiError: On 400 (not a uuid), 403, or other non-2xx besides 404.
+        """
+        with self._client() as client:
+            response = client.get(f"/api/v1/sms/messages/{message_id}")
+        if response.status_code == 404:
+            return None
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def get_sms_opt_out(self, phone: str) -> dict[str, Any]:
+        """Opt-out state for one E.164 number. Requires ``ReadSmsOptOut``.
+
+        Opt-outs are recorded by the platform automatically: an inbound text
+        whose FIRST word is STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT,
+        REVOKE or OPTOUT opts the number out; START or UNSTOP opts it back in.
+        State is per tenant and ordered by when the customer texted.
+
+        Returns:
+            ``{phone, optedOut, source, keyword, updatedAt}``. ``source`` is
+            ``"KEYWORD"``, ``"PROVIDER"``, ``"MANUAL"`` or ``None`` (the number
+            has never opted out).
+        """
+        return self._get_json(f"/api/v1/sms/opt-outs/{phone}")["data"]
+
+    def record_sms_opt_out(
+        self, phone: str, *, opted_out: bool = True, source: str = "MANUAL"
+    ) -> dict[str, Any]:
+        """Record an opt-out (or, with ``opted_out=False``, an opt-in) for a number.
+
+        Requires ``ManageSmsOptOut``. Takes effect now, overriding any earlier
+        keyword; idempotent. You rarely need this — STOP/START keywords are
+        recorded automatically — but it lets a workflow honour an opt-out it
+        detected some other way.
+
+        Args:
+            phone: E.164 number.
+            opted_out: ``False`` to re-subscribe the number.
+            source: ``"MANUAL"`` (default) or ``"KEYWORD"``.
+
+        Returns:
+            The resulting ``{phone, optedOut, source, keyword, updatedAt}``.
+        """
+        captured = self._capture_mutation(
+            "ManageSmsOptOut",
+            "record_sms_opt_out",
+            {"phone": phone, "opted_out": opted_out, "source": source},
+            {"phone": phone, "optedOut": opted_out, "source": source, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post(
+                "/api/v1/sms/opt-outs",
+                json={"phone": phone, "optedOut": opted_out, "source": source},
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
 
     # -- feedback (magic-link surveys) ---------------------------------------
     #

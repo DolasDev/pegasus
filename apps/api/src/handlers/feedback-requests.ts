@@ -34,9 +34,7 @@ import {
   createFeedbackRequestRepository,
   type FeedbackRequestRow,
 } from '../repositories/feedback-request.repository'
-import { listConnectionsByTenant } from '../repositories/messaging.repository'
-import { readOAuthConfig } from '../services/ringcentral/oauth'
-import { sendSms } from '../services/ringcentral/sms'
+import { sendTenantSms } from '../services/sms/outbound'
 import { logger } from '../lib/logger'
 
 /** TTL bounds: at least an hour, at most 90 days. Default 72h. */
@@ -101,18 +99,20 @@ async function deliverSms(
   body: string,
 ): Promise<DeliveryResult> {
   try {
-    if (!readOAuthConfig()) {
-      return { channel: 'sms', status: 'failed', error: 'RingCentral integration is not enabled' }
+    const result = await sendTenantSms(db, tenantId, { to, body })
+    switch (result.kind) {
+      case 'sent':
+        return { channel: 'sms', status: 'sent', id: result.id }
+      case 'disabled':
+        return { channel: 'sms', status: 'failed', error: 'RingCentral integration is not enabled' }
+      case 'no_connection':
+        return { channel: 'sms', status: 'failed', error: 'RingCentral is not connected' }
+      case 'opted_out':
+        return { channel: 'sms', status: 'failed', error: 'The recipient has opted out of texts' }
+      default:
+        // No dedup key on this path, so the idempotency outcomes cannot occur.
+        return { channel: 'sms', status: 'failed', error: `unexpected send outcome ${result.kind}` }
     }
-    const connections = await listConnectionsByTenant(db, tenantId)
-    const connection = connections.find(
-      (conn) => conn.tokenStatus === 'ACTIVE' && conn.tokenSecretArn != null,
-    )
-    if (!connection) {
-      return { channel: 'sms', status: 'failed', error: 'RingCentral is not connected' }
-    }
-    const result = await sendSms(connection, to, body)
-    return { channel: 'sms', status: 'sent', id: result.id ?? null }
   } catch (err) {
     return {
       channel: 'sms',

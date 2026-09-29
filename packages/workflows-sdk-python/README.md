@@ -235,13 +235,53 @@ required_actions = ["SendSms"]
 or (404) if the tenant has no SMS provider connected. The `to` number must be E.164
 (e.g. `"+16308868537"`).
 
+**Never text a number twice by accident — pass `dedup_key`.** Activities are
+retried, and a retried `send_sms` without a key texts the customer again. With a
+key, a repeat call returns the first send (`{"data": {..., "alreadySent": true}}`)
+instead:
+
+```python
+client.send_sms(to=phone, body=ack_text, dedup_key=f"pulse:{order}:{phase}:ack")
+```
+
+| 409 `code`               | Meaning                                         | What to do                                                      |
+| ------------------------ | ----------------------------------------------- | --------------------------------------------------------------- |
+| `SMS_OPTED_OUT`          | The recipient opted out (see below)             | Don't retry; record it                                          |
+| `SMS_SEND_IN_PROGRESS`   | The same key's first attempt is still in flight | Retry later                                                     |
+| `SMS_SEND_IN_DOUBT`      | The same key started but its outcome is unknown | Decide from your own records — it is never resent automatically |
+| `IDEMPOTENCY_KEY_REUSED` | The key was used for a different `to` or `body` | Use a distinct key per message                                  |
+
+A key whose earlier attempt **failed** is simply retried.
+
+#### Opt-outs (STOP) are enforced for you
+
+When a customer's text **starts with** STOP, STOPALL, UNSUBSCRIBE, CANCEL, END,
+QUIT, REVOKE or OPTOUT, the platform records an opt-out for that number (per
+tenant); START or UNSTOP opts back in. From then on **every** `send_sms` to that
+number is refused with 409 `SMS_OPTED_OUT` — you don't have to check first, but
+you can, e.g. to skip quietly:
+
+```python
+if client.get_sms_opt_out(phone)["optedOut"]:   # needs ReadSmsOptOut
+    return "skipped: opted out"
+```
+
+Only the **first word** counts — "Can you cancel the storage?" is conversation,
+not an opt-out. A provider refusal (RingCentral `SMS-*-413`) is recorded the
+same way. `record_sms_opt_out(phone, opted_out=True|False)` (needs
+`ManageSmsOptOut`) records one you detected yourself; it takes effect now and
+overrides any earlier keyword.
+
 ### Receiving an SMS (`sms.received`)
 
 When a text arrives on the tenant's connected RingCentral number, the platform
 emits the built-in **`sms.received`** event — once per inbound message. Bind a
 Automation to it with an `EVENT` trigger to parse the reply and automate the next
 step (confirm a move date, flag a complaint, answer with `send_sms`). The payload
-carries the message text itself, so no follow-up read is needed:
+carries the message text itself; `client.get_text_message(payload["messageId"])`
+(needs `ReadTextMessage`) re-reads the authoritative row, including `bodyPurged`
+— bodies are purged 72h after the text is forwarded on-prem, so read it in the
+run the event starts:
 
 ```python
 {

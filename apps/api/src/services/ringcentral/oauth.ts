@@ -47,6 +47,8 @@ export class RingCentralOAuthError extends Error {
   constructor(
     message: string,
     public readonly status?: number,
+    /** RingCentral's own `errorCode` from the error body (e.g. `SMS-RC-413`), when present. */
+    public readonly errorCode?: string,
   ) {
     super(message)
     this.name = 'RingCentralOAuthError'

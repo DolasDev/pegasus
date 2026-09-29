@@ -290,6 +290,8 @@ model Tenant {
   integrationProjections  IntegrationProjection[]
   integrationCorrelations IntegrationCorrelation[]
   workflowStates          WorkflowState[]
+  smsOptOuts              SmsOptOut[]
+  smsSends                SmsSend[]
   outboundOAuthTokens     OutboundOAuthToken[]
   brokerCredential        TenantBrokerCredential?
   vpnPeer                 VpnPeer?
@@ -2717,6 +2719,77 @@ model InboundWebhookEvent {
   @@index([tenantId, status])
   @@index([receivedAt])
   @@map("inbound_webhook_events")
+  @@schema("public")
+}
+
+enum SmsOptOutSource {
+  /// The customer texted a carrier keyword (STOP / START …) that we captured.
+  KEYWORD
+  /// RingCentral refused a send because the recipient had opted out (SMS-*-413).
+  PROVIDER
+  /// Recorded through the API (a workflow or an operator).
+  MANUAL
+
+  @@schema("public")
+}
+
+/// Per-tenant SMS opt-out state for one number. Every outbound send through the
+/// platform checks it, so it is policy for all SMS callers, not just workflows.
+/// `effectiveAt` is the instant of the event that set the current state (the
+/// message's own RingCentral time for a keyword), and a write only applies when
+/// it is NEWER — so a backfill replaying an old STOP can never undo a later START.
+model SmsOptOut {
+  id          String          @id @default(uuid())
+  tenantId    String          @map("tenant_id")
+  phoneE164   String          @map("phone_e164")
+  optedOut    Boolean         @map("opted_out")
+  source      SmsOptOutSource
+  /// The keyword that set this state (KEYWORD source only), e.g. "STOP".
+  keyword     String?
+  /// Cloud `messages.id` of the inbound text that set it (KEYWORD source only).
+  messageId   String?         @map("message_id")
+  effectiveAt DateTime        @map("effective_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, phoneE164], map: "sms_opt_outs_phone_key")
+  @@map("sms_opt_outs")
+  @@schema("public")
+}
+
+enum SmsSendStatus {
+  /// Claimed; the provider call is in flight (or the process died mid-send).
+  PENDING
+  SENT
+  /// The provider call failed; a retry with the same dedup key may reclaim it.
+  FAILED
+
+  @@schema("public")
+}
+
+/// Idempotency record for an outbound SMS sent with a caller-supplied dedup key.
+/// The unique key is the claim: a retried send with the same key returns the
+/// first send instead of texting the customer twice.
+model SmsSend {
+  id                String        @id @default(uuid())
+  tenantId          String        @map("tenant_id")
+  dedupKey          String        @map("dedup_key")
+  toNumber          String        @map("to_number")
+  /// sha256 of the message body — a reused key with a different body is refused.
+  bodyHash          String        @map("body_hash")
+  status            SmsSendStatus
+  providerMessageId String?       @map("provider_message_id")
+  providerStatus    String?       @map("provider_status")
+  lastError         String?       @map("last_error")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, dedupKey], map: "sms_sends_dedup_key")
+  @@map("sms_sends")
   @@schema("public")
 }
 

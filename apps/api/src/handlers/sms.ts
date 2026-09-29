@@ -1,17 +1,23 @@
 // ---------------------------------------------------------------------------
-// /api/v1/sms — outbound SMS via RingCentral.
+// /api/v1/sms — outbound SMS, inbound message reads and opt-out state.
 //
-// POST /send fires an outbound SMS using the tenant's active RingCentral
-// connection. The caller (typically the Python SDK `send_sms` method) must
-// hold the `SendSms` Cedar action (granted to workflow_runtime).
+//   POST /send                    SendSms          { to, body, dedupKey? }
+//   GET  /messages/:id            ReadTextMessage  one captured message (cloud buffer)
+//   GET  /opt-outs/:phoneE164     ReadSmsOptOut    opt-out state for a number
+//   POST /opt-outs                ManageSmsOptOut  { phone, optedOut?, source? }
 //
-// Failure modes:
-//   400 VALIDATION_ERROR   — invalid E.164 `to` or body out of range
-//   403 Forbidden          — Cedar denies (no SendSms permission)
-//   404 NOT_FOUND          — tenant has no active RingCentral connection
-//   429                    — RingCentral rate limit hit
-//   502 UPSTREAM_ERROR     — permanent RingCentral OAuth/API error
-//   503                    — RingCentral integration disabled platform-wide
+// /send goes through services/sms/outbound.ts, so opt-out and dedup policy hold
+// for every platform text. Failure modes of /send:
+//   400 VALIDATION_ERROR       — invalid E.164 `to`, body out of range, bad key
+//   403 Forbidden              — Cedar denies (no SendSms permission)
+//   404 NOT_FOUND              — tenant has no active RingCentral connection
+//   409 SMS_OPTED_OUT          — the recipient opted out (keyword or provider)
+//   409 SMS_SEND_IN_PROGRESS   — same dedupKey is mid-send; retry later
+//   409 SMS_SEND_IN_DOUBT      — same dedupKey stuck PENDING; outcome unknown
+//   409 IDEMPOTENCY_KEY_REUSED — same dedupKey, different recipient or body
+//   429                        — RingCentral rate limit hit
+//   502 UPSTREAM_ERROR         — RingCentral OAuth/API error
+//   503                        — RingCentral integration disabled platform-wide
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -22,17 +28,34 @@ import { requirePermission } from '../middleware/rbac'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
-import { readOAuthConfig, RingCentralOAuthError } from '../services/ringcentral/oauth'
+import { RingCentralOAuthError } from '../services/ringcentral/oauth'
 import { RateLimitError } from '../services/ringcentral/client'
-import { sendSms } from '../services/ringcentral/sms'
-import { listConnectionsByTenant } from '../repositories/messaging.repository'
+import { sendTenantSms } from '../services/sms/outbound'
+import { createSmsOptOutRepository } from '../repositories/sms-opt-out.repository'
 
 const SendSmsBody = z.object({
   /** Destination phone number in E.164 format (e.g. +15005550006). */
   to: z.string().refine(isValidE164, 'must be a valid E.164 phone number'),
   /** Message text (1..1000 characters, trimmed). */
   body: z.string().trim().min(1).max(1000),
+  /**
+   * Optional idempotency key: a retry with the same key returns the first send
+   * (`alreadySent: true`) instead of texting the recipient again.
+   */
+  dedupKey: z
+    .string()
+    .regex(/^[A-Za-z0-9._:-]{1,200}$/, 'dedupKey must match [A-Za-z0-9._:-]{1,200}')
+    .optional(),
 })
+
+const RecordOptOutBody = z
+  .object({
+    phone: z.string().refine(isValidE164, 'must be a valid E.164 phone number'),
+    /** false records an opt-IN (the customer asked to resume texts). */
+    optedOut: z.boolean().default(true),
+    source: z.enum(['MANUAL', 'KEYWORD']).default('MANUAL'),
+  })
+  .strict()
 
 export const smsHandler = new Hono<AppEnv>()
 
@@ -63,44 +86,57 @@ smsHandler.post(
     return r.data
   }),
   async (c) => {
-    // Platform-wide integration gate — mirrors the connect endpoint's pattern.
-    const oauthConfig = readOAuthConfig()
-    if (!oauthConfig) {
-      return c.json(
-        { error: 'RingCentral integration is not enabled', code: 'SERVICE_UNAVAILABLE' },
-        503,
-      )
-    }
-
-    const db = c.get('db')
-    const tenantId = c.get('tenantId')
-    const { to, body } = c.req.valid('json')
-
-    // Resolve the tenant's active connection.
-    const connections = await listConnectionsByTenant(db, tenantId)
-    const connection = connections.find(
-      (conn) => conn.tokenStatus === 'ACTIVE' && conn.tokenSecretArn != null,
-    )
-    if (!connection) {
-      return c.json(
-        { error: 'RingCentral is not connected for this account', code: 'NOT_FOUND' },
-        404,
-      )
-    }
-
-    // Send — propagate RateLimitError and permanent RingCentralOAuthError;
-    // let unexpected errors bubble to the app error handler.
+    const { to, body, dedupKey } = c.req.valid('json')
     try {
-      const result = await sendSms(connection, to, body)
-      return c.json(
-        {
-          data: {
-            id: result.id,
-            status: result.messageStatus,
-          },
-        },
-        202,
-      )
+      const result = await sendTenantSms(c.get('db'), c.get('tenantId'), {
+        to,
+        body,
+        ...(dedupKey !== undefined ? { dedupKey } : {}),
+      })
+      switch (result.kind) {
+        case 'sent':
+          return c.json(
+            { data: { id: result.id, status: result.status, alreadySent: result.alreadySent } },
+            result.alreadySent ? 200 : 202,
+          )
+        case 'disabled':
+          return c.json(
+            { error: 'RingCentral integration is not enabled', code: 'SERVICE_UNAVAILABLE' },
+            503,
+          )
+        case 'no_connection':
+          return c.json(
+            { error: 'RingCentral is not connected for this account', code: 'NOT_FOUND' },
+            404,
+          )
+        case 'opted_out':
+          return c.json(
+            { error: 'The recipient has opted out of texts', code: 'SMS_OPTED_OUT' },
+            409,
+          )
+        case 'in_progress':
+          return c.json(
+            { error: 'A send with this dedupKey is in progress', code: 'SMS_SEND_IN_PROGRESS' },
+            409,
+          )
+        case 'in_doubt':
+          return c.json(
+            {
+              error:
+                'A send with this dedupKey started but its outcome is unknown; it will not be resent automatically',
+              code: 'SMS_SEND_IN_DOUBT',
+            },
+            409,
+          )
+        case 'key_reused':
+          return c.json(
+            {
+              error: 'dedupKey was already used for a different recipient or body',
+              code: 'IDEMPOTENCY_KEY_REUSED',
+            },
+            409,
+          )
+      }
     } catch (err) {
       if (err instanceof RateLimitError) {
         // Forward the Retry-After value as a standard HTTP header so clients
@@ -110,15 +146,94 @@ smsHandler.post(
           'Retry-After': String(retryAfterSec),
         })
       }
-      if (err instanceof RingCentralOAuthError && err.isPermanent) {
-        return c.json({ error: err.message, code: 'UPSTREAM_ERROR' }, 502)
-      }
       if (err instanceof RingCentralOAuthError) {
-        // Transient RC error (5xx / network). Surface as 502 so callers know
-        // the problem is upstream and the request may succeed on retry.
+        // Permanent or transient, the problem is upstream: 502 either way.
         return c.json({ error: err.message, code: 'UPSTREAM_ERROR' }, 502)
       }
       throw err
     }
+  },
+)
+
+// ---------------------------------------------------------------------------
+// GET /messages/:id — one captured message from the cloud buffer, by the
+// `messageId` an `sms.received` event carries. The body is purged 72h after the
+// message is forwarded on-prem (`bodyPurged: true`); read it promptly. Read
+// state and order/coordinator links live on-prem, not here.
+// ---------------------------------------------------------------------------
+smsHandler.get('/messages/:id', requirePermission(Actions.ReadTextMessage), async (c) => {
+  const id = c.req.param('id') ?? ''
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    return c.json({ error: 'id must be a message uuid', code: 'VALIDATION_ERROR' }, 400)
+  }
+  const row = await c.get('db').message.findFirst({ where: { id } })
+  if (!row) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404)
+  return c.json({
+    data: {
+      id: row.id,
+      source: row.source,
+      externalId: row.externalId,
+      threadId: row.threadId,
+      direction: row.direction,
+      fromNumber: row.fromNumber,
+      toNumber: row.toNumber,
+      body: row.body,
+      bodyPurged: row.bodyPurgedAt != null,
+      createdAt: row.rcCreationTime.toISOString(),
+      capturedAt: row.capturedAt.toISOString(),
+    },
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /opt-outs/:phoneE164 — opt-out state for one number. A number with no
+// record has never opted out: { optedOut: false, source: null }.
+// ---------------------------------------------------------------------------
+smsHandler.get('/opt-outs/:phone', requirePermission(Actions.ReadSmsOptOut), async (c) => {
+  const phone = c.req.param('phone') ?? ''
+  if (!isValidE164(phone)) {
+    return c.json({ error: 'phone must be a valid E.164 number', code: 'VALIDATION_ERROR' }, 400)
+  }
+  const row = await createSmsOptOutRepository(c.get('db')).find(c.get('tenantId'), phone)
+  return c.json({
+    data: row
+      ? {
+          phone: row.phoneE164,
+          optedOut: row.optedOut,
+          source: row.source,
+          keyword: row.keyword,
+          updatedAt: row.effectiveAt.toISOString(),
+        }
+      : { phone, optedOut: false, source: null, keyword: null, updatedAt: null },
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /opt-outs — record an opt-out (or, with optedOut:false, an opt-in) for a
+// number. Takes effect now, so it overrides any earlier keyword. Idempotent.
+// ---------------------------------------------------------------------------
+smsHandler.post(
+  '/opt-outs',
+  requirePermission(Actions.ManageSmsOptOut),
+  validator('json', (value, c) => {
+    const r = RecordOptOutBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const { phone, optedOut, source } = c.req.valid('json')
+    const repo = createSmsOptOutRepository(c.get('db'))
+    await repo.record({ tenantId, phoneE164: phone, optedOut, source, effectiveAt: new Date() })
+    const row = await repo.find(tenantId, phone)
+    return c.json({
+      data: {
+        phone,
+        optedOut: row?.optedOut ?? optedOut,
+        source: row?.source ?? source,
+        keyword: row?.keyword ?? null,
+        updatedAt: (row?.effectiveAt ?? new Date()).toISOString(),
+      },
+    })
   },
 )

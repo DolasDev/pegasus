@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   saveSyncCursor: vi.fn(),
   captureMessage: vi.fn(),
   saveBackfillProgress: vi.fn(),
+  applyInboundKeyword: vi.fn(),
 }))
 
 vi.mock('../client', async (importActual) => {
@@ -19,6 +20,8 @@ vi.mock('../../../repositories/messaging.repository', () => ({
   captureMessage: h.captureMessage,
   saveBackfillProgress: h.saveBackfillProgress,
 }))
+
+vi.mock('../../sms/opt-out-keywords', () => ({ applyInboundKeyword: h.applyInboundKeyword }))
 
 import { syncConnection } from '../sync'
 import { RingCentralOAuthError } from '../oauth'
@@ -50,6 +53,7 @@ beforeEach(() => {
   h.captureMessage.mockResolvedValue({})
   h.saveSyncCursor.mockResolvedValue({})
   h.saveBackfillProgress.mockResolvedValue({})
+  h.applyInboundKeyword.mockResolvedValue(null)
 })
 
 const v1Sms = (id: number) => ({
@@ -418,5 +422,42 @@ describe('syncConnection — thread store', () => {
     expect(flagFor('200')).toEqual({ emitReceivedEvent: true })
     // Still captured (and forwarded), but a missing direction never fires a workflow.
     expect(flagFor('201')).toEqual({ emitReceivedEvent: false })
+  })
+})
+
+describe('syncConnection — opt-out keywords', () => {
+  const captured = { id: 'm-1', direction: 'INBOUND', body: 'STOP', fromNumber: '+12015550123' }
+
+  it('applies keywords on a full sync too, where sms.received is NOT emitted', async () => {
+    h.captureMessage.mockResolvedValue(captured)
+    getMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === V1_PATH
+          ? { records: [v1Sms(7)], syncInfo: { syncToken: 'v1-tok' } }
+          : { records: [], syncInfo: { syncToken: 't' } },
+      ),
+    )
+
+    await syncConnection(db, connection)
+
+    expect(h.captureMessage).toHaveBeenCalledWith(db, 'tnt-1', expect.anything(), 'conn-1', {
+      emitReceivedEvent: false,
+    })
+    expect(h.applyInboundKeyword).toHaveBeenCalledWith(db, 'tnt-1', captured)
+  })
+
+  it('a keyword failure never aborts capture', async () => {
+    h.captureMessage.mockResolvedValue(captured)
+    h.applyInboundKeyword.mockRejectedValue(new Error('db down'))
+    getMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === V1_PATH
+          ? { records: [v1Sms(8)], syncInfo: { syncToken: 'v1-tok' } }
+          : { records: [], syncInfo: { syncToken: 't' } },
+      ),
+    )
+
+    const { captured: count } = await syncConnection(db, connection)
+    expect(count).toBe(1)
   })
 })

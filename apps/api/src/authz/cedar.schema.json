@@ -336,6 +336,15 @@
       "SendSms": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },
+      "ReadTextMessage": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
+      },
+      "ReadSmsOptOut": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
+      },
+      "ManageSmsOptOut": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
+      },
       "ReadIntegrationConfig": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationConfig"] }
       },

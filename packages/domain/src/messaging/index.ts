@@ -97,6 +97,52 @@ export function toPhoneNumber(raw: string): PhoneNumber {
   return raw as PhoneNumber
 }
 
+// ---------------------------------------------------------------------------
+// Opt-out / opt-in keywords
+// ---------------------------------------------------------------------------
+
+/**
+ * Carrier-standard opt-out keywords (CTIA): the scope's STOP, STOPALL,
+ * UNSUBSCRIBE, CANCEL, END and QUIT, plus REVOKE and OPTOUT. Erring toward
+ * opt-out is deliberate: texting someone who asked us to stop is the worse error.
+ */
+export const SMS_OPT_OUT_KEYWORDS: readonly string[] = [
+  'STOP',
+  'STOPALL',
+  'UNSUBSCRIBE',
+  'CANCEL',
+  'END',
+  'QUIT',
+  'REVOKE',
+  'OPTOUT',
+] as const
+
+/**
+ * Re-subscribe keywords. YES is deliberately absent: an affirmative reply to an
+ * ordinary question must never re-enable texting for someone who opted out.
+ */
+export const SMS_OPT_IN_KEYWORDS: readonly string[] = ['START', 'UNSTOP'] as const
+
+export type SmsKeyword = 'OPT_OUT' | 'OPT_IN'
+
+/**
+ * Classifies an inbound SMS body as an opt-out, an opt-in, or neither.
+ *
+ * Only the FIRST whitespace-delimited token counts, uppercased and stripped of
+ * surrounding punctuation — the way carriers match. A prefix match would read
+ * "Ended up great, 5!" as END, and a whole-body scan would read "Can you
+ * cancel the storage?" as CANCEL.
+ */
+export function classifySmsKeyword(body: string | null | undefined): SmsKeyword | null {
+  // Everything from the first whitespace on is dropped, leaving the first token.
+  const first = (body ?? '').trim().replace(/\s[\s\S]*$/, '')
+  const token = first.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, '').toUpperCase()
+  if (!token) return null
+  if (SMS_OPT_OUT_KEYWORDS.includes(token)) return 'OPT_OUT'
+  if (SMS_OPT_IN_KEYWORDS.includes(token)) return 'OPT_IN'
+  return null
+}
+
 /**
  * The text content of an SMS. SMS-only — no attachments in v1.
  *

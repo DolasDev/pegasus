@@ -99,6 +99,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // client (cross-tenant cron context) and are unaffected by this set.
   'RingCentralConnection',
   'Message',
+  // SmsOptOut / SmsSend — per-tenant SMS policy and send idempotency. Purely
+  // tenant-owned; the repositories also name tenantId in every where clause
+  // because the RingCentral sync path runs on the root client.
+  'SmsOptOut',
+  'SmsSend',
   // Push notifications — DeviceToken rows are read/written by the tenant-scoped
   // device-token handler; PushNotificationOutbox rows are enqueued by handlers
   // and domain-event emitters via the scoped client inside transactions. The

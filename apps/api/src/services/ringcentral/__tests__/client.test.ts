@@ -143,3 +143,13 @@ describe('makeClient', () => {
     await expect(client.get('/y')).rejects.toBeInstanceOf(RingCentralOAuthError)
   })
 })
+
+describe('rcErrorCode', () => {
+  it('reads a top-level or first nested errorCode, and tolerates non-JSON', async () => {
+    const { rcErrorCode } = await import('../client')
+    expect(rcErrorCode('{"errorCode":"SMS-RC-413","message":"opted out"}')).toBe('SMS-RC-413')
+    expect(rcErrorCode('{"errors":[{"errorCode":"SMS-CAR-413"}]}')).toBe('SMS-CAR-413')
+    expect(rcErrorCode('<html>bad gateway</html>')).toBeUndefined()
+    expect(rcErrorCode('{"message":"no code"}')).toBeUndefined()
+  })
+})

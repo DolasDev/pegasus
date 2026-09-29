@@ -267,6 +267,121 @@ export function getOpenApiSpec() {
     ],
     paths: {
       ...OPERATIONAL_READ_PATHS,
+      '/api/v1/sms/send': {
+        post: {
+          operationId: 'sendSms',
+          summary: 'Send an SMS through the tenant’s RingCentral connection (SendSms)',
+          description:
+            'Body { to (E.164), body (1–1000 chars), dedupKey? }. Every send is refused with 409 SMS_OPTED_OUT when the recipient has opted out (a STOP keyword we captured, a provider opt-out rejection, or a recorded opt-out). With dedupKey, a retry returns the first send (200, alreadySent:true) instead of texting again; 409 SMS_SEND_IN_PROGRESS = the same key is mid-send, 409 SMS_SEND_IN_DOUBT = it started but its outcome is unknown and it will not be resent automatically, 409 IDEMPOTENCY_KEY_REUSED = the key was used for a different recipient or body.',
+          tags: ['SMS'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['to', 'body'],
+                  properties: {
+                    to: { type: 'string', pattern: '^\\+[1-9]\\d{6,14}$' },
+                    body: { type: 'string', minLength: 1, maxLength: 1000 },
+                    dedupKey: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,200}$' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: '{data: {id, status, alreadySent: true}} — replay of an earlier send',
+            },
+            '202': {
+              description: '{data: {id, status, alreadySent: false}} — accepted by RingCentral',
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '404': { description: 'NOT_FOUND — no active RingCentral connection' },
+            '409': {
+              description:
+                'SMS_OPTED_OUT | SMS_SEND_IN_PROGRESS | SMS_SEND_IN_DOUBT | IDEMPOTENCY_KEY_REUSED',
+            },
+            '429': { description: 'RingCentral rate limit; honour Retry-After' },
+            '502': { description: 'UPSTREAM_ERROR — RingCentral error' },
+            '503': { description: 'SERVICE_UNAVAILABLE — RingCentral disabled platform-wide' },
+          },
+        },
+      },
+      '/api/v1/sms/messages/{id}': {
+        get: {
+          operationId: 'getTextMessage',
+          summary:
+            'Read one captured SMS by the messageId an sms.received event carries (ReadTextMessage)',
+          description:
+            'Returns {data: {id, source, externalId, threadId, direction, fromNumber, toNumber, body, bodyPurged, createdAt, capturedAt}}. externalId is the RingCentral message id. The body is purged 72h after the message is forwarded on-prem (body null, bodyPurged true), so read it promptly. Read state and order/coordinator links are not held in the cloud.',
+          tags: ['SMS'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          responses: {
+            '200': { description: 'The message' },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/sms/opt-outs/{phone}': {
+        get: {
+          operationId: 'getSmsOptOut',
+          summary: 'Opt-out state for one number (ReadSmsOptOut)',
+          description:
+            'Returns {data: {phone, optedOut, source (KEYWORD | PROVIDER | MANUAL | null), keyword, updatedAt}}. A number with no record has never opted out. STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT, REVOKE and OPTOUT as the first word of an inbound text opt out; START or UNSTOP opt back in. Opt-outs are per tenant.',
+          tags: ['SMS'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            {
+              name: 'phone',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^\\+[1-9]\\d{6,14}$' },
+            },
+          ],
+          responses: {
+            '200': { description: 'The opt-out state' },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
+      '/api/v1/sms/opt-outs': {
+        post: {
+          operationId: 'recordSmsOptOut',
+          summary: 'Record an opt-out, or an opt-in with optedOut:false (ManageSmsOptOut)',
+          description:
+            'Body { phone (E.164), optedOut? (default true), source? (MANUAL | KEYWORD, default MANUAL) }. Takes effect now and overrides any earlier keyword. Idempotent.',
+          tags: ['SMS'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['phone'],
+                  additionalProperties: false,
+                  properties: {
+                    phone: { type: 'string', pattern: '^\\+[1-9]\\d{6,14}$' },
+                    optedOut: { type: 'boolean', default: true },
+                    source: { type: 'string', enum: ['MANUAL', 'KEYWORD'], default: 'MANUAL' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'The resulting opt-out state' },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
       '/api/v1/workflow-state/{namespace}': {
         get: {
           operationId: 'listWorkflowState',

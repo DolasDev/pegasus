@@ -10,8 +10,8 @@
 ## Execution status (resume here)
 
 - [ ] **Phase 0** — Spikes (no code): S1–S7
-- [~] **Phase 1** — [pegasus] Workflow state store (atomic insert + compare-and-set) → SDK 0.39.0 — built on `feat/workflow-state-store` (PR pending); then tag + publish 0.39.0 and update `pegasus-workflows/CLAUDE.md`
-- [ ] **Phase 2** — [pegasus] Inbound text read, opt-out, `send_sms` idempotency, mark-read at RingCentral → SDK 0.40.0
+- [x] **Phase 1** — [pegasus] Workflow state store → SDK 0.39.0 — MERGED #743 (`807057e0`), PUBLISHED to PyPI 2026-09-29; authoring `CLAUDE.md` updated
+- [~] **Phase 2** — [pegasus] 2a–2c (message read, opt-out, `send_sms` dedup) built on `feat/sms-optout-read-dedup` → SDK 0.40.0; **2d (mark-read at RingCentral) pending S2**
 - [ ] **Phase 3** — [pegasus] `send_email` (SES) → SDK 0.41.0
 - [ ] **Phase 4** — [movemanager] pegII API foundations: write auth, envelope/error contract, idempotency + task-meta tables, version endpoint
 - [ ] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.42.0
@@ -212,6 +212,8 @@ The namespace is tenant-wide rather than per workflow, because the three pulse w
 - Resolves `externalId`, then PUTs `readStatus=Read` to RingCentral's message-store through the tenant's connection. Add `updateMessageReadStatus` to `services/ringcentral/`. This mirrors what the desktop does (`ChatHistoryService.cs:426-456`), so RingCentral stays the source of truth and the desktop's reconciliation `Upsert` carries it into `TextMessageStore`.
 - Returns `{id, readStatus, alreadyRead}`. Phase 7 adds a best-effort immediate pegII mirror update.
 - **Gated on S2** (same extension).
+  - **Correction (Phase 0):** the desktop's `ringcentral_tokens` table has no non-secret extension column, so "same extension" is checked by comparing the cloud `ringcentral_connections.owner_number` with PegNW's `settings.ringcentral_fromPhoneNumber`.
+  - A match is strong evidence, not proof. The Phase 8 test move (mark read, then watch the desktop badge) is the final check.
 
 **Files:** `schema.prisma` + migration · `repositories/messaging.repository.ts` (opt-out hook) · `services/ringcentral/message-store.ts` (new, read-status PUT) · `repositories/sms-opt-out.repository.ts`, `repositories/sms-send.repository.ts` (new) · `handlers/sms.ts` · `services/ringcentral/sms.ts` (error mapping) · `packages/domain/src/messaging` (keyword + E.164) · authz trio · `openapi-spec.ts` · SDK checklist · **`pegasus-workflows/CLAUDE.md`: add `sms.received` (overdue) + all of the above**.
 

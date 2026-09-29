@@ -115,9 +115,27 @@ async function handle<T>(res: Response): Promise<T> {
     throw new RingCentralOAuthError(
       `RingCentral API ${res.status}: ${text.slice(0, 200)}`,
       res.status,
+      rcErrorCode(text),
     )
   }
   return (await res.json()) as T
+}
+
+/**
+ * RingCentral's machine-readable `errorCode` from an error body — top-level or
+ * the first entry of `errors[]`. Undefined when the body is not RC-shaped JSON.
+ */
+export function rcErrorCode(text: string): string | undefined {
+  try {
+    const body = JSON.parse(text) as {
+      errorCode?: unknown
+      errors?: Array<{ errorCode?: unknown }>
+    }
+    const code = body.errorCode ?? body.errors?.[0]?.errorCode
+    return typeof code === 'string' ? code : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** Builds a client bound to a base URL + access token. */

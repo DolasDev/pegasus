@@ -3,6 +3,32 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.40.0
+
+### Added — SMS opt-outs, send idempotency, inbound message read
+
+- **Opt-outs are enforced platform-wide.** An inbound text whose first word is
+  STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT, REVOKE or OPTOUT records an
+  opt-out for that number (per tenant); START / UNSTOP opts back in. Every send
+  to an opted-out number is refused with HTTP 409 `SMS_OPTED_OUT`, as is a
+  send RingCentral rejects as opted out (`SMS-*-413`, then recorded).
+  New: `get_sms_opt_out(phone)` (`ReadSmsOptOut`) and
+  `record_sms_opt_out(phone, opted_out=, source=)` (`ManageSmsOptOut`).
+- `send_sms(..., dedup_key=)` — a retried send with the same key returns the
+  first send (`alreadySent: true`) instead of texting again. New 409 codes:
+  `SMS_SEND_IN_PROGRESS`, `SMS_SEND_IN_DOUBT`, `IDEMPOTENCY_KEY_REUSED`. Calls
+  without a key behave exactly as before (the response gains `alreadySent`).
+- `get_text_message(message_id)` (`ReadTextMessage`) — re-read the message an
+  `sms.received` event points at; `None` if unknown; `bodyPurged` after 72h.
+- API: `POST /api/v1/sms/send` (now in `/openapi.json`), `GET
+/api/v1/sms/messages/{id}`, `GET /api/v1/sms/opt-outs/{phone}`, `POST
+/api/v1/sms/opt-outs`.
+
+### Changed
+
+- Sends to an opted-out number now fail with 409 where they previously went to
+  the provider. This applies to feedback-request SMS too.
+
 ## 0.39.0
 
 ### Added — workflow state with atomic claims and compare-and-set
