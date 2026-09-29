@@ -8,7 +8,7 @@ function stubClient(
   getHealth: PegiiApiClient['getHealth'] = vi.fn(),
 ): PegiiApiClient {
   // findSalesmanById only uses get(); checkReachable() only uses getHealth().
-  return { get, getHealth }
+  return { get, getHealth, post: vi.fn(), put: vi.fn() }
 }
 
 describe('createPegiiSalesmanGateway.findSalesmanById', () => {

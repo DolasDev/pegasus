@@ -5,7 +5,7 @@ import type { PegiiReportDto } from '../pegii/pegii-report.dto'
 
 function stubClient(get: PegiiApiClient['get']): PegiiApiClient {
   // fetchReport only uses get(); getHealth is never reached on this gateway.
-  return { get, getHealth: vi.fn() }
+  return { get, getHealth: vi.fn(), post: vi.fn(), put: vi.fn() }
 }
 
 const PDF_B64 = Buffer.from('%PDF-1.4').toString('base64')

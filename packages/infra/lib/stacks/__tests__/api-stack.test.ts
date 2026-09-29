@@ -161,6 +161,28 @@ describe('ApiStack — IAM permissions', () => {
     })
   })
 
+  // pegII service-user credentials: read-only, and only under the env's own
+  // pegasus/<env>/pegii/ prefix — never a wildcard over every secret.
+  it('grants read-only sm:GetSecretValue on the pegII credential prefix', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'secretsmanager:GetSecretValue',
+            Effect: 'Allow',
+            Resource: {
+              'Fn::Join': [
+                '',
+                Match.arrayWith([Match.stringLikeRegexp(':secret:pegasus/[a-z]+/pegii/\\*$')]),
+              ],
+            },
+          }),
+        ]),
+      },
+    })
+  })
+
   // Regression: the AWS-RunShellScript document is AWS-managed and its ARN
   // has an empty account portion. Templating in `this.account` here makes the
   // policy resource never match, and SendCommand fails closed at runtime.
