@@ -2167,3 +2167,16 @@ reproduced locally — it needs its own PR and several real CI runs to confirm.
 **Note the CI `Test` job runs `turbo run test` with no `--affected` and no filter**, so the mobile
 suite runs on every code PR and in every merge-queue group. This flake is reachable from a change
 that touches nothing in `apps/mobile` — a dependency-only PR hit it.
+
+## `delete arr[i]` inside an RTK reducer writes `undefined`, it does not leave a hole
+
+Immer's array `deleteProperty` trap is `set(prop, undefined)`. So `delete draft.list[i]` produces
+an explicit `undefined` element, which `.map` visits (it only skips real holes). The driver-planning
+`addActivity` reducer did this to `extraActivities`, so reopening the "+" menu after adding one
+activity threw `Cannot read properties of undefined (reading 'activityType')` and dropped the whole
+planning page into the root ErrorBoundary. Latent since the April port; surfaced once
+`reportClientError` (2026-09-17) made client crashes visible (NWI trip 16992, 2026-09-29).
+Use `splice`. The old reducer test _asserted_ the `undefined` slot, so it guarded the bug.
+
+**Finding client crashes:** the ErrorBoundary POSTs to `/api/v1/client-errors`; search the prod
+`pegasus-prod-api-ApiLogGroup*` for `"client.error"`. Each event includes the message, stack and page URL.

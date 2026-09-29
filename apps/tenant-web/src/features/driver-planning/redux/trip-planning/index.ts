@@ -99,9 +99,12 @@ const tripPlanningSlice = createSlice({
       state.trip.shipments[action.payload.shipmentIndex].activities.sort((a: any, b: any) =>
         a['activityType']['sequencePriority'] > b['activityType']['sequencePriority'] ? 1 : -1,
       )
-      delete state.trip.shipments[action.payload.shipmentIndex].extraActivities[
-        action.payload.activityIdx
-      ]
+      // splice, not `delete`: Immer turns a delete on a draft array into
+      // `arr[i] = undefined`, and the AddActivity menu crashes mapping over it.
+      state.trip.shipments[action.payload.shipmentIndex].extraActivities.splice(
+        action.payload.activityIdx,
+        1,
+      )
     },
     swapOrder(state, action: PayloadAction<{ from: number; up: boolean }>) {
       const { from, up } = action.payload
