@@ -142,6 +142,13 @@
           "attributes": {}
         }
       },
+      "WorkflowState": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "EventType": {
         "memberOfTypes": [],
         "shape": {
@@ -382,6 +389,12 @@
       },
       "WriteIntegrationProjection": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationProjection"] }
+      },
+      "ReadWorkflowState": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["WorkflowState"] }
+      },
+      "WriteWorkflowState": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["WorkflowState"] }
       },
       "ManageFeedbackForms": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Feedback"] }

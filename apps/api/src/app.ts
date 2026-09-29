@@ -94,6 +94,7 @@ import {
   integrationProjectionsHandler,
   integrationProjectionReadHandler,
 } from './handlers/integration-projections'
+import { workflowStateHandler } from './handlers/workflow-state'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { ingressHandler, ingressManagementHandler } from './handlers/ingress'
@@ -311,6 +312,10 @@ m2mV1.route('/workflow-secrets-configs', workflowSecretsConfigsHandler)
 // reads back as `prior`. Runtime-only surface; dual-auth applied inside the
 // handler. See handlers/integration-projections.ts.
 m2mV1.route('/integration-projections', integrationProjectionsHandler)
+// Tenant-wide workflow state — ledgers, atomic claims and compare-and-set
+// reclaims that running workflows keep for themselves via the `vnd_` runtime key.
+// Dual-auth applied inside the handler. See handlers/workflow-state.ts.
+m2mV1.route('/workflow-state', workflowStateHandler)
 // Read-model surface for the entities workflows land in projections
 // (sdk-feedback/0026): GET /integrations/:id/projections/:entityType[/:key] with
 // filter + paging, for the tenant web app / API keys. Dual-auth + RBAC

@@ -294,3 +294,22 @@ snapshot in the tenant.
 ## Emitting a domain event from an idempotent ingest path
 
 When the write that should fire a workflow is an idempotent **re-capture** (webhook + safety-net sync converging, e.g. `captureMessage` → `sms.received`), emit only on the call that actually **created** the row, and decide that inside the same transaction with `createMany({ skipDuplicates: true })` on a 1:1 child row. That's `ON CONFLICT DO NOTHING`, so a concurrent twin blocks on the row lock and gets `count: 0`. Don't use `upsert` (it doesn't report create vs update), and don't `create` + catch `P2002`, because a unique violation aborts the whole interactive Postgres transaction. Also gate on the **pull mode**: a full re-read (FSync/backfill) creates "new" rows for old history and must not emit. Finally, `domain_events` is never purged and has **no tenant cascade**: a snapshot payload carrying PII needs its own purge step, and tests that emit must delete their events before deleting the tenant.
+
+## Conditional writes on Postgres — claims and compare-and-set
+
+When overlapping runs must agree on who acts (ledgers, "send once", per-day
+reservations), don't reach for a transaction or a read-then-write. Use the two
+primitives in `repositories/workflow-state.repository.ts`:
+
+- **Claim = a plain `create` against a unique index.** P2002 means you lost;
+  re-read and return the winner's row. Never do this inside an interactive
+  `$transaction`: a P2002 aborts the whole PG transaction (same lesson as the
+  `sms.received` outbox insert).
+- **Compare-and-set = `updateMany` filtered on the expected `version`**, with
+  `version: { increment: 1 }` in `data`. `count === 0` is the conflict; re-read
+  to report what's there now (possibly nothing).
+
+Both stay correct under the tenant Prisma extension, which scopes `updateMany`
+and `deleteMany` but not `create` (so pass `tenantId` explicitly there). Prove
+them with a real-DB test that fires N concurrent calls and asserts exactly one
+winner. A mocked client cannot exercise the unique index or the version filter.

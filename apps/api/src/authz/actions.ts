@@ -37,6 +37,7 @@ export type ResourceType =
   | 'Notification'
   | 'IntegrationConfig'
   | 'IntegrationProjection'
+  | 'WorkflowState'
   | 'EventType'
   | 'Blob'
   | 'Document'
@@ -333,6 +334,20 @@ export const Actions = {
     id: 'WriteIntegrationProjection',
     resourceType: 'IntegrationProjection',
     permission: 'integration_projection:write',
+  },
+  // ── Workflow state (tenant-wide key/value store for running workflows) ─────
+  // Ledgers, idempotency claims and reservations a workflow keeps for itself.
+  // Write* covers the conditional writes (insert-if-absent, compare-and-set) as
+  // well as plain puts and deletes. Both granted to workflow_runtime.
+  ReadWorkflowState: {
+    id: 'ReadWorkflowState',
+    resourceType: 'WorkflowState',
+    permission: 'workflow_state:read',
+  },
+  WriteWorkflowState: {
+    id: 'WriteWorkflowState',
+    resourceType: 'WorkflowState',
+    permission: 'workflow_state:write',
   },
   // ── Workflow blobs (opaque byte storage for document transfer) ────────────
   // A workflow stages/lands binary files (e.g. an ADE shipment document) in a

@@ -92,6 +92,8 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     # Keyed on the LOCAL entity id — the whole point of the call is that you do
     # not know the partner's key.
     "get_correlated_state": lambda a, k: a[3] if len(a) > 3 else k.get("local_entity_id"),
+    # Keyed on the KEY within the namespace (namespaces rarely vary in a test).
+    "get_workflow_state": lambda a, k: a[1] if len(a) > 1 else k.get("key"),
     "get_blob": lambda a, k: _first(a, k, "blob_id"),
     "get_blob_url": lambda a, k: _first(a, k, "blob_id"),
     "get_feedback_form": lambda a, k: _first(a, k, "form_key"),
@@ -106,6 +108,7 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_tasks": None,
     "list_salesmen": None,
     "list_projections": None,
+    "list_workflow_state": None,
     "list_secrets": None,
     "list_configs": None,
     "validate_integration_config": None,
@@ -127,7 +130,9 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
 #: record, or an entity with no correlation. For these the fake client mirrors
 #: that instead of demanding a fixture, so an author can exercise the miss path
 #: without staging one.
-_NONE_ON_MISS: frozenset[str] = frozenset({"get_projection", "get_correlated_state"})
+_NONE_ON_MISS: frozenset[str] = frozenset(
+    {"get_projection", "get_correlated_state", "get_workflow_state"}
+)
 
 #: mutation method -> the Cedar action (``capability``) it is gated by.
 _MUTATIONS: dict[str, str] = {
@@ -136,6 +141,8 @@ _MUTATIONS: dict[str, str] = {
     "close_task": "CloseTask",
     "put_projection": "WriteIntegrationProjection",
     "delete_projection": "WriteIntegrationProjection",
+    "put_workflow_state": "WriteWorkflowState",
+    "delete_workflow_state": "WriteWorkflowState",
     "publish_integration_config": "PublishIntegrationConfig",
     "rollback_integration_config": "PublishIntegrationConfig",
     "fork_integration_config": "PublishIntegrationConfig",

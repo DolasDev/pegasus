@@ -782,6 +782,66 @@ binding). **Check it if you depend on reading back by local id** — the write c
 succeed while the binding did not. Supplying only one of the two arguments raises
 `ValueError` before any request is made.
 
+### Workflow state (ledgers, claims, reservations)
+
+An Automation often needs durable state of its **own** — a send ledger, a "have
+I already done this?" record, a one-per-day reservation — shared by overlapping
+runs and by cooperating Automations (a scheduled sender and an event-driven reply
+handler reading one ledger). Projections don't fit: they're tied to a partner
+integration and every write is last-write-wins, so two overlapping runs can't use
+them to decide which one acts.
+
+The workflow-state store is a tenant-wide key/value store with **conditional
+writes**:
+
+```toml
+required_actions = ["ReadWorkflowState", "WriteWorkflowState"]
+```
+
+```python
+from pegasus_workflows import PegasusClient, WorkflowStateConflict
+
+@activity.defn
+async def send_pack_pulse(order_no: str, phone: str) -> str:
+    client = PegasusClient.from_runtime()
+    key = f"pulse:{order_no}:pack"
+
+    # 1. Atomic claim — exactly one overlapping run gets past this line.
+    try:
+        row = client.put_workflow_state("nw_pulse", key, {"status": "pending"}, if_absent=True)
+    except WorkflowStateConflict as lost:
+        return f"already handled ({lost.current['state']['status']})"
+
+    sms = client.send_sms(to=phone, body="...")
+
+    # 2. Compare-and-set — move OUR claim forward; fails if anyone else wrote since.
+    client.put_workflow_state(
+        "nw_pulse", key, {"status": "sent", "smsId": sms["id"]},
+        expected_version=row["version"],
+    )
+    return "sent"
+```
+
+| Call                                                     | Behaviour                                                                                                                                                  |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_workflow_state(ns, key)`                            | The row `{namespace, key, state, version, …}`, or `None`                                                                                                   |
+| `list_workflow_state(ns, prefix=, updated_since=)`       | Every matching row in key order (pages are followed for you)                                                                                               |
+| `put_workflow_state(ns, key, state, if_absent=True)`     | Insert only if free; else `WorkflowStateConflict` (`code="STATE_EXISTS"`, `.current` = the existing row)                                                   |
+| `put_workflow_state(ns, key, state, expected_version=N)` | Write only while `version == N`; else `WorkflowStateConflict` (`code="STATE_VERSION_CONFLICT"`, `.current` = the stored row, or `None` if the key is gone) |
+| `put_workflow_state(ns, key, state)`                     | Unconditional upsert                                                                                                                                       |
+| `delete_workflow_state(ns, key, expected_version=None)`  | Delete, optionally only at a version                                                                                                                       |
+
+Every write increments `version`; pass the returned `version` as the next
+`expected_version`. Namespaces and keys match `[A-Za-z0-9._:-]{1,256}` — build
+hierarchical keys with `:` (`pulse:490317:pack`, `phone:+15555550100:2026-09-29`)
+and read a slice back with `prefix`. State is any JSON value ≤ 256 KB.
+`WorkflowStateConflict` subclasses `PegasusApiError`.
+
+**Dry-run:** writes are captured, not performed, and a later
+`get_workflow_state` in the same run does not see them (reads are live). The
+synthetic result reports `version` 1 for a claim and `expected_version + 1` for a
+compare-and-set, so a claim → set sequence still runs end to end.
+
 ### Reading operational entities (inside an Automation)
 
 A running Automation authenticates with its `workflow_runtime` service-account key

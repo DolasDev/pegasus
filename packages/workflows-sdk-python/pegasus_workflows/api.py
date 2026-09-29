@@ -103,6 +103,24 @@ class PegasusApiError(Exception):
         return " — ".join(parts)
 
 
+@dataclass
+class WorkflowStateConflict(PegasusApiError):
+    """A conditional workflow-state write lost (HTTP 409).
+
+    Raised by :meth:`PegasusClient.put_workflow_state` and
+    :meth:`PegasusClient.delete_workflow_state` when the condition did not hold:
+    ``code`` is ``"STATE_EXISTS"`` (an ``if_absent`` claim found the key taken) or
+    ``"STATE_VERSION_CONFLICT"`` (``expected_version`` no longer matches).
+
+    Attributes:
+        current: The row as it is stored now, or ``None`` when the key does not
+            exist (a compare-and-set against a deleted key). Use it to decide
+            whether to back off or retry against the new ``version``.
+    """
+
+    current: dict[str, Any] | None = None
+
+
 def _raise_for_status(response: httpx.Response) -> None:
     """Raise :class:`PegasusApiError` if *response* is not 2xx."""
     if response.is_success:
@@ -123,6 +141,24 @@ def _raise_for_status(response: httpx.Response) -> None:
         code=code,
         message=message,
         correlation_id=correlation_id,
+    )
+
+
+def _raise_for_workflow_state_conflict(response: httpx.Response) -> None:
+    """Raise :class:`WorkflowStateConflict` for a 409 from the workflow-state API."""
+    if response.status_code != 409:
+        return
+    body: Any = {}
+    try:
+        body = response.json()
+    except ValueError:
+        pass
+    data = body.get("data") if isinstance(body, dict) else None
+    raise WorkflowStateConflict(
+        status_code=409,
+        code=body.get("code") if isinstance(body, dict) else None,
+        message=body.get("error") if isinstance(body, dict) else None,
+        current=data.get("current") if isinstance(data, dict) else None,
     )
 
 
@@ -2680,4 +2716,193 @@ class PegasusClient:
             response = client.delete(
                 f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}/{key}"
             )
+        _raise_for_status(response)
+
+    # -- workflow state (tenant-wide ledgers, claims, reservations) ------------
+    #
+    # Durable key/value state a workflow keeps for itself, NOT tied to a partner
+    # integration (contrast the projection cache above). Namespaces are
+    # tenant-wide, so cooperating workflows share one ledger. Writes can be
+    # conditional, which is what makes it safe under overlapping runs:
+    #
+    #   put_workflow_state(..., if_absent=True)       atomic claim
+    #   put_workflow_state(..., expected_version=N)   compare-and-set
+    #
+    # Keys/namespaces match [A-Za-z0-9._:-]{1,256}; build hierarchical keys with
+    # ":" (e.g. "pulse:490317:pack") and list them by prefix. Requires the
+    # manifest to declare ``required_actions = ["ReadWorkflowState",
+    # "WriteWorkflowState"]``.
+
+    _WORKFLOW_STATE_BASE = "/api/v1/workflow-state"
+
+    def get_workflow_state(self, namespace: str, key: str) -> dict[str, Any] | None:
+        """Read one workflow-state row. Requires ``ReadWorkflowState``.
+
+        Returns:
+            ``{namespace, key, state, version, updatedByUserId, createdAt,
+            updatedAt}``, or ``None`` when the key does not exist.
+
+        Raises:
+            PegasusApiError: On 400 (bad namespace/key), 403, or any other
+                non-2xx besides 404.
+        """
+        with self._client() as client:
+            response = client.get(f"{self._WORKFLOW_STATE_BASE}/{namespace}/{key}")
+        if response.status_code == 404:
+            return None
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def list_workflow_state(
+        self,
+        namespace: str,
+        *,
+        prefix: str | None = None,
+        updated_since: str | None = None,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List a namespace, ascending by key, following every page.
+
+        Requires ``ReadWorkflowState``.
+
+        Args:
+            namespace: The namespace, e.g. ``"nw_pulse"``.
+            prefix: Only keys starting with this, e.g. ``"pulse:490317:"``.
+            updated_since: ISO-8601 instant; only rows written at/after it.
+            page_size: Rows fetched per request (1–500).
+
+        Returns:
+            Every matching row (possibly empty), in key order.
+        """
+        rows: list[dict[str, Any]] = []
+        cursor: str | None = None
+        while True:
+            params: dict[str, Any] = {"limit": page_size}
+            if prefix is not None:
+                params["prefix"] = prefix
+            if updated_since is not None:
+                params["updatedSince"] = updated_since
+            if cursor is not None:
+                params["cursor"] = cursor
+            body = self._get_json(f"{self._WORKFLOW_STATE_BASE}/{namespace}", **params)
+            rows.extend(body["data"])
+            cursor = body.get("nextCursor")
+            if not cursor:
+                return rows
+
+    def put_workflow_state(
+        self,
+        namespace: str,
+        key: str,
+        state: Any,
+        *,
+        if_absent: bool = False,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
+        """Write a workflow-state row. Requires ``WriteWorkflowState``.
+
+        Three modes:
+
+        - ``if_absent=True`` — **atomic claim**: insert only if the key is free.
+          When two overlapping runs claim the same key, exactly one succeeds and
+          the other gets :class:`WorkflowStateConflict` (``code="STATE_EXISTS"``,
+          ``.current`` = the winner's row). Use it as the lock before a side
+          effect you must not repeat (e.g. sending a text).
+        - ``expected_version=N`` — **compare-and-set**: write only while the
+          stored ``version`` is still ``N``, else :class:`WorkflowStateConflict`
+          (``code="STATE_VERSION_CONFLICT"``, ``.current`` = the stored row, or
+          ``None`` if the key is gone). Use it to move a claimed record forward
+          (pending → sent) or to reclaim a failed one without racing another run.
+        - neither — unconditional upsert.
+
+        Every write increments ``version``; pass the returned ``version`` as the
+        next ``expected_version``.
+
+        Dry-run: the write is captured, not performed, and is NOT visible to a
+        later :meth:`get_workflow_state` in the same run (reads are live). The
+        synthetic result reports ``version`` 1 for a create/claim and
+        ``expected_version + 1`` for a compare-and-set, so a claim → set flow
+        runs end to end.
+
+        Args:
+            namespace: The namespace, e.g. ``"nw_pulse"``.
+            key: The key, e.g. ``"pulse:490317:pack"``.
+            state: Any JSON-serializable value, ≤ 256 KB serialized.
+            if_absent: Insert only if the key does not exist.
+            expected_version: Write only if the stored version equals this.
+
+        Returns:
+            The stored row plus ``created`` (``True`` when the row was inserted).
+
+        Raises:
+            ValueError: If both ``if_absent`` and ``expected_version`` are given.
+            WorkflowStateConflict: On 409 (the condition did not hold).
+            PegasusApiError: On 400, 403, 413 (state too large), or other non-2xx.
+        """
+        if if_absent and expected_version is not None:
+            raise ValueError("if_absent and expected_version are mutually exclusive")
+        payload: dict[str, Any] = {"state": state}
+        if if_absent:
+            payload["ifAbsent"] = True
+        if expected_version is not None:
+            payload["expectedVersion"] = expected_version
+
+        captured = self._capture_mutation(
+            "WriteWorkflowState",
+            "put_workflow_state",
+            {
+                "namespace": namespace,
+                "key": key,
+                "state": state,
+                "if_absent": if_absent,
+                "expected_version": expected_version,
+            },
+            {
+                "namespace": namespace,
+                "key": key,
+                "state": state,
+                "version": 1 if expected_version is None else expected_version + 1,
+                "created": expected_version is None,
+                "dryRun": True,
+            },
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.put(f"{self._WORKFLOW_STATE_BASE}/{namespace}/{key}", json=payload)
+        _raise_for_workflow_state_conflict(response)
+        _raise_for_status(response)
+        body = response.json()
+        row: dict[str, Any] = body["data"]
+        row["created"] = bool(body.get("created"))
+        return row
+
+    def delete_workflow_state(
+        self, namespace: str, key: str, *, expected_version: int | None = None
+    ) -> None:
+        """Delete a workflow-state row. Requires ``WriteWorkflowState``.
+
+        Args:
+            namespace: The namespace.
+            key: The key.
+            expected_version: Delete only while the stored version equals this.
+
+        Raises:
+            WorkflowStateConflict: On 409 (``expected_version`` is stale).
+            PegasusApiError: On 404 (no such key), 403, or other non-2xx.
+        """
+        captured = self._capture_mutation(
+            "WriteWorkflowState",
+            "delete_workflow_state",
+            {"namespace": namespace, "key": key, "expected_version": expected_version},
+            None,
+        )
+        if captured is not _NOT_CAPTURED:
+            return
+        params = {"expectedVersion": expected_version} if expected_version is not None else None
+        with self._client() as client:
+            response = client.delete(
+                f"{self._WORKFLOW_STATE_BASE}/{namespace}/{key}", params=params
+            )
+        _raise_for_workflow_state_conflict(response)
         _raise_for_status(response)

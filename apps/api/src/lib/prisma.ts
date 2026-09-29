@@ -67,6 +67,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // tenant whose entity it names, and leaking one across tenants would expose
   // both a partner identifier and the existence of our entity.
   'IntegrationCorrelation',
+  // WorkflowState — tenant-wide key/value state that running workflows keep
+  // (send ledgers, claims, reservations). Purely tenant-owned; the claim and
+  // compare-and-set paths rely on this scoping for isolation, since the
+  // repository never filters by tenantId itself.
+  'WorkflowState',
   // OutboundOAuthToken (sdk-feedback 0027) — the shared tier of the outbound
   // OAuth token cache. Purely tenant-owned (no GLOBAL case) and reached only from
   // the call_external handler via the tenant-scoped client, so auto-scoping is a
