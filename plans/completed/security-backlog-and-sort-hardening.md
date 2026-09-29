@@ -13,7 +13,7 @@
 | ------------------------------------ | ---- | --------------------------------------------- |
 | 2a. anyio (critical + high + medium) | #740 | Re-locked 4.14.0 → **4.15.1**                 |
 | 1. activities/trips sort lookup      | #741 | `Object.hasOwn` guard + a second `order` bug  |
-| 2b/2c. every npm alert               | #742 | 3 fixed by override, 3 accepted with evidence |
+| 2b/2c. every npm alert               | #744 | 3 fixed by override, 3 accepted with evidence |
 
 **The alert count was 10, not 9** — `undici` GHSA-3wwx-pv8p-q78v (moderate) landed after the
 plan was written, on the very release the existing override floor pinned to.
@@ -37,7 +37,7 @@ returns `''` on a miss), so its fallback assertion is "no `ORDER BY` at all".
 
 ---
 
-## Part 2 — dependency alerts (#740, #742) — DONE
+## Part 2 — dependency alerts (#740, #744) — DONE
 
 ### Fixed by an override
 
