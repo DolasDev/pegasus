@@ -2,8 +2,15 @@
 
 **Landed 2026-09-29.** The deliverable of `plans/in-progress/domain-reference-areas-a9.md` — the
 sixth of the unwritten area comparisons, after A1, A5, A2, A6 and A7, and **the last of the nine v1
-detail areas.** The unwritten-area phase of this effort is over. The next round carries forward in
-`plans/in-progress/domain-reference-context-map.md`.
+detail areas.** The unwritten-area phase of this effort is over.
+
+**The next round is a cleanup**, at `plans/in-progress/domain-reference-cleanup.md`. A9's own plan
+had named the **context map** as the natural next deliverable; the user redirected it after reading
+this round's summary — _"i want this done right… next up we are fixing any of the issues found
+before proceeding"_ — so the defects the rounds found and left get paid down first, and the context
+map moves behind them (that plan's §8 carries it forward unchanged). Four of that plan's items are
+this round's own findings: the hardcoded `x-owed` sentence, the registry `areas:` field, the Owed
+page's inability to say **why** something is owed, and the unfetched `src:nmfta-scac`.
 
 ## The headline
 
