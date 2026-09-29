@@ -36,6 +36,10 @@ vi.mock('../services/ringcentral/oauth', () => ({
   RingCentralOAuthError: class extends Error {},
 }))
 vi.mock('../services/ringcentral/sms', () => ({ sendSms: mockSendSms }))
+// Nobody on this path has opted out; the opt-out policy itself is covered in sms.test.ts.
+vi.mock('../repositories/sms-opt-out.repository', () => ({
+  createSmsOptOutRepository: vi.fn(() => ({ isOptedOut: vi.fn(async () => false) })),
+}))
 vi.mock('../middleware/dual-auth', () => ({
   dualAuthMiddleware: vi.fn(async (_c, next) => {
     await next()

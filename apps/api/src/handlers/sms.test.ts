@@ -19,10 +19,26 @@ import { _clearAuthzCache } from '../lib/authz'
 // Mocks — hoisted so the vi.mock factories can reference them.
 // ---------------------------------------------------------------------------
 
-const { mockListConnections, mockSendSms, mockReadOAuthConfig } = vi.hoisted(() => ({
-  mockListConnections: vi.fn(),
-  mockSendSms: vi.fn(),
-  mockReadOAuthConfig: vi.fn(),
+const { mockListConnections, mockSendSms, mockReadOAuthConfig, mockOptOuts, mockSends } =
+  vi.hoisted(() => ({
+    mockListConnections: vi.fn(),
+    mockSendSms: vi.fn(),
+    mockReadOAuthConfig: vi.fn(),
+    mockOptOuts: { find: vi.fn(), isOptedOut: vi.fn(), record: vi.fn() },
+    mockSends: {
+      claim: vi.fn(),
+      reclaimFailed: vi.fn(),
+      markSent: vi.fn(),
+      markFailed: vi.fn(),
+    },
+  }))
+
+vi.mock('../repositories/sms-opt-out.repository', () => ({
+  createSmsOptOutRepository: vi.fn(() => mockOptOuts),
+}))
+
+vi.mock('../repositories/sms-send.repository', () => ({
+  createSmsSendRepository: vi.fn(() => mockSends),
 }))
 
 vi.mock('../repositories/messaging.repository', () => ({
@@ -51,7 +67,9 @@ vi.mock('../middleware/dual-auth', () => ({
   }),
 }))
 
+import { createHash } from 'node:crypto'
 import { smsHandler } from './sms'
+import { RingCentralOAuthError } from '../services/ringcentral/oauth'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,8 +98,10 @@ const ACTIVE_CONNECTION = {
   updatedAt: new Date('2026-01-01'),
 }
 
+const mockMessageFindFirst = vi.fn()
+
 function buildApp(roleNames: readonly string[] = ['workflow_runtime']) {
-  const fakeDb = {} as unknown as PrismaClient
+  const fakeDb = { message: { findFirst: mockMessageFindFirst } } as unknown as PrismaClient
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', seedPrincipal({ roleNames }))
@@ -103,6 +123,7 @@ beforeEach(() => {
   _clearAuthzCache()
   // Default: integration enabled.
   mockReadOAuthConfig.mockReturnValue({ apiBase: 'https://platform.ringcentral.com' })
+  mockOptOuts.isOptedOut.mockResolvedValue(false)
 })
 
 describe('POST /sms/send', () => {
@@ -286,5 +307,209 @@ describe('POST /sms/send', () => {
       expect(res.status).toBe(500)
       expect((await json(res))['code']).toBe('INTERNAL_ERROR')
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Opt-out + dedup policy (services/sms/outbound.ts, real — only repos mocked)
+// ---------------------------------------------------------------------------
+
+describe('POST /sms/send — opt-out and dedup policy', () => {
+  const MSG = { to: '+15005550006', body: 'Rate your pack day 1-5' }
+  const now = Date.now()
+  const sendRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'send-1',
+    dedupKey: 'pulse:1:pack',
+    toNumber: MSG.to,
+    // sha256('Rate your pack day 1-5')
+    bodyHash: createHash('sha256').update(MSG.body).digest('hex'),
+    status: 'PENDING',
+    providerMessageId: null,
+    providerStatus: null,
+    lastError: null,
+    createdAt: new Date(now),
+    updatedAt: new Date(now),
+    ...overrides,
+  })
+
+  beforeEach(() => {
+    mockListConnections.mockResolvedValue([ACTIVE_CONNECTION])
+    mockSendSms.mockResolvedValue({ id: 987, messageStatus: 'Queued' })
+  })
+
+  it('409 SMS_OPTED_OUT — never calls the provider for an opted-out number', async () => {
+    mockOptOuts.isOptedOut.mockResolvedValue(true)
+    const res = await buildApp().request('/sms/send', post(MSG))
+    expect(res.status).toBe(409)
+    expect((await json(res))['code']).toBe('SMS_OPTED_OUT')
+    expect(mockSendSms).not.toHaveBeenCalled()
+  })
+
+  it('409 SMS_OPTED_OUT — records a provider SMS-RC-413 rejection as an opt-out', async () => {
+    mockSendSms.mockRejectedValue(
+      new RingCentralOAuthError('RingCentral API 400', 400, 'SMS-RC-413'),
+    )
+    const res = await buildApp().request('/sms/send', post(MSG))
+    expect(res.status).toBe(409)
+    expect((await json(res))['code']).toBe('SMS_OPTED_OUT')
+    expect(mockOptOuts.record).toHaveBeenCalledWith(
+      expect.objectContaining({ phoneE164: MSG.to, optedOut: true, source: 'PROVIDER' }),
+    )
+  })
+
+  it('claims the dedup key, sends once and marks it SENT', async () => {
+    mockSends.claim.mockResolvedValue({ outcome: 'claimed', row: sendRow() })
+    const res = await buildApp().request('/sms/send', post({ ...MSG, dedupKey: 'pulse:1:pack' }))
+    expect(res.status).toBe(202)
+    expect((await json(res))['data']).toEqual({ id: 987, status: 'Queued', alreadySent: false })
+    expect(mockSends.markSent).toHaveBeenCalledWith('test-tenant-id', 'send-1', {
+      messageId: '987',
+      status: 'Queued',
+    })
+  })
+
+  it('200 alreadySent — a retry with a SENT key returns the first send without texting', async () => {
+    mockSends.claim.mockResolvedValue({
+      outcome: 'exists',
+      row: sendRow({ status: 'SENT', providerMessageId: '987', providerStatus: 'Delivered' }),
+    })
+    const res = await buildApp().request('/sms/send', post({ ...MSG, dedupKey: 'pulse:1:pack' }))
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual({ id: '987', status: 'Delivered', alreadySent: true })
+    expect(mockSendSms).not.toHaveBeenCalled()
+  })
+
+  it('409 SMS_SEND_IN_PROGRESS for a recent PENDING key, SMS_SEND_IN_DOUBT for a stale one', async () => {
+    mockSends.claim.mockResolvedValueOnce({ outcome: 'exists', row: sendRow() })
+    let res = await buildApp().request('/sms/send', post({ ...MSG, dedupKey: 'pulse:1:pack' }))
+    expect((await json(res))['code']).toBe('SMS_SEND_IN_PROGRESS')
+
+    mockSends.claim.mockResolvedValueOnce({
+      outcome: 'exists',
+      row: sendRow({ updatedAt: new Date(now - 10 * 60 * 1000) }),
+    })
+    res = await buildApp().request('/sms/send', post({ ...MSG, dedupKey: 'pulse:1:pack' }))
+    expect(res.status).toBe(409)
+    expect((await json(res))['code']).toBe('SMS_SEND_IN_DOUBT')
+    expect(mockSendSms).not.toHaveBeenCalled()
+  })
+
+  it('409 IDEMPOTENCY_KEY_REUSED when the key was used for a different body', async () => {
+    mockSends.claim.mockResolvedValue({ outcome: 'exists', row: sendRow({ bodyHash: 'other' }) })
+    const res = await buildApp().request('/sms/send', post({ ...MSG, dedupKey: 'pulse:1:pack' }))
+    expect(res.status).toBe(409)
+    expect((await json(res))['code']).toBe('IDEMPOTENCY_KEY_REUSED')
+  })
+
+  it('reclaims a FAILED key and sends; marks FAILED again if the provider errors', async () => {
+    mockSends.claim.mockResolvedValue({ outcome: 'exists', row: sendRow({ status: 'FAILED' }) })
+    mockSends.reclaimFailed.mockResolvedValue(true)
+    let res = await buildApp().request('/sms/send', post({ ...MSG, dedupKey: 'pulse:1:pack' }))
+    expect(res.status).toBe(202)
+    expect(mockSends.reclaimFailed).toHaveBeenCalledWith('test-tenant-id', 'send-1')
+
+    mockSendSms.mockRejectedValueOnce(new RingCentralOAuthError('RingCentral API 503', 503))
+    res = await buildApp().request('/sms/send', post({ ...MSG, dedupKey: 'pulse:1:pack' }))
+    expect(res.status).toBe(502)
+    expect(mockSends.markFailed).toHaveBeenCalledWith(
+      'test-tenant-id',
+      'send-1',
+      expect.any(String),
+    )
+  })
+
+  it('rejects a malformed dedupKey', async () => {
+    const res = await buildApp().request('/sms/send', post({ ...MSG, dedupKey: 'has space' }))
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('GET /sms/messages/:id', () => {
+  const ID = '6f1c2b8e-0d3a-4c1e-9f7a-2b3c4d5e6f70'
+
+  it('returns the captured message, flagging a purged body', async () => {
+    mockMessageFindFirst.mockResolvedValue({
+      id: ID,
+      source: 'V1_STORE',
+      externalId: '4455',
+      threadId: null,
+      direction: 'INBOUND',
+      fromNumber: '+15005550006',
+      toNumber: '+15005550001',
+      body: null,
+      bodyPurgedAt: new Date('2026-09-29T00:00:00Z'),
+      rcCreationTime: new Date('2026-09-25T20:00:00Z'),
+      capturedAt: new Date('2026-09-25T20:00:05Z'),
+    })
+    const res = await buildApp().request(`/sms/messages/${ID}`)
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({
+      id: ID,
+      externalId: '4455',
+      direction: 'INBOUND',
+      body: null,
+      bodyPurged: true,
+      createdAt: '2026-09-25T20:00:00.000Z',
+    })
+  })
+
+  it('404 on an unknown id, 400 on a non-uuid', async () => {
+    mockMessageFindFirst.mockResolvedValue(null)
+    expect((await buildApp().request(`/sms/messages/${ID}`)).status).toBe(404)
+    expect((await buildApp().request('/sms/messages/not-a-uuid')).status).toBe(400)
+  })
+
+  it('403 for a persona without ReadTextMessage', async () => {
+    const res = await buildApp(['workflow_developer']).request(`/sms/messages/${ID}`)
+    expect(res.status).toBe(403)
+  })
+})
+
+describe('/sms/opt-outs', () => {
+  it('GET reports a never-seen number as not opted out', async () => {
+    mockOptOuts.find.mockResolvedValue(null)
+    const res = await buildApp().request('/sms/opt-outs/+15005550006')
+    expect((await json(res))['data']).toMatchObject({
+      phone: '+15005550006',
+      optedOut: false,
+      source: null,
+    })
+  })
+
+  it('GET returns the stored keyword opt-out', async () => {
+    mockOptOuts.find.mockResolvedValue({
+      phoneE164: '+15005550006',
+      optedOut: true,
+      source: 'KEYWORD',
+      keyword: 'STOP',
+      messageId: 'm-1',
+      effectiveAt: new Date('2026-09-25T20:00:00Z'),
+      updatedAt: new Date('2026-09-25T20:00:05Z'),
+    })
+    const res = await buildApp().request('/sms/opt-outs/+15005550006')
+    expect((await json(res))['data']).toEqual({
+      phone: '+15005550006',
+      optedOut: true,
+      source: 'KEYWORD',
+      keyword: 'STOP',
+      updatedAt: '2026-09-25T20:00:00.000Z',
+    })
+  })
+
+  it('POST records a MANUAL opt-out by default', async () => {
+    mockOptOuts.record.mockResolvedValue('created')
+    mockOptOuts.find.mockResolvedValue(null)
+    const res = await buildApp().request('/sms/opt-outs', post({ phone: '+15005550006' }))
+    expect(res.status).toBe(200)
+    expect(mockOptOuts.record).toHaveBeenCalledWith(
+      expect.objectContaining({ phoneE164: '+15005550006', optedOut: true, source: 'MANUAL' }),
+    )
+  })
+
+  it('400 on a non-E.164 phone', async () => {
+    expect((await buildApp().request('/sms/opt-outs/5551212')).status).toBe(400)
+    expect((await buildApp().request('/sms/opt-outs', post({ phone: '555-1212' }))).status).toBe(
+      400,
+    )
   })
 })

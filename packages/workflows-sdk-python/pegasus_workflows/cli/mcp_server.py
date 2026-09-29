@@ -210,6 +210,18 @@ To read per-tenant secrets or config at runtime, declare ``ReadWorkflowSecret``
 ``client.get_secret(...)`` / ``client.get_config(...)`` inside an activity. See
 ``pegasus://guide/secrets-config`` for publishing and usage.
 
+## Texting: opt-outs, dedup, reading replies
+
+``send_sms`` enforces opt-outs for you: a number whose inbound text starts with
+STOP (or STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT/REVOKE/OPTOUT) is refused with
+409 ``SMS_OPTED_OUT`` — treat that as final, not retryable. Pass
+``dedup_key=`` on any text you must not send twice (activities are retried):
+a repeat returns ``alreadySent: true``; 409 ``SMS_SEND_IN_PROGRESS`` → retry
+later; 409 ``SMS_SEND_IN_DOUBT`` → never resend blindly. React to replies with
+an EVENT trigger on ``sms.received``; re-read with
+``client.get_text_message(payload["messageId"])`` (``ReadTextMessage``) and
+dedupe on ``messageId`` — events may be delivered twice.
+
 ## Durable state, claims and dedup (workflow state)
 
 For state an Automation keeps for itself — a send ledger, "already done?"

@@ -242,6 +242,23 @@ export const Actions = {
     resourceType: 'Notification',
     permission: 'sms:send',
   },
+  // Inbound message read + opt-out state (handlers/sms.ts). Same resource as
+  // SendSms: they are one SMS surface. All three granted to workflow_runtime.
+  ReadTextMessage: {
+    id: 'ReadTextMessage',
+    resourceType: 'Notification',
+    permission: 'sms_message:read',
+  },
+  ReadSmsOptOut: {
+    id: 'ReadSmsOptOut',
+    resourceType: 'Notification',
+    permission: 'sms_opt_out:read',
+  },
+  ManageSmsOptOut: {
+    id: 'ManageSmsOptOut',
+    resourceType: 'Notification',
+    permission: 'sms_opt_out:manage',
+  },
   // ── Integration validator config (mapping + rules; SDK/CLI publish) ──────
   ReadIntegrationConfig: {
     id: 'ReadIntegrationConfig',
