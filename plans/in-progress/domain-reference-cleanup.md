@@ -150,25 +150,59 @@ area"_ and whose `areas:` omits A9.
 
 A9 changed **no entry** and added one sentence to the schema comment, because repairing fourteen of
 a hundred-odd pairs would make the field look trustworthy where it is not. **That was a holding
-action, not a fix.** Three ways to finish it:
+action, not a fix.**
 
-| Option                                                      | What it costs                                                     | What it buys                                                                  |
-| ----------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **(a) Recompute `areas:` from the score rows, and gate it** | A generator + a conformance test; ~118 entries rewritten once     | The field becomes what everyone already reads it as, and cannot drift again   |
-| **(b) Delete `areas:` entirely**                            | One pass over the registry; every reader re-pointed at the scores | No field to be wrong. The score rows in `sources/*/analysis.md` are the truth |
-| **(c) Leave it as A9 left it — a labelled hint**            | Nothing                                                           | Nothing; the next reader mis-reads it and the comment does not stop them      |
+> **DECIDED by the user, 2026-09-30: recompute it from the score rows and gate it.** The options
+> considered were (a) recompute-and-gate, (b) delete the field and point every reader at the score
+> rows, (c) leave it as A9 left it. The argument that settled it against (c) is empirical and A9 is
+> the evidence: **a field that exists gets read as an inventory whatever its comment says**, and
+> A9's own plan was misled by this one. (b) is honest and loses a genuinely useful index.
 
-**Recommend (a).** The argument against (c) is empirical and A9 is the evidence: a field that exists
-gets read as an inventory whatever its comment says, and A9's own plan was misled by it. (b) is
-honest but loses a genuinely useful index. (a) turns the hint into the inventory and gates it — and
-`[A9]`'s scratchpad already contains most of the computation
-(`tests/conformance/source-registry.test.ts`'s `scoredAreas` is the reader; the generator is its
-inverse).
+#### What (a) actually is, and it is a HYBRID — sized before the round, not during it
 
-**One caution if you take (a):** a scored row with **all criteria zero or `n/a`** is not evidence
-the source informs the area. `[A9 §1]`'s measurement counted a row only when some criterion was
-non-zero, and `src:uncefact-rec24` is the case that forces the rule — it carries an A9 row scored
-`0 / n-a / … / 0` and belongs in nobody's list.
+**Only 33 of the 87 registry entries can have a generated `areas:`.** The rest have no score table
+at all: 20 `candidate`, 19 `skipped`, 13 `needs-user`, one `obtained`, one `captured`. For those 54,
+`areas:` is a hand-written discovery hint and is **the only signal there is** — regenerating it would
+delete real information, and a gate over all 87 would fail on every one of them.
+
+So the deliverable is two halves, and the schema comment must say which is which:
+
+| Half                              | Rule                                                                        | Gate                                                                     |
+| --------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **33 sources with a score table** | `areas:` **is generated** — exactly the areas scored non-zero, nothing else | A conformance test; every mismatch **named**, never counted (§5 item 10) |
+| **54 sources without one**        | `areas:` **stays hand-written** — a discovery hint, as the header now says  | None possible. The comment says so, per source half, not once at the top |
+
+**Two rules the generator needs, both already established by `[A9 §1]`'s measurement:**
+
+1. **A row counts only when some criterion is non-zero.** A scored row of all `0` / `n-a` is not
+   evidence the source informs the area. `src:uncefact-rec24` forces it — it carries an A9 row
+   scored `0 / n-a / … / 0` and belongs in nobody's list.
+2. **The reader already exists.** `tests/conformance/source-registry.test.ts`'s `scoredAreas` is it,
+   written by A9 and gated. **The generator is its inverse, and the test is how they stay agreed** —
+   do not write a second, subtly different parser for the score-row regex; export the one that is
+   already tamper-tested (§9.2 item 9 tampers its column index).
+3. **Split the two halves on the presence of a SCORE TABLE, never on `status:`.** The two do not
+   agree, and the disagreement is deliberate: `src:pegii-order` has an `analysis.md` **with** a score
+   table and `status: needs-user`, because `status` records whether the **material** was obtained —
+   its `notes:` say no complete native pegII order exists on disk — and not whether an analysis was
+   written. A gate keyed on `status: analyzed` would exclude a source that has scores, and a round
+   that "fixed" the status to make the gate pass would destroy a true statement. **This was found
+   while sizing the round, by two counts disagreeing by one** (32 entries marked `analyzed`, 33
+   directories holding an `analysis.md`), which is the argument for computing a number before
+   writing it down.
+
+**One thing to decide while writing it, and the plan does not decide it:** whether the generated
+half is emitted by a `tools/` generator run on demand (the house pattern for the glossary and the
+catalog) or simply asserted by the test and fixed by hand when it fails. **The second is cheaper and
+probably right here** — the input changes only when a source is analysed, which is a handful of times
+a year, and a generator that rewrites YAML has to preserve comments, of which `registry.yaml` has
+many and several are load-bearing. **Check what a YAML round-trip costs before committing to a
+generator**; `js-yaml` is present in the workspace but is **not** a dependency of
+`@pegasus/domain-reference`, and adding one for this is a poor trade.
+
+**And update the schema comment A9 wrote.** It currently says `areas:` is a discovery hint, full
+stop. After this round that is true of 54 entries and false of 33, and the comment that does not say
+so is the same defect one turn later.
 
 **B2. The glossary's Owed page cannot say why something is owed.**
 It lists `identityScheme`, `roleClass` and `unitOfMeasure` under one heading with one explanation.
@@ -347,18 +381,18 @@ changes are individually obvious, and "obvious" is the condition under which nob
 
 ## 7. What is blocked on the user — ask these, do not schedule them
 
-Each is one line. **B1's decision is the one that changes what this round does.**
+Each is one line. **None of them blocks the round starting** — B1, the one that did, is answered.
 
-1. **B1 — the registry `areas:` field: recompute and gate it (a), delete it (b), or leave it labelled
-   (c)?** The plan recommends (a). This decides whether the round is large or medium.
-2. **C1 — `src:nmfta-scac`.** Worth obtaining? It is the issuing authority for SCAC, which six
+0. **B1 — ANSWERED, 2026-09-30: recompute and gate.** Left here as the record of the ask. §3 B1
+   carries the decision and the hybrid it turned out to be.
+1. **C1 — `src:nmfta-scac`.** Worth obtaining? It is the issuing authority for SCAC, which six
    sources use and none defines. `registry.yaml`'s `obtain:` field says what is needed.
-3. **C2 — what a signature asserts.** `[A6 §6]` owes this to the user explicitly; no source in the
+2. **C2 — what a signature asserts.** `[A6 §6]` owes this to the user explicitly; no source in the
    corpus publishes it.
-4. **C4 — the two prose-alias divergences** need a decision from `[SD §4.7]` note 5, which is the
+3. **C4 — the two prose-alias divergences** need a decision from `[SD §4.7]` note 5, which is the
    binding layer's and not the package's.
-5. **Fifteen registry entries are `needs-user`** and 32 of 87 sources are analysed. Not urgent, and
-   worth knowing the number is not a backlog anyone is working.
+4. **The `needs-user` backlog is not a backlog anyone is working.** Worth knowing rather than acting
+   on; the number is in `registry.yaml` and this plan deliberately does not restate it (§5 item 10).
 
 ---
 
