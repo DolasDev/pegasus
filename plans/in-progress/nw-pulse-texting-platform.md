@@ -19,6 +19,8 @@
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
 
+**Metering rule (added 2026-09-30):** every new outward-mutating action in Phases 3, 6 and 7 (`SendEmail`, `CreateTask`, `WriteOrderMemo`) must be metered in the same PR. See `plans/todo/usage-metering-and-published-rates.md` Phase 5. NW billing cannot start until that plan's Phases 1–3 are live.
+
 **Order and parallelism:**
 
 - Phases 1–3 (pegasus) and Phase 4 (movemanager) have no dependencies on each other and can run in parallel.
