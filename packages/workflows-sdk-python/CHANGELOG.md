@@ -3,6 +3,16 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.42.0
+
+### Added
+
+- `send_email(to, subject, body, cc=, body_type=, dedup_key=)` (`SendEmail`) —
+  internal email through the tenant's on-premises Pegasus server (its SMTP
+  account). Recipients must be on the tenant's allowed domains (Settings →
+  App → Operations); ≤ 10 recipients, ≤ 100 KB body, a per-tenant daily limit;
+  `dedup_key` idempotency like `send_sms`. API: `POST /api/v1/email/send`.
+
 ## 0.41.0
 
 ### Added

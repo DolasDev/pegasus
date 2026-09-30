@@ -85,6 +85,25 @@ const OperationsSchema = z
     /// already read from. The mirror lets us collapse to a single source of
     /// truth later without churning every handler in this PR.
     longhaulClient: z.enum(LONGHAUL_CLIENTS).nullable().optional(),
+    /// Domains a platform email (POST /api/v1/email/send) may be addressed to,
+    /// e.g. ["nwmovers.com"]. Every `to`/`cc` address must match one exactly
+    /// (case-insensitive). Unset or empty ⇒ the tenant cannot send email at all
+    /// — email stays internal-only by construction (plan decision D2). Tenant
+    /// admins set it; workflow runtimes cannot.
+    emailAllowedRecipientDomains: z
+      .array(
+        z
+          .string()
+          .trim()
+          .toLowerCase()
+          .regex(
+            /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/,
+            'must be a bare domain like example.com',
+          ),
+      )
+      .max(50)
+      .nullable()
+      .optional(),
   })
   .partial()
   .default({})

@@ -14,6 +14,7 @@
 // its manifest required_actions; it can read but never manage them.
 // Read/WriteIntegrationProjection let a running workflow maintain the per-record
 // external-state cache that the integration validator reads back as `prior`.
+// SendEmail sends mail through the tenant's pegII API (internal recipients only).
 // ReadTextMessage reads an inbound text by the id sms.received carries, and
 // UpdateTextMessage marks it read at RingCentral (the source of read state);
 // Read/ManageSmsOptOut read and record a number's opt-out (STOP) state.
@@ -49,6 +50,7 @@ permit (
     Pegasus::Action::"CreateEvent",
     Pegasus::Action::"EmitTenantEvent",
     Pegasus::Action::"SendSms",
+    Pegasus::Action::"SendEmail",
     Pegasus::Action::"ReadTextMessage",
     Pegasus::Action::"UpdateTextMessage",
     Pegasus::Action::"ReadSmsOptOut",

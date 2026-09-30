@@ -12,8 +12,8 @@
 - [x] **Phase 0** — Spikes: done 2026-09-29 (findings summarised under each S-item below; S5 still needs a human)
 - [x] **Phase 1** — [pegasus] Workflow state store → SDK 0.39.0 — MERGED #743 (`807057e0`), PUBLISHED to PyPI 2026-09-29; authoring `CLAUDE.md` updated
 - [x] **Phase 2** — [pegasus] 2a–2c MERGED #747 (SDK 0.40.0), 2d MERGED #748 (SDK 0.41.0); both PUBLISHED
-- [ ] **Phase 3** — [pegasus → pegII] `send_email` **through the pegII API's SMTP email endpoint** (re-routed 2026-09-29; SES prod access was denied) → SDK 0.42.0. Needs Phase 4 (auth + the endpoint extension)
-- [~] **Phase 4** — [movemanager, on `dev`] pegII API foundations: **JWT service-user auth** (dev's existing JWT), envelope/error contract, idempotency + task-meta tables, version endpoint, email endpoint extension. APPROVED 2026-09-29. movemanager side is being implemented on `feat/pegasus-api-write-foundations`, including the hub-user admin endpoints. Cloud side is on `feat/pegii-client-auth`: service-user login, POST/PUT, 401 retry, error pass-through, `/version` capability gate, IAM read grant
+- [~] **Phase 3** — [pegasus → pegII] `send_email` through the pegII API's SMTP endpoint → SDK 0.42.0. Built on `feat/pegii-send-email`: `POST /api/v1/email/send`, the `EmailSend` table, the tenant allowed-domains setting and UI, capability gate, SDK `send_email`
+- [x] **Phase 4** — pegII API foundations: DONE 2026-09-29 (movemanager `dev` @ `b793b17e`, pegasus #749)
 - [ ] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.43.0
 - [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK 0.44.0 (+ one-line desktop guard fix)
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
@@ -229,6 +229,11 @@ The namespace is tenant-wide rather than per workflow, because the three pulse w
 - **Transport:** the pegII gateway (Phase 4 client work: POST + JWT service-user token) → the site's SMTP account. From is the site's configured default address, which the endpoint doesn't let the caller override.
 - **Capability gate:** `/version` must list `email.send`, else 503 `PEGII_CAPABILITY_MISSING`.
 - **Files:** `schema.prisma` + migration (`EmailSend`) · `repositories/email-send.repository.ts` · `services/email/outbound.ts` · `handlers/email.ts` · `gateways/pegii-email.gateway.ts` · tenant allowed-domains setting (model/handler + tenant-web Settings field) · authz trio · `openapi-spec.ts` · SDK checklist. **No SES, no infra change.**
+- **As built:**
+  - Every send gets an `EmailSend` row (audit trail and daily counter); the dedup key is optional and unique per tenant. The daily limit is 500 attempted sends per rolling 24h.
+  - The allow-list is `operations.emailAllowedRecipientDomains` (app settings), edited in Settings → App → Operations. Domains are lowercased; empty or unset ⇒ 409 `EMAIL_RECIPIENTS_NOT_CONFIGURED`.
+  - The subject must be a single line (header-injection guard).
+  - pegII's `EMAIL_NOT_CONFIGURED` maps to 503 and `EMAIL_SEND_FAILED` to 502. Other pegII failures go through `pegiiApiErrorToHttp`.
 - **Risk:** deliverability depends on NW's own SMTP account; confirm with NW IT that automated mail from it to coordinators isn't filtered.
 
 ---

@@ -140,6 +140,7 @@ _NONE_ON_MISS: frozenset[str] = frozenset(
 _MUTATIONS: dict[str, str] = {
     "emit_event": "EmitTenantEvent",
     "send_sms": "SendSms",
+    "send_email": "SendEmail",
     "record_sms_opt_out": "ManageSmsOptOut",
     "mark_text_message_read": "UpdateTextMessage",
     "close_task": "CloseTask",
