@@ -7,8 +7,8 @@ Phase 6 (the website) can ship as its own small PR.
 **Goal:** Count every billable automated action per tenant, let the tenant and
 platform admins see the count, close a monthly usage statement to invoice from,
 and publish the automation plans on pegasusmovemanager.com.
-**Status:** DRAFT 2026-09-30, awaiting approval. The decisions below marked
-_open_ need Steve's answer before code.
+**Status:** APPROVED 2026-09-30. D1–D3 decided by Steve the same day (see
+Decisions).
 
 ---
 
@@ -46,9 +46,9 @@ rates approved 2026-09-30):
 
 | Plan | Per month | Actions per **year** |
 | --- | --- | --- |
-| Pilot | $300 | 6,000 |
+| Starter | $300 | 6,000 |
 | Growth | $650 | 15,000 |
-| Full | $1,200 | 50,000 |
+| Scale | $1,200 | 50,000 |
 | Beyond the pool | $0.30 per action | |
 
 - **Pooled annually, billed monthly at 1/12.** NW volume swings 260–671
@@ -73,6 +73,7 @@ tenant's behalf.**
 | Task created (`CreateTask`, when it lands) / closed (`CloseTask`) | Workflow runs, schedules, triggers |
 | Memo written (`WriteOrderMemo`, when it lands) | Dry runs (client-side; they never reach the API) |
 | Inbound text marked read (`UpdateTextMessage`) | Any non-2xx response |
+| Integration delivery / call (`DeliverToExternal`, `CallExternal`), per D3 | Tenant events (`EmitTenantEvent`), internal |
 | | Idempotent replays (`alreadySent`, `alreadyRead`, `alreadyClosed`, `alreadyExists`) |
 | | Opt-out records; anything a **human** does through tenant-web |
 
@@ -124,8 +125,13 @@ The full reasoning is in the proposal's `terms-recommendation.md` §2.
   it. Meter it anyway; the contract is what matters.
 - `CreateTask`, `WriteOrderMemo` and `SendEmail` do not exist yet; they arrive
   with pulse master plan Phases 3, 6 and 7 (Phase 5 here).
-- `DeliverToExternal` / `CallExternal` (outbound integration calls) exist.
-  Whether they bill is **D3**.
+- `DeliverToExternal` (`handlers/integration-delivery.ts:137`) and `CallExternal`
+  (`handlers/integration-call.ts:245`) exist and are billable (D3). Neither
+  carries a dedup key or a stable result id, so each successful call counts
+  once; `subjectKey` is the request's `correlationId`. **Check before wiring:**
+  how each reports an upstream failure. If an upstream 4xx/5xx is proxied back
+  inside a 2xx envelope, the meter must read the upstream status, not
+  `c.res.status`.
 
 **Existing counting:** only `countTenantRunnerDailyExecutions`
 (`lib/start-workflow-execution.ts:362-379`), for the daily run quota, plus
@@ -179,6 +185,8 @@ action id to a `subjectKey(c, body)` function.
 - `SendSms` → `sms:${data.id}`
 - `UpdateTextMessage` → `read:${data.id}`
 - `CloseTask` → `close:${data.id}`
+- `DeliverToExternal` → `deliver:${correlationId}`; `CallExternal` →
+  `call:${correlationId}` (see the upstream-status check above)
 
 It's typed against `Actions`, so a typo is a compile error. A unit test asserts
 that every registry key is a real `Actions` id.
@@ -211,14 +219,15 @@ that every registry key is a real `Actions` id.
 - `apps/api/src/lib/usage/billable-actions.ts` (new)
 - `apps/api/src/middleware/meter-usage.ts` (new) + test
 - `apps/api/src/repositories/usage.repository.ts` (new)
-- `apps/api/src/handlers/sms.ts` and `handlers/pegii-runtime.ts`: add the
-  middleware to three routes, no logic changes
+- `apps/api/src/handlers/sms.ts`, `handlers/pegii-runtime.ts`,
+  `handlers/integration-delivery.ts`, `handlers/integration-call.ts`: add the
+  middleware to five routes, no logic changes
 - `packages/infra`: a CloudWatch alarm on `MeterWriteFailed`
 
 ## Phase 2: plans and the usage summary API → SDK minor
 
 **Model** `TenantAutomationPlan` (tenant-scoped):
-`id, tenantId, planCode (PILOT|GROWTH|FULL; final names per D1),
+`id, tenantId, planCode (STARTER|GROWTH|SCALE),
 monthlyPriceCents, annualPoolActions, overageCentsPerAction, termStart Date,
 termEnd Date, createdAt, createdBy`.
 - History is kept: a plan change inserts a new row with a new `termStart`;
@@ -302,7 +311,7 @@ After merge, tag `sdk-python-vX.Y.Z` and publish (standing rule).
 - **Domain logic** in `packages/domain/src/billing/usage-statement.ts` as pure
   functions with Vitest unit tests:
   - a seasonal year (NW's 24-month curve × 9.1 actions per move) stays inside
-    the Full pool
+    the Scale pool
   - a mid-term upgrade
   - an overage month
   - the escalator at renewal
@@ -356,26 +365,21 @@ deployed artifact (CI deploys `company-web` on a path-filtered push to `main`).
    The site already markets the cloud platform, so the delta is small, but
    confirm with Steve that publishing prices doesn't need that clause in place
    first.
-3. **D1 plan names are settled**, and the NW proposal uses the same names as the
-   site.
+3. **Plan names match** (D1: Starter / Growth / Scale; the NW proposal was
+   renamed to match on 2026-09-30). Keep them in step if either changes.
 
 ---
 
 ## Decisions
 
-- **D1 _open_: public plan names.** Pilot / Growth / Full are the NW proposal's
-  words; "Pilot" and "Full" read oddly on a public page. **Recommend
-  Starter / Growth / Scale**, and rename them in the NW proposal before it is
-  sent (not yet sent as of 2026-09-30), so NW and the site agree.
-- **D2 _open_: a plan above Full.** A tenant running two NW-sized workflows uses
-  ~90k actions a year and would pay $14,400 + 40k × $0.30 = $26,400 with no plan
-  to move to. **Recommend** a fourth plan (for example $2,000/month for 100,000
-  actions a year) before a second customer signs. **Not approved, not
-  published.**
-- **D3 _open_: are `DeliverToExternal` / `CallExternal` billable?** They are
-  outward mutations by definition. **Recommend yes** (one action per successful
-  delivery or call), with `EmitTenantEvent` free (internal). Decide before
-  Phase 1 closes, because it changes the published "what counts" list.
+- **D1 decided: public plan names are Starter / Growth / Scale** (were Pilot /
+  Growth / Full in the NW proposal, which has been renamed to match).
+- **D2 decided: three plans only.** No plan above Scale. A heavy tenant pays
+  overage at $0.30 an action (for example ~90k actions a year → $14,400 +
+  40k × $0.30 = $26,400). Revisit only if a customer actually lands there.
+- **D3 decided: `DeliverToExternal` and `CallExternal` are billable**, one action
+  per successful delivery or call. `EmitTenantEvent` is free (internal). The
+  published "what counts" list and the NW proposal both include it.
 - **D4 decided: humans are never metered.** Keyed on `apiClient` presence.
 - **D5 decided (deferred): per-execution attribution.** Per-workflow via
   `apiClientId` is enough to bill and explain. Adding execution ids needs the
