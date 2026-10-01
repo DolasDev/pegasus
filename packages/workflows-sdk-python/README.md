@@ -272,6 +272,32 @@ same way. `record_sms_opt_out(phone, opted_out=True|False)` (needs
 `ManageSmsOptOut`) records one you detected yourself; it takes effect now and
 overrides any earlier keyword.
 
+### Sending an internal email
+
+`client.send_email(to, subject, body, cc=None, body_type="text", dedup_key=None)`
+(needs `SendEmail`) sends mail through the tenant's on-premises Pegasus server
+and its SMTP account. It is **internal only**: every recipient must be at a
+domain the tenant admin allowed under Settings → App → Operations (empty list
+⇒ email is disabled, 409 `EMAIL_RECIPIENTS_NOT_CONFIGURED`; any other address ⇒
+400 `RECIPIENT_NOT_ALLOWED`). At most 10 recipients, a 100 KB body, and a
+per-tenant daily limit (429 `EMAIL_DAILY_LIMIT`).
+
+```python
+client.send_email(
+    [coordinator_email],
+    f"Negative Load Pulse Survey Text Received for Order Number: {order_no}",
+    body_text,
+    cc=[safety_net_email],
+    dedup_key=f"pulse:{order_no}:load:escalation",
+)
+```
+
+`dedup_key` works exactly like `send_sms`'s: a retry returns the first send
+(`alreadySent: true`), 409 `EMAIL_SEND_IN_PROGRESS` means retry later, 409
+`EMAIL_SEND_IN_DOUBT` means never resend blindly. 503 `EMAIL_NOT_CONFIGURED`
+means the server has no SMTP account; 503 `PEGII_CAPABILITY_MISSING` means its
+API build predates email or has no login configured.
+
 ### Receiving an SMS (`sms.received`)
 
 When a text arrives on the tenant's connected RingCentral number, the platform

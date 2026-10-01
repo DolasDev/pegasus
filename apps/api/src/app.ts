@@ -89,6 +89,7 @@ import { clientErrorsHandler } from './handlers/client-errors'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
 import { smsHandler } from './handlers/sms'
+import { emailHandler } from './handlers/email'
 import { workflowSecretsConfigsHandler } from './handlers/workflow-secrets-configs'
 import {
   integrationProjectionsHandler,
@@ -302,6 +303,9 @@ m2mV1.route('/workflows', workflowsHandler)
 // smsHandler (see handlers/sms.ts). Was previously mis-mounted on the JWT-only
 // `v1` router, which 401'd every workflow `send_sms`.
 m2mV1.route('/sms', smsHandler)
+// Platform email, delivered through the tenant's pegII API (its SMTP account).
+// Dual-auth applied inside the handler. See handlers/email.ts.
+m2mV1.route('/email', emailHandler)
 // Per-tenant workflow secrets & config. Management routes use Cognito (tenant
 // admin / workflow developer); the /runtime/* reads use the workflow runtime's
 // `vnd_` key. Dual-auth is applied inside the handler — same pattern as

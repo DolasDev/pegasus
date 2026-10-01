@@ -267,6 +267,65 @@ export function getOpenApiSpec() {
     ],
     paths: {
       ...OPERATIONAL_READ_PATHS,
+      '/api/v1/email/send': {
+        post: {
+          operationId: 'sendEmail',
+          summary:
+            'Send an internal email through the tenant’s pegII API / SMTP account (SendEmail)',
+          description:
+            'Body { to (address or list), cc?, subject (single line, ≤300), body, bodyType? (text | html, default text), dedupKey? }. Recipients must be on the tenant’s allowed domains (Settings → App → Operations; unset ⇒ 409 EMAIL_RECIPIENTS_NOT_CONFIGURED, outside ⇒ 400 RECIPIENT_NOT_ALLOWED); ≤10 recipients (400 TOO_MANY_RECIPIENTS); body ≤100 KB (413); a per-tenant daily limit (429 EMAIL_DAILY_LIMIT). With dedupKey a retry returns the first send (200, alreadySent:true); 409 EMAIL_SEND_IN_PROGRESS / EMAIL_SEND_IN_DOUBT / IDEMPOTENCY_KEY_REUSED as for /sms/send. The From address is the site’s configured default. 503 EMAIL_NOT_CONFIGURED when the site has no SMTP account, 503 PEGII_CAPABILITY_MISSING when its pegII API predates email or lacks auth, 502 EMAIL_SEND_FAILED when SMTP refuses.',
+          tags: ['Email'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['to', 'subject', 'body'],
+                  additionalProperties: false,
+                  properties: {
+                    to: {
+                      oneOf: [
+                        { type: 'string', format: 'email' },
+                        { type: 'array', items: { type: 'string', format: 'email' }, minItems: 1 },
+                      ],
+                    },
+                    cc: { type: 'array', items: { type: 'string', format: 'email' } },
+                    subject: { type: 'string', minLength: 1, maxLength: 300 },
+                    body: { type: 'string', minLength: 1 },
+                    bodyType: { type: 'string', enum: ['text', 'html'], default: 'text' },
+                    dedupKey: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,200}$' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{data: {id, alreadySent: true}} — replay' },
+            '202': {
+              description: '{data: {id, alreadySent: false}} — handed to the site’s SMTP relay',
+            },
+            '400': {
+              description: 'VALIDATION_ERROR | RECIPIENT_NOT_ALLOWED | TOO_MANY_RECIPIENTS',
+            },
+            '409': {
+              description:
+                'EMAIL_RECIPIENTS_NOT_CONFIGURED | EMAIL_SEND_IN_PROGRESS | EMAIL_SEND_IN_DOUBT | IDEMPOTENCY_KEY_REUSED',
+            },
+            '413': { description: 'BODY_TOO_LARGE' },
+            '429': { description: 'EMAIL_DAILY_LIMIT' },
+            '502': {
+              description:
+                'EMAIL_SEND_FAILED | PEGII_SOURCE_UNREACHABLE | PEGII_SOURCE_AUTH_FAILED',
+            },
+            '503': {
+              description:
+                'EMAIL_NOT_CONFIGURED | PEGII_CAPABILITY_MISSING | PEGII_AUTH_UNAVAILABLE',
+            },
+          },
+        },
+      },
       '/api/v1/sms/send': {
         post: {
           operationId: 'sendSms',

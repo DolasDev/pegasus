@@ -940,6 +940,76 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()
 
+    def send_email(
+        self,
+        to: str | list[str],
+        subject: str,
+        body: str,
+        *,
+        cc: list[str] | None = None,
+        body_type: str = "text",
+        dedup_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Send an internal email. Requires ``SendEmail``.
+
+        Delivered through the tenant's on-premises Pegasus server and its SMTP
+        account, from that server's configured default address.
+
+        **Internal only.** Every ``to``/``cc`` address must be at a domain the
+        tenant admin allowed (Settings → App → Operations); an unset list
+        disables email (409 ``EMAIL_RECIPIENTS_NOT_CONFIGURED``) and any other
+        address is refused (400 ``RECIPIENT_NOT_ALLOWED``). At most 10
+        recipients and a 100 KB body; a per-tenant daily limit applies (429
+        ``EMAIL_DAILY_LIMIT``).
+
+        **Pass ``dedup_key`` for any email you must not send twice** — a retry
+        with the same key returns the first send (``alreadySent: True``); 409
+        ``EMAIL_SEND_IN_PROGRESS`` → retry later; 409 ``EMAIL_SEND_IN_DOUBT`` →
+        never resend blindly; 409 ``IDEMPOTENCY_KEY_REUSED`` → the key was used
+        for a different email.
+
+        Args:
+            to: One address or a list.
+            subject: A single line, ≤ 300 characters.
+            body: The message body.
+            cc: Optional list of addresses.
+            body_type: ``"text"`` (default) or ``"html"``.
+            dedup_key: Optional idempotency key, ``[A-Za-z0-9._:-]{1,200}``.
+
+        Returns:
+            ``{"id": ..., "alreadySent": bool}``.
+
+        Raises:
+            PegiiApiError: See above; also 503 ``EMAIL_NOT_CONFIGURED`` (the
+                server has no SMTP account), 503 ``PEGII_CAPABILITY_MISSING``
+                (the server's API predates email), 502 ``EMAIL_SEND_FAILED``.
+        """
+        payload: dict[str, Any] = {
+            "to": to,
+            "subject": subject,
+            "body": body,
+            "bodyType": body_type,
+        }
+        args: dict[str, Any] = {"to": to, "subject": subject, "body": body, "body_type": body_type}
+        if cc is not None:
+            payload["cc"] = cc
+            args["cc"] = cc
+        if dedup_key is not None:
+            payload["dedupKey"] = dedup_key
+            args["dedup_key"] = dedup_key
+        captured = self._capture_mutation(
+            "SendEmail",
+            "send_email",
+            args,
+            {"id": "dry-run", "alreadySent": False, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post("/api/v1/email/send", json=payload)
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def get_text_message(self, message_id: str) -> dict[str, Any] | None:
         """Read one captured SMS by the ``messageId`` an ``sms.received`` event carries.
 

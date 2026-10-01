@@ -41,6 +41,28 @@ describe('AppSettingsSchema', () => {
     expect(parsed.operations.longhaulClient).toBe(client)
   })
 
+  it('normalises email allowed-recipient domains to lowercase bare domains', () => {
+    const parsed = AppSettingsSchema.parse({
+      operations: { emailAllowedRecipientDomains: [' NWMovers.com ', 'mail.example.co.uk'] },
+    })
+    expect(parsed.operations.emailAllowedRecipientDomains).toEqual([
+      'nwmovers.com',
+      'mail.example.co.uk',
+    ])
+  })
+
+  it.each([
+    ['@nwmovers.com'],
+    ['user@nwmovers.com'],
+    ['http://nwmovers.com'],
+    ['localhost'],
+    ['*.nwmovers.com'],
+  ])('rejects %s as an email allowed-recipient domain', (bad) => {
+    expect(() =>
+      AppSettingsSchema.parse({ operations: { emailAllowedRecipientDomains: [bad] } }),
+    ).toThrow()
+  })
+
   it('accepts null for operations.longhaulClient (explicit "unconfigured")', () => {
     const parsed = AppSettingsSchema.parse({ operations: { longhaulClient: null } })
     expect(parsed.operations.longhaulClient).toBeNull()

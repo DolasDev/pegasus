@@ -25,6 +25,7 @@ import {
   type LonghaulClient,
 } from '@/api/queries/app-settings'
 import { DriverImportCard } from '@/features/settings/app/DriverImport'
+import { EmailRecipientDomainsCard } from '@/features/settings/app/EmailRecipientDomains'
 
 // The storage states the dropdown represents. `''` = "not configured",
 // modeled separately from `LonghaulClient` so the controlled <select> can render
@@ -125,6 +126,7 @@ export function AppSettingsOperationsPage() {
           )}
         </CardFooter>
       </Card>
+      <EmailRecipientDomainsCard />
       <DriverImportCard />
     </div>
   )

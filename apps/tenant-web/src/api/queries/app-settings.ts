@@ -21,6 +21,8 @@ export type LonghaulClient = 'nwi' | 'qmm' | 'rvs'
 
 export interface OperationsSettings {
   longhaulClient?: LonghaulClient | null
+  /** Domains platform email may be sent to; unset/empty ⇒ email disabled. */
+  emailAllowedRecipientDomains?: string[] | null
 }
 
 export interface AppSettings {

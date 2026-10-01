@@ -104,6 +104,8 @@ export const TENANT_SCOPED_MODELS = new Set([
   // because the RingCentral sync path runs on the root client.
   'SmsOptOut',
   'SmsSend',
+  // EmailSend — per-tenant email audit, daily-limit counter and idempotency claim.
+  'EmailSend',
   // Push notifications — DeviceToken rows are read/written by the tenant-scoped
   // device-token handler; PushNotificationOutbox rows are enqueued by handlers
   // and domain-event emitters via the scoped client inside transactions. The
