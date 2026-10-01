@@ -41,6 +41,48 @@
     "GHSA-mh99-v99m-4gvg",
     "GHSA-rgw5-rvv9-x895",
 
+    // GHSA-6j4f-fj2g-mc7p (<5.0.10) / GHSA-qhr7-859c-m2p7 (<5.0.11) — two more
+    // brace-expansion stack-exhaustion DoS advisories (both high), landed 2026-09-30,
+    // above the >=5.0.9 floor the three entries above were allowlisted against. Exactly
+    // the recurrence that entry predicted, and the same split: the reachable non-bundled
+    // copy is patched by raising the `brace-expansion@5` override to >=5.0.12 in
+    // package.json (which also clears the moderate GHSA-q2hr-2g5m-vwhr, <5.0.12), while
+    // the copy bundled inside aws-cdk-lib's vendored minimatch@10 cannot be reached by
+    // an npm `overrides` floor at all — overrides do not apply to a published package's
+    // bundledDependencies. Exposure is synth/CDK-time only over our own committed
+    // infrastructure definitions, not a runtime path over untrusted input. Remove each
+    // entry once aws-cdk-lib bundles brace-expansion >=5.0.12 (audit-ci's "Consider not
+    // allowlisting advisories" report is what flags it as unused).
+    "GHSA-6j4f-fj2g-mc7p",
+    "GHSA-qhr7-859c-m2p7",
+
+    // GHSA-m9gg-hp2v-232j — @grpc/grpc-js getAuthContext can return unauthorized
+    // certificates as though they were authorized (high, vulnerable >=1.14.0 <1.14.5).
+    // Landed 2026-09-30. One copy, hoisted to the root: apps/api >
+    // @temporalio/client@1.24.0 > @grpc/grpc-js@1.14.4.
+    //
+    // NOT REACHABLE HERE: `getAuthContext` is a gRPC *server* API, read off a
+    // ServerSurfaceCall to inspect a peer's mTLS certificate. This repo has no gRPC
+    // server — `@temporalio/client` is the only @temporalio/* package in apps/api and it
+    // dials Temporal Cloud as a client; there is no grpc.Server construction anywhere in
+    // apps/ or packages/. The companion GHSA-f596-whhp-79r4 (low, same range) is
+    // server-side for the same reason: it leaks handler error messages to clients.
+    //
+    // WHY AN ALLOWLIST AND NOT AN OVERRIDE, which is the part worth not re-deriving:
+    // `"@grpc/grpc-js": ">=1.14.5"` in `overrides` is a NO-OP on this tree. npm applies
+    // it — `npm ls` prints `@grpc/grpc-js@1.14.4 overridden` — and still resolves 1.14.4.
+    // Neither documented remedy works: `npm update @grpc/grpc-js --package-lock-only`
+    // followed by `npm install` leaves 1.14.4 in place, and `npm install
+    // --package-lock-only` does not re-resolve it either. Deleting the single
+    // `node_modules/@grpc/grpc-js` lock key PRUNES the package outright (`npm ls` →
+    // `(empty)`), which is the exact failure mode GOTCHAS `npm overrides: two mechanics`
+    // records for protobufjs and qs. All three were tried on 2026-09-30 and reverted.
+    //
+    // The real fix is upstream: @temporalio/client declares `@grpc/grpc-js: ^1.12.4`, so
+    // a client bump that re-resolves the tree will pick up >=1.14.5 on its own. Remove
+    // this entry then (audit-ci's "Consider not allowlisting advisories" report flags it).
+    "GHSA-m9gg-hp2v-232j",
+
     // GHSA-w3rx-r6r6-pgpr / GHSA-5p2g-fcmc-qvqq — two image-size DoS advisories
     // (both high): infinite loops in the ICNS parser and in the JXL/HEIF parsers.
     //
