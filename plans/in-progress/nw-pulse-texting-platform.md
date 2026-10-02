@@ -2,7 +2,7 @@
 
 **Branch:** none yet. One worktree + branch + PR per phase: pegasus via `scripts/new-worktree.sh feat <slug>`; movemanager per its CLAUDE.md, with its own plan file.
 **Goal:** Ship every platform capability the three NW pulse-texting workflows (`nw_pulse_send`, `nw_pulse_reply`, `nw_pulse_daily_check`) need. Cloud-owned data is built in pegasus. Legacy data is built as **real endpoints on the pegII API** (`movemanager/Pegasus.Api`) and consumed through the cloud bridge. **No direct cloud→MSSQL access and no stubs.**
-**Status:** APPROVED 2026-09-29 (v2: pegII API instead of stubs/direct DB; D1–D5 decided) · **SDK today:** 0.38.2 · **movemanager HEAD:** `f0abdf16` (Beta 9.3.1)
+**Status:** APPROVED 2026-09-29 (v2: pegII API instead of stubs/direct DB; D1–D5 decided) · **SDK today:** 0.42.0 · **movemanager HEAD:** `f0abdf16` (Beta 9.3.1)
 **Inputs:** the workflow author's three specs for NW pulse texting (pulse-texting scope, proposed platform interfaces, workflows pending platform work; 09.23–09.25). They are external and not in this repo; the workflow code lives in the authoring repo under `nw-pulse-texting/`.
 
 ---
@@ -12,9 +12,11 @@
 - [x] **Phase 0** — Spikes: done 2026-09-29 (findings summarised under each S-item below; S5 still needs a human)
 - [x] **Phase 1** — [pegasus] Workflow state store → SDK 0.39.0 — MERGED #743 (`807057e0`), PUBLISHED to PyPI 2026-09-29; authoring `CLAUDE.md` updated
 - [x] **Phase 2** — [pegasus] 2a–2c MERGED #747 (SDK 0.40.0), 2d MERGED #748 (SDK 0.41.0); both PUBLISHED
-- [~] **Phase 3** — [pegasus → pegII] `send_email` through the pegII API's SMTP endpoint → SDK 0.42.0. Built on `feat/pegii-send-email`: `POST /api/v1/email/send`, the `EmailSend` table, the tenant allowed-domains setting and UI, capability gate, SDK `send_email`
+- [x] **Phase 3** — [pegasus → pegII] `send_email` through the pegII API's SMTP endpoint — MERGED #754 (`21d7886f`), SDK 0.42.0 PUBLISHED; authoring `CLAUDE.md` updated (`0d86b9f`)
 - [x] **Phase 4** — pegII API foundations: DONE 2026-09-29 (movemanager `dev` @ `b793b17e`, pegasus #749)
-- [ ] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.43.0
+- [~] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.43.0.
+  - movemanager is **built and committed but not pushed**: `149c4c82` on `feat/order-read-normalization-and-search` (plan `order-read-normalization-and-search.md`).
+  - **Blocked on cloud identity phases I1 + I2** (`plans/todo/cloud-identity-and-companies.md`). The approved "provision a hub service user + a cloud secret per site" rollout was replaced by cloud-issued tokens, so NW's rollout becomes "set site id + issuer".
 - [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK 0.44.0 (+ one-line desktop guard fix)
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
@@ -276,6 +278,15 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
     4. Confirm `/version` lists `pegii.auth.v1`.
 
 ## Phase 5 — Order reads: KeyMoveDates normalization + live order search → SDK 0.43.0
+
+**Corrections and decisions from implementation (2026-10-01 → 02).** These supersede the text below where they conflict; the details are in movemanager `plans/in-progress/order-read-normalization-and-search.md`.
+
+- **A1:** hard cutover. The serialized order/salesman reads now require a token and exist only on auth-enabled sites. Tenant-web Operations doesn't use them (the trip sheet uses `/pegii/reports`, the dashboard uses MSSQL); the only consumer is the GLOBAL `weichert-milestone-update` workflow.
+- **A2:** `plan_pack`/`plan_load` are the desktop KeyDate **Latest**, not Planned (`pack_date`/`load_date` are Planned). The search accepts both and returns the full Planned/Earliest/Latest/Actual for pack, load and delivery.
+- **A3:** `move_desc` is blanked on every desktop save, so the search returns `moveType` (`import_export`) instead.
+- **A4:** the cloud is the authorization gate. pegII verifies only that a token is valid for the site.
+- The v2 snapshot keys `OperationsDates` too, and `KeyDates` has `SetOff = 32`.
+- **Texting eligibility** is the desktop's own `TextConsentRules.EvaluateShipperSend`: the order's `coord_email` ("Yes") plus account/parent-account `block_texting` ("Y"). `block_texting` is a manual production DDL, probed at runtime. The search returns this verdict as `texting.status`.
 
 **Decided 2026-09-29:** the serialized order and salesman reads and the new search all go behind `RequireAuthorization()` in this phase. The cloud already sends the service-user bearer on every call from Phase 4. Ship it only after the site has JWT and the hub DB configured and the cloud's credential secret is set; otherwise those reads start returning 404. Gate the change on the site advertising `pegii.auth.v1`.
 
