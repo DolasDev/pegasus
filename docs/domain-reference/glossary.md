@@ -34,7 +34,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
 - [Compatibility change classes](#compatibility-change-classes-13) — 13
-- [Key functions and rules](#key-functions-and-rules-28) — 28
+- [Key functions and rules](#key-functions-and-rules-30) — 30
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
@@ -1970,7 +1970,7 @@ Removing or renaming a `type`. It is a component of the fact key ([SD §1.3] ite
 - **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
 - **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (28)
+## Key functions and rules (30)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
 
@@ -2105,6 +2105,19 @@ travels into the refusal and never into a subject.
 - **Cited:** [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Declared by:** `admitAtBoundary` in `packages/domain-reference/src/rules/e-canon.ts`
 
+### `I-ACCOUNT` (rule)
+
+Rule **I-ACCOUNT**, [A9 §3.4]:
+
+> "Whether a scheme is document-accountable is a property of the scheme, and A9 answers it for the
+> schemes the external corpus witnesses and for no others. The answer is a **partial function**,
+> never a default."
+
+- **Kind:** whether a scheme is document-accountable, answered only where the corpus says
+- **Cited:** [[A2 §3.2]](analysis/A2-shipment-structure.md#32-identity-across-a-terminated-stay-and-reshipment--owed-item-1) · [[A6 §3.2(a)]](analysis/A6-documents-evidence.md#32-a-documents-own-identity-and-the-identity-it-merely-carries--owed-item-1) · [[A6 §Cross-area]](analysis/A6-documents-evidence.md) · [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[A9 §3.4]](analysis/A9-identity-cross-references.md#34-i-account--a6-32as-input-as-a-partial-function) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[A9]](analysis/A9-identity-cross-references.md) · [[SD §0]](analysis/00-shared-decisions.md) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Corpus:** `src:nmfta-ebol`
+- **Declared by:** `schemeAccountability` in `packages/domain-reference/src/rules/identity-schemes.ts`
+
 ### `I-KEY` (rule)
 
 **Rule I-KEY** — [SD §7.1]. "The identity fact key is `(subject, scheme, vocabularyScope)`.
@@ -2114,6 +2127,15 @@ both rules."
 - **Kind:** the identity fact key
 - **Cited:** [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
 - **Declared by:** `IdentityFactKey` in `packages/domain-reference/src/identity.ts`
+
+### `IdentitySchemeStaysOwed` (rule)
+
+The gate behind [A9 §3.2]'s refusal, and the next case along from [A5 §9], [A2 §9], [A6 §9] and
+[A7 §9].
+
+- **Kind:** [A9 §3.2] refuses to close `identityScheme`, and the refusal is a type
+- **Cited:** [[A2 §9]](analysis/A2-shipment-structure.md) · [[A5 §9]](analysis/A5-storage-in-transit.md) · [[A6 §9]](analysis/A6-documents-evidence.md) · [[A7 §9]](analysis/A7-charges-billing.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
+- **Declared by:** `IdentitySchemeStaysOwed` in `packages/domain-reference/src/rules/identity-schemes.ts`
 
 ### `M1` (rule)
 
@@ -2396,9 +2418,11 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`GOODS_LOST_OR_STOLEN`](#goodslostorstolen-reason-code) — reason code
 - [`GOODS_MISSING`](#goodsmissing-reason-code) — reason code
 - [`GOODS_NOT_READY`](#goodsnotready-reason-code) — reason code
+- [`I-ACCOUNT`](#i-account-rule) — rule
 - [`I-KEY`](#i-key-rule) — rule
 - [`INSTRUCTED_CHANGE`](#instructedchange-reason-code) — reason code
 - [`IN_TRANSIT`](#intransit-stay-location) — stay location
+- [`IdentitySchemeStaysOwed`](#identityschemestaysowed-rule) — rule
 - [`KEYED_BY_PERSON`](#keyedbyperson-capture-method) — capture method
 - [`LATE_ARRIVAL`](#latearrival-reason-code) — reason code
 - [`LEAVES_THE_MODEL`](#leavesthemodel-shipment-continuity-verdict) — shipment continuity verdict

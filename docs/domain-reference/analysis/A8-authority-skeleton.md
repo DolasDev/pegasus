@@ -762,6 +762,16 @@ file may be read as deciding them.
    `SvcProvDataRecipient` naming the receiving branch per push, SOE p.2), and the hierarchy
    (`src:atlas-world-group-api`'s `parentAgentCode` and `/Agents/{agentCode}/Family` — column names
    only). Until it lands, `assertedBy.partyRef` has no target schema.
+   **[A9 §3.6] adds a second and independent reason to mint it, and mints nothing itself.** Those
+   identifiers are not only **fields** the party entity would carry — each is an `identity`
+   assertion whose `subject` is a party, and [SD §1.2] has no party aggregate, so five of the twenty
+   schemes [A9 §3.3] witnesses cannot be asserted at all. The widest-witnessed scheme in the whole
+   corpus is among them: six witness rows carry a SCAC, from four publishing bodies. A9 records the
+   blocker against this item rather than opening one of its own, because an owed inventory that
+   counts one gap twice is worse than one that counts it once ([A7 §6]). `ids.ts`'s
+   `TODO(A8 §9 item 1)` — whether the party becomes a fifteenth aggregate kind or stays outside the
+   subject enum — is the question that decides it, and [A9 §3.6] item 2 records why `partyRole` is
+   not the answer: a SCAC belongs to the company whatever it is doing on this shipment.
 2. **The full role vocabulary as a versioned enum**, including the roles §2 names but does not
    define: `accountParty`, `goodsOwner`, `weighMaster`, the government offices
    (PPSO/PPPO/TO/ITO/JPPSO/SB/SPM, `src:dp3-400ng`, `src:dtr-part-iv`), the NTS

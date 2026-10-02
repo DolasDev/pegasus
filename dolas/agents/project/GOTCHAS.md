@@ -2202,6 +2202,44 @@ Use `splice`. The old reducer test _asserted_ the `undefined` slot, so it guarde
 **Finding client crashes:** the ErrorBoundary POSTs to `/api/v1/client-errors`; search the prod
 `pegasus-prod-api-ApiLogGroup*` for `"client.error"`. Each event includes the message, stack and page URL.
 
+---
+
+## `vitest` is green while `tsc` is red, and a brand-new test file is where it bites
+
+**Discovered:** A9 round, `packages/domain-reference` (PR #746).
+
+`vitest run` transpiles and does **not** typecheck. A new conformance test file shipped green with
+six `strictNullChecks` errors in it — `match[2]` and `registry.split(...)[1]` are `string |
+undefined` under `noUncheckedIndexedAccess`, and every one of them happened to be non-null at
+runtime, so the suite passed.
+
+**Rule: run `npm run typecheck` after _every_ test edit, not once at the end of the round.** The
+window where the two disagree is exactly the window where you believe the new gate works.
+
+Related, same package: the pre-commit hook runs `eslint --fix` + `prettier --write`, so **verify
+after the hook, not before**.
+
+---
+
+## The domain-reference drift guard reads `` `type: X` `` in prose as a record-type claim
+
+**Discovered:** A9 round (PR #746).
+
+`packages/domain-reference/tests/conformance/documents.test.ts` scans every `.md` under
+`analysis/` and flags, in both directions, any **unqualified** `type` followed by `=` or `:` and an
+identifier inside a code span — that is the documents' own type-naming form, and the guard exists so
+a document cannot name a record type the vocabulary does not have.
+
+It has a false positive that is easy to hit and easy to misread as a broken test: prose quoting
+**someone else's** schema. Writing that an OpenAPI field is `` `type: string` `` makes the guard
+report `string` as "a record type named by a document and absent from the vocabulary".
+
+**Fix: reword rather than widen the guard.** "a bare string with `x-nullable: true`" says the same
+thing and keeps the guard narrow. Qualifying the span (`Foo.type: string`) also works — "unqualified"
+is load-bearing in the guard's rule, which is how `Location.type = warehouse` stays out of it.
+
+---
+
 ## A company-site-only deploy failed to bundle the Cognito Lambdas
 
 CDK synthesizes the **whole app** on every deploy and esbuild-bundles every `NodejsFunction` in it,

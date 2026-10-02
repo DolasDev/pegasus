@@ -7,7 +7,14 @@
 #               ontology | internal-system | glossary | contract | reference-data | dataset
 #   openness    public | free-registration | gated-partner | paid | licensed | internal
 #   license     as stated by the publisher, or "unstated"
-#   areas       rubric area ids (A1–A13) the source informs
+#   areas       rubric area ids (A1–A13) the source informs. `areas` is a DISCOVERY hint, not an
+#               inventory: it was written during the 2026-09-11 research passes, BEFORE any source
+#               was analysed, and a source routinely scores an area non-zero without that area
+#               appearing here. [A9 §1] measured it across all thirteen areas and found the gap in
+#               every one — its own sharpest case is src:dtr-part-iv, whose analysis calls A9 "the
+#               strongest area" and whose `areas` does not name A9. To find which sources bear on an
+#               area, read the per-area score rows in sources/*/analysis.md; this field will send
+#               you to a useful subset and will not send you to all of them.
 #   priority    P1 analyze in detail · P2 useful / comparator · P3 record only
 #   status      candidate   known, not yet captured
 #               captured    material stored under sources/<id>/ or referenced in-repo

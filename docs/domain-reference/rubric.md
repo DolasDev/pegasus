@@ -31,8 +31,10 @@ but our configs and code that implement them do not.
 | A13 | Crew, driver & settlement      | context map | crew scheduling, driver/agent compensation, revenue splits                                                            |
 
 > **The `v1 detail` column is the plan, not the state.** Nine areas are _intended_ to be modelled in
-> detail; what exists is what `analysis/` holds. As things stand: **A1**, **A2**, **A3**, **A5** and
-> **A8** have full area documents — A1 at [`analysis/A1-order-service-lifecycle.md`](analysis/A1-order-service-lifecycle.md),
+> detail; what exists is what `analysis/` holds. **As things stand the two have converged**: eight of
+> the nine — **A1**, **A2**, **A3**, **A5**, **A6**, **A7**, **A8** and **A9** — have full area
+> documents, and the ninth, **A4**, is the exception described below.
+> A1 is at [`analysis/A1-order-service-lifecycle.md`](analysis/A1-order-service-lifecycle.md),
 > which records its weights at §3.7 and its owed items at §6, and A5 at
 > [`analysis/A5-storage-in-transit.md`](analysis/A5-storage-in-transit.md), which records its weights
 > at §3.7 and its owed items at §6 and is the first area to weight **C4** highest, and A2 at
@@ -53,11 +55,18 @@ but our configs and code that implement them do not.
 > §3.11 and its owed items at §6 and weights **C3** highest, as [A1 §3.7] does — because every one
 > of its decisions turns on whether a published rule is testable, and because here the heaviest
 > criterion and the best-evidenced one are the same one, which [A2 §3.7]'s weighting shows is not
-> the usual case. **A9 has no
-> area analysis at all**, and a claim about it that is not traceable to
-> [`analysis/00-shared-decisions.md`](analysis/00-shared-decisions.md) or to a source analysis is
-> unbacked. A10-A13 are context-map-only by design and are not gaps. Recorded here because a column
-> reading "yes" for all nine invites exactly the assumption [SD §0] forbids.
+> the usual case. **A9** has a full area document at
+> [`analysis/A9-identity-cross-references.md`](analysis/A9-identity-cross-references.md), which
+> records its weights at §4 and its owed items at §6 and weights **C6** highest — the obvious call,
+> since C6 _is_ this area's criterion — with **C4** second, and that half is not obvious: `C2 = 3`
+> is nearly universal on A9 and therefore discriminates nothing, while `C4` is the axis every
+> decision in §3 turns on — [A5 §3.7] is the only other area to put **C4** that high, and
+> [A9 §4] notes that the _"A8 weights C4/C6"_ example under **Scoring rules** below is an
+> illustration written before the areas were, not a weighting [A8] ever recorded.
+> **With A9 written the unwritten-area phase is over**, and the one part of a `v1 detail`
+> area still unscored is A4's execution-event and tracking model.
+> A10-A13 are context-map-only by design and are not gaps. Recorded here because a column reading
+> "yes" for all nine invites exactly the assumption [SD §0] forbids.
 
 > **One warning about the A6 row specifically, from [A6 §3.8].** The row reads as a list of eight
 > document classes to model — _"order for service, estimate, inventory, BOL, weight tickets, POD,
@@ -80,6 +89,26 @@ but our configs and code that implement them do not.
 > covers best — every source scoring `C1 = 3` on A7 scores it on rating — which is why A7's honest
 > output is shorter than its evidence.
 
+> **And one about the A9 row, from [A9 §3.8], where the residue runs BOTH ways.** The row reads as
+> five identifiers — _"order no., registration no., SCAC,
+> BOL/PRO, service order no."_ Outward, the corpus witnesses twelve more schemes the column does not
+> name, including every constructed scheme and every one at the `item`, `resource`, `stay` and
+> `trip` grain — among them the SIT control number that [SD §7.4] already depends on. **Inward is
+> the half a reader will not notice**: three of the five names cover more than one scheme, because
+> [SD §7.1] makes a naming system `(scheme, authority)` and the column has only names. _"BOL/PRO"_ is
+> three schemes; _"registration no."_ is two with different authorities, one of which — the van
+> line's — has **exactly one external witness in the whole corpus**, a partner contract with no
+> capture, while the other is primary and captured. Both halves are enumerated in
+> `identity-schemes.test.ts` rather than counted here.
+
+> **And one that is not in this file at all.** [A9 §1] found `sources/registry.yaml`'s `areas:`
+> field being read as an inventory of which areas a source bears on, when it is a discovery hint
+> written before any source was analysed — and the gap exists for every one of the thirteen areas.
+> The registry's own schema comment now says so. **Three fields in this corpus are routing hints of
+> that kind** — the `v1 detail` column above, the `Covers` column, and `areas:` — and the pattern is
+> the thing to carry rather than a count of the readings: **a field written to decide where to look
+> gets read as a record of what was found.**
+
 > **And one about the resumption plan rather than the rubric, recorded here because a later reader
 > will meet it here first.** A6's own resumption plan named
 > `src:dtr-part-iv` as A6's best source and did not name `src:dp3-tender-of-service`, which scores
@@ -88,7 +117,7 @@ but our configs and code that implement them do not.
 > reading the second is how the strongest source in an area gets left off a list. (The plan itself is
 > **gone** — this effort rewrites a finished round's plan as the next round's, so the record is
 > `plans/completed/domain-reference-a6-documents.md` and the live plan is
-> [`../../plans/in-progress/domain-reference-areas-a9.md`](../../plans/in-progress/domain-reference-areas-a9.md).)
+> [`../../plans/in-progress/domain-reference-cleanup.md`](../../plans/in-progress/domain-reference-cleanup.md).)
 
 > **One observation about per-area scoring itself, from [A2 §3.7].** `src:dtr-part-iv` scores
 > `C3 = 1` **on A2** and decided the whole of [A2 §3.2] — because its A2 row scores the shipment

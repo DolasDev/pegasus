@@ -1317,6 +1317,175 @@ export function loadCollectionPreconditions(raw: unknown): CollectionPreconditio
   return { rows }
 }
 
+/* ──────────────────────────  A9's witnessed schemes  ─────────────────────── */
+
+/** One source's witness to a scheme, graded as [A6 §2] and [A7 §2] grade them. */
+export interface SchemeWitness {
+  readonly source: string
+  /** `primary` = quoted from captured material in this repo; `secondary` = from the analysis. */
+  readonly grade: 'primary' | 'secondary'
+  readonly citation: string
+}
+
+/**
+ * What an identity scheme identifies — an [SD §1.2] aggregate kind, or a **party**, which is not
+ * one.
+ *
+ * [A9 §3.6] is this union: six of the table's rows identify a party, `ids.ts` already records that
+ * `PartyId` "is an identifier with no aggregate behind it", and [A8 §9 item 1] already owes the
+ * entity. A `party` row is therefore a row whose assertion has no `subject`, which is why
+ * {@link loadIdentitySchemes} refuses one that does not carry a blocker.
+ */
+export type SchemeSubject =
+  | { readonly kind: 'aggregate'; readonly aggregate: AggregateKind }
+  | {
+      readonly kind: 'party'
+    }
+
+/**
+ * One row of [A9 §3.3]'s witnessed-scheme table.
+ *
+ * **Not a vocabulary member.** [A9 §3.2] refuses to close `identityScheme`, so this is a catalogue
+ * of what the external corpus witnesses and never a statement that these are the schemes that
+ * exist. The bit that does work is {@link documentAccountable}, which is the single input
+ * [A6 §3.2(a)]'s **D-ID** takes and does not publish.
+ */
+export interface IdentityScheme {
+  readonly scheme: string
+  readonly corpusName: string
+  readonly identifies: SchemeSubject
+  readonly authority: string
+  /** False where the corpus states that the assigning party is not the vocabulary's owner. */
+  readonly issuerIsTheAuthority: boolean
+  /** [A6 §3.2(a)]'s bit: is the scheme assigned to the FORM, independently of any shipment? */
+  readonly documentAccountable: boolean | 'undetermined'
+  /** False where the corpus names the scheme and defines nothing about it. */
+  readonly definedNotMerelyNamed: boolean
+  /** Non-null exactly where an assertion under this scheme cannot be expressed today. */
+  readonly blocker: string | null
+  /** Which of the rubric's five A9 `Covers` names this row answers to, if any. */
+  readonly rubricCovers: string | null
+  readonly witnesses: NonEmptyArray<SchemeWitness>
+  readonly note: string
+}
+
+export interface IdentitySchemeTable {
+  readonly rows: ReadonlyMap<string, IdentityScheme>
+}
+
+function readSchemeSubject(path: string, value: unknown): SchemeSubject {
+  const raw = readString(path, value)
+  if (raw === 'party') return { kind: 'party' }
+  return { kind: 'aggregate', aggregate: readAggregateKind(path, raw) }
+}
+
+function readSchemeWitness(path: string, value: unknown): SchemeWitness {
+  const object = readObject(path, value)
+  return {
+    source: readString(`${path}.source`, object['source']),
+    grade: readMember(`${path}.grade`, object['grade'], ['primary', 'secondary'] as const),
+    citation: readString(`${path}.cite`, object['cite']),
+  }
+}
+
+function readAccountability(path: string, value: unknown): boolean | 'undetermined' {
+  if (typeof value === 'boolean') return value
+  if (value === 'undetermined') return 'undetermined'
+  return fail(path, 'must be true, false or "undetermined"')
+}
+
+/**
+ * Load [A9 §3.3]'s table, and enforce the two cross-field invariants the prose argues from.
+ *
+ * Neither is a shape check, and that is the point — a row can be well-formed and still assert
+ * something [A9] refused:
+ *
+ * 1. **A `party` row must name a blocker, and no other row may name [A8 §9 item 1].** [A9 §3.6]'s
+ *    finding is that the corpus's best-witnessed scheme identifies the one thing [SD §1.2] has no
+ *    aggregate for. If a later round mints the party entity, the blocker comes off these rows and
+ *    the first half fires; if someone writes the blocker onto an aggregate-grain row, the second
+ *    half fires. [A1 §9]'s rule, in the direction it was written for: the failure names the row.
+ * 2. **`documentAccountable: true` implies `identifies: document`.** [A6 §3.2] defines the bit as
+ *    "assigned to the form, independently of any shipment", so a scheme that is accountable and
+ *    identifies something other than the form is a contradiction rather than a row.
+ *
+ * What the loader deliberately does **not** check is completeness. [A9 §3.2] refuses to close the
+ * vocabulary; a table that refused to load because a scheme was missing would be asserting the
+ * closure the document declines to assert.
+ */
+export function loadIdentitySchemes(raw: unknown): IdentitySchemeTable {
+  const root = readObject('identity-schemes', raw)
+  const rows = new Map<string, IdentityScheme>()
+
+  for (const [index, item] of readArray('identity-schemes.schemes', root['schemes']).entries()) {
+    const at = `identity-schemes.schemes[${String(index)}]`
+    const object = readObject(at, item)
+    const scheme = readString(`${at}.scheme`, object['scheme'])
+    if (rows.has(scheme)) fail(`${at}.scheme`, `${scheme} is declared twice`)
+
+    const identifies = readSchemeSubject(`${at}.identifies`, object['identifies'])
+    const blocker = readStringOrNull(`${at}.blocker`, object['blocker'])
+    const documentAccountable = readAccountability(
+      `${at}.documentAccountable`,
+      object['documentAccountable'],
+    )
+
+    if (identifies.kind === 'party' && blocker === null) {
+      fail(
+        `${at}.blocker`,
+        `${scheme} identifies a party and [SD §1.2] has no party aggregate, so it cannot be null`,
+      )
+    }
+    if (identifies.kind !== 'party' && blocker !== null && blocker.includes('A8 §9 item 1')) {
+      fail(
+        `${at}.blocker`,
+        `${scheme} identifies a ${identifies.aggregate}, which is an aggregate kind; [A8 §9 item 1] is the party entity and does not block it`,
+      )
+    }
+    if (
+      documentAccountable === true &&
+      !(identifies.kind === 'aggregate' && identifies.aggregate === 'document')
+    ) {
+      fail(
+        `${at}.documentAccountable`,
+        `${scheme} is document-accountable under [A6 §3.2] but does not identify a document`,
+      )
+    }
+
+    rows.set(scheme, {
+      scheme,
+      corpusName: readString(`${at}.corpusName`, object['corpusName']),
+      identifies,
+      authority: readString(`${at}.authority`, object['authority']),
+      issuerIsTheAuthority: readBoolean(
+        `${at}.issuerIsTheAuthority`,
+        object['issuerIsTheAuthority'],
+      ),
+      documentAccountable,
+      definedNotMerelyNamed: readBoolean(
+        `${at}.definedNotMerelyNamed`,
+        object['definedNotMerelyNamed'],
+      ),
+      blocker,
+      rubricCovers: readStringOrNull(`${at}.rubricCovers`, object['rubricCovers']),
+      witnesses: readNonEmpty(
+        `${at}.witnesses`,
+        readArray(`${at}.witnesses`, object['witnesses']).map((witness, w) =>
+          readSchemeWitness(`${at}.witnesses[${String(w)}]`, witness),
+        ),
+        'witness',
+      ),
+      note: readString(`${at}.note`, object['note']),
+    })
+  }
+
+  if (rows.size === 0) {
+    fail('identity-schemes.schemes', 'a witnessed-scheme table with no witnessed scheme is not one')
+  }
+
+  return { rows }
+}
+
 /* ────────────────────────────  the three, joined  ───────────────────────── */
 
 export interface DomainTables {

@@ -44,12 +44,12 @@ to be merged before NW signs, or signature and billing start will slip apart.
 From the NW pulse texting proposal (`~/repos/pegasus-workflows/commercial/nw/2026-pulse-texting/`,
 rates approved 2026-09-30):
 
-| Plan | Per month | Actions per **year** |
-| --- | --- | --- |
-| Starter | $300 | 6,000 |
-| Growth | $650 | 15,000 |
-| Scale | $1,200 | 50,000 |
-| Beyond the pool | $0.30 per action | |
+| Plan            | Per month        | Actions per **year** |
+| --------------- | ---------------- | -------------------- |
+| Starter         | $300             | 6,000                |
+| Growth          | $650             | 15,000               |
+| Scale           | $1,200           | 50,000               |
+| Beyond the pool | $0.30 per action |                      |
 
 - **Pooled annually, billed monthly at 1/12.** NW volume swings 260–671
   moves/month; a monthly allowance would overbill June and waste February.
@@ -66,16 +66,16 @@ rates approved 2026-09-30):
 outside world, performed by a workflow runtime or an API client on the
 tenant's behalf.**
 
-| Counts (1 each) | Free |
-| --- | --- |
-| Text sent (`SendSms`) | Every read (orders, texts, opt-outs, salesmen, …) |
-| Email sent (`SendEmail`, when it lands) | Workflow state (`WriteWorkflowState`): ledgers and reservations |
-| Task created (`CreateTask`, when it lands) / closed (`CloseTask`) | Workflow runs, schedules, triggers |
-| Memo written (`WriteOrderMemo`, when it lands) | Dry runs (client-side; they never reach the API) |
-| Inbound text marked read (`UpdateTextMessage`) | Any non-2xx response |
-| Integration delivery / call (`DeliverToExternal`, `CallExternal`), per D3 | Tenant events (`EmitTenantEvent`), internal |
-| | Idempotent replays (`alreadySent`, `alreadyRead`, `alreadyClosed`, `alreadyExists`) |
-| | Opt-out records; anything a **human** does through tenant-web |
+| Counts (1 each)                                                           | Free                                                                                |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Text sent (`SendSms`)                                                     | Every read (orders, texts, opt-outs, salesmen, …)                                   |
+| Email sent (`SendEmail`, when it lands)                                   | Workflow state (`WriteWorkflowState`): ledgers and reservations                     |
+| Task created (`CreateTask`, when it lands) / closed (`CloseTask`)         | Workflow runs, schedules, triggers                                                  |
+| Memo written (`WriteOrderMemo`, when it lands)                            | Dry runs (client-side; they never reach the API)                                    |
+| Inbound text marked read (`UpdateTextMessage`)                            | Any non-2xx response                                                                |
+| Integration delivery / call (`DeliverToExternal`, `CallExternal`), per D3 | Tenant events (`EmitTenantEvent`), internal                                         |
+|                                                                           | Idempotent replays (`alreadySent`, `alreadyRead`, `alreadyClosed`, `alreadyExists`) |
+|                                                                           | Opt-out records; anything a **human** does through tenant-web                       |
 
 **Why:** Steve rejected per-monitored-move. It's a concept inside one
 workflow's ledger, so the platform can't count it, and it breaks when a second
@@ -88,6 +88,7 @@ The full reasoning is in the proposal's `terms-recommendation.md` §2.
 ### Facts from the codebase that shape the design (verified 2026-09-30)
 
 **Auth and identity**
+
 - The M2M surface is `m2mV1` (`apps/api/src/app.ts:269`), mounted at `/api/v1`
   (`:360`) ahead of the Cognito `v1` block. There is no router-wide auth: each
   handler applies `dualAuthMiddleware` (`middleware/dual-auth.ts:28-43`).
@@ -108,12 +109,14 @@ The full reasoning is in the proposal's `terms-recommendation.md` §2.
   Per-execution attribution is deferred (see Decisions, D5).
 
 **Authz**
+
 - `requirePermission(action)` (`middleware/rbac.ts:24-53`) is the single choke
   point that knows `action.id` for every gated route. It runs **before** the
   handler, so metering needs a post-`next()` step, not a pre-check.
 - `ActionDef { id, resourceType, permission }` lives in `authz/actions.ts:47-54`.
 
 **The three billable routes that exist today, and their replay signals**
+
 - `POST /sms/send` (`handlers/sms.ts:84-159`, action `SendSms`): 202 when new,
   **200 with `data.alreadySent: true`** on a dedup replay; the `SmsSend` row id
   is `data.id`.
@@ -139,6 +142,7 @@ CloudWatch `Pegasus/Workflows` metrics (`:101-133`). No usage or billing code
 exists; `settings.app.billing` is a UI-preferences page, unrelated.
 
 **UI**
+
 - tenant-web: `/settings/*` hangs off `settingsLayout` (tenant_admin only,
   `apps/tenant-web/src/router.tsx:250-254`). The Developer pages are separate
   routes (`routes/settings.developer*.tsx`, `router.tsx:268-284`), registered in
@@ -150,6 +154,7 @@ exists; `settings.app.billing` is a UI-preferences page, unrelated.
 
 **Cron:** every scheduled lambda lives in `packages/infra/lib/stacks/api-stack.ts`
 and follows one pattern:
+
 - a `LogGroup` pushed to `cronLogGroupNames`
 - a `NodejsFunction` with `entry: apps/api/src/lambda-*.ts`, `DATABASE_URL`
   and `dbSecret.grantRead`
@@ -160,6 +165,7 @@ The handler model is `apps/api/src/lambda-ringcentral-buffer-purge.ts` (root
 `db` for cross-tenant work, `createLogger`).
 
 **Prisma**
+
 - `TENANT_SCOPED_MODELS` is in `lib/prisma.ts:20-126`. The extension scopes
   reads, updates and deletes, but **creates and upserts are not rewritten**, so
   every create must set `tenantId` explicitly.
@@ -174,6 +180,7 @@ The handler model is `apps/api/src/lambda-ringcentral-buffer-purge.ts` (root
 `id uuid, tenantId, action String (an ActionDef id), subjectKey String,
 apiClientId String, workflowId String?, correlationId String?, occurredAt
 DateTime @default(now())`.
+
 - `@@unique([tenantId, action, subjectKey])` is the meter's own dedup, so a
   retry that the route doesn't flag as a replay still counts once.
 - `@@index([tenantId, occurredAt])` for the summary and statement queries.
@@ -182,6 +189,7 @@ DateTime @default(now())`.
 
 **Registry** `apps/api/src/lib/usage/billable-actions.ts`: a const map from an
 action id to a `subjectKey(c, body)` function.
+
 - `SendSms` → `sms:${data.id}`
 - `UpdateTextMessage` → `read:${data.id}`
 - `CloseTask` → `close:${data.id}`
@@ -193,6 +201,7 @@ that every registry key is a real `Actions` id.
 
 **Middleware** `meterUsage(actionId)` in `middleware/meter-usage.ts`, placed
 **after** `requirePermission` on each billable route. After `await next()`:
+
 1. Skip unless `c.get('apiClient')` is set (humans are free) and `c.res.status`
    is 2xx.
 2. Read `c.res.clone().json()`. Skip if any `data.already*` flag is `true`.
@@ -206,6 +215,7 @@ that every registry key is a real `Actions` id.
    untouched. A failed meter must never fail a text. The alarm is the backstop.
 
 **Tests** (write them first):
+
 - **Counting rules:** a new send counts 1; a replay counts 0; the same subject
   twice counts 1; a Cognito caller counts 0; a 409 or 503 counts 0.
 - **Resilience:** a meter DB failure still returns the handler's 2xx.
@@ -214,6 +224,7 @@ that every registry key is a real `Actions` id.
   resolves null.
 
 **Files:**
+
 - `apps/api/prisma/schema.prisma` + migration
 - `apps/api/src/lib/prisma.ts`
 - `apps/api/src/lib/usage/billable-actions.ts` (new)
@@ -230,6 +241,7 @@ that every registry key is a real `Actions` id.
 `id, tenantId, planCode (STARTER|GROWTH|SCALE),
 monthlyPriceCents, annualPoolActions, overageCentsPerAction, termStart Date,
 termEnd Date, createdAt, createdBy`.
+
 - History is kept: a plan change inserts a new row with a new `termStart`;
   nothing is updated in place. The active row is the latest with
   `termStart <= today < termEnd`.
@@ -241,6 +253,7 @@ termEnd Date, createdAt, createdBy`.
 **Summary:** `GET /api/v1/usage/summary?year=YYYY` → `{plan, termStart, termEnd,
 pool, usedTermToDate, remaining, projectedAtTermEnd, byMonth[], byAction[],
 byWorkflow[]}`.
+
 - Dual auth. Cognito requires `tenant_admin` (it's a billing view); M2M needs
   the new action `ReadUsage`, granted to `workflow-runtime`, so a workflow can
   check its own consumption.
@@ -251,6 +264,7 @@ plan) and `GET /admin/tenants/:id/usage` (the same summary, any tenant). These
 use admin auth, like the rest of `/admin`.
 
 **Discoverability** (CLAUDE.md "SDK is the external product boundary"):
+
 - SDK `get_usage_summary(year=None)`.
 - SDK README + MCP guidance get a **"What counts as a billable action"** section
   listing counted vs free, and explaining that dedup keys make retries free.
@@ -259,6 +273,7 @@ use admin auth, like the rest of `/admin`.
 - OpenAPI (the coverage test gates CI).
 
 **Files:**
+
 - `schema.prisma` + migration
 - `lib/prisma.ts`
 - `packages/domain/src/billing/automation-plans.ts` (new)
@@ -294,8 +309,8 @@ After merge, tag `sdk-python-vX.Y.Z` and publish (standing rule).
 
 - **Model** `UsageStatement` (tenant-scoped):
   - fields: `tenantId, periodMonth (YYYY-MM), planCode, monthlyPriceCents,
-    actionsInMonth, termToDateActions, pool, overageActions, overageCents,
-    proRatedPlanCents, closedAt`
+actionsInMonth, termToDateActions, pool, overageActions, overageCents,
+proRatedPlanCents, closedAt`
   - `@@unique([tenantId, periodMonth])`
   - immutable once written
 - **Lambda** `apps/api/src/lambda-usage-statement-close.ts` on
@@ -305,7 +320,7 @@ After merge, tag `sdk-python-vX.Y.Z` and publish (standing rule).
     reason for daily-rate rather than monthly-cron.
 - **Overage is billed only once the term-to-date pool is exhausted:**
   `overageActions = max(0, termToDate − pool) − overage already billed this
-  term`. An upgrade mid-term pro-rates the plan price by days and applies the
+term`. An upgrade mid-term pro-rates the plan price by days and applies the
   new pool to the whole term (the proposal: "the part you have prepaid counts
   toward it").
 - **Domain logic** in `packages/domain/src/billing/usage-statement.ts` as pure
@@ -322,11 +337,13 @@ After merge, tag `sdk-python-vX.Y.Z` and publish (standing rule).
 ## Phase 5: meter each new billable action as it lands (standing rule)
 
 Every PR that adds an outward-mutating action must, in the same PR:
+
 1. Add it to `billable-actions.ts` (or record in the PR body why it is free).
 2. Put `meterUsage` on its route.
 3. Add it to the SDK README's billable list.
 
 Known upcoming, from `plans/in-progress/nw-pulse-texting-platform.md`:
+
 - `SendEmail` (pulse Phase 3)
 - `CreateTask` (pulse Phase 6)
 - `WriteOrderMemo` (pulse Phase 7)
@@ -337,6 +354,7 @@ That plan gets a pointer to this rule (done in this PR).
 
 **Scoped down by Steve, 2026-10-02: the plans are advertised WITHOUT prices.**
 #761 added an Automation section between Platform and Heritage:
+
 - the three plans as cards, with annual action pools (6,000 / 15,000 / 50,000)
   and the volume each suits
 - annual pooling, and a "counts as one action / always free" list
@@ -348,6 +366,7 @@ There are no plan prices, no overage rate and no fee on the page. Verify by
 content: `curl -s https://pegasusmovemanager.com/ | grep -c 'Automation plans'`.
 
 **Gates, as they stand for the no-prices page:**
+
 1. **NW has the proposal first.** Met by omission: no price is public.
 2. **The product boundary.** Decided by Steve on 2026-10-02 to advertise. It
    comes back if prices are ever published: the NW retainer deal memo (§7)
