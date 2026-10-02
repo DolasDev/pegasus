@@ -190,5 +190,46 @@
     //
     // Remove once both parents are off query-string@7.
     "GHSA-vcc3-ghjq-m6fr",
+
+    // GHSA-86w9-cpqp-85rv — node-forge accepts extra nested DigestAlgorithm elements
+    // when verifying RSA PKCS#1 v1.5 signatures (high, CWE-347). Published 2026-09-03
+    // and surfaced in this repo's audit on 2026-10-02, the day after #755 cleared the
+    // previous four; it is the only advisory failing the gate.
+    //
+    // Allowlisted because NO PATCHED VERSION EXISTS. The vulnerable range is `<=1.4.0`
+    // and 1.4.0 IS the latest published node-forge (`npm view node-forge version`,
+    // 2026-10-02); the advisory's own `first_patched_version` is null. There is no floor
+    // for an `overrides` entry to point at, so an override here is not a weaker fix than
+    // an upgrade — it is no fix at all. This is one step past the rule the image-size and
+    // decode-uri-component entries above record: there, a patch existed and was not
+    // installable; here, no patch has been published.
+    //
+    // Single copy, hoisted to the root at node-forge@1.4.0, and the two paths audit-ci
+    // reports collapse to ONE chain — Expo's command-line tooling:
+    //   apps/mobile > expo@55.0.31 > @expo/cli > node-forge@1.4.0
+    //   apps/mobile > expo@55.0.31 > @expo/cli > @expo/code-signing-certificates@0.0.6
+    //                                         > node-forge@1.4.0
+    // `@expo/code-signing-certificates` has exactly one dependent in the tree and it is
+    // that same `@expo/cli` (both verified against package-lock.json, 2026-10-02).
+    //
+    // WHY A PROD DEPENDENCY IS STILL NOT A RUNTIME PATH — the objection worth answering
+    // before someone stops at `npm ls`: `expo` is in apps/mobile's `dependencies`, not
+    // its devDependencies, because the `expo` package is the app's runtime module, and
+    // npm therefore does not mark this copy dev-only. But node-forge is reached only
+    // through `@expo/cli`, the Node CLI invoked as `npx expo ...` during development and
+    // EAS builds. Metro bundles what the app's own source imports; nothing under
+    // apps/mobile imports node-forge, and no path from apps/api, the web apps or
+    // packages/* reaches it at all.
+    //
+    // AND THE VULNERABLE CODE PATH IS NOT CONFIGURED. The flaw is in signature
+    // VERIFICATION, which @expo/cli exercises for expo-updates manifest code signing.
+    // `expo-updates` is not installed anywhere in the tree and no code-signing
+    // certificate is configured in apps/mobile (checked app.json, app.config.js and
+    // eas.json on 2026-10-02) — so the verifier never runs, flaw or no flaw.
+    //
+    // Remove once node-forge publishes a release the advisory does not cover and expo
+    // re-resolves onto it (audit-ci's "Consider not allowlisting advisories" report
+    // flags this entry once it is unused).
+    "GHSA-86w9-cpqp-85rv",
   ],
 }
