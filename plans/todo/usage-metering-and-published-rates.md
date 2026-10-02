@@ -26,7 +26,7 @@ Decisions).
       idempotent cron lambda + infra.
 - [ ] **Phase 5**: meter each new billable action as it lands (standing rule,
       wired into the NW pulse master plan).
-- [ ] **Phase 6**: publish the automation plans on `apps/company-web`
+- [x] **Phase 6**: publish the automation plans on `apps/company-web`
       (gated; see Phase 6).
 
 **Order:** 1 → 2 → 3 and 4 in parallel → 6. Phase 5 is a rule, not a batch.
@@ -333,40 +333,30 @@ Known upcoming, from `plans/in-progress/nw-pulse-texting-platform.md`:
 
 That plan gets a pointer to this rule (done in this PR).
 
-## Phase 6: publish the automation plans on pegasusmovemanager.com
+## Phase 6: advertise the automation plans on pegasusmovemanager.com — SHIPPED (#761)
 
-Hand-written HTML and CSS. No build step, no JS; the source directory is the
-deployed artifact (CI deploys `company-web` on a path-filtered push to `main`).
+**Scoped down by Steve, 2026-10-02: the plans are advertised WITHOUT prices.**
+#761 added an Automation section between Platform and Heritage:
+- the three plans as cards, with annual action pools (6,000 / 15,000 / 50,000)
+  and the volume each suits
+- annual pooling, and a "counts as one action / always free" list
+- the note that texting runs through the customer's own provider at their own
+  cost, and that new workflows are quoted per project
+- an "Ask for pricing" CTA
 
-- **`apps/company-web/index.html`:**
-  - a new `<section id="automation" class="section section-alt">` between
-    Platform and Heritage, with a nav link "Automation"
-  - the three plans as cards: price, actions per year, the volume each suits
-  - the overage rate, annual pooling, and a two-column "what counts / what's
-    free" list
-  - the note that texting runs through the customer's own provider at their
-    own cost
-  - a "Talk to us" CTA
-  - No onboarding or prioritization fee on the page ("new workflows are quoted
-    per project").
-- **`styles.css`:** plan-card styles reusing the existing `.cards` / `.card`
-  idiom.
-- **`sitemap.xml`:** unchanged (single page).
-- Verify by content after deploy, not by status code (SPA 404→200 lesson): fetch
-  the page and grep for `$1,200`.
+There are no plan prices, no overage rate and no fee on the page. Verify by
+content: `curl -s https://pegasusmovemanager.com/ | grep -c 'Automation plans'`.
 
-**Gates. Do not merge Phase 6 until all three hold:**
-1. **NW has the proposal first.** NW should hear its prices from us, not find
-   them on a public page.
-2. **The product boundary.** Publishing automation prices publicly prices part
-   of Pegasus Cloud. The NW retainer deal memo (§7) calls excluding the
-   successor product from NW's Pegasus II new-version entitlement "the single
-   largest commercial risk", and says it must be done before Cloud is announced.
-   The site already markets the cloud platform, so the delta is small, but
-   confirm with Steve that publishing prices doesn't need that clause in place
-   first.
-3. **Plan names match** (D1: Starter / Growth / Scale; the NW proposal was
-   renamed to match on 2026-09-30). Keep them in step if either changes.
+**Gates, as they stand for the no-prices page:**
+1. **NW has the proposal first.** Met by omission: no price is public.
+2. **The product boundary.** Decided by Steve on 2026-10-02 to advertise. It
+   comes back if prices are ever published: the NW retainer deal memo (§7)
+   requires excluding Pegasus Cloud from NW's Pegasus II new-version
+   entitlement before Cloud is announced.
+3. **Plan names match** (D1: Starter / Growth / Scale). Keep the site, the NW
+   proposal and `TenantAutomationPlan` in step.
+
+Publishing prices later is a separate change that re-opens gates 1 and 2.
 
 ---
 
