@@ -56,6 +56,7 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { logger } from '../lib/logger'
 import { requirePermission } from '../middleware/rbac'
+import { meterUsage } from '../middleware/meter-usage'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
@@ -243,6 +244,7 @@ integrationCallHandler.use('*', dualAuthMiddleware)
 integrationCallHandler.post(
   '/integrations/:integrationId/call-external',
   requirePermission(Actions.CallExternal),
+  meterUsage(Actions.CallExternal),
   validator('json', (value, c) => {
     const r = CallBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)

@@ -22,6 +22,7 @@ import {
   PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
   PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
   PEGASUS_RATING_METRIC_NAMESPACE,
+  PEGASUS_USAGE_METRIC_NAMESPACE,
 } from '../metrics'
 
 export interface ApiStackProps extends cdk.StackProps {
@@ -494,6 +495,21 @@ export class ApiStack extends cdk.Stack {
     })
     apiFunction.addToRolePolicy(ringcentralSecretPolicy)
     apiFunction.addEnvironment('RINGCENTRAL_SECRET_PREFIX', ringcentralSecretPrefix)
+
+    // ---------------------------------------------------------------------------
+    // Usage meter — the API Lambda publishes Pegasus/Usage MeterWriteFailed when
+    // a billable action succeeds but its UsageEvent write fails (alarmed in
+    // MonitoringStack). Same namespace-condition shape as the other emitters.
+    // ---------------------------------------------------------------------------
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'cloudwatch:namespace': PEGASUS_USAGE_METRIC_NAMESPACE },
+        },
+      }),
+    )
 
     // ---------------------------------------------------------------------------
     // Integration-config publishing master switch. Ungates the mutating config

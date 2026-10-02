@@ -14,9 +14,10 @@ Decisions).
 
 ## Execution status (resume here)
 
-- [ ] **Phase 1**: the meter. `UsageEvent`, the billable-action registry, the
-      `meterUsage` middleware, wired to the three billable routes that exist
-      today.
+- [x] **Phase 1**: the meter. `UsageEvent`, the billable-action registry, the
+      `meterUsage` middleware, wired to the **six** billable routes that exist
+      today (`SendEmail` landed after this plan was written). See D7–D9 for
+      where the implementation refined the plan.
 - [ ] **Phase 2**: plans and the usage summary API. `TenantAutomationPlan`,
       admin plan management, `GET /api/v1/usage/summary`, SDK
       `get_usage_summary`, discoverability → SDK minor.
@@ -395,6 +396,25 @@ Publishing prices later is a separate change that re-opens gates 1 and 2.
   runner to export `PEGASUS_EXECUTION_ID` and the SDK to send an
   `X-Pegasus-Execution-Id` header. That's a follow-up, not a blocker.
 - **D6 decided: no payment processor.** Statements feed a manual invoice.
+- **D7 (implementation, Steve may veto): `CallExternal` counts only MUTATING
+  calls.** The handler runs GETs live under `run --dry-run` (sdk-feedback/0015),
+  so "per successful call" read literally would bill dry runs and reads, both
+  in the free column. Classification is `!isIdempotent(method, mutating)`, the
+  same one the outbound retry policy and the SDK's dry-run split use; the
+  `mutating` override is honored both ways. "Successful" means the PARTNER
+  succeeded: both outbound handlers answer 200 with `delivered`/`ok` carrying
+  the upstream status, so the meter reads those, not the HTTP status.
+- **D8 (implementation): outbound subject keys are minted server-side.** The
+  plan keyed `DeliverToExternal`/`CallExternal` on `correlationId`, but that
+  comes from the client's `x-correlation-id` header, so reusing it would
+  collapse N deliveries into one row (under-count, and gameable). Each successful
+  call genuinely reached the partner, so each gets a fresh uuid key;
+  `correlationId` is stored in its own column for tracing only.
+- **D9 (implementation): the SendSms subject is RingCentral's message id**, not
+  the `SmsSend` row as the plan assumed. `/sms/send` returns RC's id: a number
+  on a new send, the stored string on a dedup replay. It is normalized so the two
+  are one subject. When RC returns no id, a 202 still means a text went out, so
+  a key is minted rather than dropping the count.
 
 ## Side effects and risks
 

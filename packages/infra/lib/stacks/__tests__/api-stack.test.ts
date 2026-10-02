@@ -596,6 +596,29 @@ describe('ApiStack — AVP store-count metric emitter', () => {
     })
   })
 
+  it('grants the API Lambda cloudwatch:PutMetricData scoped to Pegasus/Usage (meter backstop)', () => {
+    const template = synthApiStack()
+    // Unconditional: the meter is on in every environment, so a missing grant
+    // would silently drop the only signal that billable usage went unrecorded.
+    const apiRole = Object.entries(template.findResources('AWS::IAM::Role')).find(([id]) =>
+      id.startsWith('ApiFunctionServiceRole'),
+    )?.[0]
+    expect(apiRole).toBeDefined()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      Roles: [{ Ref: apiRole }],
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'cloudwatch:PutMetricData',
+            Effect: 'Allow',
+            Resource: '*',
+            Condition: { StringEquals: { 'cloudwatch:namespace': 'Pegasus/Usage' } },
+          }),
+        ]),
+      },
+    })
+  })
+
   it('grants cloudwatch:PutMetricData scoped to the Pegasus/Authorization namespace', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::IAM::Policy', {

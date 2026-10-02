@@ -113,6 +113,10 @@ export const TENANT_SCOPED_MODELS = new Set([
   // cross-tenant `cid`/`aud` can never be minted.
   'Site',
   'Company',
+  // UsageEvent — the billable-action meter. Creates are NOT rewritten by the
+  // extension, so the meter sets tenantId explicitly; the statement-close cron
+  // reads cross-tenant via the root client.
+  'UsageEvent',
   // Push notifications — DeviceToken rows are read/written by the tenant-scoped
   // device-token handler; PushNotificationOutbox rows are enqueued by handlers
   // and domain-event emitters via the scoped client inside transactions. The

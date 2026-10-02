@@ -295,6 +295,7 @@ model Tenant {
   smsOptOuts              SmsOptOut[]
   smsSends                SmsSend[]
   emailSends              EmailSend[]
+  usageEvents             UsageEvent[]
   outboundOAuthTokens     OutboundOAuthToken[]
   brokerCredential        TenantBrokerCredential?
   vpnPeer                 VpnPeer?
@@ -2829,6 +2830,39 @@ model EmailSend {
   @@unique([tenantId, dedupKey], map: "email_sends_dedup_key")
   @@index([tenantId, createdAt])
   @@map("email_sends")
+  @@schema("public")
+}
+
+/// One billable automated action — the usage meter (plans/in-progress/usage-metering.md).
+/// A successful, first-time, outward-reaching mutation performed by an API
+/// client (a workflow runtime or a plain integration client) on the tenant's
+/// behalf. Humans are never metered. Written by middleware/meter-usage.ts after
+/// the handler returns; kept indefinitely (billing record, no purge).
+model UsageEvent {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// The Cedar action id (`SendSms`, `CloseTask`, …) — see lib/usage/billable-actions.ts.
+  action String
+
+  /// The meter's own dedup key within (tenant, action), e.g. `sms:<SmsSend.id>`.
+  /// A retry the route doesn't flag as a replay still counts once.
+  subjectKey String @map("subject_key")
+
+  /// The ApiClient whose key performed the action.
+  apiClientId   String  @map("api_client_id")
+  /// Resolved from a `wf-runtime-<workflowId>` client name; null for a plain API client.
+  workflowId    String? @map("workflow_id")
+  /// The request's correlation id. Client-suppliable, so never used as a key.
+  correlationId String? @map("correlation_id")
+
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, action, subjectKey], map: "usage_events_subject_key")
+  @@index([tenantId, occurredAt])
+  @@map("usage_events")
   @@schema("public")
 }
 

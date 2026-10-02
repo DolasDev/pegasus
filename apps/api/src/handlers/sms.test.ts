@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
-import type { AppEnv } from '../types'
+import type { AppEnv, ApiClientContext } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { seedPrincipal } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
@@ -40,6 +40,11 @@ vi.mock('../repositories/sms-opt-out.repository', () => ({
 const mockSetReadStatus = vi.hoisted(() => vi.fn())
 vi.mock('../services/ringcentral/message-store', () => ({
   setMessageReadStatus: mockSetReadStatus,
+}))
+
+const mockUsageRecord = vi.hoisted(() => vi.fn())
+vi.mock('../repositories/usage.repository', () => ({
+  createUsageRepository: vi.fn(() => ({ record: mockUsageRecord })),
 }))
 
 vi.mock('../repositories/sms-send.repository', () => ({
@@ -604,5 +609,82 @@ describe('POST /sms/messages/:id/read', () => {
       method: 'POST',
     })
     expect(res.status).toBe(403)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Usage meter wiring — the routes count for an API client, never for a human.
+// The counting rules themselves are pinned in middleware/meter-usage.test.ts.
+// ---------------------------------------------------------------------------
+
+describe('usage meter on the SMS routes', () => {
+  const ID = '6f1c2b8e-0d3a-4c1e-9f7a-2b3c4d5e6f70'
+  const runtimeClient = { id: 'client-rt', name: 'wf-runtime-wf-1' } as ApiClientContext
+
+  function buildMeteredApp(apiClient: ApiClientContext | undefined) {
+    const fakeDb = { message: { findFirst: mockMessageFindFirst } } as unknown as PrismaClient
+    const app = new Hono<AppEnv>()
+    registerTestErrorHandler(app)
+    app.use('*', seedPrincipal({ roleNames: ['workflow_runtime'] }))
+    app.use('*', async (c, next) => {
+      c.set('db', fakeDb)
+      c.set('apiClient', apiClient)
+      await next()
+    })
+    app.route('/sms', smsHandler)
+    return app
+  }
+
+  beforeEach(() => {
+    mockUsageRecord.mockResolvedValue(true)
+    mockListConnections.mockResolvedValue([ACTIVE_CONNECTION])
+    mockSendSms.mockResolvedValue({ id: 123456, messageStatus: 'Sent' })
+  })
+
+  it('POST /send by a workflow runtime records one SendSms against the workflow', async () => {
+    const res = await buildMeteredApp(runtimeClient).request(
+      '/sms/send',
+      post({ to: '+15005550006', body: 'Hello' }),
+    )
+    expect(res.status).toBe(202)
+    expect(mockUsageRecord).toHaveBeenCalledOnce()
+    expect(mockUsageRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SendSms',
+        subjectKey: 'sms:123456',
+        apiClientId: 'client-rt',
+        workflowId: 'wf-1',
+      }),
+    )
+  })
+
+  it('POST /send by a human (no API client) records nothing', async () => {
+    const res = await buildMeteredApp(undefined).request(
+      '/sms/send',
+      post({ to: '+15005550006', body: 'Hello' }),
+    )
+    expect(res.status).toBe(202)
+    expect(mockUsageRecord).not.toHaveBeenCalled()
+  })
+
+  it('POST /messages/:id/read records one UpdateTextMessage; an already-read message none', async () => {
+    mockMessageFindFirst.mockResolvedValue({
+      id: ID,
+      source: 'V1_STORE',
+      externalId: 'rc-1',
+      connectionId: 'conn-1',
+    })
+    const app = buildMeteredApp(runtimeClient)
+
+    mockSetReadStatus.mockResolvedValueOnce({ readStatus: 'Read', changed: true })
+    expect((await app.request(`/sms/messages/${ID}/read`, { method: 'POST' })).status).toBe(200)
+    expect(mockUsageRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'UpdateTextMessage', subjectKey: `read:${ID}` }),
+    )
+
+    mockUsageRecord.mockClear()
+    mockSetReadStatus.mockResolvedValueOnce({ readStatus: 'Read', changed: false })
+    expect((await app.request(`/sms/messages/${ID}/read`, { method: 'POST' })).status).toBe(200)
+    expect(mockUsageRecord).not.toHaveBeenCalled()
   })
 })

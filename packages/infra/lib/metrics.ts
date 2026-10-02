@@ -60,6 +60,25 @@ export const RC_SYNC_LAG_SECONDS_METRIC_NAME = 'SyncLagSeconds'
 
 export const PEGASUS_WORKFLOWS_METRIC_NAMESPACE = 'Pegasus/Workflows'
 
+// ---------------------------------------------------------------------------
+// Usage meter (billable automated actions).
+//
+// Emitted by the API Lambda (apps/api/src/lib/usage/meter-metrics.ts), which
+// repeats these strings literally for the same apps/api-can't-import-
+// @pegasus/infra reason as the emitters above. Keep both sides in sync.
+// ---------------------------------------------------------------------------
+
+export const PEGASUS_USAGE_METRIC_NAMESPACE = 'Pegasus/Usage'
+
+/**
+ * A billable action the meter failed to record (DB error, or a 2xx response
+ * missing the field its subject key is built from). The action itself still
+ * succeeded, so every datapoint is an under-count — unbilled usage. Published
+ * twice per failure: once dimensioned by `Action`, once dimensionless (the
+ * alarm's series).
+ */
+export const USAGE_METER_WRITE_FAILED_METRIC_NAME = 'MeterWriteFailed'
+
 /**
  * Count of orphaned RUNNING executions the reconcile poller flipped to a
  * terminal state (a crashed worker never wrote back). One datapoint per

@@ -90,9 +90,9 @@ describe('MonitoringStack — OK actions', () => {
     const alarms = template.findResources('AWS::CloudWatch::Alarm')
     // 11 original + 5 workflow-plane (Unit 11 + starvation) + 2 account-wide
     // (throttles, errors) + 2 rating (FSC-update failure + tariff coverage-days)
-    // = 20. No worker-down alarm here (default synth has no worker props);
-    // reconcile alarm is Unit 11's.
-    expect(Object.keys(alarms)).toHaveLength(20)
+    // + 1 usage meter = 21. No worker-down alarm here (default synth has no
+    // worker props); reconcile alarm is Unit 11's.
+    expect(Object.keys(alarms)).toHaveLength(21)
     for (const [id, alarm] of Object.entries(alarms)) {
       expect(alarm['Properties']?.['AlarmActions'], `${id} AlarmActions`).toHaveLength(1)
       expect(alarm['Properties']?.['OKActions'], `${id} OKActions`).toHaveLength(1)
@@ -319,19 +319,19 @@ describe('MonitoringStack — RingCentral capture-health alarms', () => {
 })
 
 describe('MonitoringStack — alarm count', () => {
-  it('creates 20 alarms (3 service + 2 AVP + 5 RC gauges + 1 DLQ + 5 workflow-plane + 2 account-wide + 2 rating)', () => {
+  it('creates 21 alarms (3 service + 2 AVP + 5 RC gauges + 1 DLQ + 5 workflow-plane + 2 account-wide + 2 rating + 1 usage)', () => {
     const template = synthMonitoringStack()
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 21)
+  })
+
+  it('creates 20 alarms when the capture DLQ name is absent', () => {
+    const template = synthMonitoringStackWithoutDlq()
     template.resourceCountIs('AWS::CloudWatch::Alarm', 20)
   })
 
-  it('creates 19 alarms when the capture DLQ name is absent', () => {
-    const template = synthMonitoringStackWithoutDlq()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 19)
-  })
-
-  it('creates 21 alarms when the temporal worker props are provided (+1 RunningTaskCount)', () => {
+  it('creates 22 alarms when the temporal worker props are provided (+1 RunningTaskCount)', () => {
     const template = synthMonitoringStackWithWorker()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 21)
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 22)
   })
 
   it('creates the tariff coverage-days alarm on Pegasus/Rating, < 45, BREACHING, wired to SNS', () => {
@@ -426,6 +426,21 @@ describe('MonitoringStack — workflow execution-plane alarms (Phase 3 Unit 11)'
       Threshold: 5,
       ComparisonOperator: 'GreaterThanThreshold',
       TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('alarms on any usage-meter write failure (unbilled actions), wired to the topic', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-usage-meter-write-failed',
+      Namespace: 'Pegasus/Usage',
+      MetricName: 'MeterWriteFailed',
+      // The dimensionless series — one alarm for every action.
+      Dimensions: Match.absent(),
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+      AlarmActions: Match.arrayWith([Match.objectLike({})]),
     })
   })
 
