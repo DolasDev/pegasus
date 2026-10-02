@@ -125,6 +125,27 @@ the bundle **at transform time**, so:
   shots on any failure, and confirm inlining with
   `grep -c <expected-host> dist-web/_expo/static/js/web/entry-*.js`.
 
+## Mobile Android: R8 Is Opt-In Under CNG
+
+`apps/mobile/android/` is gitignored — EAS prebuilds it from `app.json` on every
+build, so editing a local `build.gradle` changes nothing that ships. The generated
+`build.gradle` reads `android.enableMinifyInReleaseBuilds` from gradle properties
+and **defaults it to `false`**. Until the `expo-build-properties` plugin entry in
+`app.json` set it, every release AAB shipped un-minified, and Play Console flagged
+vcode 16 with "DEX code optimization … Obfuscation (1%)". Under 25% "may impact
+your visibility and publishing capabilities".
+
+- **Verify a config change by prebuilding into a scratch copy**
+  (`npx expo prebuild --platform android --no-install`), then grep
+  `android/gradle.properties`. Grep case-insensitively: the key is `…Minify…`.
+- **`eas submit` does not upload `mapping.txt`.** Without it, Play vitals crash and
+  ANR stacks show obfuscated class names. Download it from the EAS build artifacts
+  and upload it in Play Console (App bundle explorer → Downloads).
+- **R8 can strip classes that native modules reach only by reflection.** That
+  fails at runtime, not at build time. If a release build crashes in a native
+  module, add a keep rule via `expo-build-properties` `android.extraProguardRules`.
+  Don't turn minify off.
+
 ## Betterleaks Secret Scanning
 
 CI job `Secret Scanning (Betterleaks)` (`.github/workflows/ci.yml`) runs `betterleaks git .` over full history and fails the build on any finding.
