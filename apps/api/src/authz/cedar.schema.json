@@ -183,6 +183,13 @@
           "type": "Record",
           "attributes": {}
         }
+      },
+      "Usage": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
       }
     },
     "actions": {
@@ -425,6 +432,9 @@
       },
       "ReadReportingDataset": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Report"] }
+      },
+      "ReadUsage": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Usage"] }
       },
       "ManageDashboards": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Report"] }
