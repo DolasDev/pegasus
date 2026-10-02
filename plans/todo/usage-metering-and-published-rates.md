@@ -26,8 +26,8 @@ Decisions).
       idempotent cron lambda + infra.
 - [ ] **Phase 5**: meter each new billable action as it lands (standing rule,
       wired into the NW pulse master plan).
-- [x] **Phase 6**: publish the automation plans on `apps/company-web`
-      (gated; see Phase 6).
+- [x] **Phase 6**: advertise the automation plans on `apps/company-web`,
+      without prices (#761, Steve 2026-10-02).
 
 **Order:** 1 → 2 → 3 and 4 in parallel → 6. Phase 5 is a rule, not a batch.
 **Hard deadline:** NW billing cannot start until Phases 1–3 are live. The NW
@@ -409,5 +409,5 @@ Publishing prices later is a separate change that re-opens gates 1 and 2.
   re-running changes nothing, and the CSV export matches it.
 - The SDK is published with `get_usage_summary`; README, MCP and
   `pegasus-workflows/CLAUDE.md` document the billable list.
-- pegasusmovemanager.com shows the plans (after the Phase 6 gates), verified by
+- pegasusmovemanager.com shows the plans, without prices (#761), verified by
   content.
