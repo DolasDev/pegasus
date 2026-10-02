@@ -2180,3 +2180,15 @@ Use `splice`. The old reducer test _asserted_ the `undefined` slot, so it guarde
 
 **Finding client crashes:** the ErrorBoundary POSTs to `/api/v1/client-errors`; search the prod
 `pegasus-prod-api-ApiLogGroup*` for `"client.error"`. Each event includes the message, stack and page URL.
+
+## A company-site-only deploy failed to bundle the Cognito Lambdas
+
+CDK synthesizes the **whole app** on every deploy and esbuild-bundles every `NodejsFunction` in it,
+even when `TARGET` names only `CompanySiteStack`. `@pegasus/domain` resolves through
+`main: ./dist/index.js`, so its `dist/` must exist. `_deploy.yml`'s Turbo build added
+`--filter=@pegasus/api^...` only when `deploy-api` was true. A company-web-only push (#761,
+run 37026172891, 2026-10-02) selected no filters, skipped the build, and failed in "CDK deploy"
+with `Could not resolve "@pegasus/domain"` from `apps/api/src/cognito/pre-token.ts`.
+The api deps are now built on every deploy. Before #761 no deploy had been company-web-only, so
+nothing had exercised that path. The site still went live because the next deploy (#710) ran
+`--all`.
