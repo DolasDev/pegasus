@@ -140,11 +140,14 @@ pegII trusts **only** the cloud's issuer. It never validates Cognito tokens dire
 | **I5** | movemanager | retire the on-prem hub (`hub_user`, `hub_company`, `/auth/login`, hub admin endpoints) once every API-mode site is on I4; the cloud company registry is authoritative                                                                                                         | I6                                    |
 | **I6** | movemanager | retire `salesman` password logins in the desktop's direct-database mode; cloud identity becomes the only user store                                                                                                                                                           | —                                     |
 
-**Spikes before I1/I2:**
+**Spikes before I1/I2 (answered by Steve, 2026-10-02):**
 
-- **S-I1:** from NW's and QMM's servers, `GET https://api.pegasus.dolas.dev/.well-known/jwks.json` reachability (decides JWKS vs pinned key as the default).
-- **S-I2:** QMM's two databases: names, the server they live on, whether one pegII API instance can reach both, and today's `SpokeConnections` keys.
-- **S-I3:** whether every NW/QMM salesman row has a usable `email` or `win_username` match key; the unmatched share sizes the admin-view work.
+- **S-I1 ✅** NW's and QMM's servers **can** reach `https://api.pegasus.dolas.dev/.well-known/jwks.json`. JWKS is the default; the pinned key stays only as a fallback.
+- **S-I2 ✅** QMM-US and QMM-CA are two databases on the **same host and the same SQL Server instance**, and one pegII API instance reaches both.
+  - ⇒ One `Site` serves both QMM companies.
+  - `cid` routing is a choice between two `SpokeConnections` entries on one instance.
+  - No second tunnel, VPN peer or API install.
+- **S-I3 ✅** Salesman rows have usable `email` and `win_username` values, so the sync can match on both (email first).
 
 ## Effect on the NW pulse-texting plan
 
