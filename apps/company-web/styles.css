@@ -333,6 +333,46 @@ h3 {
   font-size: 0.96rem;
 }
 
+/* ── Automation plans ───────────────────────────────────────────────── */
+
+.plans {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.plan .plan-allowance {
+  margin: 0 0 12px;
+  color: var(--fg);
+}
+
+.plan-allowance strong {
+  display: block;
+  font-size: 1.9rem;
+  letter-spacing: -0.02em;
+  color: var(--brand);
+}
+
+.counts {
+  margin: 36px 0 0;
+  display: grid;
+  gap: 18px 36px;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.counts ul {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--fg-muted);
+}
+
+.counts li + li {
+  margin-top: 6px;
+}
+
+#automation .cta-row {
+  justify-content: flex-start;
+  margin: 28px 0 0;
+}
+
 /* ── Heritage ───────────────────────────────────────────────────────── */
 
 .heritage {
@@ -397,7 +437,7 @@ blockquote {
 
 address {
   font-style: normal;
-  background: var(--bg-alt);
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px;

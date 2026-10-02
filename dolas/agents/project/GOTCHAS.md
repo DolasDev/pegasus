@@ -125,6 +125,27 @@ the bundle **at transform time**, so:
   shots on any failure, and confirm inlining with
   `grep -c <expected-host> dist-web/_expo/static/js/web/entry-*.js`.
 
+## Mobile Android: R8 Is Opt-In Under CNG
+
+`apps/mobile/android/` is gitignored — EAS prebuilds it from `app.json` on every
+build, so editing a local `build.gradle` changes nothing that ships. The generated
+`build.gradle` reads `android.enableMinifyInReleaseBuilds` from gradle properties
+and **defaults it to `false`**. Until the `expo-build-properties` plugin entry in
+`app.json` set it, every release AAB shipped un-minified, and Play Console flagged
+vcode 16 with "DEX code optimization … Obfuscation (1%)". Under 25% "may impact
+your visibility and publishing capabilities".
+
+- **Verify a config change by prebuilding into a scratch copy**
+  (`npx expo prebuild --platform android --no-install`), then grep
+  `android/gradle.properties`. Grep case-insensitively: the key is `…Minify…`.
+- **`eas submit` does not upload `mapping.txt`.** Without it, Play vitals crash and
+  ANR stacks show obfuscated class names. Download it from the EAS build artifacts
+  and upload it in Play Console (App bundle explorer → Downloads).
+- **R8 can strip classes that native modules reach only by reflection.** That
+  fails at runtime, not at build time. If a release build crashes in a native
+  module, add a keep rule via `expo-build-properties` `android.extraProguardRules`.
+  Don't turn minify off.
+
 ## Betterleaks Secret Scanning
 
 CI job `Secret Scanning (Betterleaks)` (`.github/workflows/ci.yml`) runs `betterleaks git .` over full history and fails the build on any finding.
@@ -2216,3 +2237,17 @@ report `string` as "a record type named by a document and absent from the vocabu
 **Fix: reword rather than widen the guard.** "a bare string with `x-nullable: true`" says the same
 thing and keeps the guard narrow. Qualifying the span (`Foo.type: string`) also works — "unqualified"
 is load-bearing in the guard's rule, which is how `Location.type = warehouse` stays out of it.
+
+---
+
+## A company-site-only deploy failed to bundle the Cognito Lambdas
+
+CDK synthesizes the **whole app** on every deploy and esbuild-bundles every `NodejsFunction` in it,
+even when `TARGET` names only `CompanySiteStack`. `@pegasus/domain` resolves through
+`main: ./dist/index.js`, so its `dist/` must exist. `_deploy.yml`'s Turbo build added
+`--filter=@pegasus/api^...` only when `deploy-api` was true. A company-web-only push (#761,
+run 37026172891, 2026-10-02) selected no filters, skipped the build, and failed in "CDK deploy"
+with `Could not resolve "@pegasus/domain"` from `apps/api/src/cognito/pre-token.ts`.
+The api deps are now built on every deploy. Before #761 no deploy had been company-web-only, so
+nothing had exercised that path. The site still went live because the next deploy (#710) ran
+`--all`.
