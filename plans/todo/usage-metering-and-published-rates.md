@@ -333,10 +333,10 @@ Known upcoming, from `plans/in-progress/nw-pulse-texting-platform.md`:
 
 That plan gets a pointer to this rule (done in this PR).
 
-## Phase 6: advertise the automation plans on pegasusmovemanager.com — #761, without prices
+## Phase 6: advertise the automation plans on pegasusmovemanager.com — SHIPPED (#761), without prices
 
 **Scoped down by Steve, 2026-10-02: the plans are advertised WITHOUT prices.**
-#761 adds an Automation section between Platform and Heritage:
+#761 added an Automation section between Platform and Heritage:
 - the three plans as cards, with annual action pools (6,000 / 15,000 / 50,000)
   and the volume each suits
 - annual pooling, and a "counts as one action / always free" list
