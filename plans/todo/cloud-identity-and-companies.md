@@ -98,6 +98,20 @@ pegII trusts **only** the cloud's issuer. It never validates Cognito tokens dire
   - Site config shrinks to **two non-secret values**, the cloud issuer and the site id, which `install.ps1` takes as parameters.
 - **Audit:** the cloud sends `x-correlation-id` on every bridge call. pegII already echoes it and stamps it on error envelopes.
 
+## Token contract (I1 ↔ I2) — single source of truth
+
+Two repos implement opposite ends of one token, so the contract lives here, plus a **shared fixture**. The fixture is a test key pair, its JWKS, and sample tokens (valid, wrong `aud`, expired, bad signature, no `cid`). It is generated once by pegasus and committed verbatim to both repos: `apps/api/src/__fixtures__/pegii-token/` and movemanager `Pegasus.Api.Tests/Fixtures/cloud-token/`. Both test suites verify the same bytes.
+
+- **Header:** `alg: "ES256"`, `typ: "JWT"`, `kid` = the KMS key id (UUID) of the signing key.
+- **Signature:** KMS `Sign`, `ECDSA_SHA_256`, `MessageType: RAW` over the ASCII signing input. KMS returns **DER**; the JWT carries **raw R‖S (64 bytes)**, so pegasus converts it.
+- **Claims:**
+  - Required: `iss` = `https://api.pegasus.dolas.dev` (per environment, from `PEGII_TOKEN_ISSUER`), `aud` = `pegii-site:<Site.id>`, `sub` = `TenantUser.id`, `tid` = tenant id, `ptype` ∈ `user` | `service`, `iat`, `nbf` = `iat`, `exp` ≤ `iat` + 300, `jti` (UUID).
+  - Optional: `cid` (the company's `dataSourceKey`), `emp` (int), `wun` (string).
+- **Absent `cid`** means the site's **default database** (`ConnectionStrings:PegasusDb`). Every backfilled company has `dataSourceKey = null`, so it mints no `cid`. A present `cid` with no matching `SpokeConnections` entry → 404 `COMPANY_NOT_FOUND`.
+- **Validation (pegII):** signature against the JWKS `kid`; `iss` exact; `aud` exact (the site's configured id); `exp`/`nbf` with **≤ 60 s** skew. Unknown claims are ignored.
+- **JWKS:** `GET /.well-known/jwks.json` (app root, outside tenant middleware, no auth; the API CDN's default behaviour forwards every path) → `{"keys":[{kty:"EC",crv:"P-256",x,y,kid,alg:"ES256",use:"sig"}]}`, every key id in `PEGII_TOKEN_KMS_KEY_IDS` (current first). `Cache-Control: public, max-age=300`. pegII refreshes on an unknown `kid`.
+- **Rotation:** asymmetric KMS keys have no automatic rotation. To rotate, add a new key, publish both ids, switch signing to the new id, then remove the old one after token lifetime plus JWKS cache age.
+
 ## Company routing in pegII
 
 - **Per-request database selection:** a scoped `PegasusDbContext` factory resolves the cloud token's `cid` → `SpokeConnections[dataSourceKey]`.
@@ -131,14 +145,14 @@ pegII trusts **only** the cloud's issuer. It never validates Cognito tokens dire
 
 ## Phases
 
-| Phase  | Repo        | What                                                                                                                                                                                                                                                                          | Unblocks                              |
-| ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| **I1** | pegasus     | `Site` / `Company` / `CompanyMembership` models + backfill; KMS signing key + JWKS endpoint; `lib/pegii-token.ts` minting; `pegii-api-client` sends the cloud token (plus `x-correlation-id`) when the site advertises `pegii.cloud-auth.v1`, else falls back to today's path | I2                                    |
-| **I2** | movemanager | the cloud JWT scheme (JWKS + pinned-key fallback); the hub-or-cloud default policy; `pegii.cloud-auth.v1`; per-request company routing by `cid`; multi-database migration runner. **Then:** rebase the NW Phase 5 branch (`149c4c82`) onto it and push                        | NW Phase 5 push; QMM's second company |
-| **I3** | both        | the `salesmen` list endpoint; the cloud membership/attribution sync + admin view; service-account → system employee mapping                                                                                                                                                   | NW Phases 6–7 attribution             |
-| **I4** | both        | the new Cognito app client (desktop); `POST /desktop/session`; MoveManager Hosted-UI sign-in + cloud company picker; site connection lookup by `cid`                                                                                                                          | I5                                    |
-| **I5** | movemanager | retire the on-prem hub (`hub_user`, `hub_company`, `/auth/login`, hub admin endpoints) once every API-mode site is on I4; the cloud company registry is authoritative                                                                                                         | I6                                    |
-| **I6** | movemanager | retire `salesman` password logins in the desktop's direct-database mode; cloud identity becomes the only user store                                                                                                                                                           | —                                     |
+| Phase  | Repo        | What                                                                                                                                                                                                                                                                                                                                       | Unblocks                              |
+| ------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| **I1** | pegasus     | `Site` / `Company` / `CompanyMembership` models + backfill; KMS signing key + JWKS endpoint; `lib/pegii-token.ts` minting; `pegii-api-client` sends the cloud token (plus `x-correlation-id`) when the site advertises `pegii.cloud-auth.v1`, else falls back to today's path                                                              | I2                                    |
+| **I2** | movemanager | the cloud JWT scheme (JWKS + pinned-key fallback); the hub-or-cloud default policy; `pegii.cloud-auth.v1`; per-request company routing by `cid`; multi-database migration runner. **Built on top of** the NW Phase 5 branch (`feat/order-read-normalization-and-search`, after `149c4c82`; no rebase), so the branch pushes once with both | NW Phase 5 push; QMM's second company |
+| **I3** | both        | the `salesmen` list endpoint; the cloud membership/attribution sync + admin view; service-account → system employee mapping                                                                                                                                                                                                                | NW Phases 6–7 attribution             |
+| **I4** | both        | the new Cognito app client (desktop); `POST /desktop/session`; MoveManager Hosted-UI sign-in + cloud company picker; site connection lookup by `cid`                                                                                                                                                                                       | I5                                    |
+| **I5** | movemanager | retire the on-prem hub (`hub_user`, `hub_company`, `/auth/login`, hub admin endpoints) once every API-mode site is on I4; the cloud company registry is authoritative                                                                                                                                                                      | I6                                    |
+| **I6** | movemanager | retire `salesman` password logins in the desktop's direct-database mode; cloud identity becomes the only user store                                                                                                                                                                                                                        | —                                     |
 
 **Spikes before I1/I2 (answered by Steve, 2026-10-02):**
 
