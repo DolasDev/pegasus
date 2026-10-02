@@ -222,6 +222,14 @@ an EVENT trigger on ``sms.received``; re-read with
 ``client.get_text_message(payload["messageId"])`` (``ReadTextMessage``) and
 dedupe on ``messageId`` — events may be delivered twice.
 
+## Email (internal only)
+
+``client.send_email(to, subject, body, cc=, body_type="text", dedup_key=)``
+(``SendEmail``) mails through the tenant's on-prem server. Recipients must be
+at a tenant-admin-allowed domain (else 400 ``RECIPIENT_NOT_ALLOWED``; none
+configured → 409 ``EMAIL_RECIPIENTS_NOT_CONFIGURED``). Always pass a
+``dedup_key`` for escalations/reminders so a retried activity doesn't mail twice.
+
 ## Durable state, claims and dedup (workflow state)
 
 For state an Automation keeps for itself — a send ledger, "already done?"

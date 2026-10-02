@@ -242,6 +242,13 @@ export const Actions = {
     resourceType: 'Notification',
     permission: 'sms:send',
   },
+  // Platform email through the tenant's pegII API (handlers/email.ts). Same
+  // resource as SendSms. Granted to workflow_runtime.
+  SendEmail: {
+    id: 'SendEmail',
+    resourceType: 'Notification',
+    permission: 'email:send',
+  },
   // Inbound message read + opt-out state (handlers/sms.ts). Same resource as
   // SendSms: they are one SMS surface. All three granted to workflow_runtime.
   ReadTextMessage: {

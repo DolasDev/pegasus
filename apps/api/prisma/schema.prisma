@@ -292,6 +292,7 @@ model Tenant {
   workflowStates          WorkflowState[]
   smsOptOuts              SmsOptOut[]
   smsSends                SmsSend[]
+  emailSends              EmailSend[]
   outboundOAuthTokens     OutboundOAuthToken[]
   brokerCredential        TenantBrokerCredential?
   vpnPeer                 VpnPeer?
@@ -2790,6 +2791,41 @@ model SmsSend {
 
   @@unique([tenantId, dedupKey], map: "sms_sends_dedup_key")
   @@map("sms_sends")
+  @@schema("public")
+}
+
+enum EmailSendStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@schema("public")
+}
+
+/// One platform email send (POST /api/v1/email/send), delivered through the
+/// tenant's pegII API (its SMTP account). Every send gets a row — it is the
+/// audit trail and the per-tenant daily-limit counter. `dedupKey` is optional;
+/// when present, (tenantId, dedupKey) is the idempotency claim, exactly like
+/// SmsSend. Recipients and subject are kept; the body never is.
+model EmailSend {
+  id           String          @id @default(uuid())
+  tenantId     String          @map("tenant_id")
+  dedupKey     String?         @map("dedup_key")
+  toAddresses  String[]        @map("to_addresses")
+  ccAddresses  String[]        @map("cc_addresses")
+  subject      String
+  /// sha256 of subject + body + recipients — a reused key with a different request is refused.
+  requestHash  String          @map("request_hash")
+  status       EmailSendStatus
+  lastError    String?         @map("last_error")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, dedupKey], map: "email_sends_dedup_key")
+  @@index([tenantId, createdAt])
+  @@map("email_sends")
   @@schema("public")
 }
 
