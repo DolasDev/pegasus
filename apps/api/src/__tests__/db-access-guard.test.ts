@@ -147,6 +147,9 @@ describe('Guard 1: Raw SQL usage ($queryRaw / $executeRaw)', () => {
  */
 const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'admin/tenants.ts',
+  // admin/tenant-usage.ts reads and assigns ANY tenant's automation plan and
+  // usage (platform admin, cross-tenant); every query names tenantId.
+  'admin/tenant-usage.ts',
   'admin/tenant-users.ts',
   'admin/vpn-diagnose.ts',
   'admin/vpn.ts',

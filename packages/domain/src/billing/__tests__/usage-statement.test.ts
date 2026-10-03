@@ -221,6 +221,19 @@ describe('closeMonthlyStatement', () => {
       }),
     ).toBeNull()
   })
+
+  it('days of the month with no plan in effect cost nothing', () => {
+    // Not reachable through validatePlanChange (a new term takes effect on its
+    // 1st), but the function must not invent a price for an uncovered day.
+    const s = closeMonthlyStatement({
+      periodMonth: '2026-04',
+      history: [row('STARTER', '2026-04-01', '2026-04-16')],
+      actionsInMonth: 0,
+      termToDateActions: 0,
+      overageActionsBilledThisTerm: 0,
+    })
+    expect(s?.proRatedPlanCents).toBe(Math.round((15 * 30_000) / 30))
+  })
 })
 
 describe('projectTermUsage', () => {

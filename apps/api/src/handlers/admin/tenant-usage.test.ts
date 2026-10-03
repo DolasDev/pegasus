@@ -140,6 +140,12 @@ describe.skipIf(!hasDb)('admin tenant usage routes (integration)', () => {
       post({ planCode: 'ENTERPRISE', termStart: '2026-10-01' }),
     )
     expect(bad.status).toBe(400)
+    // Shaped like a date but impossible: a 400, not a 500 from termEndFor().
+    const impossible = await app.request(
+      `/tenants/${tenantId}/automation-plan`,
+      post({ planCode: 'STARTER', termStart: '2026-13-01' }),
+    )
+    expect(impossible.status).toBe(400)
     const missing = await app.request(
       '/tenants/00000000-0000-0000-0000-000000000000/automation-plan',
     )

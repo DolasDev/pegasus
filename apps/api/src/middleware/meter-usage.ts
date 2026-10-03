@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// meterUsage — the billable-action meter (plans/in-progress/usage-metering.md).
+// meterUsage — the billable-action meter (plans/completed/usage-metering.md).
 //
 // Mounted AFTER `requirePermission(Actions.X)` on each billable route. It does
 // nothing until the handler has answered; then it records one UsageEvent when

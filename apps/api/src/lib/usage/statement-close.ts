@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Monthly usage-statement close (plans/in-progress/usage-metering.md, Phase 4).
+// Monthly usage-statement close (plans/completed/usage-metering.md, Phase 4).
 //
 // For every tenant that has ever had an automation plan, write the statement
 // for each fully-past month that has none — oldest first, from the tenant's

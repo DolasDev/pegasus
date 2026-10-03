@@ -6,7 +6,7 @@
 // integration client) on the tenant's behalf. Reads, workflow state, runs,
 // dry runs, non-2xx responses, idempotent replays and anything a human does
 // through tenant-web are free. The full counted/free table and its reasoning
-// live in plans/in-progress/usage-metering.md.
+// live in plans/completed/usage-metering.md.
 //
 // Each entry decides, from a 2xx response's `data` envelope (plus the request
 // for the outbound caller), whether this response is billable and which

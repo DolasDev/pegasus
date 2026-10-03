@@ -24,6 +24,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   AUTOMATION_PLAN_CATALOG,
   AUTOMATION_PLAN_CODES,
+  isIsoDate,
   isPeriodMonth,
   planInEffect,
   termEndFor,
@@ -41,7 +42,9 @@ import {
 import { buildUsageSummary } from '../../lib/usage/usage-summary'
 import { SummaryQuery } from '../usage'
 
-const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD')
+// A real calendar date, checked here: termEndFor() throws on an impossible one
+// (2026-13-01), which would otherwise surface as a 500.
+const ISO_DATE = z.string().refine(isIsoDate, 'must be a valid YYYY-MM-DD date')
 const CENTS = z.number().int().min(0).max(100_000_000)
 
 const AssignPlanBody = z

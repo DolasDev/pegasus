@@ -21,7 +21,7 @@
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
 
-**Metering rule (added 2026-09-30):** every new outward-mutating action in Phases 3, 6 and 7 (`SendEmail`, `CreateTask`, `WriteOrderMemo`) must be metered in the same PR. See `plans/todo/usage-metering-and-published-rates.md` Phase 5. NW billing cannot start until that plan's Phases 1–3 are live.
+**Metering rule (added 2026-09-30):** every new outward-mutating action in Phases 6 and 7 (`CreateTask`, `WriteOrderMemo`) must be metered in the same PR: add it to `apps/api/src/lib/usage/billable-actions.ts` (whose test pins the list), put `meterUsage(Actions.X)` after `requirePermission` on its route, and add it to the SDK README's billable list. `SendEmail` (Phase 3) is already metered. See `plans/completed/usage-metering.md` Phase 5. The meter, plans and Usage pages shipped together (Phases 1–4), so NW billing can start once NW has a plan assigned in admin-web. **SDK 0.43.0 was taken by `get_usage_summary`**, so this plan's SDK version numbers shift up by one from Phase 5 on.
 
 **Order and parallelism:**
 

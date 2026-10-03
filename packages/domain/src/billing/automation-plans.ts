@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // Automation plans — the published plan catalog and the rules for a tenant's
-// plan history (plans/in-progress/usage-metering.md).
+// plan history (plans/completed/usage-metering.md).
 //
 // A plan buys an ANNUAL pool of billable automated actions, billed monthly at
 // 1/12 of the annual price. Beyond the pool, each action is billed at the

@@ -111,6 +111,12 @@ describe('planInEffect', () => {
     expect(planInEffect(history, '2027-03-15')?.planCode).toBe('GROWTH')
     expect(planInEffect(history, '2027-09-30')?.planCode).toBe('GROWTH')
   })
+
+  it('does not depend on the order rows arrive in', () => {
+    const reversed = [...history].reverse()
+    expect(planInEffect(reversed, '2027-03-14')?.planCode).toBe('STARTER')
+    expect(planInEffect(reversed, '2027-03-15')?.planCode).toBe('GROWTH')
+  })
 })
 
 describe('validatePlanChange', () => {
@@ -165,5 +171,33 @@ describe('validatePlanChange', () => {
     expect(
       validatePlanChange([], { ...row('STARTER', '2026-10-01'), monthlyPriceCents: -1 }),
     ).toMatch(/non-negative/)
+  })
+
+  it('rejects malformed dates, a pre-term effectiveFrom and fractional prices', () => {
+    // Built by hand: termEndFor() cannot compute an end for an impossible date.
+    expect(
+      validatePlanChange([], {
+        ...row('STARTER', '2026-10-01'),
+        termStart: '2026-13-01',
+        effectiveFrom: '2026-13-01',
+      }),
+    ).toMatch(/YYYY-MM-DD/)
+    expect(() => termEndFor('2026-13-01')).toThrow(RangeError)
+    expect(validatePlanChange([], row('STARTER', '2026-10-01', '2026-10-32'))).toMatch(/YYYY-MM-DD/)
+    expect(validatePlanChange([], row('STARTER', '2026-10-01', '2026-09-30'))).toMatch(
+      /inside the term/,
+    )
+    expect(
+      validatePlanChange([], { ...row('STARTER', '2026-10-01'), overageCentsPerAction: 30.5 }),
+    ).toMatch(/non-negative integers/)
+  })
+
+  it('compares an upgrade against the LATEST row of the term, whatever the history order', () => {
+    // History arrives newest-first here; the current row is still GROWTH.
+    const history = [row('GROWTH', '2026-10-01', '2027-01-01'), row('STARTER', '2026-10-01')]
+    expect(validatePlanChange(history, row('GROWTH', '2026-10-01', '2027-02-01'))).toMatch(
+      /only move up/,
+    )
+    expect(validatePlanChange(history, row('SCALE', '2026-10-01', '2027-02-01'))).toBeNull()
   })
 })

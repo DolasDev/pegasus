@@ -19,8 +19,13 @@
 // UTC calendar months.
 // ---------------------------------------------------------------------------
 
-import { Prisma, type PrismaClient } from '@prisma/client'
-import type { AutomationPlanCode, AutomationPlanPeriod, UsageStatementLines } from '@pegasus/domain'
+import type { Prisma, PrismaClient } from '@prisma/client'
+import {
+  addMonths,
+  type AutomationPlanCode,
+  type AutomationPlanPeriod,
+  type UsageStatementLines,
+} from '@pegasus/domain'
 
 export interface RecordUsageInput {
   tenantId: string
@@ -110,22 +115,26 @@ export function createUsageRepository(db: PrismaClient) {
       return db.usageEvent.count({ where: occurredIn(tenantId, w) })
     },
 
-    /** Actions per UTC calendar month, months with none omitted. */
+    /**
+     * Actions per UTC calendar month touching the window, oldest first. One
+     * indexed count per month (≈12 for a term) rather than raw SQL, which
+     * db-access-guard reserves for the health check.
+     */
     async countByMonth(
       tenantId: string,
       w: DateWindow,
     ): Promise<Array<{ month: string; actions: number }>> {
-      const rows = await db.$queryRaw<Array<{ month: string; actions: bigint }>>(Prisma.sql`
-        SELECT to_char(date_trunc('month', occurred_at), 'YYYY-MM') AS month,
-               count(*) AS actions
-        FROM usage_events
-        WHERE tenant_id = ${tenantId}
-          AND occurred_at >= ${toDate(w.from)}
-          AND occurred_at < ${toDate(w.to)}
-        GROUP BY 1
-        ORDER BY 1
-      `)
-      return rows.map((r) => ({ month: r.month, actions: Number(r.actions) }))
+      const months: DateWindow[] = []
+      for (let m = `${w.from.slice(0, 7)}-01`; m < w.to; m = addMonths(m, 1)) {
+        const next = addMonths(m, 1)
+        months.push({ from: m < w.from ? w.from : m, to: next > w.to ? w.to : next })
+      }
+      return Promise.all(
+        months.map(async (month) => ({
+          month: month.from.slice(0, 7),
+          actions: await db.usageEvent.count({ where: occurredIn(tenantId, month) }),
+        })),
+      )
     },
 
     async countByAction(

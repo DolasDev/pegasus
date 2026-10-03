@@ -2835,7 +2835,7 @@ model EmailSend {
   @@schema("public")
 }
 
-/// One billable automated action — the usage meter (plans/in-progress/usage-metering.md).
+/// One billable automated action — the usage meter (plans/completed/usage-metering.md).
 /// A successful, first-time, outward-reaching mutation performed by an API
 /// client (a workflow runtime or a plain integration client) on the tenant's
 /// behalf. Humans are never metered. Written by middleware/meter-usage.ts after

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Usage statements — the monthly close a manual invoice is raised from, and
 // the term projection shown on the Usage pages
-// (plans/in-progress/usage-metering.md, Phase 4).
+// (plans/completed/usage-metering.md, Phase 4).
 //
 // Pure functions: the caller counts UsageEvents and loads plan history and
 // prior statements; these decide what the month owes.
