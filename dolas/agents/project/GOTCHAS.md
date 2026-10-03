@@ -2272,3 +2272,13 @@ with `Could not resolve "@pegasus/domain"` from `apps/api/src/cognito/pre-token.
 The api deps are now built on every deploy. Before #761 no deploy had been company-web-only, so
 nothing had exercised that path. The site still went live because the next deploy (#710) ran
 `--all`.
+
+## A RingCentral MMS is `type: 'SMS'` — filtering on type never excludes it
+
+**Symptom (prod 2026-09-25):** picture messages reached on-prem as their caption only; the image was
+silently gone — no error, no skip log. 30 of 5,100 messages in 90 days (all inbound).
+
+**Cause:** RingCentral files MMS under `messageType=SMS`. The text is in `subject` (and repeated as
+a `Text` part); each file is an `attachments[]` part with `type: 'MmsAttachment'`. The normalizer
+read only `subject`. **General rule:** when a vendor record has a parts/attachments array, decide
+explicitly what happens to every part type — "we only handle SMS" is not a filter the API enforces.

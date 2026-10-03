@@ -18,6 +18,7 @@ const h = vi.hoisted(() => {
     findMany: vi.fn(),
     executeSql: vi.fn(),
     buildInboundMessageMerge: vi.fn(),
+    buildInboundAttachmentMerge: vi.fn(),
     listPendingForwards: vi.fn(),
     markForwardSent: vi.fn(),
     markForwardFailed: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock('../lib/mssql-executor-client', () => ({
 }))
 vi.mock('../services/ringcentral/onprem-merge', () => ({
   buildInboundMessageMerge: h.buildInboundMessageMerge,
+  buildInboundAttachmentMerge: h.buildInboundAttachmentMerge,
 }))
 vi.mock('../repositories/messaging.repository', () => ({
   listPendingForwards: h.listPendingForwards,
@@ -69,6 +71,10 @@ beforeEach(() => {
     if (typeof v === 'function' && 'mockReset' in v) (v as ReturnType<typeof vi.fn>).mockReset()
   }
   h.buildInboundMessageMerge.mockReturnValue({ sql: 'MERGE ...', params: [] })
+  h.buildInboundAttachmentMerge.mockImplementation((a: { attachmentId: string }) => ({
+    sql: `MERGE attachment ${a.attachmentId}`,
+    params: [],
+  }))
 })
 
 describe('lambda-ringcentral-forward', () => {
@@ -192,5 +198,75 @@ describe('lambda-ringcentral-forward', () => {
     expect(h.parkForward.mock.calls.map((c) => c[1])).toEqual(['obx-1', 'obx-2', 'obx-4'])
     expect(h.markForwardSent).toHaveBeenCalledTimes(1)
     expect(h.markForwardFailed).not.toHaveBeenCalled()
+  })
+  it('forwards the message, then one reference row per MMS attachment', async () => {
+    const msg = {
+      ...outboxRow().message,
+      source: 'V1_STORE',
+      attachments: [
+        {
+          attachmentId: '2',
+          contentType: 'image/jpeg',
+          sizeBytes: 1,
+          width: null,
+          height: null,
+          rcUri: 'u2',
+        },
+        {
+          attachmentId: '3',
+          contentType: 'image/png',
+          sizeBytes: null,
+          width: 5,
+          height: 6,
+          rcUri: 'u3',
+        },
+      ],
+    }
+    h.listPendingForwards.mockResolvedValue([outboxRow({ message: msg })])
+    h.findMany.mockResolvedValue([{ id: 't1', mssqlConnectionString: 'Server=onprem;' }])
+    h.executeSql.mockResolvedValue({ recordset: [], recordsets: [], rowsAffected: [1] })
+
+    await handler()
+
+    expect(h.executeSql.mock.calls.map((c) => c[1])).toEqual([
+      'MERGE ...',
+      'MERGE attachment 2',
+      'MERGE attachment 3',
+    ])
+    expect(h.buildInboundAttachmentMerge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 't1',
+        source: 'V1_STORE',
+        externalId: 'ext-1',
+        attachmentId: '3',
+        width: 5,
+        rcUri: 'u3',
+      }),
+    )
+    expect(h.markForwardSent).toHaveBeenCalledTimes(1)
+  })
+
+  it('parks (no attempt spent) when the on-prem attachments table is missing', async () => {
+    const msg = {
+      ...outboxRow().message,
+      attachments: [{ attachmentId: '2', contentType: 'image/jpeg', rcUri: 'u2' }],
+    }
+    h.listPendingForwards.mockResolvedValue([outboxRow({ attempts: 2, message: msg })])
+    h.findMany.mockResolvedValue([{ id: 't1', mssqlConnectionString: 'Server=onprem;' }])
+    h.executeSql
+      .mockResolvedValueOnce({ recordset: [], recordsets: [], rowsAffected: [1] })
+      .mockRejectedValueOnce(
+        new MssqlExecError(
+          'EXECUTOR_QUERY_ERROR',
+          "QUERY_FAILED: Invalid object name 'dbo.inbound_message_attachments'.",
+        ),
+      )
+
+    await handler()
+
+    expect(h.parkForward).toHaveBeenCalledTimes(1)
+    expect(h.parkForward.mock.calls[0]![3]).toMatch(/inbound_message_attachments/)
+    expect(h.markForwardFailed).not.toHaveBeenCalled()
+    expect(h.markForwardSent).not.toHaveBeenCalled()
   })
 })

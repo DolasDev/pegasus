@@ -217,6 +217,61 @@ describe('messaging — normalizeV1Message', () => {
     expect(m.body).toBe('your crew is on the way')
   })
 
+  it('has no attachments for a plain SMS', () => {
+    expect(normalizeV1Message(v1msg()).attachments).toEqual([])
+  })
+
+  it('keeps MMS attachment references and drops the Text part (the body)', () => {
+    const m = normalizeV1Message(
+      v1msg({
+        direction: 'Inbound',
+        attachments: [
+          { id: 1, type: 'Text', contentType: 'text/plain', uri: 'https://rc/content/1' },
+          {
+            id: 2,
+            type: 'MmsAttachment',
+            contentType: 'image/jpeg',
+            size: 230584,
+            width: 1024,
+            height: 768,
+            uri: 'https://rc/content/2',
+          },
+          {
+            id: '3',
+            type: 'MmsAttachment',
+            contentType: 'video/3gpp',
+            uri: 'https://rc/content/3',
+          },
+        ],
+      }),
+    )
+    expect(m.body).toBe('your crew is on the way')
+    expect(m.attachments).toEqual([
+      {
+        attachmentId: '2',
+        contentType: 'image/jpeg',
+        sizeBytes: 230584,
+        width: 1024,
+        height: 768,
+        rcUri: 'https://rc/content/2',
+      },
+      { attachmentId: '3', contentType: 'video/3gpp', rcUri: 'https://rc/content/3' },
+    ])
+  })
+
+  it('drops an MMS attachment without the id, content type or uri needed to look it up', () => {
+    const m = normalizeV1Message(
+      v1msg({
+        attachments: [
+          { id: 4, type: 'MmsAttachment', uri: 'https://rc/content/4' },
+          { type: 'MmsAttachment', contentType: 'image/png', uri: 'https://rc/content/5' },
+          { id: 6, type: 'MmsAttachment', contentType: 'image/png' },
+        ],
+      }),
+    )
+    expect(m.attachments).toEqual([])
+  })
+
   it('throws INVALID_PHONE_NUMBER when from/to missing', () => {
     try {
       normalizeV1Message(v1msg({ to: [] }))

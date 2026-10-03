@@ -1,6 +1,6 @@
 # RingCentral: forward MMS attachment references on-prem + fix the truncated backfill
 
-**Status:** PR 1 (backfill) done 2026-09-28; PR 2 (MMS references) next · **Type:** feat (+ fix) · **Opened:** 2026-09-25
+**Status:** COMPLETE — PR 1 (backfill, #734) 2026-09-28; PR 2 (MMS references) 2026-09-29 · **Type:** feat (+ fix) · **Opened:** 2026-09-25
 
 ## Findings (prod, Nelson Westerberg, probe 2026-09-25)
 
@@ -41,7 +41,26 @@ a connection by setting those two columns (runbook "Backfill beyond 250 messages
   window; the next sync run pages it). Expect ~4,700 more rows on-prem, oldest first by `rc_created_at`
   interleaving with live traffic; the forwarder drains them at 100/tenant/5 min (~4 h).
 
-## PR 2 — feat: MMS attachment references forwarded on-prem (no bytes stored)
+## PR 2 — feat: MMS attachment references forwarded on-prem (no bytes stored) — DONE (2026-09-29)
+
+Shipped as below, with these deviations from the design that follows:
+
+- **Lookup does not read Neon.** Cloud `Message` rows (and their `MessageAttachment` rows, by
+  cascade) are deleted 30 days after forwarding, so the endpoint builds RingCentral's content path
+  from the tenant's connection (`/account/{rcAccountId}/extension/{rcExtensionId}/message-store/
+{externalId}/content/{attachmentId}`), trying each connection until one answers non-404. It works
+  for as long as RingCentral keeps the message.
+- **Transport:** a base64 JSON envelope by default (the proven path, like `pegii-reports`);
+  `?format=raw` returns bytes with a passive-media content-type allowlist + `nosniff`. Raw binary
+  through the hono/aws-lambda adapter is untested in a deployed environment — smoke it before relying
+  on it. Files over 3.3 MB → `502 ATTACHMENT_TOO_LARGE` (observed max 1.07 MB).
+- **Auth:** new Cedar action `ReadRingCentralAttachment` (resource `Setting`), granted to the
+  `integrations` persona; tenant admins have it implicitly.
+- **Missing on-prem attachments table** parks the whole forward (message re-MERGE is idempotent), so
+  plain SMS are unaffected and MMS drain once the table exists.
+- **Not built (follow-ups):** the one-off to back-fill references for MMS already on-prem (only 3
+  since connect; the historic backfill was also deferred); `sms.received` payloads carrying
+  attachments (a workflow-SDK surface change); thread-store attachments.
 
 **Decision (2026-09-28):** store only the references needed to look an attachment up; neither
 Pegasus nor on-prem stores the file. The file stays in RingCentral and is fetched on demand.

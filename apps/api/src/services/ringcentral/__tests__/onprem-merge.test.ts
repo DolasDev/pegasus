@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { buildInboundMessageMerge, INBOUND_MESSAGES_DDL } from '../onprem-merge'
+import {
+  buildInboundMessageMerge,
+  buildInboundAttachmentMerge,
+  INBOUND_MESSAGES_DDL,
+  INBOUND_MESSAGE_ATTACHMENTS_DDL,
+} from '../onprem-merge'
 
 const base = {
   tenantId: 'tnt-1',
@@ -84,5 +89,60 @@ describe('INBOUND_MESSAGES_DDL', () => {
     expect(INBOUND_MESSAGES_DDL).toContain(
       'CONSTRAINT PK_inbound_messages PRIMARY KEY (tenant_id, source, external_id)',
     )
+  })
+})
+
+describe('buildInboundAttachmentMerge', () => {
+  const att = {
+    tenantId: 'tnt-1',
+    source: 'V1_STORE',
+    externalId: '3616791452016',
+    attachmentId: '2',
+    contentType: 'image/jpeg',
+    sizeBytes: 230584,
+    width: 1024,
+    height: 768,
+    rcUri:
+      'https://platform.ringcentral.com/restapi/v1.0/account/1/extension/2/message-store/3616791452016/content/2',
+  }
+
+  it('is one idempotent MERGE keyed on the message tuple + attachment id', () => {
+    const { sql } = buildInboundAttachmentMerge(att)
+    expect(sql).toContain('MERGE dbo.inbound_message_attachments AS tgt')
+    expect(sql).toContain('tgt.attachment_id = src.attachment_id')
+    expect(sql).toContain('WHEN NOT MATCHED THEN INSERT')
+    expect(sql.match(/;/g)).toHaveLength(1)
+    // References only — no content column anywhere.
+    expect(sql).not.toMatch(/\bcontent\b(?!_type)/)
+  })
+
+  it('binds every placeholder, nulls for absent dimensions', () => {
+    const { sql, params } = buildInboundAttachmentMerge({
+      ...att,
+      width: null,
+      height: null,
+    })
+    const byName = Object.fromEntries(params.map((p) => [p.name, p.value]))
+    expect(byName).toMatchObject({
+      tenant_id: 'tnt-1',
+      source: 'V1_STORE',
+      external_id: '3616791452016',
+      attachment_id: '2',
+      content_type: 'image/jpeg',
+      size_bytes: 230584,
+      width: null,
+      height: null,
+      rc_uri: att.rcUri,
+    })
+    const placeholders = new Set([...sql.matchAll(/@(\w+)/g)].map((m) => m[1]!))
+    for (const ph of placeholders) expect(byName).toHaveProperty(ph)
+  })
+
+  it('ships a DDL that references the parent message and stores no bytes', () => {
+    expect(INBOUND_MESSAGE_ATTACHMENTS_DDL).toContain(
+      'CREATE TABLE dbo.inbound_message_attachments',
+    )
+    expect(INBOUND_MESSAGE_ATTACHMENTS_DDL).toContain('REFERENCES dbo.inbound_messages')
+    expect(INBOUND_MESSAGE_ATTACHMENTS_DDL).not.toMatch(/VARBINARY/i)
   })
 })

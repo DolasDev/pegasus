@@ -213,6 +213,9 @@
       "ManageRingCentralIntegration": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Setting"] }
       },
+      "ReadRingCentralAttachment": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Setting"] }
+      },
       "ListApiClients": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ApiClient"] }
       },

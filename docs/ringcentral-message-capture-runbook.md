@@ -154,6 +154,37 @@ SET backfill_from = now() - interval '90 days',
 WHERE connection_id = '<connection>' AND store = 'V1';
 ```
 
+## MMS attachments (references only)
+
+An MMS arrives from RingCentral as `type: 'SMS'`: its text is the body, and each
+picture/video is an `MmsAttachment` part. Pegasus stores **only references**
+(`message_attachments`: attachment id, content type, size, dimensions,
+RingCentral URI) — never the file. The forwarder writes the message row, then
+one row per attachment into on-prem `dbo.inbound_message_attachments`
+([DDL](./ringcentral-onprem-inbound-message-attachments.sql); run it after the
+messages DDL — it has an FK to `dbo.inbound_messages`).
+
+Clients fetch a file on demand, and Pegasus relays it from RingCentral without
+storing it:
+
+```
+GET /api/v1/integrations/ringcentral/messages/V1_STORE/{external_id}/attachments/{attachment_id}
+    → {data:{contentType,sizeBytes,contentBase64,…}}     (add ?format=raw for bytes)
+```
+
+Auth: an API key whose service account is in the `integrations` group (Cedar
+action `ReadRingCentralAttachment`), or a tenant admin. The lookup goes by ids
+through the tenant's RingCentral connection, so it keeps working after the
+cloud message row is deleted (30 days) — for as long as RingCentral keeps the
+message. A deleted one returns `404 ATTACHMENT_NOT_FOUND`.
+
+If the on-prem attachments table is **missing**, forwards of MMS messages
+**park** (no attempt spent; logged as `On-prem dbo.inbound_message_attachments
+is missing`) and drain once it is created. Plain SMS are unaffected.
+
+Not yet covered: thread-store (shared-inbox) attachments (none observed), and
+`sms.received` event payloads don't carry attachments.
+
 ## Forwarder fairness
 
 Each 5-minute forwarder run drains up to 100 due rows **per tenant** (oldest-due

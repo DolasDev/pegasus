@@ -113,6 +113,14 @@ export const Actions = {
     resourceType: 'Setting',
     permission: 'ringcentral:manage',
   },
+  // Fetch an MMS attachment's bytes from RingCentral by reference (message id +
+  // attachment id) — Pegasus stores only the reference. Read-only; granted to
+  // the integrations persona so an on-prem client's API key can display images.
+  ReadRingCentralAttachment: {
+    id: 'ReadRingCentralAttachment',
+    resourceType: 'Setting',
+    permission: 'ringcentral:read_attachment',
+  },
   // ── API clients (M2M key administration) ────────────────────────────────
   ListApiClients: {
     id: 'ListApiClients',

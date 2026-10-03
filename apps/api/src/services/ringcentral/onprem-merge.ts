@@ -83,3 +83,70 @@ export function buildInboundMessageMerge(input: OnPremMessageInput): BuiltMerge 
   ]
   return { sql: MERGE_SQL, params }
 }
+
+// ---------------------------------------------------------------------------
+// MMS attachment references (never bytes)
+// ---------------------------------------------------------------------------
+
+/** One MMS attachment reference, keyed to its parent message. */
+export interface OnPremAttachmentInput {
+  tenantId: string
+  source: string
+  externalId: string
+  attachmentId: string
+  contentType: string
+  sizeBytes?: number | null
+  width?: number | null
+  height?: number | null
+  rcUri: string
+}
+
+/**
+ * One-time DDL for the on-prem attachment-reference table. Delivered to the
+ * on-prem DBA as docs/ringcentral-onprem-inbound-message-attachments.sql. The
+ * file itself stays in RingCentral; clients fetch it through the Pegasus
+ * attachment lookup endpoint by (source, external_id, attachment_id).
+ */
+export const INBOUND_MESSAGE_ATTACHMENTS_DDL = `IF OBJECT_ID(N'dbo.inbound_message_attachments', N'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.inbound_message_attachments (
+    tenant_id      NVARCHAR(64)   NOT NULL,
+    source         NVARCHAR(16)   NOT NULL,
+    external_id    NVARCHAR(64)   NOT NULL,
+    attachment_id  NVARCHAR(64)   NOT NULL,
+    content_type   NVARCHAR(128)  NOT NULL,
+    size_bytes     INT            NULL,
+    width          INT            NULL,
+    height         INT            NULL,
+    rc_uri         NVARCHAR(512)  NOT NULL,
+    captured_at    DATETIME2(3)   NOT NULL CONSTRAINT DF_inbound_message_attachments_captured DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_inbound_message_attachments PRIMARY KEY (tenant_id, source, external_id, attachment_id),
+    CONSTRAINT FK_inbound_message_attachments_message FOREIGN KEY (tenant_id, source, external_id)
+      REFERENCES dbo.inbound_messages (tenant_id, source, external_id)
+  );
+END`
+
+const ATTACHMENT_MERGE_SQL = `MERGE dbo.inbound_message_attachments AS tgt
+USING (SELECT @tenant_id AS tenant_id, @source AS source, @external_id AS external_id, @attachment_id AS attachment_id) AS src
+  ON (tgt.tenant_id = src.tenant_id AND tgt.source = src.source AND tgt.external_id = src.external_id AND tgt.attachment_id = src.attachment_id)
+WHEN MATCHED THEN UPDATE SET
+  content_type = @content_type, size_bytes = @size_bytes, width = @width, height = @height, rc_uri = @rc_uri
+WHEN NOT MATCHED THEN INSERT
+  (tenant_id, source, external_id, attachment_id, content_type, size_bytes, width, height, rc_uri)
+  VALUES (@tenant_id, @source, @external_id, @attachment_id, @content_type, @size_bytes, @width, @height, @rc_uri);`
+
+/** Builds the parameterized on-prem MERGE for one attachment reference. */
+export function buildInboundAttachmentMerge(input: OnPremAttachmentInput): BuiltMerge {
+  const params: SqlParam[] = [
+    { name: 'tenant_id', value: input.tenantId },
+    { name: 'source', value: input.source },
+    { name: 'external_id', value: input.externalId },
+    { name: 'attachment_id', value: input.attachmentId },
+    { name: 'content_type', value: input.contentType },
+    { name: 'size_bytes', value: input.sizeBytes ?? null },
+    { name: 'width', value: input.width ?? null },
+    { name: 'height', value: input.height ?? null },
+    { name: 'rc_uri', value: input.rcUri },
+  ]
+  return { sql: ATTACHMENT_MERGE_SQL, params }
+}

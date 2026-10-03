@@ -24,6 +24,32 @@ describe('normalizeV1Json', () => {
     })
   })
 
+  it('passes MMS attachment references through (an MMS is type SMS)', () => {
+    const m = normalizeV1Json({
+      id: 3616791452016,
+      type: 'SMS',
+      direction: 'Inbound',
+      creationTime: '2026-09-25T16:20:56.000Z',
+      subject: 'photo of the damage',
+      from: { phoneNumber: '+12015550123' },
+      to: [{ phoneNumber: '+19085760908' }],
+      attachments: [
+        { id: 1, type: 'Text', contentType: 'text/plain', uri: 'https://rc/c/1' },
+        {
+          id: 2,
+          type: 'MmsAttachment',
+          contentType: 'image/jpeg',
+          size: 230584,
+          uri: 'https://rc/c/2',
+        },
+      ],
+    })
+    expect(m.body).toBe('photo of the damage')
+    expect(m.attachments).toEqual([
+      { attachmentId: '2', contentType: 'image/jpeg', sizeBytes: 230584, rcUri: 'https://rc/c/2' },
+    ])
+  })
+
   it('propagates UNSUPPORTED_MESSAGE_TYPE for a non-SMS record', () => {
     try {
       normalizeV1Json({

@@ -527,6 +527,39 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
       })
     })
 
+    it('persists MMS attachment references once and hands them to the forwarder', async () => {
+      const mms = normalized({
+        source: 'V1_STORE',
+        externalId: 'mms-1',
+        attachments: [
+          {
+            attachmentId: '2',
+            contentType: 'image/jpeg',
+            sizeBytes: 230584,
+            width: 1024,
+            height: 768,
+            rcUri: 'https://rc/content/2',
+          },
+          { attachmentId: '3', contentType: 'image/png', rcUri: 'https://rc/content/3' },
+        ],
+      })
+      const m = await captureMessage(db, tenantId, mms)
+      await captureMessage(db, tenantId, mms) // webhook + sync converge
+
+      const rows = await db.messageAttachment.findMany({
+        where: { messageId: m.id },
+        orderBy: { attachmentId: 'asc' },
+      })
+      expect(rows.map((r) => [r.attachmentId, r.contentType, r.sizeBytes])).toEqual([
+        ['2', 'image/jpeg', 230584],
+        ['3', 'image/png', null],
+      ])
+
+      const pending = await listPendingForwards(db, 500)
+      const row = pending.find((p) => p.messageId === m.id)
+      expect(row?.message.attachments.map((a) => a.attachmentId).sort()).toEqual(['2', '3'])
+    })
+
     it('thread and v1 stores with the same external id do not collide', async () => {
       const ext = 'shared-id'
       const t = await captureMessage(

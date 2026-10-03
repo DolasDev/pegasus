@@ -100,6 +100,7 @@ import {
 import { workflowStateHandler } from './handlers/workflow-state'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
+import { ringcentralAttachmentsHandler } from './handlers/integrations/ringcentral-attachments'
 import { ingressHandler, ingressManagementHandler } from './handlers/ingress'
 import { feedbackFormsHandler } from './handlers/feedback-forms'
 import { feedbackRequestsHandler } from './handlers/feedback-requests'
@@ -360,6 +361,12 @@ m2mV1.route('/', blobsHandler)
 // POSTs to the pre-tenant ingress endpoint. Dual-auth + RBAC (ManageIngress).
 // See handlers/ingress.ts.
 m2mV1.route('/', ingressManagementHandler)
+// MMS attachment lookup by reference, for the on-prem client's `vnd_` key (and
+// tenant sessions): Pegasus fetches the file from RingCentral through the
+// tenant's connection and stores nothing. Dual-auth + RBAC
+// (ReadRingCentralAttachment) applied route-level inside the handler, so the
+// Cognito-only /integrations/ringcentral/* routes on `v1` still fall through.
+m2mV1.route('/integrations/ringcentral', ringcentralAttachmentsHandler)
 // Feedback surveys: author versioned forms (ManageFeedbackForms / ReadFeedbackForms)
 // and mint capability links (CreateFeedbackRequest, granted to workflow_runtime).
 // Dual-auth + RBAC applied inside each handler; feature-gated by FEEDBACK_ENABLED.
