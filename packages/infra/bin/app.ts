@@ -142,6 +142,18 @@ const FEEDBACK_PUBLIC_WEB_URL: Record<Exclude<EnvName, 'dev'>, string> = {
 const feedbackEnabled = envName === 'staging' || envName === 'prod'
 const feedbackPublicWebUrl = envName === 'dev' ? undefined : FEEDBACK_PUBLIC_WEB_URL[envName]
 
+// ── Cloud-issued pegII tokens (cloud identity I1) ────────────────────────────
+// `iss` of the ES256 tokens the API mints for on-prem pegII sites; sites verify
+// against `${issuer}/.well-known/jwks.json`. The branded API origin, so the
+// issuer and the JWKS host match. Dev has no branded domain and no pegII site
+// verifying cloud tokens, so it is left unset (minting refuses there, which
+// only matters once a site advertises pegii.cloud-auth.v1).
+const PEGII_TOKEN_ISSUER: Record<Exclude<EnvName, 'dev'>, string> = {
+  staging: 'https://api.pegasus-qa.dolas.dev',
+  prod: 'https://api.pegasus.dolas.dev',
+}
+const pegiiTokenIssuer = envName === 'dev' ? undefined : PEGII_TOKEN_ISSUER[envName]
+
 // ── Reporting / customizable dashboards master switch (staging + prod) ───────
 // Ungates the whole /api/v1/reporting/* prefix behind REPORTING_ENABLED on the
 // api Lambda: the dataset catalog + query endpoints and the dashboard-definition
@@ -415,6 +427,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   outboundOAuthSharedCacheEnabled,
   feedbackEnabled,
   feedbackPublicWebUrl,
+  ...(pegiiTokenIssuer ? { pegiiTokenIssuer } : {}),
   reportingEnabled,
   corsAllowedOrigins,
 })

@@ -106,6 +106,13 @@ export const TENANT_SCOPED_MODELS = new Set([
   'SmsSend',
   // EmailSend — per-tenant email audit, daily-limit counter and idempotency claim.
   'EmailSend',
+  // Site / Company — the tenant's on-prem pegII sites and legal entities (one
+  // legacy company DB each). Purely tenant-owned; the settings CRUD and the
+  // pegII token minting path (resolvePegiiCaller) read through the scoped
+  // client, so a site or company from another tenant is unreachable — and a
+  // cross-tenant `cid`/`aud` can never be minted.
+  'Site',
+  'Company',
   // Push notifications — DeviceToken rows are read/written by the tenant-scoped
   // device-token handler; PushNotificationOutbox rows are enqueued by handlers
   // and domain-event emitters via the scoped client inside transactions. The

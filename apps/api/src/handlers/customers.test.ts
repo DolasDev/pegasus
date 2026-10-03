@@ -241,7 +241,11 @@ describe('customers handler', () => {
       vi.mocked(listCustomers).mockResolvedValue([] as never)
       vi.mocked(countCustomers).mockResolvedValue(0 as never)
       await buildApp().request('/')
-      expect(resolveCustomerGateway).toHaveBeenCalledWith(expect.anything(), 'test-tenant-id')
+      expect(resolveCustomerGateway).toHaveBeenCalledWith(
+        expect.anything(),
+        'test-tenant-id',
+        expect.any(Function),
+      )
     })
   })
 

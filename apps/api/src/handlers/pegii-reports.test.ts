@@ -77,7 +77,11 @@ describe('GET /pegii-reports/:reportType/:id', () => {
   it('passes the report type and id through to the gateway', async () => {
     await buildApp().request('/pegii-reports/order-profile/SO-12345')
 
-    expect(resolveReportGateway).toHaveBeenCalledWith(expect.anything(), 'test-tenant-id')
+    expect(resolveReportGateway).toHaveBeenCalledWith(
+      expect.anything(),
+      'test-tenant-id',
+      expect.any(Function),
+    )
     expect(fetchReport).toHaveBeenCalledWith('order-profile', 'SO-12345')
   })
 

@@ -15,6 +15,10 @@ export type PegiiApiErrorCode =
   | 'PEGII_API_AUTH_UNAVAILABLE'
   /** The site's /version does not advertise a capability this call needs. */
   | 'PEGII_API_CAPABILITY_MISSING'
+  /** No TenantUser could be resolved to act as for a cloud-issued pegII token. */
+  | 'PEGII_PRINCIPAL_UNRESOLVED'
+  /** The API lacks PEGII_TOKEN_KMS_KEY_IDS / PEGII_TOKEN_ISSUER (CDK wiring). */
+  | 'PEGII_TOKEN_NOT_CONFIGURED'
 
 export class PegiiApiError extends Error {
   readonly code: PegiiApiErrorCode

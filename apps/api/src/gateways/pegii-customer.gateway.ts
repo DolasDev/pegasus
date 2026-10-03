@@ -9,6 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import type { CustomerGateway } from './customer.gateway'
+import type { PegiiCaller } from '../lib/pegii-request-context'
 import { createPegiiApiClient, isPegiiNotFound, type PegiiApiClient } from '../lib/pegii-api-client'
 import { mapPegiiCustomerToDomain } from './pegii/pegii-customer.mapper'
 import type { PegiiCustomerDto } from './pegii/pegii-customer.dto'
@@ -22,6 +23,8 @@ export interface PegiiCustomerGatewayOptions {
   apiKey?: string | null
   /** Test seam: inject a stub PegiiApiClient instead of the tunnel-backed one. */
   client?: PegiiApiClient
+  /** Who is calling (cloud-issued token + x-correlation-id); see lib/pegii-request-context.ts. */
+  caller?: PegiiCaller
 }
 
 export function createPegiiCustomerGateway(opts: PegiiCustomerGatewayOptions): CustomerGateway {
@@ -31,6 +34,7 @@ export function createPegiiCustomerGateway(opts: PegiiCustomerGatewayOptions): C
       tenantId: opts.tenantId,
       baseUrl: opts.baseUrl,
       ...(opts.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
+      ...(opts.caller ? { caller: opts.caller } : {}),
     })
 
   return {

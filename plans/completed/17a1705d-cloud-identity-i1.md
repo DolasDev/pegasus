@@ -1,6 +1,6 @@
 # Cloud identity I1 — Site/Company model + cloud-issued pegII tokens (pegasus)
 
-**Branch:** to be created by `workstream-start` (`feat/cloud-identity-i1`) once the docs PR carrying this plan and the design (`plans/todo/cloud-identity-and-companies.md`) has merged.
+**Branch:** `feat/cloud-identity-i1` (worktree `../pegasus-cloud-identity-i1`, from `origin/main` @ `b856a279`). Design: `plans/todo/cloud-identity-and-companies.md`.
 
 **Goal:**
 
@@ -8,7 +8,7 @@
 - Every pegII bridge call carries one on behalf of the request's principal, whenever the site advertises `pegii.cloud-auth.v1`.
 - Introduce the `Site` and `Company` models (tenant ⊃ companies), backfilled one-to-one from today's tenant columns, with no behaviour change.
 
-**Status:** DRAFT, awaiting approval. The token contract is fixed in the design doc's "Token contract (I1 ↔ I2)" section; this plan implements the issuing end.
+**Status:** APPROVED 2026-10-02 (incl. the `CompanyMembership` → I3 deviation). In progress. The token contract is fixed in the design doc's "Token contract (I1 ↔ I2)" section; this plan implements the issuing end.
 
 **Upstream / downstream:**
 
@@ -137,22 +137,47 @@ A generator script under `apps/api/scripts/` regenerates them deterministically.
 
 ## Checklist (TDD)
 
-- [ ] 0. Approval of this plan, including the `CompanyMembership` → I3 deviation; the docs PR merged; `workstream-start`.
-- [ ] 1. **Fixture + `LocalSigner` + `mintPegiiToken`** (red: claims, header, `exp` ≤ 300, `cid` omitted when null, service `emp`, refusal without a subject; `jose.jwtVerify` passes against the JWKS) → green.
-- [ ] 2. **DER → R‖S** unit tests (red, with KMS-shaped DER vectors) → `KmsSigner` (green, SDK client mocked).
-- [ ] 3. **JWKS handler** (red: shape, multiple keys, cache header, no auth) → green; OpenAPI entry.
-- [ ] 4. **Prisma:** `Site`/`Company` + the partial unique indexes + the backfill migration.
+- [x] 0. Approval of this plan, including the `CompanyMembership` → I3 deviation; the docs PR merged; `workstream-start`.
+- [x] 1. **Fixture + `LocalSigner` + `mintPegiiToken`** (red: claims, header, `exp` ≤ 300, `cid` omitted when null, service `emp`, refusal without a subject; `jose.jwtVerify` passes against the JWKS) → green.
+- [x] 2. **DER → R‖S** unit tests (red, with KMS-shaped DER vectors) → `KmsSigner` (green, SDK client mocked).
+- [x] 3. **JWKS handler** (red: shape, multiple keys, cache header, no auth) → green; OpenAPI entry.
+- [x] 4. **Prisma:** `Site`/`Company` + the partial unique indexes + the backfill migration.
   - Red: repository integration tests (backfill idempotent; one default per tenant; tenant isolation) → green.
   - Apply to local Docker before push.
-- [ ] 5. **Settings API** `/settings/sites`, `/settings/companies` (GET list; POST/PATCH company, tenant_admin): authz trio, OpenAPI, route tests (400s, 409 duplicate code/dataSourceKey, cross-tenant 404).
-- [ ] 6. **`resolvePegiiCaller` + cloud token provider + client selection.**
+- [x] 5. **Settings API** `/settings/sites`, `/settings/companies` (GET list; POST/PATCH company, tenant_admin): authz trio, OpenAPI, route tests (400s, 409 duplicate code/dataSourceKey, cross-tenant 404).
+- [x] 6. **`resolvePegiiCaller` + cloud token provider + client selection.**
   - Red: version advertises cloud-auth ⇒ cloud bearer; else the ARN path; 401 ⇒ re-mint + one retry; unresolved principal ⇒ 503; `x-correlation-id` always sent.
   - Green.
-- [ ] 7. **Gateway factory signatures + every call site;** existing handler tests updated for the new argument (no behaviour change when the site lacks cloud-auth).
-- [ ] 8. **Infra:** key + grants + env; CDK assertion tests; `cdk synth`.
-- [ ] 9. Coverage ratchet committed; `npm run typecheck`, `npm test`, `npm run lint` green.
-- [ ] 10. PR through the merge queue; deploy; check `GET https://api.pegasus.dolas.dev/.well-known/jwks.json` on staging, then prod.
-- [ ] 11. Docs: `dolas/agents/project/DECISIONS.md` (the cloud is the IdP for pegII); update the design doc's phase table to I1 ✅; memory.
+- [x] 7. **Gateway factory signatures + every call site;** existing handler tests updated for the new argument (no behaviour change when the site lacks cloud-auth).
+- [x] 8. **Infra:** key + grants + env; CDK assertion tests; `cdk synth`.
+- [x] 9. Coverage ratchet committed; `npm run typecheck`, `npm test`, `npm run lint` green.
+- [ ] 10. (post-merge) PR through the merge queue; deploy; check `GET https://api.pegasus.dolas.dev/.well-known/jwks.json` on staging, then prod.
+- [~] 11. (phase table + memory post-merge) Docs: `dolas/agents/project/DECISIONS.md` (the cloud is the IdP for pegII); update the design doc's phase table to I1 ✅; memory.
+
+## Implementation notes (2026-10-02)
+
+**Built:**
+
+- `lib/pegii-signer.ts`: the `Signer` interface, `createKmsSigner` (DER → R‖S), `createLocalSigner`.
+- `lib/pegii-token.ts`: claims, signing, the cached minter, `getPegiiTokenMinter` (env-configured), `createCloudTokenProvider`.
+- `handlers/jwks.ts`, mounted at `/.well-known/jwks.json`, with an OpenAPI entry.
+- `Site`/`Company` + migration `20261002234626_add_sites_companies` (partial unique indexes + idempotent backfill) + `repositories/company.repository.ts`.
+- `handlers/settings-companies.ts`: `GET/POST /settings/companies`, `PATCH /settings/companies/:id`.
+- `lib/pegii-request-context.ts` (`resolvePegiiCaller`).
+- `pegii-api-client`: lazy cloud-vs-legacy auth choice + `x-correlation-id`. Every gateway factory takes a `callerOf` thunk.
+- Infra: `PegiiTokenSigningKey` + Sign/GetPublicKey-only grant + env; `PEGII_TOKEN_ISSUER` per environment from `bin/app.ts`.
+- The shared fixture under `src/__fixtures__/pegii-token/`.
+
+**Deviations from the plan text, all within the approved scope:**
+
+- **Authz:** the companies routes reuse the existing `ReadSettings` / `UpdateSettings` actions, as `/settings/pegii` does, instead of new Cedar actions. Settings routes are session-only and not part of the OpenAPI document (the coverage gate covers M2M routes), so the companies routes are not either.
+- **`/settings/sites` is only `PATCH /settings/sites/:id`** (name + the cloud-auth switch). Sites are listed by `GET /settings/companies` (`{sites, companies}`), and a company created without a `siteId` lands on the Primary site, which is created on first use.
+- **The fixture commits no private key.** Each generator run uses a throwaway key and writes only `jwks.json` + `tokens.json`, so the secret scanner has nothing to flag. Regenerating changes every byte, and movemanager re-copies the directory.
+- **The settings connection test (`POST /settings/pegii/test`) is unchanged.** It only calls the unauthenticated `/health`, so no token path is involved.
+- **Caller resolution is lazy:** a factory invokes `callerOf` only when it actually builds a pegII gateway. A tenant whose customers come from cloud Postgres never resolves a caller or creates a site.
+- **Operator switch `Site.cloudAuthEnabled` (added in review, default off).** The `/version` probe is unauthenticated, so letting it decide on its own would let anything answering on the overlay (a spoofed or stale slot) receive a signed token. The bridge now sends cloud tokens only when the switch is on **and** `/version` advertises `pegii.cloud-auth.v1`. With the switch off it doesn't probe at all. It is flipped per site with `PATCH /settings/sites/:id {cloudAuthEnabled}` after I2 reaches that site. Separate migration: `20261003000538_add_site_cloud_auth_enabled`.
+- **A failed `/version` probe falls back to the legacy credential path** instead of failing the call, so read paths gain no new failure mode before I2.
+- **Two existing handler tests were edited** (`customers.test.ts`, `pegii-reports.test.ts`) to expect the new third factory argument.
 
 ## Files
 

@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
+import type { PegiiCaller } from '../lib/pegii-request-context'
 import { createPegiiApiClient, PegiiApiError, type PegiiApiClient } from '../lib/pegii-api-client'
 import { resolvePegiiOverlayTarget } from '../lib/pegii-overlay-target'
 import { requirePegiiCapabilities, PegiiCapabilities } from '../lib/pegii-capabilities'
@@ -51,6 +52,8 @@ export function createPegiiEmailGateway(opts: {
 export async function resolveEmailGateway(
   db: PrismaClient,
   tenantId: string,
+  /** Resolves the calling principal + company (cloud-issued token + x-correlation-id). */
+  callerOf?: () => Promise<PegiiCaller>,
 ): Promise<EmailGateway> {
   const resolved = await resolvePegiiOverlayTarget(db, tenantId)
   if (!resolved.ok) {
@@ -65,6 +68,7 @@ export async function resolveEmailGateway(
       tenantId,
       baseUrl: resolved.target.base,
       apiKey: resolved.target.apiKey,
+      ...(callerOf ? { caller: await callerOf() } : {}),
     }),
   })
 }

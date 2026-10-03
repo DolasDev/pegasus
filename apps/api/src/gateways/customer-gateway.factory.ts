@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
+import type { PegiiCaller } from '../lib/pegii-request-context'
 import type { CustomerGateway } from './customer.gateway'
 import { createPegiiCustomerGateway } from './pegii-customer.gateway'
 // Imported from the repositories barrel (not the module) so the default path
@@ -47,6 +48,8 @@ function createPrismaCustomerGateway(db: PrismaClient): CustomerGateway {
 export async function resolveCustomerGateway(
   db: PrismaClient,
   tenantId: string,
+  /** Resolves the calling principal + company; invoked only when a pegII gateway is built. */
+  callerOf?: () => Promise<PegiiCaller>,
 ): Promise<CustomerGateway> {
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
@@ -74,5 +77,6 @@ export async function resolveCustomerGateway(
     tenantId,
     baseUrl: resolved.target.base,
     apiKey: resolved.target.apiKey,
+    ...(callerOf ? { caller: await callerOf() } : {}),
   })
 }

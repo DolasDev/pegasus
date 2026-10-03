@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
+import { resolvePegiiCaller } from '../lib/pegii-request-context'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { requirePermission } from '../middleware/rbac'
@@ -78,7 +79,7 @@ emailHandler.post(
           bodyType: body.bodyType,
           ...(body.dedupKey !== undefined ? { dedupKey: body.dedupKey } : {}),
         },
-        () => resolveEmailGateway(db, tenantId),
+        () => resolveEmailGateway(db, tenantId, () => resolvePegiiCaller(c)),
       )
       switch (result.kind) {
         case 'sent':
