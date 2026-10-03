@@ -2301,3 +2301,45 @@ M2M behavior in an `apps/api` integration test that drives the real `m2mV1` rout
 (a meter, a metric, a retry policy) must read those fields instead. Also, `call-external`
 GETs run **live under `run --dry-run`** (only mutations are captured client-side), so a GET
 reaching the API is not proof of a real run.
+
+## `node ../../node_modules/.bin/<tool>` requires the ROOT to own the tool
+
+The repo invokes its dev tools by path — `node ../../node_modules/.bin/prisma`,
+`.../playwright`, `.../vite`, `node node_modules/.bin/turbo` — about forty call sites across
+`.github/workflows/`, `apps/e2e/global-setup.ts` and `apps/e2e/playwright.config.ts`. The
+`node` prefix is deliberate: a restored `node_modules` cache loses the exec bit on `.bin`
+shims, which is why `.github/actions/setup/action.yml` re-`chmod +x`es them.
+
+The unwritten precondition is that the tool actually lands in the **root** `node_modules`.
+That is not automatic for a package only workspaces declare — it is a hoisting outcome, and
+hoisting changes under you:
+
+- **prisma** (2026-07): two workspaces declared the same range, npm installed a private copy
+  in each instead of hoisting, and nothing linked `.bin/prisma`. Remedy: pin one version so
+  it hoists — see the `prisma` entry in `//overrides`.
+- **tsx** (#762, 2026-10-02): four workspaces (api, e2e, infra, vpn-agent) declared one range
+  and it hoisted by luck for months. Then a group bump nested **vite 8.3.1** under admin-web
+  and tenant-web while root stayed on 8.3.0, and arborist filled the root `tsx` slot with
+  vite 8.3.0's **optional peer** (`optional: true, peer: true`) instead. npm does not install
+  an optional peer nothing depends on, so `node_modules/.bin/tsx` was never linked and E2E
+  died on `Cannot find module '<root>/node_modules/.bin/tsx'` — identically on #759 and #762,
+  not a flake. Remedy: a real root dependency edge (`tsx` in root `devDependencies`), which
+  root already needed anyway for `npm run create-admin-user`.
+
+Rule: **if a root script or a `.bin`-by-path call site runs a tool, declare that tool in the
+root `package.json`.** Verified in isolation — a root `devDependencies` entry always yields
+`node_modules/.bin/<tool>`; a package reachable only as an _optional_ peer is not installed
+at all, so it yields nothing. Keep the root range equal to the workspaces' or arborist nests
+theirs beside it (root `^4.23.13` against workspaces at `^4.23.15` gave one root copy **plus
+four nested ones** — the bin link is restored, but it is four wasted copies).
+
+## A `grep -v node_modules` filter deletes every hit you were looking for
+
+Hunting the `.bin`-by-path call sites above, `grep -rn 'node_modules/\.bin' … | grep -v
+node_modules` returned a short, reassuring list — and it had silently dropped **every**
+match, because the matched lines all contain `node_modules` by construction. The pipeline was
+filtering out exactly its own signal. It hid `apps/e2e/global-setup.ts` and ~30 workflow lines,
+and a narrower `grep -v '/node_modules/'` hid the `../../node_modules/.bin/prisma` call too.
+Use `git grep` when you want tracked files only — it needs no exclusion filter and cannot
+develop this fault. Same class as "a CI poll filter that matches nothing is a false green":
+when a filter's job is to remove noise, confirm it did not remove the subject.

@@ -11,10 +11,25 @@
 > PRs landed while the previous session was writing this class of work, and two of its
 > intended fixes turned out to have **already been done by someone else** (see
 > "Don't redo these" at the bottom).
+>
+> **2026-10-03 pass.** Item 2 **fixed** (root `tsx` dependency edge — the cause was an
+> optional-peer slot capture, not the range conflict this file predicted). Item 3 **closed**
+> (#746 merged; cause never captured). Item 1 **mitigated by #775, not fixed** — the
+> `--detectOpenHandles` lever is still untried and `--forceExit` still masks the leak. Item 4
+> unchanged and still owner-only. Both "loose ends" at the bottom are also still open.
+> That leaves **Items 1 and 4** as the live work in this file.
 
 ---
 
-## Item 1 — the TENANT-03 mobile flake (do this first; it ejects PRs from the merge queue)
+## Item 1 — the TENANT-03 mobile flake (MITIGATED, not fixed — the leak lever is still untried)
+
+> **2026-10-03 status.** `#775` raised `apps/mobile`'s `testTimeout` to **45000** and recorded
+> why in `jest.config.js`: TENANT-03 runs in ~1s locally and blew 15s twice on 2026-10-03, a
+> ~15× slowdown, so starvation under a parallel `turbo test` rather than a hang. That buys
+> headroom and nothing more. **Everything below is still owed:** `apps/mobile`'s test script is
+> still `jest --forceExit`, which masks the leaked-timer teardown the 2026-10-01 run reported,
+> and `npx jest --detectOpenHandles` has **still not been run**. Do that before writing the
+> `waitFor` fix — the plan's own instruction, and the reason the previous session declined.
 
 **Why it is top of the list:** it is not just a red check. It failed a `merge_group` run and
 **ejected #744 from the merge queue**, and the CI `Test` job runs `turbo run test` with **no
@@ -75,7 +90,47 @@ A `--forceExit` that hides a leak is worth a second look on its own, independent
 
 ---
 
-## Item 2 — `#762`: E2E dies on `node_modules/.bin/tsx` (a real bug, not a flake)
+## Item 2 — `#762`: E2E dies on `node_modules/.bin/tsx` — ✅ CAUSE FOUND AND FIXED (2026-10-03)
+
+> **Resolved by this PR.** The diagnosis below was the right class but the wrong mechanism, and
+> the difference is the whole fix.
+>
+> **It is not a range conflict.** #762 bumps all four tsx-declaring workspaces (api, e2e, infra,
+> vpn-agent) to the _same_ `^4.23.15`, so there is nothing to reconcile and the `prisma`-style
+> pin has nothing to pin. What actually happened: the bump nested **vite 8.3.1** under admin-web
+> and tenant-web while root stayed on **8.3.0**, and arborist then filled the root `tsx` slot
+> with vite 8.3.0's **optional peer** — `"optional": true, "peer": true` at 4.23.13 — pushing all
+> four workspaces' real 4.23.15 into nested copies. npm does not install an optional peer nothing
+> depends on, so root `node_modules/.bin/tsx` was never linked.
+>
+> **Fix: one line of `package.json` + one line of the lockfile.** Declare `tsx` in the **root**
+> `devDependencies`. Root needed it anyway — `npm run create-admin-user` runs bare `tsx` and the
+> `scripts/*.ts` runbooks are `npx tsx`, both of which were resolving by luck and would have
+> broken the moment #762 landed. The caller was deliberately left alone — invoking a tool as
+> `node ../../node_modules/.bin/<tool>` is a repo-wide convention (~40 call sites; the `node`
+> prefix exists because a restored cache loses the `.bin` exec bit), so the fix belongs at the
+> root-ownership end, exactly as prisma's did.
+>
+> **Verified locally, four ways:**
+>
+> 1. Reproduced the CI failure off-runner — with root `node_modules/tsx` moved into
+>    `apps/e2e/node_modules/` and the root `.bin` link removed, the real webServer command dies
+>    with the exact `Cannot find module …/node_modules/.bin/tsx`.
+> 2. The bin-link rule, in isolation: a root `devDependencies` entry always yields
+>    `node_modules/.bin/tsx`; a package reachable only as vite's _optional_ peer is not installed
+>    at all and yields nothing. That is the mechanism, not an inference.
+> 3. Against **#762's own manifests** + the root edge at a range matching theirs, arborist
+>    collapses tsx to a **single hoisted copy**, non-optional and non-peer. (At root `^4.23.13`
+>    vs their `^4.23.15` the bin link is restored but four nested copies survive — so keep the
+>    root range equal to the workspaces', which is what Dependabot will do once root declares it.)
+> 4. `apps/e2e` `tests/api/health.spec.ts` passes through Playwright (webServer + globalSetup),
+>    and `npm ci --dry-run` accepts the hand-edited lockfile.
+>
+> **Still to do:** `@dependabot rebase` on #762 once this is on `main`, then confirm its **E2E
+> Tests** job is green. A rebase alone was never going to fix it; a rebase _onto this_ will.
+> Recorded in GOTCHAS as "`node ../../node_modules/.bin/<tool>` requires the ROOT to own the tool".
+
+### Original diagnosis (kept for the record — the class was right, the remedy was not)
 
 ```
 [WebServer] Error: Cannot find module '/home/runner/work/pegasus/pegasus/node_modules/.bin/tsx'
@@ -97,7 +152,16 @@ Error: Process from config.webServer was not able to start. Exit code: 1
 
 ---
 
-## Item 3 — `#746` Test failure: uncharacterized
+## Item 3 — `#746` Test failure: ✅ CLOSED (merged 2026-10-02) — cause never captured
+
+> `#746` is **MERGED**. Whatever the Test failure was, it did not survive a re-run, and the log
+> had already expired when this item was written — so the cause was never captured and now cannot
+> be. Nothing to chase; the item is closed on the merge, not on an explanation. If the same job
+> fails again, pull the log **while the run is still live** — an expired log (`BlobNotFound`, 404)
+> is what cost this one. The two load-sensitive candidates below remain plausible but unproven,
+> and Item 1's note is the live version of that story.
+
+### Original item (kept for the record)
 
 `#746` (`feat(domain-reference): A9 — identity & cross-references`) is `BLOCKED` on **Test**.
 The job log had already expired when this was written (`BlobNotFound`, HTTP 404), so **the cause

@@ -32,6 +32,7 @@
     "lint-staged": "^16.0.0",
     "prettier": "^3.9.6",
     "shellcheck": "^4.1.0",
+    "tsx": "^4.23.13",
     "turbo": "^2.10.12",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0",
@@ -48,6 +49,9 @@
     "*.sh": [
       "shellcheck"
     ]
+  },
+  "//devDependencies": {
+    "tsx": "NOT unused — do not remove. The root `create-admin-user` script runs `tsx` by name, the `scripts/*.ts` operational scripts are run as `npx tsx`, and apps/e2e + .github/workflows invoke `node ../../node_modules/.bin/tsx`. All of that needs tsx AT THE ROOT, and until now it only landed there by luck: four workspaces (api, e2e, infra, vpn-agent) happened to declare one range, so npm hoisted it. #762 showed that is not a guarantee — a nested vite 8.3.1 left the root tsx slot holding vite 8.3.0's *optional* peer, and npm does not install an optional peer nothing depends on, so `node_modules/.bin/tsx` was never linked and the e2e webServer died with `Cannot find module '<root>/node_modules/.bin/tsx'`. Same class as the `prisma` entry in `//overrides` below, and the same lesson: the `node ../../node_modules/.bin/<tool>` convention requires the root to OWN the tool. prisma gets that from a pin; tsx gets it from this edge. Keep this range equal to the workspaces' so all five dedupe to one hoisted copy."
   },
   "//overrides": {
     "handlebars": "CVE-2019-19919 prototype pollution",
