@@ -24,10 +24,13 @@ import {
   REASON_CODES,
   REASON_CODE_OTHER,
   REASON_SCOPES,
+  loadOwedVocabularies,
 } from '../../src/index'
+import { collectOwedInventory, collectRefusalGates } from '../../tools/generate-glossary'
 
 import canonicalSubjects from '../../data/canonical-subjects.json'
 import authorityTable from '../../data/authority-table.json'
+import owedVocabularies from '../../data/owed-vocabularies.json'
 import reasons from '../../data/reasons.json'
 
 /** A mutable deep copy, so a negative case can break one field without breaking the suite. */
@@ -470,4 +473,90 @@ describe('the three tables together', () => {
       DataDefect,
     )
   })
+})
+
+/**
+ * Both cross-checks below read `src/` through the TypeScript compiler API, which costs seconds
+ * rather than milliseconds. CI runners are slower than a dev machine and the first of them took
+ * **6.9s against vitest's 5s default** on PR #774 — a timeout reported as a test failure, with no
+ * assertion message, which is a confusing way to learn this. The budget exists to stop a hang, not
+ * to police tsc; the same constant and the same reason as `catalog.test.ts`.
+ */
+const SLOW_MS = 180_000
+
+describe('`data/owed-vocabularies.json` — why each owed vocabulary is owed', () => {
+  const table = loadOwedVocabularies(owedVocabularies)
+
+  it('loads, which is where the cross-field invariants live', () => {
+    // The loader refuses a `refusedOnEvidence` row naming no gate and a `pending` row naming one.
+    expect(table.vocabularies.length).toBeGreaterThan(0)
+    for (const entry of table.vocabularies) {
+      expect(entry.reason.length, entry.vocabulary).toBeGreaterThan(0)
+      expect(entry.citation.length, entry.vocabulary).toBeGreaterThan(0)
+    }
+  })
+
+  it(
+    'covers exactly the owed vocabularies the model declares, both directions',
+    () => {
+      // [A4 §9]'s finding was an owed ledger blind to a whole construct. The guard against a table
+      // going blind the same way is set equality with what `src/` actually declares, not a count.
+      const declared = new Set(collectOwedInventory().vocabularies.map((entry) => entry.name))
+      const tabled = new Set(table.vocabularies.map((entry) => entry.vocabulary))
+      for (const vocabulary of declared) {
+        expect(
+          tabled.has(vocabulary),
+          `src/ declares the owed vocabulary "${vocabulary}" and data/owed-vocabularies.json does ` +
+            'not say why it is owed. Its `x-owed` sentence would fall back to a generic one.',
+        ).toBe(true)
+      }
+      for (const vocabulary of tabled) {
+        expect(
+          declared.has(vocabulary),
+          `data/owed-vocabularies.json carries "${vocabulary}" and no OwedCode<'${vocabulary}'> is ` +
+            'declared in src/. Either it was published and the row is stale, or the name is wrong.',
+        ).toBe(true)
+      }
+    },
+    SLOW_MS,
+  )
+
+  it(
+    'agrees with `src/` about which vocabularies are REFUSED, both directions',
+    () => {
+      // The two halves are declared independently: the table says `refusedOnEvidence` and names its
+      // gate; `src/` carries an `Exact<…, OwedCode<'v'>>` with a value assigned to it. Neither is
+      // computed from the other, so this comparison can actually fail — which is the whole point
+      // ([A5 §9]'s alias-is-not-a-gate finding, and [A2 §9]'s assigned-but-tautological one).
+      const gates = collectRefusalGates()
+      const refusedByTable = new Set(
+        table.vocabularies
+          .filter((entry) => entry.state === 'refusedOnEvidence')
+          .map((entry) => entry.vocabulary),
+      )
+
+      for (const [vocabulary, alias] of gates) {
+        expect(
+          refusedByTable.has(vocabulary),
+          `src/ carries a live refusal gate ${alias} for "${vocabulary}" and the table calls it ` +
+            'pending. A refused vocabulary described as pending tells a reader the gap closes by ' +
+            'effort, which is the defect [A9 §6] recorded.',
+        ).toBe(true)
+      }
+      for (const vocabulary of refusedByTable) {
+        const entry = table.byVocabulary.get(vocabulary)
+        expect(
+          gates.has(vocabulary),
+          `the table calls "${vocabulary}" refused on the evidence and src/ carries no live ` +
+            `Exact<…, OwedCode<'${vocabulary}'>> gate. A refusal held by prose alone cannot fail.`,
+        ).toBe(true)
+        expect(
+          gates.get(vocabulary),
+          `the table names ${String(entry?.gate)} as "${vocabulary}"'s gate and src/ holds it under ` +
+            'a different alias',
+        ).toBe(entry?.gate)
+      }
+    },
+    SLOW_MS,
+  )
 })

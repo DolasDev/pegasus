@@ -1,0 +1,36 @@
+{
+  "note": "Why each owed code vocabulary is owed — the half [catalog §2.3]'s `x-owed` annotation and the glossary's Owed page could not say. A `data/` table is documentation and not a published constraint ([A6 §3.2(d)], [A9 §9.1]), but the `reason` here IS emitted, as the per-vocabulary `x-owed` sentence, so each one has to read on the wire without this repo. The `state` is declared here AND derived independently from `src/` — a vocabulary is refused iff it carries a live `Exact<…, OwedCode<'v'>>` gate — and a conformance test holds the two in agreement in both directions. Two declarations, not one derived from the other.",
+  "states": [
+    {
+      "state": "pending",
+      "meaning": "The gap closes when someone reads the sources. No argument stands in the way."
+    },
+    {
+      "state": "refusedOnEvidence",
+      "meaning": "The sources ARE read and they argue against publishing a closed list. The gap does not close by effort; a round that closes it has to overturn an argument first, and the type-level gate is what stops that happening silently."
+    }
+  ],
+  "vocabularies": [
+    {
+      "vocabulary": "identityScheme",
+      "state": "refusedOnEvidence",
+      "reason": "Refused on the evidence rather than awaiting work: the sources publish a closed list beside an open escape hatch, and two of them warn against relying on it.",
+      "citation": "[A9 §3.2]",
+      "gate": "IdentitySchemeStaysOwed"
+    },
+    {
+      "vocabulary": "roleClass",
+      "state": "pending",
+      "reason": "Awaiting a source: the corpus sources that reason vocabularies are organised by responsible party but publishes no class list.",
+      "citation": "[A8 §9 item 2]",
+      "gate": null
+    },
+    {
+      "vocabulary": "unitOfMeasure",
+      "state": "pending",
+      "reason": "Awaiting a source: the measurement shape is fixed as (kind, unit, value, source) and no document fixes the unit list.",
+      "citation": "[SD §4.1]",
+      "gate": null
+    }
+  ]
+}
