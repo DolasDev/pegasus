@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import type { OrderGateway } from './order.gateway'
+import type { PegiiCaller } from '../lib/pegii-request-context'
 import { createPegiiApiClient, isPegiiNotFound, type PegiiApiClient } from '../lib/pegii-api-client'
 import { mapPegiiOrderToRecord } from './pegii/pegii-order.mapper'
 import type { PegiiOrderDto } from './pegii/pegii-order.dto'
@@ -23,6 +24,8 @@ export interface PegiiOrderGatewayOptions {
   apiKey?: string | null
   /** Test seam: inject a stub PegiiApiClient instead of the tunnel-backed one. */
   client?: PegiiApiClient
+  /** Who is calling (cloud-issued token + x-correlation-id); see lib/pegii-request-context.ts. */
+  caller?: PegiiCaller
 }
 
 export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGateway {
@@ -32,6 +35,7 @@ export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGa
       tenantId: opts.tenantId,
       baseUrl: opts.baseUrl,
       ...(opts.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
+      ...(opts.caller ? { caller: opts.caller } : {}),
     })
 
   return {

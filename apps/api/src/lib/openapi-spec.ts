@@ -675,6 +675,49 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/.well-known/jwks.json': {
+        get: {
+          operationId: 'getPegiiTokenJwks',
+          summary: 'Public keys for cloud-issued pegII tokens',
+          description:
+            'The JSON Web Key Set on-prem pegII sites use to verify the short-lived ES256 tokens ' +
+            'the platform sends on every bridge call (aud = pegii-site:<siteId>). Public by design; ' +
+            'lists every active signing key, current first, so key rotation overlaps.',
+          security: [],
+          responses: {
+            '200': {
+              description: 'The key set',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['keys'],
+                    properties: {
+                      keys: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          required: ['kty', 'crv', 'x', 'y', 'kid', 'alg', 'use'],
+                          properties: {
+                            kty: { type: 'string', enum: ['EC'] },
+                            crv: { type: 'string', enum: ['P-256'] },
+                            x: { type: 'string' },
+                            y: { type: 'string' },
+                            kid: { type: 'string' },
+                            alg: { type: 'string', enum: ['ES256'] },
+                            use: { type: 'string', enum: ['sig'] },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '503': { description: 'Signing keys are temporarily unavailable' },
+          },
+        },
+      },
       '/api/v1/customers': {
         get: {
           operationId: 'listCustomers',

@@ -2145,6 +2145,12 @@ fix is a per-test timeout on that first case — `it('…', async () => {…}, 3
 it pays is transform time that the other two do not. Note `testTimeout` covers test **bodies**
 only; if this ever moves into a hook it needs `hookTimeout` instead (see #701).
 
+**Fixed (2026-10-03, cloud identity I1):** the app's module graph grew (JWKS + company
+settings), and the flake spread to every file that cold-imports the app (`health`, `openapi`,
+`optional-auth`, `server`): 5 failures, then 2, on consecutive pre-push runs. Each of those files
+now sets `vi.setConfig({ testTimeout: 60_000 })` at module scope. Any new test file that does
+`await import('../app')` (or imports `../server`) needs the same line.
+
 ## `tenant-picker.test.tsx` TENANT-03 times out in CI only — and ejects PRs from the merge queue
 
 **Symptom (2026-09-29):** `@pegasus/mobile#test` fails in CI with

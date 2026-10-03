@@ -53,6 +53,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
+import { resolvePegiiCaller } from '../lib/pegii-request-context'
 import { z } from 'zod'
 import type { AppEnv } from '../types'
 import { resolveReportGateway } from '../gateways/report-gateway.factory'
@@ -183,7 +184,7 @@ pegiiReportsHandler.get('/:reportType/:id', async (c) => {
     )
   }
 
-  const gateway = await resolveReportGateway(c.get('db'), tenantId)
+  const gateway = await resolveReportGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
   const report = await gateway.fetchReport(reportType, id)
 
   if (!report) {

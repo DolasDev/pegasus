@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
+import type { PegiiCaller } from '../lib/pegii-request-context'
 import type { SalesmanGateway } from './salesman.gateway'
 import { createPegiiSalesmanGateway } from './pegii-salesman.gateway'
 import { resolvePegiiOverlayTarget } from '../lib/pegii-overlay-target'
@@ -32,6 +33,8 @@ import { logger } from '../lib/logger'
 export async function resolveSalesmanGateway(
   db: PrismaClient,
   tenantId: string,
+  /** Resolves the calling principal + company; invoked only when a pegII gateway is built. */
+  callerOf?: () => Promise<PegiiCaller>,
 ): Promise<SalesmanGateway> {
   const resolved = await resolvePegiiOverlayTarget(db, tenantId)
   if (!resolved.ok) {
@@ -49,5 +52,6 @@ export async function resolveSalesmanGateway(
     tenantId,
     baseUrl: resolved.target.base,
     apiKey: resolved.target.apiKey,
+    ...(callerOf ? { caller: await callerOf() } : {}),
   })
 }

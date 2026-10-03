@@ -282,6 +282,8 @@ model Tenant {
   pegasusEvents           PegasusEvent[]
   documents               Document[]
   workflows               Workflow[]
+  sites                   Site[]
+  companies               Company[]
   workflowTriggers        WorkflowTrigger[]
   integrationConfigs      IntegrationConfig[]
   domainEvents            DomainEvent[]
@@ -2808,18 +2810,18 @@ enum EmailSendStatus {
 /// when present, (tenantId, dedupKey) is the idempotency claim, exactly like
 /// SmsSend. Recipients and subject are kept; the body never is.
 model EmailSend {
-  id           String          @id @default(uuid())
-  tenantId     String          @map("tenant_id")
-  dedupKey     String?         @map("dedup_key")
-  toAddresses  String[]        @map("to_addresses")
-  ccAddresses  String[]        @map("cc_addresses")
-  subject      String
+  id          String          @id @default(uuid())
+  tenantId    String          @map("tenant_id")
+  dedupKey    String?         @map("dedup_key")
+  toAddresses String[]        @map("to_addresses")
+  ccAddresses String[]        @map("cc_addresses")
+  subject     String
   /// sha256 of subject + body + recipients — a reused key with a different request is refused.
-  requestHash  String          @map("request_hash")
-  status       EmailSendStatus
-  lastError    String?         @map("last_error")
-  createdAt    DateTime        @default(now()) @map("created_at")
-  updatedAt    DateTime        @updatedAt @map("updated_at")
+  requestHash String          @map("request_hash")
+  status      EmailSendStatus
+  lastError   String?         @map("last_error")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -3020,4 +3022,69 @@ model ShipmentEventInbox {
   @@index([dispatchedAt, occurredAtUtc])
   @@map("shipment_event_inbox")
   @@schema("platform")
+}
+
+// ---------------------------------------------------------------------------
+// Sites & companies — tenant = customer organization ⊃ companies (legal
+// entities, one legacy company database each), reached through sites (an
+// on-prem pegII API + tunnel). See plans/todo/cloud-identity-and-companies.md.
+// ---------------------------------------------------------------------------
+
+/// One on-prem pegII API instance. Identity only in I1: the base URL and tunnel
+/// still resolve from the Tenant (resolvePegiiOverlayTarget). `id` is the
+/// audience the site is configured to accept: `aud = pegii-site:<id>`.
+model Site {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  /// Operator switch: the bridge sends cloud-issued tokens to this site only
+  /// when this is true AND the site's /version advertises pegii.cloud-auth.v1.
+  /// The unauthenticated /version probe can confirm the cloud path but never
+  /// initiate it — a spoofed or stale /version can't make the cloud mint a
+  /// token for whatever answers on the overlay. Set after I2 reaches the site.
+  cloudAuthEnabled Boolean  @default(false) @map("cloud_auth_enabled")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  companies Company[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("sites")
+  @@schema("public")
+}
+
+/// A legal entity the tenant operates — one legacy company database (today's
+/// on-prem hub_company). Exactly one company per tenant is the default (partial
+/// unique index in the migration); bridge calls without an explicit company
+/// target it.
+model Company {
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  siteId             String   @map("site_id")
+  /// Short code, unique per tenant, e.g. "QMM-US".
+  code               String
+  displayName        String   @map("display_name")
+  /// The site's SpokeConnections key for this company's database, sent as the
+  /// token's `cid`. Null ⇒ the site's default database (no `cid`). At most one
+  /// null per site (partial unique index in the migration).
+  dataSourceKey      String?  @map("data_source_key")
+  /// Legacy employee code stamped as `emp` on service-account tokens (workflow
+  /// runtimes, API clients) for write attribution — e.g. NW's 1001
+  /// "PEGASUS GENERATED". Attribution only; never an access decision.
+  systemEmployeeCode Int?     @map("system_employee_code")
+  isDefault          Boolean  @default(false) @map("is_default")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  site   Site   @relation(fields: [siteId], references: [id])
+
+  @@unique([tenantId, code])
+  @@unique([siteId, dataSourceKey])
+  @@index([tenantId])
+  @@map("companies")
+  @@schema("public")
 }

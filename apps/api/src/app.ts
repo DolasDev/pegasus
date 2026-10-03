@@ -20,6 +20,8 @@ import { billingHandler } from './handlers/billing'
 import { apiClientsHandler } from './handlers/api-clients'
 import { settingsHandler } from './handlers/settings'
 import { settingsPegiiHandler } from './handlers/settings-pegii'
+import { jwksHandler } from './handlers/jwks'
+import { settingsCompaniesHandler } from './handlers/settings-companies'
 import { documentsHandler } from './handlers/documents'
 import { workflowsHandler } from './handlers/workflows'
 import { workflowInternalHandler } from './handlers/workflow-internal'
@@ -190,6 +192,10 @@ app.get('/health', async (c) => {
   }
   return c.json({ status: 'ok' as const, timestamp: new Date().toISOString() })
 })
+
+// Public keys for cloud-issued pegII tokens (handlers/jwks.ts). Public by design —
+// pegII sites fetch it to verify the bearer the bridge sends.
+app.route('/.well-known/jwks.json', jwksHandler)
 
 // ---------------------------------------------------------------------------
 // SSO auth API — public endpoints supporting the tenant login flow.
@@ -430,6 +436,7 @@ v1.route('/settings', settingsHandler)
 // pegII on-prem domain API config (customerSource flag, base URL, credential).
 // Shares the /settings prefix; routes resolve across both routers.
 v1.route('/settings', settingsPegiiHandler)
+v1.route('/settings', settingsCompaniesHandler)
 // RingCentral connections (tenant-authenticated, admin). Bring-your-own JWT:
 // the tenant pastes their RingCentral app's client id/secret + JWT credential,
 // which connect validates with a live jwt-bearer exchange. No platform OAuth app

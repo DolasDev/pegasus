@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
+import { resolvePegiiCaller } from '../lib/pegii-request-context'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { PrismaClient } from '@prisma/client'
@@ -98,7 +99,7 @@ customersHandler.get('/', async (c) => {
   // Reads resolve through the gateway so a tenant flagged customerSource=pegii
   // is served from the on-prem pegII API instead of cloud Postgres. Default
   // (null/'prisma') wraps the same repository functions as before.
-  const gateway = await resolveCustomerGateway(db, tenantId)
+  const gateway = await resolveCustomerGateway(db, tenantId, () => resolvePegiiCaller(c))
   const [data, total] = await Promise.all([
     gateway.listCustomers({ limit, offset }),
     gateway.countCustomers(),
@@ -110,7 +111,7 @@ customersHandler.get('/:id', async (c) => {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
   const id = c.req.param('id')
-  const gateway = await resolveCustomerGateway(db, tenantId)
+  const gateway = await resolveCustomerGateway(db, tenantId, () => resolvePegiiCaller(c))
   const data = await gateway.findCustomerById(id)
   if (!data) return c.json({ error: 'Customer not found', code: 'NOT_FOUND' }, 404)
   return c.json({ data })
@@ -175,7 +176,7 @@ customersHandler.get('/:customerId/quotes', async (c) => {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
   const customerId = c.req.param('customerId')
-  const gateway = await resolveCustomerGateway(db, tenantId)
+  const gateway = await resolveCustomerGateway(db, tenantId, () => resolvePegiiCaller(c))
   const customer = await gateway.findCustomerById(customerId)
   if (!customer) return c.json({ error: 'Customer not found', code: 'NOT_FOUND' }, 404)
   // Use domain invariant to verify customer has a primary contact

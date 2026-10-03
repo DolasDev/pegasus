@@ -224,6 +224,14 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly feedbackPublicWebUrl?: string
 
   /**
+   * `iss` of the cloud-issued pegII tokens (apps/api/src/lib/pegii-token.ts) —
+   * the branded API origin, so sites fetch `${issuer}/.well-known/jwks.json`.
+   * Unset (dev) ⇒ PEGII_TOKEN_ISSUER is not set and minting refuses with
+   * PEGII_TOKEN_NOT_CONFIGURED. The signing key itself is created in every env.
+   */
+  readonly pegiiTokenIssuer?: string
+
+  /**
    * Master switch for the reporting / customizable-dashboards surface. When true,
    * `REPORTING_ENABLED=true` is set on the api Lambda, ungating the whole
    * `/api/v1/reporting/*` prefix — the dataset catalog + query endpoints and the
@@ -562,6 +570,40 @@ export class ApiStack extends cdk.Stack {
     })
     workflowTokenKey.grantEncryptDecrypt(apiFunction)
     apiFunction.addEnvironment('WORKFLOW_TOKEN_KMS_KEY_ID', workflowTokenKey.keyId)
+
+    // ---------------------------------------------------------------------------
+    // KMS: pegII token signing key (cloud identity I1).
+    //
+    // The cloud is the identity provider for on-prem pegII sites: every bridge
+    // call carries a short-lived ES256 JWT minted by apps/api/src/lib/pegii-token.ts
+    // and signed here (the private key never leaves KMS). Sites verify against
+    // GET /.well-known/jwks.json, which publishes every id in
+    // PEGII_TOKEN_KMS_KEY_IDS (current first).
+    //
+    //   - Asymmetric (ECC_NIST_P256 / SIGN_VERIFY): no automatic rotation exists
+    //     for these, so rotation = a new key + an overlapping id list.
+    //   - Least privilege: the API gets ONLY kms:Sign + kms:GetPublicKey — not
+    //     grantEncryptDecrypt, which is wrong for a signing key.
+    //   - RETAIN: this key is a trust anchor; deleting it would invalidate every
+    //     site's trust. (A RETAINed resource orphaned by a failed first create can
+    //     block the next deploy — deploy to staging first.)
+    // ---------------------------------------------------------------------------
+    const pegiiTokenSigningKey = new kms.Key(this, 'PegiiTokenSigningKey', {
+      description: 'Signs cloud-issued ES256 tokens for on-prem pegII sites (JWKS-published).',
+      keySpec: kms.KeySpec.ECC_NIST_P256,
+      keyUsage: kms.KeyUsage.SIGN_VERIFY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    })
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['kms:Sign', 'kms:GetPublicKey'],
+        resources: [pegiiTokenSigningKey.keyArn],
+      }),
+    )
+    apiFunction.addEnvironment('PEGII_TOKEN_KMS_KEY_IDS', pegiiTokenSigningKey.keyId)
+    if (props.pegiiTokenIssuer) {
+      apiFunction.addEnvironment('PEGII_TOKEN_ISSUER', props.pegiiTokenIssuer)
+    }
 
     // ---------------------------------------------------------------------------
     // Temporal Cloud client (Phase 2 Unit 6).

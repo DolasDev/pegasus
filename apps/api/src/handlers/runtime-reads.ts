@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
+import { resolvePegiiCaller } from '../lib/pegii-request-context'
 import type { AppEnv } from '../types'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
@@ -45,7 +46,9 @@ runtimeReadsHandler.use('*', dualAuthMiddleware)
 
 runtimeReadsHandler.get('/customers', requirePermission(Actions.ReadCustomer), async (c) => {
   const { limit, offset } = paging(c)
-  const gateway = await resolveCustomerGateway(c.get('db'), c.get('tenantId'))
+  const gateway = await resolveCustomerGateway(c.get('db'), c.get('tenantId'), () =>
+    resolvePegiiCaller(c),
+  )
   const [data, total] = await Promise.all([
     gateway.listCustomers({ limit, offset }),
     gateway.countCustomers(),

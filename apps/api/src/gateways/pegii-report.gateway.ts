@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ReportGateway } from './report.gateway'
+import type { PegiiCaller } from '../lib/pegii-request-context'
 import { createPegiiApiClient, isPegiiNotFound, type PegiiApiClient } from '../lib/pegii-api-client'
 import { mapPegiiReportToRecord } from './pegii/pegii-report.mapper'
 import type { PegiiReportDto } from './pegii/pegii-report.dto'
@@ -25,6 +26,8 @@ export interface PegiiReportGatewayOptions {
   apiKey?: string | null
   /** Test seam: inject a stub PegiiApiClient instead of the tunnel-backed one. */
   client?: PegiiApiClient
+  /** Who is calling (cloud-issued token + x-correlation-id); see lib/pegii-request-context.ts. */
+  caller?: PegiiCaller
 }
 
 export function createPegiiReportGateway(opts: PegiiReportGatewayOptions): ReportGateway {
@@ -34,6 +37,7 @@ export function createPegiiReportGateway(opts: PegiiReportGatewayOptions): Repor
       tenantId: opts.tenantId,
       baseUrl: opts.baseUrl,
       ...(opts.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
+      ...(opts.caller ? { caller: opts.caller } : {}),
     })
 
   return {

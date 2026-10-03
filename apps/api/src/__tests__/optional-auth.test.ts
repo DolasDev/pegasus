@@ -11,6 +11,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
+// Cold `import('../app')` re-transforms the whole API module graph; under a
+// full-tree parallel `turbo test` (the pre-push hook) that first import can
+// exceed the 15s default. Test-body timeout only — see GOTCHAS.md
+// "optional-auth.test.ts times out under a parallel turbo test".
+vi.setConfig({ testTimeout: 60_000 })
+
 // ---------------------------------------------------------------------------
 // Module-level mocks — must be declared before any dynamic imports
 // ---------------------------------------------------------------------------

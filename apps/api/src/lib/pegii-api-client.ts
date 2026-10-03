@@ -29,6 +29,10 @@ import {
   isPegiiCredentialSecretRef,
   type PegiiTokenProvider,
 } from './pegii-auth'
+import { getPegiiVersionInfo, PegiiCapabilities } from './pegii-capabilities'
+import { createCloudTokenProvider } from './pegii-token'
+import type { PegiiCaller } from './pegii-request-context'
+import { logger } from './logger'
 
 export { PegiiApiError } from './pegii-api-error'
 export type { PegiiApiErrorCode } from './pegii-api-error'
@@ -48,6 +52,13 @@ export interface PegiiApiClientConfig {
    * value ⇒ sent as a raw bearer; null/undefined ⇒ no Authorization header.
    */
   apiKey?: string | null
+  /**
+   * Who is calling and for which company (lib/pegii-request-context.ts). When set
+   * and the site advertises `pegii.cloud-auth.v1`, every call carries a
+   * cloud-issued token for this principal instead of the legacy credential, and
+   * `x-correlation-id` is forwarded on every request.
+   */
+  caller?: PegiiCaller
   /** Test seam: supply the token provider instead of building one from `apiKey`. */
   auth?: PegiiTokenProvider
   /** Per-request timeout in ms enforced by the proxy Lambda. Default 15s. */
@@ -109,16 +120,56 @@ function buildUrl(baseUrl: string, path: string, query?: PegiiQuery): string {
  * Pure factory — no network I/O until a method is called.
  */
 export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClient {
-  const auth: PegiiTokenProvider | null =
-    config.auth ??
-    (isPegiiCredentialSecretRef(config.apiKey)
-      ? createPegiiTokenProvider({
-          tenantId: config.tenantId,
-          baseUrl: config.baseUrl,
-          secretArn: config.apiKey,
+  const legacyAuth: PegiiTokenProvider | null = isPegiiCredentialSecretRef(config.apiKey)
+    ? createPegiiTokenProvider({
+        tenantId: config.tenantId,
+        baseUrl: config.baseUrl,
+        secretArn: config.apiKey,
+        ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
+      })
+    : null
+  const correlationHeader: Record<string, string> = config.caller
+    ? { 'x-correlation-id': config.caller.correlationId }
+    : {}
+
+  // Chosen once per client, lazily (it may probe /version): a cloud-issued token
+  // when the site verifies them, else the legacy service-user / raw-key path.
+  let authChoice: Promise<PegiiTokenProvider | null> | null = null
+  function resolveAuth(): Promise<PegiiTokenProvider | null> {
+    if (config.auth) return Promise.resolve(config.auth)
+    authChoice ??= (async () => {
+      const caller = config.caller
+      // The operator switch gates the cloud path; the unauthenticated /version
+      // probe can only CONFIRM it (the site's build supports it), never initiate
+      // it — so a spoofed or stale /version can't make us mint a token for
+      // whatever answers on the overlay.
+      if (!caller?.site.cloudAuthEnabled) return legacyAuth
+      try {
+        const info = await getPegiiVersionInfo(config.baseUrl, {
+          correlationId: caller.correlationId,
           ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
         })
-      : null)
+        if (info.capabilities.includes(PegiiCapabilities.CloudAuth)) {
+          return createCloudTokenProvider({
+            tenantId: caller.tenantId,
+            siteId: caller.site.id,
+            company: caller.company,
+            principal: caller.principal,
+          })
+        }
+      } catch (err) {
+        // A failed probe must not turn into a new failure mode for the call
+        // itself: fall back to the credential path the site accepted before.
+        logger.warn('pegII /version probe failed; using the legacy credential path', {
+          tenantId: config.tenantId,
+          correlationId: caller.correlationId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+      return legacyAuth
+    })()
+    return authChoice
+  }
 
   async function send(
     method: string,
@@ -126,7 +177,7 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
     body: string | undefined,
     token: string | null,
   ): Promise<TunnelFetchResponse> {
-    const headers: Record<string, string> = { accept: 'application/json' }
+    const headers: Record<string, string> = { accept: 'application/json', ...correlationHeader }
     if (body !== undefined) headers['content-type'] = 'application/json'
     if (token) headers['authorization'] = `Bearer ${token}`
     try {
@@ -160,16 +211,17 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
     const body = payload !== undefined ? JSON.stringify(payload) : undefined
 
     let res: TunnelFetchResponse
+    const auth = await resolveAuth()
     if (auth) {
       res = await send(method, url, body, await auth.getToken())
       if (res.status === 401) {
-        // Expired or revoked token: log in again and retry exactly once.
+        // Expired or revoked token: get a fresh one and retry exactly once.
         auth.invalidate()
         res = await send(method, url, body, await auth.getToken())
         if (res.status === 401) {
           throw new PegiiApiError(
             'PEGII_API_AUTH_FAILED',
-            'pegII rejected a freshly issued service-user token',
+            'pegII rejected a freshly issued token',
             401,
           )
         }
@@ -238,7 +290,7 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
       try {
         res = await tunnelFetch(url, {
           method: 'GET',
-          headers: { accept: 'application/json' },
+          headers: { accept: 'application/json', ...correlationHeader },
           ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
         })
       } catch (err) {
@@ -328,6 +380,18 @@ export function pegiiApiErrorToHttp(err: PegiiApiError): PegiiHttpError {
         status: 503,
         code: 'PEGII_CAPABILITY_MISSING',
         message: err.message,
+      }
+    case 'PEGII_PRINCIPAL_UNRESOLVED':
+      return {
+        status: 503,
+        code: 'PEGII_PRINCIPAL_UNRESOLVED',
+        message: err.message,
+      }
+    case 'PEGII_TOKEN_NOT_CONFIGURED':
+      return {
+        status: 503,
+        code: 'PEGII_TOKEN_NOT_CONFIGURED',
+        message: 'pegII token issuing is not configured on this platform',
       }
     case 'PEGII_API_AUTH_FAILED':
       return {

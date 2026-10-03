@@ -36,6 +36,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
+import { resolvePegiiCaller } from '../lib/pegii-request-context'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { AppEnv } from '../types'
@@ -150,7 +151,7 @@ pegiiRuntimeHandler.get('/orders', requirePermission(Actions.ReadOrder), async (
   const tenantId = c.get('tenantId')
   const status = c.req.query('status')
 
-  const gateway = await resolveOrderGateway(c.get('db'), tenantId)
+  const gateway = await resolveOrderGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
   await gateway.checkReachable()
 
   const orders = listOrders(tenantId, { ...(status ? { status } : {}) })
@@ -177,7 +178,7 @@ pegiiRuntimeHandler.get('/orders/:orderId', requirePermission(Actions.ReadOrder)
     return c.json({ error: "shape must be 'native' when provided", code: 'INVALID_SHAPE' }, 400)
   }
 
-  const gateway = await resolveOrderGateway(c.get('db'), tenantId)
+  const gateway = await resolveOrderGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
 
   if (shape === 'native') {
     const native = await gateway.findOrderNativeById(orderId)
@@ -211,7 +212,7 @@ pegiiRuntimeHandler.get('/salesmen', requirePermission(Actions.ReadSalesman), as
   const activeRaw = c.req.query('active')
   const active = activeRaw === undefined ? undefined : activeRaw === 'true' || activeRaw === '1'
 
-  const gateway = await resolveSalesmanGateway(c.get('db'), tenantId)
+  const gateway = await resolveSalesmanGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
   await gateway.checkReachable()
 
   const salesmen = listSalesmen(tenantId, { ...(active !== undefined ? { active } : {}) })
@@ -231,7 +232,7 @@ pegiiRuntimeHandler.get(
     const tenantId = c.get('tenantId')
     const salesmanId = c.req.param('salesmanId') ?? ''
 
-    const gateway = await resolveSalesmanGateway(c.get('db'), tenantId)
+    const gateway = await resolveSalesmanGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
     const salesman = await gateway.findSalesmanById(salesmanId)
     if (!salesman) {
       return c.json({ error: 'Salesman not found', code: 'NOT_FOUND' }, 404)

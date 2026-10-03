@@ -23,6 +23,8 @@ export const PegiiCapabilities = {
   Idempotency: 'pegii.idempotency.v1',
   Auth: 'pegii.auth.v1',
   Email: 'pegii.email.v1',
+  /** The site verifies cloud-issued tokens (lib/pegii-token.ts) and routes by `cid`. */
+  CloudAuth: 'pegii.cloud-auth.v1',
 } as const
 
 export interface PegiiVersionInfo {
@@ -38,9 +40,16 @@ export function __resetPegiiCapabilityCacheForTests(): void {
   cache.clear()
 }
 
+export interface PegiiProbeOptions {
+  now?: () => number
+  timeoutMs?: number
+  /** Forwarded as `x-correlation-id` so the site's logs join back to the cloud request. */
+  correlationId?: string
+}
+
 export async function getPegiiVersionInfo(
   baseUrl: string,
-  opts: { now?: () => number; timeoutMs?: number } = {},
+  opts: PegiiProbeOptions = {},
 ): Promise<PegiiVersionInfo> {
   const now = opts.now ?? Date.now
   const hit = cache.get(baseUrl)
@@ -50,7 +59,10 @@ export async function getPegiiVersionInfo(
   try {
     res = await tunnelFetch(`${baseUrl}/api/v1/pegii/version`, {
       method: 'GET',
-      headers: { accept: 'application/json' },
+      headers: {
+        accept: 'application/json',
+        ...(opts.correlationId ? { 'x-correlation-id': opts.correlationId } : {}),
+      },
       ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
     })
   } catch (err) {
@@ -96,7 +108,7 @@ export async function getPegiiVersionInfo(
 export async function requirePegiiCapabilities(
   baseUrl: string,
   required: readonly string[],
-  opts: { now?: () => number; timeoutMs?: number } = {},
+  opts: PegiiProbeOptions = {},
 ): Promise<void> {
   const info = await getPegiiVersionInfo(baseUrl, opts)
   const missing = required.filter((c) => !info.capabilities.includes(c))

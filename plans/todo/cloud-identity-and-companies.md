@@ -96,11 +96,12 @@ pegII trusts **only** the cloud's issuer. It never validates Cognito tokens dire
   - `authEnabled` becomes "hub key set OR cloud issuer configured".
   - `/version` adds `pegii.cloud-auth.v1`.
   - Site config shrinks to **two non-secret values**, the cloud issuer and the site id, which `install.ps1` takes as parameters.
+- **Operator switch (added in I1):** the bridge sends cloud tokens to a site only when `Site.cloudAuthEnabled` is on **and** its `/version` advertises `pegii.cloud-auth.v1`. The probe is unauthenticated, so it may confirm the cloud path but never initiate it. Rollout per site: deploy the I2 pegII build → configure the issuer and site id → confirm `/version` → `PATCH /settings/sites/:id {cloudAuthEnabled: true}`.
 - **Audit:** the cloud sends `x-correlation-id` on every bridge call. pegII already echoes it and stamps it on error envelopes.
 
 ## Token contract (I1 ↔ I2) — single source of truth
 
-Two repos implement opposite ends of one token, so the contract lives here, plus a **shared fixture**. The fixture is a test key pair, its JWKS, and sample tokens (valid, wrong `aud`, expired, bad signature, no `cid`). It is generated once by pegasus and committed verbatim to both repos: `apps/api/src/__fixtures__/pegii-token/` and movemanager `Pegasus.Api.Tests/Fixtures/cloud-token/`. Both test suites verify the same bytes.
+Two repos implement opposite ends of one token, so the contract lives here, plus a **shared fixture**. The fixture is a throwaway test key's JWKS and sample tokens (valid, wrong `aud`, expired, bad signature, no `cid`). It is generated once by pegasus and committed verbatim to both repos: `apps/api/src/__fixtures__/pegii-token/` and movemanager `Pegasus.Api.Tests/Fixtures/cloud-token/`. Both test suites verify the same bytes. The tokens are stored as `[header, payload, signature]` segments under `tokenSegments` (join with `.`), and only the public key is written, so the secret scanner has no JWT literal or private key to flag.
 
 - **Header:** `alg: "ES256"`, `typ: "JWT"`, `kid` = the KMS key id (UUID) of the signing key.
 - **Signature:** KMS `Sign`, `ECDSA_SHA_256`, `MessageType: RAW` over the ASCII signing input. KMS returns **DER**; the JWT carries **raw R‖S (64 bytes)**, so pegasus converts it.

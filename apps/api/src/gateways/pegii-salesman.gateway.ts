@@ -9,6 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import type { SalesmanGateway } from './salesman.gateway'
+import type { PegiiCaller } from '../lib/pegii-request-context'
 import { createPegiiApiClient, isPegiiNotFound, type PegiiApiClient } from '../lib/pegii-api-client'
 import { mapPegiiSalesmanToRecord } from './pegii/pegii-salesman.mapper'
 import type { PegiiSalesmanDto } from './pegii/pegii-salesman.dto'
@@ -22,6 +23,8 @@ export interface PegiiSalesmanGatewayOptions {
   apiKey?: string | null
   /** Test seam: inject a stub PegiiApiClient instead of the tunnel-backed one. */
   client?: PegiiApiClient
+  /** Who is calling (cloud-issued token + x-correlation-id); see lib/pegii-request-context.ts. */
+  caller?: PegiiCaller
 }
 
 export function createPegiiSalesmanGateway(opts: PegiiSalesmanGatewayOptions): SalesmanGateway {
@@ -31,6 +34,7 @@ export function createPegiiSalesmanGateway(opts: PegiiSalesmanGatewayOptions): S
       tenantId: opts.tenantId,
       baseUrl: opts.baseUrl,
       ...(opts.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
+      ...(opts.caller ? { caller: opts.caller } : {}),
     })
 
   return {
