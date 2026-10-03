@@ -162,6 +162,8 @@ const DEVELOPER_CHILDREN = [
   // owned) with fork + delete. The all-user `/integrations` entry above is the
   // operator view of the same data, narrowed to what is live.
   { to: '/settings/developer/integrations' as const, label: 'Integrations', exact: false },
+  // Billable automated actions against the automation plan.
+  { to: '/settings/developer/usage' as const, label: 'Usage', exact: false },
 ] as const
 
 // One submenu entry per main-menu section — mirrors NAV_ITEMS order so the

@@ -15,6 +15,7 @@ import type { TenantDetail } from '@/api/tenants'
 import { TenantFormDialog } from '@/components/TenantFormDialog'
 import { TenantUsersSection } from '@/components/TenantUsersSection'
 import { TenantVpnSection } from '@/components/TenantVpnSection'
+import { TenantUsageSection } from '@/components/TenantUsageSection'
 import { ApiError } from '@/api/client'
 
 // ---------------------------------------------------------------------------
@@ -605,6 +606,14 @@ export function TenantDetailPage() {
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-foreground">WireGuard VPN</h2>
             <TenantVpnSection tenantId={id} />
+          </section>
+        )}
+
+        {/* Usage — billable automated actions, automation plan, statements */}
+        {tenant.status !== 'OFFBOARDED' && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-foreground">Usage</h2>
+            <TenantUsageSection tenantId={id} />
           </section>
         )}
 
