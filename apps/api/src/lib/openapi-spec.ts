@@ -484,6 +484,39 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/usage/summary': {
+        get: {
+          operationId: 'getUsageSummary',
+          summary: "The tenant's billable automated actions against its plan (ReadUsage)",
+          description:
+            'Billable actions in the plan term in effect (or, with no plan, the calendar year): pool, ' +
+            'usedTermToDate, remaining, overageActions, a linear projectedAtTermEnd (an ESTIMATE), ' +
+            'and byMonth / byAction / byWorkflow breakdowns. A billable action is a successful, ' +
+            'first-time, outward-reaching mutation by an API client: SendSms, SendEmail, ' +
+            'UpdateTextMessage (mark read), CloseTask, DeliverToExternal, and mutating ' +
+            'CallExternal calls (not GET). Free: every read, workflow state, runs, dry runs, ' +
+            'non-2xx responses, idempotent replays (a retry with the same dedupKey), and anything ' +
+            'a human does in the web app. Cognito callers need tenant_admin.',
+          tags: ['Usage'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            {
+              name: 'year',
+              in: 'query',
+              required: false,
+              schema: { type: 'integer', minimum: 2020, maximum: 2100 },
+              description: 'the term that started in this year (default: the term in effect today)',
+            },
+          ],
+          responses: {
+            '200': {
+              description:
+                '{data: {plan, termStart, termEnd, pool, usedTermToDate, remaining, overageActions, projectedAtTermEnd, asOf, byMonth[], byAction[], byWorkflow[]}}',
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
       '/api/v1/workflow-state/{namespace}': {
         get: {
           operationId: 'listWorkflowState',

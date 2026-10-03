@@ -143,6 +143,40 @@ export type {
 } from './billing/index'
 export { toInvoiceId, toPaymentId, calculateInvoiceBalance, canVoidInvoice } from './billing/index'
 
+// Billing — automation plans + usage statements (the billable-action meter)
+export type {
+  AutomationPlanCode,
+  AutomationPlanTerms,
+  AutomationPlanCatalogEntry,
+  AutomationPlanPeriod,
+} from './billing/automation-plans'
+export {
+  AUTOMATION_PLAN_CODES,
+  AUTOMATION_PLAN_CATALOG,
+  RENEWAL_ESCALATOR_RATE,
+  isAutomationPlanCode,
+  escalatePlanTerms,
+  isIsoDate,
+  addDays,
+  addMonths,
+  daysBetween,
+  planInEffect,
+  termEndFor,
+  validatePlanChange,
+} from './billing/automation-plans'
+export type {
+  StatementWindow,
+  StatementInput,
+  UsageStatementLines,
+} from './billing/usage-statement'
+export {
+  isPeriodMonth,
+  previousPeriodMonth,
+  statementWindow,
+  closeMonthlyStatement,
+  projectTermUsage,
+} from './billing/usage-statement'
+
 // Document context
 export type {
   DocumentId,

@@ -10,6 +10,8 @@ import {
   PEGASUS_AUTHZ_METRIC_NAMESPACE,
   PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
   PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
+  PEGASUS_USAGE_METRIC_NAMESPACE,
+  USAGE_METER_WRITE_FAILED_METRIC_NAME,
   RC_OUTBOX_PENDING_METRIC_NAME,
   RC_OUTBOX_DEAD_METRIC_NAME,
   RC_SUBSCRIPTIONS_DEAD_METRIC_NAME,
@@ -695,6 +697,32 @@ export class MonitoringStack extends cdk.Stack {
       },
     )
     wire(triggerSkippedAlarm)
+
+    // ── Usage meter (billable automated actions) ──────────────────────────────
+    // MeterWriteFailed > 0 means a billable action succeeded but was not
+    // recorded — unbilled usage the tenant's Usage page will not show. The
+    // meter is non-fatal by design (a failed meter never fails a text), so this
+    // alarm is its only backstop. Source: the API Lambda.
+    const meterWriteFailedAlarm = new cloudwatch.Alarm(this, 'UsageMeterWriteFailedAlarm', {
+      alarmName: 'pegasus-usage-meter-write-failed',
+      alarmDescription:
+        'The usage meter failed to record one or more billable actions in the last 15 min — ' +
+        'the actions succeeded but are UNBILLED. Source: Pegasus/Usage ' +
+        USAGE_METER_WRITE_FAILED_METRIC_NAME +
+        ' (per-Action series for which). Check /aws/lambda/<api-function-name> for ' +
+        '"Usage meter write failed".',
+      metric: new cloudwatch.Metric({
+        namespace: PEGASUS_USAGE_METRIC_NAMESPACE,
+        metricName: USAGE_METER_WRITE_FAILED_METRIC_NAME,
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(15),
+      }),
+      threshold: 0,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    wire(meterWriteFailedAlarm)
 
     // Helper metrics for the workflow dashboard (no alarm on these — used only
     // for observability widgets).

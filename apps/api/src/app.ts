@@ -98,6 +98,7 @@ import {
   integrationProjectionReadHandler,
 } from './handlers/integration-projections'
 import { workflowStateHandler } from './handlers/workflow-state'
+import { usageHandler } from './handlers/usage'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { ringcentralAttachmentsHandler } from './handlers/integrations/ringcentral-attachments'
@@ -327,6 +328,9 @@ m2mV1.route('/integration-projections', integrationProjectionsHandler)
 // reclaims that running workflows keep for themselves via the `vnd_` runtime key.
 // Dual-auth applied inside the handler. See handlers/workflow-state.ts.
 m2mV1.route('/workflow-state', workflowStateHandler)
+// Billable automated actions against the tenant's automation plan. Dual-auth
+// applied inside the handler. See handlers/usage.ts.
+m2mV1.route('/usage', usageHandler)
 // Read-model surface for the entities workflows land in projections
 // (sdk-feedback/0026): GET /integrations/:id/projections/:entityType[/:key] with
 // filter + paging, for the tenant web app / API keys. Dual-auth + RBAC

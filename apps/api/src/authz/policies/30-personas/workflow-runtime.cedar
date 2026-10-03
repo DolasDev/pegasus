@@ -35,6 +35,8 @@
 // workflow never handles client_id/client_secret. CreateFeedbackRequest lets a
 // workflow mint a capability link to a published feedback form (the mint-only
 // primitive; the workflow sends it via SendSms), same persona shape as SendSms.
+// ReadUsage lets a workflow read the tenant's usage summary (billable actions
+// against the plan's pool) so it can check its own consumption.
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -65,7 +67,8 @@ permit (
     Pegasus::Action::"WriteWorkflowState",
     Pegasus::Action::"ReadBlob",
     Pegasus::Action::"WriteBlob",
-    Pegasus::Action::"CreateFeedbackRequest"
+    Pegasus::Action::"CreateFeedbackRequest",
+    Pegasus::Action::"ReadUsage"
   ],
   resource
 );

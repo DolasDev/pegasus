@@ -43,6 +43,7 @@ import type { AppEnv } from '../types'
 import { Actions } from '../authz/actions'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
+import { meterUsage } from '../middleware/meter-usage'
 import { listOrders, type OrderRecord } from '../services/pegii-orders'
 import { listSalesmen, type SalesmanRecord } from '../services/pegii-salesmen'
 import { closeTask, getTask, listTasks, type TaskRecord } from '../services/pegii-tasks'
@@ -275,6 +276,7 @@ pegiiRuntimeHandler.get('/tasks/:taskId', requirePermission(Actions.ReadTask), a
 pegiiRuntimeHandler.post(
   '/tasks/close',
   requirePermission(Actions.CloseTask),
+  meterUsage(Actions.CloseTask),
   validator('json', (value, c) => {
     const r = CloseBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)

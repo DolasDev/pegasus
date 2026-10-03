@@ -41,15 +41,16 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + tariff fuel-surcharge update + tariff coverage-check + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge/metrics + push forward + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + tariff fuel-surcharge update + tariff coverage-check + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge/metrics + usage-statement close + push forward + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
     // TariffFscUpdateFunction + TariffCheckFunction + RingCentralTokenRefreshFunction +
     // RingCentralSyncFunction + RingCentralRenewFunction +
     // RingCentralCaptureFunction + RingCentralForwardFunction +
     // RingCentralBufferPurgeFunction + RingCentralMetricsFunction +
-    // PushForwardFunction + the CDK Triggers framework's invoker Lambda.
+    // UsageStatementCloseFunction + PushForwardFunction + the CDK Triggers
+    // framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 14)
+    template.resourceCountIs('AWS::Lambda::Function', 15)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -596,6 +597,29 @@ describe('ApiStack — AVP store-count metric emitter', () => {
     })
   })
 
+  it('grants the API Lambda cloudwatch:PutMetricData scoped to Pegasus/Usage (meter backstop)', () => {
+    const template = synthApiStack()
+    // Unconditional: the meter is on in every environment, so a missing grant
+    // would silently drop the only signal that billable usage went unrecorded.
+    const apiRole = Object.entries(template.findResources('AWS::IAM::Role')).find(([id]) =>
+      id.startsWith('ApiFunctionServiceRole'),
+    )?.[0]
+    expect(apiRole).toBeDefined()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      Roles: [{ Ref: apiRole }],
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'cloudwatch:PutMetricData',
+            Effect: 'Allow',
+            Resource: '*',
+            Condition: { StringEquals: { 'cloudwatch:namespace': 'Pegasus/Usage' } },
+          }),
+        ]),
+      },
+    })
+  })
+
   it('grants cloudwatch:PutMetricData scoped to the Pegasus/Authorization namespace', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::IAM::Policy', {
@@ -753,6 +777,22 @@ describe('ApiStack — RingCentral credential health-check cron', () => {
       ScheduleExpression: 'rate(6 hours)',
       State: 'ENABLED',
       Description: 'Purges forwarded RingCentral SMS bodies + old tombstones from Neon.',
+    })
+  })
+
+  it('schedules the usage-statement close daily (a rate: self-healing, not a month-end cron)', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(1 day)',
+      State: 'ENABLED',
+      Description: 'Closes monthly usage statements (billable automated actions) per tenant.',
+    })
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Handler: 'index.handler',
+      Environment: { Variables: Match.objectLike({ DATABASE_URL: Match.anyValue() }) },
+      LoggingConfig: Match.objectLike({
+        LogGroup: { Ref: Match.stringLikeRegexp('^UsageStatementCloseLogGroup') },
+      }),
     })
   })
 

@@ -19,6 +19,7 @@ import { logger } from '../../lib/logger'
 import { adminTenantUsersRouter } from './tenant-users'
 import { adminVpnRouter } from './vpn'
 import { adminVpnDiagnoseRouter } from './vpn-diagnose'
+import { adminTenantUsageRouter } from './tenant-usage'
 
 const TenantStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'OFFBOARDED'])
 
@@ -785,3 +786,12 @@ adminTenantsRouter.route('/:tenantId/users', adminTenantUsersRouter)
 // ---------------------------------------------------------------------------
 adminTenantsRouter.route('/:tenantId/vpn', adminVpnRouter)
 adminTenantsRouter.route('/:tenantId/vpn', adminVpnDiagnoseRouter)
+
+// ---------------------------------------------------------------------------
+// Mount tenant usage sub-router (automation plan + billable-action usage)
+//
+// Routes: GET|POST /api/admin/tenants/:tenantId/automation-plan
+//         GET      /api/admin/tenants/:tenantId/usage
+//         GET      /api/admin/tenants/:tenantId/usage/statements[/:periodMonth]
+// ---------------------------------------------------------------------------
+adminTenantsRouter.route('/:tenantId', adminTenantUsageRouter)

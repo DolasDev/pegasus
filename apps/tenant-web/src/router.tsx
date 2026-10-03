@@ -32,6 +32,7 @@ import { UsersPage } from '@/routes/users'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
 import { ConfigsSettingsPage } from '@/routes/settings.developer.configs'
 import { DeveloperIntegrationsPage } from '@/routes/settings.developer.integrations'
+import { DeveloperUsagePage } from '@/routes/settings.developer.usage'
 import { WorkflowsSettingsPage } from '@/routes/settings.workflows'
 import { WorkflowDetailPage } from '@/routes/settings.workflows.$workflowId'
 import { EventTypesSettingsPage } from '@/routes/settings.event-types'
@@ -283,6 +284,13 @@ const developerIntegrationsRoute = createRoute({
   component: DeveloperIntegrationsPage,
 })
 
+// Billable automated actions against the tenant's automation plan.
+const developerUsageRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/developer/usage',
+  component: DeveloperUsagePage,
+})
+
 // Automations — the short, sandboxed runs (the `workflows` table / `/workflows`
 // API). The product concept was renamed from "Workflows" to "Automations"; the
 // wire names were deliberately kept (plans/in-progress/
@@ -496,6 +504,7 @@ const routeTree = rootRoute.addChildren([
       developerSettingsRoute,
       developerConfigsRoute,
       developerIntegrationsRoute,
+      developerUsageRoute,
       automationsSettingsRoute,
       automationDetailRoute,
       legacyWorkflowsSettingsRoute,

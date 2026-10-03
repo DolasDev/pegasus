@@ -230,6 +230,22 @@ at a tenant-admin-allowed domain (else 400 ``RECIPIENT_NOT_ALLOWED``; none
 configured → 409 ``EMAIL_RECIPIENTS_NOT_CONFIGURED``). Always pass a
 ``dedup_key`` for escalations/reminders so a retried activity doesn't mail twice.
 
+## Billable actions (usage) — design Automations to be cheap
+
+Plans buy an ANNUAL pool of billable actions (Starter 6,000 / Growth 15,000 /
+Scale 50,000 per year). One action each: ``send_sms``, ``send_email``,
+``mark_text_message_read``, ``close_task``, ``deliver_to_external`` (partner
+accepted), and ``call_external`` with POST/PUT/PATCH/DELETE or
+``mutating=True``. Free: every read (including ``call_external`` GET /
+``mutating=False`` and ``api_get``), workflow state, runs/schedules/triggers,
+``emit_event``, dry runs, any non-2xx response, idempotent replays
+(``alreadySent`` / ``alreadyRead`` / ``alreadyClosed``), opt-out records, and
+anything a person does in the web app. Always pass a ``dedup_key`` to
+``send_sms`` / ``send_email`` so retries replay for free; the meter counts one
+per subject. Check consumption with ``client.get_usage_summary(year=None)``
+(``ReadUsage``) → ``{plan, pool, usedTermToDate, remaining, overageActions,
+projectedAtTermEnd, byMonth, byAction, byWorkflow}``.
+
 ## Durable state, claims and dedup (workflow state)
 
 For state an Automation keeps for itself — a send ledger, "already done?"

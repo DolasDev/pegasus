@@ -313,3 +313,25 @@ Both stay correct under the tenant Prisma extension, which scopes `updateMany`
 and `deleteMany` but not `create` (so pass `tenantId` explicitly there). Prove
 them with a real-DB test that fires N concurrent calls and asserts exactly one
 winner. A mocked client cannot exercise the unique index or the version filter.
+
+## Metering a billable route (the usage meter)
+
+Every route that performs an outward-reaching mutation on a tenant's behalf
+(text, email, mark-read, task, integration delivery or write) is **billable**,
+and must be metered in the same PR that adds it (plans/completed/usage-metering.md
+Phase 5):
+
+1. Add an entry to `apps/api/src/lib/usage/billable-actions.ts`: `billable(data, c)`
+   (is this 2xx response a real first-time action?) and `subjectKey(data, c)`
+   (the dedup key within tenant + action, e.g. `close:${data.id}`). The test there
+   pins the exact list, because a change to it is a pricing change.
+2. Mount `meterUsage(Actions.X)` right after `requirePermission(Actions.X)`. It
+   refuses to mount without a registry entry.
+3. Add the action to the SDK README's "What counts as a billable action".
+
+The meter already drops humans (no `apiClient`), non-2xx responses and any
+`data.already* === true` replay, so a new route only needs the replay flag in its
+response contract. Read the **partner's** outcome when the handler proxies one
+inside a 200 (`delivered` / `ok`). Never key on a client-suppliable value
+(`x-correlation-id`): mint a uuid when no stable result id exists. The meter is
+non-fatal by design; `Pegasus/Usage MeterWriteFailed` is the backstop.

@@ -111,6 +111,7 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_salesmen": None,
     "list_projections": None,
     "list_workflow_state": None,
+    "get_usage_summary": None,
     "list_secrets": None,
     "list_configs": None,
     "validate_integration_config": None,

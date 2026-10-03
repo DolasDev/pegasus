@@ -1,31 +1,44 @@
 # Usage Metering + Published Automation Rates
 
-**Branch:** none yet. This file lands on `main` through a plan-only PR
-(`docs/usage-metering-and-published-rates`). Implement it with
-`/workstream-start feat usage-metering plans/todo/usage-metering-and-published-rates.md`;
-Phase 6 (the website) can ship as its own small PR.
+**Branch:** `feat/usage-metering`. Phases 1–4 shipped in one PR; Phase 6 shipped
+earlier as #761.
 **Goal:** Count every billable automated action per tenant, let the tenant and
 platform admins see the count, close a monthly usage statement to invoice from,
 and publish the automation plans on pegasusmovemanager.com.
-**Status:** APPROVED 2026-09-30. D1–D3 decided by Steve the same day (see
-Decisions).
+**Status:** COMPLETE 2026-10-03 (Phase 5 is a standing rule). Approved
+2026-09-30; D1–D3 decided by Steve the same day; D7–D11 are implementation
+refinements for him to confirm or veto (see Decisions).
+
+**After merge (not done by the PR):**
+
+1. Tag `sdk-python-v0.43.0` on the merge commit and publish (standing rule).
+2. Commit + push the drafted `get_usage_summary` / billable-action entry in
+   `~/repos/pegasus-workflows/CLAUDE.md` (that repo commits to `main`), once
+   0.43.0 is on PyPI.
+3. Assign NW's plan in admin-web → tenant → Usage when the proposal is signed.
+   Billing starts from that term; the first statement closes on the 1st of the
+   following month.
 
 ---
 
 ## Execution status (resume here)
 
-- [ ] **Phase 1**: the meter. `UsageEvent`, the billable-action registry, the
-      `meterUsage` middleware, wired to the three billable routes that exist
-      today.
-- [ ] **Phase 2**: plans and the usage summary API. `TenantAutomationPlan`,
+- [x] **Phase 1**: the meter. `UsageEvent`, the billable-action registry, the
+      `meterUsage` middleware, wired to the **six** billable routes that exist
+      today (`SendEmail` landed after this plan was written). See D7–D9 for
+      where the implementation refined the plan.
+- [x] **Phase 2**: plans and the usage summary API. `TenantAutomationPlan`,
       admin plan management, `GET /api/v1/usage/summary`, SDK
-      `get_usage_summary`, discoverability → SDK minor.
-- [ ] **Phase 3**: UIs. tenant-web Settings → Developer → Usage; admin-web
+      `get_usage_summary`, discoverability → SDK 0.43.0. The plan model gained
+      `effectiveFrom` (D10).
+- [x] **Phase 3**: UIs. tenant-web Settings → Developer → Usage; admin-web
       tenant Usage section with the plan editor and a statement export.
-- [ ] **Phase 4**: monthly statement close. `UsageStatement` + a daily
-      idempotent cron lambda + infra.
-- [ ] **Phase 5**: meter each new billable action as it lands (standing rule,
-      wired into the NW pulse master plan).
+      Playwright covers the human side only (D12).
+- [x] **Phase 4**: monthly statement close. `UsageStatement` + a daily
+      idempotent cron lambda + infra. Backfills every missing month (D11).
+- [x] **Phase 5**: meter each new billable action as it lands. A standing rule,
+      now pointed to from the NW pulse master plan; `SendEmail` is already
+      metered.
 - [x] **Phase 6**: advertise the automation plans on `apps/company-web`,
       without prices (#761, Steve 2026-10-02).
 
@@ -395,6 +408,47 @@ Publishing prices later is a separate change that re-opens gates 1 and 2.
   runner to export `PEGASUS_EXECUTION_ID` and the SDK to send an
   `X-Pegasus-Execution-Id` header. That's a follow-up, not a blocker.
 - **D6 decided: no payment processor.** Statements feed a manual invoice.
+- **D7 (implementation, Steve may veto): `CallExternal` counts only MUTATING
+  calls.** The handler runs GETs live under `run --dry-run` (sdk-feedback/0015),
+  so "per successful call" read literally would bill dry runs and reads, both
+  in the free column. Classification is `!isIdempotent(method, mutating)`, the
+  same one the outbound retry policy and the SDK's dry-run split use; the
+  `mutating` override is honored both ways. "Successful" means the PARTNER
+  succeeded: both outbound handlers answer 200 with `delivered`/`ok` carrying
+  the upstream status, so the meter reads those, not the HTTP status.
+- **D8 (implementation): outbound subject keys are minted server-side.** The
+  plan keyed `DeliverToExternal`/`CallExternal` on `correlationId`, but that
+  comes from the client's `x-correlation-id` header, so reusing it would
+  collapse N deliveries into one row (under-count, and gameable). Each successful
+  call genuinely reached the partner, so each gets a fresh uuid key;
+  `correlationId` is stored in its own column for tracing only.
+- **D9 (implementation): the SendSms subject is RingCentral's message id**, not
+  the `SmsSend` row as the plan assumed. `/sms/send` returns RC's id: a number
+  on a new send, the stored string on a dedup replay. It is normalized so the two
+  are one subject. When RC returns no id, a 202 still means a text went out, so
+  a key is minted rather than dropping the count.
+- **D10 (implementation): the plan row has `effectiveFrom`, and terms start on
+  the 1st.** The planned model (`termStart`/`termEnd` only, "a change inserts a
+  row with a new `termStart`") could not tell a mid-term upgrade from a new
+  term, so the term-to-date count and the "new pool applies to the whole term"
+  rule had nothing to anchor to. Now `termStart`/`termEnd` bound the contract
+  year and an upgrade keeps them; `effectiveFrom` is when the row's prices take
+  effect. Terms start on a month's 1st and last exactly a year, so a term never
+  ends mid-month and every statement month belongs to one term. Enforced by
+  `validatePlanChange` (domain): down only at renewal, no backdating behind the
+  row being replaced. The escalator rounds to whole cents ($0.30 → $0.31).
+- **D11 (implementation): the close backfills.** Each daily run closes EVERY
+  fully-past month with no statement, oldest first, not just last month. A job
+  down across a month boundary heals on its next run, in order, so each month
+  sees the overage its predecessors already billed. A failed tenant makes the
+  run throw, so the account-wide Lambda Errors alarm pages.
+- **D12 (testing): the runtime path is proven in an API integration test, not
+  Playwright.** The local e2e API runs with `SKIP_AUTH`, under which dual-auth
+  makes every caller, `vnd_` keys included, a synthetic human, so a Playwright
+  spec cannot meter anything. `apps/api/src/__tests__/usage-meter.integration.test.ts`
+  drives the real `m2mV1` router with a runtime-shaped key against a real DB:
+  close counts 1, the replay 0, a 503 0, and the runtime reads its own summary.
+  `apps/e2e/tests/api/usage-meter.spec.ts` covers the human side over HTTP.
 
 ## Side effects and risks
 

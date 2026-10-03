@@ -22,6 +22,7 @@ import {
   PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
   PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
   PEGASUS_RATING_METRIC_NAMESPACE,
+  PEGASUS_USAGE_METRIC_NAMESPACE,
 } from '../metrics'
 
 export interface ApiStackProps extends cdk.StackProps {
@@ -494,6 +495,21 @@ export class ApiStack extends cdk.Stack {
     })
     apiFunction.addToRolePolicy(ringcentralSecretPolicy)
     apiFunction.addEnvironment('RINGCENTRAL_SECRET_PREFIX', ringcentralSecretPrefix)
+
+    // ---------------------------------------------------------------------------
+    // Usage meter — the API Lambda publishes Pegasus/Usage MeterWriteFailed when
+    // a billable action succeeds but its UsageEvent write fails (alarmed in
+    // MonitoringStack). Same namespace-condition shape as the other emitters.
+    // ---------------------------------------------------------------------------
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'cloudwatch:namespace': PEGASUS_USAGE_METRIC_NAMESPACE },
+        },
+      }),
+    )
 
     // ---------------------------------------------------------------------------
     // Integration-config publishing master switch. Ungates the mutating config
@@ -1702,6 +1718,48 @@ export class ApiStack extends cdk.Stack {
       schedule: events.Schedule.rate(cdk.Duration.hours(6)),
       description: 'Purges forwarded RingCentral SMS bodies + old tombstones from Neon.',
       targets: [new eventsTargets.LambdaFunction(ringcentralBufferPurgeFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
+    // Usage-statement close cron (billable automated actions)
+    //
+    // Writes each tenant's monthly UsageStatement — what a manual invoice is
+    // raised from — for every fully-past month still missing one. Daily RATE,
+    // not a month-end cron: idempotent and self-healing after a missed day or a
+    // missed month boundary. DB-only. Always on: inert until a tenant has a plan.
+    // A failed tenant throws, so the account-wide Lambda Errors alarm pages.
+    // ---------------------------------------------------------------------------
+    const usageStatementCloseLogGroup = new logs.LogGroup(this, 'UsageStatementCloseLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    cronLogGroupNames.push(usageStatementCloseLogGroup.logGroupName)
+
+    const usageStatementCloseFunction = new nodejs.NodejsFunction(
+      this,
+      'UsageStatementCloseFunction',
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: path.join(__dirname, '../../../../apps/api/src/lambda-usage-statement-close.ts'),
+        handler: 'handler',
+        environment: {
+          NODE_ENV: 'production',
+          DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+          LOG_LEVEL: 'INFO',
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        memorySize: 256,
+        timeout: cdk.Duration.minutes(5),
+        logGroup: usageStatementCloseLogGroup,
+      },
+    )
+
+    dbSecret.grantRead(usageStatementCloseFunction)
+
+    new events.Rule(this, 'UsageStatementCloseSchedule', {
+      schedule: events.Schedule.rate(cdk.Duration.days(1)),
+      description: 'Closes monthly usage statements (billable automated actions) per tenant.',
+      targets: [new eventsTargets.LambdaFunction(usageStatementCloseFunction)],
     })
 
     // ---------------------------------------------------------------------------

@@ -3105,3 +3105,36 @@ class PegasusClient:
             )
         _raise_for_workflow_state_conflict(response)
         _raise_for_status(response)
+
+    # ------------------------------------------------------------------
+    # Usage (billable automated actions)
+    # ------------------------------------------------------------------
+
+    def get_usage_summary(self, year: int | None = None) -> dict[str, Any]:
+        """The tenant's billable automated actions against its plan.
+
+        Requires ``ReadUsage``. A billable action is a successful, first-time,
+        outward-reaching mutation by an API client: ``send_sms``,
+        ``send_email``, ``mark_text_message_read``, ``close_task``,
+        ``deliver_to_external`` and mutating ``call_external`` calls. Reads,
+        workflow state, dry runs, non-2xx responses and idempotent replays
+        (a retry with the same ``dedup_key``) are free.
+
+        Args:
+            year: The term that started in this year. Default: the term in
+                effect today (with no plan, the current calendar year).
+
+        Returns:
+            ``{plan, termStart, termEnd, pool, usedTermToDate, remaining,
+            overageActions, projectedAtTermEnd, asOf, byMonth, byAction,
+            byWorkflow}``. ``plan`` and ``pool`` are ``None`` when no plan is
+            assigned; ``projectedAtTermEnd`` is a linear ESTIMATE.
+
+        Raises:
+            PegasusApiError: On 400 (bad year), 403, or any other non-2xx.
+        """
+        params = {"year": year} if year is not None else None
+        with self._client() as client:
+            response = client.get("/api/v1/usage/summary", params=params)
+        _raise_for_status(response)
+        return response.json()["data"]

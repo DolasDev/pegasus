@@ -26,6 +26,7 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { isValidE164 } from '@pegasus/domain'
 import { requirePermission } from '../middleware/rbac'
+import { meterUsage } from '../middleware/meter-usage'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
@@ -84,6 +85,7 @@ smsHandler.use('*', dualAuthMiddleware)
 smsHandler.post(
   '/send',
   requirePermission(Actions.SendSms),
+  meterUsage(Actions.SendSms),
   validator('json', (value, c) => {
     const r = SendSmsBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -203,62 +205,67 @@ smsHandler.get('/messages/:id', requirePermission(Actions.ReadTextMessage), asyn
 //   409 NO_CONNECTION        the tenant has no active RingCentral connection
 //   429 / 502 / 503          as for /send
 // ---------------------------------------------------------------------------
-smsHandler.post('/messages/:id/read', requirePermission(Actions.UpdateTextMessage), async (c) => {
-  const id = c.req.param('id') ?? ''
-  if (!/^[0-9a-f-]{36}$/i.test(id)) {
-    return c.json({ error: 'id must be a message uuid', code: 'VALIDATION_ERROR' }, 400)
-  }
-  if (!readOAuthConfig()) {
-    return c.json(
-      { error: 'RingCentral integration is not enabled', code: 'SERVICE_UNAVAILABLE' },
-      503,
-    )
-  }
-  const db = c.get('db')
-  const message = await db.message.findFirst({ where: { id } })
-  if (!message) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404)
-  if (message.source !== 'V1_STORE') {
-    return c.json(
-      {
-        error: 'Only RingCentral message-store messages can be marked read',
-        code: 'UNSUPPORTED_SOURCE',
-      },
-      409,
-    )
-  }
+smsHandler.post(
+  '/messages/:id/read',
+  requirePermission(Actions.UpdateTextMessage),
+  meterUsage(Actions.UpdateTextMessage),
+  async (c) => {
+    const id = c.req.param('id') ?? ''
+    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+      return c.json({ error: 'id must be a message uuid', code: 'VALIDATION_ERROR' }, 400)
+    }
+    if (!readOAuthConfig()) {
+      return c.json(
+        { error: 'RingCentral integration is not enabled', code: 'SERVICE_UNAVAILABLE' },
+        503,
+      )
+    }
+    const db = c.get('db')
+    const message = await db.message.findFirst({ where: { id } })
+    if (!message) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404)
+    if (message.source !== 'V1_STORE') {
+      return c.json(
+        {
+          error: 'Only RingCentral message-store messages can be marked read',
+          code: 'UNSUPPORTED_SOURCE',
+        },
+        409,
+      )
+    }
 
-  // Prefer the connection that captured the message; any active one otherwise.
-  const active = (await listConnectionsByTenant(db, c.get('tenantId'))).filter(
-    (conn) => conn.tokenStatus === 'ACTIVE' && conn.tokenSecretArn != null,
-  )
-  const connection = active.find((conn) => conn.id === message.connectionId) ?? active[0]
-  if (!connection) {
-    return c.json(
-      { error: 'RingCentral is not connected for this account', code: 'NO_CONNECTION' },
-      409,
+    // Prefer the connection that captured the message; any active one otherwise.
+    const active = (await listConnectionsByTenant(db, c.get('tenantId'))).filter(
+      (conn) => conn.tokenStatus === 'ACTIVE' && conn.tokenSecretArn != null,
     )
-  }
+    const connection = active.find((conn) => conn.id === message.connectionId) ?? active[0]
+    if (!connection) {
+      return c.json(
+        { error: 'RingCentral is not connected for this account', code: 'NO_CONNECTION' },
+        409,
+      )
+    }
 
-  try {
-    const result = await setMessageReadStatus(connection, message.externalId, 'Read')
-    return c.json({
-      data: { id, readStatus: result.readStatus, alreadyRead: !result.changed },
-    })
-  } catch (err) {
-    if (err instanceof RateLimitError) {
-      return c.json({ error: err.message }, 429, {
-        'Retry-After': String(Math.ceil(err.retryAfterMs / 1000)),
+    try {
+      const result = await setMessageReadStatus(connection, message.externalId, 'Read')
+      return c.json({
+        data: { id, readStatus: result.readStatus, alreadyRead: !result.changed },
       })
+    } catch (err) {
+      if (err instanceof RateLimitError) {
+        return c.json({ error: err.message }, 429, {
+          'Retry-After': String(Math.ceil(err.retryAfterMs / 1000)),
+        })
+      }
+      if (err instanceof RingCentralOAuthError && err.status === 404) {
+        return c.json({ error: 'RingCentral has no such message', code: 'NOT_FOUND' }, 404)
+      }
+      if (err instanceof RingCentralOAuthError) {
+        return c.json({ error: err.message, code: 'UPSTREAM_ERROR' }, 502)
+      }
+      throw err
     }
-    if (err instanceof RingCentralOAuthError && err.status === 404) {
-      return c.json({ error: 'RingCentral has no such message', code: 'NOT_FOUND' }, 404)
-    }
-    if (err instanceof RingCentralOAuthError) {
-      return c.json({ error: err.message, code: 'UPSTREAM_ERROR' }, 502)
-    }
-    throw err
-  }
-})
+  },
+)
 
 // ---------------------------------------------------------------------------
 // GET /opt-outs/:phoneE164 — opt-out state for one number. A number with no

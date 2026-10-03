@@ -21,6 +21,7 @@ import { resolvePegiiCaller } from '../lib/pegii-request-context'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { requirePermission } from '../middleware/rbac'
+import { meterUsage } from '../middleware/meter-usage'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
@@ -58,6 +59,7 @@ emailHandler.use('*', dualAuthMiddleware)
 emailHandler.post(
   '/send',
   requirePermission(Actions.SendEmail),
+  meterUsage(Actions.SendEmail),
   validator('json', (value, c) => {
     const r = SendEmailBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)

@@ -295,6 +295,9 @@ model Tenant {
   smsOptOuts              SmsOptOut[]
   smsSends                SmsSend[]
   emailSends              EmailSend[]
+  usageEvents             UsageEvent[]
+  automationPlans         TenantAutomationPlan[]
+  usageStatements         UsageStatement[]
   outboundOAuthTokens     OutboundOAuthToken[]
   brokerCredential        TenantBrokerCredential?
   vpnPeer                 VpnPeer?
@@ -2829,6 +2832,101 @@ model EmailSend {
   @@unique([tenantId, dedupKey], map: "email_sends_dedup_key")
   @@index([tenantId, createdAt])
   @@map("email_sends")
+  @@schema("public")
+}
+
+/// One billable automated action — the usage meter (plans/completed/usage-metering.md).
+/// A successful, first-time, outward-reaching mutation performed by an API
+/// client (a workflow runtime or a plain integration client) on the tenant's
+/// behalf. Humans are never metered. Written by middleware/meter-usage.ts after
+/// the handler returns; kept indefinitely (billing record, no purge).
+model UsageEvent {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// The Cedar action id (`SendSms`, `CloseTask`, …) — see lib/usage/billable-actions.ts.
+  action String
+
+  /// The meter's own dedup key within (tenant, action), e.g. `sms:<SmsSend.id>`.
+  /// A retry the route doesn't flag as a replay still counts once.
+  subjectKey String @map("subject_key")
+
+  /// The ApiClient whose key performed the action.
+  apiClientId   String  @map("api_client_id")
+  /// Resolved from a `wf-runtime-<workflowId>` client name; null for a plain API client.
+  workflowId    String? @map("workflow_id")
+  /// The request's correlation id. Client-suppliable, so never used as a key.
+  correlationId String? @map("correlation_id")
+
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, action, subjectKey], map: "usage_events_subject_key")
+  @@index([tenantId, occurredAt])
+  @@map("usage_events")
+  @@schema("public")
+}
+
+/// A tenant's automation plan history. Rows are never updated: a new term, a
+/// renewal or a mid-term upgrade inserts a row (rules in
+/// packages/domain/src/billing/automation-plans.ts). The prices live in the row
+/// so the 4% renewal escalator is data, not a deploy.
+model TenantAutomationPlan {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// STARTER | GROWTH | SCALE (AUTOMATION_PLAN_CODES in @pegasus/domain).
+  planCode              String @map("plan_code")
+  monthlyPriceCents     Int    @map("monthly_price_cents")
+  annualPoolActions     Int    @map("annual_pool_actions")
+  overageCentsPerAction Int    @map("overage_cents_per_action")
+
+  /// The contract term: one year from a month's 1st. An upgrade keeps its term.
+  termStart     DateTime @map("term_start") @db.Date
+  termEnd       DateTime @map("term_end") @db.Date
+  /// When this row's prices and pool take effect (term start, or the upgrade date).
+  effectiveFrom DateTime @map("effective_from") @db.Date
+
+  createdAt DateTime @default(now()) @map("created_at")
+  /// The platform admin (email) who assigned the plan.
+  createdBy String   @map("created_by")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, termStart, effectiveFrom])
+  @@map("tenant_automation_plans")
+  @@schema("public")
+}
+
+/// One closed month of billable usage — what a manual invoice is raised from.
+/// Written once by the daily statement-close job and never changed.
+model UsageStatement {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// YYYY-MM (UTC calendar month).
+  periodMonth String @map("period_month")
+
+  planCode              String   @map("plan_code")
+  termStart             DateTime @map("term_start") @db.Date
+  termEnd               DateTime @map("term_end") @db.Date
+  monthlyPriceCents     Int      @map("monthly_price_cents")
+  proRatedPlanCents     Int      @map("pro_rated_plan_cents")
+  actionsInMonth        Int      @map("actions_in_month")
+  termToDateActions     Int      @map("term_to_date_actions")
+  pool                  Int
+  overageActions        Int      @map("overage_actions")
+  overageCentsPerAction Int      @map("overage_cents_per_action")
+  overageCents          Int      @map("overage_cents")
+  totalCents            Int      @map("total_cents")
+
+  closedAt DateTime @default(now()) @map("closed_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, periodMonth], map: "usage_statements_period")
+  @@map("usage_statements")
   @@schema("public")
 }
 

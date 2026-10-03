@@ -2282,3 +2282,22 @@ silently gone — no error, no skip log. 30 of 5,100 messages in 90 days (all in
 a `Text` part); each file is an `attachments[]` part with `type: 'MmsAttachment'`. The normalizer
 read only `subject`. **General rule:** when a vendor record has a parts/attachments array, decide
 explicitly what happens to every part type — "we only handle SMS" is not a filter the API enforces.
+
+## Under `SKIP_AUTH`, a `vnd_` key is a human — the local e2e cannot test M2M identity
+
+`dualAuthMiddleware` checks `SKIP_AUTH === 'true'` **before** it looks at the bearer, so the
+local Playwright API (which runs with `SKIP_AUTH=true`) turns every caller, a seeded `vnd_`
+key included, into the synthetic `tenant_admin` with `apiClient` unset. The request
+succeeds, so a spec that depends on M2M identity (the usage meter, `apiClient`-scoped logic,
+workflow attribution) fails quietly: the close returns 200 and no usage row appears. Prove
+M2M behavior in an `apps/api` integration test that drives the real `m2mV1` router with
+`SKIP_AUTH` unset, `AUTHZ_OFFLINE=true` and a real DB
+(`src/__tests__/usage-meter.integration.test.ts` is the template).
+
+## Outbound integration handlers answer 200 when the PARTNER failed
+
+`deliver-to-external` and `call-external` return HTTP 200 with `data.delivered` /
+`data.ok` carrying the partner's `response.ok`. Anything that judges success by `c.res.status`
+(a meter, a metric, a retry policy) must read those fields instead. Also, `call-external`
+GETs run **live under `run --dry-run`** (only mutations are captured client-side), so a GET
+reaching the API is not proof of a real run.

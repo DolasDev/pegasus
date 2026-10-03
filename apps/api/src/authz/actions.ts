@@ -43,6 +43,7 @@ export type ResourceType =
   | 'Document'
   | 'Feedback'
   | 'Report'
+  | 'Usage'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -487,6 +488,18 @@ export const Actions = {
     id: 'ManageDashboards',
     resourceType: 'Report',
     permission: 'dashboard:manage',
+  },
+
+  // ── Usage (billable automated actions) ────────────────────────────────────
+  // Read the tenant's usage summary (handlers/usage.ts): plan, pool, count and
+  // breakdowns. A billing view, so on Cognito it is tenant_admin only (via its
+  // permit-everything policy); granted to workflow_runtime so a running
+  // workflow can check its own consumption. The meter itself is not
+  // Cedar-gated — it rides on the metered route's own action.
+  ReadUsage: {
+    id: 'ReadUsage',
+    resourceType: 'Usage',
+    permission: 'usage:read',
   },
 } as const satisfies Record<string, ActionDef>
 
