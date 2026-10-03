@@ -1818,11 +1818,18 @@ thing to grep for.
 `-G --ignore-files --hidden -I …`. The `-I` is "skip binary files", and ugrep calls a file
 binary as soon as it contains a NUL byte.
 
-`packages/domain-reference/tools/generate-glossary.ts` contained **four literal NUL bytes**,
-written directly into template strings as a sort separator. So every `grep` of that
-1,254-line TypeScript file returned **nothing, with exit 0** — not an error, not a warning,
-just silence that is indistinguishable from "no match". `file` reported it as `data`; `sed`,
-`node` and `tsc` all read it perfectly.
+**Both** of `packages/domain-reference/tools/`'s generators hold literal NUL bytes, written
+directly into template strings as a sort separator — `generate-glossary.ts` and
+`generate-catalog.ts`. So every `grep` of either TypeScript file returns **nothing, with exit 0**
+— not an error, not a warning, just silence that is indistinguishable from "no match". `file`
+reports them as `data`; `sed`, `node` and `tsc` all read them perfectly.
+
+**No count is given here on purpose**, because the last one went stale: this entry used to say
+"four literal NUL bytes" in `generate-glossary.ts` alone and that it had been fixed at the source.
+Measured 2026-10-03, neither half held — the file still has NULs, `generate-catalog.ts` has one and
+was never named, and `tests/conformance/documents.test.ts` had one that nobody had recorded. Name
+the files and re-measure; do not trust a number in prose:
+`python3 -c "import pathlib,sys; [print(p) for p in pathlib.Path('packages/domain-reference').rglob('*.ts') if p.read_bytes().count(b'\\0')]"`
 
 This is the concrete cause of the class of failure the domain-reference plan warns about —
 "two of my own tamper attempts silently matched nothing, which looks exactly like a working
@@ -1834,9 +1841,15 @@ false green**.
   not the wrapper.
 - `/usr/bin/grep` without `-a` is only half a fix: it prints `binary file matches` and
   suppresses the matching lines.
-- Fixed at the source in that file (escaped as `�`; the runtime string and the generated
-  glossary are byte-identical), but any file can acquire a NUL the same way.
-- No CI job greps that file, so this was local-tooling only — worth checking if one ever does.
+- **The escaping was partial.** This bullet used to say the NULs had been fixed at the source in
+  `generate-glossary.ts` (escaped, with the runtime string and the generated glossary
+  byte-identical). Whatever landed, the file still holds NULs today — so treat "fixed" claims about
+  NULs as needing the re-measure above, not as settled.
+- No CI job greps either generator, so this is local-tooling only — worth checking if one ever does.
+- **`tests/conformance/documents.test.ts` no longer has one.** Its NUL was the `phrase ?? '\0'`
+  never-matching sentinel inside the [SD §4.7.3] disclosure assertion; the cleanup round's A2
+  rewrote that assertion to handle `undefined` explicitly, so plain `grep` works on that file
+  again. Any file can still acquire a NUL the same way.
 
 ## A generator that emits `*emphasis*` breaks its own prettier fixed point
 
@@ -1850,7 +1863,9 @@ file, and the next run of the gate fails on a change nobody made.
   `JSON.stringify(x, null, 2)` not being a fixed point because prettier collapses short arrays.
 - The check is one command and it is worth running before every commit that touches a generator:
   `npx prettier --check docs/domain-reference packages/domain-reference`.
-  (`packages/domain-reference/alloy/run.mjs` fails it on `main` already — pre-existing.)
+  It is clean over both trees with **no exception** as of the cleanup round's A1, which formatted
+  `packages/domain-reference/alloy/run.mjs` — the file that had made the rounds since A7 write
+  "prettier clean except…" in their verification notes.
 
 ## The owed ledger was blind to an owed _vocabulary_ for the model's whole life
 

@@ -63,7 +63,8 @@ cannot say what it means, a file that fails a check every round works around. Th
 | A6, documents & evidence               | `analysis/A6-documents-evidence.md` + `src/rules/documents.ts`               | `a614b016`, PR #725 |
 | ↳ A6 follow-ups                        | `rubric.md` paragraph repair                                                 | `a3b84942`, PR #727 |
 | A7, charges & billing hooks            | `analysis/A7-charges-billing.md` + `src/rules/charges.ts`                    | `c72cfcce`, PR #737 |
-| A9, identity & cross-references        | `analysis/A9-identity-cross-references.md` + `src/rules/identity-schemes.ts` | PR #746             |
+| A9, identity & cross-references        | `analysis/A9-identity-cross-references.md` + `src/rules/identity-schemes.ts` | `5db81c74`, PR #746 |
+| ↳ this round, A1 + A2                  | `alloy/run.mjs` formatted; `tests/conformance/documents.test.ts` rescoped    | this round's PR     |
 
 Repo: `github.com/DolasDev/pegasus`, primary checkout `~/repos/pegasus`. Catalog at `specVersion`
 **0.6.0**.
@@ -99,15 +100,38 @@ fifth round to find its own plan wrong about what was owed, and this plan is wri
 
 ### Group A — mechanical, no judgement needed, fixable today
 
-**A1. `packages/domain-reference/alloy/run.mjs` fails `npx prettier --check`.**
-It has failed on the default branch for at least four rounds. Every round since A7 has verified it
-is pre-existing (`git show main:`, `git diff main --stat`) and worked around it in its own
-verification notes. **One command fixes it**, and it removes a permanent asterisk from every future
-round's "prettier clean except…" sentence. Do this one first; it is five minutes and it makes
-everything after it easier to read.
+> **A1 and A2 are DONE** (`a68038f3`, `a7bad124`). A3 and A4 remain, and §4 item 4 still wants
+> them classified together with B2. The two struck items are kept below with what was found, because
+> both turned out to carry something the plan did not predict.
 
-**A2. The `[SD §4.7.3]` documentation gate passes a half-tamper.**
-`packages/domain-reference/tests/conformance/documents.test.ts:487`:
+**A1. ~~`packages/domain-reference/alloy/run.mjs` fails `npx prettier --check`.~~ DONE, `a68038f3`.**
+Verified still failing on a clean checkout before fixing. `prettier --write`, then `npm run alloy`
+to prove the runner still works (it does — every command matched its expectation). `npx prettier
+--check docs/domain-reference packages/domain-reference` is now clean with **no exception**, which
+is what §5 item 7 already anticipated. The one sentence that had to be edited rather than left
+standing is in `GOTCHAS.md` — the parenthetical telling the next reader that `run.mjs` "fails it on
+`main` already — pre-existing".
+_The entry as the plan wrote it, kept as the record:_ It had failed on the default branch for at
+least four rounds. Every round since A7 verified it was pre-existing (`git show main:`,
+`git diff main --stat`) and worked around it in its own verification notes. One command fixed it,
+and it removes a permanent asterisk from every future round's "prettier clean except…" sentence.
+
+**A2. ~~The `[SD §4.7.3]` documentation gate passes a half-tamper.~~ DONE, `a7bad124`.**
+Reproduced first: renaming `chargeCollection`'s declaring item to `chargeCollectionXX` left all 14
+tests in the file passing. **Five of the sixteen entries were maskable** — `survey`, `weighing`,
+`unpacking`, `documentIssuance`, `chargeCollection` — the other eleven are named once and were never
+at risk. The check is now scoped to each class's **declaration unit**, of which §4.7.3 has **three**
+kinds (a list item of its own; the one disclosure paragraph for the eight prose classes; the leading
+bold run of the act-types paragraph, because the prose after it names `weighing` again), split at
+list-**item** granularity so `[A5 §3.6]`'s three classes cannot hide behind each other. The phrase
+must also appear **exactly once** in its unit, which is what closes masking rather than moving it
+somewhere smaller. Tampered three ways and watched to fail: rename the declaring item (fails,
+passed before), rename both mentions (fails), duplicate the phrase in the unit (fails on
+exactly-once). **Side effect worth knowing:** the file's only NUL byte was the `phrase ?? '\0'`
+sentinel in the old assertion, so removing it un-breaks plain `grep` on that file — see §9.
+_The entry as the plan wrote it, kept as the record_ — note the line reference was already
+drifting and the rewritten gate has moved it again, so find the assertion by name rather than by
+number. `packages/domain-reference/tests/conformance/documents.test.ts`, formerly at line 487:
 
 ```ts
 expect(section.includes(phrase ?? ' '), ...).toBe(true)
@@ -116,9 +140,11 @@ expect(section.includes(phrase ?? ' '), ...).toBe(true)
 `section` is the **whole of `[SD §4.7.3]`**, not the bullet the assertion appears to check. So a
 member named twice in that section survives having one mention renamed, and the gate reports green.
 **Found by [A6 §9], reproduced by [A7 §9] as a deliberate re-test, and never fixed** — three rounds
-have now documented a gate they knew did not bite. Scope the check to the bullet that declares the
-member, then **tamper it both ways**: rename one mention (must fail now, passed before) and rename
-both (must still fail).
+had documented a gate they knew did not bite. The plan's prescription was to scope the check to the
+bullet that declares the member and tamper it both ways. **That was right about the tamper and
+incomplete about the scope:** only six of the sixteen entries have a declaring bullet at all, so the
+fix needed three declaration shapes rather than one, plus an exactly-once rule — see the DONE note
+above.
 
 **A3. The generator annotates the two owed shapes asymmetrically.**
 `tools/generate-catalog.ts:358-359` attaches `x-owed-vocabulary` and `x-owed` to **`OwedCode`** —
@@ -454,11 +480,25 @@ the owed vocabularies, and `[SD §10.4]`'s two bullets.
   is not the same as having a capture**; and **a capture is not the same as a definition** —
   `src:milmove-mymove`'s `serviceOrderNumber` is captured and is a bare nullable string with no
   description. `ls -d docs/domain-reference/sources/*/captured` is the check.
+- **Two things about B1 that were measured on 2026-10-03 and are not in §3 above.** First, the
+  reader §3 B1 tells you to reuse — `scoredAreas` in `tests/conformance/source-registry.test.ts` —
+  **is a local function, not an export**, so "export the one that is already tamper-tested" is a
+  real refactor and belongs in B1's own diff rather than ahead of it. Second, **B1 will flip a
+  currently-passing assertion**: `source-registry.test.ts`'s `[A9 §1]` block gates the sharp
+  instance — that `src:dtr-part-iv` scores A9 while `areas:` does not route A9 to it — and
+  recomputing `areas:` makes that false. The test's own comment anticipates it and says to send the
+  reader to `[A9 §1]` to delete the claim, so **B1 carries a mandatory `[A9 §1]` prose edit**. The
+  plan's 33/54 split was re-measured and is exactly right, including the one `needs-user` entry
+  (`src:pegii-order`) that has a score table and is why the split cannot key on `status:`.
 - **`sources/registry.yaml`'s `areas:` field is a discovery hint, not an inventory** (`[A9 §1]`) —
   **until §3 item B1 is done**. To find which sources bear on an area, read the per-area score rows
   in `sources/*/analysis.md`.
 - **`grep` here is a ugrep wrapper with `-I`, and one NUL byte makes it skip a file silently.**
-  `generate-glossary.ts` and `tests/conformance/documents.test.ts` both hold literal NULs. **When a
+  **both generators** — `generate-glossary.ts` and `generate-catalog.ts` — hold literal NULs, and
+  `tests/conformance/documents.test.ts` did until this round's A2 removed it. The old claim here and
+  in `GOTCHAS.md` named one file, gave a count and said it was fixed; measured 2026-10-03, no part of
+  that held. `GOTCHAS.md` now names the files and carries the one-line re-measure command instead of
+  a number. **When a
   negative grep result is load-bearing, use `/usr/bin/grep -a`.** In `dolas/agents/project/GOTCHAS.md`.
 - **`vitest` does not typecheck.** Run `npm run typecheck` after every test edit — §5 item 17.
 - **The same trap has a `gh` shape.** `mergeQueueEntry` is not a valid `gh pr view --json` field.

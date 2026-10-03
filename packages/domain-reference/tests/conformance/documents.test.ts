@@ -473,20 +473,135 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     chargeCollection: '`chargeCollection`',
   }
 
-  it('names each absent class in §4.7.3, so its absence is not read as an oversight', () => {
+  /**
+   * §4.7.3's DECLARATION UNITS: its paragraphs, and every list item as a unit of its own.
+   *
+   * The item-level split is load-bearing. [A5 §3.6]'s three storage classes share a single list, so
+   * splitting on blank lines alone would let a rename of `stayAllowance` hide behind its two
+   * neighbours — a smaller copy of the masking this gate used to permit over the whole section.
+   */
+  const declarationUnits = (section: string): readonly string[] => {
+    const units: string[] = []
+    let current: string[] = []
+    const flush = (): void => {
+      if (current.length > 0) units.push(current.join('\n'))
+      current = []
+    }
+    for (const line of section.split('\n')) {
+      if (line.trim() === '') flush()
+      else {
+        if (/^\s*- /.test(line)) flush()
+        current.push(line)
+      }
+    }
+    flush()
+    return units
+  }
+
+  /** The two paragraphs that declare classes rather than define them, pinned by their own words. */
+  const DISCLOSURE_PARAGRAPH = 'deliberately absent, so their absence is not read as an oversight'
+  const ACT_TYPES_PARAGRAPH = 'And two act types this document'
+
+  /**
+   * Where §4.7.3 DECLARES each absent class — the mention this gate is about.
+   *
+   * Three shapes, because the section has three. A class with a list item of its own is declared
+   * there; the eight prose classes are declared together in one disclosure paragraph; and
+   * `weighing` and `unpacking` are declared in the LEADING BOLD RUN of their paragraph, which names
+   * them both and is followed by prose that names `weighing` a second time.
+   *
+   * Each entry must appear EXACTLY ONCE in its unit, and that is what closes the hole. The old
+   * check was `section.includes(phrase)` over all 202 lines of §4.7.3, so a class the document
+   * names twice survived having one mention renamed and the gate still reported green — reproduced
+   * on 2026-10-02 by renaming `chargeCollection`'s declaring item to `chargeCollectionXX`, after
+   * which all 14 tests in this file still passed. Five of the sixteen entries were maskable that
+   * way: `survey`, `weighing`, `unpacking`, `documentIssuance` and `chargeCollection`. Found by
+   * [A6 §9], reproduced by [A7 §9] as a deliberate re-test, and left standing by both.
+   *
+   * The narrative paragraphs introducing the item-declared classes name most of them a second time,
+   * and those mentions are deliberately NOT gated: the declaring item is the row standing in for
+   * the §4.7.1 row the model does not carry, and a gate over every mention would fail the next time
+   * an area adds a cross-reference.
+   */
+  const DECLARED_IN: Readonly<Record<string, 'item' | 'disclosure' | 'act-types-lead'>> = {
+    cube: 'disclosure',
+    survey: 'disclosure',
+    estimate: 'disclosure',
+    eta: 'disclosure',
+    sealIntegrity: 'disclosure',
+    tracerResult: 'disclosure',
+    claim: 'disclosure',
+    resourceTareWeight: 'disclosure',
+    weighing: 'act-types-lead',
+    unpacking: 'act-types-lead',
+    stayAuthorisation: 'item',
+    stayAllowance: 'item',
+    stayTermination: 'item',
+    shipmentCommitment: 'item',
+    documentIssuance: 'item',
+    chargeCollection: 'item',
+  }
+
+  const escapeRegExp = (raw: string): string => raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const occurrences = (haystack: string, needle: string): number =>
+    haystack.split(needle).length - 1
+
+  it('declares each absent class in §4.7.3, in the unit that declares it and exactly once', () => {
     const lines = shared.split('\n')
     const start = lines.findIndex((line) => /^#### 4\.7\.3\b/.test(line))
+    expect(start, '[SD §4.7.3] has moved or been renamed').toBeGreaterThan(0)
     const end = lines.findIndex((line, index) => index > start && /^#{1,4} (?!4\.7\.3)/.test(line))
     const section = lines.slice(start, end < 0 ? undefined : end).join('\n')
-    expect(start, '[SD §4.7.3] has moved or been renamed').toBeGreaterThan(0)
+    const units = declarationUnits(section)
+
+    // Stale entries are as much a defect as missing ones: a class that leaves ABSENT_AND_OWED
+    // should not leave a declaration site behind claiming §4.7.3 still owes it a row.
+    expect(
+      Object.keys(DECLARED_IN).filter(
+        (key) => !(ABSENT_AND_OWED as readonly string[]).includes(key),
+      ),
+      'DECLARED_IN names a class that is no longer in ABSENT_AND_OWED',
+    ).toEqual([])
+
+    const paragraph = (anchor: string): string => {
+      const found = units.filter((unit) => unit.includes(anchor))
+      expect(
+        found.length,
+        `[SD §4.7.3] no longer has exactly one paragraph containing "${anchor}"`,
+      ).toBe(1)
+      return found[0] ?? ''
+    }
+    const boldLead = (unit: string): string => /^\*\*([\s\S]*?)\*\*/.exec(unit.trim())?.[1] ?? ''
 
     for (const absent of ABSENT_AND_OWED) {
       const phrase = AS_WRITTEN[absent]
       expect(phrase, `${absent} is in ABSENT_AND_OWED with no §4.7.3 phrase recorded`).toBeDefined()
+      const home = DECLARED_IN[absent]
       expect(
-        section.includes(phrase ?? ' '),
-        `[SD §4.7.3] no longer names "${phrase}" for ABSENT_AND_OWED member ${absent}`,
-      ).toBe(true)
+        home,
+        `${absent} is in ABSENT_AND_OWED with no §4.7.3 declaration site recorded`,
+      ).toBeDefined()
+      if (phrase === undefined || home === undefined) continue
+
+      const item = (): string => {
+        const pattern = new RegExp(`^\\s*- \\*\\*${escapeRegExp(phrase)}\\*\\*`)
+        return units.find((unit) => pattern.test(unit)) ?? ''
+      }
+      const unit =
+        home === 'item'
+          ? item()
+          : home === 'disclosure'
+            ? paragraph(DISCLOSURE_PARAGRAPH)
+            : boldLead(paragraph(ACT_TYPES_PARAGRAPH))
+
+      expect(
+        unit,
+        `[SD §4.7.3] has no ${home} declaration for ABSENT_AND_OWED member ${absent} ("${phrase}")`,
+      ).not.toBe('')
+      expect(
+        occurrences(unit, phrase),
+        `[SD §4.7.3]'s ${home} declaration of ${absent} must name "${phrase}" exactly once`,
+      ).toBe(1)
     }
   })
 })

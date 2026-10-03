@@ -28,7 +28,15 @@
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -60,7 +68,9 @@ function die(message) {
 function requireJava() {
   const probe = spawnSync('java', ['-version'], { encoding: 'utf8' })
   if (probe.error || probe.status !== 0) {
-    die('java not found on PATH. The analyzer needs a JRE (Java 21 is what these specs were run on).')
+    die(
+      'java not found on PATH. The analyzer needs a JRE (Java 21 is what these specs were run on).',
+    )
   }
 }
 
@@ -85,10 +95,12 @@ async function ensureJar() {
 
   console.log(dim(`alloy: fetching the pinned analyzer (${ALLOY_VERSION}) into .tools/ …`))
   const response = await fetch(ALLOY_URL)
-  if (!response.ok) die(`could not download the analyzer: HTTP ${response.status} from ${ALLOY_URL}`)
+  if (!response.ok)
+    die(`could not download the analyzer: HTTP ${response.status} from ${ALLOY_URL}`)
   const bytes = Buffer.from(await response.arrayBuffer())
   const actual = createHash('sha256').update(bytes).digest('hex')
-  if (actual !== ALLOY_SHA256) die(`downloaded analyzer has sha256 ${actual}, expected ${ALLOY_SHA256}`)
+  if (actual !== ALLOY_SHA256)
+    die(`downloaded analyzer has sha256 ${actual}, expected ${ALLOY_SHA256}`)
   mkdirSync(join(here, '.tools'), { recursive: true })
   writeFileSync(jar, bytes)
   return jar
@@ -168,7 +180,9 @@ for (const name of files) {
   for (const command of declared.values()) {
     const observed = results.get(command.name)
     if (!observed) {
-      defects.push(`${name}: the analyzer reported no result for \`${command.name}\`.\n${text.trim()}`)
+      defects.push(
+        `${name}: the analyzer reported no result for \`${command.name}\`.\n${text.trim()}`,
+      )
       continue
     }
     if (command.expect === null) {
@@ -182,7 +196,9 @@ for (const name of files) {
     const ok = observed.verdict === wanted
     const label = `${command.kind} ${command.name}`.padEnd(58)
     if (ok) {
-      console.log(`  ${green('ok')}    ${label} ${dim(`${observed.verdict} (expect ${command.expect})`)}`)
+      console.log(
+        `  ${green('ok')}    ${label} ${dim(`${observed.verdict} (expect ${command.expect})`)}`,
+      )
     } else {
       console.log(`  ${red('FOUND')} ${label} ${red(`${observed.verdict}, expected ${wanted}`)}`)
       findings.push({ file: name, ...command, wanted, got: observed.verdict })
