@@ -231,5 +231,34 @@
     // re-resolves onto it (audit-ci's "Consider not allowlisting advisories" report
     // flags this entry once it is unused).
     "GHSA-86w9-cpqp-85rv",
+
+    // GHSA-vfj7-8cjw-p6xm — braces stack-exhaustion denial of service through deeply nested
+    // patterns (high, CWE-674). Published 2026-09-18 and surfaced in this repo's audit on
+    // 2026-10-03; it ejected #772 from the merge queue and is the only advisory failing the gate.
+    // Reproduced against an unmodified lockfile first, so it is main's and not any PR's.
+    //
+    // Allowlisted because NO PATCHED VERSION EXISTS — the same reason as GHSA-86w9-cpqp-85rv
+    // above, and the second time in three days. The vulnerable range is `<=3.0.3` and 3.0.3 IS the
+    // latest published braces (`npm view braces version`, 2026-10-03); `first_patched_version` is
+    // null. There is no floor for an `overrides` entry to point at. **Check that field before
+    // planning an override** — one `gh api /advisories/<GHSA>` call settles whether a fix is even
+    // possible.
+    //
+    // ONE copy, hoisted to the root at braces@3.0.3, with exactly one direct dependent in the
+    // tree — `micromatch@^3.0.3`. micromatch in turn is reached only by Metro and Jest:
+    //   apps/mobile > expo > @expo/metro-config > @expo/metro > metro-file-map > micromatch
+    //   apps/mobile > react-native > babel-jest > @jest/transform > micromatch
+    //   (plus jest-haste-map and jest-message-util, same Jest tree)
+    // That is the React Native BUNDLER and the TEST RUNNER globbing file paths, at build and test
+    // time. Same exposure shape as the image-size entry below, which is also Metro over our own
+    // committed assets: the glob patterns and paths are repo-controlled, not user-supplied, and no
+    // runtime request path in apps/api or the web apps reaches micromatch or braces at all. A
+    // stack-exhaustion DoS needs a hostile pattern, and nothing hostile reaches a build glob.
+    //
+    // Remove once braces publishes a release the advisory does not cover and micromatch re-resolves
+    // onto it (audit-ci's "Consider not allowlisting advisories" report flags this entry once it is
+    // unused). Note micromatch pins `^3.0.3`, so a 3.0.4 would be picked up by a plain install
+    // while a 4.x would need micromatch to move first.
+    "GHSA-vfj7-8cjw-p6xm",
   ],
 }
