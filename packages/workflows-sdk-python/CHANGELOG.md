@@ -3,6 +3,21 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.43.0
+
+### Added — usage summary and the billable-action contract
+
+- `get_usage_summary(year=None)` (`ReadUsage`) — the tenant's billable automated
+  actions against its plan: `plan`, `pool`, `usedTermToDate`, `remaining`,
+  `overageActions`, a linear `projectedAtTermEnd` (an estimate), and
+  `byMonth` / `byAction` / `byWorkflow`. A read: fixture-served by the offline
+  harness, live under dry-run. API: `GET /api/v1/usage/summary?year=YYYY`.
+- README + MCP guidance: **"What counts as a billable action"** — counted:
+  `send_sms`, `send_email`, `mark_text_message_read`, `close_task`,
+  `deliver_to_external` (partner accepted), mutating `call_external`; free:
+  reads, workflow state, runs, `emit_event`, dry runs, non-2xx responses and
+  idempotent replays (so a retry with the same `dedup_key` is free).
+
 ## 0.42.0
 
 ### Added

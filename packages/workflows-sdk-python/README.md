@@ -911,6 +911,66 @@ and read a slice back with `prefix`. State is any JSON value ≤ 256 KB.
 synthetic result reports `version` 1 for a claim and `expected_version + 1` for a
 compare-and-set, so a claim → set sequence still runs end to end.
 
+### What counts as a billable action
+
+Automation plans buy an **annual pool** of billable actions (Starter 6,000 /
+Growth 15,000 / Scale 50,000 actions per year), pooled across the year so a busy
+June draws on a quiet February. The platform meters every Automation and API
+client the same way.
+
+**A billable action is a successful, first-time mutation that reaches the outside
+world, performed by an Automation or API client.** One each:
+
+| Counts (1 each)                                | SDK call                                                       |
+| ---------------------------------------------- | -------------------------------------------------------------- |
+| Text sent (`SendSms`)                          | `send_sms`                                                     |
+| Email sent (`SendEmail`)                       | `send_email`                                                   |
+| Inbound text marked read (`UpdateTextMessage`) | `mark_text_message_read`                                       |
+| Task closed (`CloseTask`)                      | `close_task`                                                   |
+| Delivery to a partner (`DeliverToExternal`)    | `deliver_to_external` (only when the partner accepted it)      |
+| Mutating partner call (`CallExternal`)         | `call_external` with POST/PUT/PATCH/DELETE, or `mutating=True` |
+
+**Free:**
+
+- every read — orders, tasks, texts, opt-outs, salesmen, projections, configs,
+  `api_get`, and `call_external` with GET (or `mutating=False`)
+- workflow state (`put_workflow_state` ledgers, claims, reservations)
+- Automation runs, schedules and triggers; `emit_event` (internal)
+- dry runs, and any non-2xx response (a failed send, a 409, a partner error)
+- **idempotent replays** — a response with `alreadySent` / `alreadyRead` /
+  `alreadyClosed`, so a retry with the same `dedup_key` costs nothing
+- opt-out records, and anything a **person** does in the web app
+
+Designing cheaply:
+
+- **Always pass a `dedup_key`** to `send_sms` / `send_email`: retried activities
+  and overlapping runs then replay instead of sending (and billing) twice.
+- The meter counts **one per subject** (one text, one message marked read, one
+  task closed), so a retry that slips through without a replay flag still
+  counts once.
+- Prefer reads to writes: checking state first is free; an unnecessary write isn't.
+
+### Checking usage — `get_usage_summary`
+
+Requires `ReadUsage` (granted to the Automation runtime; on the web it is the
+tenant admin's Settings → Developer → Usage page).
+
+```python
+s = client.get_usage_summary()          # the term in effect today
+s["plan"]            # {"planCode": "SCALE", "name": "Scale", "annualPoolActions": 50000, …} or None
+s["pool"], s["usedTermToDate"], s["remaining"], s["overageActions"]
+s["projectedAtTermEnd"]   # linear ESTIMATE for the term; None once the term is over
+s["byMonth"]         # [{"month": "2026-10", "actions": 412}, …] — every month of the term
+s["byAction"]        # [{"action": "SendSms", "actions": 380}, …]
+s["byWorkflow"]      # [{"workflowId": …, "workflowName": "nw_pulse_texting", "actions": 390}, …]
+
+client.get_usage_summary(year=2026)     # the term that started in 2026
+```
+
+With no plan assigned, `plan` and `pool` are `None` and the window is the calendar
+year. It is a read: served from fixtures by the offline test harness, live under
+dry-run. API: `GET /api/v1/usage/summary?year=YYYY`.
+
 ### Reading operational entities (inside an Automation)
 
 A running Automation authenticates with its `workflow_runtime` service-account key
