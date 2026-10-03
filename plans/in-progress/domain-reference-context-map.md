@@ -18,6 +18,100 @@ not go looking for an archived copy of a superseded plan.
 paid down what those rounds found and did not fix.** What is left is synthesis, the command side, and
 the items blocked on the user.
 
+> **If you are picking up this effort cold, read §0 first.** It is where the model actually stands,
+> measured rather than recalled, and it lists what is **closable on effort alone** — because the
+> context map in §1 is the _planned_ next round and not the only thing available. §0 exists so the
+> choice is informed; nothing in it has to be re-derived.
+
+---
+
+## 0. Where the model actually stands — measured 2026-10-03, and how to re-measure
+
+**Every number here comes from a generated artifact or a command**, named beside it, because
+`[A1 §9]`'s rule applies to this plan too. Re-measure rather than trusting this section if it is old.
+
+### Coverage
+
+| What                      | State                                         | Where it comes from                              |
+| ------------------------- | --------------------------------------------- | ------------------------------------------------ |
+| `v1 detail` areas written | **9 of 9** (A1–A9)                            | `docs/domain-reference/analysis/A*.md`           |
+| A10–A13                   | **context-map-only by design** — not gaps     | `rubric.md`'s status column, which says so twice |
+| Published record types    | **33**                                        | `catalog/index.json` → `members`                 |
+| Catalog `specVersion`     | **0.6.1**                                     | `src/catalog.ts` → `CATALOG_VERSION`             |
+| Corpus sources analysed   | **33 of 87** (19 more deliberately `skipped`) | `ls docs/domain-reference/sources/*/analysis.md` |
+| Rounds landed             | **11**                                        | `ls plans/completed/ \| grep domain-reference`   |
+
+A3 has an area document but **no round record of its own** — it was written inside the
+research-corpus round (`34713637`), which is why `plans/completed/` has no `domain-reference-a3`.
+That is not a gap.
+
+### What the model declares owed — and it is NOT a backlog
+
+`catalog/index.json`'s `owed.counts`, which is generated from `src/` and cannot go stale:
+
+|                                                                 |                                                        |
+| --------------------------------------------------------------- | ------------------------------------------------------ |
+| Declared owed values                                            | **18**                                                 |
+| Owed code vocabularies                                          | **3** — `roleClass`, `unitOfMeasure`, `identityScheme` |
+| Record types whose authority row is owed                        | **14 of 31**                                           |
+| Fact classes named in the corpus and absent from the vocabulary | **16**                                                 |
+| Fact-class families the synthesis could not make                | **2**                                                  |
+| `[SD §10.4]` explicitly-unsettled items still open              | **2 of 5**                                             |
+
+> **Read this list the way §1 of the cleanup plan said to read it, because the distinction is the
+> whole thing.** These are **not** to-do items. They are carried deliberately under `[SD §0]`
+> because the corpus does not settle them, and most are blocked on **evidence that may not exist**
+> rather than on effort. The clearest case is `identityScheme`: `[A9 §3.2]` read its sources and
+> **refused to publish the vocabulary on the evidence** — five publishers ship an escape hatch
+> beside a closed list and two warn against relying on it. That is a decision, and a round that
+> reverses it must overturn an argument first. **Scoring "percent complete" against this inventory
+> counts a refusal as a gap.**
+>
+> The wire now says which is which: every owed vocabulary carries `x-owed-state`
+> (`pending` | `refusedOnEvidence`) and `x-owed-why`, and the glossary's Owed page groups them.
+
+**Of the 14 owed authority rows** — the glossary's own breakdown, read it there for the current
+split: **9 are blocked on the corpus** (no external source binds a plan change, a membership offer
+or an assignment to an asserting role, and `[SD §4.7]` note 3 bars inventing one), **2 are owed to
+A8 itself** (`partyRole`, `notification`), and **3 are the order lifecycle** — of which two are
+blocked only on a missing `[A8 §4.3]` `boundBy` member, which `[A1 §Cross-area]` says A8 can take
+today.
+
+### What is closable on EFFORT ALONE — the short list, cheapest first
+
+**This is the part worth having before choosing a round.** Everything else in the owed inventory is
+waiting on evidence; these are not.
+
+1. **`documentIssuance`** — the cheapest owed row in the model. `[A8 §5]` row 10's
+   `boundBy = SCHEME` **already determines its holder**, so a row in `[SD §4.7.1]` and a row in
+   `[A8 §5]` are _all_ that is owed, with nothing owed underneath either. `[A6 §3.3]` has the
+   sourcing. **The only entry in `[SD §4.7.3]` whose blocker is minting alone.**
+2. **`orderResponse` and `orderCancellation`'s authority rows** — blocked on one new `boundBy`
+   member meaning _the role resolved by the order's own award_. `[A1 §Cross-area]` shows the corpus
+   names a party on every order transition; `[A2 §3.6]`'s `shipmentCommitment` is a **fourth** thing
+   waiting on the same member, so closing it discharges more than these two.
+3. **`roleClass`** — **pending, not refused**: its sources exist and are unread
+   (`src:uncefact-mmt-rdm` ships a 605-value `PartyRoleCode` list as a bare enumeration with no
+   names). Reading them is work, not a decision to overturn.
+4. **`src:nmfta-scac`** — a **fetch**, not a modelling question, and §5 carries it as a user ask.
+   The issuing authority for SCAC, the corpus's widest-witnessed identity scheme, which six sources
+   use and none defines.
+5. **The context map** (§1) — synthesis over work already done. No new evidence needed, which is
+   also why §1 warns it can restate the area documents and call that a deliverable.
+6. **The command side and the aggregate lifecycles** — **not started at all.** The largest remaining
+   piece and the least specified; it would need its own research pass before a plan.
+
+### How to re-measure all of it
+
+```
+python3 -c "import json;d=json.load(open('docs/domain-reference/catalog/index.json'));print(d['owed']['counts'])"
+ls docs/domain-reference/sources/*/analysis.md | wc -l      # analysed sources
+grep -c '^- id:' docs/domain-reference/sources/registry.yaml # registry entries
+```
+
+The glossary's **Owed** section is the human-readable version and is generated from `src/`, so it is
+the thing to read rather than any prose summary — including this one.
+
 ---
 
 ## 1. What this round is — carried forward unchanged from the cleanup round's §8
@@ -346,8 +440,9 @@ archived to `plans/completed/<slug>.md` **before** opening it.
 
 **Read before writing anything:**
 
-1. **§1 of this file**, and then `rubric.md` — the term "context map" does two jobs there and
-   conflating them will produce neither.
+1. **§0 of this file** — where the model stands and what is closable on effort alone, so the
+   choice of round is informed. Then **§1**, and then `rubric.md` — the term "context map" does two
+   jobs there and conflating them will produce neither.
 2. `plans/completed/domain-reference-cleanup.md` — the round that just landed, its four
    plan-was-wrong findings, and its transferable lessons.
 3. `plans/completed/domain-reference-a9-identity.md` — the last area round, and the source of §1's
