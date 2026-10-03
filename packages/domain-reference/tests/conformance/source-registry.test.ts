@@ -28,104 +28,44 @@
  * the part that must stay true: **every source A9 cites carries a scored A9 row**, so no row of
  * `data/identity-schemes.json` rests on a source that was never scored for this area.
  */
-import { readFileSync, readdirSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
 import { loadIdentitySchemes } from '../../src/index'
+import {
+  SOURCES_DIR,
+  analysedSources,
+  c6ShareByArea,
+  hasScoreTable,
+  registryAreas,
+  registryIds,
+  registryRole,
+  registryText,
+  scoredAreas,
+} from '../../tools/source-registry'
 
 import identitySchemes from '../../data/identity-schemes.json'
 
-const sourcesDir = fileURLToPath(
-  new URL('../../../../docs/domain-reference/sources/', import.meta.url),
-)
-const registry = readFileSync(`${sourcesDir}registry.yaml`, 'utf8')
+const registry = registryText()
+const analysed = analysedSources()
 
 const table = loadIdentitySchemes(identitySchemes)
 const cited = [
   ...new Set([...table.rows.values()].flatMap((row) => row.witnesses.map((w) => w.source))),
 ].sort()
 
-/** Every source id that has an `analysis.md`. */
-const analysed = new Set(
-  readdirSync(sourcesDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((name) => {
-      try {
-        readFileSync(`${sourcesDir}${name}/analysis.md`, 'utf8')
-        return true
-      } catch {
-        return false
-      }
-    }),
-)
+/** The two halves of the registry — B1's split, on the presence of a score table and never on `status:`. */
+const ids = registryIds(registry)
+const generatedHalf = ids.filter((id) => hasScoreTable(id))
+const handWrittenHalf = ids.filter((id) => !hasScoreTable(id))
 
-/** A scored row: an area label followed by eight criterion cells, at least one non-zero. */
-const SCORE_ROW =
-  /^\|\s*(?:\*\*)?(A\d+)(?:\*\*)?[^|]*\|((?:\s*(?:\*\*)?(?:[0-3]|n\/a|n-a|N\/A)(?:\*\*)?\s*\|){8})/gm
+/** The rubric's thirteen areas. A hint may point at any of them and at nothing else. */
+const RUBRIC_AREAS = Array.from({ length: 13 }, (_, index) => `A${String(index + 1)}`)
 
-function scoredAreas(sourceId: string): ReadonlySet<string> {
-  const text = readFileSync(`${sourcesDir}${sourceId}/analysis.md`, 'utf8')
-  const areas = new Set<string>()
-  for (const match of text.matchAll(SCORE_ROW)) {
-    const [, area, scores] = match
-    if (area === undefined || scores === undefined) continue
-    const cells = scores
-      .split('|')
-      .slice(0, -1)
-      .map((cell) => cell.trim().replace(/\*\*/g, ''))
-    if (cells.some((cell) => /^[1-3]$/.test(cell))) areas.add(area)
-  }
-  return areas
-}
-
-/**
- * For each area, the share of scored rows across the whole corpus that give it `C6 = 3`.
- *
- * `C6` is _"Identity & references"_ — A9's own criterion — and [A9 §2.1] leans on its distribution:
- * the area is over-covered on **mechanism** and thin on **terms**, which is the whole argument for
- * [A9 §4]'s weighting and half the argument for [A9 §3.2]. The number is computed rather than
- * written into the document, per [A1 §9].
- */
-function c6ShareByArea(): ReadonlyMap<string, number> {
-  const rows = new Map<string, number>()
-  const threes = new Map<string, number>()
-  for (const source of analysed) {
-    const text = readFileSync(`${sourcesDir}${source}/analysis.md`, 'utf8')
-    for (const match of text.matchAll(SCORE_ROW)) {
-      const [, area, scores] = match
-      if (area === undefined || scores === undefined) continue
-      const cells = scores
-        .split('|')
-        .slice(0, -1)
-        .map((cell) => cell.trim().replace(/\*\*/g, ''))
-      rows.set(area, (rows.get(area) ?? 0) + 1)
-      if (cells[5] === '3') threes.set(area, (threes.get(area) ?? 0) + 1)
-    }
-  }
-  return new Map([...rows].map(([area, n]) => [area, (threes.get(area) ?? 0) / n]))
-}
-
-/** One registry entry's body, from its `- id:` line to the next. */
-function registryEntry(sourceId: string): string {
-  const after = registry.split(`\n- id: ${sourceId}\n`)[1]
-  if (after === undefined) throw new Error(`no registry entry for ${sourceId}`)
-  return after.split('\n- id: ')[0] ?? after
-}
-
-/** The `areas:` list of one registry entry, as the registry states it. */
-function registryAreas(sourceId: string): ReadonlySet<string> {
-  const line = /\n {2}areas: *([^\n]*)/.exec(registryEntry(sourceId))
-  return new Set(line?.[1]?.match(/A\d+/g) ?? [])
-}
-
-/** `role:` as the registry states it; an absent role means the default, which is model evidence. */
-function registryRole(sourceId: string): string {
-  const line = /\n {2}role: *([^\n#]*)/.exec(registryEntry(sourceId))
-  return line?.[1]?.trim() ?? 'model-evidence'
-}
+/** A1 < A2 < … < A13, so a failure's diff reads in rubric order rather than lexically. */
+const byAreaNumber = (left: string, right: string): number =>
+  Number(left.slice(1)) - Number(right.slice(1))
 
 describe("[A9 §1] every source A9's table cites is external and is scored for A9", () => {
   it('cites exactly these sources', () => {
@@ -168,14 +108,19 @@ describe("[A9 §1] every source A9's table cites is external and is scored for A
 })
 
 describe('[A9 §1] `areas:` is a prompt, not an inventory', () => {
-  it('src:dtr-part-iv scores A9 and the registry does not route A9 to it', () => {
-    // The sharp instance, gated because the prose leans on it: the source whose own analysis calls
-    // A9 "The strongest area" is not discoverable as an A9 source through `areas:`. If a later
-    // curation pass fixes the registry, this fails and sends the reader to [A9 §1] to delete the
-    // claim rather than leaving it standing unsupported.
+  it('src:dtr-part-iv scores A9 and the registry NOW routes A9 to it — B1', () => {
+    // **This assertion is inverted from the one A9 shipped**, and the inversion is the deliverable.
+    // A9 gated the sharp instance of its finding: the source whose own analysis calls A9 "The
+    // strongest area" was not discoverable as an A9 source through `areas:`. Its comment said that
+    // if a later curation pass fixed the registry this should fail and send the reader to [A9 §1]
+    // to amend the claim. B1 is that pass, the test failed exactly as predicted, and [A9 §1] is
+    // amended rather than left standing.
+    //
+    // Kept rather than deleted, because the same source is still the sharpest case — now of the
+    // gate working.
     expect(scoredAreas('dtr-part-iv').has('A9')).toBe(true)
-    expect(registryAreas('dtr-part-iv').has('A9')).toBe(false)
-    expect(readFileSync(`${sourcesDir}dtr-part-iv/analysis.md`, 'utf8')).toContain(
+    expect(registryAreas('dtr-part-iv').has('A9')).toBe(true)
+    expect(readFileSync(`${SOURCES_DIR}dtr-part-iv/analysis.md`, 'utf8')).toContain(
       'The strongest area',
     )
   })
@@ -197,9 +142,82 @@ describe('[A9 §1] `areas:` is a prompt, not an inventory', () => {
     ).toBeGreaterThan(runnerUp * 1.5)
   })
 
-  it('the registry header says `areas:` is a discovery artefact', () => {
-    // The documentation half of the finding, and the only edit A9 makes to the registry: the
-    // schema comment now says what the field is, so the next reader does not have to measure it.
-    expect(registry).toContain('`areas` is a DISCOVERY hint, not an')
+  it('the registry header says which half of `areas:` is which — B1', () => {
+    // A9's comment said `areas` is a discovery hint, full stop. After B1 that is true of the
+    // hand-written half and false of the generated half, and a comment that does not say so is the
+    // same defect one turn later — the plan's words. The comment must name the rule rather than a
+    // count, so what is gated is the rule's text.
+    expect(registry).toContain('GENERATED for any source whose sources/<id>/analysis.md has a')
+    expect(registry).toContain('a DISCOVERY hint for every other entry')
+  })
+})
+
+describe('[B1] `areas:` is generated for the scored half and hand-written for the rest', () => {
+  /**
+   * The hybrid, and why it is a hybrid.
+   *
+   * Only the sources with a score table can have `areas:` generated. For the rest it is the **only**
+   * signal there is — a hand-written discovery hint from the 2026-09-11 research passes — and
+   * regenerating it would delete real information rather than correct it. So the gate holds the two
+   * halves to different rules, and the registry's schema comment says which is which.
+   *
+   * Every mismatch is **named**, never counted ([A1 §9], [A9]'s C6-density gate): one `it` per
+   * source, so a failure names the entry in its own title rather than in a total.
+   */
+  it('splits the registry into a generated half and a hand-written half', () => {
+    // Not a count of either half — a statement that both exist and are disjoint, which is what the
+    // two rules below depend on. A count here would fail the day a source is analysed, which is the
+    // outcome the whole field exists to encourage.
+    expect(generatedHalf.length, 'no source has a score table').toBeGreaterThan(0)
+    expect(handWrittenHalf.length, 'every source has a score table').toBeGreaterThan(0)
+    expect(generatedHalf.length + handWrittenHalf.length).toBe(ids.length)
+    expect(generatedHalf.filter((id) => handWrittenHalf.includes(id))).toEqual([])
+  })
+
+  describe('the generated half — `areas:` is exactly the areas scored non-zero', () => {
+    it.each(generatedHalf)('%s', (sourceId) => {
+      const scored = [...scoredAreas(sourceId)].sort(byAreaNumber)
+      const declared = [...registryAreas(sourceId, registry)].sort(byAreaNumber)
+      expect(
+        declared,
+        `src:${sourceId} has a score table, so its \`areas:\` is generated: exactly the areas it ` +
+          'scores non-zero, nothing else. Regenerate it by hand from the score rows — an area with ' +
+          'no row, or a row scored 0/n-a throughout, is not evidence the source informs it.',
+      ).toEqual(scored)
+    })
+  })
+
+  describe('the hand-written half — a discovery hint, so it must still BE one', () => {
+    /**
+     * **What this does not assert, and why the obvious assertion would be worthless.**
+     *
+     * The first draft of this block asserted that each hand-written entry has no scored rows. That
+     * is a **tautology**: `handWrittenHalf` is filtered on exactly that predicate, so the assertion
+     * restates its own filter and can never fail. It was written to catch "the day the split moves"
+     * and it cannot — found by tampering, which is the only way a tautology ever is ([A2 §9]'s
+     * finding, that an assertion can be live and still unfailable).
+     *
+     * **The split moving is already caught**, one block up: a source that acquires a score table
+     * joins the generated half immediately, and its hand-written `areas:` then fails that rule by
+     * name until somebody regenerates it. Verified by giving an unscored source a score table — the
+     * failure named it and pointed at the score rows.
+     *
+     * So what is left to check here is what the field must be for an entry with no analysis behind
+     * it: a hint that exists and points somewhere real. Both are properties of the data rather than
+     * of the filter.
+     */
+    it.each(handWrittenHalf)('%s', (sourceId) => {
+      const declared = [...registryAreas(sourceId, registry)]
+      // An EMPTY hint is legitimate and is not asserted against: `src:fidi-mmsa` and
+      // `src:generic-low-relevance` are `status: skipped` and `src:inbox-notes` is raw user leads,
+      // and for those "routes nowhere" is true information rather than a gap. The first draft of
+      // this assertion required a non-empty list and named exactly those three — a gate that fires
+      // on correct data is a gate people delete.
+      expect(
+        declared.filter((area) => !RUBRIC_AREAS.includes(area)),
+        `src:${sourceId} routes to an area id the rubric does not have. A hint pointing nowhere is ` +
+          'worse than none, because it reads as routing.',
+      ).toEqual([])
+    })
   })
 })

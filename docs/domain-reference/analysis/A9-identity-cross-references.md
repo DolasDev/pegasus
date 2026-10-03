@@ -79,6 +79,30 @@ So A9 makes **one** edit to the registry — a sentence in the schema comment sa
 is — and fixes no entry, because repairing fourteen of a hundred-odd pairs would make the field look
 like an inventory precisely where it is not one.
 
+> **AMENDED by the cleanup round's B1, which is the curation this finding recommended.** Everything
+> above was true when it was written and half of it is now false, so it is amended rather than left
+> standing — which is what this document's own tamper list (§9.2 item 8) said must happen on the day
+> the registry was curated.
+>
+> The user's decision was **recompute and gate**, and it turned out to be a **hybrid**: only the
+> sources that have a score table can have `areas:` generated from one. For those it is now exactly
+> the areas their analysis scores non-zero, held per source by a conformance test that names any
+> entry that drifts. For every other entry — the ones with no analysis to generate from — `areas:`
+> stays the hand-written discovery hint this finding describes, because it is the only signal there
+> is for them and regenerating it would delete information rather than correct it. The registry's
+> schema comment now states both rules and says the split is on the presence of a score table and
+> never on `status:`.
+>
+> **Two things B1 measured that change how this finding reads.** First, the mismatch was not
+> partial: **every** source with a score table had at least one area it scored and did not declare,
+> so "fourteen" above was A9's instinct about its own area rather than the size of the gap. Second,
+> the field did not only under-claim — several entries **declared areas their analyses never scored
+> at all**, `src:atlas-world-group-api` naming three such areas with no rows behind them. A field
+> that was wrong in both directions is a stronger argument for generating it than this finding knew.
+>
+> Still not written here: the sizes. [A1 §9]'s rule holds, and B1's gate **enumerates per source**
+> rather than counting, so a number in this paragraph would be the one thing nothing checks.
+
 > **The count is measured and deliberately not written into this document.** [A1 §9]'s rule is that
 > a count in prose is gated or deleted, and a gate over this one would fail the day somebody curates
 > the registry — which is the outcome this finding recommends. `tests/conformance/source-registry.test.ts`
@@ -665,6 +689,10 @@ covering two schemes with different authorities — is the half a reader will no
 One edit, to the schema comment: `areas:` is a discovery hint written before any source was
 analysed, not an inventory of which areas a source scores. §1.2 finding 3. **No entry is changed.**
 
+**Superseded by the cleanup round's B1**, which changed the `areas:` of every source that has a
+score table and rewrote the schema comment to state one rule per half. A9's sentence is kept above
+as the record of what the field was when this round read it; §1.2 finding 3 carries the amendment.
+
 ---
 
 ## 6. What A9 leaves owed
@@ -781,7 +809,9 @@ Each restored afterwards.
    finding 3's one edit cannot be reverted silently.
 8. **`dtr-part-iv` given `A9` in its `areas:`** → the sharp-instance assertion fails, which is
    intended: the day the registry is curated, this document's claim must be re-read rather than left
-   standing.
+   standing. **This happened** — the cleanup round's B1 is that curation, the assertion failed
+   exactly as designed, and §1.2 finding 3 is amended. The assertion is **inverted rather than
+   deleted**: the same source is still the sharpest case, now of the gate working.
 9. **The `C6` column index swapped for `C4`'s in `c6ShareByArea`** → §2.1's margin assertion fails.
    Worth doing because that gate reads a **position** in a table it does not own, and a gate that
    silently reads the wrong column is [A6 §9]'s half-tamper finding in a new place.
