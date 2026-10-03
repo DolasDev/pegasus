@@ -587,6 +587,7 @@
       "newClosedEnumMember",
       "publishedOwedVocabulary",
       "publishedOwedShape",
+      "repointedOwedOwner",
       "newOptionalPayloadField",
       "newContextMemberKind"
     ],

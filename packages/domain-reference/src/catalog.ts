@@ -356,6 +356,24 @@ export const ADDITIVE_CHANGES = [
    */
   'publishedOwedShape',
   /**
+   * Correcting the **owner** of a value that stays owed — A7's change to `chargeValue`'s `owedTo`,
+   * re-pointed from A11 (a claims area) to `A7 / A12` ([A7 §6]).
+   *
+   * The third and **weakest** use of the argument the two members above rest on, and weakest
+   * because it resolves nothing: those each closed a gap, while this corrects a gap's **label** and
+   * leaves the gap open. `owedTo` is rendered as a `const` on both faces, so amending it changes a
+   * published constraint — but the value it constrains carries **no domain content**. It is the
+   * model's bookkeeping about its own incompleteness, and its sibling `provisional` is documented
+   * "never normative".
+   *
+   * **This member was documented by [catalog §2.3] and used by [catalog §2.4]'s `0.6.0` row for a
+   * whole release before it was declared here** — the array published seven classes while the
+   * document documented eight, and the glossary, which reads this array, omitted it entirely. The
+   * cleanup round found it while gating [catalog §2.3.1]. A conformance test now holds the two in
+   * agreement in both directions, which is what nothing did before.
+   */
+  'repointedOwedOwner',
+  /**
    * A new **optional** payload field. No record that validated stops validating, and [SD §1.1]'s
    * payload row — "typed per `type`", "per type" — already leaves the per-type shape to [SD §4.7]'s
    * declaration rather than to the envelope. **[SYNTHESIS]**.

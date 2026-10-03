@@ -652,6 +652,66 @@ describe('the decision document and the code agree on the counts', () => {
   )
 
   /**
+   * §2.3's two tables and the two arrays must name the **same sets**, in both directions.
+   *
+   * This is the gate [catalog §2.3.1]'s round deferred because it could not pass: `repointedOwedOwner`
+   * was documented in §2.3's Additive table and used by §2.4's `0.6.0` row while never being a member
+   * of `ADDITIVE_CHANGES`, so the array published seven classes where the document documented eight
+   * — and the glossary, which reads the array, omitted the class entirely. Declaring it is what makes
+   * this assertion possible, and this assertion is what stops the next one drifting.
+   *
+   * Every row names its class explicitly for exactly this reason; five of the eight additive rows
+   * described a change without naming it until the cleanup round added the names.
+   */
+  it('names the same change classes in §2.3 as the code declares, both ways', () => {
+    // Each table is bounded explicitly at both ends. A helper that guessed where one stopped would
+    // silently widen the moment a section was inserted between them — which is exactly what
+    // §2.3.1 now is.
+    const named = (from: string, to: string): ReadonlySet<string> => {
+      const start = text.indexOf(from)
+      const end = text.indexOf(to)
+      expect(start, `[catalog §2.3] no longer contains "${from}"`).toBeGreaterThan(0)
+      expect(end, `[catalog §2.3] no longer contains "${to}"`).toBeGreaterThan(start)
+      // The class is the last code span in the "Change" cell, so it is the one before a `|`.
+      const table = text.slice(start, end)
+      return new Set([...table.matchAll(/`([a-z][A-Za-z]+)`\s*\|/g)].map((m) => m[1] ?? ''))
+    }
+
+    const documentedAdditive = named('**Additive**', '**Breaking**')
+    const documentedBreaking = named('**Breaking**', '#### 2.3.1')
+
+    for (const klass of ADDITIVE_CHANGES) {
+      expect(
+        documentedAdditive.has(klass),
+        `ADDITIVE_CHANGES declares "${klass}" and [catalog §2.3]'s Additive table does not name ` +
+          'it. Every row names its class in a trailing code span so this can be checked.',
+      ).toBe(true)
+    }
+    for (const klass of BREAKING_CHANGES) {
+      expect(
+        documentedBreaking.has(klass),
+        `BREAKING_CHANGES declares "${klass}" and [catalog §2.3]'s Breaking table does not name it.`,
+      ).toBe(true)
+    }
+    const declaredAdditive = new Set<string>(ADDITIVE_CHANGES)
+    for (const klass of documentedAdditive) {
+      expect(
+        declaredAdditive.has(klass),
+        `[catalog §2.3]'s Additive table names "${klass}" and ADDITIVE_CHANGES does not declare ` +
+          'it. This is the direction that went unnoticed for a release — a documented class the ' +
+          'array never published, so the glossary omitted it too.',
+      ).toBe(true)
+    }
+    const declaredBreaking = new Set<string>(BREAKING_CHANGES)
+    for (const klass of documentedBreaking) {
+      expect(
+        declaredBreaking.has(klass),
+        `[catalog §2.3]'s Breaking table names "${klass}" and BREAKING_CHANGES does not declare it.`,
+      ).toBe(true)
+    }
+  })
+
+  /**
    * [catalog §2.3.1] is adopted on the strength of a comparison, not a count: **every bump already
    * published spent the minor slot on an ADDITIVE change**, so reassigning the minor slot to
    * breaking changes mislabels no released version. That sentence is the whole argument for

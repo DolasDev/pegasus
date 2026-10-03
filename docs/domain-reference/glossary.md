@@ -33,7 +33,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Catalog faces](#catalog-faces-2) — 2
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
-- [Compatibility change classes](#compatibility-change-classes-13) — 13
+- [Compatibility change classes](#compatibility-change-classes-14) — 14
 - [Key functions and rules](#key-functions-and-rules-30) — 30
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
@@ -1856,7 +1856,7 @@ cross-type payload filter would be filtering on a field that only some records c
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
-## Compatibility change classes (13)
+## Compatibility change classes (14)
 
 What may change within a major `specVersion` and what may not ([catalog §2.3]). **[SYNTHESIS]**: the classification is ours and each member is a consequence of a sourced rule that it names. `src:dcsa` publishes the _practice_ — per-release changelogs down to a renamed filter — but no source in the corpus publishes the rule.
 
@@ -1969,6 +1969,14 @@ Removing or renaming a `type`. It is a component of the fact key ([SD §1.3] ite
 
 - **Cited:** [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class)
 - **Declared by:** `BREAKING_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `repointedOwedOwner` (change class)
+
+Correcting the **owner** of a value that stays owed — A7's change to `chargeValue`'s `owedTo`,
+re-pointed from A11 (a claims area) to `A7 / A12` ([A7 §6]).
+
+- **Cited:** [[A7 §6]](analysis/A7-charges-billing.md) · [[catalog §2.3.1]](analysis/published-event-catalog.md#231-what-a-breaking-change-costs-while-the-catalog-is-pre-10) · [[catalog §2.3]](analysis/published-event-catalog.md#23-additive-breaking-and-what-a-consumer-may-rely-on) · [[catalog §2.4]](analysis/published-event-catalog.md#24-the-version-this-catalog-is-published-at)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
 ## Key functions and rules (30)
 
@@ -2544,6 +2552,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`reinterpretedMember`](#reinterpretedmember-change-class) — change class
 - [`remarkText`](#remarktext-refused-filter-axis) — refused filter axis
 - [`removedOrRenamedRecordType`](#removedorrenamedrecordtype-change-class) — change class
+- [`repointedOwedOwner`](#repointedowedowner-change-class) — change class
 - [`resource`](#resource-aggregate) — aggregate
 - [`rr19Agent`](#rr19agent-role-name) — role name
 - [`setoffAgent`](#setoffagent-role-name) — role name
