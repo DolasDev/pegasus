@@ -103,12 +103,14 @@ export async function buildUsageSummary(
   }))
 
   const ids = byWorkflowRaw.flatMap((w) => (w.workflowId ? [w.workflowId] : []))
+  // Workflow is NOT tenant-scoped, and workflowId comes from a client name a
+  // tenant admin can set, so only resolve names the tenant may already see.
   const names = new Map(
     ids.length === 0
       ? []
       : (
           await db.workflow.findMany({
-            where: { id: { in: ids } },
+            where: { id: { in: ids }, OR: [{ tenantId }, { visibility: 'GLOBAL' }] },
             select: { id: true, name: true },
           })
         ).map((w) => [w.id, w.name]),
