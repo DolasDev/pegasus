@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
-import type { AppEnv } from '../types'
+import type { AppEnv, ApiClientContext } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { seedPrincipal } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
@@ -59,6 +59,12 @@ vi.mock('../middleware/dual-auth', () => ({
     await next()
   }),
 }))
+const mockUsageRecord = vi.hoisted(() => vi.fn())
+vi.mock('../repositories/usage.repository', () => ({
+  createUsageRepository: vi.fn(() => ({ record: mockUsageRecord })),
+}))
+const mockMeterFailed = vi.hoisted(() => vi.fn())
+vi.mock('../lib/usage/meter-metrics', () => ({ emitMeterWriteFailed: mockMeterFailed }))
 
 import { integrationCallHandler, resolveOutboundUrl } from './integration-call'
 
@@ -665,5 +671,63 @@ describe('resolveOutboundUrl', () => {
     expect(resolveOutboundUrl('https://h.example.com', '/q', { a: 1, b: 'x' })).toBe(
       'https://h.example.com/q?a=1&b=x',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Usage meter wiring. CallExternal is the one metered route whose meter reads
+// the REQUEST body (method + mutating) after the validator consumed it — so
+// prove on the real route that the re-read works. A failure here would be
+// silent in prod (the meter is non-fatal): every partner write unbilled.
+// ---------------------------------------------------------------------------
+
+describe('usage meter on call-external', () => {
+  function buildMeteredApp() {
+    const app = new Hono<AppEnv>()
+    registerTestErrorHandler(app)
+    app.use('*', seedPrincipal({ roleNames: ['workflow_runtime'] }))
+    app.use('*', async (c, next) => {
+      c.set('db', {} as unknown as PrismaClient)
+      c.set('tenantId', 'test-tenant-id')
+      c.set('apiClient', { id: 'client-rt', name: 'wf-runtime-wf-1' } as ApiClientContext)
+      await next()
+    })
+    app.route('/', integrationCallHandler)
+    return app
+  }
+
+  beforeEach(() => mockUsageRecord.mockResolvedValue(true))
+
+  it('a mutating call the partner accepted records one CallExternal', async () => {
+    const res = await buildMeteredApp().request(
+      ROUTE,
+      post({ method: 'POST', path: '/orders', body: { a: 1 } }),
+    )
+    expect(res.status).toBe(200)
+    expect(mockMeterFailed).not.toHaveBeenCalled()
+    expect(mockUsageRecord).toHaveBeenCalledOnce()
+    expect(mockUsageRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'CallExternal',
+        subjectKey: expect.stringMatching(/^call:/),
+        workflowId: 'wf-1',
+      }),
+    )
+  })
+
+  it('a GET is a read and records nothing', async () => {
+    const res = await buildMeteredApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    expect(res.status).toBe(200)
+    expect(mockMeterFailed).not.toHaveBeenCalled()
+    expect(mockUsageRecord).not.toHaveBeenCalled()
+  })
+
+  it('a mutating call the PARTNER rejected (200 envelope, ok:false) records nothing', async () => {
+    mockFetch.mockImplementation(async (url: string) =>
+      isTokenUrl(url) ? tokenRes() : callRes(500, { error: 'down' }),
+    )
+    const res = await buildMeteredApp().request(ROUTE, post({ method: 'POST', path: '/orders' }))
+    expect(res.status).toBe(200)
+    expect(mockUsageRecord).not.toHaveBeenCalled()
   })
 })
