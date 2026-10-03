@@ -25,6 +25,8 @@
  * test, and nothing in `src/` depends on it.
  */
 import { readFileSync } from 'node:fs'
+
+import owedVocabularies from '../../data/owed-vocabularies.json'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -53,6 +55,7 @@ import {
   tripId,
   type CapturedAssertion,
   type QueriedAssertion,
+  loadOwedVocabularies,
 } from '../../src/index'
 import {
   CATALOG_COMMAND,
@@ -390,6 +393,67 @@ describe('the emitted schemas', () => {
   for (const face of CATALOG_FACES) {
     describe(`the ${face} face`, () => {
       const document = committed(CATALOG_FILES[face])
+
+      it('annotates every instantiated `Owed` branch, and not the bare generic — A3', () => {
+        // [A7 §9] recorded that `x-owed` reached `OwedCode` (the owed vocabularies) and not `Owed`
+        // (the owed values), which is why `repointedOwedOwner` could be argued from only one
+        // ground. Both halves are gated here: the instantiations carry the sentence, and the
+        // uninstantiated shape does NOT — its `owed` is a plain string, so there is no owed value
+        // for a sentence to be about, and annotating it would be a claim about nothing.
+        const defs = document['$defs'] as Record<string, Record<string, unknown>>
+        const branches = Object.keys(defs).filter((key) => key.startsWith('Owed.'))
+        expect(
+          branches.length,
+          'no instantiated `Owed` branches are emitted at all',
+        ).toBeGreaterThan(0)
+        for (const branch of branches) {
+          expect(
+            typeof defs[branch]?.['x-owed'],
+            `${branch} carries no \`x-owed\`. An owed branch whose whole content is a statement ` +
+              "about the model's incompleteness has to say so on the wire — [catalog §2.3] item 3.",
+          ).toBe('string')
+        }
+        expect(
+          defs['Owed']?.['x-owed'],
+          'the bare generic `Owed` is annotated. It is the uninstantiated shape, not an owed value.',
+        ).toBeUndefined()
+      })
+
+      it('tells a pending owed vocabulary from a refused one on the wire — A4', () => {
+        // Before A4 all three owed vocabularies carried one hardcoded sentence, which reads as
+        // "awaiting a list" and is misleading for the one [A9 §3.2] refuses to close. The state and
+        // the reason come from `data/owed-vocabularies.json`, whose rows `data-tables.test.ts`
+        // holds against `src/` and against the refusal gates.
+        const defs = document['$defs'] as Record<string, Record<string, unknown>>
+        const table = loadOwedVocabularies(owedVocabularies)
+        const annotated = Object.values(defs).filter(
+          (schema) => typeof schema['x-owed-vocabulary'] === 'string',
+        )
+        expect(
+          annotated.length,
+          'no owed-vocabulary brand is emitted, so this gate is checking nothing',
+        ).toBe(table.vocabularies.length)
+
+        for (const schema of annotated) {
+          const vocabulary = schema['x-owed-vocabulary'] as string
+          const entry = table.byVocabulary.get(vocabulary)
+          expect(
+            entry,
+            `the wire annotates "${vocabulary}" and the table does not carry it`,
+          ).toBeDefined()
+          expect(schema['x-owed-state'], `${vocabulary}'s state on the wire`).toBe(entry?.state)
+          expect(schema['x-owed-why'], `${vocabulary}'s reason on the wire`).toBe(entry?.reason)
+        }
+
+        // The point of the whole exercise, stated as a gate rather than as prose: the two states
+        // are both actually present on the wire, so the distinction is observable by a consumer.
+        const states = new Set(annotated.map((schema) => schema['x-owed-state']))
+        expect(
+          [...states].sort(),
+          'both owed states should be visible on the wire; if one is gone, a round published or ' +
+            'refused something and [A9 §3.2] or the glossary needs rereading',
+        ).toEqual(['pending', 'refusedOnEvidence'])
+      })
 
       it('emits one record schema per published member, and no others', () => {
         const defs = document['$defs']

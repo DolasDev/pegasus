@@ -200,6 +200,7 @@ rule is named.
 | **The first publication of a vocabulary that shipped owed** — `publishedOwedVocabulary`                                                                   | Not an addition but a **narrowing**, `string` → enum. Additive because the owed marker was itself published: `x-owed` states on the wire that "the members are not", so no conforming producer could have relied on a code being accepted, and no existing member's meaning moves — see below. **[SYNTHESIS]**                                                                                                                                                                     |
 | **The first publication of a value _shape_ that shipped owed** — `publishedOwedShape`                                                                     | The sibling of the row above, one level up the type: A5 replaced `Remedy`'s `Owed` branch with `OpensStay` ([A5 §3.2]). Additive on the same ground — the emitted union carried an `Owed.remedy` branch whose `owedTo` was a `const` naming A5, so the wire said the branch was a placeholder. It removes one `anyOf` branch and adds another rather than narrowing a string. **[SYNTHESIS]**                                                                                      |
 | **Correcting the _owner_ of a value that stays owed** — `repointedOwedOwner`                                                                              | A7's, and the third and **weakest** use of the two rows above's argument. `owedTo` is rendered as a **`const`** on both faces, so amending it changes a published constraint — but the value it constrains carries **no domain content**: it is the model's bookkeeping about its own incompleteness. Unlike the two rows above it has **no `x-owed` annotation** to lean on (see below). [A7 §6] re-pointed `chargeValue` from A11, a claims area, to `A7 / A12`. **[SYNTHESIS]** |
+| A new `x-` annotation on an already-published shape — `newAnnotation`                                                                                     | An annotation is not a constraint: a validator ignores keywords it does not know, so no record that validated stops validating. It changes what the wire **discloses**, which is [SD §0]'s direction. Distinguished from `newOptionalPayloadField`, which changes the contract rather than what the contract says about itself — **[SYNTHESIS]**                                                                                                                                   |
 | A new optional payload field — `newOptionalPayloadField`                                                                                                  | No record that validated stops validating                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | A new `context[]` member kind — `newContextMemberKind`                                                                                                    | `context[]` is non-authoritative ([SD §1.4]) and nothing keys on it                                                                                                                                                                                                                                                                                                                                                                                                                |
 
@@ -290,11 +291,15 @@ or of this document rather than of any area's decision:
    unaided. A7's record is kept because the gap being open is what made the rule worth writing
    before a round needed it under time pressure.
 2. **`owedTo` is emitted as a `const`, so every future owner-correction is a version bump.**
-3. **The two owed shapes are annotated asymmetrically.** `OwedCode` gets `x-owed` and
-   `x-owed-vocabulary`; `Owed` gets neither, although it is the one whose **whole content** is a
-   statement about the model's incompleteness. Closing this would mean emitting an `x-owed` on the
-   `Owed` branches too — which would itself be an additive schema change, and is a generator
-   question rather than an area's.
+3. **The two owed shapes are annotated asymmetrically.** `OwedCode` got `x-owed` and
+   `x-owed-vocabulary`; `Owed` got neither, although it is the one whose **whole content** is a
+   statement about the model's incompleteness. **CLOSED by the cleanup round at `0.6.1`**, as A7
+   predicted it would have to be — by emitting an `x-owed` on the instantiated `Owed` branches,
+   which is an additive schema change under the `newAnnotation` class that bump adds. The bare
+   generic `Owed` is left unannotated on purpose: its `owed` is a plain `string`, so there is no
+   owed value for a sentence to be about. **What this retroactively strengthens is
+   `repointedOwedOwner`** — A7 classified it on one ground because the `Owed` branches carried no
+   published marker to lean on, and they now do.
 
 **Deprecation is marked, never deleted.** Adopted from DCSA, whose fields "carry `deprecated: true`
 with a note saying what supersedes them and why they are still required", and whose old versions
@@ -323,15 +328,16 @@ current for a whole release ([A1 §9]).
 
 The bumps, and what each was classified as under §2.3:
 
-| From → To         | At                     | Change                                                                                                                                        | Class                     |
-| ----------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| `0.1.0` → `0.2.0` | A4's reason vocabulary | The vocabulary shipped owed and was published — `string` → enum ([A4 §7])                                                                     | `publishedOwedVocabulary` |
-| `0.2.0` → `0.3.0` | A8's rows 12-16        | Closing F3 added `keySideRole` to `AuthoritativeHolder`, which `ObligationRecipient` references                                               | `newClosedEnumMember`     |
-| `0.3.0` → `0.4.0` | A1                     | `REASON_CODES` gains `DEADLINE_LAPSED` ([A1 §3.6]). A1's other deliverable, `orderStageAt`, is a **projection** and moves nothing on the wire | `newClosedEnumMember`     |
-| `0.4.0` → `0.5.0` | A5                     | `Remedy`'s owed branch is replaced by `OpensStay` ([A5 §3.2]). A5's other deliverables mint no type, aggregate, field or qualifier            | `publishedOwedShape`      |
-| `0.5.0` → `0.5.0` | A2                     | **No bump.** Both emitted schemas are byte-identical across A2; the only published change is one more member of the owed inventory            | none — see below          |
-| `0.5.0` → `0.5.0` | A6                     | **No bump**, for the same reason and on stronger evidence — A6's central deliverable is a decision **not** to widen a published union         | none — see below          |
-| `0.5.0` → `0.6.0` | A7                     | `chargeValue`'s `owedTo` corrected from A11 to `A7 / A12` ([A7 §6]). **None of A7's decisions moves a byte**; the round's **audit** does      | `repointedOwedOwner`      |
+| From → To         | At                     | Change                                                                                                                                                                                          | Class                                      |
+| ----------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `0.1.0` → `0.2.0` | A4's reason vocabulary | The vocabulary shipped owed and was published — `string` → enum ([A4 §7])                                                                                                                       | `publishedOwedVocabulary`                  |
+| `0.2.0` → `0.3.0` | A8's rows 12-16        | Closing F3 added `keySideRole` to `AuthoritativeHolder`, which `ObligationRecipient` references                                                                                                 | `newClosedEnumMember`                      |
+| `0.3.0` → `0.4.0` | A1                     | `REASON_CODES` gains `DEADLINE_LAPSED` ([A1 §3.6]). A1's other deliverable, `orderStageAt`, is a **projection** and moves nothing on the wire                                                   | `newClosedEnumMember`                      |
+| `0.4.0` → `0.5.0` | A5                     | `Remedy`'s owed branch is replaced by `OpensStay` ([A5 §3.2]). A5's other deliverables mint no type, aggregate, field or qualifier                                                              | `publishedOwedShape`                       |
+| `0.5.0` → `0.5.0` | A2                     | **No bump.** Both emitted schemas are byte-identical across A2; the only published change is one more member of the owed inventory                                                              | none — see below                           |
+| `0.5.0` → `0.5.0` | A6                     | **No bump**, for the same reason and on stronger evidence — A6's central deliverable is a decision **not** to widen a published union                                                           | none — see below                           |
+| `0.5.0` → `0.6.0` | A7                     | `chargeValue`'s `owedTo` corrected from A11 to `A7 / A12` ([A7 §6]). **None of A7's decisions moves a byte**; the round's **audit** does                                                        | `repointedOwedOwner`                       |
+| `0.6.0` → `0.6.1` | the cleanup round      | **The first patch-slot bump**, under §2.3.1. `repointedOwedOwner` declared at last; `x-owed` extended to the `Owed` value branches; the owed vocabularies given `x-owed-state` and `x-owed-why` | `newClosedEnumMember` + `newAnnotation` ×2 |
 
 **A2 is the first area to change nothing on the wire, and the rule that says so is already here.**
 [§5](#5-what-the-catalog-does-not-yet-publish) records of A8's round that a moving owed inventory

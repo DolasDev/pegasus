@@ -33,7 +33,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Catalog faces](#catalog-faces-2) — 2
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
-- [Compatibility change classes](#compatibility-change-classes-14) — 14
+- [Compatibility change classes](#compatibility-change-classes-15) — 15
 - [Key functions and rules](#key-functions-and-rules-30) — 30
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
@@ -1856,7 +1856,7 @@ cross-type payload filter would be filtering on a field that only some records c
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
-## Compatibility change classes (14)
+## Compatibility change classes (15)
 
 What may change within a major `specVersion` and what may not ([catalog §2.3]). **[SYNTHESIS]**: the classification is ours and each member is a consequence of a sourced rule that it names. `src:dcsa` publishes the _practice_ — per-release changelogs down to a renamed filter — but no source in the corpus publishes the rule.
 
@@ -1901,6 +1901,15 @@ A new `aggregate` kind. [SD §1.2] states this one outright: the enum is "open t
 a later `specVersion`, never to reinterpretation".
 
 - **Cited:** [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `newAnnotation` (change class)
+
+A new `x-` **annotation** on an already-published shape — the class A3 and A4 of the cleanup
+round needed and no existing member covered.
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A7 §9]](analysis/A7-charges-billing.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[SD §0]](analysis/00-shared-decisions.md)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
 ### `newClosedEnumMember` (change class)
@@ -2325,9 +2334,16 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 
 A vocabulary whose **shape** is published and whose **members** are not, carried as `OwedCode<'x'>` so that the gap is in the type rather than in a comment. The reason vocabulary was one of these until [A4 §3] published it; these are what is left. Each publishes on the wire as a string with an `x-owed-vocabulary` annotation, and publishing one is `publishedOwedVocabulary` under [catalog §2.3].
 
-- `identityScheme` _(`packages/domain-reference/src/identity.ts`)_
-- `roleClass` _(`packages/domain-reference/src/outcomes.ts`)_
-- `unitOfMeasure` _(`packages/domain-reference/src/assertions.ts`)_
+**They are not all owed for the same reason, and the difference decides whether there is anything to do.** A _pending_ vocabulary closes when somebody reads its sources. One _refused on the evidence_ does not close by effort at all: its sources **are** read and they argue against publishing a closed list, so a round that publishes it has to overturn that argument first — which is what the gate named beside it exists to prevent happening silently. The reasons below come from `data/owed-vocabularies.json` and reach the wire as `x-owed-state` and `x-owed-why`; this page said neither until the cleanup round, which is [A9 §6] item 1's defect.
+
+**Awaiting a source — the gap closes when somebody reads them.**
+
+- `roleClass` _(`packages/domain-reference/src/outcomes.ts`)_ — Awaiting a source: the corpus sources that reason vocabularies are organised by responsible party but publishes no class list. [A8 §9 item 2]
+- `unitOfMeasure` _(`packages/domain-reference/src/assertions.ts`)_ — Awaiting a source: the measurement shape is fixed as (kind, unit, value, source) and no document fixes the unit list. [SD §4.1]
+
+**Refused on the evidence — the gap does not close by effort.**
+
+- `identityScheme` _(`packages/domain-reference/src/identity.ts`)_ — Refused on the evidence rather than awaiting work: the sources publish a closed list beside an open escape hatch, and two of them warn against relying on it. [A9 §3.2], held by `IdentitySchemeStaysOwed`
 
 ### Record types whose authority row is owed
 
@@ -2523,6 +2539,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`membershipRelease`](#membershiprelease-record-type) — record type
 - [`membershipResponse`](#membershipresponse-record-type) — record type
 - [`newAggregateKind`](#newaggregatekind-change-class) — change class
+- [`newAnnotation`](#newannotation-change-class) — change class
 - [`newClosedEnumMember`](#newclosedenummember-change-class) — change class
 - [`newContextMemberKind`](#newcontextmemberkind-change-class) — change class
 - [`newOptionalPayloadField`](#newoptionalpayloadfield-change-class) — change class

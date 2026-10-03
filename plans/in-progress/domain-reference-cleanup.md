@@ -64,7 +64,9 @@ cannot say what it means, a file that fails a check every round works around. Th
 | ↳ A6 follow-ups                        | `rubric.md` paragraph repair                                                 | `a3b84942`, PR #727 |
 | A7, charges & billing hooks            | `analysis/A7-charges-billing.md` + `src/rules/charges.ts`                    | `c72cfcce`, PR #737 |
 | A9, identity & cross-references        | `analysis/A9-identity-cross-references.md` + `src/rules/identity-schemes.ts` | `5db81c74`, PR #746 |
-| ↳ this round, A1 + A2                  | `alloy/run.mjs` formatted; `tests/conformance/documents.test.ts` rescoped    | this round's PR     |
+| ↳ this round, A1 + A2                  | `alloy/run.mjs` formatted; `tests/conformance/documents.test.ts` rescoped    | `db59b7e5`, PR #769 |
+| ↳ this round, B3                       | `[catalog §2.3.1]`, the pre-1.0 breaking rule                                | `286605c6`, PR #772 |
+| ↳ this round, A3 + A4 + A-CLASS + B2   | `data/owed-vocabularies.json` + the owed annotations, catalog **0.6.1**      | this round's PR     |
 
 Repo: `github.com/DolasDev/pegasus`, primary checkout `~/repos/pegasus`. Catalog at `specVersion`
 **0.6.0**.
@@ -100,9 +102,11 @@ fifth round to find its own plan wrong about what was owed, and this plan is wri
 
 ### Group A — mechanical, no judgement needed, fixable today
 
-> **A1 and A2 are DONE** (`a68038f3`, `a7bad124`). A3 and A4 remain, and §4 item 4 still wants
-> them classified together with B2. The two struck items are kept below with what was found, because
-> both turned out to carry something the plan did not predict.
+> **Group A is DONE**, and so are B2 and B3. A1 `a68038f3`, A2 `a7bad124`; A3, A4, A-CLASS and B2
+> landed together under one bump, catalog **0.6.1** — the first patch-slot bump under
+> `[catalog §2.3.1]`. **Only B1 is left**, and §4 item 3 already says it is independent.
+> The struck items are kept below with what was found, because several carried something the plan
+> did not predict.
 
 **A1. ~~`packages/domain-reference/alloy/run.mjs` fails `npx prettier --check`.~~ DONE, `a68038f3`.**
 Verified still failing on a clean checkout before fixing. `prettier --write`, then `npm run alloy`
@@ -146,7 +150,13 @@ incomplete about the scope:** only six of the sixteen entries have a declaring b
 fix needed three declaration shapes rather than one, plus an exactly-once rule — see the DONE note
 above.
 
-**A3. The generator annotates the two owed shapes asymmetrically.**
+**A3. ~~The generator annotates the two owed shapes asymmetrically.~~ DONE, catalog `0.6.1`.**
+`x-owed` now reaches the instantiated `Owed.*` branches — five of them — under a new change class,
+`newAnnotation`. **The bare generic `Owed` is deliberately left unannotated**: its `owed` is a plain
+`string`, so there is no owed value for a sentence to be about, and both halves are gated. A7's
+prediction that closing it _"would itself be an additive schema change"_ was right, and closing it
+**retroactively strengthens `repointedOwedOwner`**, which A7 had to argue on one ground because the
+`Owed` branches carried no published marker to lean on. `[catalog §2.3]`'s gap item 3 is struck.
 `tools/generate-catalog.ts:358-359` attaches `x-owed-vocabulary` and `x-owed` to **`OwedCode`** —
 the owed _vocabularies_ — and nothing to **`Owed`**, the owed _values_, although an `Owed` branch's
 whole content is a statement about the model's incompleteness. Confirmed in the emitted schema:
@@ -159,7 +169,13 @@ ground rather than two. **Closing it strengthens a published change class retroa
 > branches _"would itself be an additive schema change"_. Classify it against `[catalog §2.3]`
 > before writing it, read the emitted diff, and expect the **first version bump since A7**.
 
-**A4. The `x-owed` text is one hardcoded string for all three owed vocabularies.**
+**A4. ~~The `x-owed` text is one hardcoded string for all three owed vocabularies.~~ DONE, catalog `0.6.1`.**
+The hardcoded sentence is **kept** — it is true of all three and says the shape/members split — and
+two keys are added beside it: `x-owed-state` and `x-owed-why`, from
+`data/owed-vocabularies.json`. So the smallest honest fix was additive rather than a rewrite: the old
+string was not false, it was incomplete in a way that reads as _pending_. A consumer can now tell
+`identityScheme`'s `refusedOnEvidence` from the other two on the wire alone, which is what A4 asked
+for. Gated against the table, and tampered by desyncing the two.
 `tools/generate-catalog.ts:359` emits the same sentence — _"the code list is owed; the shape is
 published and the members are not ([SD §0])"_ — for `identityScheme`, `roleClass` and
 `unitOfMeasure`. After `[A9 §3.2]` that sentence is **wrong for one of the three**: `identityScheme`
@@ -230,7 +246,15 @@ generator**; `js-yaml` is present in the workspace but is **not** a dependency o
 stop. After this round that is true of 54 entries and false of 33, and the comment that does not say
 so is the same defect one turn later.
 
-**B2. The glossary's Owed page cannot say why something is owed.**
+**B2. ~~The glossary's Owed page cannot say why something is owed.~~ DONE, catalog `0.6.1`.**
+The page now groups the three by state with the reason, the citation and — for the refused one — the
+name of the gate holding it. **The plan's advice to prefer a `data/` table over a change to the
+brand was right**, and the table costs no bump; what reaches the wire is A4's two keys, classified
+with A3. One correction to the plan's framing: it suggested the table carry the state, but a table
+that merely restates a type-level gate cannot contradict it. **The state is declared in the table
+AND derived independently from `src/`** — a vocabulary is refused iff it carries a live
+`Exact<…, OwedCode<'v'>>` — and `data-tables.test.ts` holds the two in agreement in both
+directions. Two independent declarations, which is §5 item 11's actual requirement.
 It lists `identityScheme`, `roleClass` and `unitOfMeasure` under one heading with one explanation.
 After `[A9 §3.2]` they are **two different states**:
 
@@ -274,7 +298,11 @@ time pressure** — which is the only circumstance in which it will otherwise ge
 
 ### Group A again — A-CLASS, found while writing B3's gate, and it is mechanical
 
-**A-CLASS. `repointedOwedOwner` is documented as an additive change class and was never declared.**
+**A-CLASS. ~~`repointedOwedOwner` is documented as an additive change class and was never declared.~~ DONE, catalog `0.6.1`.**
+Declared, and **every row in both `[catalog §2.3]` tables now names its class** — five of eight
+additive rows and all six breaking rows described a change without naming it, which is why no gate
+could compare the tables with the arrays: the information was not in the document. The
+both-directions gate is now in place and tampered each way separately.
 _Named rather than numbered: every free A-number collides with an area ([A5] is storage-in-transit),
 and the repo already names rules this way — A-COLLECT, B-ONWARD, D-ID._
 `[catalog §2.3]`'s Additive table has a row for it, `[catalog §2.4]`'s `0.5.0` → `0.6.0` row
@@ -353,10 +381,15 @@ exactly this list in both directions, so neither can decay into a permanent exce
 **Stop when Group A and Group B are done.** Group C is §7's, and the context map (§8) is the round
 after.
 
-**Where the round actually stands.** A1, A2 and B3 are done. **A3, A4, A-CLASS and B2 should land
-together as one bump** — all four concern how the catalog represents its own owed-ness and
-bookkeeping, and under `[catalog §2.3.1]` that bump is `0.6.0` → `0.6.1`. **B1 is untouched and
-independent**, which is what §4 item 3 already says about it.
+**Where the round actually stands.** A1, A2, A3, A4, A-CLASS, B2 and B3 are **done** — the four
+owed-representation items landed together as `0.6.0` → `0.6.1`, the first patch-slot bump under
+`[catalog §2.3.1]`, which is the sequencing that rule was written for: the version descended from a
+rule already on `main` rather than being chosen in the PR that invented it.
+
+**Only B1 is left.** It is independent, it is the largest, and §9 carries the two findings measured
+for it: `scoredAreas` is a local function rather than an export, and recomputing `areas:` will flip
+a currently-passing assertion, so an `[A9 §1]` prose edit is mandatory. **When B1 lands the round is
+done**, and §8's context map is the next plan.
 
 ---
 
