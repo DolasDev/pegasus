@@ -372,8 +372,15 @@ export const ADDITIVE_CHANGES = [
 export type AdditiveChange = (typeof ADDITIVE_CHANGES)[number]
 
 /**
- * Changes that are **breaking**: a new major version — [catalog §2.3]. **[SYNTHESIS]**, on the same
- * terms as {@link ADDITIVE_CHANGES}.
+ * Changes that are **breaking** — [catalog §2.3]. **[SYNTHESIS]**, on the same terms as
+ * {@link ADDITIVE_CHANGES}.
+ *
+ * **While the major is `0`, a breaking change is a new MINOR and an additive change is a new
+ * PATCH** ([catalog §2.3.1]); a new major only once [catalog §5]'s inventory is discharged and a
+ * `1.0.0` exists. The assignment is mechanical: `^0.6.0` admits `0.6.1` and excludes `0.7.0`, so a
+ * caret range takes the additive releases and refuses the breaking one without anyone reading the
+ * document. This list is not emitted as a schema constraint — it is published in
+ * `index.json`'s `compatibility.breaking` — so amending this docstring moves no byte.
  */
 export const BREAKING_CHANGES = [
   /** Removing or renaming a `type`. It is a component of the fact key ([SD §1.3] item 3). */

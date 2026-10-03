@@ -203,7 +203,7 @@ rule is named.
 | A new optional payload field                                                              | No record that validated stops validating                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | A new `context[]` member kind                                                             | `context[]` is non-authoritative ([SD §1.4]) and nothing keys on it                                                                                                                                                                                                                                                                                                                                                                                                                |
 
-**Breaking** (a new major):
+**Breaking** (pre-1.0 a new **minor** — §2.3.1; a new major once `1.0.0` exists):
 
 | Change                                                   | Why breaking                                                                                                                         |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -213,6 +213,44 @@ rule is named.
 | Changing what an existing member **means**               | [SD §1.2]: "never to reinterpretation"                                                                                               |
 | Moving a field between MANDATORY, OPTIONAL and FORBIDDEN | The envelope's obligations are the contract                                                                                          |
 | Changing a role name's spelling                          | F5 in [`findings-from-alloy.md`](findings-from-alloy.md): role names are fact-key components after F1, "so spelling is load-bearing" |
+
+#### 2.3.1 What a breaking change costs while the catalog is pre-1.0
+
+**[SYNTHESIS]**, and it is the rule §2.4's own constraint makes necessary. The Breaking table would
+otherwise say "a new major", but §2.4 forbids a `1.0.0` while §5's inventory stands — so the major
+slot is not available to spend, and the two sentences cannot both be followed. [A7 §9] recorded that
+as an open gap rather than inventing the answer; this closes it.
+
+**The rule: while the major is `0`, a breaking change takes the MINOR slot and an additive change
+takes the PATCH slot.** So `0.6.0` → `0.7.0` is breaking and `0.6.0` → `0.6.1` is additive. The
+major becomes available, and `1.0.0` is minted, when §5's inventory is discharged — the condition
+§2.4 already states, unchanged by this rule.
+
+**The ground is mechanical rather than aesthetic, and it is why this assignment and not another.** A
+consumer pins a range, and the range is evaluated by tooling that never reads this document: under
+semver `^0.6.0` admits `0.6.1` and excludes `0.7.0`. This assignment therefore makes a caret range
+do the right thing unaided — take the additive releases, refuse the breaking one — and that is a
+property of the numbers, not of anyone having read §2.3.
+
+**It is adopted at a point where it costs nothing, and that is checked rather than asserted.** No
+bump in §2.4's table is classified as a breaking change, so no already-published version is
+mislabelled by reading its minor as breaking. A conformance test asserts **exactly that** — that no
+row carries a `BREAKING_CHANGES` member — and no more, because it is the only property this
+paragraph depends on. The day somebody reclassifies a historical bump, this paragraph should fail
+rather than mislead.
+
+**The alternative, rejected on the same mechanical ground:** let both additive and breaking changes
+bump the minor, and distinguish them only in §2.4's table. That makes `^0.6.0` exclude every later
+release whether or not it is breaking, cutting a consumer off from precisely the additive ones a
+caret range exists to admit. Minting `1.0.0` early to free the major slot is rejected for §2.4's
+reason, which is [SD §0]'s: the version string is a disclosure too, and a `1.0.0` would claim a
+settled contract that §5's inventory contradicts.
+
+**A note on earlier documents' phrasing.** [`A1`](A1-order-service-lifecycle.md),
+[`A7`](A7-charges-billing.md), [`A8`](A8-authority-skeleton.md) and
+[`findings-from-alloy.md`](findings-from-alloy.md) each describe a breaking change as _"a new
+major"_, all written before this rule existed. Read those as naming the **class**; the version
+arithmetic is this section's, and pre-1.0 it is a new minor.
 
 **All three owed classes carry a restriction, and it is recorded rather than absorbed.** The
 narrowing is safe on the **queried** face — a consumer is served a narrower type — and is a genuine
@@ -244,9 +282,13 @@ asymmetry is recorded below as a gap and is not closed here.
 **Three things this class surfaces and A7 does not close**, all of them properties of the generator
 or of this document rather than of any area's decision:
 
-1. **§2.3 has no rule for a breaking change while the catalog is pre-1.0.** The Breaking column says
+1. **§2.3 has no rule for a breaking change while the catalog is pre-1.0.** The Breaking column said
    _"a new major"_, and §2.4 forbids a `1.0.0` while §5's inventory stands. A7 does not need the
    rule — it classifies additive — so it records the gap rather than inventing the answer.
+   **CLOSED by the cleanup round at §2.3.1: pre-1.0 the minor slot carries breaking and the patch
+   slot carries additive**, on the ground that it is what makes a caret range behave correctly
+   unaided. A7's record is kept because the gap being open is what made the rule worth writing
+   before a round needed it under time pressure.
 2. **`owedTo` is emitted as a `const`, so every future owner-correction is a version bump.**
 3. **The two owed shapes are annotated asymmetrically.** `OwedCode` gets `x-owed` and
    `x-owed-vocabulary`; `Owed` gets neither, although it is the one whose **whole content** is a
@@ -322,6 +364,12 @@ there. Read the emitted `$defs`: a classification argued from which fields feel 
 classification waiting to be wrong, and this is the third time that has been the operative sentence
 — after A8's `keySideRole`, and after A2's and A6's empty diffs being the evidence rather than the
 claim.
+
+**The first bump under §2.3.1 will be a PATCH.** Every row above spends the minor slot on an
+additive change, which is what §2.3.1 is adopted early enough to leave harmless; from here an
+additive change is `0.6.0` → `0.6.1` and the minor slot is reserved for a breaking one. The next
+round to move a published byte should expect `0.6.1`, and this table should record it as the first
+patch-slot bump rather than leaving a reader to infer the convention changed.
 
 What caps the version is the authority rows, and no amount of vocabulary work moves that.
 
