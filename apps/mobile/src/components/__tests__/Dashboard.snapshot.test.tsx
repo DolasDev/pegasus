@@ -41,9 +41,15 @@ describe('Driver Dashboard', () => {
   })
 
   it('shows loading state initially', () => {
-    ;(getDriverMetrics as jest.Mock).mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(mockMetrics), 1000)),
-    )
+    // A promise that never settles is all this assertion needs: the screen stays in
+    // its loading branch and nothing is left behind. The previous mock resolved via
+    // `setTimeout(…, 1000)`, and because the test asserts synchronously and returns,
+    // that real timer outlived it — `jest --detectOpenHandles` named it as the ONE
+    // open handle in the whole apps/mobile suite, reproducibly. `jest --forceExit`
+    // (the package's `test` script) then killed the worker instead of failing, which
+    // is the "A worker process has failed to exit gracefully" line CI reported on
+    // 2026-10-01. Never resolve a loading-state mock on a real timer.
+    ;(getDriverMetrics as jest.Mock).mockImplementation(() => new Promise<never>(() => {}))
 
     const { getByText } = render(<DashboardScreen />)
     expect(getByText('Loading dashboard…')).toBeTruthy()

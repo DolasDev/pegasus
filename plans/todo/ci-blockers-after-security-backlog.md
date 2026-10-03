@@ -12,24 +12,46 @@
 > intended fixes turned out to have **already been done by someone else** (see
 > "Don't redo these" at the bottom).
 >
-> **2026-10-03 pass.** Item 2 **fixed** (root `tsx` dependency edge — the cause was an
+> **2026-10-03 pass.** Item 2 **fixed** (#779 — root `tsx` dependency edge; the cause was an
 > optional-peer slot capture, not the range conflict this file predicted). Item 3 **closed**
-> (#746 merged; cause never captured). Item 1 **mitigated by #775, not fixed** — the
-> `--detectOpenHandles` lever is still untried and `--forceExit` still masks the leak. Item 4
-> unchanged and still owner-only. Both "loose ends" at the bottom are also still open.
-> That leaves **Items 1 and 4** as the live work in this file.
+> (#746 merged; cause never captured). Item 1 **partly fixed**: the `--detectOpenHandles` lever
+> was finally pulled and found a real leaked timer — in `Dashboard.snapshot.test.tsx`, **not** in
+> `tenant-picker.test.tsx` — now fixed; the TENANT-03 _timeout_ remains mitigated-only by #775.
+> Item 4 unchanged and still owner-only. Both "loose ends" at the bottom are also still open.
+> That leaves **Item 1's timeout, Item 4, and the two loose ends** as the live work here.
 
 ---
 
-## Item 1 — the TENANT-03 mobile flake (MITIGATED, not fixed — the leak lever is still untried)
+## Item 1 — the TENANT-03 mobile flake (the LEAK is fixed; the TIMEOUT is still only mitigated)
 
-> **2026-10-03 status.** `#775` raised `apps/mobile`'s `testTimeout` to **45000** and recorded
-> why in `jest.config.js`: TENANT-03 runs in ~1s locally and blew 15s twice on 2026-10-03, a
-> ~15× slowdown, so starvation under a parallel `turbo test` rather than a hang. That buys
-> headroom and nothing more. **Everything below is still owed:** `apps/mobile`'s test script is
-> still `jest --forceExit`, which masks the leaked-timer teardown the 2026-10-01 run reported,
-> and `npx jest --detectOpenHandles` has **still not been run**. Do that before writing the
-> `waitFor` fix — the plan's own instruction, and the reason the previous session declined.
+> **2026-10-03 — the lever was pulled, and it pointed at a different file.**
+>
+> `npx jest --detectOpenHandles` (no `--forceExit`) was run, finally. It reports exactly **one**
+> open handle in the whole 22-suite / 193-test mobile run, reproducibly 3/3 — and it is **not**
+> `tenant-picker.test.tsx`, which is clean on its own (6/6, no handles). It is
+> `src/components/__tests__/Dashboard.snapshot.test.tsx`, whose `shows loading state initially`
+> test mocked `getDriverMetrics` with a promise resolving through a real
+> `setTimeout(…, 1000)` while asserting synchronously and returning — so the timer outlived the
+> test and its worker could not exit. That is the
+> "A worker process has failed to exit gracefully and has been force exited" line from the
+> 2026-10-01 run, attributed. Fixed by mocking with a promise that never settles (all a
+> loading-state assertion needs): 193 tests pass with **0** open handles and a clean exit, 3/3.
+>
+> **So the hypothesis below was half right.** `--forceExit` _was_ masking a real leak. The leak
+> was just somewhere else, which is exactly why the previous session was right not to ship the
+> `waitFor` rewrite blind — it would have edited four tests in the wrong file.
+>
+> **Still open, and do not conflate it with the above:**
+>
+> - The **TENANT-03 timeout itself is unproven as fixed.** Removing the handle removes the
+>   force-exit warning; it is not evidence the 15s/45s timeout stops being exceeded. `#775`'s
+>   `testTimeout: 45000` remains the only thing addressing that, and it is a mitigation.
+> - The **`waitFor` rewrite is still unapplied and still unverified** (see below). It stays a
+>   candidate, now with one fewer confound.
+> - `apps/mobile`'s `test` script is **still `jest --forceExit`**, deliberately: dropping it
+>   would let a future leak hang a CI job rather than warn. `npm run test:handles` was added
+>   instead, so the check that found this is one discoverable command rather than a flag someone
+>   has to know to pass.
 
 **Why it is top of the list:** it is not just a red check. It failed a `merge_group` run and
 **ejected #744 from the merge queue**, and the CI `Test` job runs `turbo run test` with **no
@@ -58,7 +80,11 @@ then drives React's async work loop against `VirtualizedList`'s real ~50ms
 VirtualizedList inside a test was not wrapped in act(…)" warning with a `Timeout._onTimeout`
 stack. On a saturated 2-core runner the loop outlives jest's 15s default.
 
-### The lever that is NEW and not yet tried
+### The lever — PULLED 2026-10-03, and it named a timer in another file
+
+> Outcome is in the box at the top of this item: one open handle, in
+> `Dashboard.snapshot.test.tsx`, not here. The reasoning below is kept because it is what made
+> the lever worth pulling; only its guess about _which_ timer was wrong.
 
 The 2026-10-01 run added a line the earlier ones did not:
 
@@ -87,13 +113,15 @@ pattern.** Do not ship this blind: without a local reproduction you are guessing
 previous session deliberately declined to.
 
 A `--forceExit` that hides a leak is worth a second look on its own, independent of this test.
+**It got one** — it was hiding a real leak, and `npm run test:handles` now exposes that class
+without removing the flag's CI-hang protection.
 
 ---
 
 ## Item 2 — `#762`: E2E dies on `node_modules/.bin/tsx` — ✅ CAUSE FOUND AND FIXED (2026-10-03)
 
-> **Resolved by this PR.** The diagnosis below was the right class but the wrong mechanism, and
-> the difference is the whole fix.
+> **Resolved by #779** (merged 2026-10-03). The diagnosis below was the right class but the
+> wrong mechanism, and the difference is the whole fix.
 >
 > **It is not a range conflict.** #762 bumps all four tsx-declaring workspaces (api, e2e, infra,
 > vpn-agent) to the _same_ `^4.23.15`, so there is nothing to reconcile and the `prisma`-style
@@ -261,3 +289,10 @@ drift (`autoUpdate` only raises floors, and raised floors invite merge-queue eje
 `apps/e2e/.env.test` (worktree DB port) — both reappear on almost every run. Expect the pre-push
 hook to hit the api import-timeout cluster if the machine is loaded; check `uptime` and retry
 rather than fighting it.
+
+**A third artifact belongs on that list: `package-lock.json`.** `scripts/new-worktree.sh` runs
+`npm install`, and local **npm 11** prunes a nested `apps/mobile/node_modules/babel-preset-expo`
+entry (116 lines) that the committed lockfile keeps. It showed up unrelated in two worktrees on
+2026-10-03. It is not yours and it is not this PR's business — `git checkout package-lock.json`
+before committing unless you deliberately changed a dependency. The same prune is why #779's
+lockfile edit was made by hand rather than by `npm install --package-lock-only`.

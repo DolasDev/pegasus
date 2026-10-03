@@ -2206,6 +2206,27 @@ loop outlives jest's 15s default.
 tests in that file share the pattern. Recorded rather than applied, because it cannot be
 reproduced locally — it needs its own PR and several real CI runs to confirm.
 
+**Update 2026-10-03 — the leaked timer was real, and it was in a DIFFERENT FILE.** A later run
+added "A worker process has failed to exit gracefully and has been force exited … Active timers
+can also cause this", and the natural reading was that TENANT-03 itself leaked. It does not.
+`jest --detectOpenHandles` (no `--forceExit`) reported exactly **one** open handle in the whole
+22-suite mobile run, reproducibly, and it was
+`src/components/__tests__/Dashboard.snapshot.test.tsx` — a `shows loading state initially` test
+whose mock resolved through a real `setTimeout(…, 1000)` while the test asserted synchronously
+and returned, leaving the timer pending and its worker unable to exit. `tenant-picker.test.tsx`
+on its own is clean: 6/6, no handles. Fixed by mocking with a promise that never settles, which
+is all a loading-state assertion needs.
+
+Two lessons worth more than the fix:
+
+- **A force-exit warning names the worker, not the test you suspect.** The only way to attribute
+  it is `--detectOpenHandles` across the whole suite; `npm run test:handles` in `apps/mobile` now
+  does exactly that, since the `test` script's `--forceExit` will keep hiding the next one.
+- **The leak and the TENANT-03 timeout are still separate claims.** Removing the handle removes
+  the force-exit warning; it is NOT proof the timeout goes away. #775's `testTimeout: 45000` is
+  what addresses the timeout, and the `waitFor` rewrite above is still unapplied and still
+  unverified. Do not retire it on the strength of this.
+
 **Note the CI `Test` job runs `turbo run test` with no `--affected` and no filter**, so the mobile
 suite runs on every code PR and in every merge-queue group. This flake is reachable from a change
 that touches nothing in `apps/mobile` — a dependency-only PR hit it.
