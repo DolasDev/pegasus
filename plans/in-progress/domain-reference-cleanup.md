@@ -66,10 +66,11 @@ cannot say what it means, a file that fails a check every round works around. Th
 | A9, identity & cross-references        | `analysis/A9-identity-cross-references.md` + `src/rules/identity-schemes.ts` | `5db81c74`, PR #746 |
 | ↳ this round, A1 + A2                  | `alloy/run.mjs` formatted; `tests/conformance/documents.test.ts` rescoped    | `db59b7e5`, PR #769 |
 | ↳ this round, B3                       | `[catalog §2.3.1]`, the pre-1.0 breaking rule                                | `286605c6`, PR #772 |
-| ↳ this round, A3 + A4 + A-CLASS + B2   | `data/owed-vocabularies.json` + the owed annotations, catalog **0.6.1**      | this round's PR     |
+| ↳ this round, A3 + A4 + A-CLASS + B2   | `data/owed-vocabularies.json` + the owed annotations, catalog **0.6.1**      | PR #774             |
+| ↳ this round, B1                       | `tools/source-registry.ts`; `areas:` generated for the scored half           | this round's PR     |
 
 Repo: `github.com/DolasDev/pegasus`, primary checkout `~/repos/pegasus`. Catalog at `specVersion`
-**0.6.0**.
+**0.6.1** — bumped by this round, and the first patch-slot bump under `[catalog §2.3.1]`.
 
 ### Gates
 
@@ -184,7 +185,35 @@ tell. See B2, which is the same defect one layer up.
 
 ### Group B — needs a decision, and §7 names who makes it
 
-**B1. `sources/registry.yaml`'s `areas:` field is not an inventory and is read as one.**
+**B1. ~~`sources/registry.yaml`'s `areas:` field is not an inventory and is read as one.~~ DONE.**
+The hybrid landed as sized: `areas:` is **generated** for every source with a score table — exactly
+the areas it scores non-zero — and stays the **hand-written** discovery hint for every entry with no
+analysis to generate from. The split is on the presence of a score table and never on `status:`, and
+the schema comment now states one rule per half. `tools/source-registry.ts` is new and holds the
+**one** parser; the reader the plan said to reuse was a LOCAL function in the test file, so exporting
+it meant extracting it. The rewrite was line-level rather than a YAML round-trip — 33 lines changed,
+every one an `areas:` line, all 72 comments intact — so no `js-yaml` dependency was needed, which is
+the trade the plan warned against.
+
+> **The round's last defect was mine, and tampering is what found it.** The first draft gated the
+> hand-written half by asserting each entry has no scored rows — but that half is **filtered** on
+> exactly that predicate, so the assertion restated its own filter and **could never fail**. It was
+> written to catch the day the split moves and caught nothing: `[A2 §9]`'s tautology, one language
+> level down, where it is easier to write. What catches the split moving is the **generated** half's
+> own rule — a newly-scored source joins that half and fails there by name, verified by actually
+> giving an unscored source a score table. The hand-written half is now gated on a property of the
+> data instead: every declared id is a real rubric area. And that replacement's own first draft
+> required a non-empty list and named three entries where empty is **correct**, so it was narrowed
+> too. **Tamper to find the tautology, then run against real data to find the over-reach** — two
+> passes, neither substituting for the other.
+
+`[A9 §1]` is **amended rather than left standing**, which is what `[A9 §9.2]` item 8 said must happen
+on the day the registry was curated, and its sharp-instance assertion is **inverted rather than
+deleted** — `src:dtr-part-iv` is still the sharpest case, now of the gate working. Two measured
+things change how that finding reads: the mismatch was **not partial** (every scored source
+understated its areas, so A9's "fourteen" was its instinct about its own area), and the field also
+**over**-claimed — `src:atlas-world-group-api` declared three areas with no score rows behind them.
+No sizes are written into the model's documents; `[A1 §9]`'s rule holds and the gate enumerates.
 `[A9 §1]` measured it: a source can score an area non-zero without that area appearing in its
 `areas:` list, **for every one of the thirteen areas** — roughly 118 (source, area) pairs, A2 worse
 than A9. The sharpest instance is `src:dtr-part-iv`, whose own analysis calls A9 _"the strongest
@@ -381,15 +410,23 @@ exactly this list in both directions, so neither can decay into a permanent exce
 **Stop when Group A and Group B are done.** Group C is §7's, and the context map (§8) is the round
 after.
 
-**Where the round actually stands.** A1, A2, A3, A4, A-CLASS, B2 and B3 are **done** — the four
-owed-representation items landed together as `0.6.0` → `0.6.1`, the first patch-slot bump under
-`[catalog §2.3.1]`, which is the sequencing that rule was written for: the version descended from a
+**THE ROUND IS DONE.** Group A (A1, A2, A3, A4, A-CLASS) and Group B (B1, B2, B3) all landed. The
+four owed-representation items went together as `0.6.0` → `0.6.1`, the first patch-slot bump under
+`[catalog §2.3.1]` — the sequencing that rule was written for, since the version descended from a
 rule already on `main` rather than being chosen in the PR that invented it.
 
-**Only B1 is left.** It is independent, it is the largest, and §9 carries the two findings measured
-for it: `scoredAreas` is a local function rather than an export, and recomputing `areas:` will flip
-a currently-passing assertion, so an `[A9 §1]` prose edit is mandatory. **When B1 lands the round is
-done**, and §8's context map is the next plan.
+**What the round added that the plan did not know about:** one defect (**A-CLASS** — a change class
+documented, used by a bump row, and never declared, found while gating §2.3.1), one change class
+(**`newAnnotation`**, because no existing class covered an annotation), and one tautology of its own
+(B1's, above). **Four of the seven planned items turned out to carry something the plan had wrong or
+did not predict** — which is the same lesson every round since A6 has recorded, and the reason §3
+says to verify each defect before fixing it. A plan is a claim to audit, not a specification to
+execute. (No ordinal here on purpose: §5 item 10, and A9 shipped four documents counting one finding
+four different ways.)
+
+**Group C is untouched and is §7's**, as planned. **§8's context map is the next plan** — and §8's
+own warning is the one to read first: its risk is the opposite of an area round's, because it is a
+synthesis over work already done and can restate the area documents while calling it a deliverable.
 
 ---
 
