@@ -1721,6 +1721,48 @@ export class ApiStack extends cdk.Stack {
     })
 
     // ---------------------------------------------------------------------------
+    // Usage-statement close cron (billable automated actions)
+    //
+    // Writes each tenant's monthly UsageStatement — what a manual invoice is
+    // raised from — for every fully-past month still missing one. Daily RATE,
+    // not a month-end cron: idempotent and self-healing after a missed day or a
+    // missed month boundary. DB-only. Always on: inert until a tenant has a plan.
+    // A failed tenant throws, so the account-wide Lambda Errors alarm pages.
+    // ---------------------------------------------------------------------------
+    const usageStatementCloseLogGroup = new logs.LogGroup(this, 'UsageStatementCloseLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    cronLogGroupNames.push(usageStatementCloseLogGroup.logGroupName)
+
+    const usageStatementCloseFunction = new nodejs.NodejsFunction(
+      this,
+      'UsageStatementCloseFunction',
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: path.join(__dirname, '../../../../apps/api/src/lambda-usage-statement-close.ts'),
+        handler: 'handler',
+        environment: {
+          NODE_ENV: 'production',
+          DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+          LOG_LEVEL: 'INFO',
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        memorySize: 256,
+        timeout: cdk.Duration.minutes(5),
+        logGroup: usageStatementCloseLogGroup,
+      },
+    )
+
+    dbSecret.grantRead(usageStatementCloseFunction)
+
+    new events.Rule(this, 'UsageStatementCloseSchedule', {
+      schedule: events.Schedule.rate(cdk.Duration.days(1)),
+      description: 'Closes monthly usage statements (billable automated actions) per tenant.',
+      targets: [new eventsTargets.LambdaFunction(usageStatementCloseFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
     // RingCentral health-metrics emitter cron
     //
     // Publishes the DB-derived capture-health gauges (outbox depth/dead,
