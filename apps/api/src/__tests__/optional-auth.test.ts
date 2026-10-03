@@ -45,6 +45,12 @@ vi.mock('jose', () => ({
   errors: { JWTExpired: class JWTExpired extends Error {} },
 }))
 
+// Each test re-imports the whole API module graph after vi.resetModules(), and
+// the first cold import can exceed the 15s default under a full-tree parallel
+// `turbo test` (the pre-push hook). The cost is transform time, not I/O — see
+// GOTCHAS.md "optional-auth.test.ts times out under a parallel turbo test".
+vi.setConfig({ testTimeout: 60_000 })
+
 describe('SKIP_AUTH mode', () => {
   const savedEnv = { ...process.env }
 
