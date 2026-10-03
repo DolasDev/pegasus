@@ -7,14 +7,31 @@
 #               ontology | internal-system | glossary | contract | reference-data | dataset
 #   openness    public | free-registration | gated-partner | paid | licensed | internal
 #   license     as stated by the publisher, or "unstated"
-#   areas       rubric area ids (A1–A13) the source informs. `areas` is a DISCOVERY hint, not an
-#               inventory: it was written during the 2026-09-11 research passes, BEFORE any source
-#               was analysed, and a source routinely scores an area non-zero without that area
-#               appearing here. [A9 §1] measured it across all thirteen areas and found the gap in
-#               every one — its own sharpest case is src:dtr-part-iv, whose analysis calls A9 "the
-#               strongest area" and whose `areas` does not name A9. To find which sources bear on an
-#               area, read the per-area score rows in sources/*/analysis.md; this field will send
-#               you to a useful subset and will not send you to all of them.
+#   areas       rubric area ids (A1–A13) the source informs. TWO HALVES, and the rule differs:
+#
+#               * GENERATED for any source whose sources/<id>/analysis.md has a score table: the
+#                 field is exactly the areas that analysis scores non-zero, and nothing else. An
+#                 area with no row, or a row scored 0/n-a throughout, is NOT evidence the source
+#                 informs it (src:uncefact-rec24 carries such an A9 row and belongs in nobody's A9
+#                 list). A conformance test holds every one of these entries to its score rows and
+#                 names any that drifts; regenerate by hand from the rows when it fails.
+#
+#               * a DISCOVERY hint for every other entry — one with no analysis to generate from.
+#                 Written during the 2026-09-11 research passes, BEFORE any source was analysed, and
+#                 it is the only signal there is for those, so it is kept rather than emptied.
+#
+#               The split is on the PRESENCE OF A SCORE TABLE and never on `status`: the two
+#               disagree deliberately — src:pegii-order has a score table and `status: needs-user`,
+#               because `status` records whether the material was obtained, not whether an analysis
+#               was written.
+#
+#               Why it is a hybrid at all: [A9 §1] measured this field and found that a source could
+#               score an area non-zero without that area appearing here, in all thirteen areas — its
+#               sharpest case being src:dtr-part-iv, whose analysis calls A9 "the strongest area"
+#               while its `areas` omitted A9. A9 changed no entry, because repairing some of a
+#               hundred-odd pairs would make the field look trustworthy where it was not. B1 of the
+#               cleanup round generated the half that can be generated and gated it, which is what
+#               makes the first bullet above a rule rather than an aspiration.
 #   priority    P1 analyze in detail · P2 useful / comparator · P3 record only
 #   status      candidate   known, not yet captured
 #               captured    material stored under sources/<id>/ or referenced in-repo
@@ -56,7 +73,7 @@ sources:
   role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
   kind: internal-system
   openness: internal
-  areas: [A1, A2, A3, A6, A7, A8, A10, A12, A13]
+  areas: [A1, A3, A4, A5, A6, A7, A8, A9, A10, A12, A13]
   priority: P3
   status: analyzed
   refs:
@@ -78,7 +95,7 @@ sources:
   role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
   kind: internal-system
   openness: internal
-  areas: [A1, A2, A3, A6, A7, A8, A9, A12, A13]
+  areas: [A1, A2, A3, A4, A6, A7, A8, A9, A12, A13]
   priority: P3
   status: analyzed
   refs:
@@ -93,7 +110,7 @@ sources:
   role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
   kind: internal-system
   openness: internal
-  areas: [A1, A4, A6, A7, A8, A9]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P3
   status: analyzed
   refs:
@@ -111,7 +128,7 @@ sources:
   role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
   kind: internal-system
   openness: internal
-  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10]
+  areas: [A1, A2, A4, A5, A6, A7, A8, A9, A10]
   priority: P3
   status: needs-user
   refs:
@@ -134,7 +151,7 @@ sources:
   role: mapping-only   # NOT evidence for the model (decision 2026-09-17); input to mappings/ only
   kind: internal-system
   openness: internal
-  areas: [A3, A4, A5, A8, A13]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P3
   status: analyzed
   refs:
@@ -176,7 +193,7 @@ sources:
   kind: vendor-api
   openness: gated-partner
   license: partner-confidential
-  areas: [A1, A2, A4, A7, A8, A9]
+  areas: [A1, A2, A3, A4, A5, A7, A8, A9]
   priority: P1
   status: analyzed
   files:
@@ -193,7 +210,7 @@ sources:
   kind: vendor-api
   openness: gated-partner
   license: partner-confidential
-  areas: [A1, A4, A6, A7, A8, A9, A13]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
   refs:
@@ -208,7 +225,7 @@ sources:
   role: model-evidence   # external partner contract: how a counterparty behaves
   kind: vendor-api
   openness: gated-partner
-  areas: [A1, A2, A3, A4, A6, A7, A8, A9, A10, A11, A12]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
   refs:
@@ -239,7 +256,7 @@ sources:
   kind: reference-model
   openness: public
   license: public domain (US) / MIT elsewhere — LICENSE.txt
-  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A11, A12]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
   urls:
@@ -261,7 +278,7 @@ sources:
   kind: reference-model
   openness: public
   license: MIT
-  areas: [A1, A4, A7]   # A3/A5/A12 removed: that material is in the code, not the docs
+  areas: [A1, A2, A4, A6, A7, A9]
   priority: P1
   status: analyzed
   urls:
@@ -278,7 +295,7 @@ sources:
   kind: tariff
   openness: public
   license: US government work
-  areas: [A5, A7, A12]
+  areas: [A2, A3, A4, A5, A7, A8, A9, A12]
   priority: P1
   status: analyzed
   urls:
@@ -295,7 +312,7 @@ sources:
   publisher: USTRANSCOM
   kind: contract
   openness: public
-  areas: [A1, A4, A5, A6]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13]
   priority: P2
   status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
   urls: [https://business.ustranscom.mil/dp3/pdfs.cfm]
@@ -335,7 +352,7 @@ sources:
   publisher: USTRANSCOM
   kind: regulation
   openness: public
-  areas: [A1, A2, A5, A6, A7, A11]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12]
   priority: P2
   status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
   urls:
@@ -390,7 +407,7 @@ sources:
   kind: regulation
   openness: public
   license: US government work
-  areas: [A1, A2, A5, A6, A7, A8, A10, A11]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12]
   priority: P1
   status: analyzed
   urls: [https://www.ecfr.gov/current/title-49/subtitle-B/chapter-III/subchapter-B/part-375]
@@ -573,7 +590,7 @@ sources:
   kind: vendor-api
   openness: public
   license: unstated
-  areas: [A1, A2, A3, A5, A7, A8, A10]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A13]
   priority: P1
   status: analyzed
   urls: [https://smartmoving-prod-api-management.developer.azure-api.net]
@@ -635,7 +652,7 @@ sources:
   kind: message-standard
   openness: public
   license: unstated (non-normative)
-  areas: [A1, A3, A4, A5, A6, A7, A8, A9]   # A5 (BC Storage in Transit) + A8 added
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P2
   status: analyzed
   urls: ["https://www.stedi.com/edi/x12-004010/214"]
@@ -674,7 +691,7 @@ sources:
   publisher: UNECE
   kind: reference-model
   openness: public
-  areas: [A1, A3, A4, A6, A8, A9]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
   urls: [https://unece.org/trade/uncefact/rdm]
@@ -728,7 +745,7 @@ sources:
   kind: ontology
   openness: public
   license: GS1 IP policy (free download)
-  areas: [A4, A6, A9]
+  areas: [A2, A3, A4, A5, A6, A8, A9]
   priority: P1
   status: analyzed
   urls:
@@ -752,7 +769,7 @@ sources:
   kind: message-standard
   openness: public
   license: Apache-2.0
-  areas: [A1, A4, A6, A9]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
   urls:
@@ -766,7 +783,7 @@ sources:
   kind: reference-model
   openness: public
   license: unstated (docs) / MIT (Java library)
-  areas: [A1, A3, A4, A8]
+  areas: [A1, A2, A3, A4, A5, A6, A8, A9]
   priority: P1
   status: analyzed
   urls:
@@ -820,7 +837,7 @@ sources:
   kind: message-standard
   openness: free-registration
   license: NMFTA copyright, no commercial copying
-  areas: [A2, A6, A7, A8, A9]   # A2/A7 added: line-item structure + charge terms as strong as A8
+  areas: [A1, A2, A3, A6, A7, A8, A9]
   priority: P2
   status: analyzed
   urls: [https://dsdc.nmfta.org/apis/ebol-api-standard]
@@ -905,7 +922,7 @@ sources:
   kind: vendor-api
   openness: public
   license: unstated
-  areas: [A3, A4, A6, A9]
+  areas: [A1, A2, A3, A4, A6, A7, A8, A9]
   priority: P2
   status: analyzed
   urls:
@@ -934,7 +951,7 @@ sources:
   publisher: Descartes
   kind: vendor-api
   openness: public
-  areas: [A4]
+  areas: [A1, A2, A3, A4, A6, A8, A9, A13]
   priority: P2
   status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
   urls:
@@ -948,7 +965,7 @@ sources:
   publisher: Shippeo
   kind: vendor-api
   openness: public
-  areas: [A4, A6]
+  areas: [A1, A2, A3, A4, A6, A8, A9]
   priority: P2
   status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
   urls:
@@ -1009,7 +1026,7 @@ sources:
   publisher: Omnitracs (Solera)
   kind: vendor-api
   openness: public
-  areas: [A3, A4, A6, A8, A13]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
   urls:
@@ -1058,7 +1075,7 @@ sources:
   publisher: Samsara
   kind: vendor-api
   openness: public
-  areas: [A3, A4, A6, A13]
+  areas: [A1, A2, A3, A4, A6, A7, A8, A9]
   priority: P1
   status: analyzed
   urls: [https://developers.samsara.com/openapi/samsara-api.json]
@@ -1104,7 +1121,7 @@ sources:
   publisher: UNECE
   kind: reference-model
   openness: public
-  areas: [A1, A7, A8, A9]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P2
   status: analyzed
   urls: [https://unece.org/trade/uncefact/rdm]
@@ -1122,7 +1139,7 @@ sources:
   kind: message-standard
   openness: public
   license: unstated
-  areas: [A1, A3, A4, A9]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P2
   status: analyzed
   files:
@@ -1141,7 +1158,7 @@ sources:
   kind: reference-model
   openness: public
   license: CC BY 3.0 (spec text) / Apache-2.0 (protobuf)
-  areas: [A3, A4]   # A5 removed: full read found no storage-in-transit material
+  areas: [A3, A4, A7, A8, A9]
   priority: P2
   status: analyzed
   urls:
@@ -1160,7 +1177,7 @@ sources:
   publisher: Alvys
   kind: vendor-api
   openness: public
-  areas: [A1, A3, A4, A6, A7, A8, A9]
+  areas: [A1, A2, A3, A4, A6, A7, A8, A9]
   priority: P2
   status: analyzed
   urls:
@@ -1212,7 +1229,7 @@ sources:
   kind: message-standard
   openness: public
   license: unstated (Stedi reference); X12 definitions themselves are licensed
-  areas: [A2, A3, A6, A7, A9]
+  areas: [A2, A3, A4, A6, A8, A9]
   priority: P1
   status: analyzed
   urls: ["https://www.stedi.com/edi/x12-004010/212"]
@@ -1234,7 +1251,7 @@ sources:
   role: model-evidence
   kind: reference-data
   openness: public
-  areas: [A4]
+  areas: [A3, A4]
   priority: P2
   status: analyzed
   urls: ["https://smdg.org/documents/smdg-code-lists/"]
@@ -1249,7 +1266,7 @@ sources:
   role: model-evidence
   kind: reference-data
   openness: public
-  areas: [A4]
+  areas: [A1, A2, A3, A4, A5, A6, A7, A8]
   priority: P1
   status: analyzed
   urls: ["https://unece.org/trade/uncefact/unece-recommendations"]
