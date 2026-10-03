@@ -251,11 +251,56 @@ this round's.**
 > if the `x-owed` string becomes per-vocabulary, that is A4's wire change and the two should be
 > classified together.
 
-**B3. `[catalog §2.3]` has no rule for a breaking change while the catalog is pre-1.0.**
+**B3. ~~`[catalog §2.3]` has no rule for a breaking change while the catalog is pre-1.0.~~ DONE.**
+Written as **`[catalog §2.3.1]`**: while the major is `0`, a **breaking change takes the MINOR slot
+and an additive change takes the PATCH slot**; the major becomes available when `[catalog §5]`'s
+inventory is discharged, which is the condition §2.4 already stated. **The ground is mechanical
+rather than aesthetic** — under semver `^0.6.0` admits `0.6.1` and excludes `0.7.0`, so this
+assignment makes a caret range take the additive releases and refuse the breaking one **unaided**,
+which is a property of the numbers and not of anyone having read the document. The rejected
+alternative is recorded in §2.3.1: both on the minor, distinguished only in §2.4's table, which
+makes `^0.6.0` exclude every later release and cuts a consumer off from the additive ones.
+**Consequence, stated in §2.4 rather than left to be discovered: the next additive bump is `0.6.1`,
+not `0.7.0`.** `BREAKING_CHANGES`'s docstring carried the same unqualified "a new major" and is
+edited too; it is not emitted as a schema constraint, and the empty `catalog/` diff is the evidence
+rather than the claim. Gated by a **comparison** (§5 item 10): no row in §2.4's bump table is
+classified as a `BREAKING_CHANGES` member, which is the ground §2.3.1 rests on. Tampered — a row
+reclassified `reinterpretedMember` fails and the message sends the reader to §2.3.1 rather than to
+the test.
 The Breaking column says _"a new major"_ and `[catalog §2.4]` forbids a `1.0.0` while `[catalog §5]`'s
 inventory stands, so the two sentences cannot both be followed. `[A7 §9]` recorded the gap and did
 not need the answer, because it classified additive. **Write the rule before a round needs it under
 time pressure** — which is the only circumstance in which it will otherwise get written.
+
+### Group A again — A-CLASS, found while writing B3's gate, and it is mechanical
+
+**A-CLASS. `repointedOwedOwner` is documented as an additive change class and was never declared.**
+_Named rather than numbered: every free A-number collides with an area ([A5] is storage-in-transit),
+and the repo already names rules this way — A-COLLECT, B-ONWARD, D-ID._
+`[catalog §2.3]`'s Additive table has a row for it, `[catalog §2.4]`'s `0.5.0` → `0.6.0` row
+classifies A7's bump as it, and `src/catalog.ts`'s own bump JSDoc says _"`repointedOwedOwner`,
+additive, **and a class this bump adds**"_. It was never added to the `ADDITIVE_CHANGES` array.
+Confirmed three ways on 2026-10-03:
+
+- `catalog/index.json`'s `compatibility.additive` lists **seven** members; §2.3 documents **eight**.
+- `grep -c repointedOwedOwner docs/domain-reference/glossary.md` is **0** — the glossary's
+  change-class section omits it, because the glossary reads the array.
+- `catalog.test.ts` already asserts `compatibility.additive` equals `[...ADDITIVE_CHANGES]`, so the
+  published list and the code agree with each other and **both** disagree with the document.
+
+> **This one moves the wire**, so it is not a five-minute item: adding a member changes
+> `index.json`, which needs a class of its own under `[catalog §2.3]` — and the interesting question
+> is which, since "publishing a change class that was documented but never declared" is not any
+> existing row. **Under `[catalog §2.3.1]` it is the first PATCH-slot bump, `0.6.0` → `0.6.1`.** Do
+> it with A3, A4 and B2: all four are about how the catalog represents its own bookkeeping, §4 item
+> 4 already wants three of them classified together, and one bump should carry all four.
+
+**Why B3's gate does not catch it:** the gate asserts no published bump was **breaking**, which is
+the only thing §2.3.1 rests on. Asserting instead that every bump's class is an `ADDITIVE_CHANGES`
+member would fail on this defect — a defect about the published class **list**, not about any bump
+being breaking — and a gate that fails for a reason its claim does not depend on is a gate people
+edit rather than read. **The stronger gate belongs in the PR that fixes this**, where it can pass:
+assert §2.3's Additive table and `ADDITIVE_CHANGES` name the same set, in both directions.
 
 ### Group C — found, recorded, and blocked on something this round does not control
 
@@ -307,6 +352,11 @@ exactly this list in both directions, so neither can decay into a permanent exce
 
 **Stop when Group A and Group B are done.** Group C is §7's, and the context map (§8) is the round
 after.
+
+**Where the round actually stands.** A1, A2 and B3 are done. **A3, A4, A-CLASS and B2 should land
+together as one bump** — all four concern how the catalog represents its own owed-ness and
+bookkeeping, and under `[catalog §2.3.1]` that bump is `0.6.0` → `0.6.1`. **B1 is untouched and
+independent**, which is what §4 item 3 already says about it.
 
 ---
 

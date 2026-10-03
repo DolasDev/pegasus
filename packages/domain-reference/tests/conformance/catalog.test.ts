@@ -650,4 +650,50 @@ describe('the decision document and the code agree on the counts', () => {
     },
     SLOW_MS,
   )
+
+  /**
+   * [catalog §2.3.1] is adopted on the strength of a comparison, not a count: **every bump already
+   * published spent the minor slot on an ADDITIVE change**, so reassigning the minor slot to
+   * breaking changes mislabels no released version. That sentence is the whole argument for
+   * adopting the rule now rather than at `1.0.0`, and nothing but this test holds it — the day
+   * somebody reclassifies a historical bump, §2.3.1's paragraph becomes misleading and should fail
+   * here instead.
+   *
+   * Gated as a comparison over the table rather than as a total ([A1 §9], [A9]'s C6-density gate):
+   * it survives a bump being added, and it names the offending row rather than counting rows.
+   */
+  it('has spent every published minor bump on an additive change — [catalog §2.3.1]', () => {
+    const rows = readFileSync(DECISION_FILE, 'utf8')
+      .split('\n')
+      .filter((line) => /^\|\s*`\d+\.\d+\.\d+`\s*→/.test(line))
+    expect(
+      rows.length,
+      "[catalog §2.4]'s bump table has moved or been reshaped — §2.3.1 leans on it",
+    ).toBeGreaterThan(0)
+
+    // The claim is that no published bump was BREAKING. It is deliberately not "every class is an
+    // ADDITIVE_CHANGES member": `repointedOwedOwner` is documented as an additive class in §2.3 and
+    // used by §2.4's `0.6.0` row, but A7 never added it to `ADDITIVE_CHANGES`, so the catalog
+    // publishes seven additive classes where the document documents eight. That is a real defect
+    // and it is recorded in the cleanup plan — but it is a defect about the published class LIST,
+    // not evidence that any bump was breaking, and conflating the two would make this gate fail for
+    // a reason §2.3.1 does not depend on.
+    const breaking = new Set<string>(BREAKING_CHANGES)
+    for (const row of rows) {
+      const cells = row
+        .split('|')
+        .map((cell) => cell.trim())
+        .filter((cell) => cell !== '')
+      const versions = cells[0] ?? ''
+      const klass = (cells[cells.length - 1] ?? '').replace(/`/g, '')
+      expect(klass, `[catalog §2.4]'s bump ${versions} records no change class`).not.toBe('')
+      expect(
+        breaking.has(klass),
+        `[catalog §2.4]'s bump ${versions} is classified "${klass}", a BREAKING change. ` +
+          '[catalog §2.3.1] reassigns the minor slot to breaking changes on the ground that every ' +
+          'bump already published was additive — so that ground is gone and §2.3.1 needs ' +
+          'rewriting, not this test.',
+      ).toBe(false)
+    }
+  })
 })
