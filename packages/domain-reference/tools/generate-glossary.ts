@@ -610,6 +610,77 @@ function owedVocabulariesFromCode(model: Model): { name: string; where: string }
 }
 
 /**
+ * The vocabularies whose owed-ness is **refused on the evidence**, read off `src/` rather than
+ * declared anywhere — the independent half of `data/owed-vocabularies.json`'s `state`.
+ *
+ * A refusal lives in an `Exact<…, OwedCode<'v'>>` alias **with a value assigned to it**: the alias
+ * alone evaluates to `never` silently and compiles ([A5 §9]), so this reader requires the
+ * assignment too. That is why it walks twice — once for the aliases, once for a variable
+ * declaration annotated with one of them.
+ *
+ * A vocabulary with no such gate is `pending`, and nothing has to say so.
+ *
+ * `data-tables.test.ts` compares this against the table in both directions. Neither side is
+ * computed from the other, which is the only arrangement in which the comparison can fail.
+ */
+export function collectRefusalGates(model: Model = buildModel()): ReadonlyMap<string, string> {
+  const aliasToVocabulary = new Map<string, string>()
+
+  const vocabularyOf = (node: ts.Node): string | undefined => {
+    let found: string | undefined
+    const look = (child: ts.Node): void => {
+      if (
+        found === undefined &&
+        ts.isTypeReferenceNode(child) &&
+        ts.isIdentifier(child.typeName) &&
+        child.typeName.text === 'OwedCode'
+      ) {
+        found = literalText(child.typeArguments?.[0] ?? child)
+      }
+      if (found === undefined) ts.forEachChild(child, look)
+    }
+    look(node)
+    return found
+  }
+
+  for (const file of model.files) {
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isTypeAliasDeclaration(node) &&
+        ts.isTypeReferenceNode(node.type) &&
+        ts.isIdentifier(node.type.typeName) &&
+        node.type.typeName.text === 'Exact'
+      ) {
+        const vocabulary = vocabularyOf(node.type)
+        if (vocabulary !== undefined) aliasToVocabulary.set(node.name.text, vocabulary)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(file)
+  }
+
+  const live = new Map<string, string>()
+  for (const file of model.files) {
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        node.type !== undefined &&
+        ts.isTypeReferenceNode(node.type) &&
+        ts.isIdentifier(node.type.typeName)
+      ) {
+        const alias = node.type.typeName.text
+        const vocabulary = aliasToVocabulary.get(alias)
+        if (vocabulary !== undefined) live.set(vocabulary, alias)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(file)
+  }
+
+  return live
+}
+
+/**
  * The `FACT_CLASS_FAMILY` rows the [SYNTHESIS] could not make, read off the object literal.
  *
  * Two of the thirty-one types are marked `'owed'` rather than assigned a family — neither `charge`

@@ -1413,6 +1413,115 @@ function readAccountability(path: string, value: unknown): boolean | 'undetermin
  * vocabulary; a table that refused to load because a scheme was missing would be asserting the
  * closure the document declines to assert.
  */
+/** The two states an owed code vocabulary can be in — `data/owed-vocabularies.json`. */
+export const OWED_VOCABULARY_STATES = ['pending', 'refusedOnEvidence'] as const
+
+/** One of {@link OWED_VOCABULARY_STATES}. */
+export type OwedVocabularyState = (typeof OWED_VOCABULARY_STATES)[number]
+
+/**
+ * Why one owed code vocabulary is owed.
+ *
+ * The distinction the glossary's Owed page and the wire's `x-owed` annotation could not previously
+ * draw: `pending` closes when someone reads the sources, `refusedOnEvidence` does not close by
+ * effort at all. [A9 §3.2] is the case that forced it — its sources ARE read and they publish an
+ * escape hatch beside every closed list, two of them with a warning attached.
+ */
+export interface OwedVocabulary {
+  readonly vocabulary: string
+  readonly state: OwedVocabularyState
+  /** Emitted as the per-vocabulary `x-owed` sentence, so it must read without this repo. */
+  readonly reason: string
+  readonly citation: string
+  /**
+   * The `Exact<…, OwedCode<'v'>>` alias that holds the refusal, or `null` for a `pending` one.
+   *
+   * Declared here **and** derived independently from `src/` by the glossary generator's AST reader;
+   * `data-tables.test.ts` holds the two in agreement in both directions. Neither is computed from
+   * the other, which is what makes the comparison worth anything ([A5 §9], [A2 §9]).
+   */
+  readonly gate: string | null
+}
+
+/** `data/owed-vocabularies.json`, loaded. */
+export interface OwedVocabularyTable {
+  readonly vocabularies: readonly OwedVocabulary[]
+  readonly byVocabulary: ReadonlyMap<string, OwedVocabulary>
+}
+
+/**
+ * The longest a `reason` may be. It is emitted into a published schema, so it is a sentence a
+ * consumer reads in a tooltip, not a paragraph.
+ */
+const OWED_REASON_MAX = 200
+
+export function loadOwedVocabularies(raw: unknown): OwedVocabularyTable {
+  const root = readObject('owed-vocabularies', raw)
+  const rows = new Map<string, OwedVocabulary>()
+
+  const declaredStates = readArray('owed-vocabularies.states', root['states']).map((item, index) =>
+    readMember(
+      `owed-vocabularies.states[${String(index)}].state`,
+      readObject(`owed-vocabularies.states[${String(index)}]`, item)['state'],
+      OWED_VOCABULARY_STATES,
+    ),
+  )
+  if (!sameSet(declaredStates, OWED_VOCABULARY_STATES)) {
+    fail(
+      'owed-vocabularies.states',
+      `is [${declaredStates.join(', ')}] where OWED_VOCABULARY_STATES is [${OWED_VOCABULARY_STATES.join(', ')}]`,
+    )
+  }
+
+  for (const [index, item] of readArray(
+    'owed-vocabularies.vocabularies',
+    root['vocabularies'],
+  ).entries()) {
+    const at = `owed-vocabularies.vocabularies[${String(index)}]`
+    const object = readObject(at, item)
+    const vocabulary = readString(`${at}.vocabulary`, object['vocabulary'])
+    if (rows.has(vocabulary)) fail(`${at}.vocabulary`, `${vocabulary} is declared twice`)
+
+    const state = readMember(`${at}.state`, object['state'], OWED_VOCABULARY_STATES)
+    const reason = readString(`${at}.reason`, object['reason'])
+    const citation = readString(`${at}.citation`, object['citation'])
+    const gate = readStringOrNull(`${at}.gate`, object['gate'])
+
+    // The cross-field invariants, in the loader rather than in a test — [A9]'s discipline.
+    if (reason.length > OWED_REASON_MAX) {
+      fail(
+        `${at}.reason`,
+        `is ${String(reason.length)} characters; it is emitted into a published schema and the limit is ${String(OWED_REASON_MAX)}`,
+      )
+    }
+    if (citation.length === 0) {
+      fail(`${at}.citation`, `${vocabulary} states a reason with nothing to check it against`)
+    }
+    if (state === 'refusedOnEvidence' && gate === null) {
+      // A refusal nothing can fail is the [A5 §9] defect this whole round exists to stop.
+      fail(
+        `${at}.gate`,
+        `${vocabulary} is refused on the evidence and names no gate; a refusal held by prose alone cannot fail`,
+      )
+    }
+    if (state === 'pending' && gate !== null) {
+      fail(
+        `${at}.gate`,
+        `${vocabulary} is pending and names the gate ${gate}; a pending vocabulary has no argument to hold`,
+      )
+    }
+
+    rows.set(vocabulary, { vocabulary, state, reason, citation, gate })
+  }
+
+  if (rows.size === 0) fail('owed-vocabularies.vocabularies', 'is empty')
+
+  return {
+    vocabularies: [...rows.values()],
+    byVocabulary: rows,
+  }
+}
+
 export function loadIdentitySchemes(raw: unknown): IdentitySchemeTable {
   const root = readObject('identity-schemes', raw)
   const rows = new Map<string, IdentityScheme>()
