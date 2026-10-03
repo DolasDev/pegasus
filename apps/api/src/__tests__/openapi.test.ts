@@ -37,12 +37,6 @@ vi.mock('jose', () => ({
 // Tests
 // ---------------------------------------------------------------------------
 
-// Cold-importing the whole API module graph (`await import('../app')`) can
-// exceed the 15s default under a full-tree parallel `turbo test` (the pre-push
-// hook). The cost is transform time, not I/O — see GOTCHAS.md
-// "optional-auth.test.ts times out under a parallel turbo test". File-scoped.
-vi.setConfig({ testTimeout: 60_000 })
-
 describe('GET /openapi.json', () => {
   it('returns 200', async () => {
     process.env['SKIP_AUTH'] = 'true'

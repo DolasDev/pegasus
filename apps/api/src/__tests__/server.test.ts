@@ -48,12 +48,6 @@ vi.mock('jose', () => ({
 // Tests
 // ---------------------------------------------------------------------------
 
-// Cold-importing the server (and with it the whole API module graph) can exceed
-// the 15s default under a full-tree parallel `turbo test` (the pre-push hook).
-// The cost is transform time, not I/O — see GOTCHAS.md "optional-auth.test.ts
-// times out under a parallel turbo test". File-scoped.
-vi.setConfig({ testTimeout: 60_000 })
-
 describe('server bootstrap', () => {
   const originalPort = process.env['PORT']
   const originalHost = process.env['HOST']
