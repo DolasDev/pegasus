@@ -610,6 +610,104 @@ function owedVocabulariesFromCode(model: Model): { name: string; where: string }
 }
 
 /**
+ * The vocabularies whose owed-ness is **refused on the evidence**, read off `src/` rather than
+ * declared anywhere — the independent half of `data/owed-vocabularies.json`'s `state`.
+ *
+ * A refusal lives in an `Exact<…, OwedCode<'v'>>` alias **with a value assigned to it**: the alias
+ * alone evaluates to `never` silently and compiles ([A5 §9]), so this reader requires the
+ * assignment too. That is why it walks twice — once for the aliases, once for a variable
+ * declaration annotated with one of them.
+ *
+ * A vocabulary with no such gate is `pending`, and nothing has to say so.
+ *
+ * `data-tables.test.ts` compares this against the table in both directions. Neither side is
+ * computed from the other, which is the only arrangement in which the comparison can fail.
+ */
+/** One row of `data/owed-vocabularies.json`, as the Owed page needs it. */
+interface OwedVocabularyNote {
+  readonly vocabulary: string
+  readonly state: string
+  readonly reason: string
+  readonly citation: string
+  readonly gate: string | null
+}
+
+/**
+ * `data/owed-vocabularies.json`, read once.
+ *
+ * Read rather than imported for the reason the catalog generator records: `src/index.ts` uses
+ * extensionless specifiers, so `loadOwedVocabularies` is not callable from a generator. That
+ * loader holds the table's invariants and `data-tables.test.ts` runs it.
+ */
+let owedVocabularyNotes: Map<string, OwedVocabularyNote> | undefined
+function owedVocabularyNote(vocabulary: string): OwedVocabularyNote | undefined {
+  if (owedVocabularyNotes === undefined) {
+    const root = JSON.parse(readFileSync(`${PACKAGE_DIR}data/owed-vocabularies.json`, 'utf8')) as {
+      vocabularies: OwedVocabularyNote[]
+    }
+    owedVocabularyNotes = new Map(root.vocabularies.map((row) => [row.vocabulary, row]))
+  }
+  return owedVocabularyNotes.get(vocabulary)
+}
+
+export function collectRefusalGates(model: Model = buildModel()): ReadonlyMap<string, string> {
+  const aliasToVocabulary = new Map<string, string>()
+
+  const vocabularyOf = (node: ts.Node): string | undefined => {
+    let found: string | undefined
+    const look = (child: ts.Node): void => {
+      if (
+        found === undefined &&
+        ts.isTypeReferenceNode(child) &&
+        ts.isIdentifier(child.typeName) &&
+        child.typeName.text === 'OwedCode'
+      ) {
+        found = literalText(child.typeArguments?.[0] ?? child)
+      }
+      if (found === undefined) ts.forEachChild(child, look)
+    }
+    look(node)
+    return found
+  }
+
+  for (const file of model.files) {
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isTypeAliasDeclaration(node) &&
+        ts.isTypeReferenceNode(node.type) &&
+        ts.isIdentifier(node.type.typeName) &&
+        node.type.typeName.text === 'Exact'
+      ) {
+        const vocabulary = vocabularyOf(node.type)
+        if (vocabulary !== undefined) aliasToVocabulary.set(node.name.text, vocabulary)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(file)
+  }
+
+  const live = new Map<string, string>()
+  for (const file of model.files) {
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        node.type !== undefined &&
+        ts.isTypeReferenceNode(node.type) &&
+        ts.isIdentifier(node.type.typeName)
+      ) {
+        const alias = node.type.typeName.text
+        const vocabulary = aliasToVocabulary.get(alias)
+        if (vocabulary !== undefined) live.set(vocabulary, alias)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(file)
+  }
+
+  return live
+}
+
+/**
  * The `FACT_CLASS_FAMILY` rows the [SYNTHESIS] could not make, read off the object literal.
  *
  * Two of the thirty-one types are marked `'owed'` rather than assigned a family — neither `charge`
@@ -1445,10 +1543,39 @@ function renderOwed(model: Model, table: CanonicalTable, lines: string[]): void 
       'is `publishedOwedVocabulary` under [catalog §2.3].',
   )
   lines.push('')
-  for (const entry of owedVocabulariesFromCode(model)) {
-    lines.push(`- \`${entry.name}\` _(\`${entry.where}\`)_`)
-  }
+  lines.push(
+    '**They are not all owed for the same reason, and the difference decides whether there is ' +
+      'anything to do.** A _pending_ vocabulary closes when somebody reads its sources. One ' +
+      '_refused on the evidence_ does not close by effort at all: its sources **are** read and they ' +
+      'argue against publishing a closed list, so a round that publishes it has to overturn that ' +
+      'argument first — which is what the gate named beside it exists to prevent happening ' +
+      'silently. The reasons below come from `data/owed-vocabularies.json` and reach the wire as ' +
+      '`x-owed-state` and `x-owed-why`; this page said neither until the cleanup round, which is ' +
+      "[A9 §6] item 1's defect.",
+  )
   lines.push('')
+  const owedVocabularyGroups = [
+    ['pending', 'Awaiting a source — the gap closes when somebody reads them'],
+    ['refusedOnEvidence', 'Refused on the evidence — the gap does not close by effort'],
+  ] as const
+  for (const [state, heading] of owedVocabularyGroups) {
+    const members = owedVocabulariesFromCode(model).filter(
+      (entry) => (owedVocabularyNote(entry.name)?.state ?? 'pending') === state,
+    )
+    if (members.length === 0) continue
+    lines.push(`**${heading}.**`)
+    lines.push('')
+    for (const entry of members) {
+      const note = owedVocabularyNote(entry.name)
+      const parts = [`- \`${entry.name}\` _(\`${entry.where}\`)_`]
+      if (note !== undefined) {
+        parts.push(` — ${note.reason} ${note.citation}`)
+        if (note.gate !== null) parts.push(`, held by \`${note.gate}\``)
+      }
+      lines.push(parts.join(''))
+    }
+    lines.push('')
+  }
 
   lines.push('### Record types whose authority row is owed')
   lines.push('')

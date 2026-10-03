@@ -95,8 +95,26 @@ void _catalogIsTheVocabulary
  * schema diff was read before this line was written, which is [catalog §5]'s rule and the third
  * time it has changed an answer — after `keySideRole` at A8, and after A2's and A6's empty diffs
  * being the evidence for their non-bumps.
+ *
+ * `0.6.1` at the cleanup round: **the first PATCH-slot bump**, and the first bump under
+ * [catalog §2.3.1], which assigns the patch slot to additive changes while the major is `0`. Three
+ * changes, classified together because they are one subject — how the catalog represents its own
+ * bookkeeping:
+ *
+ * - `newClosedEnumMember` — `repointedOwedOwner` joins {@link ADDITIVE_CHANGES}, which it was
+ *   documented as a member of, and used by this table's `0.6.0` row as, for a whole release without
+ *   ever being declared. One line in `index.json`'s `compatibility.additive`.
+ * - `newAnnotation` ×2 — the class this bump adds. `x-owed` now reaches the `Owed` **value**
+ *   branches ([catalog §2.3] item 3, A3), and the owed vocabularies carry `x-owed-state` and
+ *   `x-owed-why` so a consumer can tell one that is merely unread from one [A9 §3.2] refuses to
+ *   close (A4).
+ *
+ * The emitted diff was read before this line was written, which is [catalog §5]'s rule and the
+ * fourth time it has mattered: it is annotation keywords only, so no record that validated stops
+ * validating. The bare generic `Owed` is deliberately NOT annotated — its `owed` is a plain string,
+ * so there is no owed value for a sentence to be about.
  */
-export const CATALOG_VERSION = '0.6.0'
+export const CATALOG_VERSION = '0.6.1'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces
@@ -355,6 +373,42 @@ export const ADDITIVE_CHANGES = [
    * (`Owed.remedy` is gone from both faces), so a consumer pinning that `$ref` loses it.
    */
   'publishedOwedShape',
+  /**
+   * Correcting the **owner** of a value that stays owed — A7's change to `chargeValue`'s `owedTo`,
+   * re-pointed from A11 (a claims area) to `A7 / A12` ([A7 §6]).
+   *
+   * The third and **weakest** use of the argument the two members above rest on, and weakest
+   * because it resolves nothing: those each closed a gap, while this corrects a gap's **label** and
+   * leaves the gap open. `owedTo` is rendered as a `const` on both faces, so amending it changes a
+   * published constraint — but the value it constrains carries **no domain content**. It is the
+   * model's bookkeeping about its own incompleteness, and its sibling `provisional` is documented
+   * "never normative".
+   *
+   * **This member was documented by [catalog §2.3] and used by [catalog §2.4]'s `0.6.0` row for a
+   * whole release before it was declared here** — the array published seven classes while the
+   * document documented eight, and the glossary, which reads this array, omitted it entirely. The
+   * cleanup round found it while gating [catalog §2.3.1]. A conformance test now holds the two in
+   * agreement in both directions, which is what nothing did before.
+   */
+  'repointedOwedOwner',
+  /**
+   * A new `x-` **annotation** on an already-published shape — the class A3 and A4 of the cleanup
+   * round needed and no existing member covered.
+   *
+   * Additive because an annotation is not a constraint: JSON Schema validators ignore keywords they
+   * do not know, so **no record that validated stops validating and none that failed starts
+   * passing**. What changes is what the wire *discloses*, which is the direction [SD §0] pushes.
+   *
+   * Distinguished from {@link ADDITIVE_CHANGES} member `newOptionalPayloadField`, which is a change
+   * to the data contract a record is written against; this is a change to what the contract says
+   * about itself. Stretching that member to cover both would have made it mean two things.
+   *
+   * Its two uses so far are the two halves of one asymmetry [A7 §9] recorded: `x-owed` now reaches
+   * the `Owed` **value** branches and not only the `OwedCode` **vocabularies**, and the owed
+   * vocabularies carry `x-owed-state` and `x-owed-why`, so a consumer can tell a vocabulary that is
+   * merely unread from one [A9 §3.2] refuses to close. **[SYNTHESIS]**.
+   */
+  'newAnnotation',
   /**
    * A new **optional** payload field. No record that validated stops validating, and [SD §1.1]'s
    * payload row — "typed per `type`", "per type" — already leaves the per-type shape to [SD §4.7]'s

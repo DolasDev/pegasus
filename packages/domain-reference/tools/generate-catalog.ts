@@ -355,9 +355,20 @@ function brandedString(tag: string): Json {
   if (tag === 'CalendarDate') schema['format'] = 'date'
   if (tag.startsWith('id:')) schema['x-aggregate'] = tag.slice('id:'.length)
   if (tag.startsWith('owedCode:')) {
-    schema['x-owed-vocabulary'] = tag.slice('owedCode:'.length)
+    const vocabulary = tag.slice('owedCode:'.length)
+    schema['x-owed-vocabulary'] = vocabulary
+    // Unchanged, and true of every owed vocabulary: it is the shape/members split, not the reason.
     schema['x-owed'] =
       'the code list is owed; the shape is published and the members are not ([SD §0])'
+    // A4 of the cleanup round. The sentence above is true of all three owed vocabularies and
+    // reads as though each were merely awaiting a list — which [A9 §3.2] makes misleading for
+    // `identityScheme`, whose sources are read and argue against closing it. These two keys are
+    // what let a consumer tell the states apart from the wire alone.
+    const owed = owedVocabularies().get(vocabulary)
+    if (owed !== undefined) {
+      schema['x-owed-state'] = owed.state
+      schema['x-owed-why'] = owed.reason
+    }
   }
   return schema
 }
@@ -397,6 +408,35 @@ function nameOf(type: ts.Type, context: Context): string | undefined {
  * two shapes carry a better discriminator in the body itself and it is used: a brand carries its
  * tag, and an `Owed<Name, Owner>` carries the name of what is owed.
  */
+/**
+ * The sentence an `Owed<Name, Owner>` branch carries on the wire — A3 of the cleanup round.
+ *
+ * `OwedCode` (the owed **vocabularies**) has been annotated since the catalog shipped; `Owed` (the
+ * owed **values**) was not, although an owed branch's whole content is a statement about the
+ * model's incompleteness. [A7 §9] recorded the asymmetry and could not lean on it, which is why
+ * `repointedOwedOwner` stands on one ground rather than two: that class is argued from `owedTo`
+ * carrying no domain content, and could not also be argued from a published marker, because there
+ * was none.
+ */
+const OWED_VALUE_ANNOTATION =
+  'this value is owed; the branch is a declared placeholder, `owedTo` names who owes it, and ' +
+  '`provisional` is never normative ([SD §0])'
+
+/**
+ * Attach {@link OWED_VALUE_ANNOTATION} to an instantiated `Owed<…>` branch.
+ *
+ * Keyed on the **refined** name, which is `Owed.<what>` exactly when `refineName` found an `owed`
+ * `const` in the body — that is, when this is a real owed value rather than the bare generic. The
+ * bare `Owed` `$def` keeps no annotation on purpose: it is the uninstantiated shape, whose `owed`
+ * is a plain `string`, so there is no owed value for a sentence to be about.
+ */
+function annotateOwedValue(name: string, body: Json): Json {
+  if (!name.startsWith('Owed.')) return body
+  const fields = asObject(body)
+  if (fields === undefined || fields['x-owed'] !== undefined) return body
+  return { ...fields, 'x-owed': OWED_VALUE_ANNOTATION }
+}
+
 function refineName(name: string, body: Json): string {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return name
   const fields = body as Record<string, Json>
@@ -580,8 +620,9 @@ function schemaOf(type: ts.Type, context: Context): Json {
   const named = structuralName(body, context) ?? declared
   if (named === undefined) return body
   const name = refineName(named, body)
+  const annotated = annotateOwedValue(name, body)
 
-  const key = `${name} ${stableJson(body)}`
+  const key = `${name} ${stableJson(annotated)}`
   const already = context.assigned.get(key)
   if (already !== undefined) return { $ref: `#/$defs/${already}` }
 
@@ -590,7 +631,7 @@ function schemaOf(type: ts.Type, context: Context): Json {
   let published = name
   for (let n = 2; context.defs.has(published); n += 1) published = `${name}${n}`
   context.assigned.set(key, published)
-  context.defs.set(published, body)
+  context.defs.set(published, annotated)
   return { $ref: `#/$defs/${published}` }
 }
 
@@ -827,6 +868,49 @@ function bundlesFor(model: Model, declarations: Declarations): readonly Bundle[]
 /* ------------------------------------------------------------------------------------------------
  * The manifest
  * ---------------------------------------------------------------------------------------------- */
+
+/** One row of `data/owed-vocabularies.json`, as this generator needs it. */
+interface OwedVocabularyRow {
+  readonly vocabulary: string
+  readonly state: string
+  readonly reason: string
+}
+
+/**
+ * `data/owed-vocabularies.json`, read once.
+ *
+ * **Read rather than imported, and that is forced rather than chosen.** This generator reads `src/`
+ * through the TypeScript compiler API and never imports it — `src/index.ts` uses extensionless
+ * specifiers, which Node's ESM resolver refuses — so `loadOwedVocabularies` is not callable from
+ * here. The table's real invariants (a refusal must name its gate, a reason must fit the published
+ * limit, the rows must be exactly the owed vocabularies `src/` declares) live in that loader and are
+ * gated by `data-tables.test.ts`, which CI runs. What is checked HERE is only that the file has the
+ * shape this emit path indexes, so a malformed table fails loudly instead of emitting `undefined`
+ * into a published schema.
+ */
+let owedVocabularyRows: Map<string, OwedVocabularyRow> | undefined
+function owedVocabularies(): Map<string, OwedVocabularyRow> {
+  if (owedVocabularyRows !== undefined) return owedVocabularyRows
+  const at = 'data/owed-vocabularies.json'
+  const root = JSON.parse(readFileSync(`${PACKAGE_DIR}${at}`, 'utf8')) as {
+    vocabularies?: unknown
+  }
+  if (!Array.isArray(root.vocabularies)) {
+    throw new Error(`${at}: "vocabularies" is not an array`)
+  }
+  const rows = new Map<string, OwedVocabularyRow>()
+  for (const [index, item] of root.vocabularies.entries()) {
+    const row = item as Partial<OwedVocabularyRow>
+    for (const field of ['vocabulary', 'state', 'reason'] as const) {
+      if (typeof row[field] !== 'string' || row[field] === '') {
+        throw new Error(`${at}: vocabularies[${String(index)}].${field} is not a non-empty string`)
+      }
+    }
+    rows.set(row.vocabulary as string, row as OwedVocabularyRow)
+  }
+  owedVocabularyRows = rows
+  return rows
+}
 
 function indexDocument(declarations: Declarations): Json {
   const owed = collectOwedInventory()
