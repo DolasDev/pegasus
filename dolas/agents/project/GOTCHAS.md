@@ -1711,13 +1711,18 @@ lone PR legitimately sits at position 1 in `AWAITING_CHECKS` for ~5 minutes befo
 the queue starts building it. Past that, waiting and stalled are visually identical
 in `gh pr view` — both read `CLEAN`, both show `autoMergeRequest: false`.
 
-**The cheapest discriminator is one command, and it comes before the run hunt:** re-run
-`gh pr merge <N> --auto` and read its stdout. `! Pull request #N is already queued to merge`
-means it is in fact enqueued, whatever `autoMergeRequest` says; re-running is idempotent and
-harmless. Confirmed on #779 and #762 (2026-10-03), where `autoMergeRequest: null` **and**
-`isInMergeQueue: false` both read stale while #762 was queued at position 1 and merging. Note
-`gh pr view --json isInMergeQueue` is **not a valid field** — it errors listing the valid ones,
-so queue state comes only from the GraphQL `mergeQueueEntry` below.
+**`autoMergeRequest: null` does not mean auto-merge failed.** It reads null on a PR that is
+queued and merging — auto-merge converts into a queue entry and clears the field. Confirmed on
+#779 and #762 (2026-10-03/04). The cheapest check is one command: re-run `gh pr merge <N> --auto`
+and read its stdout — `! Pull request #N is already queued to merge` is authoritative, and
+re-running is idempotent. Note `gh pr view --json isInMergeQueue` is **not a valid field** (it
+errors listing the valid ones), so queue state comes only from the GraphQL `mergeQueueEntry`
+below.
+
+**That check only rules out "never enqueued" — it does NOT say the queue will build it.** #762
+was enqueued and still stalled: 18 minutes at position 1 with no `merge_group` run, while a PR
+enqueued _later_ at position 2 had already passed its own group run. Always finish with the run
+hunt below.
 
 The next discriminator is whether a `merge_group` run exists **for that PR number**:
 
@@ -1743,6 +1748,12 @@ warranted — on #694 the re-enqueue produced its `merge_group` run in **12 seco
 against 18 minutes of nothing, which is what made the stall diagnosis defensible
 instead of superstitious. If a re-enqueue also produces no run, the problem is not
 the entry.
+
+**Third reproduction, #762 on 2026-10-04**, with the same shape: enqueued 23:57:16 by the
+auto-merge workflow's `GITHUB_TOKEN`, 18 minutes at position 1 `AWAITING_CHECKS` and **zero**
+`merge_group` runs for `pr-762`; dequeue + `gh pr merge 762 --auto` under a human token produced
+the run in **~28 seconds** and it merged. A `GITHUB_TOKEN`-initiated enqueue gets a queue entry
+but no `merge_group` checks — which is the `DEPENDABOT_AUTOMERGE_PAT` gap, not a queue bug.
 
 ## "Something went wrong" is a RENDER crash, and it used to leave no trace at all
 

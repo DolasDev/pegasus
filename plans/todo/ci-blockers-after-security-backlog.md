@@ -12,13 +12,16 @@
 > intended fixes turned out to have **already been done by someone else** (see
 > "Don't redo these" at the bottom).
 >
-> **2026-10-03 pass.** Item 2 **fixed** (#779 — root `tsx` dependency edge; the cause was an
-> optional-peer slot capture, not the range conflict this file predicted). Item 3 **closed**
-> (#746 merged; cause never captured). Item 1 **partly fixed**: the `--detectOpenHandles` lever
-> was finally pulled and found a real leaked timer — in `Dashboard.snapshot.test.tsx`, **not** in
-> `tenant-picker.test.tsx` — now fixed; the TENANT-03 _timeout_ remains mitigated-only by #775.
-> Item 4 unchanged and still owner-only. Both "loose ends" at the bottom are also still open.
-> That leaves **Item 1's timeout, Item 4, and the two loose ends** as the live work here.
+> **2026-10-03/04 pass.** Item 2 **closed end-to-end** — #779 gave the root `tsx` dependency
+> edge (the cause was an optional-peer slot capture, not the range conflict this file predicted),
+> after which **#762's E2E went green and #762 merged**. Item 3 **closed** (#746 merged; cause
+> never captured). Item 1 **partly fixed** (#780): the `--detectOpenHandles` lever was finally
+> pulled and found a real leaked timer — in `Dashboard.snapshot.test.tsx`, **not** in
+> `tenant-picker.test.tsx`; the TENANT-03 _timeout_ remains mitigated-only by #775. Item 4 gained
+> a **seventh** reproduction (#762's own queue stall, measured: 18 min → 28 s) and is still
+> owner-only. The merge-queue runbook's pattern (a) signature was corrected (#781) — and that
+> correction's claim about #762 was itself wrong, fixed here. Both "loose ends" still open.
+> Live work: **Item 1's timeout, Item 4, and the two loose ends.**
 
 ---
 
@@ -154,8 +157,12 @@ without removing the flag's CI-hang protection.
 > 4. `apps/e2e` `tests/api/health.spec.ts` passes through Playwright (webServer + globalSetup),
 >    and `npm ci --dry-run` accepts the hand-edited lockfile.
 >
-> **Still to do:** `@dependabot rebase` on #762 once this is on `main`, then confirm its **E2E
-> Tests** job is green. A rebase alone was never going to fix it; a rebase _onto this_ will.
+> **Closed end-to-end, 2026-10-04.** `@dependabot rebase` on #762 regenerated the lockfile
+> against #779: Dependabot bumped **root** `tsx` to `^4.23.15` along with the four workspaces, so
+> all five agree and the lockfile holds **one** hoisted, non-optional `node_modules/tsx` — the
+> shape predicted before the rebase ran. Its **E2E Tests** job then passed in 1m36s, green for
+> the first time across #759 and #762, and **#762 merged**. A rebase alone was never going to fix
+> it; a rebase _onto this_ did.
 > Recorded in GOTCHAS as "`node ../../node_modules/.bin/<tool>` requires the ROOT to own the tool".
 
 ### Original diagnosis (kept for the record — the class was right, the remedy was not)
@@ -217,10 +224,27 @@ one piece of work rather than two.
 code change; the workflow already reads
 `secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN`.
 
-**Still six, not seven.** #762 looked like a seventh on 2026-10-03 — green, `CLEAN`,
-`autoMergeRequest: null` — and it was not: it was queued at position 1 the whole time, and its
-auto-merge job had succeeded. See the ⚠️ correction under runbook pattern (a) before adding to
-this count; the signature this item is recognized by is not reliable on its own.
+**SEVEN reproductions — #762 on 2026-10-03/04.** ⚠️ #781 landed the claim "still six, not
+seven" about this exact PR a few minutes too early, and it was wrong. Both halves of the story
+matter, because they are **two different patterns on one PR** and only the first was benign:
+
+- **Pattern (a) did NOT apply** — that part of #781 stands. #762 read green + `CLEAN` +
+  `autoMergeRequest: null`, which looks like "never enqueued", but GraphQL `mergeQueueEntry`
+  showed it queued at position 1 and its auto-merge job had succeeded. Auto-merge enablement
+  worked.
+- **Pattern (b) then DID apply** — and this is the item-4 symptom. Enqueued 23:57:16 by the
+  workflow's `GITHUB_TOKEN`, it sat at position 1 `AWAITING_CHECKS` for **18 minutes with no
+  `merge_group` run at all** (ruleset wait is 5 min, so well past it), while #781 — enqueued
+  _later_, at position 2 — had already produced and passed its own group run. A dequeue plus
+  `gh pr merge 762 --auto` under a **human** token produced the `pr-762` group run in **~28
+  seconds**. That before/after gap (18 min → 28 s) is the same shape as #694's 12-second
+  recovery, and it is what makes the diagnosis evidence rather than superstition.
+
+So: a GITHUB_TOKEN-initiated enqueue gets a queue entry but no `merge_group` checks — exactly
+what `plans/todo/dependabot-automerge-pat.md` predicts, now with a measured gap. **The lesson for
+this item's bookkeeping:** "auto-merge was enabled" and "the queue will actually build it" are
+independent claims. Confirm the second with a `merge_group` run for that PR number before
+recording a PR as healthy.
 
 ---
 
@@ -250,9 +274,15 @@ Fix: `gh pr merge <N> --auto`.
 > valid field** — it errors out listing the available ones, so the queue state only comes from
 > GraphQL. This is the same "an empty field is not evidence of absence" trap as the stale
 > `--event merge_group` listing two bullets down.
+>
+> **But ruling out (a) does not mean the PR is healthy** — #762 was (a)-clear and then stalled
+> under **(b)** anyway. #781 concluded "nothing was wrong with it" from the (a) check alone and
+> was wrong within minutes. These patterns are independent: finish the (b) check — a
+> `merge_group` run for that PR number — before calling a PR fine. See Item 4.
 
 **(b) Bot-enqueued entry stalls.** Head of queue, `AWAITING_CHECKS`, and **no `merge_group` run
-exists**. The missing-PAT symptom. Fix (verified twice):
+exists**. The missing-PAT symptom. Fix (verified **three** times now — #694, and #762 on
+2026-10-04, where 18 minutes of nothing became a group run in ~28 seconds):
 
 ```
 id=$(gh pr view <N> --json id -q .id)
