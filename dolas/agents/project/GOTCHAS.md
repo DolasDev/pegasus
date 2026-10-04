@@ -2366,12 +2366,36 @@ hoisting changes under you:
   not a flake. Remedy: a real root dependency edge (`tsx` in root `devDependencies`), which
   root already needed anyway for `npm run create-admin-user`.
 
-Rule: **if a root script or a `.bin`-by-path call site runs a tool, declare that tool in the
-root `package.json`.** Verified in isolation — a root `devDependencies` entry always yields
-`node_modules/.bin/<tool>`; a package reachable only as an _optional_ peer is not installed
-at all, so it yields nothing. Keep the root range equal to the workspaces' or arborist nests
-theirs beside it (root `^4.23.13` against workspaces at `^4.23.15` gave one root copy **plus
-four nested ones** — the bin link is restored, but it is four wasted copies).
+- **sharp** (#762 again, 2026-10-04 — the same evening, a second consumer). `packages/infra`'s
+  DocumentsStack lists `sharp` under CDK `bundling.nodeModules`, and `NodejsFunction` implements
+  that by writing a temp package.json, copying the project's **root** lockfile beside it, and
+  running `npm ci` — which only resolves packages the lockfile holds at the root. sharp had
+  hoisted by luck too; once the bump moved apps/api and apps/mobile to `^0.35.5`, root
+  `@emnapi/runtime@1.11.0` could not satisfy sharp 0.35.5's `1.11.3`, so npm nested a copy under
+  each workspace and left no root entry. **Staging Deploy failed on
+  `npm ci … Missing: sharp@0.35.5 from lock file` while every PR check was green**, because
+  bundling runs only at deploy time. Remedy: a root `devDependencies` edge on sharp, which also
+  lifts root `@emnapi/runtime` to 1.11.3. **A plain `npm install --package-lock-only` does NOT
+  re-hoist it** — only the root edge does; that was checked both ways.
+
+Rule: **if a root script, a `.bin`-by-path call site, or a CDK `bundling.nodeModules` list needs
+a package, declare that package in the root `package.json`.** Verified in isolation — a root
+`devDependencies` entry always yields `node_modules/.bin/<tool>` and a root lockfile entry; a
+package reachable only as an _optional_ peer is not installed at all, so it yields nothing. Keep
+the root range equal to the workspaces' or arborist nests theirs beside it (root `^4.23.13`
+against workspaces at `^4.23.15` gave one root copy **plus four nested ones** — the bin link is
+restored, but it is four wasted copies).
+
+**The `nodeModules` case now has a PR-time gate**, because the tsx case taught the rule and the
+sharp case proved nothing was enforcing it:
+`packages/infra/lib/stacks/__tests__/cdk-node-modules-root-resolvable.test.ts` scans every
+`nodeModules: [...]` in `packages/infra/lib` and asserts each package has a root
+`node_modules/<pkg>` lockfile entry. It is static (no synth, milliseconds), it fails red against
+the actual #762 lockfile, and it asserts its own scanner still finds the known call sites — a
+guard whose regex quietly stops matching would otherwise pass by checking nothing. The other
+three entries today (`@napi-rs/canvas`, `@cedar-policy/cedar-wasm`, `expo-server-sdk`) are
+root-resolvable **by luck, not by declaration**, so they are the next instances of this bug; the
+gate is what will catch them.
 
 ## A `grep -v node_modules` filter deletes every hit you were looking for
 
