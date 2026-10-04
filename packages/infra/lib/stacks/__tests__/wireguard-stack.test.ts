@@ -417,3 +417,74 @@ describe('WireGuardStack — tenant-runner plane (Phase 3 Unit 9)', () => {
     expect(String(runnerSg?.Properties?.GroupDescription ?? '')).toMatch(/^[\x00-\x7F]*$/)
   })
 })
+
+describe('WireGuardStack — Temporal Cloud Ops API DNS block (durable-workflow Phase 3a)', () => {
+  // Tenant runners (and everything else in this VPC) only need Temporal
+  // namespace gRPC endpoints. The Cloud Ops API is what a leaked
+  // namespace-scoped key's mandatory account-level Read role would use to
+  // list the Cloud account's users (plans/completed/
+  // 2b1e2147-durable-workflow-isolation-spike.md §6), so DNS for it is blocked.
+  it('blocks exactly saas-api.tmprl.cloud via a Resolver DNS Firewall domain list', () => {
+    const template = synth()
+    template.resourceCountIs('AWS::Route53Resolver::FirewallDomainList', 1)
+    template.hasResourceProperties('AWS::Route53Resolver::FirewallDomainList', {
+      Domains: ['saas-api.tmprl.cloud'],
+    })
+  })
+
+  it('answers blocked lookups with NXDOMAIN from a BLOCK rule', () => {
+    const template = synth()
+    template.resourceCountIs('AWS::Route53Resolver::FirewallRuleGroup', 1)
+    template.hasResourceProperties('AWS::Route53Resolver::FirewallRuleGroup', {
+      FirewallRules: [
+        Match.objectLike({
+          Action: 'BLOCK',
+          BlockResponse: 'NXDOMAIN',
+          FirewallDomainListId: Match.anyValue(),
+          Priority: Match.anyValue(),
+        }),
+      ],
+    })
+  })
+
+  it('associates the rule group with the VPC at a valid priority, without mutation protection', () => {
+    const template = synth()
+    template.resourceCountIs('AWS::Route53Resolver::FirewallRuleGroupAssociation', 1)
+    const assocs = template.findResources('AWS::Route53Resolver::FirewallRuleGroupAssociation')
+    const assoc = Object.values(assocs)[0]
+    expect(assoc?.Properties?.VpcId).toEqual({ Ref: expect.stringMatching(/^VpnVpc/) })
+    // AWS reserves 100 and 9900+ for itself; valid customer priorities are 101-9899.
+    const priority = Number(assoc?.Properties?.Priority)
+    expect(priority).toBeGreaterThan(100)
+    expect(priority).toBeLessThan(9900)
+    // Mutation protection would block CloudFormation from ever removing it.
+    expect(assoc?.Properties?.MutationProtection ?? 'DISABLED').toBe('DISABLED')
+  })
+
+  it('sets the VPC firewall to fail OPEN (a DNS-firewall fault must not take down VPC-wide DNS)', () => {
+    const template = synth()
+    const crs = template.findResources('Custom::AWS')
+    const failOpen = Object.values(crs).find((r) =>
+      JSON.stringify(r.Properties?.Create ?? '').includes('updateFirewallConfig'),
+    )
+    expect(failOpen).toBeDefined()
+    const create = JSON.stringify(failOpen?.Properties?.Create)
+    expect(create).toContain('FirewallFailOpen')
+    expect(create).toContain('ENABLED')
+    expect(create).toContain('VpnVpc')
+  })
+
+  it('gives every firewall resource a plain-ASCII name', () => {
+    const template = synth()
+    for (const type of [
+      'AWS::Route53Resolver::FirewallDomainList',
+      'AWS::Route53Resolver::FirewallRuleGroup',
+      'AWS::Route53Resolver::FirewallRuleGroupAssociation',
+    ]) {
+      for (const r of Object.values(template.findResources(type))) {
+        // eslint-disable-next-line no-control-regex
+        expect(String(r.Properties?.Name ?? '')).toMatch(/^[\x00-\x7F]+$/)
+      }
+    }
+  })
+})
