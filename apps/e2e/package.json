@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "test": "echo 'use npm run e2e'",
-    "e2e": "playwright test",
-    "install:browsers": "playwright install chromium",
+    "//playwright-path": "Both commands below spell out ../../node_modules/.bin/playwright on purpose. Bare `playwright` resolves through this workspace's node_modules/.bin first, and @playwright/mcp (below) depends on a PRERELEASE `playwright` that npm installs right there — so bare invocations get a runner that disagrees with the root @playwright/test the specs import, which fails as 'Playwright Test did not expect test.describe() to be called here' and then 'No tests found'. For install:browsers it is worse than a failure: it would fetch a Chromium build for a version nothing runs. Root .bin/playwright is linked from @playwright/test itself, so runner and library always match.",
+    "e2e": "node ../../node_modules/.bin/playwright test",
+    "install:browsers": "node ../../node_modules/.bin/playwright install chromium",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

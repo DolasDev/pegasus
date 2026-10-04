@@ -55,8 +55,17 @@ local DB / API either).
 Tag specs that write to the on-prem MSSQL DB (create a trip, change a status,
 edit an activity, patch driver availability, etc.) with `@qa-mutating`. The QA
 planning DB is disposable — re-seed it from the known-good snapshot before a
-full run. To run only the safe read-only subset: `playwright test --grep-invert "@qa-mutating"`.
+full run. To run only the safe read-only subset:
+`node ../../node_modules/.bin/playwright test --grep-invert "@qa-mutating"`.
 See `apps/e2e/QA.md`.
+
+> Always invoke Playwright as `node ../../node_modules/.bin/playwright`, never bare
+> `playwright` or `npx playwright`. `@playwright/mcp` pulls a **prerelease** `playwright` into
+> `apps/e2e/node_modules`, which shadows the stable runner for anything resolved from this
+> directory and disagrees with the `@playwright/test` the specs import — it fails as
+> "Playwright Test did not expect test.describe() to be called here" and then "No tests found",
+> which is a zero-test run rather than an obvious error. See the `//playwright-path` note in
+> `apps/e2e/package.json`.
 
 ## What the staging gate runs today
 
