@@ -217,6 +217,11 @@ one piece of work rather than two.
 code change; the workflow already reads
 `secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN`.
 
+**Still six, not seven.** #762 looked like a seventh on 2026-10-03 — green, `CLEAN`,
+`autoMergeRequest: null` — and it was not: it was queued at position 1 the whole time, and its
+auto-merge job had succeeded. See the ⚠️ correction under runbook pattern (a) before adding to
+this count; the signature this item is recognized by is not reliable on its own.
+
 ---
 
 ## Merge-queue maintenance runbook (learned 2026-09-29 → 10-02)
@@ -228,6 +233,23 @@ distinct ways** and they look alike from the PR page:
 mode: auto-merge was never enabled because the PR was red when the automation looked, and a
 merge queue never re-evaluates that. Four Dependabot PRs sat like this, two for **12 days**.
 Fix: `gh pr merge <N> --auto`.
+
+> ⚠️ **That signature gives FALSE POSITIVES — corrected 2026-10-03.** `autoMergeRequest: null`
+> and `isInMergeQueue: false` can **both** read stale while the PR is queued and merging fine.
+> Seen twice the same evening: on **#779**, `autoMergeRequest` read non-null right after
+> `gh pr merge --auto`, then **null** with `isInMergeQueue: false` minutes later — and re-running
+> the command answered `! Pull request #779 is already queued to merge`; it merged on its own. On
+> **#762** the same null/CLEAN pair looked exactly like the missing-PAT symptom, while GraphQL
+> `mergeQueueEntry` said `isInMergeQueue: true, position: 1, AWAITING_CHECKS` and the auto-merge
+> job had logged `! The merge strategy for main is set by the merge queue`.
+>
+> So before concluding a PR was never enqueued — and **before counting another item-4
+> reproduction** — confirm with **two independent** signals: GraphQL `mergeQueueEntry`, and
+> `gh pr merge <N> --auto` read for its stdout (`already queued to merge` is authoritative;
+> re-running is idempotent and harmless). Note `gh pr view --json isInMergeQueue` is **not a
+> valid field** — it errors out listing the available ones, so the queue state only comes from
+> GraphQL. This is the same "an empty field is not evidence of absence" trap as the stale
+> `--event merge_group` listing two bullets down.
 
 **(b) Bot-enqueued entry stalls.** Head of queue, `AWAITING_CHECKS`, and **no `merge_group` run
 exists**. The missing-PAT symptom. Fix (verified twice):
