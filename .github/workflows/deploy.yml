@@ -289,7 +289,21 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
         # `html` is kept in the reporter list so the report artifact upload
         # below still has a playwright-report/ to ship.
-        run: npx playwright test --reporter=list,html,json
+        #
+        # `node ../../node_modules/.bin/playwright`, NOT `npx playwright`, and not
+        # bare `playwright`: `@playwright/mcp` (an apps/e2e devDependency) depends
+        # on a PRERELEASE `playwright`, which npm installs at
+        # apps/e2e/node_modules/playwright. Anything resolving the binary from
+        # this working directory therefore gets that prerelease runner while the
+        # specs still `import from '@playwright/test'` at the root's stable
+        # version — a runner/library mismatch that fails as
+        # "Playwright Test did not expect test.describe() to be called here"
+        # and then "No tests found", i.e. a GREEN-looking zero-test run away from
+        # the skip-guard below. Root `.bin/playwright` is linked from
+        # @playwright/test itself, so the versions always agree. Same reason
+        # apps/mobile/store-assets/scripts/capture-screens.mjs imports chromium
+        # from '@playwright/test' rather than bare 'playwright'.
+        run: node ../../node_modules/.bin/playwright test --reporter=list,html,json
 
       - name: Guard against silent-skip false positives
         working-directory: apps/e2e
