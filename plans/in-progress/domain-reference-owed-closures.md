@@ -1,27 +1,20 @@
-# Domain reference — the context map: plan and resumption state
+# Domain reference — closing what is closable: plan and resumption state
 
-**Written 2026-10-03, as the cleanup round landed**, to be read by a session with **no prior
-context**. Everything needed to resume is here or is named by path. Read this whole file before
-starting.
+**Written 2026-10-04**, to be read by a session with **no prior context**. Everything needed to
+resume is here or is named by path. Read this whole file before starting.
 
-It replaces `plans/in-progress/domain-reference-cleanup.md`, whose record is
-`plans/completed/domain-reference-cleanup.md`. The convention in this effort is that a finished round
-leaves a **record** in `plans/completed/` and its **plan** is rewritten as the next round's, so do
-not go looking for an archived copy of a superseded plan.
+It replaces `plans/in-progress/domain-reference-context-map.md`, which was the cleanup round's
+successor plan and is **carried forward to §8 rather than discarded** — the user chose a different
+next round on 2026-10-04 and the context map waits for the one after. There is no `plans/completed/`
+record for it, because it never ran.
 
-> **This plan is a SEED, not a finished design.** §1 below is carried forward from the cleanup
-> round's §8, which carried it from A9's plan — it is the shape of the work and the traps around it,
-> and it has never had a planning pass of its own. **Do that pass first**, and expect it to change
-> the deliverable: §1 item 3 says the cheapest useful output may not be a document at all.
+> **This round was chosen on one rule: nothing in it needs a source that does not exist.** The
+> model's owed inventory is large and mostly blocked on evidence (§0 says why that is not a
+> backlog), but a short list is blocked only on a schema gap or a missing row. §1 closes four of
+> those, and the highest-leverage one is a **single enum member**.
 
 **All nine `v1 detail` areas are written, the unwritten-area phase is over, and the cleanup round has
-paid down what those rounds found and did not fix.** What is left is synthesis, the command side, and
-the items blocked on the user.
-
-> **If you are picking up this effort cold, read §0 first.** It is where the model actually stands,
-> measured rather than recalled, and it lists what is **closable on effort alone** — because the
-> context map in §1 is the _planned_ next round and not the only thing available. §0 exists so the
-> choice is informed; nothing in it has to be re-derived.
+paid down what those rounds found and did not fix.**
 
 ---
 
@@ -77,9 +70,21 @@ A8 itself** (`partyRole`, `notification`), and **3 are the order lifecycle** —
 blocked only on a missing `[A8 §4.3]` `boundBy` member, which `[A1 §Cross-area]` says A8 can take
 today.
 
+### Decisions taken 2026-10-04 — four of them, and they set this round
+
+| Asked                              | Decided                                                                                                                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Which round next                   | **Close what is closable on effort alone** — §1 is that round                                                                                                                  |
+| C1 `src:nmfta-scac`                | **Mark it skipped.** The identifier concept is witnessed by six sources and modelling does not need the authority's paid material — the registry's own `notes` already said so |
+| C2 what a signature asserts        | **The user will supply the wording.** Answered in principle, still blocked on their text — see §1 item 5                                                                       |
+| C4 the two prose-alias divergences | **Note 5 gains `time.delivery`; `time.departure` stays** — see §1 item 4                                                                                                       |
+
+**The context map is deferred, not dropped.** It moves to §8, carried forward unchanged for the
+round after this one.
+
 ### What is closable on EFFORT ALONE — the short list, cheapest first
 
-**This is the part worth having before choosing a round.** Everything else in the owed inventory is
+**§1 is the round that closes the first four of these.** Everything else in the owed inventory is
 waiting on evidence; these are not.
 
 1. **`documentIssuance`** — the cheapest owed row in the model. `[A8 §5]` row 10's
@@ -93,11 +98,13 @@ waiting on evidence; these are not.
 3. **`roleClass`** — **pending, not refused**: its sources exist and are unread
    (`src:uncefact-mmt-rdm` ships a 605-value `PartyRoleCode` list as a bare enumeration with no
    names). Reading them is work, not a decision to overturn.
-4. **`src:nmfta-scac`** — a **fetch**, not a modelling question, and §5 carries it as a user ask.
+4. **`src:nmfta-scac`** — **DECIDED 2026-10-04: mark it skipped**, and §1 item 3 is the edit. Kept
+   on this list because the decision was that we are not closing it this way, not that it was closed.
    The issuing authority for SCAC, the corpus's widest-witnessed identity scheme, which six sources
    use and none defines.
-5. **The context map** (§1) — synthesis over work already done. No new evidence needed, which is
-   also why §1 warns it can restate the area documents and call that a deliverable.
+5. **The context map** (§8) — synthesis over work already done. No new evidence needed, which is
+   also why §8 warns it can restate the area documents and call that a deliverable. **Deferred by the
+   2026-10-04 decision**, not dropped.
 6. **The command side and the aggregate lifecycles** — **not started at all.** The largest remaining
    piece and the least specified; it would need its own research pass before a plan.
 
@@ -114,39 +121,124 @@ the thing to read rather than any prose summary — including this one.
 
 ---
 
-## 1. What this round is — carried forward unchanged from the cleanup round's §8
+## 1. THE DELIVERABLE — close what is closable on effort alone
 
-**With A9 landed there is no unwritten v1 area left, so the shape of the work changes.** Every round
-since A4 has been: pick an area, audit what is owed to it, read its sources, decide, gate, record.
-The context map is not that. It is a **synthesis over work already done**, and its risk is the
-opposite of an area's: an area round risks claiming more than its sources say, and this one risks
-**restating** what the area documents already say and calling it a deliverable.
+**Nothing in this round needs a source that does not exist.** That is the whole selection rule, and
+it is why this round was chosen over the context map: every item below is blocked on a schema gap, a
+missing row, or a decision now taken — not on evidence.
 
-1. **Find what the context map is supposed to be before designing one.**
-   `/usr/bin/grep -rn -a 'context map' docs/domain-reference plans` — the term does two jobs: a
-   DDD-style map of bounded contexts and their relationships, and `rubric.md`'s marker for an area
-   that gets a sketch rather than a decision document (`A10`–`A13` are _"context-map-only by
-   design"_). **They are not the same thing and a plan that conflates them will produce neither.**
-2. **The strongest reason to do it, and it is A9's finding.** `[A9 §3.6]` and `[A8 §9 item 1]`
-   between them show the model has a **party** that is an identifier with no aggregate, referenced by
-   `assertedBy`, by `vocabularyScope.authority`, by `issuer` and by five witnessed identity schemes —
-   discoverable today only by reading four documents. **Start from the things that appear in more
-   than one area**: the party, the Portion, `evidence[]`, the identity key, custody, and the owed
-   authority rows.
-3. **The cheapest useful output may not be a document.** Every generated artefact here is built from
-   `src/` through the TypeScript compiler API, and `tools/generate-glossary.ts` already knows every
-   document, rule, vocabulary and owed value. **A generated context map would be gated by
-   construction**, where a hand-written one joins the prose nothing checks (§4).
-4. **Watch for this trap.** A10–A13 are **context-map-only by design and are not gaps** (`rubric.md`
-   says so twice). A context-map round must not turn into four thin area documents. If the map wants
-   something A10 owes, the map **records** the debt; it does not discharge it.
+**Verify each item still stands before doing it.** Six rounds running have found their own plan wrong
+about something; §4's fourth lesson is that a plan is a claim to audit.
 
-**Nearest models for shape:** `[A8]`'s skeleton — a document whose deliverable is a **table of what
-is owed** rather than a set of decisions — and `[catalog]`, a contract **around** the vocabulary
-rather than part of it.
+### 1. The missing `boundBy` member — the highest-leverage single change in the model
 
-After the context map, what remains is the command side, the aggregate lifecycles, `[A8]`'s ledger,
-the owed vocabularies, and `[SD §10.4]`'s two bullets.
+`[A8 §4.3]`'s enum carries **six** members — `CUSTODY`, `ASSIGNMENT`, `SCHEME`, `PRINCIPAL`, `NONE`,
+`KEY` — and **none of them means _the role resolved by the order's own award_.**
+
+**What it discharges**, which is why it is first:
+
+- **`orderResponse` and `orderCancellation`'s authority rows.** `[A1 §Cross-area]` shows the corpus
+  names a party on **every** order transition, so the evidence is already there and what blocks these
+  two is the schema alone. `[A1]` corrected `[A8]` on exactly this point — they are **not**
+  corpus-blocked, and A8's own ledger said they were.
+- **`shipmentCommitment`** (`[A2 §3.6]`), which `[SD §4.7.3]` records as waiting on the **same** gap —
+  and which in turn is what blocks **three** things the model can decide in prose and not in code:
+  `[A2 §3.2]`'s **B-ONWARD**, `[fork-order §5.2]`'s **B-STAGE** (a projection with no input records
+  since it was written), and the shipment set an `[A1 §3.4]` `COMPLETE` rule would quantify over.
+
+**What it does NOT discharge, so the round does not sweep it in:** `orderAward`, which `[A1]` places
+on **A8's own mint principle** rather than on this gap. Leave it owed and say why.
+
+> **Mechanics, because the enum has more homes than it looks.** `BOUND_BY_VALUES` is declared in
+> `src/data.ts` **and** the identical list appears in `src/rules/authority.ts`, held together by the
+> `BoundByMatchesTheModel` `Exact<>` gate with its assignment. `BOUND_BY_DECLARATIONS` extends it
+> with `'owed'` and `'unassigned'`. A new member touches all of them, and §3 item 9 is the rule: **a
+> data table may have more than two homes** — the authority table has three.
+
+**Classification:** `newClosedEnumMember` under `[catalog §2.3]`, additive on the "same rule,
+generalised" argument. Under `[catalog §2.3.1]` that is a **PATCH** — expect `0.6.1` → `0.6.2`.
+**Read the emitted diff before classifying** (§3 item 8); it has changed the answer every time.
+
+### 2. `documentIssuance` — the cheapest owed row in the model
+
+`[SD §4.7.3]` says in as many words that this is the **only** entry in that table whose blocker is
+**minting alone**: `[A8 §5]` row 10 binds `identity` with `boundBy = SCHEME` — _"the ISSUER of the
+scheme, and nobody else… Authority NEVER moves"_ — and `[A6 §3.2]` establishes that for a document
+with a scheme of its own, the party controlling the number scheme **is** the party issuing the
+instrument. So a row in `[SD §4.7.1]` and a row in `[A8 §5]` are **all** that is owed, with nothing
+owed underneath either.
+
+**The sourcing is already assembled in `[A6 §3.3]`** and does not need re-reading from scratch:
+`src:cfr-49-375` §375.505(a) (_"you must prepare and **issue** a bill of lading"_);
+`src:dtr-part-iv` A-413 §C.2, which makes number assignment the act itself (a BL _"is only
+accountable when a number has been assigned to the form"_); `src:dcsa`'s `ISSU` with
+`eventClassifierCode` forced to `ACT`; and `src:nmfta-ebol`'s required `bol.function` with one
+documented value, `Create`.
+
+> **A signature is a second, distinct act and is deliberately NOT part of this.** `[SD §4.7.3]` is
+> explicit: §375.505(h) has the bill of lading signed _"at least 3 days before"_ loading, at no
+> custody boundary, and §375.505(g)(2) permits signing an **incomplete** document — so it is neither
+> `handover` nor issuance. That is C2, and C2 is item 5 below.
+
+**Classification:** a new `type` row with its `[SD §4.7]`-shaped declaration is `newRecordType`,
+additive. **It and the `boundBy` member should share ONE bump** — the cleanup round's precedent, and
+§3 item 3's rule that the class you need may not exist yet.
+
+### 3. C1 — mark `src:nmfta-scac` skipped
+
+Mechanical, and decided: `status: candidate` → `skipped`, with the reason written into `notes` rather
+than left to be re-derived — the identifier concept is witnessed by six sources, and modelling does
+not need the authority's paid material. The registry's existing note already said the second half.
+
+> **Two things to check rather than assume.** It is the **only** registry entry whose `areas:` is
+> `[A9]` and nothing else (`[A9 §6]` item 2), and it sits in B1's **hand-written** half because it
+> has no `analysis.md` — so its `areas:` is not regenerated and must stay as it is. Run
+> `source-registry.test.ts` after the edit: the hand-written-half gate checks every declared id is a
+> real rubric area, and `[A9 §1]`'s citation gate reads this entry.
+
+**This does not close `[A9 §3.3(b)]`'s finding** that the corpus's widest-witnessed identity scheme
+has no definition. It records that we are not going to close it this way. Say so where A9 says it.
+
+### 4. C4 — `[SD §4.7]` note 5 gains `time.delivery`
+
+Decided: `[fork-time §8.1]` stands, and note 5 was missing a row. `[fork-time §8.1]` writes
+`type = time.delivery` with `basis = COMMITTED`, which reads as a legitimate committed-delivery time,
+so the alias table is what is incomplete.
+
+`time.departure` **stays**, as the symmetric completion of `time.arrival`, and its finding — that no
+analysis document writes it — is kept as the record rather than deleted.
+
+> **Then the register has to move, and it will teach you how it works.**
+> `RECORDED_DIVERGENCES` in `tests/conformance/documents.test.ts` drops its `time.delivery` entry —
+> it is no longer a divergence — and keeps the `time.departure` one. **The register asserts the
+> divergence set is exactly its list in BOTH directions**, so removing an entry without actually
+> closing the divergence fails, and closing one without removing it fails too. That is the gate
+> working; do not route around it.
+
+**Check whether `PROSE_ALIASES` in `src/vocabulary.ts` reaches the wire** before assuming this is
+prose-only. If it does, it joins the bump and needs a class.
+
+### 5. C2 — BLOCKED on the user's wording, and deliberately not inferred
+
+The user will supply what a signature asserts. Until that text exists, **A6 cannot mint the fact
+class**: a fact class needs a value, which is `[A6 §3.3(b)]`, and four sources publish the signing
+_procedure_ while none publishes the assertion.
+
+**Do not infer it from the procedure.** That is the `[ORIGINAL]` guess `[SD §0]` forbids, and A9 set
+the precedent for refusing rather than guessing. When the wording arrives, record it as **`[USER]`**
+evidence with the user's own words quoted, and `[A6 §6]` is where the debt is recorded.
+
+### Suggested order, and why
+
+1. **C1** — five minutes, mechanical, and it clears a user ask off the list.
+2. **C4** — prose plus the register edit. Do it early: the register gate is the best short lesson in
+   how this package holds a claim in two directions at once.
+3. **`documentIssuance`** — two rows, no new decisions, sourcing already assembled.
+4. **The `boundBy` member** — last, because it is the one with three homes and an `Exact` gate, and
+   because it should share a bump with item 3.
+5. **C2** — whenever the wording arrives. It does not block anything above.
+
+**Stop when items 1-4 are done.** C2 is the user's, and §8's context map is the round after.
 
 ---
 
@@ -286,29 +378,43 @@ changes are individually obvious, and "obvious" is the condition under which nob
 
 ## 5. What is blocked on the user — ask these, do not schedule them
 
-Each is one line. **None of them blocks the round starting** — B1, the one that did, is answered.
+Each is one line. **None of them blocks the round starting.** As at 2026-10-04 three more are
+answered and only one is still genuinely open — the user's own wording for C2, which §1 item 5
+carries and which blocks nothing else.
 
 0. **B1 — ANSWERED, 2026-09-30: recompute and gate, and DONE 2026-10-03.** Left here as the
    record of the ask; `plans/completed/domain-reference-cleanup.md` carries what the hybrid turned
    out to be.
-1. **C1 — `src:nmfta-scac`.** Worth obtaining? It is the issuing authority for SCAC, which six
-   sources use and none defines. `registry.yaml`'s `obtain:` field says what is needed.
-2. **C2 — what a signature asserts.** `[A6 §6]` owes this to the user explicitly; no source in the
-   corpus publishes it.
-3. **C4 — the two prose-alias divergences** need a decision from `[SD §4.7]` note 5, which is the
-   binding layer's and not the package's.
+1. **C1 — `src:nmfta-scac` — ANSWERED 2026-10-04: mark it skipped.** The identifier concept is
+   witnessed by six sources and modelling does not need the authority's paid material, which the
+   registry's own `notes` already said. **This does not close `[A9 §3.3(b)]`** — the corpus's
+   widest-witnessed identity scheme still has no definition, and the decision is that we are not
+   closing it this way. §1 item 3 is the edit.
+2. **C2 — what a signature asserts — ANSWERED IN PRINCIPLE 2026-10-04: the user will supply the
+   wording, and it has not arrived yet.** This is the one item still genuinely open. `[A6 §6]` owes it
+   to the user explicitly, no corpus source publishes it, and **it must not be inferred from the four
+   published procedures** — see §1 item 5. Record it as `[USER]` evidence, quoting their words, when
+   it comes.
+3. **C4 — the two prose-alias divergences — ANSWERED 2026-10-04: note 5 gains `time.delivery` and
+   `time.departure` stays.** `[fork-time §8.1]` stands; the alias table was the incomplete half. §1
+   item 4 is the edit, and the `RECORDED_DIVERGENCES` register has to move with it.
 4. **The `needs-user` backlog is not a backlog anyone is working.** Worth knowing rather than acting
    on; the number is in `registry.yaml` and this plan deliberately does not restate it (§3 item 10).
 
-> **B1 is answered and done** — the registry's `areas:` is generated for every source with a score
-> table and gated per source; the hand-written hint stays for the rest. The entry below is kept as
-> the record of the ask. Everything else in this section is still open, and **Group C of the cleanup
-> round joins it**: `src:nmfta-scac` has never been fetched and is the issuing authority for SCAC,
-> the corpus's widest-witnessed identity scheme; what a signature asserts is unpublished and
-> `[A6 §6]` owes it to the user; `[SD §4.7]` note 5's two prose-alias divergences need a decision from
-> the binding layer; `ExternallyPerformedLeg.performedBy` has no consumer (F4);
-> `OffsettingRecord.offsets` says nothing about whether the two assertions share a subject; and the
-> requestor of a **completed** cancellation has no field (`[A1 §3.5]`).
+> **What is left of Group C after the 2026-10-04 decisions**, and none of it is a user ask — these
+> are modelling questions for a later round, recorded so nobody rediscovers them:
+>
+> - **F4 is open.** `ExternallyPerformedLeg.performedBy` has no consumer —
+>   `analysis/findings-from-alloy.md`, against `[SD §4.8.3]` rule 1 versus its own amended fold table.
+> - **A7's cross-subject set-off is a silence, not a refusal.** `OffsettingRecord.offsets` is an
+>   `EventId` and says nothing about whether the two assertions share a subject, while
+>   `src:dp3-tender-of-service` NTS §5.8.2 publishes a set-off across bills of lading (`[A7 §3.8]`).
+> - **A1's open defect stands.** The requestor of a **completed** cancellation has no field
+>   (`[A1 §3.5]`).
+>
+> `[SD §10.4]` also still carries **two of its five** items open: the directional stop-type pairs
+> (A3's) and custody authority's owner, which is partially closed with the cap moved rather than
+> lifted.
 
 ---
 
@@ -407,13 +513,54 @@ API**. If you extend either:
 
 ---
 
-## 8. Starting the next session
+## 8. What follows this round — the context map, carried forward again
+
+> **This section is a SEED, not a finished design.** It came from A9's plan, then the cleanup round's
+> §8, then the context-map plan's §1, and now here — **it has never had a planning pass of its own.**
+> Do that pass before executing any of it, and expect it to change the deliverable: item 3 below says
+> the cheapest useful output may not be a document at all.
+
+**With A9 landed there is no unwritten v1 area left, so the shape of the work changes.** Every round
+since A4 has been: pick an area, audit what is owed to it, read its sources, decide, gate, record.
+The context map is not that. It is a **synthesis over work already done**, and its risk is the
+opposite of an area's: an area round risks claiming more than its sources say, and this one risks
+**restating** what the area documents already say and calling it a deliverable.
+
+1. **Find what the context map is supposed to be before designing one.**
+   `/usr/bin/grep -rn -a 'context map' docs/domain-reference plans` — the term does two jobs: a
+   DDD-style map of bounded contexts and their relationships, and `rubric.md`'s marker for an area
+   that gets a sketch rather than a decision document (`A10`–`A13` are _"context-map-only by
+   design"_). **They are not the same thing and a plan that conflates them will produce neither.**
+2. **The strongest reason to do it, and it is A9's finding.** `[A9 §3.6]` and `[A8 §9 item 1]`
+   between them show the model has a **party** that is an identifier with no aggregate, referenced by
+   `assertedBy`, by `vocabularyScope.authority`, by `issuer` and by five witnessed identity schemes —
+   discoverable today only by reading four documents. **Start from the things that appear in more
+   than one area**: the party, the Portion, `evidence[]`, the identity key, custody, and the owed
+   authority rows.
+3. **The cheapest useful output may not be a document.** Every generated artefact here is built from
+   `src/` through the TypeScript compiler API, and `tools/generate-glossary.ts` already knows every
+   document, rule, vocabulary and owed value. **A generated context map would be gated by
+   construction**, where a hand-written one joins the prose nothing checks (§4).
+4. **Watch for this trap.** A10–A13 are **context-map-only by design and are not gaps** (`rubric.md`
+   says so twice). A context-map round must not turn into four thin area documents. If the map wants
+   something A10 owes, the map **records** the debt; it does not discharge it.
+
+**Nearest models for shape:** `[A8]`'s skeleton — a document whose deliverable is a **table of what
+is owed** rather than a set of decisions — and `[catalog]`, a contract **around** the vocabulary
+rather than part of it.
+
+After the context map, what remains is the command side, the aggregate lifecycles, `[A8]`'s ledger,
+the owed vocabularies, and `[SD §10.4]`'s two bullets.
+
+---
+
+## 9. Starting the next session
 
 ```bash
 cd ~/repos/pegasus && git fetch && git pull --ff-only    # primary checkout, parked on main
-python3 -c "s='dr-context-map'; print(5433 + sum(ord(c) for c in s) % 60)"   # derive the DB port
+python3 -c "s='dr-owed-closures'; print(5433 + sum(ord(c) for c in s) % 60)"   # derive the DB port
 ss -ltn | grep -E ':(54[3-9][0-9])'                                          # …against what is listening
-scripts/workstream-start.sh chore dr-context-map plans/in-progress/domain-reference-context-map.md
+scripts/workstream-start.sh chore dr-owed-closures plans/in-progress/domain-reference-owed-closures.md
 ```
 
 > **Derive the port, do not trust a number written here.** A9's plan wrote a guessed port and was
@@ -441,11 +588,13 @@ archived to `plans/completed/<slug>.md` **before** opening it.
 **Read before writing anything:**
 
 1. **§0 of this file** — where the model stands and what is closable on effort alone, so the
-   choice of round is informed. Then **§1**, and then `rubric.md` — the term "context map" does two
-   jobs there and conflating them will produce neither.
+   choice of round is informed. Then **§1**, which is this round's deliverable. (The "context map"
+   warning — that the term does two jobs in `rubric.md` and conflating them produces neither — now
+   belongs to §8, the round after.)
 2. `plans/completed/domain-reference-cleanup.md` — the round that just landed, its four
    plan-was-wrong findings, and its transferable lessons.
-3. `plans/completed/domain-reference-a9-identity.md` — the last area round, and the source of §1's
+3. `plans/completed/domain-reference-a9-identity.md` — the last area round. It is where §1 item 1's
+   evidence lives (`[A1]`'s correction of A8's ledger is cited from there) and the source of §8's
    strongest argument (`[A9 §3.6]`'s party with no aggregate).
 4. `docs/domain-reference/analysis/published-event-catalog.md` **§2.3** and **§2.3.1** — the change
    classes and the pre-1.0 version rule, if anything this round does reaches the wire.
