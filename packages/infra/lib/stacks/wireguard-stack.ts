@@ -336,9 +336,15 @@ export class WireGuardStack extends cdk.Stack {
     new customResources.AwsCustomResource(this, 'VpcDnsFirewallFailOpen', {
       onCreate: firewallFailOpenCall,
       onUpdate: firewallFailOpenCall,
-      policy: customResources.AwsCustomResourcePolicy.fromSdkCalls({
-        resources: customResources.AwsCustomResourcePolicy.ANY_RESOURCE,
-      }),
+      // Explicit rather than fromSdkCalls: Route 53 Resolver actions that take a
+      // VPC id also check ec2:DescribeVpcs, and a missing grant would fail this
+      // resource and roll the whole stack back.
+      policy: customResources.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ['route53resolver:UpdateFirewallConfig', 'ec2:DescribeVpcs'],
+          resources: ['*'],
+        }),
+      ]),
       installLatestAwsSdk: false,
     })
 

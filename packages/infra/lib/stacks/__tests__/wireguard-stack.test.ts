@@ -474,6 +474,20 @@ describe('WireGuardStack — Temporal Cloud Ops API DNS block (durable-workflow 
     expect(create).toContain('VpnVpc')
   })
 
+  it('lets the fail-open custom resource call UpdateFirewallConfig and describe the VPC', () => {
+    // Route 53 Resolver actions that take a VPC id also check ec2:DescribeVpcs;
+    // a missing grant would fail the custom resource and roll the stack back.
+    const template = synth()
+    const policies = Object.values(template.findResources('AWS::IAM::Policy'))
+    const actions = policies.flatMap((p) =>
+      (p.Properties?.PolicyDocument?.Statement ?? []).flatMap((s: { Action: string | string[] }) =>
+        Array.isArray(s.Action) ? s.Action : [s.Action],
+      ),
+    )
+    expect(actions).toContain('route53resolver:UpdateFirewallConfig')
+    expect(actions).toContain('ec2:DescribeVpcs')
+  })
+
   it('gives every firewall resource a plain-ASCII name', () => {
     const template = synth()
     for (const type of [
