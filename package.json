@@ -31,6 +31,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.0.0",
     "prettier": "^3.9.9",
+    "sharp": "^0.35.5",
     "shellcheck": "^4.1.0",
     "tsx": "^4.23.15",
     "turbo": "^2.11.5",
@@ -51,6 +52,7 @@
     ]
   },
   "//devDependencies": {
+    "sharp": "NOT unused — do not remove, and do not move it out of the root. `packages/infra`'s DocumentsStack ConverterFunction lists sharp under CDK `bundling.nodeModules`, and NodejsFunction implements that by writing a temp package.json, copying THIS lockfile beside it, and running `npm ci` — which only resolves a package the lockfile holds at the ROOT. sharp hoisted there by luck until #762: once apps/api and apps/mobile moved to ^0.35.5, npm nested a copy under each (root `@emnapi/runtime` 1.11.0 cannot satisfy sharp 0.35.5's 1.11.3, so it would not hoist) and left no root entry. Staging Deploy then failed on `npm ci … Missing: sharp@0.35.5 from lock file` while CI stayed green, because bundling only runs at deploy time. A plain `npm install --package-lock-only` does NOT re-hoist it — only this edge does; it also lifts root `@emnapi/runtime` to 1.11.3. Same rule as the `tsx` entry below. `lib/stacks/__tests__/cdk-node-modules-root-resolvable.test.ts` now gates every `nodeModules` entry so this cannot regress silently again.",
     "tsx": "NOT unused — do not remove. The root `create-admin-user` script runs `tsx` by name, the `scripts/*.ts` operational scripts are run as `npx tsx`, and apps/e2e + .github/workflows invoke `node ../../node_modules/.bin/tsx`. All of that needs tsx AT THE ROOT, and until now it only landed there by luck: four workspaces (api, e2e, infra, vpn-agent) happened to declare one range, so npm hoisted it. #762 showed that is not a guarantee — a nested vite 8.3.1 left the root tsx slot holding vite 8.3.0's *optional* peer, and npm does not install an optional peer nothing depends on, so `node_modules/.bin/tsx` was never linked and the e2e webServer died with `Cannot find module '<root>/node_modules/.bin/tsx'`. Same class as the `prisma` entry in `//overrides` below, and the same lesson: the `node ../../node_modules/.bin/<tool>` convention requires the root to OWN the tool. prisma gets that from a pin; tsx gets it from this edge. Keep this range equal to the workspaces' so all five dedupe to one hoisted copy."
   },
   "//overrides": {

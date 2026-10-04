@@ -20,7 +20,12 @@
 > `tenant-picker.test.tsx`; the TENANT-03 _timeout_ remains mitigated-only by #775. Item 4 gained
 > a **seventh** reproduction (#762's own queue stall, measured: 18 min → 28 s) and is still
 > owner-only. The merge-queue runbook's pattern (a) signature was corrected (#781) — and that
-> correction's claim about #762 was itself wrong, fixed here. Both "loose ends" still open.
+> correction's claim about #762 was itself wrong, fixed in #782. Both "loose ends" still open.
+>
+> **A new Item 5 was created by closing item 2:** #762 landing broke staging **Deploy** on
+> `sharp` — the same root-ownership class as item 2, caught only post-merge because CDK bundling
+> runs at deploy time and nothing gated it. Fixed, with a PR-time gate added.
+>
 > Live work: **Item 1's timeout, Item 4, and the two loose ends.**
 
 ---
@@ -217,6 +222,55 @@ one piece of work rather than two.
 
 ---
 
+## Item 5 — staging Deploy broke on `sharp` the moment #762 landed — ✅ FIXED (2026-10-04)
+
+> **This one was caused by closing item 2.** #762 merged, and `main`'s **Deploy** went red on the
+> next two runs while every PR check stayed green. Bisect was unambiguous: Deploy succeeded on
+> `b77da4bb` (#779) and `2ce05652` (#780), and failed first on `c1ef07bb` — #762 itself.
+>
+> ```
+> npm error `npm ci` can only install packages when your package.json and
+>           package-lock.json … are in sync.
+> npm error Missing: sharp@0.35.5 from lock file
+> npm error Invalid: lock file's @emnapi/runtime@1.11.0 does not satisfy @emnapi/runtime@1.11.3
+> [«FailedToBundleAsset» … PegasusStaging-DocumentsStack/ConverterFunction …]
+> ```
+>
+> **It is the same root-ownership class as item 2, with a different consumer.** DocumentsStack
+> lists `sharp` under CDK `bundling.nodeModules`; `NodejsFunction` implements that by writing a
+> temp package.json, copying the **root** lockfile beside it, and running `npm ci` — which only
+> resolves what the lockfile holds at the root. Measured before/after:
+>
+> |                          | root `node_modules/sharp` | copies                                 |
+> | ------------------------ | ------------------------- | -------------------------------------- |
+> | before #762 (`b77da4bb`) | 0.35.4                    | 1                                      |
+> | after #762 (`c1ef07bb`)  | **ABSENT**                | 2, nested under apps/api + apps/mobile |
+>
+> Once both workspaces moved to `^0.35.5`, root `@emnapi/runtime@1.11.0` could not satisfy sharp
+> 0.35.5's `1.11.3`, so npm nested a copy under each and left no root entry.
+>
+> **Fix:** a root `devDependencies` edge on `sharp` — which also lifts root `@emnapi/runtime` to
+> 1.11.3 and clears the second error. **A plain `npm install --package-lock-only` does NOT
+> re-hoist it**; that was tested both ways before choosing. Net lockfile effect is a relocation,
+> not a rewrite: +27 root entries (sharp and its `@img/*` platform set), −203 (jest's tree moves
+> down into `apps/mobile`, where it is declared; 121 nested entries dedupe, none lost), and
+> exactly **one** version change.
+>
+> **Verified:** real `cdk synth PegasusStaging-DocumentsStack` succeeds and the asset contains
+> `node_modules/{sharp,@img,@napi-rs}`; `npm ci` exits 0; `turbo typecheck lint test` green;
+> `apps/mobile` 22 suites / 193 tests pass with 0 open handles after jest relocated.
+>
+> **The real lesson is that nothing gated it.** Bundling runs only at deploy time, so typecheck,
+> lint and every test were green on a PR that broke the release path. There is now a PR-time gate:
+> `packages/infra/lib/stacks/__tests__/cdk-node-modules-root-resolvable.test.ts` asserts every
+> `nodeModules` package has a root lockfile entry. It is static (milliseconds), it **fails red
+> against #762's actual lockfile**, and it checks that its own scanner still finds the known call
+> sites. The other three `nodeModules` entries — `@napi-rs/canvas`, `@cedar-policy/cedar-wasm`,
+> `expo-server-sdk` — are root-resolvable **by luck, not declaration**, so they are the next
+> instances; the gate is what catches them.
+
+---
+
 ## Item 4 — `DEPENDABOT_AUTOMERGE_PAT` (owner-only; see its own file)
 
 `plans/todo/dependabot-automerge-pat.md` — unchanged, still the single highest-leverage fix.
@@ -348,3 +402,13 @@ entry (116 lines) that the committed lockfile keeps. It showed up unrelated in t
 2026-10-03. It is not yours and it is not this PR's business — `git checkout package-lock.json`
 before committing unless you deliberately changed a dependency. The same prune is why #779's
 lockfile edit was made by hand rather than by `npm install --package-lock-only`.
+
+**And a fourth, new as of #762's `turbo` 2.11.5: `AGENTS.md`.** Turbo now **writes itself into
+that file** — a managed `<!-- BEGIN:turborepo-agent-rules -->` block — whenever it detects an AI
+agent running a repo-scoped command. So any session that runs `npx turbo …` finds `AGENTS.md`
+dirty through no action of its own. Its own text says to commit it, and that it will be re-added
+on the next qualifying invocation unless `"agentGuidance": false` is set in the root `turbo.json`.
+**That is a deliberate team decision about a team-wide instructions file, not something to fold
+silently into whatever PR happens to be open** — so it was reverted rather than committed here.
+Decide it once: either commit the block, or set `"agentGuidance": false`. Until then, expect it
+in `git status` and leave it out of unrelated commits.
