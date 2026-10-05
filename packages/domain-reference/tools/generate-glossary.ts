@@ -83,7 +83,7 @@ export function byteOrder(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-function sortedBy<T>(items: readonly T[], key: (item: T) => string): T[] {
+export function sortedBy<T>(items: readonly T[], key: (item: T) => string): T[] {
   return [...items].sort((left, right) => byteOrder(key(left), key(right)))
 }
 
@@ -101,13 +101,13 @@ function sourceFilesUnder(directory: string): string[] {
   return found.sort(byteOrder)
 }
 
-interface Model {
+export interface Model {
   readonly program: ts.Program
   readonly checker: ts.TypeChecker
   readonly files: readonly ts.SourceFile[]
 }
 
-function buildModel(): Model {
+export function buildModel(): Model {
   const files = sourceFilesUnder(SRC_DIR)
   const program = ts.createProgram(files, {
     target: ts.ScriptTarget.ES2022,
@@ -124,7 +124,7 @@ function buildModel(): Model {
 }
 
 /** The path a reader can open, relative to the repository root. */
-function repoPath(file: ts.SourceFile): string {
+export function repoPath(file: ts.SourceFile): string {
   const index = file.fileName.indexOf('/packages/')
   return index === -1 ? file.fileName : file.fileName.slice(index + 1)
 }
@@ -140,7 +140,7 @@ function repoPath(file: ts.SourceFile): string {
  * to the declaration through a reorder. `undefined` means the node carries no `/** … *\/` comment —
  * which the coverage gate reports and never papers over.
  */
-function docCommentOf(node: ts.Node): string | undefined {
+export function docCommentOf(node: ts.Node): string | undefined {
   const text = node.getSourceFile().getFullText()
   const ranges = ts.getLeadingCommentRanges(text, node.getFullStart()) ?? []
   const jsdoc = ranges.filter((range) => text.slice(range.pos, range.pos + 3) === '/**')
@@ -189,7 +189,7 @@ function definitionOf(doc: string): string {
  * ---------------------------------------------------------------------------------------------- */
 
 /** The binding layer, then A8, then the three decision documents, then the review rounds. */
-const DOCUMENTS: Readonly<Record<string, string>> = {
+export const DOCUMENTS: Readonly<Record<string, string>> = {
   SD: '00-shared-decisions.md',
   A8: 'A8-authority-skeleton.md',
   A4: 'A4-execution-events.md',
@@ -227,7 +227,7 @@ const CORPUS_CITATION = /`src:[a-z0-9-]+`/g
 const REGULATION_CITATION = /§\s?\d/
 const MARKER = /\[(ORIGINAL|SYNTHESIS)\]/g
 
-interface Citation {
+export interface Citation {
   readonly document: string
   /** `4.7.1` where the citation named a section, `null` where it named the document as a whole. */
   readonly section: string | null
@@ -235,7 +235,7 @@ interface Citation {
   readonly text: string
 }
 
-function citationsIn(doc: string): Citation[] {
+export function citationsIn(doc: string): Citation[] {
   const seen = new Map<string, Citation>()
   for (const match of doc.matchAll(CITATION)) {
     const document = match[1] ?? ''
@@ -283,7 +283,7 @@ export function headingSlug(heading: string): string {
 /** The one section heading the Contents has to link to by hand; spelled once so it cannot drift. */
 const OWED_HEADING = 'Owed — what the model declares undecided, and who owes it'
 
-type AnchorIndex = ReadonlyMap<string, ReadonlyMap<string, string>>
+export type AnchorIndex = ReadonlyMap<string, ReadonlyMap<string, string>>
 
 /**
  * Section number → heading anchor, per document.
@@ -293,7 +293,7 @@ type AnchorIndex = ReadonlyMap<string, ReadonlyMap<string, string>>
  * heading of its own — `[SD §4.7.2f]`, which is a bold run inside §4.7.2 — falls back to the
  * longest heading that is a prefix of it.
  */
-function buildAnchorIndex(): AnchorIndex {
+export function buildAnchorIndex(): AnchorIndex {
   const index = new Map<string, Map<string, string>>()
   for (const [token, file] of Object.entries(DOCUMENTS)) {
     const anchors = new Map<string, string>()
@@ -318,7 +318,7 @@ function buildAnchorIndex(): AnchorIndex {
   return index
 }
 
-function linkFor(citation: Citation, anchors: AnchorIndex): string {
+export function linkFor(citation: Citation, anchors: AnchorIndex): string {
   const file = DOCUMENTS[citation.document]
   if (file === undefined) return citation.text
   const perDocument = anchors.get(citation.document)
@@ -346,7 +346,7 @@ function linkFor(citation: Citation, anchors: AnchorIndex): string {
  * ---------------------------------------------------------------------------------------------- */
 
 /** A declaration reached through the module's real exports, with the file it was found in. */
-interface Declared {
+export interface Declared {
   readonly name: string
   readonly node: ts.Node
   readonly file: ts.SourceFile
@@ -359,7 +359,7 @@ interface Declared {
  * Through the checker rather than by scanning files: `index.ts` is nothing but `export *`, so a
  * term that stops being exported disappears from this map and every lookup for it throws.
  */
-function exportsOfIndex(model: Model): ReadonlyMap<string, ts.Symbol> {
+export function exportsOfIndex(model: Model): ReadonlyMap<string, ts.Symbol> {
   const index = model.program.getSourceFile(INDEX_FILE)
   if (index === undefined) throw new Error(`the generator cannot find ${INDEX_FILE}`)
   const moduleSymbol = model.checker.getSymbolAtLocation(index)
@@ -381,7 +381,7 @@ function documentedNode(declaration: ts.Declaration): ts.Node {
   return declaration
 }
 
-function declaredExport(
+export function declaredExport(
   model: Model,
   exported: ReadonlyMap<string, ts.Symbol>,
   name: string,
@@ -440,7 +440,7 @@ function declaredInFile(model: Model, file: string, path: string): Declared {
  * Closed vocabularies — the members of an `as const` array
  * ---------------------------------------------------------------------------------------------- */
 
-interface Member {
+export interface Member {
   readonly value: string
   readonly doc: string | undefined
   readonly declaredBy: string
@@ -501,7 +501,7 @@ function resolvedMember(
 }
 
 /** One entry per element of the declaration's array literal, in declaration order. */
-function membersOf(model: Model, declared: Declared): Member[] {
+export function membersOf(model: Model, declared: Declared): Member[] {
   const literal = arrayLiteralOf(declared.node)
   return literal.elements.map((element) => {
     const referenced = resolvedMember(model, element)
@@ -745,10 +745,12 @@ function owedFactClassFamilies(model: Model): (readonly [string, string])[] {
  * [SD §4.7.1]'s table, as shipped in `data/`
  * ---------------------------------------------------------------------------------------------- */
 
-interface CanonicalRow {
+export interface CanonicalRow {
   readonly type: string
   readonly family: string
   readonly proseAliases: readonly string[]
+  /** The row's own citations, as distinct from its authority's — read by the context map. */
+  readonly citations?: readonly string[]
   readonly qualifier: { readonly fields: readonly string[]; readonly citation: string } | null
   readonly authority: {
     readonly status: string
@@ -764,12 +766,12 @@ interface CanonicalRow {
   }
 }
 
-interface CanonicalTable {
+export interface CanonicalTable {
   readonly rows: readonly CanonicalRow[]
   readonly families: Readonly<Record<string, { readonly members: readonly string[] }>>
 }
 
-function readCanonicalSubjects(): CanonicalTable {
+export function readCanonicalSubjects(): CanonicalTable {
   const raw = JSON.parse(readFileSync(CANONICAL_SUBJECTS_FILE, 'utf8')) as {
     rows: CanonicalRow[]
     families: { members: Record<string, { members: string[] }> }

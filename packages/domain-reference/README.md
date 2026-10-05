@@ -19,14 +19,14 @@ careful reader has to verify, and start being something a compiler and a test ru
 
 ## Layout
 
-| Path                 | What                                                                                  | Authority                        |
-| -------------------- | ------------------------------------------------------------------------------------- | -------------------------------- |
-| `src/`               | Types (the vocabulary) and pure predicates (the rules types cannot hold)              | Normative for structure          |
-| `data/`              | Tables that change on their own cadence — canonical subjects, authority rows, reasons | Normative for content            |
-| `tests/scenarios/`   | Nine real household-goods situations, as executable acceptance tests                  | The suite that must keep passing |
-| `tests/conformance/` | Checks that the code, the data and the analysis documents agree                       | The drift guard                  |
-| `alloy/`             | Structural model-checking for questions a type system cannot answer                   | Finds counterexamples            |
-| `tools/`             | The glossary generator — reads `src/` through the TypeScript compiler API             | Generates, never decides         |
+| Path                 | What                                                                                                          | Authority                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `src/`               | Types (the vocabulary) and pure predicates (the rules types cannot hold)                                      | Normative for structure          |
+| `data/`              | Tables that change on their own cadence — canonical subjects, authority rows, reasons                         | Normative for content            |
+| `tests/scenarios/`   | Nine real household-goods situations, as executable acceptance tests                                          | The suite that must keep passing |
+| `tests/conformance/` | Checks that the code, the data and the analysis documents agree                                               | The drift guard                  |
+| `alloy/`             | Structural model-checking for questions a type system cannot answer                                           | Finds counterexamples            |
+| `tools/`             | The three generators — glossary, catalog and context map; all read `src/` through the TypeScript compiler API | Generates, never decides         |
 
 ## Precedence
 
@@ -59,6 +59,25 @@ npm run glossary -w @pegasus/domain-reference    # rewrites docs/domain-referenc
 Two gates in `tests/conformance/` keep it honest. `glossary-staleness.test.ts` regenerates the
 document in memory and fails if the committed file differs, naming the first differing line and the
 command to re-run. `glossary-coverage.test.ts` is the disclosure rule above, mechanised.
+
+## So is the context map
+
+[`docs/domain-reference/context-map.md`](../../docs/domain-reference/context-map.md) is generated too,
+and the reason is one level out from the glossary's: a context map says nothing but which sets
+overlap, and every one of those sets is already in the code. The nodes are `rubric.md`'s thirteen
+areas; the edges are the concepts referenced from more than one place, the aggregates two areas both
+assert about, and the debt one owes another — including the `TODO(…)` markers, which are a second owed
+ledger that reaches neither the glossary nor `catalog/index.json`.
+
+```bash
+npm run context-map -w @pegasus/domain-reference  # rewrites docs/domain-reference/context-map.md
+```
+
+`tests/conformance/context-map.test.ts` holds four things: staleness, the join surface **enumerated by
+name** (both thresholds it uses are counts, so the membership is gated rather than the numbers), the
+comparison that justifies using both hub axes rather than either, and the map's refusal to publish a
+DDD integration-pattern vocabulary — which has no edge the types can see and is therefore held over
+the emitted bytes.
 
 ## Running it
 
