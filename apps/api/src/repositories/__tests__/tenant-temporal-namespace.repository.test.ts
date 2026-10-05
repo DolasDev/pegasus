@@ -229,6 +229,66 @@ describe.skipIf(!hasDb)('TenantTemporalNamespace repository (integration)', () =
     expect((await repo.findByTenant(tenantId))!.apiKeyId).toBe('key-2')
   })
 
+  it('claimLease holds the row for one action at a time, gated on status', async () => {
+    await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
+    const t0 = new Date('2026-10-05T12:00:00.000Z')
+    const until = new Date('2026-10-05T12:15:00.000Z')
+
+    // Wrong status: no lease.
+    expect(await repo.claimLease(tenantId, ['READY'], { now: t0, until })).toBe(false)
+
+    expect(await repo.claimLease(tenantId, ['PROVISIONING'], { now: t0, until })).toBe(true)
+    expect((await repo.findByTenant(tenantId))!.leaseExpiresAt).toEqual(until)
+
+    // Held: a second claim before expiry fails.
+    const t1 = new Date('2026-10-05T12:10:00.000Z')
+    expect(await repo.claimLease(tenantId, ['PROVISIONING'], { now: t1, until })).toBe(false)
+
+    // Expired (a Lambda killed by its timeout): claimable again.
+    const t2 = new Date('2026-10-05T12:16:00.000Z')
+    const until2 = new Date('2026-10-05T12:31:00.000Z')
+    expect(await repo.claimLease(tenantId, ['PROVISIONING'], { now: t2, until: until2 })).toBe(true)
+
+    await repo.releaseLease(tenantId)
+    expect((await repo.findByTenant(tenantId))!.leaseExpiresAt).toBeNull()
+    expect(await repo.claimLease(tenantId, ['PROVISIONING'], { now: t1, until })).toBe(true)
+  })
+
+  it('setLastError records an error without changing status', async () => {
+    await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
+    await repo.markReady(tenantId)
+    await repo.setLastError(tenantId, 'rotate failed')
+    const row = await repo.findByTenant(tenantId)
+    expect(row!.status).toBe('READY')
+    expect(row!.lastError).toBe('rotate failed')
+  })
+
+  it('markStep can record the gRPC address Cloud reports', async () => {
+    await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
+    await repo.markStep(tenantId, 'namespace_created', { grpcAddress: 'other:7233' })
+    expect((await repo.findByTenant(tenantId))!.grpcAddress).toBe('other:7233')
+  })
+
+  it('findWithRetirablePreviousKey lists rows whose previous key is past its retire time', async () => {
+    await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
+    await repo.storeKey(tenantId, {
+      apiKeyId: 'key-1',
+      token: 't1',
+      expiresAt: new Date('2027-10-05T00:00:00.000Z'),
+    })
+    await repo.rotateKey(tenantId, {
+      apiKeyId: 'key-2',
+      token: 't2',
+      expiresAt: new Date('2027-10-06T00:00:00.000Z'),
+      retireAt: new Date('2026-10-06T00:00:00.000Z'),
+    })
+
+    const before = await repo.findWithRetirablePreviousKey(new Date('2026-10-05T23:59:00.000Z'))
+    expect(before.map((r) => r.tenantId)).not.toContain(tenantId)
+    const after = await repo.findWithRetirablePreviousKey(new Date('2026-10-06T00:00:01.000Z'))
+    expect(after.map((r) => r.tenantId)).toContain(tenantId)
+  })
+
   it('remove deletes the row', async () => {
     await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
     await repo.remove(tenantId)

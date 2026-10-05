@@ -28,6 +28,7 @@ export type TenantTemporalNamespaceRow = {
   previousKeyRetireAt: Date | null
   status: TenantTemporalNamespaceStatus
   step: string | null
+  leaseExpiresAt: Date | null
   lastError: string | null
   createdAt: Date
   updatedAt: Date
@@ -45,6 +46,7 @@ const SELECT = {
   previousKeyRetireAt: true,
   status: true,
   step: true,
+  leaseExpiresAt: true,
   lastError: true,
   createdAt: true,
   updatedAt: true,
@@ -111,11 +113,47 @@ export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
       return count === 1
     },
 
+    /**
+     * Takes the row's lease if its status is one of `statuses` and nobody
+     * holds an unexpired lease. Returns whether it was taken. The provisioner
+     * holds it for its whole run; it expires on its own if the run is killed.
+     */
+    async claimLease(
+      tenantId: string,
+      statuses: TenantTemporalNamespaceStatus[],
+      { now, until }: { now: Date; until: Date },
+    ): Promise<boolean> {
+      const { count } = await db.tenantTemporalNamespace.updateMany({
+        where: {
+          tenantId,
+          status: { in: statuses },
+          OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }],
+        },
+        data: { leaseExpiresAt: until },
+      })
+      return count === 1
+    },
+
+    async releaseLease(tenantId: string): Promise<void> {
+      await db.tenantTemporalNamespace.updateMany({
+        where: { tenantId },
+        data: { leaseExpiresAt: null },
+      })
+    },
+
+    /** Rows whose rotated-out key has passed its grace period. */
+    async findWithRetirablePreviousKey(now: Date): Promise<TenantTemporalNamespaceRow[]> {
+      return db.tenantTemporalNamespace.findMany({
+        where: { previousApiKeyId: { not: null }, previousKeyRetireAt: { lte: now } },
+        select: SELECT,
+      })
+    },
+
     /** Records the last completed provisioning step (plus any ids it produced). */
     async markStep(
       tenantId: string,
       step: string,
-      data: { cloudServiceAccountId?: string } = {},
+      data: { cloudServiceAccountId?: string; grpcAddress?: string } = {},
     ): Promise<void> {
       await db.tenantTemporalNamespace.update({ where: { tenantId }, data: { step, ...data } })
     },
@@ -133,6 +171,11 @@ export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
         where: { tenantId },
         data: { status: 'FAILED', lastError },
       })
+    },
+
+    /** Records an error without changing status (a failed rotate leaves READY intact). */
+    async setLastError(tenantId: string, lastError: string): Promise<void> {
+      await db.tenantTemporalNamespace.updateMany({ where: { tenantId }, data: { lastError } })
     },
 
     /** Stores the namespace's first key. The token is encrypted before it is written. */

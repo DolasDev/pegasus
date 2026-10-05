@@ -169,7 +169,26 @@ account work blocks the code.
       `getApiKey` and `listApiKeys` (for resuming after a lost create
       response, and the token-once recovery). Note `GetServiceAccounts`
       returns the repeated field as `service_account` (singular).
-- [ ] Step 5: provisioner Lambda
+- [x] Step 5: `lib/temporal-provisioner.ts` (logic, deps injected) plus
+      `lambda-temporal-provisioner.ts` (wiring). Deviations from the plan,
+      each for resumability:
+  - **Lease column** `leaseExpiresAt` (in the same migration): the "row-level
+    guard". A Lambda killed by its timeout runs no `catch`, so a status-only
+    guard would wedge the row in PROVISIONING forever. The lease expires
+    after 15 minutes.
+  - **State checks instead of deterministic `async_operation_id`s:** each
+    step asks Cloud first (`getNamespace`, `findServiceAccountByName`,
+    `listApiKeys`), and op ids carry a per-run nonce. A retry with the same op
+    id as a FAILED operation would just replay the failure.
+  - **Token-once recovery:** on resume, every key on the service account is
+    deleted before a new one is minted (an orphan's token is unrecoverable).
+  - **Rotate** refuses while the previous key is in its grace period (24 h).
+    A failed rotate records `lastError` but leaves the row READY, because the
+    old key still works.
+  - **`retire-previous-keys`**: a sweep action that deletes rotated-out keys
+    past their grace. Step 6 schedules it daily.
+  - **Readiness** uses the stored key through `getDecryptedKey`, the same
+    path 3b.2 will use.
 - [ ] Step 6: infra
 - [ ] Step 7: admin API + admin-web
 - [ ] Step 8: broker credentials endpoint

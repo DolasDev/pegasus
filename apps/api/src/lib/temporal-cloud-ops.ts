@@ -150,9 +150,9 @@ const TERMINAL_FAILURES = new Set(['STATE_FAILED', 'STATE_CANCELLED', 'STATE_REJ
 // ---------------------------------------------------------------------------
 
 export type CloudOpsLogger = {
-  info(message: string, meta?: Record<string, unknown>): void
-  warn(message: string, meta?: Record<string, unknown>): void
-  error(message: string, meta?: Record<string, unknown>): void
+  info(message: string, meta: Record<string, unknown>): void
+  warn(message: string, meta: Record<string, unknown>): void
+  error(message: string, meta: Record<string, unknown>): void
 }
 
 export type CloudOpsClientOptions = {

@@ -19,6 +19,7 @@ CREATE TABLE "tenant_temporal_namespaces" (
     "previous_key_retire_at" TIMESTAMP(3),
     "status" "TenantTemporalNamespaceStatus" NOT NULL DEFAULT 'PROVISIONING',
     "step" TEXT,
+    "lease_expires_at" TIMESTAMP(3),
     "last_error" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
