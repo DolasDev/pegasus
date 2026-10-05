@@ -380,7 +380,10 @@ export function getOpenApiSpec() {
               description: '{data: {id, status, alreadySent: false}} — accepted by RingCentral',
             },
             '400': { $ref: '#/components/responses/ValidationError' },
-            '404': { description: 'NOT_FOUND — no active RingCentral connection' },
+            '404': {
+              description:
+                'SMS_NOT_CONNECTED — the tenant has no active RingCentral connection (no SMS channel); an Automation can skip on it',
+            },
             '409': {
               description:
                 'SMS_OPTED_OUT | SMS_SEND_IN_PROGRESS | SMS_SEND_IN_DOUBT | IDEMPOTENCY_KEY_REUSED',

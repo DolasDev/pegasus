@@ -217,7 +217,11 @@ STOP (or STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT/REVOKE/OPTOUT) is refused with
 409 ``SMS_OPTED_OUT`` — treat that as final, not retryable. Pass
 ``dedup_key=`` on any text you must not send twice (activities are retried):
 a repeat returns ``alreadySent: true``; 409 ``SMS_SEND_IN_PROGRESS`` → retry
-later; 409 ``SMS_SEND_IN_DOUBT`` → never resend blindly. React to replies with
+later; 409 ``SMS_SEND_IN_DOUBT`` → never resend blindly. A tenant with no SMS
+channel (no active RingCentral connection) raises ``SmsChannelNotConnected``
+(404 ``SMS_NOT_CONNECTED``, a ``PegasusApiError`` subclass, importable from
+``pegasus_workflows``) — catch it and return ``{"skipped": "no_sms_channel"}``
+so the run COMPLETES; let any other 404/503 fail. React to replies with
 an EVENT trigger on ``sms.received``; re-read with
 ``client.get_text_message(payload["messageId"])`` (``ReadTextMessage``) and
 dedupe on ``messageId`` — events may be delivered twice.

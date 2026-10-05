@@ -241,34 +241,34 @@ describe('POST /sms/send', () => {
   })
 
   describe('connection lookup', () => {
-    it('404 NOT_FOUND — tenant has no active connection', async () => {
+    it('404 SMS_NOT_CONNECTED — tenant has no active connection', async () => {
       mockListConnections.mockResolvedValue([])
 
       const res = await buildApp().request('/sms/send', post({ to: '+15005550006', body: 'Hello' }))
 
       expect(res.status).toBe(404)
       const body = await json(res)
-      expect(body['code']).toBe('NOT_FOUND')
+      expect(body['code']).toBe('SMS_NOT_CONNECTED')
       expect(body['error']).toMatch(/RingCentral is not connected/)
       expect(mockSendSms).not.toHaveBeenCalled()
     })
 
-    it('404 NOT_FOUND — connection exists but token is EXPIRED', async () => {
+    it('404 SMS_NOT_CONNECTED — connection exists but token is EXPIRED', async () => {
       mockListConnections.mockResolvedValue([{ ...ACTIVE_CONNECTION, tokenStatus: 'EXPIRED' }])
 
       const res = await buildApp().request('/sms/send', post({ to: '+15005550006', body: 'Hello' }))
 
       expect(res.status).toBe(404)
-      expect((await json(res))['code']).toBe('NOT_FOUND')
+      expect((await json(res))['code']).toBe('SMS_NOT_CONNECTED')
     })
 
-    it('404 NOT_FOUND — connection is ACTIVE but tokenSecretArn is null', async () => {
+    it('404 SMS_NOT_CONNECTED — connection is ACTIVE but tokenSecretArn is null', async () => {
       mockListConnections.mockResolvedValue([{ ...ACTIVE_CONNECTION, tokenSecretArn: null }])
 
       const res = await buildApp().request('/sms/send', post({ to: '+15005550006', body: 'Hello' }))
 
       expect(res.status).toBe(404)
-      expect((await json(res))['code']).toBe('NOT_FOUND')
+      expect((await json(res))['code']).toBe('SMS_NOT_CONNECTED')
     })
   })
 

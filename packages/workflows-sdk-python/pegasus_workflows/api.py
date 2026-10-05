@@ -121,6 +121,32 @@ class WorkflowStateConflict(PegasusApiError):
     current: dict[str, Any] | None = None
 
 
+@dataclass
+class SmsChannelNotConnected(PegasusApiError):
+    """The tenant has no SMS channel (HTTP 404 ``SMS_NOT_CONNECTED``).
+
+    Raised by :meth:`PegasusClient.send_sms` when the tenant has no active
+    RingCentral connection — never connected, token expired, or disconnected.
+    Catch it to skip the text and let the run finish instead of failing; any
+    other non-2xx (including the router's generic 404 ``NOT_FOUND``) stays a
+    plain :class:`PegasusApiError`.
+    """
+
+
+def _raise_for_sms_channel_not_connected(response: httpx.Response) -> None:
+    """Raise :class:`SmsChannelNotConnected` for a 404 ``SMS_NOT_CONNECTED``."""
+    if response.status_code != 404:
+        return
+    try:
+        body = response.json()
+    except ValueError:
+        return
+    if isinstance(body, dict) and body.get("code") == "SMS_NOT_CONNECTED":
+        raise SmsChannelNotConnected(
+            status_code=404, code="SMS_NOT_CONNECTED", message=body.get("error")
+        )
+
+
 def _raise_for_status(response: httpx.Response) -> None:
     """Raise :class:`PegasusApiError` if *response* is not 2xx."""
     if response.is_success:
@@ -907,6 +933,12 @@ class PegasusClient:
         automatically — decide from your own records). A key whose previous
         attempt failed is retried.
 
+        **No SMS channel → skip cleanly.** When the tenant has no active
+        RingCentral connection, this raises :class:`SmsChannelNotConnected`
+        (404 ``SMS_NOT_CONNECTED``). Catch it and return instead of failing the
+        run. A 503 ``SERVICE_UNAVAILABLE`` (SMS disabled platform-wide) is an
+        operator fault and is deliberately *not* this exception.
+
         Args:
             to: Destination phone number in E.164 form (e.g. ``"+16308868537"``).
             body: Message text (1–1000 characters).
@@ -918,9 +950,11 @@ class PegasusClient:
             "alreadySent": False}}``. ``id`` is the provider's message id.
 
         Raises:
-            PegasusApiError: On 409 (codes above), 404 (no provider connected),
-                403 (manifest lacks ``SendSms``), 429 (rate limited) or any other
-                non-2xx.
+            SmsChannelNotConnected: The tenant has no SMS channel (a
+                ``PegasusApiError`` subclass).
+            PegasusApiError: On 409 (codes above), 403 (manifest lacks
+                ``SendSms``), 429 (rate limited), 503 (SMS disabled
+                platform-wide) or any other non-2xx.
         """
         args: dict[str, Any] = {"to": to, "body": body}
         payload: dict[str, Any] = {"to": to, "body": body}
@@ -937,6 +971,7 @@ class PegasusClient:
             return captured
         with self._client() as client:
             response = client.post("/api/v1/sms/send", json=payload)
+        _raise_for_sms_channel_not_connected(response)
         _raise_for_status(response)
         return response.json()
 

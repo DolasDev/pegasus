@@ -2481,3 +2481,13 @@ that matters is scoping it to the declaring surface. The corollary is uncomforta
 stating: **a document may have to describe a finding without spelling the token**, so that the
 document does not become evidence against its own gate. Say that it is doing so, and why, where it
 does it.
+
+## A generic `NOT_FOUND` code cannot be a skip signal
+
+`apps/api/src/app.ts` `app.notFound` answers every unmatched route with `404 {code:
+'NOT_FOUND'}`. A handler that also uses `NOT_FOUND` for a _business_ outcome ("this tenant has
+no SMS channel") produces a response a client can't tell apart from a misroute, a stale
+deploy, or a route that was never mounted. An Automation that skipped on it would turn a real
+outage into a quiet COMPLETED. `/sms/send` now returns `SMS_NOT_CONNECTED` for this case, and
+the SDK raises `SmsChannelNotConnected` only on that code. When a client is meant to _act on_
+an error, give it a specific code. Generic codes are for failures nobody should handle.
