@@ -274,6 +274,27 @@ gh api repos/DolasDev/pegasus/dependency-graph/sbom > sbom.spdx.json
 (Requires the repo dependency graph enabled — it is, alongside Dependabot alerts and the
 `Dependency Review` PR check. If the command 404s, re-check Settings → Advanced Security.)
 
+## The WireGuard VPC's DNS Firewall: fail-open is set by an API call, and the block is bypassable
+
+`wireguard-stack.ts` blocks `saas-api.tmprl.cloud` (the Temporal Cloud Ops API) with a Route 53
+Resolver DNS Firewall rule group associated with the whole VPC (durable-workflow Phase 3a). Three
+things about it are not obvious:
+
+- **Fail-open is not a CloudFormation property.** There is no `FirewallConfig` resource, so an
+  `AwsCustomResource` (`VpcDnsFirewallFailOpen`) calls `UpdateFirewallConfig` with
+  `FirewallFailOpen: ENABLED`. AWS's default is fail _closed_: a firewall fault would take down DNS
+  for everything in the VPC, including the WireGuard hub and the longhaul MSSQL path. If that
+  custom resource is ever removed, or the setting drifts, the VPC silently reverts to fail-closed.
+  Check it with `aws route53resolver get-firewall-config --resource-id <vpc-id>`.
+- **It is a speed bump, not a wall.** Runner egress is deliberately open (Resolved decision #2),
+  so code that hard-codes the Ops API's IP skips DNS entirely. It exists to keep a leaked
+  namespace-scoped key (whose mandatory account-level Read role can list the Cloud account's
+  users) from being trivially usable from inside a tenant runner.
+- **It covers the whole VPC**, not just runner subnets: the hub, private Lambdas and the stdlib
+  worker cannot resolve the Ops API either. None of them need it. If something ever legitimately
+  must call the Ops API (for example the planned `temporal-provisioner` Lambda), run it **outside**
+  this VPC.
+
 ## WireGuard Hub: Manual Peer Break-Glass
 
 The reconcile agent (`apps/vpn-agent`) is the source of truth for hub peer state — it polls the admin API and applies `wg set` every ~30s. If the agent is wedged (process down, API unreachable, kernel disagreeing with desired state) and a tenant needs the tunnel up _now_, you can add a peer manually:

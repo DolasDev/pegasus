@@ -32,6 +32,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as route53 from 'aws-cdk-lib/aws-route53'
+import * as route53resolver from 'aws-cdk-lib/aws-route53resolver'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as sns from 'aws-cdk-lib/aws-sns'
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
@@ -274,6 +275,78 @@ export class WireGuardStack extends cdk.Stack {
       allowAllOutbound: true,
     })
     this.tenantRunnerSecurityGroup = tenantRunnerSg
+
+    // (3) DNS block for the Temporal Cloud Ops API (durable-workflow Phase 3a).
+    // Every Temporal Cloud namespace-scoped key carries a mandatory
+    // account-level Read role; through the Ops API that role lists the Cloud
+    // account's users (verified live — plans/completed/
+    // 2b1e2147-durable-workflow-isolation-spike.md §6). Nothing in this VPC
+    // (hub, private Lambdas, stdlib worker, tenant runners) needs the Ops API —
+    // workers only dial namespace gRPC endpoints — so resolve it to NXDOMAIN.
+    //
+    // A DNS block raises the bar; it is not a wall: code that hard-codes the
+    // Ops API's IP bypasses it (egress is otherwise deliberately open —
+    // Resolved decision #2). Because it is only a speed bump, the VPC is set to
+    // FAIL OPEN below: a firewall fault must never take down DNS for the whole
+    // VPC (hub, longhaul MSSQL path, runners) — see GOTCHAS.md.
+    const opsApiDomainList = new route53resolver.CfnFirewallDomainList(
+      this,
+      'TemporalOpsApiDomainList',
+      {
+        name: 'pegasus-temporal-cloud-ops-api',
+        domains: ['saas-api.tmprl.cloud'],
+      },
+    )
+    const opsApiRuleGroup = new route53resolver.CfnFirewallRuleGroup(
+      this,
+      'TemporalOpsApiRuleGroup',
+      {
+        name: 'pegasus-block-temporal-cloud-ops-api',
+        firewallRules: [
+          {
+            action: 'BLOCK',
+            blockResponse: 'NXDOMAIN',
+            firewallDomainListId: opsApiDomainList.attrId,
+            priority: 100,
+          },
+        ],
+      },
+    )
+    new route53resolver.CfnFirewallRuleGroupAssociation(
+      this,
+      'TemporalOpsApiRuleGroupAssociation',
+      {
+        name: 'pegasus-block-temporal-cloud-ops-api',
+        firewallRuleGroupId: opsApiRuleGroup.attrId,
+        vpcId: vpc.vpcId,
+        // Association priorities 100 and 9900+ are reserved by AWS.
+        priority: 1000,
+        mutationProtection: 'DISABLED',
+      },
+    )
+    // CloudFormation has no FirewallConfig resource, so set fail-open with one
+    // idempotent API call. Deleting the stack leaves the setting on the (then
+    // also deleted) VPC, so no onDelete is needed.
+    const firewallFailOpenCall: customResources.AwsSdkCall = {
+      service: 'Route53Resolver',
+      action: 'updateFirewallConfig',
+      parameters: { ResourceId: vpc.vpcId, FirewallFailOpen: 'ENABLED' },
+      physicalResourceId: customResources.PhysicalResourceId.of(`${vpc.vpcId}-firewall-fail-open`),
+    }
+    new customResources.AwsCustomResource(this, 'VpcDnsFirewallFailOpen', {
+      onCreate: firewallFailOpenCall,
+      onUpdate: firewallFailOpenCall,
+      // Explicit rather than fromSdkCalls: Route 53 Resolver actions that take a
+      // VPC id also check ec2:DescribeVpcs, and a missing grant would fail this
+      // resource and roll the whole stack back.
+      policy: customResources.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ['route53resolver:UpdateFirewallConfig', 'ec2:DescribeVpcs'],
+          resources: ['*'],
+        }),
+      ]),
+      installLatestAwsSdk: false,
+    })
 
     // -----------------------------------------------------------------------
     // Security groups
