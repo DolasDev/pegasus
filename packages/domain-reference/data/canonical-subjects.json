@@ -59,6 +59,11 @@
         "singleton": true,
         "citation": "[SD §4.7.3] — the role-holding itself is an aggregate ([SD §1.2])"
       },
+      "document": {
+        "members": ["document"],
+        "singleton": true,
+        "citation": "[A6 §3.3] / [A8 §5 r17] — added with documentIssuance, the only type whose subject is the instrument itself. A singleton, so [SD §4.7] note 2's list of the three non-singleton families is unchanged."
+      },
       "anyAggregate": {
         "members": [
           "order",
@@ -779,6 +784,27 @@
       },
       "citations": ["[SD §4.7.1]", "[SD §4.7.2e]"],
       "boundByNote": "owed and explicitly NOT CUSTODY ([SD §4.7.1])."
+    },
+    {
+      "type": "documentIssuance",
+      "proseAliases": [],
+      "family": "document",
+      "qualifier": null,
+      "context": ["shipment", "partyRole"],
+      "contextNote": "The shipment the instrument covers, and the party it is issued to. Both are cross-references and neither is authoritative ([SD §1.4]); the issuer is not in this column, because the issuer is resolved by boundBy = SCHEME and reading it from context[] is what [SD §1.4] rule 1 forbids.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "SCHEME",
+        "a8Row": {
+          "row": 17,
+          "sameType": true,
+          "why": null
+        },
+        "summary": "The ISSUER of the document's own number scheme, and nobody else. Authority NEVER moves — row 10's binding, inherited rather than re-argued.",
+        "scoring": "capped-medium",
+        "citations": ["[A6 §3.3]", "[A8 §5 r17]"]
+      },
+      "citations": ["[A6 §3.3]", "[A8 §9 item 8(e)]"]
     }
   ]
 }

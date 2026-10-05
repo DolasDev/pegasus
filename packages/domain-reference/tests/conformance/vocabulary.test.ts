@@ -383,12 +383,36 @@ describe('the data tables and the types agree in both directions', () => {
       expect(isAssertionType(row.type)).toBe(true)
       expect(row.citations.length, `[A8 §5] row ${row.row} cites nothing`).toBeGreaterThan(0)
     }
-    // [A8 §9 item 8]: sixteen rows, and still no completeness check — the classes it does not
-    // reach are uncovered. Asserted so that a table which quietly grew a row without A8 saying so
-    // is not mistaken for coverage.
-    expect(tables.authority.rows.size).toBe(16)
-    expect(tables.authority.byType.size).toBe(16)
+    // [A8 §9 item 8]: still no completeness check — the classes [A8 §5] does not reach are
+    // uncovered, and the point of this block is that a table which quietly grew a row without A8
+    // saying so is not mistaken for coverage.
+    //
+    // **Which rows, not how many.** Three assertions here were `16`, `16` and `length - 16`, so one
+    // new row needed three numbers changed in one test and the test said nothing about which row
+    // arrived. Enumerated instead: the covered set is the assertion, and the uncovered set is its
+    // complement by construction rather than by arithmetic.
+    expect([...tables.authority.byType.keys()].sort()).toEqual([
+      'arrival',
+      'charge',
+      'condition',
+      'delivery',
+      'departure',
+      'documentIssuance',
+      'handover',
+      'identity',
+      'loading',
+      'packing',
+      'pieceCount',
+      'sitEntryDate',
+      'storeOut',
+      'unloading',
+      'weight.gross',
+      'weight.net',
+      'weight.tare',
+    ])
+    expect(tables.authority.rows.size).toBe(tables.authority.byType.size)
     const uncovered = ASSERTION_TYPES.filter((type) => !tables.authority.byType.has(type))
-    expect(uncovered.length).toBe(ASSERTION_TYPES.length - 16)
+    expect(uncovered.length).toBe(ASSERTION_TYPES.length - tables.authority.byType.size)
+    expect(uncovered.length).toBeGreaterThan(0)
   })
 })

@@ -1078,7 +1078,10 @@ A7 the storage charges and this is the structural constraint on them.
 > sub-fact grain `authority.ts`'s TODO asked for would move none of them. A2's note that "a
 > correction is not a reissue" is kept and sharpened: with no `documentIssuance` record it is
 > decidable in prose and not in code — [A6 §3.3] found the `document` aggregate has no minting act
-> either, which is **this document's §3.6 finding one aggregate over**. A6 also ran the check A2 asked
+> either, which is **this document's §3.6 finding one aggregate over**. **`documentIssuance` minted on
+> 2026-10-05** ([`A8` §5](A8-authority-skeleton.md) row 17), so the "correction is not a reissue"
+> distinction now has a record on one side of it; A2's own §3.6 `shipmentCommitment` is the half that
+> did not close, and §Cross-area says why. A6 also ran the check A2 asked
 > for and reports its own result: `document` has **no** canonical subject family and appears in
 > [SD §4.7.1] only in six `context[]` columns.
 

@@ -51,10 +51,10 @@ So "what does the catalog publish" and "what is in the record vocabulary" were n
 
 |                         | Count  | Where declared                             |
 | ----------------------- | ------ | ------------------------------------------ |
-| Act types               | 19     | [SD §4.7.1], `ACT_TYPES`                   |
+| Act types               | 20     | [SD §4.7.1], `ACT_TYPES`                   |
 | Non-act assertion types | 12     | [SD §4.7.1] / [SD §4.7.3], `NON_ACT_TYPES` |
 | Meta-record types       | 2      | [SD §1.3] item 1, [SD §4.3], [SD §6]       |
-| **Published members**   | **33** | `RECORD_TYPES`                             |
+| **Published members**   | **34** | `RECORD_TYPES`                             |
 
 ### 1.2 The coarser published layer, considered and refused
 
@@ -562,8 +562,8 @@ and markdown and a generator that is not a fixed point turns its own gate into a
 Read the generated `Owed` section of [`../glossary.md`](../glossary.md) for the current list; it is
 derived from the code and cannot go stale. As at this version it holds: **18 declared owed values**,
 **3 closed vocabularies whose members are owed** (`roleClass`, `unitOfMeasure`, `identityScheme` —
-the reason vocabulary was a fourth until A4), **14 of 31** record types whose authority row is owed
-in whole or in part, **2** whose fact-class family is owed, and **16** fact classes named in the
+the reason vocabulary was a fourth until A4), **14 of 32** record types whose authority row is owed
+in whole or in part, **2** whose fact-class family is owed, and **15** fact classes named in the
 corpus and absent from the vocabulary.
 
 **Two of those five moved at A5, in opposite directions, and the pair is worth reading together.**
@@ -580,14 +580,19 @@ coming into existence_, which is why [`fork-order` §5.2]'s `B-STAGE` has been a
 input records since it was written. **An owed inventory that surfaces a hole this old is doing the
 job §2.4 keeps the version pre-1.0 for.**
 
-**And once more at A6, where the entry is the cheapest one on the list rather than the deepest.**
-[A6 §3.3] ran A2's check over the `document` aggregate and found the same shape — no row of
-[SD §4.7.1] records a document being issued, signed, corrected or cancelled — so `documentIssuance`
-joins the list. What makes it different from every entry above is that **its authority is already
-answered**: [A8 §5] row 10's `boundBy = SCHEME` determines its holder, so a row in [SD §4.7.1] and a
-row in [A8 §5] are all that is owed, with nothing owed underneath either. A5's three are blocked on a
-party class, A2's and A1's three on a `boundBy` member, and this one on minting alone — **a third kind
-of blocker, and the only one of the three that needs no prior decision.**
+**And once more at A6, where the entry was the cheapest one on the list rather than the deepest —
+and it is the first entry to LEAVE the list again.** [A6 §3.3] ran A2's check over the `document`
+aggregate and found the same shape — no row of [SD §4.7.1] recorded a document being issued, signed,
+corrected or cancelled — so `documentIssuance` joined the list. What made it different from every
+entry above is that **its authority was already answered**: [A8 §5] row 10's `boundBy = SCHEME`
+determines its holder, so a row in [SD §4.7.1] and a row in [A8 §5] were all that was owed, with
+nothing owed underneath either — the only blocker on the list that needed no prior decision.
+
+**Both rows were written on 2026-10-05**, so `documentIssuance` is a `type` with [A8 §5] row 17 and
+the absent count fell by one. **The inventory going DOWN by a mint rather than by a redefinition is
+the first time that has happened**, and it is worth separating from A5's remedy shape: that was a
+shape the model published, this is a fact class the model did not have. The signature A6 §3.3(b)
+refused to mint is **not** discharged with it and stays owed to the user.
 
 **And once more at A7, where the entry is blocked by something none of the others is.** [A7 §3.2]
 ran the same check over the `charge` aggregate and got the best-provisioned starting point yet — a
@@ -597,7 +602,7 @@ and still found no record of a charge being billed, collected, paid, disputed, d
 no `invoice` and no `payment` aggregate, so the question **never reaches the authority ledger at
 all**. The model's other instance of that shape is `placeRef`, owed to [SD §1.2] because there is no
 `place` aggregate. A5's three are blocked on a party class, A2's and A1's three on a `boundBy`
-member, A6's on minting alone, and this one on the **subject**.
+member, A6's was on minting alone and is now closed, and this one is on the **subject**.
 
 **And [A7 §6] corrected an owner in this inventory rather than adding to it**, which is a thing no
 previous round has done and which turned out to cost a version — see §2.4. `chargeValue` was owed to

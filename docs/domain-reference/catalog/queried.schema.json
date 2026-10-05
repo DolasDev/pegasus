@@ -48,6 +48,9 @@
       "$ref": "#/$defs/record.departure"
     },
     {
+      "$ref": "#/$defs/record.documentIssuance"
+    },
+    {
       "$ref": "#/$defs/record.handover"
     },
     {
@@ -1175,6 +1178,186 @@
             "status": false,
             "subject": {
               "$ref": "#/$defs/SubjectRef.order"
+            },
+            "subjectPath": false,
+            "subjects": false,
+            "tense": false,
+            "type": {
+              "const": "Correction"
+            }
+          },
+          "required": [
+            "assertedAt",
+            "assertedBy",
+            "authority",
+            "capturedBy",
+            "corrects",
+            "effect",
+            "errorReason",
+            "eventId",
+            "obligations",
+            "recordedAt",
+            "specVersion",
+            "subject",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "assertedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedBy": {
+              "$ref": "#/$defs/AssertedBy"
+            },
+            "authority": {
+              "$ref": "#/$defs/AuthorityClaim"
+            },
+            "capturedBy": {
+              "enum": [
+                "OBSERVED_BY_PERSON",
+                "KEYED_BY_PERSON",
+                "DEVICE_GEOFENCE",
+                "DEVICE_TELEMETRY",
+                "PARTNER_ASSERTED",
+                "DERIVED_BY_RULE",
+                "ASSUMED_FROM_PLAN"
+              ]
+            },
+            "causedBy": false,
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SubjectRef.family.anyAggregate"
+              }
+            },
+            "corrects": {
+              "$ref": "#/$defs/EventId"
+            },
+            "correlation": false,
+            "currentState": false,
+            "effect": {
+              "enum": ["APPLIED", "INEFFECTIVE", "UNAUTHORISED"]
+            },
+            "errorReason": {
+              "const": "DID_NOT_OCCUR"
+            },
+            "eventClassifierCode": false,
+            "eventId": {
+              "$ref": "#/$defs/EventId"
+            },
+            "factClass": false,
+            "obligations": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/CorrectionObligation"
+              }
+            },
+            "recordedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "replacement": false,
+            "restoresPrevious": false,
+            "secondSubject": false,
+            "specVersion": {
+              "$ref": "#/$defs/SpecVersion"
+            },
+            "status": false,
+            "subject": {
+              "$ref": "#/$defs/SubjectRef.document"
+            },
+            "subjectPath": false,
+            "subjects": false,
+            "tense": false,
+            "type": {
+              "const": "Correction"
+            }
+          },
+          "required": [
+            "assertedAt",
+            "assertedBy",
+            "authority",
+            "capturedBy",
+            "corrects",
+            "effect",
+            "errorReason",
+            "eventId",
+            "obligations",
+            "recordedAt",
+            "specVersion",
+            "subject",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "assertedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedBy": {
+              "$ref": "#/$defs/AssertedBy"
+            },
+            "authority": {
+              "$ref": "#/$defs/AuthorityClaim"
+            },
+            "capturedBy": {
+              "enum": [
+                "OBSERVED_BY_PERSON",
+                "KEYED_BY_PERSON",
+                "DEVICE_GEOFENCE",
+                "DEVICE_TELEMETRY",
+                "PARTNER_ASSERTED",
+                "DERIVED_BY_RULE",
+                "ASSUMED_FROM_PLAN"
+              ]
+            },
+            "causedBy": false,
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SubjectRef.family.anyAggregate"
+              }
+            },
+            "corrects": {
+              "$ref": "#/$defs/EventId"
+            },
+            "correlation": false,
+            "currentState": false,
+            "effect": {
+              "enum": ["APPLIED", "INEFFECTIVE", "UNAUTHORISED"]
+            },
+            "errorReason": {
+              "const": "INCORRECT_DATA"
+            },
+            "eventClassifierCode": false,
+            "eventId": {
+              "$ref": "#/$defs/EventId"
+            },
+            "factClass": false,
+            "obligations": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/CorrectionObligation"
+              }
+            },
+            "recordedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "replacement": {
+              "$ref": "#/$defs/EventId"
+            },
+            "restoresPrevious": false,
+            "secondSubject": false,
+            "specVersion": {
+              "$ref": "#/$defs/SpecVersion"
+            },
+            "status": false,
+            "subject": {
+              "$ref": "#/$defs/SubjectRef.document"
             },
             "subjectPath": false,
             "subjects": false,
@@ -3902,6 +4085,111 @@
             "status": false,
             "subject": {
               "$ref": "#/$defs/SubjectRef.order"
+            },
+            "subjectPath": false,
+            "subjects": false,
+            "tense": false,
+            "type": {
+              "const": "FactResolved"
+            }
+          },
+          "required": [
+            "assertedAt",
+            "assertedBy",
+            "capturedBy",
+            "considered",
+            "eventId",
+            "factRef",
+            "recordedAt",
+            "rule",
+            "selected",
+            "specVersion",
+            "subject",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "assertedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedBy": {
+              "type": "object",
+              "properties": {
+                "party": {
+                  "type": "string",
+                  "x-brand": "party"
+                },
+                "role": {
+                  "const": "platform"
+                }
+              },
+              "required": ["party", "role"],
+              "additionalProperties": false
+            },
+            "capturedBy": {
+              "const": "DERIVED_BY_RULE"
+            },
+            "causedBy": false,
+            "considered": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EventId"
+              },
+              "minItems": 1
+            },
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SubjectRef.family.anyAggregate"
+              }
+            },
+            "correlation": false,
+            "currentState": false,
+            "eventClassifierCode": false,
+            "eventId": {
+              "$ref": "#/$defs/EventId"
+            },
+            "factClass": false,
+            "factRef": {
+              "type": "object",
+              "properties": {
+                "qualifier": false,
+                "subject": {
+                  "$ref": "#/$defs/SubjectRef.document"
+                },
+                "type": {
+                  "const": "documentIssuance"
+                }
+              },
+              "required": ["subject", "type"],
+              "additionalProperties": false
+            },
+            "recordedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "rule": {
+              "$ref": "#/$defs/RuleRef"
+            },
+            "secondSubject": false,
+            "selected": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/EventId"
+                }
+              ]
+            },
+            "specVersion": {
+              "$ref": "#/$defs/SpecVersion"
+            },
+            "status": false,
+            "subject": {
+              "$ref": "#/$defs/SubjectRef.document"
             },
             "subjectPath": false,
             "subjects": false,
@@ -8646,6 +8934,429 @@
         }
       ],
       "title": "departure"
+    },
+    "record.documentIssuance": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "asOf": false,
+            "assertedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedBy": {
+              "$ref": "#/$defs/AssertedBy"
+            },
+            "basis": {
+              "const": "REQUESTED"
+            },
+            "capturedBy": {
+              "enum": [
+                "OBSERVED_BY_PERSON",
+                "KEYED_BY_PERSON",
+                "DEVICE_GEOFENCE",
+                "DEVICE_TELEMETRY",
+                "PARTNER_ASSERTED",
+                "DERIVED_BY_RULE",
+                "ASSUMED_FROM_PLAN"
+              ]
+            },
+            "causedBy": false,
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SubjectRef.family.anyAggregate"
+              }
+            },
+            "correlation": false,
+            "currentState": false,
+            "eventClassifierCode": false,
+            "eventId": {
+              "$ref": "#/$defs/EventId"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              }
+            },
+            "factClass": false,
+            "qualifier": false,
+            "recordedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "secondSubject": false,
+            "specVersion": {
+              "$ref": "#/$defs/SpecVersion"
+            },
+            "status": false,
+            "subject": {
+              "$ref": "#/$defs/SubjectRef.document"
+            },
+            "subjectPath": false,
+            "subjects": false,
+            "supersedes": {
+              "$ref": "#/$defs/EventId"
+            },
+            "tense": false,
+            "type": {
+              "const": "documentIssuance"
+            },
+            "value": {
+              "$ref": "#/$defs/ActValue"
+            }
+          },
+          "required": [
+            "assertedAt",
+            "assertedBy",
+            "basis",
+            "capturedBy",
+            "eventId",
+            "recordedAt",
+            "specVersion",
+            "subject",
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asOf": false,
+            "assertedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedBy": {
+              "$ref": "#/$defs/AssertedBy"
+            },
+            "basis": {
+              "const": "COMMITTED"
+            },
+            "capturedBy": {
+              "enum": [
+                "OBSERVED_BY_PERSON",
+                "KEYED_BY_PERSON",
+                "DEVICE_GEOFENCE",
+                "DEVICE_TELEMETRY",
+                "PARTNER_ASSERTED",
+                "DERIVED_BY_RULE",
+                "ASSUMED_FROM_PLAN"
+              ]
+            },
+            "causedBy": false,
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SubjectRef.family.anyAggregate"
+              }
+            },
+            "correlation": false,
+            "currentState": false,
+            "eventClassifierCode": false,
+            "eventId": {
+              "$ref": "#/$defs/EventId"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              }
+            },
+            "factClass": false,
+            "qualifier": false,
+            "recordedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "secondSubject": false,
+            "specVersion": {
+              "$ref": "#/$defs/SpecVersion"
+            },
+            "status": false,
+            "subject": {
+              "$ref": "#/$defs/SubjectRef.document"
+            },
+            "subjectPath": false,
+            "subjects": false,
+            "supersedes": {
+              "$ref": "#/$defs/EventId"
+            },
+            "tense": false,
+            "type": {
+              "const": "documentIssuance"
+            },
+            "value": {
+              "$ref": "#/$defs/ActValue"
+            }
+          },
+          "required": [
+            "assertedAt",
+            "assertedBy",
+            "basis",
+            "capturedBy",
+            "eventId",
+            "recordedAt",
+            "specVersion",
+            "subject",
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asOf": false,
+            "assertedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedBy": {
+              "$ref": "#/$defs/AssertedBy"
+            },
+            "basis": {
+              "const": "PLANNED"
+            },
+            "capturedBy": {
+              "enum": [
+                "OBSERVED_BY_PERSON",
+                "KEYED_BY_PERSON",
+                "DEVICE_GEOFENCE",
+                "DEVICE_TELEMETRY",
+                "PARTNER_ASSERTED",
+                "DERIVED_BY_RULE",
+                "ASSUMED_FROM_PLAN"
+              ]
+            },
+            "causedBy": false,
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SubjectRef.family.anyAggregate"
+              }
+            },
+            "correlation": false,
+            "currentState": false,
+            "eventClassifierCode": false,
+            "eventId": {
+              "$ref": "#/$defs/EventId"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              }
+            },
+            "factClass": false,
+            "qualifier": false,
+            "recordedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "secondSubject": false,
+            "specVersion": {
+              "$ref": "#/$defs/SpecVersion"
+            },
+            "status": false,
+            "subject": {
+              "$ref": "#/$defs/SubjectRef.document"
+            },
+            "subjectPath": false,
+            "subjects": false,
+            "supersedes": {
+              "$ref": "#/$defs/EventId"
+            },
+            "tense": false,
+            "type": {
+              "const": "documentIssuance"
+            },
+            "value": {
+              "$ref": "#/$defs/ActValue"
+            }
+          },
+          "required": [
+            "assertedAt",
+            "assertedBy",
+            "basis",
+            "capturedBy",
+            "eventId",
+            "recordedAt",
+            "specVersion",
+            "subject",
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asOf": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedBy": {
+              "$ref": "#/$defs/AssertedBy"
+            },
+            "basis": {
+              "const": "ESTIMATED"
+            },
+            "capturedBy": {
+              "enum": [
+                "OBSERVED_BY_PERSON",
+                "KEYED_BY_PERSON",
+                "DEVICE_GEOFENCE",
+                "DEVICE_TELEMETRY",
+                "PARTNER_ASSERTED",
+                "DERIVED_BY_RULE",
+                "ASSUMED_FROM_PLAN"
+              ]
+            },
+            "causedBy": false,
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SubjectRef.family.anyAggregate"
+              }
+            },
+            "correlation": false,
+            "currentState": false,
+            "eventClassifierCode": false,
+            "eventId": {
+              "$ref": "#/$defs/EventId"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              }
+            },
+            "factClass": false,
+            "qualifier": false,
+            "recordedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "secondSubject": false,
+            "specVersion": {
+              "$ref": "#/$defs/SpecVersion"
+            },
+            "status": false,
+            "subject": {
+              "$ref": "#/$defs/SubjectRef.document"
+            },
+            "subjectPath": false,
+            "subjects": false,
+            "supersedes": {
+              "$ref": "#/$defs/EventId"
+            },
+            "tense": false,
+            "type": {
+              "const": "documentIssuance"
+            },
+            "value": {
+              "$ref": "#/$defs/ActValue"
+            }
+          },
+          "required": [
+            "asOf",
+            "assertedAt",
+            "assertedBy",
+            "basis",
+            "capturedBy",
+            "eventId",
+            "recordedAt",
+            "specVersion",
+            "subject",
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asOf": false,
+            "assertedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "assertedBy": {
+              "$ref": "#/$defs/AssertedBy"
+            },
+            "basis": {
+              "const": "ACTUAL"
+            },
+            "capturedBy": {
+              "enum": [
+                "OBSERVED_BY_PERSON",
+                "KEYED_BY_PERSON",
+                "DEVICE_GEOFENCE",
+                "DEVICE_TELEMETRY",
+                "PARTNER_ASSERTED",
+                "DERIVED_BY_RULE",
+                "ASSUMED_FROM_PLAN"
+              ]
+            },
+            "causedBy": false,
+            "context": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SubjectRef.family.anyAggregate"
+              }
+            },
+            "correlation": false,
+            "currentState": false,
+            "eventClassifierCode": false,
+            "eventId": {
+              "$ref": "#/$defs/EventId"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              }
+            },
+            "factClass": false,
+            "qualifier": false,
+            "recordedAt": {
+              "$ref": "#/$defs/Instant"
+            },
+            "secondSubject": false,
+            "specVersion": {
+              "$ref": "#/$defs/SpecVersion"
+            },
+            "status": false,
+            "subject": {
+              "$ref": "#/$defs/SubjectRef.document"
+            },
+            "subjectPath": false,
+            "subjects": false,
+            "supersedes": {
+              "$ref": "#/$defs/EventId"
+            },
+            "tense": false,
+            "type": {
+              "const": "documentIssuance"
+            },
+            "value": {
+              "$ref": "#/$defs/ActValue2"
+            }
+          },
+          "required": [
+            "assertedAt",
+            "assertedBy",
+            "basis",
+            "capturedBy",
+            "eventId",
+            "recordedAt",
+            "specVersion",
+            "subject",
+            "type",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "title": "documentIssuance"
     },
     "record.handover": {
       "anyOf": [
@@ -18749,6 +19460,7 @@
         "orderAward",
         "orderResponse",
         "orderCancellation",
+        "documentIssuance",
         "arrival",
         "departure",
         "weight.net",

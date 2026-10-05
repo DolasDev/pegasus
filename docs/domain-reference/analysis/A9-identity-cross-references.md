@@ -514,6 +514,13 @@ recorded is that the worked example a reader will reach for is one A9 cannot wri
 record are not A9's to mint: one reduces to [A6]'s `documentIssuance` and the rest to [A8 §9
 item 1].**
 
+> **The first of those two reductions has paid out.** `documentIssuance` minted on 2026-10-05
+> ([`A8` §5](A8-authority-skeleton.md) row 17), so the void / lost / stolen BL-number case §3.7
+> reduced to A6 is now expressible as an act on a `document` rather than owed. The second reduction
+> stands: [A8 §9 item 1] still owes the party entity, so §3.6's five party-grain schemes still have
+> no subject. **Reducing rather than minting is what made this cheap** — A9 wrote no act, and the
+> case closed when its owner closed.
+
 Run the check as [A2 §3.6] wrote it — _does any act performed **on** this aggregate have a record?_
 — and the answer separates:
 
@@ -630,7 +637,9 @@ illustration being cited as a fact.
    correct; §3.3(c) adds that the PRO is accountable as a **scheme** — `src:nmfta-ebol` makes it the
    document's own resource key — which A6's enumeration by document kind could not have reached.
 3. **`documentIssuance` gains a case and no new claim.** §3.7 reduces void / lost / stolen BL numbers
-   to A6's owed act rather than minting one, on A6's own reading of the same passage.
+   to A6's owed act rather than minting one, on A6's own reading of the same passage. **A6's act is
+   no longer owed** (2026-10-05, [A8 §5] row 17), so the case A9 handed over now has somewhere to
+   land — which is the argument for reducing instead of minting, observed working.
 
 ### To [A8]
 

@@ -363,7 +363,7 @@ export type AuthorityRule<T extends AssertionType = AssertionType> = AuthorityRu
       }
   )
 
-export type A8Row = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
+export type A8Row = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17
 
 /**
  * A fact class [A8 §5] does not reach — [A8 §9 item 8] lists them: "cube, piece count, packing
@@ -730,6 +730,37 @@ export const AUTHORITY_TABLE = {
       "TODO([A8 §9 item 7]): revenue allocation is A13's and this row must not be read as settling it.",
   },
 
+  /* ---- Row 17 — documentIssuance. Minted with the act, on row 10's binding. ------------------ */
+  documentIssuance: {
+    a8Row: 17,
+    type: 'documentIssuance',
+    // Row 10's rule, not a new one, and that is the whole argument for the row existing. [A6 §3.2(b)]
+    // establishes that for a document with a scheme of its own the party controlling the number
+    // scheme IS the party issuing the instrument, so "the issuer of the scheme" already names the
+    // issuer of the document. A second RuleRef here would claim a second rule and there is not one.
+    rule: ISSUER_OF_SCHEME,
+    boundBy: 'SCHEME',
+    authoritative: { kind: 'held', primary: { kind: 'schemeIssuer' } },
+    // The counterparty receives the instrument and may echo its number back; echoing is a relation,
+    // not a role, so it is not listed — row 10's own note makes the same point about corroboration.
+    competing: [],
+    advisory: ['booker', 'platform'],
+    note:
+      'The first row [A8 §9 item 8] closed on MINTING ALONE: its holder was determined by row 10 ' +
+      'before the fact class existed, so nothing was owed underneath it ([A8 §9 item 8(e)], which ' +
+      'asked this document "to accept a reading" rather than to research one). Sourced: ' +
+      '`src:cfr-49-375` §375.505(a) ("prepare and ISSUE a bill of lading"), §375.103\'s separate ' +
+      'definition of a `Government bill of lading shipper`; `src:dtr-part-iv` A-413 §C.2 (a BL "is ' +
+      'only accountable when a number has been assigned to the form"); `src:dcsa` `ISSU` with ' +
+      '`eventClassifierCode` forced to `ACT`; `src:nmfta-ebol` `bol.function = Create`. ' +
+      '**[SYNTHESIS]:** that scheme control and instrument issuance are the same party is ' +
+      "[A6 §3.2(b)]'s step, and binding THIS row to it is this one's. Confidence medium — [A8 §10] " +
+      'caps a row whose authority is converted from a duty, and §375.505(a) states a duty. ' +
+      'TODO([SD §4.2]): `src:dcsa` forces `eventClassifierCode = ACT` on `ISSU`, so the corpus ' +
+      'says there is no ESTIMATED issuance — the model has no per-type basis restriction to carry ' +
+      "that, and inventing one is not this row's to do.",
+  },
+
   /* ---- Everything else: owed. [A8 §9 item 8]. ----------------------------------------------- */
 
   packing: {
@@ -988,16 +1019,23 @@ export const AUTHORITY_TABLE = {
  * above) **and** carries exactly the rows [A8 §5] publishes. If a row were written here without a
  * section to cite, this stops compiling — which is the disclosure rule, mechanised.
  *
- * Eleven at `0.1.0`; **sixteen** now. Rows 12-16 closed `handover` (**F3**), `weight.gross`,
- * `weight.tare`, `packing` and `pieceCount` — the five of [A8 §9 item 8]'s owed rows the corpus
- * supports. The other fourteen are still owed and are still owed *here*: twelve of them are blocked
- * on the corpus rather than on effort, which [A8 §9 item 8] now says in as many words.
+ * **No count is written here, and the type below is why.** The prose used to say "eleven at
+ * `0.1.0`; sixteen now", and `authority-table.json` still said "eleven rows, and eleven is the
+ * whole of it" five rows after that stopped being true — a count in two places, neither gated.
+ * [A1 §9]'s rule applies to a docstring as much as to a document: **enumerate, do not total.** The
+ * `Exact` below is the enumeration, so the set is the assertion and no number can rot beside it.
+ *
+ * What the enumeration is a record of: rows 12-16 closed `handover` (**F3**), `weight.gross`,
+ * `weight.tare`, `packing` and `pieceCount`, and row 17 closed `documentIssuance` — the first row
+ * [A8 §9 item 8] discharged on **minting alone**. Which fact classes are still owed, and on which
+ * of [A8 §9 item 8]'s grounds, is the glossary's Owed section and `index.json`'s `owed` block,
+ * generated from this table.
  */
 type RowedTypes = {
   [T in AssertionType]: (typeof AUTHORITY_TABLE)[T] extends { readonly a8Row: A8Row } ? T : never
 }[AssertionType]
 
-type SixteenRows = Exact<
+type TheRowedTypesAreExactlyThese = Exact<
   RowedTypes,
   | 'arrival'
   | 'departure'
@@ -1015,9 +1053,10 @@ type SixteenRows = Exact<
   | 'weight.tare'
   | 'packing'
   | 'pieceCount'
+  | 'documentIssuance'
 >
-const _sixteenRows: SixteenRows = true
-void _sixteenRows
+const _theRowedTypesAreExactlyThese: TheRowedTypesAreExactlyThese = true
+void _theRowedTypesAreExactlyThese
 
 /** Whether [A8 §5] reaches this fact class at all. An owed row is not a row. */
 export function hasAuthorityRow(type: AssertionType): boolean {

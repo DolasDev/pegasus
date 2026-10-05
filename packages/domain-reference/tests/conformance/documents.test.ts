@@ -490,9 +490,9 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     // [A2 §3.6]'s one. Its blocker is a schema gap in [A8 §4.3]'s `boundBy` enum rather than A5's
     // missing party entity, which §4.7.3 records at the point of use.
     shipmentCommitment: '`shipmentCommitment`',
-    // [A6 §3.3]'s one. The first entry in §4.7.3 whose blocker is minting alone: [A8 §5] row 10's
-    // `boundBy = SCHEME` already determines its holder, so nothing is owed underneath the row.
-    documentIssuance: '`documentIssuance`',
+    // [A6 §3.3]'s `documentIssuance` WAS here, as the one entry whose blocker was minting alone
+    // ([A8 §5] row 10 already determined its holder). It minted on 2026-10-05, so it leaves this
+    // map and §4.7.3's prose together — the gate below is what makes leaving one behind a failure.
     // [A7 §3.2]'s one, and its blocker is a kind none of the entries above has: the SUBJECT does
     // not exist, so the question never reaches [A8 §9 item 8]'s ledger at all. `placeRef` is the
     // model's other instance of the same shape.
@@ -540,9 +540,11 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
    * check was `section.includes(phrase)` over all 202 lines of §4.7.3, so a class the document
    * names twice survived having one mention renamed and the gate still reported green — reproduced
    * on 2026-10-02 by renaming `chargeCollection`'s declaring item to `chargeCollectionXX`, after
-   * which all 14 tests in this file still passed. Five of the sixteen entries were maskable that
-   * way: `survey`, `weighing`, `unpacking`, `documentIssuance` and `chargeCollection`. Found by
-   * [A6 §9], reproduced by [A7 §9] as a deliberate re-test, and left standing by both.
+   * which every test in this file still passed. The maskable entries were `survey`, `weighing`,
+   * `unpacking`, `documentIssuance` and `chargeCollection` — named rather than counted against a
+   * total, because `documentIssuance` has since left the list and a fraction would now be wrong in
+   * both halves. Found by [A6 §9], reproduced by [A7 §9] as a deliberate re-test, and left standing
+   * by both.
    *
    * The narrative paragraphs introducing the item-declared classes name most of them a second time,
    * and those mentions are deliberately NOT gated: the declaring item is the row standing in for
@@ -564,7 +566,6 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     stayAllowance: 'item',
     stayTermination: 'item',
     shipmentCommitment: 'item',
-    documentIssuance: 'item',
     chargeCollection: 'item',
   }
 

@@ -1,9 +1,9 @@
 {
   "table": "authority",
   "declaredBy": "[A8 §5] — the per-fact-class authoritative-role table",
-  "note": "Eleven rows, and eleven is the whole of it: [A8 §9 item 8] records that every other fact class is uncovered. The subject family column is quoted from [SD §4.7], never re-derived here ([A8 §5] caveat i). Every row's authority is boundBy = CUSTODY unless the row says otherwise ([A8 §5] caveat iii), but the value is written out on every row rather than inherited, because an inherited default is the thing that goes wrong silently.",
+  "note": "The row set is the assertion and no total is written here: this field said \"Eleven rows, and eleven is the whole of it\" for five rows past the point that stopped being true, which is [A1 §9]'s rule failing in a data file. data-tables.test.ts enumerates the rows instead. The subject family column is quoted from [SD §4.7], never re-derived here ([A8 §5] caveat i). Every row's authority is boundBy = CUSTODY unless the row says otherwise ([A8 §5] caveat iii), but the value is written out on every row rather than inherited, because an inherited default is the thing that goes wrong silently.",
   "owedNote": "Owed is a value, never an absence. A standing names role-enum members in 'roles' and every asserter designation that is NOT an enum member in 'unresolved', each carrying what it is owed to — usually [A8 §9 item 2] (the role vocabulary is undefined), sometimes [A8 §9 item 1] (there is no party entity), and in row 9's case not owed at all but COMPUTED by custodyAt. An empty standing is written as an empty standing with a note saying so; it never arrives as a missing key.",
-  "structuralObservation": "[A8 §5]'s own closing paragraph: three of eleven rows have no authoritative role — weight.net and sitEntryDate are empty, condition is plural rather than empty. 'That is not a failure of the table. In each case a source supplies something BETTER than a role — a value rule, a mandatory derivation, or a joint record — and the table's job is to say so rather than to invent a winner.' [ORIGINAL] as an observation. Those are exactly the three rows carrying a 'settlement', which is [A8 §4.4] A8-NAMED holding: where authoritative is empty or plural, a tie-break rule MUST be named and 'a resolution may never fall back to latest wins implicitly'.",
+  "structuralObservation": "[A8 §5]'s own closing paragraph, with its count replaced by its members: THREE rows have no authoritative role and they are weight.net, sitEntryDate and condition — the first two empty, condition plural rather than empty. 'That is not a failure of the table. In each case a source supplies something BETTER than a role — a value rule, a mandatory derivation, or a joint record — and the table's job is to say so rather than to invent a winner.' [ORIGINAL] as an observation. Those are exactly the rows carrying a 'settlement', which is [A8 §4.4] A8-NAMED holding: where authoritative is empty or plural, a tie-break rule MUST be named and 'a resolution may never fall back to latest wins implicitly'. The observation was written as 'three of eleven' and survived five new rows unchanged; it is now named rather than counted, and data-tables.test.ts enumerates the three.",
   "overlapNote": "A role may appear in two standings on one row: [A8 §5 r1] has destinationAgent corroborating at its own end AND competing at destination. The loader does not forbid the overlap, because the document requires it.",
   "rows": [
     {
@@ -762,6 +762,54 @@
       "confidence": "medium",
       "confidenceNote": "The row was CONDITIONAL, not owed: [SD §4.7.1] already answered the boundary case through A8-JOINT and left the rest open. This closes the rest at medium — the counting duties are citations, the instant-dependent split is authored.",
       "citations": ["[A8 §5 r16]", "[A8 §5 r9]", "[A8 §7.3]", "[SD §4.7.1]", "[SD §5.4]", "[A4 §3]"]
+    },
+    {
+      "row": 17,
+      "type": "documentIssuance",
+      "family": "document",
+      "boundBy": "SCHEME",
+      "sameAs": 10,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "the ISSUER of the document's own number scheme, and nobody else",
+              "owedTo": "Not a role at all — a PARTY, exactly as row 10. [A8 §9 item 1] leaves the party entity undefined, so the issuer cannot be an enum member here either. The DESIGNATION is resolved and the party class is not, which is the distinction this row turns on: nothing is owed about WHO holds authority, only about how the model spells a party."
+            }
+          ],
+          "note": "Authority NEVER MOVES, inherited from row 10 rather than re-argued. [A6 §3.2(b)]: for the one document kind in the corpus with a scheme of its own, the party controlling the number scheme IS the party issuing the instrument — src:cfr-49-375 §375.505(a) has the carrier issue its own BL and §375.103 defines a Government bill of lading shipper separately, so which instrument is in play decides the issuer and the scheme is what says which instrument it is.",
+          "cardinality": "one"
+        },
+        "corroborating": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "the party the instrument is issued TO, echoing its number back",
+              "owedTo": "[A8 §9 item 2]"
+            }
+          ],
+          "note": "src:nmfta-ebol's response carries an acceptance identifier distinct from the document identifier, which is an echo-back of exactly row 10's shape one aggregate over."
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [],
+          "note": "None, and for row 10's reason rather than for want of looking: under one scheme there is one issuer. Two instruments covering one shipment — a carrier BL and a GBL — are two documents under two schemes, so their issuances are two facts on two keys and not a contest on one."
+        },
+        "advisory": {
+          "roles": ["booker", "platform"],
+          "unresolved": [],
+          "note": "The platform is advisory and never authoritative on an act ([SD §5.2] M2/M3's family bar reaches every act)."
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED for the act, and the authority is row 10's: src:cfr-49-375 §375.505(a) \"you must prepare and ISSUE a bill of lading\" (primary); src:dtr-part-iv A-413 §C.2 — a BL \"is only accountable when a number has been assigned to the form\", which makes number assignment the act itself — with A-402 §F.1 NOTE and src:dp3-tender-of-service §C.3.n gating when it may happen; src:dcsa's ISSU with eventClassifierCode forced to ACT; src:nmfta-ebol's required bol.function with one documented value, Create.",
+      "authored": "That scheme control and instrument issuance are the same party is [A6 §3.2(b)]'s step; binding THIS row to it is [A8]'s. No new rule: the row cites ISSUER-OF-SCHEME v1, row 10's own rule, because a second RuleRef would claim a second rule and there is not one.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] caps a row whose authority is converted from a duty, and §375.505(a) states a duty. Row 10 itself is HIGH because it is a citation; this row is one conversion away from it and is capped accordingly.",
+      "citations": ["[A8 §5 r17]", "[A6 §3.3]", "[A6 §3.2]", "[A8 §9 item 8(e)]", "[SD §4.7.1]"]
     }
   ]
 }

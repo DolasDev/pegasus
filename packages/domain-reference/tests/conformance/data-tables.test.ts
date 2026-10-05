@@ -54,9 +54,26 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
     // [SD §1.3]: "§4.7.1 is the complete declaration." One row per assertion type, no more.
     expect(table.rows.size).toBe(ASSERTION_TYPES.length)
     for (const type of ASSERTION_TYPES) expect(table.rows.has(type)).toBe(true)
-    // [SD §4.7] note 2: eleven named families, three of them non-singletons.
-    expect(table.families.size).toBe(11)
-    expect([...table.families.values()].filter((family) => !family.singleton)).toHaveLength(3)
+    // [SD §4.7] note 2: the families, named rather than counted — the count was `11` and
+    // `document` made it wrong. Note 2's own claim is about the three NON-singletons, and that one
+    // is enumerated too, so adding a singleton family cannot quietly make it four.
+    expect([...table.families.keys()].sort()).toEqual([
+      'anyAggregate',
+      'assignment',
+      'charge',
+      'document',
+      'goods',
+      'item',
+      'order',
+      'partyRole',
+      'stay',
+      'stop',
+      'stopAction',
+      'trip',
+    ])
+    expect(
+      [...table.families.entries()].filter(([, family]) => !family.singleton).map(([name]) => name),
+    ).toEqual(['stop', 'goods', 'anyAggregate'])
   })
 
   it('carries the families a type may be asserted about — E-CANON, from the table', () => {
@@ -172,9 +189,13 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
 })
 
 describe('[A8 §5] the authority table', () => {
-  it('loads sixteen rows and does not pretend to cover more', () => {
+  it('loads the rows [A8 §5] publishes, by number, and does not pretend to cover more', () => {
     const table = loadAuthorityTable(authorityTable)
-    expect(table.rows.size).toBe(16)
+    // By row number rather than by `size`, for `authority-custody-corrections.test.ts`'s reason: a
+    // total cannot see a gap or a duplicate, and the number is what [A8 §5]'s prose cites.
+    expect([...table.rows.keys()].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    ])
     // [A8 §9 item 8]: everything else is uncovered, so there is deliberately no completeness check.
     expect(table.byType.has('tripDelay')).toBe(false)
   })
@@ -187,8 +208,11 @@ describe('[A8 §5] the authority table', () => {
         (row.standings.authoritative.cardinality === 'empty' ||
           row.standings.authoritative.cardinality === 'joint'),
     )
-    // [A8 §5]'s own closing observation: three of eleven, and each supplies something better than
-    // a role — a value rule, a mandatory derivation, or a joint record.
+    // [A8 §5]'s own closing observation, which this assertion is the enumeration of: THREE rows
+    // have no single authoritative role, and each supplies something better than a role — a value
+    // rule, a mandatory derivation, or a joint record. The document used to write it as "three of
+    // eleven" and kept the denominator through five new rows; the three are named in both places
+    // now and this is the gate.
     expect(unsettled.map((row) => row.type).sort()).toEqual([
       'condition',
       'sitEntryDate',
@@ -425,7 +449,9 @@ describe('the three tables together', () => {
   it('load and agree', () => {
     const tables = loadDomainTables({ canonicalSubjects, authority: authorityTable, reasons })
     expect(tables.canonicalSubjects.rows.size).toBe(ASSERTION_TYPES.length)
-    expect(tables.authority.rows.size).toBe(16)
+    expect([...tables.authority.rows.keys()].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    ])
     expect(tables.reasons.status).toBe('published')
   })
 

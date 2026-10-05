@@ -14,7 +14,7 @@ The decisions behind them — what is published, how it is versioned, and what a
 
 ## What is published
 
-**33 members** — 19 act types, 12 other assertion types and 2 meta-record types. That is the record vocabulary exactly: there is no curated subset and no coarser published layer, because one record carries one `type` and a second classification axis is permanently forbidden ([SD §1.1], [SD §1.3]).
+**34 members** — 20 act types, 12 other assertion types and 2 meta-record types. That is the record vocabulary exactly: there is no curated subset and no coarser published layer, because one record carries one `type` and a second classification axis is permanently forbidden ([SD §1.1], [SD §1.3]).
 
 Both schema documents are **closed** (`additionalProperties: false`), and each field [SD §1.1] forbids on the envelope is emitted as `"field": false` — refused by name, not by silence. Validate a record against the `specVersion` it carries, never against a pinned one.
 

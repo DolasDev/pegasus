@@ -6,7 +6,7 @@
     "specVersion": "0.6.1",
     "decidedBy": "docs/domain-reference/analysis/published-event-catalog.md",
     "note": "The published catalog is the record vocabulary, exactly — [catalog §1]. There is no coarser published layer over these members, because a second classification axis is permanently forbidden by [SD §1.1].",
-    "memberCount": 33,
+    "memberCount": 34,
     "faces": ["captured", "queried"],
     "schemas": {
       "captured": "captured.schema.json",
@@ -84,6 +84,14 @@
       "canonicalSubjectFamily": "stop",
       "subjectKinds": ["stop", "externallyPerformedLeg"],
       "factClassFamily": "time",
+      "qualifier": null
+    },
+    {
+      "type": "documentIssuance",
+      "kind": "act",
+      "canonicalSubjectFamily": "document",
+      "subjectKinds": ["document"],
+      "factClassFamily": "actPerformance",
       "qualifier": null
     },
     {
@@ -607,9 +615,9 @@
       "declared": 18,
       "vocabularies": 3,
       "authorityRows": 14,
-      "declaredRecordTypes": 31,
+      "declaredRecordTypes": 32,
       "factClassFamilies": 2,
-      "absentFactClasses": 16
+      "absentFactClasses": 15
     },
     "vocabularies": ["identityScheme", "roleClass", "unitOfMeasure"],
     "declared": [
@@ -795,7 +803,6 @@
       "chargeCollection",
       "claim",
       "cube",
-      "documentIssuance",
       "estimate",
       "eta",
       "resourceTareWeight",

@@ -13,6 +13,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ABSENT_AND_OWED,
+  ACT_TYPES,
+  ASSERTION_TYPES,
+  CANONICAL_SUBJECT_FAMILY,
   CITATION_CLAIMS_NOTHING,
   CONDITION_BY_OMISSION_IS_NOT_EXPRESSIBLE,
   CAPTURE_METHODS,
@@ -39,15 +42,17 @@ import {
 
 import canonical from '../../data/canonical-subjects.json'
 
-describe('[A6 §3.3] the document aggregate is an object with no acts', () => {
-  it('no declared record type has a `document` canonical subject family', () => {
-    // The check A2 told A6 to run first, run against the table rather than against prose. A family
-    // whose ONLY member is `document` would be the shape a document-subject act row needs; the one
-    // family that admits `document` is `anyAggregate`, which `identity` uses and which admits
-    // thirteen others ([SD §7.1]).
-    // `SUBJECT_FAMILIES`' member tuples are literal types, so `tsc` reports the singleton comparisons
-    // as statically false before the test ever runs — which is the claim proved twice over. Widened
-    // to `string[]` here so that the assertion is also checked at runtime, against the data.
+describe('[A6 §3.3] the document aggregate has exactly one act on it', () => {
+  it('declares one `document` family, and `documentIssuance` is the only type that uses it', () => {
+    // **This assertion is inverted, not deleted, and that is the record of what changed.** A6 ran
+    // the check A2 told it to run and found NO family whose only member is `document`, so no act
+    // could be about a document; the assertion was `expect(documentOnly).toEqual([])`. The
+    // 2026-10-05 mint gave §4.7.1 a `documentIssuance` row and `SUBJECT_FAMILIES` a singleton
+    // `document` family, so the finding is closed and the gate now holds the closure — the shape
+    // `source-registry.test.ts`'s `[A9 §1]` block demonstrated and the cleanup round performed.
+    //
+    // Widened to `string[]` because `SUBJECT_FAMILIES`' member tuples are literal types: `tsc`
+    // settles the comparison statically, and this is the runtime half, read off the data.
     const families = Object.entries(SUBJECT_FAMILIES) as readonly (readonly [
       string,
       readonly string[],
@@ -55,15 +60,22 @@ describe('[A6 §3.3] the document aggregate is an object with no acts', () => {
     const documentOnly = families.filter(
       ([, members]) => members.length === 1 && members[0] === 'document',
     )
-    expect(documentOnly).toEqual([])
+    expect(documentOnly.map(([name]) => name)).toEqual(['document'])
 
-    // And the one family that admits `document` is `anyAggregate`, which admits thirteen others too,
-    // so it cannot be a document act's family — it is the family `identity` uses, and it is what
-    // makes D-ID a reading rule rather than a schema change ([SD §7.1]).
+    // Exactly one type uses it, and a second would be a decision rather than a detail: signing,
+    // correcting and cancelling a document still have no record ([A6 §3.3], the half that stands).
+    const documentSubject = ASSERTION_TYPES.filter(
+      (type) => CANONICAL_SUBJECT_FAMILY[type] === 'document',
+    )
+    expect(documentSubject).toEqual(['documentIssuance'])
+
+    // The other family that admits `document` is still `anyAggregate` — thirteen others with it —
+    // which is what keeps D-ID a reading rule rather than a schema change ([SD §7.1]).
     const admitting = families
       .filter(([, members]) => members.includes('document'))
       .map(([name]) => name)
-    expect(admitting).toEqual(['anyAggregate'])
+      .sort()
+    expect(admitting).toEqual(['anyAggregate', 'document'])
   })
 
   it('`document` appears in the table only in `context[]`, on exactly the six rows [A6 §3.3] names', () => {
@@ -84,11 +96,17 @@ describe('[A6 §3.3] the document aggregate is an object with no acts', () => {
     ])
   })
 
-  it('`documentIssuance` is recorded absent and owed, and is not a record type', () => {
-    expect(ABSENT_AND_OWED).toContain('documentIssuance')
-    // The whole point of an absent class: it is named so its absence is not read as an oversight,
-    // and it is NOT admissible. Minting is [SD §4.7]'s to do.
-    expect((RECORD_TYPES as readonly string[]).includes('documentIssuance')).toBe(false)
+  it('`documentIssuance` is a record type, and is no longer recorded absent', () => {
+    // The second inverted assertion, and both directions matter. It was
+    // `expect(ABSENT_AND_OWED).toContain('documentIssuance')` beside a comment saying minting was
+    // [SD §4.7]'s to do; [SD §4.7] did it. An absent-class entry left standing beside the `type`
+    // that expresses the thing would be the inverse of the defect [SD §4.7.3] exists to prevent,
+    // which is why the entry is deleted from the document and from the list rather than annotated.
+    expect((RECORD_TYPES as readonly string[]).includes('documentIssuance')).toBe(true)
+    expect(ABSENT_AND_OWED as readonly string[]).not.toContain('documentIssuance')
+    // And it minted as an ACT, which is what `src:dcsa` forcing `eventClassifierCode = ACT` on
+    // `ISSU` says: there is no estimated issuance of a bill of lading.
+    expect((ACT_TYPES as readonly string[]).includes('documentIssuance')).toBe(true)
   })
 
   it('OWED: a signature has no class either, and is deliberately not on the absent list', () => {
@@ -252,16 +270,40 @@ describe('[A6 §3.4] document state is neither a vocabulary nor a projection', (
   it('publishes no document-state or document-type vocabulary', () => {
     // Eleven publishers, twelve facets, no two decompositions agreeing — and `src:sirva-ade` folding
     // signature INTO the type axis in a live contract. [A2 §3.3]'s argument with more publishers.
-    const named = (RECORD_TYPES as readonly string[]).filter((type) => /^document/.test(type))
-    expect(named).toEqual([])
+    //
+    // This filter was `/^document/` against the empty set, which is a proxy that stopped being one:
+    // `documentIssuance` is a document-side ACT and matches the prefix while being neither a state
+    // nor a type vocabulary. Named rather than pattern-matched, so the next `document`-prefixed
+    // member has to be looked at instead of silently admitted.
+    const prefixed = (RECORD_TYPES as readonly string[]).filter((type) => /^document/.test(type))
+    expect(prefixed).toEqual(['documentIssuance'])
+    // And the thing actually refused is still refused: no member names a document's STATE or its
+    // KIND, which are the two axes [A6 §3.4] read eleven publishers on.
+    const stateOrKind = (RECORD_TYPES as readonly string[]).filter((type) =>
+      /^document(State|Status|Type|Kind|Class)/.test(type),
+    )
+    expect(stateOrKind).toEqual([])
   })
 
-  it('and it would be B-STAGE again, which is why it is a constant and not a fold', () => {
-    // A fold needs input records. `documentIssuance` being absent is the reason there are none, so
-    // the two facts are asserted together: if the class is ever minted, this test is the reminder
-    // that the projection becomes writable and [A6 §3.4(a)] should be revisited.
-    expect(ABSENT_AND_OWED).toContain('documentIssuance')
+  it('is a constant because the state VOCABULARY is missing, no longer because the inputs are', () => {
+    // **The half of this test that was about B-STAGE is gone, and that is the finding.** It read
+    // `expect(ABSENT_AND_OWED).toContain('documentIssuance')` beside the constant, asserting the two
+    // facts together so that minting the class would be the reminder to revisit [A6 §3.4(a)]. The
+    // class is minted, so the reminder fired: `documentStateAt` now has an input record and the fold
+    // is no longer [A2 §3.6]'s B-STAGE a second time.
+    //
+    // The refusal stands on its other leg, which was always the stronger one — there is no state
+    // vocabulary to fold into, and minting one is what [A6 §3.4] refuses. So the constant stays
+    // `true` and its docstring now says which reason holds it up.
+    expect(ABSENT_AND_OWED as readonly string[]).not.toContain('documentIssuance')
     expect(DOCUMENT_STATE_IS_NOT_COMPUTABLE).toBe(true)
+    // The fold's input set, enumerated: exactly one issuance-shaped act, and no signature,
+    // correction or cancellation record. A later round wanting the projection needs the vocabulary,
+    // not more acts.
+    const documentActs = ASSERTION_TYPES.filter(
+      (type) => CANONICAL_SUBJECT_FAMILY[type] === 'document',
+    )
+    expect(documentActs).toEqual(['documentIssuance'])
   })
 })
 
