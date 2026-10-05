@@ -1858,7 +1858,7 @@ thing to grep for.
 `-G --ignore-files --hidden -I …`. The `-I` is "skip binary files", and ugrep calls a file
 binary as soon as it contains a NUL byte.
 
-**Both** of `packages/domain-reference/tools/`'s generators hold literal NUL bytes, written
+**All three** of `packages/domain-reference/tools/`'s generators hold literal NUL bytes, written
 directly into template strings as a sort separator — `generate-glossary.ts` and
 `generate-catalog.ts`. So every `grep` of either TypeScript file returns **nothing, with exit 0**
 — not an error, not a warning, just silence that is indistinguishable from "no match". `file`
@@ -1906,6 +1906,40 @@ file, and the next run of the gate fails on a change nobody made.
   It is clean over both trees with **no exception** as of the cleanup round's A1, which formatted
   `packages/domain-reference/alloy/run.mjs` — the file that had made the rounds since A7 write
   "prettier clean except…" in their verification notes.
+
+### And `_x_` plus "no markdown tables" is still not enough — two more ways it breaks
+
+`generate-context-map.ts` (2026-10-05) emits no table and uses no `*emphasis*` of its own, and it
+still failed `prettier --check` twice. Both causes are the same shape: **markdown the generator did
+not author, pasted in from source text it read.**
+
+- **A citation whose own text wraps.** A docstring may wrap a citation across a line break —
+  `[A1\n * §Cross-area]` — and a reader that keeps the spelling verbatim hands the renderer a link
+  label containing a newline. That splits its own bullet in two and prettier re-indents the orphan as
+  a continuation. Collapse whitespace in anything you interpolate into a link label or a list item.
+- **An emphasis run cut in half.** Taking "the rest of the line" out of a wrapped comment can take
+  `**bold` and leave `bold**` behind. Prettier balances the stray `*` and rewrites the file the
+  generator just wrote.
+
+**And the obvious repair over-reaches.** Stripping `_` along with `*` turned `NOT_COMPLETED` into
+`NOTCOMPLETED`. An intra-word underscore is **not** emphasis in markdown and never needed removing;
+strip `*` and backticks, keep `_`.
+
+## A gate on a generated file must read the generator, not the file on disk
+
+`context-map.test.ts` (2026-10-05) shipped two gates holding the context map's refusal to publish a
+DDD integration-pattern label. Both read the **committed** `.md` with `readFileSync`. Tampering the
+**generator** to leak `shared kernel` into a row and running the suite fired only the staleness check:
+the substantive gate read a file the tamper had not touched, and passed.
+
+- A staleness gate plus a content gate that both read the committed file is **one** gate wearing two
+  names. The content gate has to call `generate…()`.
+- This is the third shape of the same defect in this package — A6 found a gate that passes a
+  half-tamper, A7 reproduced it, the cleanup round fixed it. The tell is always the same: **tamper the
+  thing the gate is nominally about and check that gate fires, not just its neighbour.**
+- What a gate over generated prose genuinely cannot hold is the **wording**. Spell the sentence once as
+  an exported constant, have the gate read that constant, and say in the test that rewording is
+  deliberate and fires only staleness — no gate in that package reads prose for sense.
 
 ## The owed ledger was blind to an owed _vocabulary_ for the model's whole life
 

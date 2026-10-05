@@ -30,7 +30,7 @@ The areas are [A1], [A2], [A3], [A4], [A5], [A6], [A7], [A8], [A9], [A10], [A11]
 
 ## The join surface — the concepts that cross
 
-A concept is here when it is referenced from at least four modules of `src/`, **or** when its reference sites cite at least three areas. The union was measured rather than assumed, and each half catches what the other misses: reach alone misses `PartyId`, which almost every site cites to the binding layer and to [**A8**](analysis/A8-authority-skeleton.md) while being referenced from eight modules; spread alone misses `SchemeName`, which two modules reference and six areas cite. Both thresholds are counts, so the membership below is enumerated by name in `tests/conformance/context-map.test.ts` — a new reference that promotes or demotes a concept fails that gate and the author decides which of the two changed.
+A concept is here when it is referenced from at least 4 modules of `src/`, **or** when its reference sites cite at least 3 areas. The union was measured rather than assumed, and each half catches what the other misses. Reach alone would miss `PartyId`, referenced from 8 modules with an area reach of 1 area — the rest of its sites cite the binding layer, which is not an area. Spread alone would miss `BoundBy`, with a reach of 7 areas and a spread of 2 modules. Both thresholds are counts, so the membership below is enumerated by name in `tests/conformance/context-map.test.ts` — a new reference that promotes or demotes a concept fails that gate and the author decides which of the two changed.
 
 A declaration carrying **type parameters** is machinery rather than a concept and is not here: ranked on reference spread, `primitives.ts`'s generic helpers sit above every concept in the model. Nothing is excluded by name.
 

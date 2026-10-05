@@ -91,12 +91,17 @@ describe('the generated context map', () => {
     COMPILER_TIMEOUT_MS,
   )
 
-  it('carries the do-not-edit header, naming the generator and the command', () => {
-    const committed = readFileSync(CONTEXT_MAP_FILE, 'utf8')
-    expect(committed).toContain('GENERATED FILE — DO NOT EDIT BY HAND')
-    expect(committed).toContain(CONTEXT_MAP_GENERATOR_REPO_PATH)
-    expect(committed).toContain(CONTEXT_MAP_COMMAND)
-  })
+  it(
+    'carries the do-not-edit header, naming the generator and the command',
+    () => {
+      // Generated, not committed, for the reason the refusal gates below record.
+      const generated = generateContextMap()
+      expect(generated).toContain('GENERATED FILE — DO NOT EDIT BY HAND')
+      expect(generated).toContain(CONTEXT_MAP_GENERATOR_REPO_PATH)
+      expect(generated).toContain(CONTEXT_MAP_COMMAND)
+    },
+    COMPILER_TIMEOUT_MS,
+  )
 })
 
 describe('the nodes are rubric.md’s areas, and nothing else', () => {
@@ -311,11 +316,23 @@ describe('the TODO ledger — the register no other artefact reads', () => {
   )
 })
 
+/**
+ * And the one thing these two gates deliberately do **not** hold: the **wording**.
+ *
+ * {@link REFUSAL_SENTENCE} is the declaring surface, so a round that rewords it reworders the gate
+ * with it and only the staleness check fires — which is the right split, because no gate in this
+ * package reads prose for sense. What is held is the substance: a pattern name may appear in the
+ * paragraph that refuses it and nowhere else, whatever that paragraph has come to say.
+ */
 describe('the refusal — no DDD integration-pattern label', () => {
   it(
     'states the refusal in the document, in the generator’s own words',
     () => {
-      expect(readFileSync(CONTEXT_MAP_FILE, 'utf8')).toContain(REFUSAL_SENTENCE)
+      // The **generated** bytes, not the committed ones. Tampering the generator and running the
+      // suite without regenerating made this gate pass on a stale file while only the staleness
+      // check fired — the half-tamper pass A6 found, A7 reproduced and the cleanup round fixed, in
+      // a third shape. A gate whose subject is what the generator emits has to read what it emits.
+      expect(generateContextMap()).toContain(REFUSAL_SENTENCE)
     },
     COMPILER_TIMEOUT_MS,
   )
@@ -327,8 +344,7 @@ describe('the refusal — no DDD integration-pattern label', () => {
       // vocabulary to leave a hole in, and no type-level witness for an absent type. Scoped to the
       // refusing **paragraph** and to nothing wider — the scoping lesson §3 item 19 generalises,
       // which is also why the paragraph that names the five patterns is the one allowed to.
-      const committed = readFileSync(CONTEXT_MAP_FILE, 'utf8')
-      const paragraphs = committed.split(/\n\s*\n/)
+      const paragraphs = generateContextMap().split(/\n\s*\n/)
       const refusal = paragraphs.find((paragraph) => paragraph.includes(REFUSAL_SENTENCE))
       expect(refusal).toBeDefined()
       const elsewhere = paragraphs.filter((paragraph) => paragraph !== refusal).join('\n\n')

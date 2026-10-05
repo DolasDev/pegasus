@@ -47,10 +47,15 @@
  * other catches:
  *
  * - **Citation reach alone misses the party.** Almost every `PartyId` site cites `[SD §…]` and
- *   `[A8 §…]`, so the party reaches **one** area — while being referenced from eight modules. The
- *   concept [A9 §3.6] calls the structural finding of its round would not have appeared.
- * - **Module spread alone misses the identity key.** `SchemeName` is referenced from two modules and
- *   cited to six areas.
+ *   `[A8 §…]`, and the binding layer is not an area — so the party's reach is **below** the threshold
+ *   while its module spread is well above it. The concept [A9 §3.6] calls the structural finding of
+ *   its round would not have appeared.
+ * - **Module spread alone misses the identity key.** `SchemeName` is the mirror image: reach above
+ *   the threshold, spread below it.
+ *
+ * Neither bullet writes the measurements down. {@link renderJoinSurface} **derives** both witnesses
+ * from the hubs it is rendering, so the emitted sentence cannot be a stale count — and
+ * `context-map.test.ts` holds the comparison rather than the totals.
  *
  * Both thresholds are counts this generator chose, which §3 item 10 says must be gated or deleted.
  * They are gated by **enumeration**: `context-map.test.ts` lists the resulting concepts by name and
@@ -160,7 +165,7 @@ export interface Area {
  * second copy is a second place to be wrong — [SD §1.1]'s reason for deleting the `correlation`
  * bag, one artefact over. Scoped to the table under `## Domain areas` and to nothing wider: §3 item
  * 19's lesson is that a reader scoped to a region containing prose about its own subject closes on
- * that prose, and this file carries seven blockquotes of prose about these very rows.
+ * that prose, and this file carries blockquote after blockquote of prose about these very rows.
  */
 export function readAreas(): Area[] {
   const text = readFileSync(RUBRIC_FILE, 'utf8')
@@ -607,6 +612,11 @@ export function collectContextMap(): ContextMap {
   }
 }
 
+/** `1 module` / `8 modules` — a generated sentence that says `area(s)` reads as a template. */
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
 /** The whole document, as a string. The only thing `main` does is write it to disk. */
 export function generateContextMap(): string {
   const { areas, hubs, debt, aggregateNodes, owed, anchors } = collectContextMap()
@@ -717,13 +727,29 @@ function renderJoinSurface(
 ): void {
   lines.push(`## ${JOIN_HEADING}`)
   lines.push('')
+  // The two witnesses are DERIVED, not written down. A sentence naming `PartyId` and a count of its
+  // modules would be an ungated claim about a set this function is holding — the defect the owed-
+  // closures round found six of. Picked as the widest-spread concept whose reach is below the
+  // threshold and the widest-reach concept whose spread is below it, so if the model changes which
+  // concept plays each part, the sentence changes with it.
+  const bySpread = [...hubs].sort((left, right) => right.modules.length - left.modules.length)
+  const byReach = [...hubs].sort((left, right) => right.areas.length - left.areas.length)
+  const spreadOnly = bySpread.find((hub) => hub.areas.length < HUB_AREA_REACH)
+  const reachOnly = byReach.find((hub) => hub.modules.length < HUB_MODULE_SPREAD)
+  const witnesses =
+    spreadOnly === undefined || reachOnly === undefined
+      ? 'Both halves currently find the same concepts, which is a change worth reading as evidence: ' +
+        'when it last held, each half found something the other did not.'
+      : `each half catches what the other misses. Reach alone would miss \`${spreadOnly.name}\`, ` +
+        `referenced from ${plural(spreadOnly.modules.length, 'module')} with an area reach of ` +
+        `${spreadOnly.areas.length === 0 ? 'none' : plural(spreadOnly.areas.length, 'area')} — the rest ` +
+        'of its sites cite the binding layer, which is not an area. Spread alone would miss ' +
+        `\`${reachOnly.name}\`, with a reach of ${plural(reachOnly.areas.length, 'area')} and a ` +
+        `spread of ${plural(reachOnly.modules.length, 'module')}.`
   lines.push(
-    'A concept is here when it is referenced from at least four modules of `src/`, **or** when its ' +
-      'reference sites cite at least three areas. The union was measured rather than assumed, and ' +
-      'each half catches what the other misses: reach alone misses `PartyId`, which almost every ' +
-      'site cites to the binding layer and to [**A8**](analysis/A8-authority-skeleton.md) while ' +
-      'being referenced from eight modules; spread alone misses `SchemeName`, which two modules ' +
-      'reference and six areas cite. Both thresholds are counts, so the membership below is ' +
+    `A concept is here when it is referenced from at least ${HUB_MODULE_SPREAD} modules of \`src/\`, ` +
+      `**or** when its reference sites cite at least ${HUB_AREA_REACH} areas. The union was measured ` +
+      `rather than assumed, and ${witnesses} Both thresholds are counts, so the membership below is ` +
       'enumerated by name in `tests/conformance/context-map.test.ts` — a new reference that ' +
       'promotes or demotes a concept fails that gate and the author decides which of the two ' +
       'changed.',
