@@ -243,7 +243,9 @@ describe('POST /companies/:id/membership-sync', () => {
       id: 'co-usa',
       code: 'QMM-USA',
       dataSourceKey: 'PegQMMUSA',
+      siteId: SITE,
     })
+    repo.findSite.mockResolvedValue({ id: SITE, cloudAuthEnabled: true })
     memberships.listExisting.mockResolvedValue([])
     memberships.applyPlan.mockResolvedValue(undefined)
   })
@@ -278,6 +280,17 @@ describe('POST /companies/:id/membership-sync', () => {
     expect(plan.writes).toEqual([
       expect.objectContaining({ tenantUserId: 'u1', employeeCode: 1001, status: 'LINKED' }),
     ])
+  })
+
+  it('refuses with 409 SITE_CLOUD_AUTH_DISABLED while the site has cloud auth off', async () => {
+    repo.findSite.mockResolvedValue({ id: SITE, cloudAuthEnabled: false })
+
+    const res = await buildApp().request('/companies/co-usa/membership-sync', { method: 'POST' })
+
+    expect(res.status).toBe(409)
+    expect((await json(res))['code']).toBe('SITE_CLOUD_AUTH_DISABLED')
+    expect(listSalesmen).not.toHaveBeenCalled()
+    expect(memberships.applyPlan).not.toHaveBeenCalled()
   })
 
   it("404s for a company that isn't the tenant's, without calling pegII", async () => {

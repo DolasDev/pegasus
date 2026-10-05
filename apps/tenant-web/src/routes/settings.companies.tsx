@@ -40,6 +40,8 @@ const inputClass =
 export function syncErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Sync failed.'
   switch (error.code) {
+    case 'SITE_CLOUD_AUTH_DISABLED':
+      return "Cloud auth isn't on for this company's site yet. It is enabled per site by your Pegasus administrator; sync after that."
     case 'PEGII_CAPABILITY_MISSING':
       return "This company's site runs a pegII API build without the employee directory. It updates itself; try again after the next update."
     case 'COMPANY_NOT_FOUND':

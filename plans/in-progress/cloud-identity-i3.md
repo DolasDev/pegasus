@@ -137,6 +137,7 @@ Plan file `plans/todo/cloud-identity-i3-salesmen-list.md` (repo format), archive
 - **Release-first apply:** the plan names every user whose LINKED row changes (`releaseUserIds`). The repository flips those to INACTIVE first, then upserts. This lets two users swap employees in one sync without tripping the partial index. A real-DB test covers it.
 - **Token cache key** now includes `emp`/`wun`, so a sync takes effect on the next call instead of within 5 minutes.
 - **`isPegiiNotFound` no longer null-maps the site's `COMPANY_NOT_FOUND`.** Before this, a by-id read for a company the site doesn't know answered "Salesman not found". `pegiiApiErrorToHttp` maps `COMPANY_NOT_FOUND` → 404 and `COMPANY_SCHEMA_UNAVAILABLE` → 503 with their own codes.
+- **The sync refuses with 409 `SITE_CLOUD_AUTH_DISABLED`** while the company's site has cloud auth off (the advisor caught this). Without the guard, NW and RVS admins on hold sites would get a misleading capability or 502 error, because the bridge sends those sites no credential.
 - **The sync considers** human, not-deactivated users (PENDING included), and never touches rows of users outside that set.
 - **Prod check before merge:** the only published workflow declaring `ReadSalesman` is `weichert-milestone-update` (0.6.x, GLOBAL plus an NW copy). It calls `get_salesman` only, which is unchanged, so `list_salesmen` going live breaks no caller.
 

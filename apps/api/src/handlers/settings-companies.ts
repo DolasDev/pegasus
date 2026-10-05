@@ -237,8 +237,24 @@ settingsCompaniesHandler.post(
     const tenantId = c.get('tenantId')
     const companyId = c.req.param('id') ?? ''
     const db = c.get('db') as PrismaClient
-    const company = await createCompanyRepository(db).findCompany(companyId)
+    const companies = createCompanyRepository(db)
+    const company = await companies.findCompany(companyId)
     if (!company) return c.json({ error: 'company not found', code: 'NOT_FOUND' }, 404)
+
+    // Without cloud auth the bridge sends the site no credential, so the
+    // directory read would fail with an error that names the wrong cause. Say
+    // what to do instead (the per-site rollout comes first).
+    const site = await companies.findSite(company.siteId)
+    if (!site?.cloudAuthEnabled) {
+      return c.json(
+        {
+          error:
+            "cloud auth is not enabled for this company's site; enable it before syncing employees",
+          code: 'SITE_CLOUD_AUTH_DISABLED',
+        },
+        409,
+      )
+    }
 
     const gateway = await resolveSalesmanGateway(db, tenantId, () =>
       resolvePegiiCaller(c, { companyId }),
