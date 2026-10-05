@@ -1096,6 +1096,20 @@ The useful form of the ledger entry is therefore three lines rather than one, an
 asks A8 is a **schema** question — does the table need a seventh `boundBy` member? — not a research
 one. A1 does not answer it.
 
+> **Answered 2026-10-05: yes, and it closed one of the three rather than two.** The member is
+> **`AWARD`** and [`A8` §5](A8-authority-skeleton.md) **row 18** is `orderResponse` — the offeree,
+> resolved from the order's own award, which is §3.5's "and only the offeree" converted into
+> authority. **The half of (c) that did not hold is the pairing**: this section grouped
+> `orderResponse` with `orderCancellation` because both resolve their role through the award, and
+> that is true of the **candidate set** and not of the **holder**. §3.5's own permission table is
+> what decides it — a cancellation after acceptance is "either party" — so `orderCancellation`
+> would need a plural `authoritative`, [`A8` §4.4] A8-NAMED makes a tie-break mandatory, and
+> nothing publishes one. §8 scenario 7 said so independently and called it the honest state; §3.5's
+> open defect, the completed cancellation with no requestor field, sits underneath it. **The ledger
+> entry's useful form is three lines, and the three are now closed, narrowed and refused** — which
+> is a better outcome for (c) than being right, because the thing it got right is that the question
+> was A8's to take.
+
 **(d) Two further gifts, both worked cases A8 §8 and §9 ask for by name.**
 
 - **A1-PERM-3 is the cleanest published `A8-UNAUTH` case in the corpus.** `src:dtr-part-iv` §C.4.a

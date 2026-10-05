@@ -983,11 +983,13 @@ export const ABSENT_AND_OWED = [
    * instance of the same shape is `placeRef`, owed to [SD §1.2] because there is no `place`
    * aggregate.
    *
-   * **The fourth kind has left this list, because it was discharged.** `documentIssuance` was here
-   * as the entry blocked on **minting alone**; it is now a record type with [A8 §5] row 17, so the
-   * comparison that used to run four ways runs three. It is named rather than quietly dropped,
-   * because the shape of its blocker is what made it the cheapest and the comparison is the thing
-   * the reader is here for.
+   * **The MINTING-ALONE kind has left this list, because it was discharged.** `documentIssuance`
+   * was here as the only entry whose blocker was minting alone; it is now a record type with
+   * [A8 §5] row 17, so this comparison runs over three kinds of blocker and not four. Named by its
+   * kind rather than by an ordinal — the ordinal depends on the order this paragraph happens to
+   * list them in, which is [A1 §9]'s reason for preferring the name — and named rather than
+   * quietly dropped, because the shape of its blocker is what made it the cheapest to close and
+   * the comparison is the thing a reader is here for.
    *
    * **Why the aggregate is not minted here, although it is the cheapest mint available.**
    * [SD §1.2] is "open to _addition_ in a later `specVersion`" and [catalog §2.3] classes a new

@@ -442,9 +442,12 @@ export const SIT_ENTRY_DERIVED: RuleRef = ruleRef('SIT-ENTRY-DATE-DERIVED', '1')
  * authoritative" and a value rule settles the fact ([A8 §5] row 6, `weight.net`). Here exactly
  * **one** role is authoritative and it is computable from the record alone, so `authoritative` is
  * neither empty nor plural, **A8-NAMED never fires**, and there is no value rule to name. Calling
- * it `NONE` would have required inventing one. (This read "a **sixth** `boundBy`", and the ordinal
- * is deleted rather than incremented — [A1 §9]: an ordinal depends on which document is counting,
- * and `AWARD` made this one wrong in a docstring nobody would think to re-read.)
+ * it `NONE` would have required inventing one. (This read "why this is a **sixth** `boundBy`", and
+ * the ordinal is deleted rather than kept. It was never false — `KEY` is the sixth member and
+ * `AWARD` did not change that — and that is the point worth recording: an ordinal can be accurate
+ * and still **date** the sentence it is in, because "why a sixth?" is a question about an enum with
+ * five members, which this one no longer is. [A1 §9] rules out an ordinal that depends on who is
+ * counting; this is the neighbouring case, an ordinal that depends on **when**.)
  *
  * **Why it is not circular**, which is F3's whole complaint: it reads the **fact key**, fixed when
  * the record was minted, and not {@link CustodyAt} — the fold that consumes the answer. [SD §4.8.2]
