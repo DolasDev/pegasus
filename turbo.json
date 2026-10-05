@@ -1,5 +1,7 @@
 {
+  "//": "`agentGuidance: false` is deliberate, and must stay. From turbo 2.11 on, turbo WRITES ITSELF into the repo-root AGENTS.md (a managed `<!-- BEGIN:turborepo-agent-rules -->` block) whenever it detects an AI coding agent — it checks CLAUDECODE / CLAUDE_CODE / CURSOR_TRACE_ID / AUGMENT_AGENT / OPENCODE_CLIENT / REPL_ID / AI_AGENT and a /opt/.devin probe. Claude Code sets CLAUDECODE=1, so every agent session that ran any repo-scoped turbo command found AGENTS.md dirty through no action of its own, and one `git add -A` silently committed it. Deleting the block does not stick; only this key stops it. The advice in that block was fine, so it is kept in our own words in AGENTS.md instead — ours to edit, not turbo's. NB turbo rejects `//<name>` comment keys (unknown key, fails the whole parse) and requires a bare `//` as the FIRST key, unlike the `//<name>` convention used in package.json.",
   "$schema": "https://turbo.build/schema.json",
+  "agentGuidance": false,
   "globalDependencies": ["tsconfig.base.json"],
   "remoteCache": { "signature": true },
   "tasks": {

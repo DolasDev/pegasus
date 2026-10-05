@@ -2491,3 +2491,58 @@ deploy, or a route that was never mounted. An Automation that skipped on it woul
 outage into a quiet COMPLETED. `/sms/send` now returns `SMS_NOT_CONNECTED` for this case, and
 the SDK raises `SmsChannelNotConnected` only on that code. When a client is meant to _act on_
 an error, give it a specific code. Generic codes are for failures nobody should handle.
+
+## `turbo` ≥ 2.11 writes itself into `AGENTS.md` when it detects an agent
+
+Noticed 2026-10-04 when `AGENTS.md` turned up modified in a worktree nobody had touched — and
+again two commits later, after it had been reverted. `turbo` 2.11.5 (arrived with the #762 bump
+from 2.10.12) maintains a managed block in the **repo-root `AGENTS.md`**:
+
+```
+<!-- BEGIN:turborepo-agent-rules -->
+# This is NOT the Turborepo you know
+… resolve the `turbo` package from this file's directory or relevant workspace …
+<!-- END:turborepo-agent-rules -->
+```
+
+**The trigger is an env-var check, not a heuristic.** Strings in the platform binary
+(`node_modules/@turbo/linux-64/bin/turbo`) give the list: `CLAUDECODE`, `CLAUDE_CODE`,
+`CURSOR_TRACE_ID`, `AUGMENT_AGENT`, `OPENCODE_CLIENT`, `REPL_ID`, `AI_AGENT`, plus a `/opt/.devin`
+path probe. **Claude Code sets `CLAUDECODE=1`**, so every agent session that ran any repo-scoped
+`turbo` command (`turbo run test` included) found `AGENTS.md` dirty through no action of its own.
+A human running `turbo` in a plain shell never sees it.
+
+Measured in a throwaway repo on turbo 2.11.5, with a control:
+
+| config / env                              | `AGENTS.md`                    |
+| ----------------------------------------- | ------------------------------ |
+| no agent env vars                         | not created                    |
+| `CLAUDECODE=1`                            | **created**, one managed block |
+| `CLAUDECODE=1` + `"agentGuidance": false` | not created                    |
+
+Why it matters beyond noise: it is a **tracked, team-wide instructions file going dirty by
+itself**, so a `git add -A` commits it silently — which happened once in this repo and had to be
+amended out. Deleting the block does not stick either; turbo re-adds it on the next qualifying
+command. Only the config key stops it, and it does **not** remove an already-committed block.
+
+**Resolved by `"agentGuidance": false` in the root `turbo.json`.** The advice in the block was
+legitimate, so it is kept in our own words in `AGENTS.md` ("Turborepo: check the installed
+version's own docs") rather than surrendering the file — the bundled `docs/` and `schema.json`
+inside the installed package really are the right source, and `turbo docs "<query>"` searches the
+version-matched set.
+
+Two smaller traps found doing this:
+
+- **`turbo.json` rejects `//<name>` comment keys** — `Found an unknown key '//agentGuidance'`,
+  which fails the whole parse. It accepts a bare `//` key and wants it **first**. That is _not_
+  the `//<name>` convention `package.json` uses (npm ignores unknown keys; turbo validates them).
+- **A turbo.json parse failure also produces no `AGENTS.md`**, so "no block appeared" is not
+  evidence the opt-out works. The first version of this experiment proved nothing for that exact
+  reason; it needed a same-config control with the key removed. Same family as the
+  "a filter that matches nothing is a false green" entries above.
+
+Finally, the version you think is installed may not be: the primary checkout had
+`node_modules/turbo` at **2.9.18 (dated Jul 22)** while the lockfile said **2.11.5**, because it
+had not been reinstalled since the bump. Fresh worktrees got 2.11.5 and the behavior; the primary
+checkout did not. Check `node -p "require('turbo/package.json').version"` before concluding turbo
+does or does not do something.

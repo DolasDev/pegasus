@@ -410,5 +410,16 @@ dirty through no action of its own. Its own text says to commit it, and that it 
 on the next qualifying invocation unless `"agentGuidance": false` is set in the root `turbo.json`.
 **That is a deliberate team decision about a team-wide instructions file, not something to fold
 silently into whatever PR happens to be open** — so it was reverted rather than committed here.
-Decide it once: either commit the block, or set `"agentGuidance": false`. Until then, expect it
-in `git status` and leave it out of unrelated commits.
+
+> ✅ **Decided and done 2026-10-05: `"agentGuidance": false` in the root `turbo.json`.** The
+> trigger turned out to be a plain env-var check — `CLAUDECODE` (which Claude Code sets),
+> `CLAUDE_CODE`, `CURSOR_TRACE_ID`, `AUGMENT_AGENT`, `OPENCODE_CLIENT`, `REPL_ID`, `AI_AGENT`,
+> plus a `/opt/.devin` probe — so it fired on every agent session and never on a human's. Verified
+> with a control: `CLAUDECODE=1` creates the block, the same config with the key set does not.
+> The block's actual advice was sound, so it now lives in `AGENTS.md` in our own words rather than
+> as a turbo-managed section. Full write-up in GOTCHAS ("`turbo` ≥ 2.11 writes itself into
+> `AGENTS.md`"), including two traps: `turbo.json` rejects `//<name>` comment keys (bare `//`
+> only, and first), and a parse failure also suppresses the block — so "no block appeared" alone
+> proves nothing.
+>
+> This no longer belongs on the do-not-commit list. The other three above still do.
