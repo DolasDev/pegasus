@@ -706,6 +706,64 @@ class PegasusClient:
         """
         return self._get_json(f"/api/v1/workflows/{workflow_id}/triggers")["data"]
 
+    def update_trigger(
+        self,
+        workflow_id: str,
+        trigger_id: str,
+        *,
+        enabled: bool | None = None,
+        event_type: str | None = None,
+        filter: dict[str, Any] | None = None,
+        cron_expression: str | None = None,
+    ) -> dict[str, Any]:
+        """Partially update one of a workflow's triggers. Requires ``ManageWorkflowTriggers``.
+
+        Only the fields you pass are sent; the rest are left as stored. The
+        common use is pausing a trigger without losing it:
+        ``update_trigger(wf_id, trg_id, enabled=False)`` (a disabled trigger is
+        kept but never fires; ``enabled=True`` resumes it).
+
+        ``kind`` is immutable — to change it, delete and recreate the trigger.
+
+        Args:
+            workflow_id: The workflow the trigger belongs to.
+            trigger_id: The trigger to update.
+            enabled: Fire (``True``) or pause (``False``) the trigger. Either kind.
+            event_type: New domain/custom event name (EVENT triggers only).
+            filter: New payload-match object (EVENT triggers only).
+            cron_expression: New 5-field UTC cron (SCHEDULE triggers only).
+
+        Returns:
+            The updated trigger row ``{id, workflowId, kind, cronExpression,
+            eventType, filter, enabled, ...}``.
+
+        Raises:
+            ValueError: If no field is given (nothing to update).
+            PegasusApiError: 400 (a field that doesn't fit the trigger's kind,
+                an unknown event type, an invalid cron or filter), 403 (missing
+                action), 404 (no such workflow, or the trigger is not this
+                tenant's or not on this workflow).
+        """
+        body: dict[str, Any] = {}
+        if enabled is not None:
+            body["enabled"] = enabled
+        if event_type is not None:
+            body["eventType"] = event_type
+        if filter is not None:
+            body["filter"] = filter
+        if cron_expression is not None:
+            body["cronExpression"] = cron_expression
+        if not body:
+            raise ValueError(
+                "update_trigger needs at least one of enabled, event_type, filter, cron_expression"
+            )
+        with self._client() as client:
+            response = client.patch(
+                f"/api/v1/workflows/{workflow_id}/triggers/{trigger_id}", json=body
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def delete_trigger(self, workflow_id: str, trigger_id: str) -> None:
         """Delete one of a workflow's triggers.
 

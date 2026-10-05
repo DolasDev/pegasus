@@ -361,6 +361,13 @@ client.create_trigger(
 )
 ```
 
+To change a trigger later, `client.update_trigger(workflow_id, trigger_id, ...)`
+sends only the fields you pass: `enabled`, `event_type`/`filter` (EVENT), or
+`cron_expression` (SCHEDULE). `kind` is immutable. To pause a trigger without
+losing it, use `update_trigger(..., enabled=False)` (or `pegasus-workflows schedule
+disable <wf> <trigger-id>`). A disabled trigger is kept but never fires;
+`enabled=True` resumes it.
+
 Guarantees: only **inbound** texts fire it — the outbound SMS your Automation sends
 with `send_sms` never re-triggers the Automation. Each text fires **at most once**,
 even though the platform receives it via both the webhook and a safety-net sync.
@@ -1272,6 +1279,7 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows requirements [--missing-only] [--json]`                         | Which declared secret/config keys are set, and what's missing. |
 | `pegasus-workflows schedule create <wf-id> --cron "<5-field UTC>"`                 | Attach a cron SCHEDULE trigger that runs the Automation.       |
 | `pegasus-workflows schedule list <wf-id>` / `schedule delete <wf-id> <trigger-id>` | List / remove an Automation's schedule triggers.               |
+| `pegasus-workflows schedule disable <wf-id> <trigger-id>` / `enable …`             | Pause / resume any trigger (EVENT too) without deleting it.    |
 | `pegasus-workflows ingress create <id>` / `rotate <id>` / `list <id>`              | Provision / rotate / inspect a partner-ingress bearer.         |
 | `pegasus-workflows feedback-form validate <key> [-d <dir>]`                        | Dry-run a feedback form definition (no write).                 |
 | `pegasus-workflows feedback-form publish <key> [-d <dir>]`                         | Publish a new feedback form version.                           |

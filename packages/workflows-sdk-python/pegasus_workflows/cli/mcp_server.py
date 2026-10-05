@@ -343,6 +343,12 @@ key. A tick carries no entity — the Automation does its own work (e.g. advance
 cursor and poll). It is distinct from a manual run, whose ``input`` is your own
 business data.
 
+Pause a trigger (EVENT or SCHEDULE) without deleting it with
+``pegasus-workflows schedule disable <wf> <trigger-id>`` (``enable`` resumes it),
+or ``client.update_trigger(wf_id, trigger_id, enabled=False)``. The same call
+edits ``event_type``/``filter`` (EVENT) or ``cron_expression`` (SCHEDULE).
+``kind`` is immutable.
+
 ## Recommended pattern: a module-level resolver (unit-testable)
 
 Write a plain function — not a method — so it stays testable without a Temporal

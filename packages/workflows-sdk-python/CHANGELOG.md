@@ -3,6 +3,19 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.45.0
+
+### Added — update or pause a trigger without deleting it
+
+- `update_trigger(workflow_id, trigger_id, enabled=, event_type=, filter=,
+cron_expression=)` (`ManageWorkflowTriggers`). It sends only the fields you
+  pass to `PATCH /api/v1/workflows/{id}/triggers/{triggerId}`. `kind` is
+  immutable. Passing no fields raises `ValueError` without calling the API.
+- CLI: `pegasus-workflows schedule disable|enable <workflow> <trigger-id>`
+  pauses or resumes any trigger, EVENT as well as SCHEDULE. A disabled
+  trigger is kept but never fires.
+- Before this, the only way to stop a trigger from the SDK was to delete it.
+
 ## 0.44.0
 
 ### Added — skip cleanly when the tenant has no SMS channel

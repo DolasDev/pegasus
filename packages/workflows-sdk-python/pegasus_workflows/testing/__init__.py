@@ -190,6 +190,7 @@ _IGNORED: frozenset[str] = frozenset(
         "download_artifact",
         "create_trigger",
         "list_triggers",
+        "update_trigger",
         "delete_trigger",
         "create_ingress",
         "rotate_ingress",

@@ -1612,6 +1612,58 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/workflows/{id}/triggers/{triggerId}': {
+        patch: {
+          operationId: 'updateWorkflowTrigger',
+          summary: 'Partially update a trigger — pause/resume, re-target (ManageWorkflowTriggers)',
+          description:
+            'Body (all optional, at least one): { enabled, eventType, filter, cronExpression }. enabled applies to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. SDK: update_trigger; CLI: schedule disable|enable.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'triggerId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    enabled: { type: 'boolean' },
+                    eventType: { type: 'string' },
+                    filter: { type: 'object' },
+                    cronExpression: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{data: trigger} — the updated row' },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '404': {
+              description: 'NOT_FOUND — no such workflow, or the trigger is not this tenant’s',
+            },
+          },
+        },
+        delete: {
+          operationId: 'deleteWorkflowTrigger',
+          summary: 'Delete a trigger (ManageWorkflowTriggers)',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'triggerId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '204': { description: 'Deleted' },
+            '404': { description: 'NOT_FOUND' },
+          },
+        },
+      },
       '/api/v1/workflows/{id}/executions/{executionId}/cancel': {
         post: {
           operationId: 'cancelWorkflowExecution',
