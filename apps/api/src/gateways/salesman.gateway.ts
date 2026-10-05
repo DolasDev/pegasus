@@ -9,12 +9,10 @@
 // for how a tenant is resolved to a live gateway, and pegii-salesman.gateway.ts
 // for the implementation.
 //
-// v1 is a single by-id read — the only shape the pegII serialized endpoint
-// (`/api/v1/pegii/serialized/salesmen/:id`) exposes. Listing stays on the stub
-// in services/pegii-salesmen.ts until a pegII collection endpoint exists; when
-// it does, add `listSalesmen` here and implement it in
-// pegii-salesman.gateway.ts, and the handler's list route swaps to the gateway
-// with no new abstraction.
+// Two reads: by id (the serialized endpoint
+// `/api/v1/pegii/serialized/salesmen/:id`) and the paged directory list
+// (`/api/v1/pegii/salesmen`, cloud identity I3), which the runtime list route
+// and the company membership sync both use.
 // ---------------------------------------------------------------------------
 
 import type { SalesmanRecord } from '../services/pegii-salesmen'
@@ -24,12 +22,9 @@ export interface SalesmanGateway {
   findSalesmanById(id: string): Promise<SalesmanRecord | null>
 
   /**
-   * Probe that the pegII source is reachable, without fetching a specific
-   * salesman. Resolves when the source answers; throws `PegiiApiError` when it
-   * is unreachable (tunnel/HTTP failure). Lets reachability-only callers (the
-   * `/salesmen` list route, whose data is still stub-backed) fail the same way a
-   * by-id read does, instead of silently returning an empty list while the
-   * source is down.
+   * Every salesman in the company's directory (all pages), optionally filtered
+   * by active state. Throws PEGII_API_CAPABILITY_MISSING (→ 503) when the site's
+   * API build predates `pegii.salesmen.list.v1`.
    */
-  checkReachable(): Promise<void>
+  listSalesmen(opts?: { active?: boolean }): Promise<SalesmanRecord[]>
 }

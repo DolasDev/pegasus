@@ -45,7 +45,7 @@ import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
 import { meterUsage } from '../middleware/meter-usage'
 import { listOrders, type OrderRecord } from '../services/pegii-orders'
-import { listSalesmen, type SalesmanRecord } from '../services/pegii-salesmen'
+import type { SalesmanRecord } from '../services/pegii-salesmen'
 import { closeTask, getTask, listTasks, type TaskRecord } from '../services/pegii-tasks'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
 import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
@@ -200,23 +200,20 @@ pegiiRuntimeHandler.get('/orders/:orderId', requirePermission(Actions.ReadOrder)
 
 // ── Salesmen ────────────────────────────────────────────────────────────────
 
-// GET /salesmen — list salesmen, optionally filtered by active state.
-//
-// Like GET /orders, the list itself is still stub-backed (the pegII serialized
-// API is by-id only), but we first probe reachability through the
-// SalesmanGateway so this route fails the SAME way GET /salesmen/:salesmanId
-// does when the source is down — a 502/503 that names the dependency — rather
-// than misleadingly returning `200 []` for a firewalled tenant. The `active`
-// query param, when present, is parsed as a boolean ("true"/"false"/"1"/"0").
+// GET /salesmen — list salesmen, optionally filtered by active state, from the
+// pegII directory (`GET /api/v1/pegii/salesmen`, all pages). A site whose API
+// build predates `pegii.salesmen.list.v1` → 503 PEGII_CAPABILITY_MISSING; an
+// unreachable source → 502 (the error boundary maps the PegiiApiError). The
+// response shape omits `winUsername` — it's for the membership sync, not
+// workflows. The `active` query param, when present, is parsed as a boolean
+// ("true"/"false"/"1"/"0").
 pegiiRuntimeHandler.get('/salesmen', requirePermission(Actions.ReadSalesman), async (c) => {
   const tenantId = c.get('tenantId')
   const activeRaw = c.req.query('active')
   const active = activeRaw === undefined ? undefined : activeRaw === 'true' || activeRaw === '1'
 
   const gateway = await resolveSalesmanGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
-  await gateway.checkReachable()
-
-  const salesmen = listSalesmen(tenantId, { ...(active !== undefined ? { active } : {}) })
+  const salesmen = await gateway.listSalesmen(active !== undefined ? { active } : {})
   logger.info('pegII salesmen listed', { count: salesmen.length, active, tenantId })
   return c.json({ data: salesmen.map(toSalesmanResponse), meta: { count: salesmen.length } })
 })

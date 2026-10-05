@@ -12,6 +12,15 @@
 //   POST  /companies        — add a company (UpdateSettings)
 //   PATCH /companies/:id    — edit a company / make it the default (UpdateSettings)
 //   PATCH /sites/:id        — rename a site / flip the cloud-auth switch (UpdateSettings)
+//   POST  /companies/:id/membership-sync — link users to the company's employees (UpdateSettings)
+//   GET   /companies/:id/memberships     — linked members + unmatched users (ReadSettings)
+//
+// The membership sync (cloud identity I3) reads the company's salesman directory
+// from its pegII site — minted as the calling admin, routed by the company's
+// `cid` — and matches users by email, then Windows username
+// (services/company-membership-sync.ts). On demand only; there is no cron. A
+// LINKED membership puts `emp`/`wun` on that user's pegII tokens for that
+// company — attribution only, never access (D-I1).
 //
 // `cloudAuthEnabled` is the operator switch for cloud-issued pegII tokens: the
 // bridge uses them for a site only when it is on AND the site's /version
@@ -34,6 +43,11 @@ import {
   isUniqueViolation,
   type UpdateCompanyInput,
 } from '../repositories/company.repository'
+import { createCompanyMembershipRepository } from '../repositories/company-membership.repository'
+import { planMembershipSync } from '../services/company-membership-sync'
+import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
+import { resolvePegiiCaller } from '../lib/pegii-request-context'
+import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 
 const Code = z
   .string()
@@ -83,6 +97,26 @@ const conflict = (c: { json: (b: unknown, s: 409) => Response }) =>
   )
 
 export const settingsCompaniesHandler = new Hono<AppEnv>()
+
+// The membership sync calls the company's pegII site. Map a PegiiApiError to the
+// same legible 502/503/404 the pegII runtime routes return (see
+// pegiiApiErrorToHttp), e.g. 503 PEGII_CAPABILITY_MISSING for a site whose API
+// build predates the salesman directory, or 404 COMPANY_NOT_FOUND when the
+// site has no database for the company's dataSourceKey.
+settingsCompaniesHandler.onError((err, c) => {
+  if (err instanceof PegiiApiError) {
+    const { status, code, message } = pegiiApiErrorToHttp(err)
+    const correlationId = c.get('correlationId') ?? 'unknown'
+    logger.warn('company membership sync: pegII failure', {
+      pegiiCode: err.code,
+      pegiiStatus: err.status,
+      status,
+      correlationId,
+    })
+    return c.json({ error: message, code, correlationId }, status)
+  }
+  throw err
+})
 
 settingsCompaniesHandler.get('/companies', requirePermission(Actions.ReadSettings), async (c) => {
   const repo = createCompanyRepository(c.get('db') as PrismaClient)
@@ -193,5 +227,86 @@ settingsCompaniesHandler.patch(
       }
       throw err
     }
+  },
+)
+
+settingsCompaniesHandler.post(
+  '/companies/:id/membership-sync',
+  requirePermission(Actions.UpdateSettings),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const companyId = c.req.param('id') ?? ''
+    const db = c.get('db') as PrismaClient
+    const companies = createCompanyRepository(db)
+    const company = await companies.findCompany(companyId)
+    if (!company) return c.json({ error: 'company not found', code: 'NOT_FOUND' }, 404)
+
+    // Without cloud auth the bridge sends the site no credential, so the
+    // directory read would fail with an error that names the wrong cause. Say
+    // what to do instead (the per-site rollout comes first).
+    const site = await companies.findSite(company.siteId)
+    if (!site?.cloudAuthEnabled) {
+      return c.json(
+        {
+          error:
+            "cloud auth is not enabled for this company's site; enable it before syncing employees",
+          code: 'SITE_CLOUD_AUTH_DISABLED',
+        },
+        409,
+      )
+    }
+
+    const gateway = await resolveSalesmanGateway(db, tenantId, () =>
+      resolvePegiiCaller(c, { companyId }),
+    )
+    const directory = await gateway.listSalesmen()
+    const memberships = createCompanyMembershipRepository(db)
+    const now = new Date()
+    const plan = planMembershipSync({
+      directory: directory.map((s) => ({
+        code: Number(s.id),
+        email: s.email,
+        winUsername: s.winUsername,
+        active: s.active,
+        dateTerminated: s.dateTerminated,
+      })),
+      users: await memberships.listSyncUsers(tenantId),
+      existing: await memberships.listExisting(companyId),
+      now,
+    })
+    await memberships.applyPlan(tenantId, companyId, plan, now)
+
+    const summary = {
+      employees: directory.length,
+      linked: plan.linked,
+      newlyLinked: plan.newlyLinked,
+      deactivated: plan.deactivated,
+      unmatched: plan.unmatchedUserIds.length,
+      ambiguous: plan.ambiguous.length,
+    }
+    // Counts only — no emails or usernames in the log.
+    logger.info('company membership sync', { tenantId, companyId, ...summary })
+    return c.json({
+      data: {
+        ...summary,
+        unmatchedUserIds: plan.unmatchedUserIds,
+        ambiguousMatches: plan.ambiguous,
+      },
+    })
+  },
+)
+
+settingsCompaniesHandler.get(
+  '/companies/:id/memberships',
+  requirePermission(Actions.ReadSettings),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const companyId = c.req.param('id') ?? ''
+    const db = c.get('db') as PrismaClient
+    const company = await createCompanyRepository(db).findCompany(companyId)
+    if (!company) return c.json({ error: 'company not found', code: 'NOT_FOUND' }, 404)
+
+    const view = await createCompanyMembershipRepository(db).listForCompany(tenantId, companyId)
+    return c.json({ data: view })
   },
 )

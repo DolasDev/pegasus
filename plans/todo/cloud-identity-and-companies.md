@@ -11,7 +11,8 @@
 **Status:** IN PROGRESS. Direction approved 2026-10-02.
 
 - **I1 is live** (pegasus #770 → `dd1bbc56`, 2026-10-03).
-- **I2 is on movemanager `dev`** (`69e6c050`, 2026-10-05; Windows tiers green). It is waiting for the alpha build and then the per-site rollout.
+- **I2 is on alpha** (`2026.10.5.2+69e6c050`). **QMM's site has cloud auth on** (2026-10-05, verified end to end); NW and RVS are on hold (Steve).
+- **I3 is built** (movemanager branch `feat/cloud-identity-i3-salesmen-list` @ `f555bed3`, not yet on `dev`; pegasus PR on `feat/cloud-identity-i3`). See "Next session — start here".
 
 **A new session starts at "Next session — start here" below.**
 
@@ -33,47 +34,38 @@
 
 ---
 
-## Next session — start here (updated 2026-10-05)
+## Next session — start here (updated 2026-10-05, evening)
 
 **Done:**
 
-- **I1 (pegasus):** KMS ES256 minting, `/.well-known/jwks.json`, `Site`/`Company` + backfill, `Site.cloudAuthEnabled` (all off). Plan: `plans/completed/17a1705d-cloud-identity-i1.md`.
-- **I2 (movemanager):**
-  - the `Cloud` scheme (JWKS + `PinnedJwks` fallback, strict `kid`, ES256 only)
-  - hub routes `HubOnly` (D-I7)
-  - per-request company routing by `cid`, failing closed
-  - migrations on every `SpokeConnections` database
-  - `pegii.cloud-auth.v1` advertised only when a key is usable
-  - `install.ps1 -CloudIssuer -SiteId`
-
-  Landed on `dev` with NW Phase 5 (`149c4c82`). Plan, with build notes and the pre-rollout checks: movemanager `plans/completed/75f99aa5-cloud-identity-i2.md`.
+- **I1 (pegasus):** KMS ES256 minting, `/.well-known/jwks.json`, `Site`/`Company` + backfill, `Site.cloudAuthEnabled`. Plan: `plans/completed/17a1705d-cloud-identity-i1.md`.
+- **I2 (movemanager):** the `Cloud` scheme, hub routes `HubOnly` (D-I7), routing by `cid`, migrations on every `SpokeConnections` database, `pegii.cloud-auth.v1`, `install.ps1 -CloudIssuer -SiteId`. On alpha as `2026.10.5.2+69e6c050`. Plan: movemanager `plans/completed/75f99aa5-cloud-identity-i2.md`.
+- **QMM rollout (2026-10-05):**
+  - Site env (Machine scope): `Api__CloudAuth__Issuer`, `Api__CloudAuth__SiteId = 631fce83-…`, and `SpokeConnections__PegQMMUSA` on SQL instance `localhost\Pegasus`. `PegQMMUSA` migrated (`dbo.__SchemaMigrations` exists) once a placeholder password in that variable was fixed.
+  - Cloud: `cloudAuthEnabled = true` on site `631fce83`. Verified with a positive read (`GET /pegii/salesmen/1..3` → 200 from `PegQMM`).
+  - Companies: `QUALITY-MOVE-MANAGEMENT` renamed `QMM-CANADA` "QMM Canada" (default, `PegQMM`); `QMM-USA` "QMM USA" created with `dataSourceKey = PegQMMUSA`.
+  - **Check the migration with SQL, not logs:** the pegII service logs to the Windows Application event log (source `PegasusApi`), where Information lines likely don't appear. `SELECT COUNT(*) FROM <db>.dbo.__SchemaMigrations` per company DB.
+- **I3 built (not yet shipped):** see the I3 row below and `plans/completed/a64d3dd9-cloud-identity-i3.md`.
 
 **Next, in order:**
 
-1. **Confirm the alpha API build published.** `https://pegasus-movemanager.s3.amazonaws.com/server/deploy/alpha/server.json` should show a version newer than `2026.10.2.2`, built from `69e6c050`. Sites on alpha auto-update every ~30 min (`PegasusApi-AutoUpdate`).
-2. **Per-site cloud-auth rollout** (NW, then RVS, then QMM; the `-test`/`-qa` tenants first where they have their own site):
-   1. On the site server: `Api__CloudAuth__Issuer = https://api.pegasus.dolas.dev` and `Api__CloudAuth__SiteId = <Site.id>`, then restart. The site ids are below.
-   2. Confirm `GET /api/v1/pegii/version` lists `pegii.cloud-auth.v1`.
-   3. Cloud: `PATCH /api/v1/settings/sites/:id {"cloudAuthEnabled": true}`.
-   4. Watch the API logs (`x-correlation-id`) for 401s.
+1. **Land I3's movemanager half:** run `scripts/test.ps1` on Windows against branch `feat/cloud-identity-i3-salesmen-list`, merge `origin/dev`, archive its plan, fast-forward `dev`. Then confirm alpha's manifest moves past `2026.10.5.2` and QMM's `/version` lists `pegii.salesmen.list.v1`.
+2. **Merge the pegasus I3 PR**, then tag and publish SDK `0.45.1`.
+3. **Live check on QMM** (tenant-admin session): Settings → Companies → Sync employees on `QMM-CANADA`, then on `QMM-USA` (the first real `cid = PegQMMUSA` request).
+4. **NW / RVS rollout (on hold — Steve, 2026-10-05).** Same env pair per site (ids below), confirm `/version`, then `PATCH /api/v1/settings/sites/:id {"cloudAuthEnabled": true}` with that tenant's admin session (`/settings/*` is Cognito-only; an API key is refused). For NW also set `systemEmployeeCode = 1001` on its company.
+   - **Open:** do the `-test`/`-qa` tenants have their own servers? One server can hold only one site id.
+   - **Why it matters:** every prod tenant has `pegii_api_key_ref = NULL`, so a site without cloud auth gets **no credential**; token-gated routes (serialized reads, order search, email, and now the salesman list) fail there.
 
-   **Why it can't wait:** every prod tenant has `pegii_api_key_ref = NULL`, so the cloud sends **no credential** today. Since Phase 5's hard cutover, the token-gated routes (serialized reads, order search, email) answer the cloud **only** after this rollout. Do it before anything relies on them.
+   | Tenant slug                   | Site.id                                                |
+   | ----------------------------- | ------------------------------------------------------ |
+   | `nelson-westerberg`           | `29eb5c90-9a16-428d-9ba6-4236e67ffeb1`                 |
+   | `nelson-westerberg-test`      | `571a3c92-19e4-48de-a70a-abb8f3c00f2c`                 |
+   | `quality-move-management`     | `631fce83-f7e5-41e5-856b-fc7f630565a6` (cloud auth ON) |
+   | `quality-move-management-qa`  | `658c2d40-1658-4b20-8700-d16c20d4b92b`                 |
+   | `reliable-van-and-storage`    | `1a723d1d-e3fa-4fb7-ba71-ae1d2cd83d34`                 |
+   | `reliable-van-and-storage-qa` | `a4988cac-e18f-41d3-a1cd-c86873b8a43f`                 |
 
-   | Tenant slug                   | Site.id                                |
-   | ----------------------------- | -------------------------------------- |
-   | `nelson-westerberg`           | `29eb5c90-9a16-428d-9ba6-4236e67ffeb1` |
-   | `nelson-westerberg-test`      | `571a3c92-19e4-48de-a70a-abb8f3c00f2c` |
-   | `quality-move-management`     | `631fce83-f7e5-41e5-856b-fc7f630565a6` |
-   | `quality-move-management-qa`  | `658c2d40-1658-4b20-8700-d16c20d4b92b` |
-   | `reliable-van-and-storage`    | `1a723d1d-e3fa-4fb7-ba71-ae1d2cd83d34` |
-   | `reliable-van-and-storage-qa` | `a4988cac-e18f-41d3-a1cd-c86873b8a43f` |
-
-3. **QMM's second company** (see "Companies as they are" below):
-   - On the QMM server, confirm `SpokeConnections:PegQMMUSA` points at database `PegQMMUSA` with a DDL-capable login (`saPegasus` has it). The API's startup log must show `PegQMMUSA` **migrated**, not `Critical`.
-   - Then in the cloud:
-     - `PATCH` the backfilled company `QUALITY-MOVE-MANAGEMENT` → code `QMM-CANADA`, display name "QMM Canada" (`dataSourceKey` stays null: it is the site's default DB, `PegQMM`).
-     - `POST` company `QMM-USA` with `dataSourceKey = PegQMMUSA` on the same site.
-4. **I3 plan** (needs plan mode + Steve's approval): the pegII `salesmen` list endpoint, `CompanyMembership` + the membership/attribution sync, service account → system employee. It unblocks NW pulse Phases 6–7.
+5. **NW pulse Phases 6–7** consume `emp`/`wun` for `created_by`/`who_called`.
 
 **Companies as they are (verified 2026-10-05, read-only):**
 
@@ -120,9 +112,9 @@ Tenant (customer org: identity, contract, billing, Cedar boundary)
      └─ CompanyMembership (companyId, legacyWindowsUsername, employeeCode, status)
 ```
 
-- **Identity is per organization; access to a company is per membership.** One QMM login with membership in QMM-US, QMM-CA, or both. Membership replaces the hub's all-or-nothing `CanAccessAllCompanies`, and the desktop company picker lists the user's memberships.
+- **Identity is per organization; access to a company is per membership.** One QMM login with membership in QMM-US, QMM-CA, or both. From I4, membership replaces the hub's all-or-nothing `CanAccessAllCompanies`, and the desktop company picker lists the user's memberships. **In I3 a membership is attribution only** (`emp`/`wun` on the user's tokens); it gates nothing.
 - **Cloud-native data stays tenant-scoped.** It gains an optional `companyId` only where the legal entity matters: invoices and billing, legacy routing, intercompany documents. This is deliberately not a re-scoping of every table.
-- **Backfill (no behaviour change):** every existing tenant gets one `Site` (from `pegiiApiBaseUrl` + `VpnPeer`) and one `Company` (from today's single database), and every `TenantUser` with `legacyWindowsUsername` gets a membership in that company. Today's tenant columns stay, readable through the default company, until callers migrate.
+- **Backfill (no behaviour change):** every existing tenant gets one `Site` (from `pegiiApiBaseUrl` + `VpnPeer`) and one `Company` (from today's single database), and memberships are **not** backfilled: the first membership sync (I3) creates them. Today's tenant columns stay, readable through the default company, until callers migrate.
 - `Site`, `Company` and `CompanyMembership` go into `TENANT_SCOPED_MODELS` and the tenant-isolation suite.
 
 ## Cloud-issued pegII tokens
@@ -182,12 +174,13 @@ Two repos implement opposite ends of one token, so the contract lives here, plus
 ## Membership & attribution sync
 
 - **pegII:** `GET /api/v1/pegii/salesmen?active=` for a company (cloud token, routed by `cid`). The salesman view already carries `email` and `isActive`; a list endpoint is new.
-- **Cloud job** (scheduled + on demand, per company):
-  - Match a `TenantUser` to a salesman by email, then by `win_username`, and write or refresh `CompanyMembership.employeeCode` / `legacyWindowsUsername`.
-  - Unmatched users go to an admin view (Settings → Users).
-  - A terminated or inactive employee is unlinked and flagged, never deleted.
+- **Cloud sync** (I3: **on demand only**, per company, from Settings → Companies; minted as the clicking admin; a scheduled run is deferred until there's a reason):
+  - Match a `TenantUser` (human, not deactivated) to a salesman by email, then by `win_username`, and write or refresh `CompanyMembership.employeeCode` / `legacyWindowsUsername`.
+  - **Ambiguity links nobody**, in either direction (a user matching several employees, or several users matching one employee); it is reported.
+  - Unmatched users are listed in Settings → Companies; the fix is their Windows username on Settings → Users, then re-sync.
+  - A terminated or inactive employee is unlinked (`INACTIVE`) and kept, never deleted. A first-sync match to only a terminated employee is recorded `INACTIVE` too.
   - **No direct cloud→MSSQL access** (master-plan rule).
-- **Service accounts** (workflow runtimes, API clients) map to the company's system employee: default **1001 "PEGASUS GENERATED"** (NW, verified in Phase 0 S7), configurable per company and overridable per service account.
+- **Service accounts** (workflow runtimes, API clients) map to the company's system employee: default **1001 "PEGASUS GENERATED"** (NW, verified in Phase 0 S7), set per company as `Company.systemEmployeeCode` (no default in code). A per-service-account override is deferred (Steve, 2026-10-05).
 
 ## Desktop sign-in through the cloud
 
@@ -206,9 +199,9 @@ Two repos implement opposite ends of one token, so the contract lives here, plus
 
 | Phase     | Repo        | What                                                                                                                                                                                                                                                                                                                                                                     | Unblocks                              |
 | --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
-| **I1 ✅** | pegasus     | `Site` / `Company` / `CompanyMembership` models + backfill; KMS signing key + JWKS endpoint; `lib/pegii-token.ts` minting; `pegii-api-client` sends the cloud token (plus `x-correlation-id`) when the site advertises `pegii.cloud-auth.v1`, else falls back to today's path                                                                                            | I2                                    |
+| **I1 ✅** | pegasus     | `Site` / `Company` models + backfill (`CompanyMembership` moved to I3); KMS signing key + JWKS endpoint; `lib/pegii-token.ts` minting; `pegii-api-client` sends the cloud token (plus `x-correlation-id`) when the site advertises `pegii.cloud-auth.v1`, else falls back to today's path                                                                                | I2                                    |
 | **I2 ✅** | movemanager | the cloud JWT scheme (JWKS + pinned-key fallback); hub routes `HubOnly` (D-I7), cloud-facing routes hub-or-cloud; `pegii.cloud-auth.v1`; per-request company routing by `cid`; multi-database migration runner. **Built on top of** the NW Phase 5 branch (`feat/order-read-normalization-and-search`, after `149c4c82`; no rebase), so the branch pushes once with both | NW Phase 5 push; QMM's second company |
-| **I3**    | both        | the `salesmen` list endpoint; the cloud membership/attribution sync + admin view; service-account → system employee mapping                                                                                                                                                                                                                                              | NW Phases 6–7 attribution             |
+| **I3**    | both        | the `salesmen` list endpoint (`pegii.salesmen.list.v1`); `CompanyMembership` + the on-demand membership sync (email, then Windows username; ambiguity links nobody) in Settings → Companies; `emp`/`wun` on user tokens from a LINKED membership; service accounts keep the company's `systemEmployeeCode` (per-account override deferred). No cron.                     | NW Phases 6–7 attribution             |
 | **I4**    | both        | the new Cognito app client (desktop); `POST /desktop/session`; MoveManager Hosted-UI sign-in + cloud company picker; site connection lookup by `cid`                                                                                                                                                                                                                     | I5                                    |
 | **I5**    | movemanager | retire the on-prem hub (`hub_user`, `hub_company`, `/auth/login`, hub admin endpoints) once every API-mode site is on I4; the cloud company registry is authoritative                                                                                                                                                                                                    | I6                                    |
 | **I6**    | movemanager | retire `salesman` password logins in the desktop's direct-database mode; cloud identity becomes the only user store                                                                                                                                                                                                                                                      | —                                     |

@@ -45,4 +45,15 @@ export interface PegiiSalesmanDto {
   startDate?: string | null
   /** Termination date, or null while still employed. */
   dateTerminated?: string | null
+  /**
+   * salesman.win_username — sent only by the directory list
+   * (`GET /api/v1/pegii/salesmen`), never by the serialized by-id read.
+   */
+  winUsername?: string | null
+}
+
+/** One page of `GET /api/v1/pegii/salesmen` (keyset cursor on `code`). */
+export interface PegiiSalesmanListPageDto {
+  items: PegiiSalesmanDto[]
+  nextCursor: number | null
 }

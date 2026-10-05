@@ -334,8 +334,20 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
 
 /** True when an error is a pegII 404 (upstream resource not found). */
 export function isPegiiNotFound(err: unknown): boolean {
-  return err instanceof PegiiApiError && err.code === 'PEGII_API_HTTP_ERROR' && err.status === 404
+  return (
+    err instanceof PegiiApiError &&
+    err.code === 'PEGII_API_HTTP_ERROR' &&
+    err.status === 404 &&
+    // The site has no database for the token's `cid` — a site configuration
+    // problem, not "no such record". Never null-mapped into a not-found.
+    err.upstreamCode !== PEGII_COMPANY_NOT_FOUND
+  )
 }
+
+/** pegII: the token's `cid` names no `SpokeConnections` entry on this site (I2). */
+export const PEGII_COMPANY_NOT_FOUND = 'COMPANY_NOT_FOUND'
+/** pegII: the company's database failed its startup migration (I2). */
+export const PEGII_COMPANY_SCHEMA_UNAVAILABLE = 'COMPANY_SCHEMA_UNAVAILABLE'
 
 /** Client-facing HTTP shape a pegII-bridge route returns for a PegiiApiError. */
 export interface PegiiHttpError {
@@ -356,6 +368,8 @@ export interface PegiiHttpError {
  * - auth failed         → 502 (the site rejected our service user)
  * - tunnel error        → 502 (couldn't complete the upstream hop — firewall/timeout/refused)
  * - bad envelope        → 502 (source answered with something unusable)
+ * - company not on site → 404 COMPANY_NOT_FOUND (the `cid` isn't in SpokeConnections)
+ * - company DB unmigrated → 503 COMPANY_SCHEMA_UNAVAILABLE
  * - upstream 404        → 404 (no such order/task)
  * - upstream 400/409/422 → passed through with pegII's own code: the caller's
  *   request was wrong or conflicted, not the source broken
@@ -412,6 +426,22 @@ export function pegiiApiErrorToHttp(err: PegiiApiError): PegiiHttpError {
         message: `pegII source returned an invalid response: ${err.message}`,
       }
     case 'PEGII_API_HTTP_ERROR':
+      if (err.upstreamCode === PEGII_COMPANY_NOT_FOUND) {
+        return {
+          status: 404,
+          code: PEGII_COMPANY_NOT_FOUND,
+          message:
+            "the pegII site has no database configured for this company (check the site's SpokeConnections)",
+        }
+      }
+      if (err.upstreamCode === PEGII_COMPANY_SCHEMA_UNAVAILABLE) {
+        return {
+          status: 503,
+          code: PEGII_COMPANY_SCHEMA_UNAVAILABLE,
+          message:
+            "this company's database failed its schema migration on the pegII site; restart the site's API after fixing it",
+        }
+      }
       if (err.status === 404) {
         return { status: 404, code: 'NOT_FOUND', message: 'not found' }
       }

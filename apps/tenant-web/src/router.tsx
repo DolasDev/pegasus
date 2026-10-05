@@ -29,6 +29,7 @@ import { IntegrationsIndexPage } from '@/routes/integrations.index'
 import { IntegrationDetailPage } from '@/routes/integrations.$integrationId'
 import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
+import { CompaniesSettingsPage } from '@/routes/settings.companies'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
 import { ConfigsSettingsPage } from '@/routes/settings.developer.configs'
 import { DeveloperIntegrationsPage } from '@/routes/settings.developer.integrations'
@@ -266,6 +267,14 @@ const usersRoute = createRoute({
   component: UsersPage,
 })
 
+// Companies (legacy company databases) and their employee memberships —
+// cloud identity I3.
+const companiesSettingsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/companies',
+  component: CompaniesSettingsPage,
+})
+
 const developerSettingsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: '/settings/developer',
@@ -501,6 +510,7 @@ const routeTree = rootRoute.addChildren([
     settingsLayout.addChildren([
       ssoConfigRoute,
       usersRoute,
+      companiesSettingsRoute,
       developerSettingsRoute,
       developerConfigsRoute,
       developerIntegrationsRoute,

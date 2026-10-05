@@ -25,6 +25,8 @@ export const PegiiCapabilities = {
   Email: 'pegii.email.v1',
   /** The site verifies cloud-issued tokens (lib/pegii-token.ts) and routes by `cid`. */
   CloudAuth: 'pegii.cloud-auth.v1',
+  /** `GET /api/v1/pegii/salesmen` — the paged salesman directory (cloud identity I3). */
+  SalesmenList: 'pegii.salesmen.list.v1',
 } as const
 
 export interface PegiiVersionInfo {

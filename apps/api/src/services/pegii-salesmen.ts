@@ -7,21 +7,15 @@
 // an event envelope or referenced from an order.
 //
 // This module owns the SalesmanRecord surface shape (what the SDK/runtime
-// surface exposes) plus the list stub. Single-salesman READS bridge to the
+// surface exposes). Single-salesman READS bridge to the
 // pegII team's on-prem API at `/api/v1/pegii/serialized/salesmen/:id` over the
 // WireGuard tunnel via the SalesmanGateway (see
 // gateways/salesman-gateway.factory.ts), mapping the payload through
 // gateways/pegii/pegii-salesman.mapper.ts.
 //
-// LISTING stays a stub, mirroring pegii-orders.ts: the pegII serialized endpoint
-// is by-id only, so there is no collection to bridge to yet. `listSalesmen`
-// reads the in-memory store below (empty at runtime — nothing seeds it), keeping
-// the /salesmen route and its `ReadSalesman` Cedar gate intact. The route still
-// probes reachability through the SalesmanGateway first
-// (SalesmanGateway.checkReachable), so it returns a 502/503 rather than a
-// misleading `200 []` when the source is down. When pegII exposes a salesman
-// collection endpoint, add `listSalesmen` to the SalesmanGateway and wire the
-// route to it.
+// LISTING bridges to the paged directory `GET /api/v1/pegii/salesmen`
+// (capability `pegii.salesmen.list.v1`, cloud identity I3) through
+// SalesmanGateway.listSalesmen.
 // ---------------------------------------------------------------------------
 
 /** A pegII salesman record, in the shape the SDK/runtime surface exposes. */
@@ -53,31 +47,10 @@ export interface SalesmanRecord {
   startDate: string | null
   /** Termination date, or null while still employed. */
   dateTerminated: string | null
-}
-
-/** Per-process store keyed by `${tenantId}:${salesmanId}` — backs the list stub. */
-const store = new Map<string, SalesmanRecord>()
-
-/**
- * List salesmen, optionally filtered by active state. STUB: reads the in-memory
- * store, which is un-seeded at runtime (the pegII serialized API is by-id only),
- * so this returns [] until a pegII collection endpoint is bridged in.
- */
-export function listSalesmen(tenantId: string, opts: { active?: boolean } = {}): SalesmanRecord[] {
-  const prefix = `${tenantId}:`
-  let records = [...store.entries()].filter(([k]) => k.startsWith(prefix)).map(([, v]) => v)
-  if (opts.active !== undefined) {
-    records = records.filter((r) => r.active === opts.active)
-  }
-  return records
-}
-
-/** Test seam — seed the list store so `listSalesmen` behavior can be exercised. */
-export function _seedSalesman(tenantId: string, record: SalesmanRecord): void {
-  store.set(`${tenantId}:${record.id}`, record)
-}
-
-/** Test seam — clear the in-memory store between cases. */
-export function _resetSalesmanStore(): void {
-  store.clear()
+  /**
+   * salesman.win_username, when the source sent it (the directory list does,
+   * the by-id read doesn't). Internal to the membership sync — the runtime
+   * route's response shape (toSalesmanResponse) deliberately omits it.
+   */
+  winUsername: string | null
 }
