@@ -237,6 +237,7 @@ export const BOUND_BY_VALUES = [
   'PRINCIPAL',
   'NONE',
   'KEY',
+  'AWARD',
 ] as const
 export type BoundByValue = (typeof BOUND_BY_VALUES)[number]
 

@@ -810,6 +810,49 @@
       "confidence": "medium",
       "confidenceNote": "[A8 §10] caps a row whose authority is converted from a duty, and §375.505(a) states a duty. Row 10 itself is HIGH because it is a citation; this row is one conversion away from it and is capped accordingly.",
       "citations": ["[A8 §5 r17]", "[A6 §3.3]", "[A6 §3.2]", "[A8 §9 item 8(e)]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 18,
+      "type": "orderResponse",
+      "family": "order",
+      "boundBy": "AWARD",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": [],
+          "unresolved": [
+            {
+              "designation": "the OFFEREE — the role the order's own orderAward resolved",
+              "owedTo": "Not a role-enum member and not owed either: it is RESOLVED, from the orderAward record on the same subject. [A8 §4.3]'s AWARD binding is what names the resolution, which is why this cell is a designation rather than an enum member — the same shape as row 10's scheme issuer and row 12's key side. Nothing is owed here."
+            }
+          ],
+          "note": "EXACTLY ONE authoritative role, computed from the order's own award, so [A8 §4.4] A8-NAMED never fires and no tie-break is named. NOT read from context[]: the resolution path is subject = order:X → that order's orderAward, which is a published record of the same aggregate, so [SD §1.4] rule 1 is not engaged. That is the distinction [A1 §Cross-area](b) drew and it is what [A8 §9 item 8(b)]'s context[] objection does not reach.",
+          "cardinality": "one"
+        },
+        "corroborating": {
+          "roles": [],
+          "unresolved": [],
+          "note": "EMPTY, and not for want of looking. [A1 §3.5] publishes who may CAUSE each transition and A1-PERMISSION keeps permission and authority apart; no source ranks a contest over an order response, so a corroborating role here would be [ORIGINAL] with nothing behind it."
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [],
+          "note": "EMPTY. [A1 §3.5]: acceptance and refusal are the offeree's, \"and only the offeree\" — so there is no second party with standing to assert the response. The awarding role's recourse is a different act (orderCancellation's pull-back, §C.6.a-b) and not a competing assertion on this key."
+        },
+        "advisory": {
+          "roles": ["platform"],
+          "unresolved": [],
+          "note": "[SD §5.2] M2/M3 bar the platform from asserting an act, so it is advisory here as on every act row."
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED for the actor on both edges, and the conversion is ours. src:dtr-part-iv A-402 §C.4.a puts acceptance AND refusal on \"the offeree, and only the offeree\" with a 24-hour time-zone-aware deadline; §F.2.a and src:dp3-tender-of-service §B.18.a make an impermissible refusal a breach carrying 30-day market ineligibility; src:milmove-mymove enforces the split in a running system (\"the request and the act are different actors… the Prime cannot update the shipment to any other status\"); src:atlas-world-group-api captures accepted_by on the order record.",
+      "authored": "Converting that recording duty into assertional authority, which [A8 §10] records as authored in rows 1-5, 8 and 11 too. The ROW is new; the enum member AWARD and the rule ROLE-RESOLVED-BY-THE-AWARD v1 are this round's, on [A1 §Cross-area](c)'s reading that the binding is structurally ASSIGNMENT one aggregate over.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] caps a row whose authority is converted from a duty. Capped further by what the row does NOT answer: [A1 §3.5]'s deadline-lapse edge is an orderResponse at NOT_COMPLETED that src:dtr-part-iv §C.4.b publishes as \"caused by nobody\", and §C.4.b gives the PPSO an overt confirmation step that may make the awarding role competing on that branch alone. Recorded on the row rather than deferred.",
+      "citations": ["[A8 §5 r18]", "[A8 §4.3]", "[A1 §3.5]", "[A1 §Cross-area]", "[SD §4.7.1]"]
     }
   ]
 }

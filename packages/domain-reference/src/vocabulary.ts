@@ -939,12 +939,20 @@ export const ABSENT_AND_OWED = [
    * §375.505(c)).
    *
    * Absent rather than minted, and the blocker is **not** [A5 §3.6]'s. The asserter is not an
-   * undefined party class: it is the party that awarded or accepted the order, which the corpus
-   * names on every order transition ([A1 §Cross-area]) and which [A8 §4.3]'s six `boundBy` members
-   * cannot express, because none of them means _"resolved by the order's own award"_. This is the
-   * same gap A1 found under `orderResponse` and `orderCancellation` — a **schema** decision A8 can
-   * take, not a corpus gap — and [A2 §Cross-area] records that the count of rows waiting on that
-   * one enum member is now four.
+   * undefined party class: the corpus names a party on every order transition ([A1 §Cross-area]).
+   *
+   * **[A2 §3.6] said the blocker was [A8 §4.3]'s missing `boundBy` member "and nothing else", and
+   * that was too strong — corrected 2026-10-05.** The member exists: `AWARD` means _"resolved by
+   * the order's own award"_, and it closed `orderResponse` at [A8 §5] row 18. It does **not** close
+   * this one, for `orderCancellation`'s reason rather than `orderResponse`'s: §3.6's own sentence
+   * says the asserter is "the party that **awarded or accepted** the order", and its three sources
+   * answer differently — `src:sirva-ade`'s `Register` is pushed by the awarding side,
+   * `src:milmove-mymove` runs a two-actor submit-then-approve protocol, and `src:cfr-49-375` has the
+   * **carrier** name, enumerate and price the lot. So the enum gap is closed and **who commits** is
+   * not, which is an A8-NAMED question ([A8 §4.4]) with no published tie-break.
+   *
+   * It is therefore blocked on the **holder**, not on the schema, and not on the corpus either — the
+   * corpus says three things rather than nothing, which is a different gap again.
    *
    * **What its absence costs**, three things, all recorded at [A2 §3.6]: **B-ONWARD** is decidable
    * in prose and returns `COMMITMENT_NOT_PUBLISHED` in code ([A2 §3.2]); [`fork-order` §5.2]'s

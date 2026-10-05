@@ -305,7 +305,7 @@ describe('[A8 §5] the table', () => {
       (entry): entry is Extract<typeof entry, { a8Row: number }> => 'a8Row' in entry,
     )
     expect([...rowed].map((entry) => entry.a8Row).sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
     ])
     expect(hasAuthorityRow('arrival')).toBe(true)
     expect(hasAuthorityRow('packing')).toBe(true)

@@ -694,6 +694,18 @@ order's own award"_. **`shipmentCommitment` is blocked by exactly the gap A1 fou
 schema decision at A8 would unblock, and A2 adds its weight to that request rather than opening a new
 one.
 
+> **Half of that is wrong, and the half is "by nothing else" — corrected 2026-10-05.** A8 took the
+> schema decision: §4.3 has a seventh member, **`AWARD`**, and [`A8` §5](A8-authority-skeleton.md)
+> row 18 closed `orderResponse` with it. It did not close this row, and the reason is in the
+> paragraph above — the asserter is "the party that **awarded or accepted** the order", which is two
+> parties, and the three sources cited here answer differently: `src:sirva-ade`'s `Register` is a
+> push from the **awarding** side, `src:milmove-mymove`'s `DRAFT → SUBMITTED → APPROVED` is a
+> **two-actor** protocol, and `src:cfr-49-375` has the **carrier** name, enumerate and price the lot
+> before any document exists. So this row is in `orderCancellation`'s position, not
+> `orderResponse`'s: the binding is `AWARD` and the **holder** is plural, which under
+> [`A8` §4.4] A8-NAMED needs a tie-break nothing publishes. **The remaining blocker is _who
+> commits_**, and it is a reading of these same three sources rather than a schema change.
+
 **What this costs, stated plainly.** Three things in this document are decidable in prose and not in
 code because of it: B-ONWARD (§3.2(e)), B-STAGE's three stages ([`fork-order` §5.2], which has been a
 projection with no inputs since it was written), and the shipment-set a `COMPLETE` rule would

@@ -1128,6 +1128,16 @@ const RULES: readonly {
     export: 'authorityMovesAtHandover',
   },
   { term: 'A8-AFTER', what: 'a former holder after a handoff', export: 'standingAfterBoundary' },
+  // Two named rules that have a `RuleRef` export and were not in this list. `A8-KEY` has been
+  // missing since F3 closed; `A8-AWARD` is this round's. Neither is auto-discovered ([A8 §9]'s own
+  // note about `RULES`), so a rule absent from here is a rule a consumer cannot find — which is
+  // what the registry exists to prevent and what it quietly failed to do for `A8-KEY`.
+  { term: 'A8-KEY', what: 'authority from the fact’s own qualifier', export: 'A8_KEY' },
+  {
+    term: 'A8-AWARD',
+    what: 'authority from the order’s own award',
+    export: 'ROLE_RESOLVED_BY_THE_AWARD',
+  },
   {
     term: 'C5',
     what: 'the custody timeline',
@@ -1582,19 +1592,32 @@ function renderOwed(model: Model, table: CanonicalTable, lines: string[]): void 
   const owedRows = table.rows.filter((row) => row.authority.status !== 'assigned')
   lines.push(
     `${owedRows.length} of ${table.rows.length} declared types carry an authority that is owed in ` +
-      'whole or in part, and [A8 §9 item 8] is the ledger. It used to read as a to-do list; it now ' +
-      "separates **three** reasons a row can be missing, and the third was A1's finding. " +
-      '**Nine are blocked on the corpus**, not on effort — no external source binds a plan change, ' +
-      'a membership offer or an assignment to an asserting role, so a row for one would be ' +
-      '[ORIGINAL] and [SD §4.7] note 3 bars a provisional reading from scoring anyway. **Two are ' +
-      'owed to A8 itself**: `partyRole` (the party entity and the role enum) and `notification` (a ' +
-      'role resolved to a contactable address). **Three are the order lifecycle, and they are not ' +
-      'all the same**: [A1 §Cross-area] shows the corpus names a party on every order transition, ' +
-      "so what blocks `orderResponse` and `orderCancellation` is that [A8 §4.3]'s `boundBy` enum " +
-      "has no member for a role resolved by the order's own award — a schema question A8 can take " +
-      "today — while `orderAward` alone is blocked by A8's own mint principle. Five came off this " +
-      'list at [A8 §5] rows 12-16 — `handover`, `weight.gross`, `weight.tare`, `packing` and ' +
-      '`pieceCount`.',
+      'whole or in part, and [A8 §9 item 8] is the ledger. **The two numbers in that sentence are ' +
+      'generated from the table; every other number this paragraph used to carry has been replaced ' +
+      "by the rows it was counting**, which is [A1 §9]'s rule applied to a generator: a hand-" +
+      'written "nine", "two", "three" and "five" in here went stale three times, once in the same ' +
+      'release as the change that made them wrong. The list below is the inventory; this is what ' +
+      'the groups mean.\n\n' +
+      '**Blocked on the corpus, not on effort** — the `trip`, `membership` and `assignment` ' +
+      'families: no external source binds a plan change, a membership offer or an assignment to an ' +
+      'asserting role, so a row for one would be [ORIGINAL], and [SD §4.7] note 3 bars a ' +
+      'provisional reading from scoring anyway.\n\n' +
+      '**Owed to A8 itself** — `partyRole` (the party entity and the role enum, [A8 §9 items 1-2]) ' +
+      'and `notification` (a role resolved to a contactable address, item 6).\n\n' +
+      '**The order lifecycle, and its three rows are three different cases.** [A1 §Cross-area] ' +
+      'showed the corpus names a party on every order transition, so none of them was ever ' +
+      'corpus-blocked: what blocked them was that [A8 §4.3] had no member for a role resolved by ' +
+      "the order's own award. That member is **`AWARD`**, and it did not close all three. " +
+      '`orderResponse` is **closed** at [A8 §5] row 18, because [A1 §3.5] puts acceptance and ' +
+      'refusal on "the offeree, and only the offeree" — one holder, resolved from the award. ' +
+      '`orderCancellation` keeps `boundBy = AWARD` and an **owed holder**: [A1 §3.5] makes a ' +
+      'cancellation after acceptance "either party", so `authoritative` would be plural and ' +
+      "[A8 §4.4] A8-NAMED has no published tie-break for it. `orderAward` is blocked by A8's own " +
+      '**mint principle** — it mints the award, so it can be bound neither to `PRINCIPAL` nor to ' +
+      '`AWARD` — which `MintingActsAreNotBoundToWhatTheyMint` now holds over the table.\n\n' +
+      '**What has come off this list:** `handover` (**F3**, row 12), `weight.gross`, `weight.tare`, ' +
+      '`packing` and `pieceCount` (rows 13-16), and `orderResponse` (row 18). `documentIssuance` ' +
+      'never reached the list — it minted at row 17 with its authority already assigned.',
   )
   lines.push('')
   for (const row of sortedBy(owedRows, (candidate) => candidate.type)) {

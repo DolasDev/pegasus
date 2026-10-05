@@ -113,8 +113,26 @@ void _catalogIsTheVocabulary
  * fourth time it has mattered: it is annotation keywords only, so no record that validated stops
  * validating. The bare generic `Owed` is deliberately NOT annotated — its `owed` is a plain string,
  * so there is no owed value for a sentence to be about.
+ *
+ * `0.6.2` at the owed-closures round: **two additive classes for two independent deliverables, one
+ * bump**, because a `specVersion` names a published state and not a piece of work.
+ *
+ * - `newRecordType` — `documentIssuance` ([A6 §3.3], [A8 §5] row 17). One new
+ *   `record.documentIssuance` `$def` with its top-level `anyOf` branch, one `AssertionType` enum
+ *   member, and new `anyOf` branches on `record.Correction` and `record.FactResolved`.
+ * - `newClosedEnumMember` — `awardedRole` on {@link AuthoritativeHolder}, which `ObligationRecipient`
+ *   references, from closing `orderResponse` at [A8 §5] row 18 on the new `AWARD` binding.
+ *   **`AWARD` itself never reaches the wire**: `boundBy` is on no record, so the enum member is
+ *   invisible and the holder is the whole of the diff — **exactly `keySideRole`'s shape at `0.3.0`,
+ *   and the second time [catalog §5]'s rule located a change the decision did not predict.**
+ *
+ * Nothing is removed and nothing narrowed in either face, so every record that validated still
+ * validates. The owed inventory moved three ways — `authorityRows` 14 → 13, `absentFactClasses`
+ * 16 → 15, `declaredRecordTypes` 31 → 32 — and carries **no** class, on the rule [catalog §5] and
+ * the `0.5.0` row already settle: [catalog §2.3] classifies changes to what is **published**, and an
+ * owed count is a change to what is admitted to be **missing**.
  */
-export const CATALOG_VERSION = '0.6.1'
+export const CATALOG_VERSION = '0.6.2'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces

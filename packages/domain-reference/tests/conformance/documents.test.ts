@@ -50,6 +50,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ABSENT_AND_OWED,
   AGGREGATE_KINDS,
+  BOUND_BY_VALUES,
   ASSERTION_TYPES,
   CANONICAL_SUBJECT_FAMILY,
   META_RECORD_TYPES,
@@ -305,6 +306,32 @@ describe('[SD §4.7.1] the declaration table in the document is the vocabulary i
       ).toBe(true)
     }
     expect([...declared.keys()].sort()).toEqual([...expected].sort())
+  })
+
+  it("note 4 quotes [A8 §4.3]'s `boundBy` members, all of them", () => {
+    // **A plan-didn't-know finding, 2026-10-05.** Note 4 read
+    // "`CUSTODY` / `ASSIGNMENT` / `SCHEME` / `PRINCIPAL` / `NONE`" — five members — after F3 added
+    // `KEY` to [A8 §4.3] and after `KEY` had been live in `BOUND_BY_VALUES` for four releases.
+    // Nothing compared the quotation to its source, which is [SD §4.7.2e]'s defect one layer up: a
+    // binding document stating a closed set the code had already widened.
+    //
+    // **Scoped to the ENUMERATION, not to note 4's paragraph**, and the paragraph is why. A first
+    // draft read every `` `UPPER_CASE` `` span in the whole note and passed its own tamper:
+    // removing `AWARD` from the list left it in the sentence explaining the gate. Scoping to the
+    // section was wrong for the alias gate above and scoping to the paragraph is wrong here, for
+    // the same reason — a gate must read the thing that DECLARES, and note 4's declaration is the
+    // slash-separated run after "A8 §4.3's:". With that scope the surrounding prose may name a
+    // member freely, which is what lets the note explain itself.
+    if (shared === undefined) throw new Error('00-shared-decisions.md is missing')
+    const note4 = /^4\. \*\*`boundBy`\*\* is A8 §4\.3's:\s*((?:`[A-Z_]+`\s*\/\s*)*`[A-Z_]+`)/m.exec(
+      shared.text,
+    )
+    expect(
+      note4?.[1],
+      '[SD §4.7] note 4 no longer opens with a slash-separated list of `boundBy` members',
+    ).toBeDefined()
+    const quoted = [...(note4?.[1] ?? '').matchAll(/`([A-Z_]+)`/g)].map((m) => m[1])
+    expect(quoted.sort()).toEqual([...BOUND_BY_VALUES].sort())
   })
 
   it('takes the two provisional rows from [SD §4.7.3], with the family that section gives them', () => {
