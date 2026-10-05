@@ -78,18 +78,26 @@ that _"its sources exist and are unread (`src:uncefact-mmt-rdm` ships a 605-valu
 as a bare enumeration with no names)"_. **That sentence contradicts itself**, and the corpus says which
 half is true:
 
-- **`round-1-crosscheck.md` §55 already read it**, and in capitals: `src:uncefact-mmt-rdm`'s 605-value
-  `PartyRoleCode` list and `src:uncefact-scrdm`'s 624-value list _"are BARE ENUMERATIONS WITH NO NAMES
-  in the captured package, so the two highest C1 scores in this area are for a mechanism, not a
-  vocabulary."_ §206 adds the consequence: _"a phase-3 area file that says 'UN/CEFACT gives us a
-  party-role vocabulary' would be **false** — it gives us a mechanism and a count."_ Re-reading it
-  yields the same nothing.
-- **The material is not on this machine.** `registry.yaml` records it as `local/`-only (245 MB,
-  gitignored) with **`sha256: n/a`**, from a user browser download.
-  `ls -d docs/domain-reference/sources/*/local` returns nothing in the primary checkout or in any
-  worktree. So it cannot be re-read and could not be verified against what was read if it were.
-  **`§6`'s rule applies and this is the instance it was written for:** check whether the capture exists
-  before planning to quote primary text.
+- **`round-1-crosscheck.md` already read it**, under **`### A8 Parties & roles — thin`**, and in
+  capitals: `src:uncefact-mmt-rdm`'s 605-value `PartyRoleCode` list and `src:uncefact-scrdm`'s
+  624-value list _"are BARE ENUMERATIONS WITH NO NAMES in the captured package, so the two highest C1
+  scores in this area are for a mechanism, not a vocabulary."_ Its **`## Quality problems in round 1`**
+  section adds the consequence: _"a phase-3 area file that says 'UN/CEFACT gives us a party-role
+  vocabulary' would be **false** — it gives us a mechanism and a count."_ Re-reading the package yields
+  the same nothing.
+
+  **Headings, not line numbers.** That document's headings are named rather than numbered, so there is
+  no `§n` to cite and a line number would be wrong by the next edit. Find them with
+  `/usr/bin/grep -n -a '^#\{1,3\} ' docs/domain-reference/analysis/round-1-crosscheck.md`.
+
+- **The material is on no checkout of this repository.** `registry.yaml` records it as `local/`-only
+  (245 MB, gitignored) with **`sha256: n/a`**, from a user browser download. Checked across the primary
+  checkout and every worktree — `ls -d ~/repos/pegasus*/docs/domain-reference/sources/*/local` returns
+  nothing, in any of them, and `find ~/repos -type d -name 'uncefact*'` finds only the per-source
+  directories holding `analysis.md`. So it cannot be re-read, and could not be verified against what
+  was read if it were. **`§6`'s rule applies and this is the instance it was written for:** check
+  whether the capture exists before planning to quote primary text — and check **every** worktree, not
+  the one you are in.
 - **`[A9 §6]` item 1 carries the same self-contradicting sentence**, which is where the plan got it.
   It is `[A9]`'s to amend, and §3 item 14's house pattern is a marked annotation rather than a rewrite.
 
@@ -97,21 +105,25 @@ half is true:
 **element 98** (party role codes), on stedi.com. Three documents already flag it as the blocker and
 none of them is `[A8]`'s:
 
-- `round-1-crosscheck.md` §238, under **SHOULD**: _"Element 98 is the single list the stedi analysis
-  did not read, and it holds the thing A8 most needs from X12; the A8 score there is explicitly
-  provisional without it."_
-- `fork-time §(b)(1)` and §1102: _"`src:stedi-x12-reference` element 98 is still unread, and it is the
-  one list that would let this be checked against an industry vocabulary; the stedi analysis scores A8
-  C2=1/C4=0 on exactly that ground."_
-- `round-2-critique.md` §120, which is the sharpest: the HHG role vocabulary for `assertedBy.role` is
-  `src:sirva-ade`'s cast presented as DCSA's shape, _"uncited at the point of use and unmarked as
-  authored"_, while §7 concedes element 98 is unread.
+- `round-1-crosscheck.md`, **`## Unread material`**, under its **SHOULD** list: _"Element 98 is the
+  single list the stedi analysis did not read, and it holds the thing A8 most needs from X12; the A8
+  score there is explicitly provisional without it."_
+- `[fork-time §7]`'s confidence table, the row labelled **`(b)(1)` the HHG `assertedBy.role`
+  vocabulary**: _"`src:stedi-x12-reference` element 98 is still unread, and it is the one list that
+  would let this be checked against an industry vocabulary; the stedi analysis scores A8 C2=1/C4=0 on
+  exactly that ground."_ The same section's closing list names it again. (`fork-time`'s §-numbered
+  headings exist, so this one cites a section; the `(b)(1)` label is the table's own row key, not a
+  heading.)
+- `round-2-critique.md`, **`## fork-time-provenance-corrections.md` → `### Original design presented as
+though a source supported it`**, which is the sharpest: the HHG role vocabulary for
+  `assertedBy.role` is `src:sirva-ade`'s cast presented as DCSA's shape, _"uncited at the point of use
+  and unmarked as authored"_, while `[fork-time §7]` concedes element 98 is unread.
 
 Note the shape of that: `src:stedi-x12-reference` is **`status: analyzed`**. The gap is one element
 inside an analysed source, not an unanalysed source — which is why no count over `registry.yaml` shows
 it and why three documents had to say it in prose. **A source's `status:` is not a statement about
-every list inside it**, and that is the fourth routing-hint-read-as-a-record in this corpus, after
-`[A9 §1]`'s three (`v1 detail`, `Covers`, `areas:`).
+every list inside it**, and that is a fourth routing-hint-read-as-a-record in this corpus, beside
+`[A9 §1]`'s `v1 detail`, `Covers` and `areas:`.
 
 ### 1.2 So the round is a fetch, two decisions and an amendment
 
@@ -392,6 +404,16 @@ permission table and `[A1 §8]`'s scenario 7 both say the second row cannot clos
   and custody authority's owner, partially closed with the cap moved rather than lifted.
 - **The `needs-user` backlog is not a backlog anyone is working.** The number is in `registry.yaml` and
   this plan deliberately does not restate it (§3 item 10).
+- **A `§n` citation whose `n` is a LINE number, and it is not only this plan's defect.** §1.1's
+  citations into `round-1-crosscheck.md` were line numbers dressed as sections and were corrected
+  before this plan landed. The same shape is already in the corpus: `[A2]`'s §Cross-area note to `[A3]`
+  cites _"(§1207, §1289, §3.3's diversion row, §5.1's note at :544)"_, and neither `1207` nor `1289` is
+  a heading in either document — they are line offsets into `[A3]`, and the `:544` is explicit about
+  being one. **`§3 item 10`'s rule extends to this**: a line number is an ordinal over a file, it dates
+  the sentence around it, and nothing regenerates it. Repairing it is `[A2]`'s and `[A3]`'s, via a
+  marked annotation (§3 item 14); recorded here so a round that opens either document for another
+  reason knows to fix it in passing. **The general form: cite a heading, and if the document's headings
+  are named rather than numbered, name the heading.**
 
 ---
 
@@ -553,8 +575,10 @@ archived to `plans/completed/<slug>.md` **before** opening it.
    plan-was-wrong findings, and the two lessons it adds to §4.
 3. `docs/domain-reference/context-map.md` — specifically its **debt** section, which is the register the
    glossary does not publish, and its **join surface**, which is where `RoleName` and `PartyId` are.
-4. `docs/domain-reference/analysis/round-1-crosscheck.md` **§55**, **§206** and **§238** — the reading
-   that §1.1 rests on, including the SHOULD item this round discharges.
+4. `docs/domain-reference/analysis/round-1-crosscheck.md` — its **`### A8 Parties & roles`**,
+   **`## Quality problems in round 1`** and **`## Unread material`** sections, which are the reading
+   §1.1 rests on, including the SHOULD item this round discharges. Its headings are named, not
+   numbered; §1.1 says how to find them.
 5. `docs/domain-reference/analysis/published-event-catalog.md` **§2.3** and **§2.3.1** — the change
    classes and the pre-1.0 version rule. Closing `roleClass` **does** reach the wire (§3 item 3).
 6. `docs/domain-reference/glossary.md`, the **Owed** section — the honest state of the model on one page,

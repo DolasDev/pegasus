@@ -24,8 +24,8 @@ their relationships, and `rubric.md`'s marker for an area that gets a sketch rat
 document"_ — and that _"they are not the same thing and a plan that conflates them will produce
 neither."_
 
-**That was wrong, and the grep the plan itself prescribed is what shows it.** `README.md` line 103
-reads _"Named on the context map only, sources retained for later"_. The `v1 detail` column's `context
+**That was wrong, and the grep the plan itself prescribed is what shows it.** `README.md`'s **Scope**
+section reads _"Named on the context map only, sources retained for later"_. The `v1 detail` column's `context
 map` value and the README's owed `context map` are **one artefact seen from two sides**: the column
 marks the areas that appear **on** the map without a decision document of their own. There was never
 a choice between two artefacts, so there was nothing to conflate. `grep -rn -ai 'bounded context'`

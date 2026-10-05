@@ -205,9 +205,15 @@ describe('the join surface, enumerated rather than counted', () => {
       // The measured finding the generator's header records, held as a **comparison** rather than
       // as two totals (§3 item 10). `PartyId` is [A9 §3.6]'s structural finding — an identifier the
       // model can carry and cannot make a `subject` of — and almost every site that references it
-      // cites the binding layer and [A8], so its area reach is below the threshold while eight
-      // modules reference it. `SchemeName` is the mirror image. Drop either axis and the concept on
-      // that side disappears from the map, and this test says which one.
+      // cites the binding layer and [A8], which is not an area, so its reach falls below the
+      // threshold while its module spread sits well above it. `SchemeName` is the mirror image.
+      // Drop either axis and the concept on that side disappears from the map, and this test says
+      // which one.
+      //
+      // No count is written here. The emitted document derives its own two witnesses and names the
+      // **widest** of each, which today makes its reach-only witness `BoundBy` rather than
+      // `SchemeName`; both are genuine witnesses. This gate names `SchemeName` because that is the
+      // pair the round measured, and a named pair is steadier than whichever concept ranks first.
       const map = collectContextMap()
       const party = map.hubs.find((hub) => hub.name === 'PartyId')
       const scheme = map.hubs.find((hub) => hub.name === 'SchemeName')
