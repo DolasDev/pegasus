@@ -724,8 +724,12 @@ as the record of what the field was when this round read it; §1.2 finding 3 car
    that wants SCAC _defined_ must reopen the registry entry and argue for the purchase, which is a
    different ask from the one this item used to carry.
 3. **The subject of an acceptance** (§3.4). Not minted, and not obviously A9's: it is an act, and it
-   is the same shape as [A6]'s `documentIssuance` and [A7]'s `chargeCollection`. Recorded so that
-   whoever takes [SD §1.2]'s act-subject question finds three instances rather than two.
+   was the same shape as [A6]'s `documentIssuance` and [A7]'s `chargeCollection`. Recorded so that
+   whoever takes [SD §1.2]'s act-subject question finds the instances rather than one of them.
+   **`documentIssuance` has since been minted** (2026-10-05, [A8 §5] row 17) — it is kept in the
+   comparison because the shape is what the item is about and that shape is what it had, and because
+   how it closed is the useful precedent: its subject was the `document` aggregate, which [SD §1.2]
+   already carried.
 4. **Whether `identityScheme`'s members would carry more than one bit** if it were ever published.
    [A6 §3.2(a)] specifies one. §3.3's table carries five columns that are candidates — `identifies`,
    `authority`, `issuerIsTheAuthority`, `definedNotMerelyNamed` and the blocker — and A9 makes no
