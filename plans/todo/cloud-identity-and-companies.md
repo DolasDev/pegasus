@@ -8,7 +8,12 @@
 - Model a customer **tenant** as an organization containing one or more **companies** (legal entities, each one legacy database).
 - Retire the on-prem hub, so hub users and cloud users become the same people.
 
-**Status:** DRAFT design, direction approved 2026-10-02. No code.
+**Status:** IN PROGRESS. Direction approved 2026-10-02.
+
+- **I1 is live** (pegasus #770 → `dd1bbc56`, 2026-10-03).
+- **I2 is on movemanager `dev`** (`69e6c050`, 2026-10-05; Windows tiers green). It is waiting for the alpha build and then the per-site rollout.
+
+**A new session starts at "Next session — start here" below.**
 
 **Origin:** NW pulse-texting master plan (`plans/in-progress/nw-pulse-texting-platform.md`), Phase 5. The approved flow, "provision a `pegasus-cloud` hub service user + a Secrets Manager credential on every site", was rejected as the long-term shape.
 
@@ -16,16 +21,69 @@
 
 ## Decisions (Steve, 2026-10-01 → 02)
 
-| #    | Decision                                                                                                                                                                                                                                                                                                                                                              |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| D-I1 | **The cloud is the authorization gate.** It authenticates its principals (Cognito users, API clients, workflow runtimes = service-account `TenantUser`s) and authorizes every request with Cedar _before_ calling pegII. pegII verifies only that a token is genuine and addressed to it. It never makes per-principal access decisions. (Master-plan Phase 5 "A4".)  |
-| D-I2 | **pegII trusts tokens the cloud issues.** This flips today's direction, where the cloud logs in to pegII as a hub user. Sites need no per-site service user and no credential stored in the cloud.                                                                                                                                                                    |
-| D-I3 | **Tenant = customer organization; company = legal entity = one legacy company database** (today's `hub_company`). Examples: QMM operates QMM-US and QMM-Canada as **two databases**; a future customer runs a hauler and a brokerage. Shared visibility, intercompany billing and shared resource pools are tenant-level capabilities across that tenant's companies. |
-| D-I4 | **Move the on-prem hub to the cloud.** Hub users become Cognito users / `TenantUser`s, the company registry becomes cloud `Company` rows, and cloud identity eventually replaces pegII's own user stores (`hub_user`, then `salesman` passwords).                                                                                                                     |
-| D-I5 | **Cloud-dependent desktop sign-in is acceptable.** No offline or break-glass login path is required.                                                                                                                                                                                                                                                                  |
-| D-I6 | **Company database connection strings stay on site.** The cloud stores a company's `dataSourceKey`; the site's pegII API resolves it from its local `SpokeConnections`, as the hub does today. The cloud never holds on-prem SQL credentials for this path.                                                                                                           |
+| #    | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-I1 | **The cloud is the authorization gate.** It authenticates its principals (Cognito users, API clients, workflow runtimes = service-account `TenantUser`s) and authorizes every request with Cedar _before_ calling pegII. pegII verifies only that a token is genuine and addressed to it. It never makes per-principal access decisions. (Master-plan Phase 5 "A4".)                                                                                                                                                                                                                                              |
+| D-I2 | **pegII trusts tokens the cloud issues.** This flips today's direction, where the cloud logs in to pegII as a hub user. Sites need no per-site service user and no credential stored in the cloud.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| D-I3 | **Tenant = customer organization; company = legal entity = one legacy company database** (today's `hub_company`). Examples: QMM operates QMM-US and QMM-Canada as **two databases**; a future customer runs a hauler and a brokerage. Shared visibility, intercompany billing and shared resource pools are tenant-level capabilities across that tenant's companies.                                                                                                                                                                                                                                             |
+| D-I4 | **Move the on-prem hub to the cloud.** Hub users become Cognito users / `TenantUser`s, the company registry becomes cloud `Company` rows, and cloud identity eventually replaces pegII's own user stores (`hub_user`, then `salesman` passwords).                                                                                                                                                                                                                                                                                                                                                                 |
+| D-I5 | **Cloud-dependent desktop sign-in is acceptable.** No offline or break-glass login path is required.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| D-I6 | **Company database connection strings stay on site.** The cloud stores a company's `dataSourceKey`; the site's pegII API resolves it from its local `SpokeConnections`, as the hub does today. The cloud never holds on-prem SQL credentials for this path.                                                                                                                                                                                                                                                                                                                                                       |
+| D-I7 | **Hub routes accept hub tokens only** (Steve, 2026-10-05; I2 approval item A; amends the "hub-or-cloud default policy, no endpoint changes" wording below). `GET /hub/companies/{id}/connection` serves a company's SQL connection string on token validity alone, and `/auth/me` plus the hub-user admin routes read `sub` as a hub username. So every hub route carries `AuthPolicies.HubOnly`, and only the cloud-facing routes (serialized, search, email) take either scheme. **A new hub route must use `HubOnly`:** `dev` added three hub routes while I2 was in flight, and the I2 merge had to pin them. |
 
 ---
+
+## Next session — start here (updated 2026-10-05)
+
+**Done:**
+
+- **I1 (pegasus):** KMS ES256 minting, `/.well-known/jwks.json`, `Site`/`Company` + backfill, `Site.cloudAuthEnabled` (all off). Plan: `plans/completed/17a1705d-cloud-identity-i1.md`.
+- **I2 (movemanager):**
+  - the `Cloud` scheme (JWKS + `PinnedJwks` fallback, strict `kid`, ES256 only)
+  - hub routes `HubOnly` (D-I7)
+  - per-request company routing by `cid`, failing closed
+  - migrations on every `SpokeConnections` database
+  - `pegii.cloud-auth.v1` advertised only when a key is usable
+  - `install.ps1 -CloudIssuer -SiteId`
+
+  Landed on `dev` with NW Phase 5 (`149c4c82`). Plan, with build notes and the pre-rollout checks: movemanager `plans/completed/75f99aa5-cloud-identity-i2.md`.
+
+**Next, in order:**
+
+1. **Confirm the alpha API build published.** `https://pegasus-movemanager.s3.amazonaws.com/server/deploy/alpha/server.json` should show a version newer than `2026.10.2.2`, built from `69e6c050`. Sites on alpha auto-update every ~30 min (`PegasusApi-AutoUpdate`).
+2. **Per-site cloud-auth rollout** (NW, then RVS, then QMM; the `-test`/`-qa` tenants first where they have their own site):
+   1. On the site server: `Api__CloudAuth__Issuer = https://api.pegasus.dolas.dev` and `Api__CloudAuth__SiteId = <Site.id>`, then restart. The site ids are below.
+   2. Confirm `GET /api/v1/pegii/version` lists `pegii.cloud-auth.v1`.
+   3. Cloud: `PATCH /api/v1/settings/sites/:id {"cloudAuthEnabled": true}`.
+   4. Watch the API logs (`x-correlation-id`) for 401s.
+
+   **Why it can't wait:** every prod tenant has `pegii_api_key_ref = NULL`, so the cloud sends **no credential** today. Since Phase 5's hard cutover, the token-gated routes (serialized reads, order search, email) answer the cloud **only** after this rollout. Do it before anything relies on them.
+
+   | Tenant slug                   | Site.id                                |
+   | ----------------------------- | -------------------------------------- |
+   | `nelson-westerberg`           | `29eb5c90-9a16-428d-9ba6-4236e67ffeb1` |
+   | `nelson-westerberg-test`      | `571a3c92-19e4-48de-a70a-abb8f3c00f2c` |
+   | `quality-move-management`     | `631fce83-f7e5-41e5-856b-fc7f630565a6` |
+   | `quality-move-management-qa`  | `658c2d40-1658-4b20-8700-d16c20d4b92b` |
+   | `reliable-van-and-storage`    | `1a723d1d-e3fa-4fb7-ba71-ae1d2cd83d34` |
+   | `reliable-van-and-storage-qa` | `a4988cac-e18f-41d3-a1cd-c86873b8a43f` |
+
+3. **QMM's second company** (see "Companies as they are" below):
+   - On the QMM server, confirm `SpokeConnections:PegQMMUSA` points at database `PegQMMUSA` with a DDL-capable login (`saPegasus` has it). The API's startup log must show `PegQMMUSA` **migrated**, not `Critical`.
+   - Then in the cloud:
+     - `PATCH` the backfilled company `QUALITY-MOVE-MANAGEMENT` → code `QMM-CANADA`, display name "QMM Canada" (`dataSourceKey` stays null: it is the site's default DB, `PegQMM`).
+     - `POST` company `QMM-USA` with `dataSourceKey = PegQMMUSA` on the same site.
+4. **I3 plan** (needs plan mode + Steve's approval): the pegII `salesmen` list endpoint, `CompanyMembership` + the membership/attribution sync, service account → system employee. It unblocks NW pulse Phases 6–7.
+
+**Companies as they are (verified 2026-10-05, read-only):**
+
+- **NW and RVS are single-company:** their default DB is their only company.
+- **QMM** (one site, one SQL instance):
+  - `PegQMM` = **QMM Canada**, the default DB.
+  - `PegQMMUSA` = **QMM USA**, routed by `cid = PegQMMUSA`.
+  - QMM Canada **owns** QMM USA. The on-prem `PegHub.dbo.hub_company` already says so: `QMMUSA.parent_company_id = QMM`, keys `PegQMM` / `PegQMMUSA`.
+  - **The cloud `Company` model has no parent yet.** Add one when intercompany billing needs it, not before (YAGNI).
+- **`PegQMMEC`** also sits on QMM's instance, with the legacy schema, outside the hub registry. **Unknown purpose — leave it alone** (Steve, 2026-10-05): never add it to `SpokeConnections`.
 
 ## Where things are today (verified 2026-10-02)
 
@@ -92,7 +150,7 @@ pegII trusts **only** the cloud's issuer. It never validates Cognito tokens dire
 - **Signing:** a KMS asymmetric key (`ECC_NIST_P256`, `SIGN_VERIFY`, ES256), separate from `WorkflowTokenKey`, with tokens cached per (principal, site, company) until shortly before `exp`.
   - `GET /.well-known/jwks.json` publishes the public keys (current + next) for rotation.
   - The site validates via JWKS. If a site can't reach the endpoint, it uses a pinned public key in config as the fallback; S-I1 below measures reachability.
-- **pegII side:** a second `AddJwtBearer` scheme. The default authorization policy accepts the **hub scheme or the cloud scheme**, so no endpoint changes.
+- **pegII side:** a second `AddJwtBearer` scheme. The default authorization policy accepts the **hub scheme or the cloud scheme**. **Hub routes are the exception: they carry `HubOnly` (D-I7).**
   - `authEnabled` becomes "hub key set OR cloud issuer configured".
   - `/version` adds `pegii.cloud-auth.v1`.
   - Site config shrinks to **two non-secret values**, the cloud issuer and the site id, which `install.ps1` takes as parameters.
@@ -146,14 +204,14 @@ Two repos implement opposite ends of one token, so the contract lives here, plus
 
 ## Phases
 
-| Phase  | Repo        | What                                                                                                                                                                                                                                                                                                                                       | Unblocks                              |
-| ------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
-| **I1** | pegasus     | `Site` / `Company` / `CompanyMembership` models + backfill; KMS signing key + JWKS endpoint; `lib/pegii-token.ts` minting; `pegii-api-client` sends the cloud token (plus `x-correlation-id`) when the site advertises `pegii.cloud-auth.v1`, else falls back to today's path                                                              | I2                                    |
-| **I2** | movemanager | the cloud JWT scheme (JWKS + pinned-key fallback); the hub-or-cloud default policy; `pegii.cloud-auth.v1`; per-request company routing by `cid`; multi-database migration runner. **Built on top of** the NW Phase 5 branch (`feat/order-read-normalization-and-search`, after `149c4c82`; no rebase), so the branch pushes once with both | NW Phase 5 push; QMM's second company |
-| **I3** | both        | the `salesmen` list endpoint; the cloud membership/attribution sync + admin view; service-account → system employee mapping                                                                                                                                                                                                                | NW Phases 6–7 attribution             |
-| **I4** | both        | the new Cognito app client (desktop); `POST /desktop/session`; MoveManager Hosted-UI sign-in + cloud company picker; site connection lookup by `cid`                                                                                                                                                                                       | I5                                    |
-| **I5** | movemanager | retire the on-prem hub (`hub_user`, `hub_company`, `/auth/login`, hub admin endpoints) once every API-mode site is on I4; the cloud company registry is authoritative                                                                                                                                                                      | I6                                    |
-| **I6** | movemanager | retire `salesman` password logins in the desktop's direct-database mode; cloud identity becomes the only user store                                                                                                                                                                                                                        | —                                     |
+| Phase     | Repo        | What                                                                                                                                                                                                                                                                                                                                                                     | Unblocks                              |
+| --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| **I1 ✅** | pegasus     | `Site` / `Company` / `CompanyMembership` models + backfill; KMS signing key + JWKS endpoint; `lib/pegii-token.ts` minting; `pegii-api-client` sends the cloud token (plus `x-correlation-id`) when the site advertises `pegii.cloud-auth.v1`, else falls back to today's path                                                                                            | I2                                    |
+| **I2 ✅** | movemanager | the cloud JWT scheme (JWKS + pinned-key fallback); hub routes `HubOnly` (D-I7), cloud-facing routes hub-or-cloud; `pegii.cloud-auth.v1`; per-request company routing by `cid`; multi-database migration runner. **Built on top of** the NW Phase 5 branch (`feat/order-read-normalization-and-search`, after `149c4c82`; no rebase), so the branch pushes once with both | NW Phase 5 push; QMM's second company |
+| **I3**    | both        | the `salesmen` list endpoint; the cloud membership/attribution sync + admin view; service-account → system employee mapping                                                                                                                                                                                                                                              | NW Phases 6–7 attribution             |
+| **I4**    | both        | the new Cognito app client (desktop); `POST /desktop/session`; MoveManager Hosted-UI sign-in + cloud company picker; site connection lookup by `cid`                                                                                                                                                                                                                     | I5                                    |
+| **I5**    | movemanager | retire the on-prem hub (`hub_user`, `hub_company`, `/auth/login`, hub admin endpoints) once every API-mode site is on I4; the cloud company registry is authoritative                                                                                                                                                                                                    | I6                                    |
+| **I6**    | movemanager | retire `salesman` password logins in the desktop's direct-database mode; cloud identity becomes the only user store                                                                                                                                                                                                                                                      | —                                     |
 
 **Spikes before I1/I2 (answered by Steve, 2026-10-02):**
 
