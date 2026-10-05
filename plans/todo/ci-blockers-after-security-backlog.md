@@ -36,6 +36,11 @@
 - **turbo writing itself into `AGENTS.md`** → **#791.** `"agentGuidance": false`; the advice
   kept in `AGENTS.md` in our own words.
 - **Runbook pattern (a)** → **#781**, then **#782** correcting it. See the ⚠️ box in the runbook.
+- **Item A (the Dependabot backlog)** → **#785**, **#787** and **#799** all merged; #786 was
+  superseded by #799. It corrected two things: `@dependabot recreate` does **not** fix a
+  `Missing: … from lock file` failure, and **CI runs npm 11.13.0, not the `packageManager`
+  10.8.2 pin** — so validating a lockfile with 10.8.2 is a false green. Item 4 gained an
+  eighth reproduction, measured at 21 min → 5 s.
 
 **The one lesson worth carrying into the next bump:** `turbo typecheck lint test` and the
 PR-level E2E job do **not** exercise CDK bundling or the staging gate's own invocation. #762 went
@@ -46,24 +51,44 @@ bump, watch `main`'s Deploy to completion before calling it done.
 
 ## Live work
 
-### [ ] A — Three open Dependabot PRs (do this first; two are one command each)
+### [x] A — Three open Dependabot PRs — ✅ DONE 2026-10-05, all merged
 
-Verified 2026-10-05. Two are green-but-unenqueued, one is genuinely broken.
+- **#785** `hono 4.13.9 → 4.13.12` — was green but unenqueued; `gh pr merge 785 --auto`. Merged.
+- **#787** `turbo 2.11.5 → 2.11.6` — same. Merged. **Opt-out re-verified on 2.11.6** with a
+  control in a throwaway repo: `agentGuidance: false` → 0 blocks, key removed → block injected,
+  both `parse-ok`. `AGENTS.md` on `main` still has zero managed blocks.
+- **#786** `aws-cdk-lib 2.271.0 → 2.272.0` — **`@dependabot recreate` did NOT fix it.** Dependabot
+  closed #786 in favour of grouped **#799** (`aws-cdk` group, 2 updates), which failed _identically_
+  — recreate just re-runs the same resolution. Fixed by regenerating the lockfile and pushing that
+  onto #799's branch; **merged as #799**.
 
-- **#785** `bump hono 4.13.9 → 4.13.12` — `CLEAN`, all checks pass, **not enqueued**,
-  auto-merge off. Runbook pattern (a). → `gh pr merge 785 --auto`
-- **#787** `bump turbo 2.11.5 → 2.11.6` (dev) — same: `CLEAN`, all pass, not enqueued. →
-  `gh pr merge 787 --auto`
-  > After it lands, confirm `"agentGuidance": false` still suppresses the `AGENTS.md` block on
-  > 2.11.6 — it is one command and the method (with its required control) is in the GOTCHAS entry
-  > "`turbo` ≥ 2.11 writes itself into `AGENTS.md`". A silent re-enable would put a managed block
-  > back into a tracked instructions file.
-- **#786** `bump aws-cdk-lib 2.271.0 → 2.272.0` — **`BLOCKED`**. Typecheck, Lint, Test and E2E
-  all fail in **14–30 s each**, which is the one-bad-`npm ci` signature rather than four real
-  failures. Confirmed in job `111398163448` (2026-10-04T08:34):
-  `npm ci … Missing: aws-cdk-lib@2.272.0 from lock file` — Dependabot updated `package.json`
-  without a matching lockfile. That is the #694 class. → **`@dependabot recreate`** (a plain
-  `rebase` does **not** fix it).
+**Two corrections this produced — both matter more than the merges.**
+
+1. **`@dependabot recreate` is the wrong remedy for a `Missing: … from lock file` failure.** It
+   reproduces the same lockfile. The remedy is to regenerate and push it.
+2. **CI does NOT use the `packageManager: npm@10.8.2` pin.** `.github/actions/setup` runs
+   `actions/setup-node` against `.nvmrc` (24.16.0) with no corepack step, so CI's npm is whatever
+   Node bundles — the failing job's own "Environment details" group reads **`npm: 11.13.0`**.
+   Project memory had prescribed `npx -y npm@10.8.2`, and on #799's broken lockfile that
+   **passes**, proving nothing:
+
+   ```
+   npx -y npm@10.8.2 ci --dry-run   -> exit 0   ← FALSE GREEN
+   npm ci --dry-run  (npm 11.13.0)  -> exit 1   ← reproduces CI exactly
+   ```
+
+   So: reproduce the failure with plain `npm` on Node 24 first, then
+   `npm install --package-lock-only`, then gate on `npm ci --dry-run` exiting 0. On #799 the churn
+   was tightly scoped — 2386 entries before and after, 20 added, 20 removed, zero other version
+   changes (the bumped packages moved from `packages/infra/node_modules/` to the root). Memory
+   `project_dependabot_lockfile_npm_version_mismatch` has been corrected.
+
+**Also worth knowing for next time:** this ran during a GitHub **Actions major outage**. Runner
+starvation presents as uniform ~15m0Xs cancellations with `runner_name=[]` and `steps=0`, and it
+turned `main` red on a docs-only merge. Enqueueing during it was deliberately deferred — a starved
+entry occupies the head of an `ALLGREEN` queue and is dropped at `check_response_timeout_minutes:
+60`, blocking other streams for nothing. Check
+`githubstatus.com/api/v2/components.json` before diagnosing a broad uniform failure as yours.
 
 ### [ ] B — Item 1 residue: the TENANT-03 **timeout** (the leak is already fixed)
 
@@ -86,12 +111,20 @@ What is still unapplied, and the decision to make:
   is the evidence this item has never had — capture it **while it is live** (an expired log is
   what cost item 3 its cause).
 
-### [ ] C — Item 4: `DEPENDABOT_AUTOMERGE_PAT` (owner-only, highest leverage)
+### [ ] C — Item 4: `DEPENDABOT_AUTOMERGE_PAT` (owner-only, highest leverage — now 8 reproductions)
 
 See `plans/todo/dependabot-automerge-pat.md`. No code change — the workflow already reads
 `secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN`.
 
-**Seven reproductions:** #645, #656, #387, #657, #709, #710, and **#762** on 2026-10-03/04. The
+**Eight reproductions:** #645, #656, #387, #657, #709, #710, **#762** (2026-10-03/04) and
+**#799** (2026-10-05). #799 is the cleanest measurement yet: enqueued by the auto-merge
+workflow at 22:16:15, it sat at position 1 `AWAITING_CHECKS` for **21 minutes with no
+`merge_group` run**, while `pr-798`'s group run had succeeded minutes earlier and Actions was
+`operational` — so neither the queue nor the outage explains it. A dequeue plus
+`gh pr merge 799 --auto` under a human token produced the `pr-799` run in **~5 seconds**.
+21 min → 5 s.
+
+The
 The #762 one is the measured one: enqueued 23:57:16 by the workflow's `GITHUB_TOKEN`, it sat at
 position 1 `AWAITING_CHECKS` for **18 minutes with no `merge_group` run at all** — while #781,
 enqueued _later_ at position 2, had already produced and passed its own group run. A dequeue plus
@@ -256,7 +289,9 @@ dependency work — either check alone would have missed one of them.
 `turbo typecheck lint test` green is the floor, **not** the ceiling — see the lesson in "State of
 play". For anything touching dependencies, CDK bundling, or the e2e invocation, also:
 
-- `npm ci` exits 0 (proves the lockfile is self-consistent).
+- `npm ci` exits 0 (proves the lockfile is self-consistent). Use the **plain `npm` on Node 24
+  (npm 11.13.0)** — that is what CI runs. `packageManager: npm@10.8.2` is declarative and
+  nothing enforces it, so validating with 10.8.2 can pass a lockfile CI then rejects (#799).
 - `npx cdk synth PegasusStaging-DocumentsStack -c env=staging --app "npx tsx bin/app.ts"` from
   `packages/infra` — this is what actually runs the bundling `npm ci`. It needs
   `npx turbo run build --filter=@pegasus/domain` first, or esbuild fails on `@pegasus/domain`
