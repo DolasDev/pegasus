@@ -479,8 +479,11 @@ export const M7_ELIGIBILITY = {
   charge: eligibilityOwed(M7_OWED),
   notification: eligibilityOwed(M7_OWED),
   partyRole: eligibilityOwed(M7_OWED),
-  // The twelve plan-, binding- and commitment-side acts. They are acts, so M3 reaches their
-  // exceptional outcomes; M2 does not reach them, because none changes possession of goods.
+  // The plan-, binding-, commitment- and document-side acts — the trip, membership, assignment and
+  // order families and `documentIssuance`. They are acts, so M3 reaches their exceptional outcomes;
+  // M2 does not reach any of them, because none changes possession of goods. No count is written
+  // here on purpose ([A1 §9]): the number was "twelve" and `documentIssuance` made it wrong, and
+  // `capture.test.ts` enumerates the set rather than totalling it.
   tripDelay: eligibilityOwed(M7_OWED),
   tripResequence: eligibilityOwed(M7_OWED),
   tripCancellation: eligibilityOwed(M7_OWED),
@@ -493,6 +496,12 @@ export const M7_ELIGIBILITY = {
   orderAward: eligibilityOwed(M7_OWED),
   orderResponse: eligibilityOwed(M7_OWED),
   orderCancellation: eligibilityOwed(M7_OWED),
+  // [A6 §3.3]'s act, minted with its authority row and not with an eligibility declaration. M7 is
+  // owed here for the same reason as the rows above: no document declares a capture method for it.
+  // `src:nmfta-ebol`'s `bol.function = Create` arrives over an API and `src:dcsa`'s `ISSU` is a
+  // status push, which READS like `PARTNER_ASSERTED` on both — and reading like it is not a
+  // declaration ([SD §0]), so the set stays owed rather than being narrowed by analogy.
+  documentIssuance: eligibilityOwed(M7_OWED),
   // The meta-records. [SD §4.3] fixes `FactResolved`'s capture method as part of the record class,
   // which is a closed declaration by another name. [SD §6] fixes none for `Correction`.
   FactResolved: closedAtEveryBasis(['DERIVED_BY_RULE']),

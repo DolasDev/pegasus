@@ -2428,3 +2428,56 @@ and a narrower `grep -v '/node_modules/'` hid the `../../node_modules/.bin/prism
 Use `git grep` when you want tracked files only — it needs no exclusion filter and cannot
 develop this fault. Same class as "a CI poll filter that matches nothing is a false green":
 when a filter's job is to remove noise, confirm it did not remove the subject.
+
+## `Extract<keyof typeof module, 'Name'>` cannot see a type-only export
+
+The house pattern for holding an absence at compile time is `CustodyIsNotAFactClass`:
+
+```ts
+type XIsNotAY = Extract<RecordType, 'custody'> extends never ? true : never
+const _x: XIsNotAY = true
+```
+
+That one is sound, and the reason is easy to miss: `RecordType` is derived from `RECORD_TYPES`, a
+**runtime array**. The same shape written over a module is a **permanent false green**:
+
+```ts
+import * as model from '../../src/index'
+// Looks like it refuses three primitives. Refuses nothing.
+type Unadopted =
+  Extract<keyof typeof model, 'LocalDate' | 'LocalDateRange' | 'ZonedInstant'> extends never
+    ? true
+    : never
+```
+
+`keyof typeof module` enumerates the module's **value** namespace. A `export type Foo = …` or
+`export interface Foo` lives in the type namespace and is not `keyof`-able, so the `Extract` is
+always `never` and the assertion always passes. Found 2026-10-05 in
+`packages/domain-reference/tests/conformance/time-value-shape-refuses.ts`, by tampering: adding
+`export type LocalDateRange = { from: string; to: string }` to `src/primitives.ts` and watching
+`tsc` stay silent.
+
+**The absence of a TYPE needs a reader, not a type.** The fix is a test that reads `src/` as text and
+asserts no file matches `export (type|interface) <Name>\b` —
+`packages/domain-reference/tests/conformance/time-value-shape.test.ts` is the worked example, and it
+does fail when tampered the same way. A **value** absence (an array member, an enum member) is still
+fine at the type level.
+
+## A prose gate whose scope includes prose about its own finding closes on that prose
+
+A conformance test that reads a markdown document for a declaration must be scoped to the thing that
+**declares**, not to the section or paragraph that contains it. Twice on 2026-10-05, in
+`packages/domain-reference/tests/conformance/documents.test.ts`:
+
+- A gate for "every prose alias the code carries, `[SD §4.7]` declares" was drafted over the whole of
+  §4.7 and **passed** — because note 5's own new paragraph _about_ the one undeclared alias names it.
+  Fixed by reading only the `_(…)_` parentheticals in §4.7.1's table's first column.
+- A gate for "note 4 quotes every `boundBy` member" was drafted over note 4's paragraph and
+  **passed** — because the sentence explaining the gate names the two members the list was missing.
+  Fixed by regexing the slash-separated enumeration after `A8 §4.3's:` and nothing else.
+
+This is the cleanup round's lesson one level out: scoping a gate is **half** the fix, and the half
+that matters is scoping it to the declaring surface. The corollary is uncomfortable and worth
+stating: **a document may have to describe a finding without spelling the token**, so that the
+document does not become evidence against its own gate. Say that it is doing so, and why, where it
+does it.

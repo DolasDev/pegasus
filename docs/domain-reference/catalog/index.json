@@ -3,10 +3,10 @@
   "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
   "x-command": "npm run catalog -w @pegasus/domain-reference",
   "catalog": {
-    "specVersion": "0.6.1",
+    "specVersion": "0.6.2",
     "decidedBy": "docs/domain-reference/analysis/published-event-catalog.md",
     "note": "The published catalog is the record vocabulary, exactly — [catalog §1]. There is no coarser published layer over these members, because a second classification axis is permanently forbidden by [SD §1.1].",
-    "memberCount": 33,
+    "memberCount": 34,
     "faces": ["captured", "queried"],
     "schemas": {
       "captured": "captured.schema.json",
@@ -84,6 +84,14 @@
       "canonicalSubjectFamily": "stop",
       "subjectKinds": ["stop", "externallyPerformedLeg"],
       "factClassFamily": "time",
+      "qualifier": null
+    },
+    {
+      "type": "documentIssuance",
+      "kind": "act",
+      "canonicalSubjectFamily": "document",
+      "subjectKinds": ["document"],
+      "factClassFamily": "actPerformance",
       "qualifier": null
     },
     {
@@ -606,10 +614,10 @@
     "counts": {
       "declared": 18,
       "vocabularies": 3,
-      "authorityRows": 14,
-      "declaredRecordTypes": 31,
+      "authorityRows": 13,
+      "declaredRecordTypes": 32,
       "factClassFamilies": 2,
-      "absentFactClasses": 16
+      "absentFactClasses": 15
     },
     "vocabularies": ["identityScheme", "roleClass", "unitOfMeasure"],
     "declared": [
@@ -756,14 +764,8 @@
       {
         "type": "orderCancellation",
         "status": "owed",
-        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
-        "boundBy": "owed"
-      },
-      {
-        "type": "orderResponse",
-        "status": "owed",
-        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
-        "boundBy": "owed"
+        "owedTo": "[A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance \"either party\", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one.",
+        "boundBy": "AWARD"
       },
       {
         "type": "partyRole",
@@ -795,7 +797,6 @@
       "chargeCollection",
       "claim",
       "cube",
-      "documentIssuance",
       "estimate",
       "eta",
       "resourceTareWeight",

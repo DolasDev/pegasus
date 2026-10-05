@@ -15,7 +15,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 ## Contents
 
 - [Aggregates](#aggregates-14) — 14
-- [Record types](#record-types-31) — 31
+- [Record types](#record-types-32) — 32
 - [Fact-class families](#fact-class-families-8) — 8
 - [Bases](#bases-5) — 5
 - [Capture methods](#capture-methods-7) — 7
@@ -34,7 +34,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
 - [Compatibility change classes](#compatibility-change-classes-15) — 15
-- [Key functions and rules](#key-functions-and-rules-30) — 30
+- [Key functions and rules](#key-functions-and-rules-32) — 32
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
@@ -189,7 +189,7 @@ with one stop ([A3 §3.2], binding from [SD §8.4]).
 - **Cited:** [[A3 §3.2]](analysis/A3-trip-stop-assignment.md#32-definitions) · [[SD §8.4]](analysis/00-shared-decisions.md#84-one-dependent-question-settled-here-because-8-requires-it)
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
-## Record types (31)
+## Record types (32)
 
 The one published record vocabulary — every `type` an Assertion may carry. [SD §1.3] makes this the **single classification axis**: on an Assertion the `type` **is** the fact class, and [SD §4.7.1] is its complete declaration. Each entry carries the canonical subject family it may be asserted about (**E-CANON**), the `qualifier` it declares if any, and the authority row [A8 §5] gives it — or the explicit note that the row is **owed**. The last three columns are joined from `packages/domain-reference/data/canonical-subjects.json`.
 
@@ -309,6 +309,18 @@ requires the provider actually hauling to be named within 2 GBD of origin depart
 - **Corpus:** `src:dp3-tender-of-service`
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
+### `documentIssuance` (record type)
+
+The act that brings a **document** into existence — [A6 §3.3], family `document` (singleton).
+
+- **Canonical subject family:** `document` = {`document`}
+- **Qualifier:** none — the fact key is `(subject, type)`
+- **Authority:** **assigned**, `boundBy = SCHEME`. [A8 §5] row 17. The ISSUER of the document's own number scheme, and nobody else. Authority NEVER moves — row 10's binding, inherited rather than re-argued.
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
+- **Cited:** [[A6 §3.2(b)]](analysis/A6-documents-evidence.md#32-a-documents-own-identity-and-the-identity-it-merely-carries--owed-item-1) · [[A6 §3.3(b)]](analysis/A6-documents-evidence.md#33-no-act-on-a-document-has-a-record-and-documentissuance-arrives-with-its-authority-resolved--owed-item-2) · [[A6 §3.3]](analysis/A6-documents-evidence.md#33-no-act-on-a-document-has-a-record-and-documentissuance-arrives-with-its-authority-resolved--owed-item-2) · [[A6 §6]](analysis/A6-documents-evidence.md) · [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:cfr-49-375` · `src:dcsa` · `src:dp3-tender-of-service` · `src:dtr-part-iv` · `src:nmfta-ebol`
+- **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
+
 ### `handover` (record type)
 
 The act of handing the goods over — [SD §4.7.1], prose alias _custody handoff_, family `goods`.
@@ -423,7 +435,7 @@ for it is owed.
 
 - **Canonical subject family:** `order` = {`order`}
 - **Qualifier:** none — the fact key is `(subject, type)`
-- **Authority:** **owed** — [A8 §9 item 8] — [A8 §5] has no order row. `boundBy = owed`. Provisional reading [ORIGINAL], **do not score**: two-sided — whichever party ended it, which is the distinction src:dcsa spends three status values on. WHO ended it and WHEN is carried by the stage plus reasons[].attribution, never by a type name ([SD §4.7.2e] item 2).
+- **Authority:** **owed** — [A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one.. `boundBy = AWARD`. Provisional reading [ORIGINAL], **do not score**: two-sided — whichever party ended it, which is the distinction src:dcsa spends three status values on. WHO ended it and WHEN is carried by the stage plus reasons[].attribution, never by a type name ([SD §4.7.2e] item 2) — and [SD §2.3] invariant 2 forbids reasons[] at COMPLETED, which is [A1 §3.5]'s open defect. The two candidates are now narrowed to the roles the award resolved; which of them holds is unsettled.
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
 - **Cited:** [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §4.7.2e]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
 - **Corpus:** `src:dcsa`
@@ -435,8 +447,8 @@ The award is **accepted or declined** — [SD §4.7.1], family `order`, minted a
 
 - **Canonical subject family:** `order` = {`order`}
 - **Qualifier:** none — the fact key is `(subject, type)`
-- **Authority:** **owed** — [A8 §9 item 8] — [A8 §5] has no order row. `boundBy = owed`. Provisional reading [ORIGINAL], **do not score**: two-sided — the offeree. Accept and decline are the two OUTCOMES of this one act, never two types (A-TYPE, [SD §4.7.2e] item 1). Which outcome member src:stedi-x12-reference element 558's B (conditional acceptance) and C (counter proposal) take is A1's to declare and is NOT decided.
-- **Scoring:** `do-not-score` ([SD §4.7] note 3)
+- **Authority:** **assigned**, `boundBy = AWARD`. [A8 §5] row 18. The OFFEREE — the role the order's own orderAward resolved — and only the offeree ([A1 §3.5]). Exactly one, computed from the award, so A8-NAMED never fires.
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §4.7.2e]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
@@ -1987,7 +1999,7 @@ re-pointed from A11 (a claims area) to `A7 / A12` ([A7 §6]).
 - **Cited:** [[A7 §6]](analysis/A7-charges-billing.md) · [[catalog §2.3.1]](analysis/published-event-catalog.md#231-what-a-breaking-change-costs-while-the-catalog-is-pre-10) · [[catalog §2.3]](analysis/published-event-catalog.md#23-additive-breaking-and-what-a-consumer-may-rely-on) · [[catalog §2.4]](analysis/published-event-catalog.md#24-the-version-this-catalog-is-published-at)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (30)
+## Key functions and rules (32)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
 
@@ -2019,6 +2031,16 @@ Rule **A-COLLECT**, [A7 §3.7]:
 - **Corpus:** `src:sirva-ade`
 - **Declared by:** `standingAfterBoundary` in `packages/domain-reference/src/rules/authority.ts`
 
+### `A8-AWARD` (rule)
+
+**Rule A8-AWARD** — [A8 §5] row 18, and the rule the seventh `boundBy` member exists for.
+
+- **Kind:** authority from the order’s own award
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A1 §3.5]](analysis/A1-order-service-lifecycle.md#35-who-may-cause-each-transition--owed-item-4) · [[A1 §Cross-area]](analysis/A1-order-service-lifecycle.md) · [[A8 §10]](analysis/A8-authority-skeleton.md) · [[A8 §4.3]](analysis/A8-authority-skeleton.md#43-what-authority-is-bound-to--boundby) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 8(b)]](analysis/A8-authority-skeleton.md) · [[SD §1.4]](analysis/00-shared-decisions.md#14-context--the-field-that-makes-the-conflict-disappear)
+- **Corpus:** `src:atlas-world-group-api` · `src:dp3-tender-of-service` · `src:dtr-part-iv` · `src:milmove-mymove`
+- **Declared by:** `ROLE_RESOLVED_BY_THE_AWARD` in `packages/domain-reference/src/rules/authority.ts`
+
 ### `A8-INSTANT` (rule)
 
 **Rule A8-INSTANT** — [A8 §4.2]:
@@ -2031,6 +2053,16 @@ Rule **A-COLLECT**, [A7 §3.7]:
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §4.2]](analysis/A8-authority-skeleton.md#42-the-one-rule-that-closes-the-blocker) · [[round-2-critique]](analysis/round-2-critique.md)
 - **Declared by:** `FactInstant` in `packages/domain-reference/src/rules/authority.ts`
+
+### `A8-KEY` (rule)
+
+**Rule A8-KEY** — [A8 §5] row 12, and the rule that closes **F3**.
+
+- **Kind:** authority from the fact’s own qualifier
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A1 §9]](analysis/A1-order-service-lifecycle.md) · [[A1 §Cross-area]](analysis/A1-order-service-lifecycle.md) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 8]](analysis/A8-authority-skeleton.md) · [[SD §1.4]](analysis/00-shared-decisions.md#14-context--the-field-that-makes-the-conflict-disappear) · [[SD §4.8.2]](analysis/00-shared-decisions.md#482-the-decision-and-the-three-candidates)
+- **Corpus:** `src:stedi-x12-reference`
+- **Declared by:** `A8_KEY` in `packages/domain-reference/src/rules/authority.ts`
 
 ### `A8-MOVE` (rule)
 
@@ -2347,7 +2379,15 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 ### Record types whose authority row is owed
 
-14 of 31 declared types carry an authority that is owed in whole or in part, and [A8 §9 item 8] is the ledger. It used to read as a to-do list; it now separates **three** reasons a row can be missing, and the third was A1's finding. **Nine are blocked on the corpus**, not on effort — no external source binds a plan change, a membership offer or an assignment to an asserting role, so a row for one would be [ORIGINAL] and [SD §4.7] note 3 bars a provisional reading from scoring anyway. **Two are owed to A8 itself**: `partyRole` (the party entity and the role enum) and `notification` (a role resolved to a contactable address). **Three are the order lifecycle, and they are not all the same**: [A1 §Cross-area] shows the corpus names a party on every order transition, so what blocks `orderResponse` and `orderCancellation` is that [A8 §4.3]'s `boundBy` enum has no member for a role resolved by the order's own award — a schema question A8 can take today — while `orderAward` alone is blocked by A8's own mint principle. Five came off this list at [A8 §5] rows 12-16 — `handover`, `weight.gross`, `weight.tare`, `packing` and `pieceCount`.
+13 of 32 declared types carry an authority that is owed in whole or in part, and [A8 §9 item 8] is the ledger. **The two numbers in that sentence are generated from the table; every other number this paragraph used to carry has been replaced by the rows it was counting**, which is [A1 §9]'s rule applied to a generator: a hand-written "nine", "two", "three" and "five" in here went stale three times, once in the same release as the change that made them wrong. The list below is the inventory; this is what the groups mean.
+
+**Blocked on the corpus, not on effort** — the `trip`, `membership` and `assignment` families: no external source binds a plan change, a membership offer or an assignment to an asserting role, so a row for one would be [ORIGINAL], and [SD §4.7] note 3 bars a provisional reading from scoring anyway.
+
+**Owed to A8 itself** — `partyRole` (the party entity and the role enum, [A8 §9 items 1-2]) and `notification` (a role resolved to a contactable address, item 6).
+
+**The order lifecycle, and its three rows are three different cases.** [A1 §Cross-area] showed the corpus names a party on every order transition, so none of them was ever corpus-blocked: what blocked them was that [A8 §4.3] had no member for a role resolved by the order's own award. That member is **`AWARD`**, and it did not close all three. `orderResponse` is **closed** at [A8 §5] row 18, because [A1 §3.5] puts acceptance and refusal on "the offeree, and only the offeree" — one holder, resolved from the award. `orderCancellation` keeps `boundBy = AWARD` and an **owed holder**: [A1 §3.5] makes a cancellation after acceptance "either party", so `authoritative` would be plural and [A8 §4.4] A8-NAMED has no published tie-break for it. `orderAward` is blocked by A8's own **mint principle** — it mints the award, so it can be bound neither to `PRINCIPAL` nor to `AWARD` — which `MintingActsAreNotBoundToWhatTheyMint` now holds over the table.
+
+**What has come off this list:** `handover` (**F3**, row 12), `weight.gross`, `weight.tare`, `packing` and `pieceCount` (rows 13-16), and `orderResponse` (row 18). `documentIssuance` never reached the list — it minted at row 17 with its authority already assigned.
 
 - `assignmentOffer` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
 - `assignmentRelease` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
@@ -2357,8 +2397,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - `membershipResponse` — **owed**, owed to [A8 §9 item 8] (`boundBy = owed`)
 - `notification` — **owed**, owed to [A8 §9 item 6] — the party as a notification target; the row is provisional throughout ([SD §4.7.3]) (`boundBy = owed`)
 - `orderAward` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no order row (`boundBy = owed`)
-- `orderCancellation` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no order row (`boundBy = owed`)
-- `orderResponse` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no order row (`boundBy = owed`)
+- `orderCancellation` — **owed**, owed to [A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one. (`boundBy = AWARD`)
 - `partyRole` — **owed**, owed to [A8 §9 items 1-2] — both the party entity and the role enum are undefined (`boundBy = owed`)
 - `tripCancellation` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row (`boundBy = owed`)
 - `tripDelay` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row, and no source in the corpus binds a plan change to an asserting role (`boundBy = owed`)
@@ -2378,7 +2417,6 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - `chargeCollection` — The act by which a charge is **billed and collected** — the freight bill presented, the amount tendered, the possession relinquished. [A7 §3.2].
 - `claim`
 - `cube`
-- `documentIssuance` — The act that brings a **document** into existence — [A6 §3.3].
 - `estimate`
 - `eta`
 - `resourceTareWeight` — [SD §4.7.2c] the equipment's own tare — a `resource`-subject fact needing its own type.
@@ -2398,7 +2436,9 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`41`](#41-custody-basis) — custody basis
 - [`A-COLLECT`](#a-collect-rule) — rule
 - [`A8-AFTER`](#a8-after-rule) — rule
+- [`A8-AWARD`](#a8-award-rule) — rule
 - [`A8-INSTANT`](#a8-instant-rule) — rule
+- [`A8-KEY`](#a8-key-rule) — rule
 - [`A8-MOVE`](#a8-move-rule) — rule
 - [`ACT`](#act-reason-scope) — reason scope
 - [`ACTUAL`](#actual-basis) — basis
@@ -2523,6 +2563,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`departure`](#departure-record-type) — record type
 - [`destinationAgent`](#destinationagent-role-name) — role name
 - [`document`](#document-aggregate) — aggregate
+- [`documentIssuance`](#documentissuance-record-type) — record type
 - [`driver`](#driver-role-name) — role name
 - [`externallyPerformedLeg`](#externallyperformedleg-aggregate) — aggregate
 - [`factClassFamily`](#factclassfamily-filter-axis) — filter axis

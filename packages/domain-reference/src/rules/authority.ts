@@ -99,8 +99,19 @@ void _standingHasNoSuppressedMember
  * - `NONE` — no role is authoritative; a named value rule or a mandatory derivation settles it.
  * - `KEY` — belongs to the role the fact's own **`qualifier`** names. Added to close **F3**; see
  *   {@link A8_KEY} for the rule and for the general principle it is the first instance of.
+ * - `AWARD` — belongs to the role **the order's own award resolved**. [A1 §Cross-area](c): "that is
+ *   structurally the same binding as `ASSIGNMENT` … one aggregate over, and A8 has no member for
+ *   it." See {@link ROLE_RESOLVED_BY_THE_AWARD}.
  */
-export const BOUND_BY = ['CUSTODY', 'ASSIGNMENT', 'SCHEME', 'PRINCIPAL', 'NONE', 'KEY'] as const
+export const BOUND_BY = [
+  'CUSTODY',
+  'ASSIGNMENT',
+  'SCHEME',
+  'PRINCIPAL',
+  'NONE',
+  'KEY',
+  'AWARD',
+] as const
 
 export type BoundBy = (typeof BOUND_BY)[number]
 
@@ -221,6 +232,18 @@ export type AuthoritativeHolder =
    * minted.
    */
   | { readonly kind: 'keySideRole' }
+  /**
+   * [A8 §5] row 18, **A8-AWARD**: the role the order's own `orderAward` resolved — the **offeree**,
+   * "whoever the award named" ([A1 §Cross-area](c)).
+   *
+   * Its own member rather than `role` with a literal, because the role is not a literal: it is
+   * resolved from a record on the same `subject`, which is what makes the binding `AWARD` and not a
+   * fixed name. And **not** read from `context[]`, which is the objection [A8 §9 item 8(b)] raised
+   * against `KEY` here and which [SD §1.4] rule 1 would forbid — the resolution path is
+   * `subject = order:X` → that order's `orderAward`, never the `partyRole`s the record carries as
+   * cross-references. See {@link ROLE_RESOLVED_BY_THE_AWARD}.
+   */
+  | { readonly kind: 'awardedRole' }
   /** A holder the role vocabulary cannot yet name — carried as owed, never as "nobody". */
   | { readonly kind: 'owedRole'; readonly owedRole: Owed<string, string> }
 
@@ -363,7 +386,7 @@ export type AuthorityRule<T extends AssertionType = AssertionType> = AuthorityRu
       }
   )
 
-export type A8Row = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
+export type A8Row = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18
 
 /**
  * A fact class [A8 §5] does not reach — [A8 §9 item 8] lists them: "cube, piece count, packing
@@ -415,11 +438,16 @@ export const SIT_ENTRY_DERIVED: RuleRef = ruleRef('SIT-ENTRY-DATE-DERIVED', '1')
  * > `handover` is the one published member whose qualifier does: authority for a `RELEASE` key
  * > belongs to the releasing role, and for a `RECEIPT` key to the receiving role.
  *
- * **Why this is a sixth `boundBy` and not `NONE` plus a tie-break.** Under `NONE` "no role is
+ * **Why this is its own `boundBy` and not `NONE` plus a tie-break.** Under `NONE` "no role is
  * authoritative" and a value rule settles the fact ([A8 §5] row 6, `weight.net`). Here exactly
  * **one** role is authoritative and it is computable from the record alone, so `authoritative` is
  * neither empty nor plural, **A8-NAMED never fires**, and there is no value rule to name. Calling
- * it `NONE` would have required inventing one.
+ * it `NONE` would have required inventing one. (This read "why this is a **sixth** `boundBy`", and
+ * the ordinal is deleted rather than kept. It was never false — `KEY` is the sixth member and
+ * `AWARD` did not change that — and that is the point worth recording: an ordinal can be accurate
+ * and still **date** the sentence it is in, because "why a sixth?" is a question about an enum with
+ * five members, which this one no longer is. [A1 §9] rules out an ordinal that depends on who is
+ * counting; this is the neighbouring case, an ordinal that depends on **when**.)
  *
  * **Why it is not circular**, which is F3's whole complaint: it reads the **fact key**, fixed when
  * the record was minted, and not {@link CustodyAt} — the fold that consumes the answer. [SD §4.8.2]
@@ -434,14 +462,69 @@ export const SIT_ENTRY_DERIVED: RuleRef = ruleRef('SIT-ENTRY-DATE-DERIVED', '1')
  * **The general principle, stated once because it explains the rows this does _not_ close.** An act
  * that **mints** the thing a binding follows can never be bound to that thing. `handover` mints
  * custody, so it cannot be `CUSTODY`; `assignmentOffer` mints the assignment, so it cannot be
- * `ASSIGNMENT`; `orderAward` mints the principal relation, so it cannot be `PRINCIPAL`. F3 is the
- * first instance of a class, not a special case. `KEY` rescues `handover` alone, because
- * `handover` is the only one whose **qualifier** names its actor. Nine of the others — the offer /
- * response / release / award family — name theirs in `context[]`, which [SD §1.4] forbids resolution
- * from reading; the three `trip` rows are blocked for a different reason again, having no sourced
- * asserter at all. See [A8 §9 item 8], which keeps the two apart.
+ * `ASSIGNMENT`; `orderAward` mints the principal relation, so it cannot be `PRINCIPAL` — **and now
+ * also mints the award, so it cannot be `AWARD` either**, which is the one order row
+ * {@link ROLE_RESOLVED_BY_THE_AWARD} deliberately leaves owed. F3 is the first instance of a class,
+ * not a special case, and {@link MintingActsAreNotBoundToWhatTheyMint} is the principle held over
+ * the table rather than only here.
+ *
+ * `KEY` rescues `handover` alone, because `handover` is the only one whose **qualifier** names its
+ * actor. **`orderResponse` is the one row rescued a different way, and the distinction is worth
+ * stating because this paragraph used to cover it.** It named its actor in `context[]` too, which
+ * [SD §1.4] rule 1 forbids resolution from reading — but it does not have to be read from there:
+ * the offeree is resolved from the order's own `orderAward` record, on the same `subject`, the way
+ * `ASSIGNMENT` resolves through an `Assignment` ([A1 §Cross-area](b)-(c)). That is `AWARD`, and
+ * [A8 §5] row 18 is the row.
+ *
+ * What is left of the `context[]` argument reaches the **membership** and **assignment** offer /
+ * response / release families, and `orderAward` and `orderCancellation` for their own reasons; the
+ * `trip` rows are blocked differently again, having no sourced asserter at all. The number is not
+ * written here — [A8 §9 item 8] holds the ledger and the glossary's Owed section generates the
+ * split, and this docstring said "nine of the others" until one of them closed.
  */
 export const A8_KEY: RuleRef = ruleRef('A8-KEY', '1')
+
+/**
+ * **Rule A8-AWARD** — [A8 §5] row 18, and the rule the seventh `boundBy` member exists for.
+ *
+ * > Where a fact is about an **order**, authority for it belongs to the role **the order's own
+ * > `orderAward` resolved**. For `orderResponse` that is the **offeree**, "and only the offeree"
+ * > ([A1 §3.5]) — "whoever the award named" ([A1 §Cross-area](c)).
+ *
+ * **Why a new member and not `PRINCIPAL` or a literal role.** `PRINCIPAL` "belongs to the party the
+ * arrangement is _for_" and moves when the principal changes ([A8 §4.3]); the offeree is the party
+ * the arrangement is _with_, and it does not move at all. A literal `{kind: 'role', role}` cannot
+ * name it either, because which role is the offeree is a property of **this order's award** rather
+ * than of the fact class — the difference between [A8 §5] row 11's `DECIDED` naming `accountParty`
+ * as a literal and this row naming a resolution. [A1 §Cross-area](c): _"structurally the same
+ * binding as `ASSIGNMENT` … one aggregate over, and A8 has no member for it."_
+ *
+ * **Why it is not the `context[]` read [A8 §9 item 8(b)] ruled out.** That objection is against
+ * keying resolution on `context[]`, which [SD §1.4] rule 1 forbids and which the order rows would
+ * need if the actor were only in that column. This resolution does not read `context[]`: it reads
+ * the **`orderAward` record on the same `subject`**, a published record of the same aggregate, the
+ * way `ASSIGNMENT` reads an `Assignment`. [A1 §Cross-area](b) is the finding that made the
+ * difference legible — _"DTR's actors are fixed by the transition kind, not read off the record"_.
+ *
+ * **Sourced** for the actors, and the conversion is ours. `src:dtr-part-iv` A-402 §C.4.a puts
+ * acceptance and refusal on the offeree "and only the offeree", with a 24-hour deadline;
+ * §F.2.a and `src:dp3-tender-of-service` §B.18.a make an impermissible refusal a breach carrying
+ * 30-day market ineligibility; `src:milmove-mymove` enforces the same split in a running system
+ * ("the request and the act are different actors… the Prime cannot update the shipment to any other
+ * status"); `src:atlas-world-group-api` captures `accepted_by` on the order record.
+ * **[SYNTHESIS]**: converting that recording duty into assertional authority, which [A8 §10] records
+ * as authored "in every one of" rows 1-5, 8 and 11 too.
+ *
+ * **What this rule does NOT reach, and the general principle is {@link A8_KEY}'s.** An act that
+ * **mints** the thing a binding follows can never be bound to that thing. `orderAward` mints the
+ * award, so it cannot be `AWARD` — exactly as `handover` cannot be `CUSTODY` and `assignmentOffer`
+ * cannot be `ASSIGNMENT`. {@link MintingActsAreNotBoundToWhatTheyMint} holds all three over the
+ * table. `orderCancellation` is a different refusal and is not this one: see its entry in
+ * {@link AUTHORITY_TABLE}, where the **binding** is now `AWARD` and the **holder** is still owed,
+ * because [A1 §3.5] makes a cancellation after acceptance "either party" and A8-NAMED has no
+ * published tie-break for it.
+ */
+export const ROLE_RESOLVED_BY_THE_AWARD: RuleRef = ruleRef('ROLE-RESOLVED-BY-THE-AWARD', '1')
 
 /**
  * **A8-NAMED's registry, and it is empty.**
@@ -730,6 +813,37 @@ export const AUTHORITY_TABLE = {
       "TODO([A8 §9 item 7]): revenue allocation is A13's and this row must not be read as settling it.",
   },
 
+  /* ---- Row 17 — documentIssuance. Minted with the act, on row 10's binding. ------------------ */
+  documentIssuance: {
+    a8Row: 17,
+    type: 'documentIssuance',
+    // Row 10's rule, not a new one, and that is the whole argument for the row existing. [A6 §3.2(b)]
+    // establishes that for a document with a scheme of its own the party controlling the number
+    // scheme IS the party issuing the instrument, so "the issuer of the scheme" already names the
+    // issuer of the document. A second RuleRef here would claim a second rule and there is not one.
+    rule: ISSUER_OF_SCHEME,
+    boundBy: 'SCHEME',
+    authoritative: { kind: 'held', primary: { kind: 'schemeIssuer' } },
+    // The counterparty receives the instrument and may echo its number back; echoing is a relation,
+    // not a role, so it is not listed — row 10's own note makes the same point about corroboration.
+    competing: [],
+    advisory: ['booker', 'platform'],
+    note:
+      'The first row [A8 §9 item 8] closed on MINTING ALONE: its holder was determined by row 10 ' +
+      'before the fact class existed, so nothing was owed underneath it ([A8 §9 item 8(e)], which ' +
+      'asked this document "to accept a reading" rather than to research one). Sourced: ' +
+      '`src:cfr-49-375` §375.505(a) ("prepare and ISSUE a bill of lading"), §375.103\'s separate ' +
+      'definition of a `Government bill of lading shipper`; `src:dtr-part-iv` A-413 §C.2 (a BL "is ' +
+      'only accountable when a number has been assigned to the form"); `src:dcsa` `ISSU` with ' +
+      '`eventClassifierCode` forced to `ACT`; `src:nmfta-ebol` `bol.function = Create`. ' +
+      '**[SYNTHESIS]:** that scheme control and instrument issuance are the same party is ' +
+      "[A6 §3.2(b)]'s step, and binding THIS row to it is this one's. Confidence medium — [A8 §10] " +
+      'caps a row whose authority is converted from a duty, and §375.505(a) states a duty. ' +
+      'TODO([SD §4.2]): `src:dcsa` forces `eventClassifierCode = ACT` on `ISSU`, so the corpus ' +
+      'says there is no ESTIMATED issuance — the model has no per-type basis restriction to carry ' +
+      "that, and inventing one is not this row's to do.",
+  },
+
   /* ---- Everything else: owed. [A8 §9 item 8]. ----------------------------------------------- */
 
   packing: {
@@ -961,25 +1075,71 @@ export const AUTHORITY_TABLE = {
       'offeree for `orderResponse`, and for `orderCancellation` whichever party ended it. **Do not ' +
       'score on this.**',
   },
-  orderResponse: {
-    type: 'orderResponse',
-    row: owed('authorityRow', '[A8 §9 item 8] — the fact class has no row in A8 §5'),
-    boundBy: owed(
-      'boundBy',
-      '[SD §4.7.1] — NOT `CUSTODY`: an order is a commitment, not a fact about the goods',
-    ),
-    provisional: '[SD §4.7.1]: as `orderAward`, offeree side. **Do not score on this.**',
-  },
   orderCancellation: {
     type: 'orderCancellation',
-    row: owed('authorityRow', '[A8 §9 item 8] — the fact class has no row in A8 §5'),
-    boundBy: owed(
-      'boundBy',
-      '[SD §4.7.1] — NOT `CUSTODY`: an order is a commitment, not a fact about the goods',
+    // **Still owed, and the blocker is repointed rather than closed.** [A1 §Cross-area](c) grouped
+    // this row with `orderResponse` as "resolved by the order's own award", and the seventh
+    // `boundBy` member closes that half: the binding IS `AWARD`, because the award is what resolves
+    // the candidate set. What it does not close is WHICH of the two the holder is, and [A1 §3.5]'s
+    // own permission table is why — `AWARDED → CANCELLED` is the awarding role, `ACCEPTED →
+    // CANCELLED` is "**either party** — the distinction is the attribution, not the permission", and
+    // a refused cancellation is "the **counterparty** of whoever requested it". That is plural, so
+    // A8-NAMED makes a tie-break mandatory and the catalog publishes none.
+    //
+    // [A1 §8] scenario 7 reaches the same place from the other side and calls it "the honest state":
+    // two parties asserting incompatible `orderCancellation`s "produce a contest with no authority
+    // row, so `FactResolved` must name a tie-break rule under A8-NAMED and there is none to name".
+    // And [A1 §3.5]'s open defect is underneath it — on a COMPLETED cancellation, which is the
+    // ordinary case, [SD §2.3] invariant 2 forbids `reasons[]`, so the field [SD §4.7.2e] item 2
+    // puts the requestor on does not exist. Naming a holder here would pick a side the corpus does
+    // not.
+    row: owed(
+      'authorityRow',
+      '[A8 §9 item 8] — owed, and NO LONGER on the `boundBy` gap: the binding is `AWARD`. What is ' +
+        'owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a ' +
+        'refused one the counterparty of the requestor, and its open defect leaves a completed ' +
+        'cancellation with no requestor field at all — so `authoritative` would be plural, A8-NAMED ' +
+        'requires a tie-break, and no source publishes one. Owed to A8 for the tie-break and to ' +
+        '[SD §2.3] / [SD §4.7.2e] for the field.',
     ),
+    // Not owed. The enum can express this binding now, and saying so is the narrowing: a reader who
+    // saw `boundBy: owed` here would re-open the schema question [A1] asked and A8 has answered.
+    boundBy: 'AWARD',
     provisional:
-      '[SD §4.7.1]: whichever party ended it — "the distinction `src:dcsa` spends three status values ' +
-      'on". **Do not score on this.**',
+      '[SD §4.7.1]: whichever party ended it — "the distinction `src:dcsa` spends three status ' +
+      'values on". **Do not score on this.** [A1 §3.5] is now the reading to use and it is ' +
+      'narrower: the two candidates are the roles the award resolved, and which of them holds is ' +
+      'unsettled.',
+  },
+
+  /* ---- Row 18 — orderResponse. The one row the seventh `boundBy` member closes. ------------- */
+  orderResponse: {
+    a8Row: 18,
+    type: 'orderResponse',
+    rule: ROLE_RESOLVED_BY_THE_AWARD,
+    boundBy: 'AWARD',
+    authoritative: { kind: 'held', primary: { kind: 'awardedRole' } },
+    // [A1 §3.5] gives PERMISSION, not a contest ranking, and A1-PERMISSION keeps the two apart — so
+    // a `competing` list here would be authored with no source behind it. Empty, and the note says
+    // so rather than leaving the reader to infer it from the shape.
+    corroborating: [],
+    competing: [],
+    advisory: ['platform'],
+    note:
+      '**EXACTLY ONE authoritative role**, resolved from the order’s own award, so A8-NAMED never ' +
+      'fires and no tie-break is named. Sourced for the actor on both edges: `src:dtr-part-iv` ' +
+      'A-402 §C.4.a puts acceptance AND refusal on "the offeree, and only the offeree" with a ' +
+      '24-hour deadline, §F.2.a makes an impermissible refusal a breach carrying 30-day market ' +
+      'ineligibility, and `src:milmove-mymove` enforces the split in a running system. ' +
+      '**[SYNTHESIS]:** converting that recording duty into assertional authority, which [A8 §10] ' +
+      'records as authored in rows 1-5, 8 and 11 too — confidence medium, capped accordingly. ' +
+      '`corroborating` and `competing` are EMPTY rather than guessed: [A1 §3.5] publishes who may ' +
+      'CAUSE the transition, no source ranks a contest over it, and A1-PERMISSION makes permission ' +
+      'and authority different questions. ' +
+      'TODO([A1 §3.5]): the deadline-lapse edge is an `orderResponse` at `NOT_COMPLETED` with ' +
+      'reason `DEADLINE_LAPSED` that `src:dtr-part-iv` §C.4.b publishes as "caused by nobody" — ' +
+      'who ASSERTS it is a capture question this row does not answer, and §C.4.b gives the PPSO an ' +
+      'overt confirmation step that may make the awarding role competing on that branch alone.',
   },
 } as const satisfies { readonly [T in AssertionType]: AuthorityTableEntry<T> }
 
@@ -988,16 +1148,23 @@ export const AUTHORITY_TABLE = {
  * above) **and** carries exactly the rows [A8 §5] publishes. If a row were written here without a
  * section to cite, this stops compiling — which is the disclosure rule, mechanised.
  *
- * Eleven at `0.1.0`; **sixteen** now. Rows 12-16 closed `handover` (**F3**), `weight.gross`,
- * `weight.tare`, `packing` and `pieceCount` — the five of [A8 §9 item 8]'s owed rows the corpus
- * supports. The other fourteen are still owed and are still owed *here*: twelve of them are blocked
- * on the corpus rather than on effort, which [A8 §9 item 8] now says in as many words.
+ * **No count is written here, and the type below is why.** The prose used to say "eleven at
+ * `0.1.0`; sixteen now", and `authority-table.json` still said "eleven rows, and eleven is the
+ * whole of it" five rows after that stopped being true — a count in two places, neither gated.
+ * [A1 §9]'s rule applies to a docstring as much as to a document: **enumerate, do not total.** The
+ * `Exact` below is the enumeration, so the set is the assertion and no number can rot beside it.
+ *
+ * What the enumeration is a record of: rows 12-16 closed `handover` (**F3**), `weight.gross`,
+ * `weight.tare`, `packing` and `pieceCount`, and row 17 closed `documentIssuance` — the first row
+ * [A8 §9 item 8] discharged on **minting alone**. Which fact classes are still owed, and on which
+ * of [A8 §9 item 8]'s grounds, is the glossary's Owed section and `index.json`'s `owed` block,
+ * generated from this table.
  */
 type RowedTypes = {
   [T in AssertionType]: (typeof AUTHORITY_TABLE)[T] extends { readonly a8Row: A8Row } ? T : never
 }[AssertionType]
 
-type SixteenRows = Exact<
+type TheRowedTypesAreExactlyThese = Exact<
   RowedTypes,
   | 'arrival'
   | 'departure'
@@ -1015,9 +1182,55 @@ type SixteenRows = Exact<
   | 'weight.tare'
   | 'packing'
   | 'pieceCount'
+  | 'documentIssuance'
+  | 'orderResponse'
 >
-const _sixteenRows: SixteenRows = true
-void _sixteenRows
+const _theRowedTypesAreExactlyThese: TheRowedTypesAreExactlyThese = true
+void _theRowedTypesAreExactlyThese
+
+/**
+ * **The mint principle, held over the table instead of only in {@link A8_KEY}'s prose.**
+ *
+ * [A8 §4.3] / [A8 §9 item 8]: _an act that **mints** the thing a binding follows can never be bound
+ * to that thing._ `handover` mints custody, `assignmentOffer` mints the assignment, `orderAward`
+ * mints the award — so none of the three may carry the binding it creates. It was stated three times
+ * in prose and gated nowhere, which is [A6 §9]'s rule unapplied: the gap has an edge the types can
+ * see, because `boundBy` is a closed enum on every row.
+ *
+ * **This is what closing `orderResponse` made load-bearing.** Before `AWARD` existed, `orderAward`
+ * could not be bound to the award by accident, because there was no member to bind it to. Now there
+ * is, and `orderAward` is the one order row the member deliberately does **not** close — [A1
+ * §Cross-area](c): _"for this one row, A8's stated reason is exactly right"_. A later round that
+ * reads "the order rows close with `AWARD`" and sweeps the third one in now fails here by name.
+ *
+ * **Declared independently of the table**, which is [A2 §9]'s rule: the pairs below are read off
+ * [A8 §4.3]'s mint principle, not generated from `AUTHORITY_TABLE`, so the comparison has two sides.
+ * An `Owed` `boundBy` satisfies it — that is correct, and it is the weaker half: the claim is that
+ * no row ever **asserts** the binding it mints, not that every such row is owed.
+ */
+type NotBoundTo<
+  T extends AssertionType,
+  B extends BoundBy,
+> = (typeof AUTHORITY_TABLE)[T]['boundBy'] extends B ? never : true
+
+export type MintingActsAreNotBoundToWhatTheyMint = {
+  /** Mints custody — the circularity [SD §4.8.2] refused, closed by `KEY` instead ([F3]). */
+  readonly handover: NotBoundTo<'handover', 'CUSTODY'>
+  /** Mints the assignment; [SD §4.7.1] warns these are facts about the BINDING, not the resource. */
+  readonly assignmentOffer: NotBoundTo<'assignmentOffer', 'ASSIGNMENT'>
+  /** Mints the principal relation — [A8 §4.3]'s own words. */
+  readonly orderAwardPrincipal: NotBoundTo<'orderAward', 'PRINCIPAL'>
+  /** And mints the award, which is why `AWARD` closes two of the three order rows and not three. */
+  readonly orderAwardAward: NotBoundTo<'orderAward', 'AWARD'>
+}
+
+const _mintingActsAreNotBoundToWhatTheyMint: MintingActsAreNotBoundToWhatTheyMint = {
+  handover: true,
+  assignmentOffer: true,
+  orderAwardPrincipal: true,
+  orderAwardAward: true,
+}
+void _mintingActsAreNotBoundToWhatTheyMint
 
 /** Whether [A8 §5] reaches this fact class at all. An owed row is not a row. */
 export function hasAuthorityRow(type: AssertionType): boolean {

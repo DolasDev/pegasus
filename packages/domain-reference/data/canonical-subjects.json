@@ -59,6 +59,11 @@
         "singleton": true,
         "citation": "[SD §4.7.3] — the role-holding itself is an aggregate ([SD §1.2])"
       },
+      "document": {
+        "members": ["document"],
+        "singleton": true,
+        "citation": "[A6 §3.3] / [A8 §5 r17] — added with documentIssuance, the only type whose subject is the instrument itself. A singleton, so [SD §4.7] note 2's list of the three non-singleton families is unchanged."
+      },
       "anyAggregate": {
         "members": [
           "order",
@@ -744,19 +749,19 @@
       "context": ["shipment", "partyRole"],
       "contextNote": "as orderAward.",
       "authority": {
-        "status": "owed",
-        "boundBy": "owed",
-        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
-        "provisional": {
-          "marker": "[ORIGINAL]",
-          "reading": "two-sided — the offeree. Accept and decline are the two OUTCOMES of this one act, never two types (A-TYPE, [SD §4.7.2e] item 1). Which outcome member src:stedi-x12-reference element 558's B (conditional acceptance) and C (counter proposal) take is A1's to declare and is NOT decided.",
-          "roles": []
+        "status": "assigned",
+        "boundBy": "AWARD",
+        "a8Row": {
+          "row": 18,
+          "sameType": true,
+          "why": null
         },
-        "scoring": "do-not-score",
-        "citations": ["[SD §4.7.1]", "[A8 §9 item 8]", "[SD §4.7.2e]"]
+        "summary": "The OFFEREE — the role the order's own orderAward resolved — and only the offeree ([A1 §3.5]). Exactly one, computed from the award, so A8-NAMED never fires.",
+        "scoring": "capped-medium",
+        "citations": ["[SD §4.7.1]", "[A8 §5 r18]", "[A1 §3.5]"]
       },
       "citations": ["[SD §4.7.1]", "[SD §4.7.2e]"],
-      "boundByNote": "owed and explicitly NOT CUSTODY ([SD §4.7.1])."
+      "boundByNote": "AWARD, not owed and expressly not CUSTODY. The binding reads the order's own orderAward record, never the partyRoles in context[] ([SD §1.4] rule 1) — [A1 §Cross-area](b)-(c)."
     },
     {
       "type": "orderCancellation",
@@ -767,18 +772,39 @@
       "contextNote": "as orderAward.",
       "authority": {
         "status": "owed",
-        "boundBy": "owed",
-        "owedTo": "[A8 §9 item 8] — [A8 §5] has no order row",
+        "boundBy": "AWARD",
+        "owedTo": "[A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance \"either party\", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one.",
         "provisional": {
           "marker": "[ORIGINAL]",
-          "reading": "two-sided — whichever party ended it, which is the distinction src:dcsa spends three status values on. WHO ended it and WHEN is carried by the stage plus reasons[].attribution, never by a type name ([SD §4.7.2e] item 2).",
+          "reading": "two-sided — whichever party ended it, which is the distinction src:dcsa spends three status values on. WHO ended it and WHEN is carried by the stage plus reasons[].attribution, never by a type name ([SD §4.7.2e] item 2) — and [SD §2.3] invariant 2 forbids reasons[] at COMPLETED, which is [A1 §3.5]'s open defect. The two candidates are now narrowed to the roles the award resolved; which of them holds is unsettled.",
           "roles": []
         },
         "scoring": "do-not-score",
         "citations": ["[SD §4.7.1]", "[A8 §9 item 8]", "[SD §4.7.2e]"]
       },
       "citations": ["[SD §4.7.1]", "[SD §4.7.2e]"],
-      "boundByNote": "owed and explicitly NOT CUSTODY ([SD §4.7.1])."
+      "boundByNote": "AWARD. Narrowed 2026-10-05: the enum can express this binding now, so a reader must not re-open the schema question [A1] asked and [A8] has answered. The HOLDER is the part still owed."
+    },
+    {
+      "type": "documentIssuance",
+      "proseAliases": [],
+      "family": "document",
+      "qualifier": null,
+      "context": ["shipment", "partyRole"],
+      "contextNote": "The shipment the instrument covers, and the party it is issued to. Both are cross-references and neither is authoritative ([SD §1.4]); the issuer is not in this column, because the issuer is resolved by boundBy = SCHEME and reading it from context[] is what [SD §1.4] rule 1 forbids.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "SCHEME",
+        "a8Row": {
+          "row": 17,
+          "sameType": true,
+          "why": null
+        },
+        "summary": "The ISSUER of the document's own number scheme, and nobody else. Authority NEVER moves — row 10's binding, inherited rather than re-argued.",
+        "scoring": "capped-medium",
+        "citations": ["[A6 §3.3]", "[A8 §5 r17]"]
+      },
+      "citations": ["[A6 §3.3]", "[A8 §9 item 8(e)]"]
     }
   ]
 }

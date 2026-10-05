@@ -694,6 +694,18 @@ order's own award"_. **`shipmentCommitment` is blocked by exactly the gap A1 fou
 schema decision at A8 would unblock, and A2 adds its weight to that request rather than opening a new
 one.
 
+> **Half of that is wrong, and the half is "by nothing else" — corrected 2026-10-05.** A8 took the
+> schema decision: §4.3 has a seventh member, **`AWARD`**, and [`A8` §5](A8-authority-skeleton.md)
+> row 18 closed `orderResponse` with it. It did not close this row, and the reason is in the
+> paragraph above — the asserter is "the party that **awarded or accepted** the order", which is two
+> parties, and the three sources cited here answer differently: `src:sirva-ade`'s `Register` is a
+> push from the **awarding** side, `src:milmove-mymove`'s `DRAFT → SUBMITTED → APPROVED` is a
+> **two-actor** protocol, and `src:cfr-49-375` has the **carrier** name, enumerate and price the lot
+> before any document exists. So this row is in `orderCancellation`'s position, not
+> `orderResponse`'s: the binding is `AWARD` and the **holder** is plural, which under
+> [`A8` §4.4] A8-NAMED needs a tie-break nothing publishes. **The remaining blocker is _who
+> commits_**, and it is a reading of these same three sources rather than a schema change.
+
 **What this costs, stated plainly.** Three things in this document are decidable in prose and not in
 code because of it: B-ONWARD (§3.2(e)), B-STAGE's three stages ([`fork-order` §5.2], which has been a
 projection with no inputs since it was written), and the shipment-set a `COMPLETE` rule would
@@ -821,14 +833,14 @@ the act and [SD §4.7.1] has no row for it. Nobody invented the gap; it was simp
 
 ### Owed, with an owner
 
-| Owed                                                                                               | Owner                            | What it needs                                                                                                                                                                                               |
-| -------------------------------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`shipmentCommitment`** — a [SD §4.7.1] row and an [A8 §5] row                                    | [SD] + [A8 §9 items 3, 8]        | A `boundBy` member meaning _"resolved by the order's own award"_ — the same one [A1 §Cross-area] asks for. §3.6                                                                                             |
-| **`shipmentType`** — a facet set, then a row                                                       | A2, re-opened, after A8          | Facets settled; `partyRole` carrying who performs and who pays ([A8 §9 items 1-2]); A12 owning the rate family. §3.3                                                                                        |
-| **`cube`** — a row                                                                                 | [SD §4.7.3], with a units module | The `unitOfMeasure` vocabulary, which is one of the three owed closed vocabularies. §3.6                                                                                                                    |
-| **Whether a billable-weight cap is a `charge` at `aspect = DECIDED`** — **answered NO**, [A7 §3.5] | ~~A7~~ → [SD §4.1]               | The reweigh case was already resolved by [SD §4.4]; what is left is a shipment-subject, authority-decided quantity with **no family** in [SD §4.1]'s table — the same gap `charge` has. §Cross-area to [A7] |
-| **Services ordered at shipment grain**                                                             | A7, with [`fork-order` §6] q2    | Whether an order's two shipments may carry different service sets. §3.6                                                                                                                                     |
-| **The terminal act of a shipment whose warehouse became its destination**                          | A4                               | §3.2(f). There is no record type for it and A2 does not mint one                                                                                                                                            |
+| Owed                                                                                               | Owner                            | What it needs                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`shipmentCommitment`** — a [SD §4.7.1] row and an [A8 §5] row                                    | [SD] + [A8 §9 items 3, 8]        | ~~A `boundBy` member meaning _"resolved by the order's own award"_~~ — **supplied 2026-10-05 as `AWARD`, and it did not close this row.** What is left is **who commits**: §3.6's own asserter is "the party that awarded **or** accepted the order", and its three sources answer differently, so the holder is plural and [`A8` §4.4](A8-authority-skeleton.md) A8-NAMED has no published tie-break. A reading of those three sources, not a schema change. §3.6 |
+| **`shipmentType`** — a facet set, then a row                                                       | A2, re-opened, after A8          | Facets settled; `partyRole` carrying who performs and who pays ([A8 §9 items 1-2]); A12 owning the rate family. §3.3                                                                                                                                                                                                                                                                                                                                               |
+| **`cube`** — a row                                                                                 | [SD §4.7.3], with a units module | The `unitOfMeasure` vocabulary, which is one of the three owed closed vocabularies. §3.6                                                                                                                                                                                                                                                                                                                                                                           |
+| **Whether a billable-weight cap is a `charge` at `aspect = DECIDED`** — **answered NO**, [A7 §3.5] | ~~A7~~ → [SD §4.1]               | The reweigh case was already resolved by [SD §4.4]; what is left is a shipment-subject, authority-decided quantity with **no family** in [SD §4.1]'s table — the same gap `charge` has. §Cross-area to [A7]                                                                                                                                                                                                                                                        |
+| **Services ordered at shipment grain**                                                             | A7, with [`fork-order` §6] q2    | Whether an order's two shipments may carry different service sets. §3.6                                                                                                                                                                                                                                                                                                                                                                                            |
+| **The terminal act of a shipment whose warehouse became its destination**                          | A4                               | §3.2(f). There is no record type for it and A2 does not mint one                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### What only the user can decide
 
@@ -986,10 +998,18 @@ party that awarded or accepted the order, named on the wire by `src:sirva-ade`'s
 
 The ledger's shape is worth restating with this in it. [A5 §Cross-area] found three rows blocked on
 [A8 §9 item 1] because their asserter is a party class that does not exist. A1 found three blocked on
-a `boundBy` member that does not exist. **A2 finds a fourth of the second kind — and it is the one
+a `boundBy` member that does not exist. **A2 finds one more of the second kind — and it is the one
 that would unblock the most**, because three separate things in this document are decidable in prose
-and not in code for want of it (§3.6). A8 is not asked for a row. It is asked for one enum member,
-and the count of things waiting on that member is now four.
+and not in code for want of it (§3.6). A8 is not asked for a row. It is asked for one enum member.
+
+> **A8 supplied the member and this paragraph's arithmetic did not survive it, 2026-10-05.** The
+> member is `AWARD` and it closed **one** of the four things listed as waiting on it —
+> `orderResponse`, at [`A8` §5](A8-authority-skeleton.md) row 18. `orderCancellation` and this
+> document's `shipmentCommitment` both keep the new binding and an owed **holder**; `orderAward`
+> was never in that group. So "the count of things waiting on that member is now four" was a count
+> of things waiting on **one** blocker that turned out to be **two** blockers wearing one name: the
+> schema, and who may speak. It is deleted rather than decremented ([A1 §9]) — the glossary's Owed
+> section generates the split, and §3.6's blockquote says what is left here.
 
 ### To [A1] — the hand-off closes, and A1's fork is not blocked where it thought
 
@@ -1078,7 +1098,10 @@ A7 the storage charges and this is the structural constraint on them.
 > sub-fact grain `authority.ts`'s TODO asked for would move none of them. A2's note that "a
 > correction is not a reissue" is kept and sharpened: with no `documentIssuance` record it is
 > decidable in prose and not in code — [A6 §3.3] found the `document` aggregate has no minting act
-> either, which is **this document's §3.6 finding one aggregate over**. A6 also ran the check A2 asked
+> either, which is **this document's §3.6 finding one aggregate over**. **`documentIssuance` minted on
+> 2026-10-05** ([`A8` §5](A8-authority-skeleton.md) row 17), so the "correction is not a reissue"
+> distinction now has a record on one side of it; A2's own §3.6 `shipmentCommitment` is the half that
+> did not close, and §Cross-area says why. A6 also ran the check A2 asked
 > for and reports its own result: `document` has **no** canonical subject family and appears in
 > [SD §4.7.1] only in six `context[]` columns.
 

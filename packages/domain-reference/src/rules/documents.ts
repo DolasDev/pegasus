@@ -252,10 +252,20 @@ export const CITATION_CLAIMS_NOTHING = true
  *
  * The projection is the worse temptation, not the safer one. A `documentStateAt(document, instant)`
  * would look exactly like {@link custodyAt} and {@link orderStageAt} — the [SD §1.1] pattern for
- * anything resembling mutable state — and it would be [A2 §3.6]'s **B-STAGE** a second time: a fold
- * over records that do not exist, because [A6 §3.3] found no record of a document being issued,
- * signed, corrected or cancelled. A consumer cannot tell a fold that returns "unknown" from a fold
- * with nothing to read.
+ * anything resembling mutable state.
+ *
+ * **One of the two reasons for refusing it is gone, and this is the record of which.** It used to be
+ * [A2 §3.6]'s **B-STAGE** a second time as well — a fold over records that do not exist, because
+ * [A6 §3.3] found no record of a document being issued, signed, corrected or cancelled. The
+ * 2026-10-05 mint of `documentIssuance` ([A8 §5] row 17) gives the fold an input, so **B-STAGE no
+ * longer applies here.** What is left is the first reason, and it is sufficient on its own: there is
+ * no state vocabulary to fold *into*. A fold must return something, every candidate decomposition is
+ * one publisher's, and [catalog §2.3] makes a published member's spelling breaking — so the
+ * projection would have to mint the union this section refuses.
+ *
+ * **It therefore has exactly one issuance-shaped input and no signature, correction or cancellation
+ * record**, which is a weaker position than "nothing to read" and a different one. A later round
+ * that wants the projection needs the vocabulary, not more acts.
  *
  * Declared as a value rather than left as prose because [A6 §8] scenario 3 asserts it, and a
  * scenario that asserts a gap needs something to assert against ([A2 §9]).

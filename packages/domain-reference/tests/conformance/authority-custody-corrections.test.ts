@@ -295,17 +295,27 @@ describe('[A8 §4.2] A8-INSTANT, and [A8 §7.6] why the origin agent loses', () 
 })
 
 describe('[A8 §5] the table', () => {
-  it('has sixteen rows and still marks every fact class it does not reach owed', () => {
-    const rowed = Object.values(AUTHORITY_TABLE).filter((entry) => 'a8Row' in entry)
-    // Eleven at `0.1.0`; rows 12-16 closed the five of [A8 §9 item 8]'s owed rows the corpus
-    // supports — `handover` (F3), `weight.gross`, `weight.tare`, `packing`, `pieceCount`.
-    expect(rowed).toHaveLength(16)
+  it('names the fact classes it reaches, and still marks every one it does not reach owed', () => {
+    // Enumerated, not totalled. This assertion read `toHaveLength(16)` with the history in a
+    // comment beside it, which is the shape [A1 §9] rules out: a total says nothing about WHICH
+    // rows, and the comment rotted twice ([A8 §5]'s own "three of eleven" and
+    // `authority-table.json`'s "eleven is the whole of it"). The row NUMBERS are the enumeration,
+    // because a gap or a duplicate in them is also a defect.
+    const rowed = Object.values(AUTHORITY_TABLE).filter(
+      (entry): entry is Extract<typeof entry, { a8Row: number }> => 'a8Row' in entry,
+    )
+    expect([...rowed].map((entry) => entry.a8Row).sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+    ])
     expect(hasAuthorityRow('arrival')).toBe(true)
     expect(hasAuthorityRow('packing')).toBe(true)
     expect(hasAuthorityRow('handover')).toBe(true)
-    // Owed is a VALUE, not an absence — an owed row still names what it is owed to. Fourteen
-    // remain, and `tripDelay` is one the corpus cannot close: no source binds a plan change to an
-    // asserting role ([A8 §9 item 8]).
+    // Row 17 is `documentIssuance`, and it is the one row closed on MINTING ALONE: [A8 §5] row 10
+    // determined its holder before the fact class existed ([A8 §9 item 8(e)]).
+    expect(hasAuthorityRow('documentIssuance')).toBe(true)
+    // Owed is a VALUE, not an absence — an owed row still names what it is owed to. `tripDelay` is
+    // one the corpus cannot close: no source binds a plan change to an asserting role
+    // ([A8 §9 item 8]).
     expect(hasAuthorityRow('tripDelay')).toBe(false)
     const tripDelay = AUTHORITY_TABLE.tripDelay
     expect(tripDelay.row.owed).toBe('authorityRow')

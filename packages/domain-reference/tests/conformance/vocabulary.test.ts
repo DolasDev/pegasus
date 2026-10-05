@@ -294,15 +294,33 @@ describe('[SD §4.7] note 3 every authority cell is a role or the explicit owed 
   it('marks an owed authority owed, names the owner, and bars it from scoring', () => {
     const owed = owedAuthorityRows(tables.canonicalSubjects)
     // [SD §4.7] note 3: a provisional reading "may not be used to score a dependent decision above
-    // medium". The count is the disclosure — [A8 §9 item 8] leaves most of the lifecycle side
-    // undecided, and a reader who is not told how much assumes it is not much.
+    // medium". The SET is the disclosure — [A8 §9 item 8] leaves most of the lifecycle side
+    // undecided, and a reader who is not told assumes it is not much. Enumerated rather than
+    // counted, for `data-tables.test.ts`'s reason: this assertion was `toBe(14)` with the history
+    // in a comment, and the comment is not what fails.
     //
-    // Fourteen. `handover` was one of the nineteen — its `boundBy` was owed and EXPRESSLY NOT
-    // `CUSTODY`, because a `CUSTODY` binding on the row the fold folds over is the circularity
-    // [SD §4.8.2] refuses. **F3 closed it** at [A8 §5] row 12 with `boundBy = KEY`, which reads the
-    // fact's own qualifier instead of the fold.
-    expect(owed.length).toBe(14)
+    // `handover` was one of the nineteen — its `boundBy` was owed and EXPRESSLY NOT `CUSTODY`,
+    // because a `CUSTODY` binding on the row the fold folds over is the circularity [SD §4.8.2]
+    // refuses. **F3 closed it** at [A8 §5] row 12 with `boundBy = KEY`, which reads the fact's own
+    // qualifier instead of the fold; **row 18 closed `orderResponse`** with `boundBy = AWARD`,
+    // which reads the order's own award.
+    expect(owed.map((row) => row.type).sort()).toEqual([
+      'assignmentOffer',
+      'assignmentRelease',
+      'assignmentResponse',
+      'membershipOffer',
+      'membershipRelease',
+      'membershipResponse',
+      'notification',
+      'orderAward',
+      'orderCancellation',
+      'partyRole',
+      'tripCancellation',
+      'tripDelay',
+      'tripResequence',
+    ])
     expect(owed.map((row) => row.type)).not.toContain('handover')
+    expect(owed.map((row) => row.type)).not.toContain('orderResponse')
     expect(owed.map((row) => row.type)).toContain('tripDelay')
     for (const row of owed) {
       expect(row.authority.scoring, `${row.type} is owed and scoreable`).toBe('do-not-score')
@@ -383,12 +401,37 @@ describe('the data tables and the types agree in both directions', () => {
       expect(isAssertionType(row.type)).toBe(true)
       expect(row.citations.length, `[A8 §5] row ${row.row} cites nothing`).toBeGreaterThan(0)
     }
-    // [A8 §9 item 8]: sixteen rows, and still no completeness check — the classes it does not
-    // reach are uncovered. Asserted so that a table which quietly grew a row without A8 saying so
-    // is not mistaken for coverage.
-    expect(tables.authority.rows.size).toBe(16)
-    expect(tables.authority.byType.size).toBe(16)
+    // [A8 §9 item 8]: still no completeness check — the classes [A8 §5] does not reach are
+    // uncovered, and the point of this block is that a table which quietly grew a row without A8
+    // saying so is not mistaken for coverage.
+    //
+    // **Which rows, not how many.** Three assertions here were `16`, `16` and `length - 16`, so one
+    // new row needed three numbers changed in one test and the test said nothing about which row
+    // arrived. Enumerated instead: the covered set is the assertion, and the uncovered set is its
+    // complement by construction rather than by arithmetic.
+    expect([...tables.authority.byType.keys()].sort()).toEqual([
+      'arrival',
+      'charge',
+      'condition',
+      'delivery',
+      'departure',
+      'documentIssuance',
+      'handover',
+      'identity',
+      'loading',
+      'orderResponse',
+      'packing',
+      'pieceCount',
+      'sitEntryDate',
+      'storeOut',
+      'unloading',
+      'weight.gross',
+      'weight.net',
+      'weight.tare',
+    ])
+    expect(tables.authority.rows.size).toBe(tables.authority.byType.size)
     const uncovered = ASSERTION_TYPES.filter((type) => !tables.authority.byType.has(type))
-    expect(uncovered.length).toBe(ASSERTION_TYPES.length - 16)
+    expect(uncovered.length).toBe(ASSERTION_TYPES.length - tables.authority.byType.size)
+    expect(uncovered.length).toBeGreaterThan(0)
   })
 })

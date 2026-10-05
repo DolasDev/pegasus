@@ -854,9 +854,14 @@ sources:
   openness: paid
   areas: [A9]
   priority: P2
-  status: candidate
+  status: skipped
   urls: [https://scac.nmfta.org]
-  notes: Needed as an identifier concept only; no purchase required for modeling.
+  notes: >
+    Skipped 2026-10-04 (user decision, C1): needed as an identifier concept only, and the concept is
+    already witnessed by six rows of data/identity-schemes.json, so modelling does not need the
+    issuing authority's paid material. This does NOT close [A9 §3.3(b)] — the corpus's
+    widest-witnessed identity scheme still has no published definition, and `definedNotMerelyNamed`
+    stays FALSE. The decision is that we are not closing it this way, not that it is closed.
 
 - id: fmcsa-eld
   name: ELD technical specification (49 CFR 395 Subpart B, Appendix A)

@@ -156,6 +156,37 @@ export const ACT_TYPES = [
    * for it is owed.
    */
   'orderCancellation',
+  // The document-side act — [A6 §3.3], minted here. The only act whose subject is a `document`.
+  /**
+   * The act that brings a **document** into existence — [A6 §3.3], family `document` (singleton).
+   *
+   * Named as a regulated act in three regimes. `src:cfr-49-375` §375.505(a), **primary**: "Before
+   * you receive a shipment of household goods you will transport for an individual shipper, you
+   * must prepare and **issue** a bill of lading." `src:dtr-part-iv` A-413 §C.2, secondary: a BL "is
+   * only accountable when a number has been assigned to the form" — number assignment _is_
+   * issuance — gated on both sides by A-402 §F.1 NOTE (the BL "cannot be printed until pre-move
+   * survey weight and agreed pack/pickup dates are in DPS") and `src:dp3-tender-of-service` §C.3.n
+   * (not earlier than 2 GBD before the first pack date). `src:dcsa`, captured: `ISSU` is one of
+   * seventeen document-status values with `eventClassifierCode` forced to `ACT` — there is no
+   * _estimated_ bill of lading issuance, which is why this is an act and not a time fact.
+   * `src:nmfta-ebol`, secondary: `bol.function` is required with one documented value, `Create`.
+   *
+   * **Its authority row needed no research, which is why it minted on effort alone.** [A8 §5] row
+   * 10 binds `identity` with `boundBy = SCHEME` — _"the ISSUER of the scheme, and nobody else…
+   * Authority NEVER moves"_ — and [A6 §3.2(b)] establishes that for the one document kind in the
+   * corpus with a scheme of its own, the party controlling the number scheme **is** the party
+   * issuing the instrument. §375.103 defines a `Government bill of lading shipper` separately from
+   * a `commercial shipper` precisely because the carrier's BL and the GBL are two instruments, each
+   * issued by the party whose instrument it is. [A8 §5] row 17 is that row.
+   *
+   * **A signature is a second, distinct act and is deliberately NOT this one** ([A6 §3.3(b)]):
+   * §375.505(h) has the bill of lading signed _"at least 3 days before"_ loading, at no custody
+   * boundary, and §375.505(g)(2) permits signing an **incomplete** document — so it is neither
+   * `handover` nor issuance. It stays unminted because no source publishes what a signature
+   * _asserts_: four publish the procedure and none the proposition, and a fact class needs a value.
+   * [A6 §6] owes it to the user, and that debt is **not** discharged by this member.
+   */
+  'documentIssuance',
 ] as const
 
 export type ActType = (typeof ACT_TYPES)[number]
@@ -342,6 +373,12 @@ export const SUBJECT_FAMILIES = {
   assignment: ['assignment'],
   order: ['order'],
   partyRole: ['partyRole'],
+  /**
+   * [A6 §3.3] / [A8 §5] row 17, added with `documentIssuance`. A singleton, so [SD §4.7] note 2's
+   * list of the three non-singleton families is unchanged — and it emits no `SubjectRef.family.*`
+   * definition of its own, because only a non-singleton needs one.
+   */
+  document: ['document'],
   anyAggregate: AGGREGATE_KINDS,
 } as const satisfies Record<string, readonly AggregateKind[]>
 
@@ -416,6 +453,11 @@ export const CANONICAL_SUBJECT_FAMILY = {
   orderAward: 'order',
   orderResponse: 'order',
   orderCancellation: 'order',
+  // [A6 §3.3]: the act is about the instrument, so the instrument is the subject. [A6 §3.2]'s D-ID
+  // already distinguishes a document that merely CARRIES an identifier from one the identifier is
+  // assigned to as an accountable artefact; this row is the second kind, and `identity`'s own
+  // `anyAggregate` family already admitted a `document` subject before this act existed.
+  documentIssuance: 'document',
 } as const satisfies { readonly [T in AssertionType]: SubjectFamilyName }
 
 /** The family one `type` declares. */
@@ -700,6 +742,7 @@ export const FACT_CLASS_FAMILY = {
   orderAward: 'actPerformance',
   orderResponse: 'actPerformance',
   orderCancellation: 'actPerformance',
+  documentIssuance: 'actPerformance',
 } as const satisfies { readonly [T in AssertionType]: FactClassFamily | 'owed' }
 
 /**
@@ -780,10 +823,25 @@ export function isSingletonFamily(family: SubjectFamilyName): boolean {
  *
  * "The spellings in the first column are the vocabulary; the rest are prose aliases." Held here so
  * a reader who finds `time.arrival` or `delivery-performance` in [A3] or [fork-time] can map it.
+ *
+ * Note 5's table is **quoted**, never extended here: a row this map carries and the table does not
+ * is a divergence `documents.test.ts` records in both directions. `time.delivery` arrived by the
+ * table gaining the row first (decision C4, 2026-10-04), which is the only order the register
+ * permits.
  */
 export const PROSE_ALIASES = {
   'time.arrival': 'arrival',
   'time.departure': 'departure',
+  /**
+   * [`fork-time` §8.1]'s spelling for a committed delivery time — note 5's missing row, added by
+   * decision C4.
+   *
+   * **It resolves the `type` and not the record.** §8.1's value is a `LocalDateRange`, which
+   * `fork-time` §(b)(5) decides and the shared layer never adopted, so the record it writes is
+   * still unpublishable. {@link TypedTimeValuesAreUnadopted} in
+   * `tests/conformance/time-value-shape-refuses.ts` is that finding, held as a type.
+   */
+  'time.delivery': 'delivery',
   'delivery-performance': 'delivery',
   'load performance': 'loading',
   'unload performance': 'unloading',
@@ -881,12 +939,20 @@ export const ABSENT_AND_OWED = [
    * §375.505(c)).
    *
    * Absent rather than minted, and the blocker is **not** [A5 §3.6]'s. The asserter is not an
-   * undefined party class: it is the party that awarded or accepted the order, which the corpus
-   * names on every order transition ([A1 §Cross-area]) and which [A8 §4.3]'s six `boundBy` members
-   * cannot express, because none of them means _"resolved by the order's own award"_. This is the
-   * same gap A1 found under `orderResponse` and `orderCancellation` — a **schema** decision A8 can
-   * take, not a corpus gap — and [A2 §Cross-area] records that the count of rows waiting on that
-   * one enum member is now four.
+   * undefined party class: the corpus names a party on every order transition ([A1 §Cross-area]).
+   *
+   * **[A2 §3.6] said the blocker was [A8 §4.3]'s missing `boundBy` member "and nothing else", and
+   * that was too strong — corrected 2026-10-05.** The member exists: `AWARD` means _"resolved by
+   * the order's own award"_, and it closed `orderResponse` at [A8 §5] row 18. It does **not** close
+   * this one, for `orderCancellation`'s reason rather than `orderResponse`'s: §3.6's own sentence
+   * says the asserter is "the party that **awarded or accepted** the order", and its three sources
+   * answer differently — `src:sirva-ade`'s `Register` is pushed by the awarding side,
+   * `src:milmove-mymove` runs a two-actor submit-then-approve protocol, and `src:cfr-49-375` has the
+   * **carrier** name, enumerate and price the lot. So the enum gap is closed and **who commits** is
+   * not, which is an A8-NAMED question ([A8 §4.4]) with no published tie-break.
+   *
+   * It is therefore blocked on the **holder**, not on the schema, and not on the corpus either — the
+   * corpus says three things rather than nothing, which is a different gap again.
    *
    * **What its absence costs**, three things, all recorded at [A2 §3.6]: **B-ONWARD** is decidable
    * in prose and returns `COMMITMENT_NOT_PUBLISHED` in code ([A2 §3.2]); [`fork-order` §5.2]'s
@@ -895,49 +961,6 @@ export const ABSENT_AND_OWED = [
    * quantify over.
    */
   'shipmentCommitment',
-  /**
-   * The act that brings a **document** into existence — [A6 §3.3].
-   *
-   * Named as a regulated act in three regimes. `src:cfr-49-375` §375.505(a), **primary**: "Before
-   * you receive a shipment of household goods you will transport for an individual shipper, you must
-   * prepare and **issue** a bill of lading." `src:dtr-part-iv` A-413 §C.2, secondary: a BL "is only
-   * accountable when a number has been assigned to the form" — number assignment *is* issuance —
-   * gated on both sides by A-402 §F.1 NOTE ("the BL cannot be printed until pre-move survey weight
-   * and agreed pack/pickup dates are in DPS") and `src:dp3-tender-of-service` §C.3.n (not earlier
-   * than 2 GBD before the first pack date). `src:dcsa`, captured: `ISSU` is one of seventeen
-   * document-status values with `eventClassifierCode` forced to `ACT` — there is no estimated bill of
-   * lading issuance. `src:nmfta-ebol`, secondary: `bol.function` is required with one documented
-   * value, `Create`, and the response carries an acceptance identifier distinct from the document
-   * identifier.
-   *
-   * **Its blocker is a third kind, and it is the cheapest of the three.** [A5 §3.6]'s three storage
-   * classes are blocked on a party class [A8 §9 item 1] has not defined; `shipmentCommitment` above
-   * and A1's two order classes are blocked on [A8 §4.3]'s `boundBy` enum having no member meaning
-   * "resolved by the order's own award". This one is blocked on **minting alone**: [A8 §5] row 10
-   * binds `identity` with `boundBy = SCHEME`, _"the ISSUER of the scheme, and nobody else… Authority
-   * NEVER moves"_, and [A6 §3.2(b)] establishes that for the one document kind with a scheme of its
-   * own — the bill of lading, in both published regimes — the party controlling the number scheme is
-   * the party issuing the instrument. §375.103 defines a `Government bill of lading shipper`
-   * separately from a `commercial shipper` precisely because the carrier's BL and the GBL are two
-   * instruments, each issued by the party whose instrument it is; which instrument is in play
-   * determines the issuer, and the scheme is what says which instrument it is. So a row in [SD
-   * §4.7.1] and a row in [A8 §5] are all that is owed, with nothing owed underneath either.
-   *
-   * **What its absence costs**, [A6 §3.4] and [A6 §4]: a `documentStateAt` projection cannot be
-   * written, because a fold needs input records and there are none — which would be [A2 §3.6]'s
-   * `B-STAGE` a second time; retention, revision and `src:cfr-49-375` §375.505(b)(15)'s attachment
-   * containment ("each attachment is an integral part of the bill of lading contract") each have no
-   * date or artefact to attach to; and [A2 §Cross-area]'s "a correction is not a reissue" is
-   * decidable in prose and not in code.
-   *
-   * **A signature is a second, distinct act and is deliberately not listed here** ([A6 §3.3(b)]):
-   * §375.505(h) has the bill of lading signed "at least 3 days before" loading, at no custody
-   * boundary, and §375.505(g)(2) permits signing an **incomplete** document, so it is neither
-   * `handover` nor issuance. It is omitted because no source publishes what a signature *asserts* —
-   * four publish the procedure and none the proposition — and a fact class needs a value. [A6 §6]
-   * owes it to the user and to A10.
-   */
-  'documentIssuance',
   /**
    * The act by which a charge is **billed and collected** — the freight bill presented, the amount
    * tendered, the possession relinquished. [A7 §3.2].
@@ -954,11 +977,19 @@ export const ABSENT_AND_OWED = [
    *
    * **Its blocker is a kind none of the entries above has, and the model has met it once before:
    * the SUBJECT does not exist.** [A5 §3.6]'s three storage classes are blocked on a party class
-   * [A8 §9 item 1] has not defined; `shipmentCommitment` and A1's two order classes are blocked on
-   * [A8 §4.3]'s `boundBy` enum; `documentIssuance` above is blocked on minting alone. This one never
-   * reaches the authority ledger at all, because [SD §1.2]'s fourteen aggregate kinds contain no `invoice`
-   * and no `payment`. The model's other instance of the same shape is `placeRef`, owed to
-   * [SD §1.2] because there is no `place` aggregate.
+   * [A8 §9 item 1] has not defined; `shipmentCommitment` is blocked on **who** commits, which three
+   * sources answer three ways. This one never reaches the authority ledger at all, because
+   * [SD §1.2]'s fourteen aggregate kinds contain no `invoice` and no `payment`. The model's other
+   * instance of the same shape is `placeRef`, owed to [SD §1.2] because there is no `place`
+   * aggregate.
+   *
+   * **The MINTING-ALONE kind has left this list, because it was discharged.** `documentIssuance`
+   * was here as the only entry whose blocker was minting alone; it is now a record type with
+   * [A8 §5] row 17, so this comparison runs over three kinds of blocker and not four. Named by its
+   * kind rather than by an ordinal — the ordinal depends on the order this paragraph happens to
+   * list them in, which is [A1 §9]'s reason for preferring the name — and named rather than
+   * quietly dropped, because the shape of its blocker is what made it the cheapest to close and
+   * the comparison is the thing a reader is here for.
    *
    * **Why the aggregate is not minted here, although it is the cheapest mint available.**
    * [SD §1.2] is "open to _addition_ in a later `specVersion`" and [catalog §2.3] classes a new

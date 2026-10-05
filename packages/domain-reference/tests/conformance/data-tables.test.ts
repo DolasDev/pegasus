@@ -54,9 +54,26 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
     // [SD §1.3]: "§4.7.1 is the complete declaration." One row per assertion type, no more.
     expect(table.rows.size).toBe(ASSERTION_TYPES.length)
     for (const type of ASSERTION_TYPES) expect(table.rows.has(type)).toBe(true)
-    // [SD §4.7] note 2: eleven named families, three of them non-singletons.
-    expect(table.families.size).toBe(11)
-    expect([...table.families.values()].filter((family) => !family.singleton)).toHaveLength(3)
+    // [SD §4.7] note 2: the families, named rather than counted — the count was `11` and
+    // `document` made it wrong. Note 2's own claim is about the three NON-singletons, and that one
+    // is enumerated too, so adding a singleton family cannot quietly make it four.
+    expect([...table.families.keys()].sort()).toEqual([
+      'anyAggregate',
+      'assignment',
+      'charge',
+      'document',
+      'goods',
+      'item',
+      'order',
+      'partyRole',
+      'stay',
+      'stop',
+      'stopAction',
+      'trip',
+    ])
+    expect(
+      [...table.families.entries()].filter(([, family]) => !family.singleton).map(([name]) => name),
+    ).toEqual(['stop', 'goods', 'anyAggregate'])
   })
 
   it('carries the families a type may be asserted about — E-CANON, from the table', () => {
@@ -72,19 +89,38 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
   it('says how much of the authority column is owed, rather than implying it is filled in', () => {
     const table = loadCanonicalSubjects(canonicalSubjects)
     const owed = owedAuthorityRows(table)
-    // The count is the disclosure. [A8 §9 item 8] plus [SD §4.7.3]'s two provisional rows leave
-    // most of the lifecycle side undecided, and a reader who is not told assumes otherwise.
+    // **The SET is the disclosure, and it used to be a number.** [A8 §9 item 8] plus [SD §4.7.3]'s
+    // two provisional rows leave most of the lifecycle side undecided, and a reader who is not told
+    // assumes otherwise — but `expect(owed.length).toBe(14)` said nothing about WHICH rows, and the
+    // comment beside it had to be rewritten by hand every time one closed. [A1 §9]: enumerate.
     //
-    // Fourteen. It was nineteen: [SD §4.7.2f] §7.4 had moved `handover` from **assigned** to
+    // What the history was: nineteen, when [SD §4.7.2f] §7.4 moved `handover` from **assigned** to
     // **owed** because its `boundBy = CUSTODY` was circular ([SD §4.8.2]: "A8-MOVE would be defined
-    // in terms of the thing it defines"), which made the contradiction countable rather than hidden
-    // behind a filled-in cell. **F3 is now closed** — `handover` is row 12 at `boundBy = KEY`, and
-    // `weight.gross`, `weight.tare`, `packing` and `pieceCount` came with it.
-    expect(owed.length).toBe(14)
+    // in terms of the thing it defines"). **F3** closed it at row 12 with `boundBy = KEY`, taking
+    // `weight.gross`, `weight.tare`, `packing` and `pieceCount` with it; `documentIssuance` minted
+    // with row 17 assigned; and row 18 took `orderResponse` off the list.
+    expect(owed.map((row) => row.type).sort()).toEqual([
+      'assignmentOffer',
+      'assignmentRelease',
+      'assignmentResponse',
+      'membershipOffer',
+      'membershipRelease',
+      'membershipResponse',
+      'notification',
+      'orderAward',
+      'orderCancellation',
+      'partyRole',
+      'tripCancellation',
+      'tripDelay',
+      'tripResequence',
+    ])
     expect(owed.map((row) => row.type)).not.toContain('handover')
-    // The fourteen that remain, and twelve of them are blocked on the CORPUS rather than on effort:
-    // no external source binds a plan change, a membership offer, an assignment or an order award to
-    // an asserting role ([A8 §9 item 8]). `tripDelay` is the type that says so outright.
+    expect(owed.map((row) => row.type)).not.toContain('orderResponse')
+    // Most of what remains is blocked on the CORPUS rather than on effort: no external source binds
+    // a plan change, a membership offer or an assignment to an asserting role ([A8 §9 item 8]).
+    // `tripDelay` is the type that says so outright. The two order rows left are NOT in that group
+    // and the ledger keeps them apart — `orderAward` on A8's mint principle, `orderCancellation` on
+    // its holder being plural.
     expect(owed.map((row) => row.type)).toContain('tripDelay')
     expect(owed.every((row) => row.authority.scoring === 'do-not-score')).toBe(true)
     for (const row of owed) {
@@ -172,9 +208,13 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
 })
 
 describe('[A8 §5] the authority table', () => {
-  it('loads sixteen rows and does not pretend to cover more', () => {
+  it('loads the rows [A8 §5] publishes, by number, and does not pretend to cover more', () => {
     const table = loadAuthorityTable(authorityTable)
-    expect(table.rows.size).toBe(16)
+    // By row number rather than by `size`, for `authority-custody-corrections.test.ts`'s reason: a
+    // total cannot see a gap or a duplicate, and the number is what [A8 §5]'s prose cites.
+    expect([...table.rows.keys()].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+    ])
     // [A8 §9 item 8]: everything else is uncovered, so there is deliberately no completeness check.
     expect(table.byType.has('tripDelay')).toBe(false)
   })
@@ -187,8 +227,11 @@ describe('[A8 §5] the authority table', () => {
         (row.standings.authoritative.cardinality === 'empty' ||
           row.standings.authoritative.cardinality === 'joint'),
     )
-    // [A8 §5]'s own closing observation: three of eleven, and each supplies something better than
-    // a role — a value rule, a mandatory derivation, or a joint record.
+    // [A8 §5]'s own closing observation, which this assertion is the enumeration of: THREE rows
+    // have no single authoritative role, and each supplies something better than a role — a value
+    // rule, a mandatory derivation, or a joint record. The document used to write it as "three of
+    // eleven" and kept the denominator through five new rows; the three are named in both places
+    // now and this is the gate.
     expect(unsettled.map((row) => row.type).sort()).toEqual([
       'condition',
       'sitEntryDate',
@@ -425,7 +468,9 @@ describe('the three tables together', () => {
   it('load and agree', () => {
     const tables = loadDomainTables({ canonicalSubjects, authority: authorityTable, reasons })
     expect(tables.canonicalSubjects.rows.size).toBe(ASSERTION_TYPES.length)
-    expect(tables.authority.rows.size).toBe(16)
+    expect([...tables.authority.rows.keys()].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+    ])
     expect(tables.reasons.status).toBe('published')
   })
 

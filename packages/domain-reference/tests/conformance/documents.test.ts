@@ -50,6 +50,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ABSENT_AND_OWED,
   AGGREGATE_KINDS,
+  BOUND_BY_VALUES,
   ASSERTION_TYPES,
   CANONICAL_SUBJECT_FAMILY,
   META_RECORD_TYPES,
@@ -200,35 +201,61 @@ function account(token: string): Accounting {
 /**
  * **Recorded findings**, not exemptions.
  *
- * Both entries are real divergence between [SD §4.7] note 5's prose-alias table and the documents
+ * Every entry is real divergence between [SD §4.7] note 5's prose-alias table and the documents
  * that use it, found by this guard and recorded on the package's own terms ([SD §0]): a gap is
- * represented as owed and named, never closed by guessing. Neither can be fixed here — note 5's
- * table is [SD §4.7]'s to publish, and "no other document may declare a family".
+ * represented as owed and named, never closed by guessing. None can be fixed here — note 5's table
+ * is [SD §4.7]'s to publish, and "no other document may declare a family".
  *
  * The test below asserts the divergence set is **exactly** this register, in both directions. New
  * drift fails it, and so does *fixing* one of these without striking it from the register — which
  * is what keeps a finding from decaying into a permanent exception.
  *
- * TODO([SD §4.7] note 5): both entries need a decision from the binding layer, not from this
- * package. Until then they are owed, and they are counted.
+ * **One entry has been struck, and it is worth reading before the remaining one.** `time.delivery`
+ * was carried here in the `named-by-a-document-and-not-declared` direction until decision C4
+ * (2026-10-04) gave note 5 the row; `PROSE_ALIASES` then followed the table, which is the only
+ * order this register permits. **What closing it revealed is why the strike is not a tidy-up:**
+ * [`fork-time` §8.1]'s record needed two things to be publishable and C4 supplied one. The second —
+ * `fork-time` §(b)(5)'s typed time values, of which the shared layer adopted none — has no token in
+ * a type position, so it cannot live in this register at all. It is held as a type instead, in
+ * `time-value-shape-refuses.ts`, and note 5 now says so.
+ *
+ * TODO([SD §4.7] note 5): the remaining entry needs a decision from the binding layer, not from
+ * this package. Until then it is owed, and it is counted.
  */
-const RECORDED_DIVERGENCES = [
-  {
-    token: 'time.delivery',
-    direction: 'named-by-a-document-and-not-declared',
-    where:
-      'fork-time-provenance-corrections.md § 8.1 — `type = time.delivery`, `basis = COMMITTED`',
-    finding:
-      '[SD §4.7] note 5 declares `time.arrival` and `time.departure` as prose aliases and not `time.delivery`, which [fork-time §8.1] writes in a type position. Either note 5 is missing a row or §8.1 should say `delivery` at `basis = COMMITTED`. Mapping it here would be this package deciding an alias the binding layer has not.',
-  },
+/**
+ * The three ways note 5's alias table and the rest of the model can disagree.
+ *
+ * Declared as a union rather than inferred from the entries, and **every member stays a member
+ * while its direction is empty.** The register's claim is that it holds the divergences in every
+ * direction; narrowing the union to whichever directions happen to be populated turns the filters
+ * below into comparisons TypeScript reports as impossible (`TS2367`). That happened the day C4
+ * struck `time.delivery`, and it is why this is a declaration.
+ */
+type DivergenceDirection =
+  /** A document writes the token in a `type` position and note 5 declares no such alias. */
+  | 'named-by-a-document-and-not-declared'
+  /** `PROSE_ALIASES` carries the alias and no analysis document writes it. */
+  | 'declared-and-named-by-no-document'
+  /** `PROSE_ALIASES` carries the alias and [SD §4.7] — its quoted source — does not declare it. */
+  | 'declared-and-not-declared-by-note-5'
+
+interface RecordedDivergence {
+  readonly token: string
+  /** One finding may diverge in more than one direction; `time.departure` does both of the last two. */
+  readonly directions: readonly DivergenceDirection[]
+  readonly where: string
+  readonly finding: string
+}
+
+const RECORDED_DIVERGENCES: readonly RecordedDivergence[] = [
   {
     token: 'time.departure',
-    direction: 'declared-and-named-by-no-document',
-    where: 'src/vocabulary.ts PROSE_ALIASES — quoted from [SD §4.7] note 5',
+    directions: ['declared-and-named-by-no-document', 'declared-and-not-declared-by-note-5'],
+    where: 'src/vocabulary.ts PROSE_ALIASES — attributed to [SD §4.7] note 5',
     finding:
-      'No analysis document writes `time.departure`. It reads as the symmetric completion of `time.arrival`, which [SD §4.7.1]s `arrival` row does declare. Harmless, and still a row in a quoted table that its source does not support.',
+      'No analysis document writes `time.departure` — and, found by the gate below while C4 landed, [SD §4.7] does not DECLARE it either: note 5 names `time.arrival`, `time.delivery`, `delivery-performance` and "load performance", and §4.7.1s `departure` row carries no alias parenthetical at all. So this is not a quotation its source does not support; it is a row with no source, which is sharper than the finding recorded here before. It reads as the symmetric completion of `time.arrival`, and symmetry is not evidence. Still not struck: deleting it is a decision about note 5s table, and only [SD §4.7] may take it — note 5 now records that decision, and deliberately describes this row without spelling its token, because spelling it would make [SD] a document that writes it and close the first of these two directions by writing prose.',
   },
-] as const
+]
 
 describe('[SD §4.7.1] the declaration table in the document is the vocabulary in the code', () => {
   const shared = DOCUMENTS.find((doc) => doc.file === '00-shared-decisions.md')
@@ -279,6 +306,32 @@ describe('[SD §4.7.1] the declaration table in the document is the vocabulary i
       ).toBe(true)
     }
     expect([...declared.keys()].sort()).toEqual([...expected].sort())
+  })
+
+  it("note 4 quotes [A8 §4.3]'s `boundBy` members, all of them", () => {
+    // **A plan-didn't-know finding, 2026-10-05.** Note 4 read
+    // "`CUSTODY` / `ASSIGNMENT` / `SCHEME` / `PRINCIPAL` / `NONE`" — five members — after F3 added
+    // `KEY` to [A8 §4.3] and after `KEY` had been live in `BOUND_BY_VALUES` for four releases.
+    // Nothing compared the quotation to its source, which is [SD §4.7.2e]'s defect one layer up: a
+    // binding document stating a closed set the code had already widened.
+    //
+    // **Scoped to the ENUMERATION, not to note 4's paragraph**, and the paragraph is why. A first
+    // draft read every `` `UPPER_CASE` `` span in the whole note and passed its own tamper:
+    // removing `AWARD` from the list left it in the sentence explaining the gate. Scoping to the
+    // section was wrong for the alias gate above and scoping to the paragraph is wrong here, for
+    // the same reason — a gate must read the thing that DECLARES, and note 4's declaration is the
+    // slash-separated run after "A8 §4.3's:". With that scope the surrounding prose may name a
+    // member freely, which is what lets the note explain itself.
+    if (shared === undefined) throw new Error('00-shared-decisions.md is missing')
+    const note4 = /^4\. \*\*`boundBy`\*\* is A8 §4\.3's:\s*((?:`[A-Z_]+`\s*\/\s*)*`[A-Z_]+`)/m.exec(
+      shared.text,
+    )
+    expect(
+      note4?.[1],
+      '[SD §4.7] note 4 no longer opens with a slash-separated list of `boundBy` members',
+    ).toBeDefined()
+    const quoted = [...(note4?.[1] ?? '').matchAll(/`([A-Z_]+)`/g)].map((m) => m[1])
+    expect(quoted.sort()).toEqual([...BOUND_BY_VALUES].sort())
   })
 
   it('takes the two provisional rows from [SD §4.7.3], with the family that section gives them', () => {
@@ -332,14 +385,14 @@ describe('every record type the documents name exists in the vocabulary', () => 
     expect([...sketches.keys()].sort()).toEqual(['Delivery', 'Handover', 'Loading', 'Packing'])
   })
 
-  it('records the one type a document names that [SD §4.7] note 5 does not declare', () => {
+  it('records every type a document names in a type position that nothing accounts for', () => {
     const unaccounted = new Map<string, string>()
     for (const mention of mentions) {
       if (account(mention.token).kind !== 'unaccounted') continue
       if (!unaccounted.has(mention.token)) unaccounted.set(mention.token, mention.at)
     }
-    const expected = RECORDED_DIVERGENCES.filter(
-      (known) => known.direction === 'named-by-a-document-and-not-declared',
+    const expected = RECORDED_DIVERGENCES.filter((known) =>
+      known.directions.includes('named-by-a-document-and-not-declared'),
     )
     expect(
       [...unaccounted.keys()].sort(),
@@ -464,9 +517,9 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     // [A2 §3.6]'s one. Its blocker is a schema gap in [A8 §4.3]'s `boundBy` enum rather than A5's
     // missing party entity, which §4.7.3 records at the point of use.
     shipmentCommitment: '`shipmentCommitment`',
-    // [A6 §3.3]'s one. The first entry in §4.7.3 whose blocker is minting alone: [A8 §5] row 10's
-    // `boundBy = SCHEME` already determines its holder, so nothing is owed underneath the row.
-    documentIssuance: '`documentIssuance`',
+    // [A6 §3.3]'s `documentIssuance` WAS here, as the one entry whose blocker was minting alone
+    // ([A8 §5] row 10 already determined its holder). It minted on 2026-10-05, so it leaves this
+    // map and §4.7.3's prose together — the gate below is what makes leaving one behind a failure.
     // [A7 §3.2]'s one, and its blocker is a kind none of the entries above has: the SUBJECT does
     // not exist, so the question never reaches [A8 §9 item 8]'s ledger at all. `placeRef` is the
     // model's other instance of the same shape.
@@ -514,9 +567,11 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
    * check was `section.includes(phrase)` over all 202 lines of §4.7.3, so a class the document
    * names twice survived having one mention renamed and the gate still reported green — reproduced
    * on 2026-10-02 by renaming `chargeCollection`'s declaring item to `chargeCollectionXX`, after
-   * which all 14 tests in this file still passed. Five of the sixteen entries were maskable that
-   * way: `survey`, `weighing`, `unpacking`, `documentIssuance` and `chargeCollection`. Found by
-   * [A6 §9], reproduced by [A7 §9] as a deliberate re-test, and left standing by both.
+   * which every test in this file still passed. The maskable entries were `survey`, `weighing`,
+   * `unpacking`, `documentIssuance` and `chargeCollection` — named rather than counted against a
+   * total, because `documentIssuance` has since left the list and a fraction would now be wrong in
+   * both halves. Found by [A6 §9], reproduced by [A7 §9] as a deliberate re-test, and left standing
+   * by both.
    *
    * The narrative paragraphs introducing the item-declared classes name most of them a second time,
    * and those mentions are deliberately NOT gated: the declaring item is the row standing in for
@@ -538,7 +593,6 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
     stayAllowance: 'item',
     stayTermination: 'item',
     shipmentCommitment: 'item',
-    documentIssuance: 'item',
     chargeCollection: 'item',
   }
 
@@ -625,12 +679,12 @@ describe('[SD §4.7] note 5 the prose aliases and the documents that use them', 
     }
   })
 
-  it('records the one alias the code declares that no document writes', () => {
+  it('records every alias the code declares that no document writes', () => {
     const unused = Object.keys(PROSE_ALIASES)
       .filter((alias) => !corpus.some((doc) => doc.folded.includes(fold(alias))))
       .sort()
-    const expected = RECORDED_DIVERGENCES.filter(
-      (known) => known.direction === 'declared-and-named-by-no-document',
+    const expected = RECORDED_DIVERGENCES.filter((known) =>
+      known.directions.includes('declared-and-named-by-no-document'),
     )
     // Note 5's table is quoted into `PROSE_ALIASES`, so an alias nothing writes is a quotation with
     // no source. Recorded rather than deleted: deleting it would be this package editing a table
@@ -638,6 +692,56 @@ describe('[SD §4.7] note 5 the prose aliases and the documents that use them', 
     expect(
       unused,
       'unrecorded divergence — add it to RECORDED_DIVERGENCES with a finding, or close it in [SD §4.7]',
+    ).toEqual(expected.map((known) => known.token).sort())
+  })
+
+  it('quotes note 5 rather than extending it — every alias the code carries, [SD §4.7] declares', () => {
+    // `PROSE_ALIASES`' own docstring says the table is quoted and never extended here. Until this
+    // round that was a sentence, and the sentence was wrong: `time.departure` has been in the map
+    // since it was written and §4.7 declares it nowhere — not in note 5's prose and not in the
+    // `departure` row's alias parenthetical, which is empty. That is [SD §4.7.2e]'s defect one layer
+    // down (code specifying something its binding document does not), and it is why the claim is now
+    // a gate: note 5 gains a row FIRST, and the map follows. C4 is what that order looks like.
+    //
+    // **The declaration surface is §4.7.1's first column and nothing wider.** Note 5 says it in as
+    // many words — "the spellings in the first column are the vocabulary; the rest are prose
+    // aliases" — and the first draft of this gate read the whole of §4.7 instead, which passed:
+    // note 5's own paragraph ABOUT the `time.departure` divergence names the token, so a
+    // section-wide scan reads a finding as a declaration. That is the cleanup round's lesson in a
+    // new place — scoping a gate is half the fix, and the half that matters is scoping it to the
+    // thing that actually declares.
+    const sd = DOCUMENTS.find((doc) => doc.file === '00-shared-decisions.md')
+    if (sd === undefined) throw new Error('00-shared-decisions.md is missing')
+    const lines = sd.text.split('\n')
+    const start = lines.findIndex((line) => /^#### 4\.7\.1\b/.test(line))
+    const end = lines.findIndex((line, index) => index > start && /^#### 4\.7\.2\b/.test(line))
+    expect(start, "no [SD §4.7.1] section to read the table's first column from").toBeGreaterThan(
+      -1,
+    )
+    expect(end, 'no [SD §4.7.2] heading to stop at').toBeGreaterThan(start)
+
+    // Every `_(…)_` parenthetical in a row's first cell: the alias column, folded to words.
+    const declared = lines
+      .slice(start, end)
+      .filter((line) => line.startsWith('|'))
+      .flatMap((line) => [...(line.split('|')[1] ?? '').matchAll(/_\(([^)]*)\)_/g)])
+      .map((m) => fold(m[1] ?? ''))
+    // A gate that silently extracts nothing passes forever — `arrival`'s row alone is four aliases
+    // short of this, so the floor is a real one and not the empty set dressed up.
+    expect(
+      declared.length,
+      "no alias parentheticals found in §4.7.1's first column",
+    ).toBeGreaterThan(4)
+
+    const undeclared = Object.keys(PROSE_ALIASES)
+      .filter((alias) => !declared.some((cell) => cell.includes(fold(alias))))
+      .sort()
+    const expected = RECORDED_DIVERGENCES.filter((known) =>
+      known.directions.includes('declared-and-not-declared-by-note-5'),
+    )
+    expect(
+      undeclared,
+      'an alias [SD §4.7] does not declare — give note 5 the row, or record it in RECORDED_DIVERGENCES',
     ).toEqual(expected.map((known) => known.token).sort())
   })
 

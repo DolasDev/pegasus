@@ -355,19 +355,38 @@ describe("[A8 §5 r5] the auto carrier's assertions govern its own leg", () => {
 })
 
 describe('OWED — what this scenario still cannot score', () => {
-  it('[A8 §9 item 8] the order lifecycle has no authority row', () => {
-    // Who is authoritative when the RMC and the van line disagree about whether the order was
-    // accepted is exactly the question this scenario raises, and A8 §5 has no order row.
+  it('[A8 §9 item 8] the order lifecycle has ONE authority row now, and this scenario needed it', () => {
+    // **This OWED block was a to-do item waiting for exactly this round** ([A6 §9]'s rule: an OWED
+    // label naming your own area is a to-do item, not a note). The question it recorded — "who is
+    // authoritative when the RMC and the van line disagree about whether the order was **accepted**"
+    // — is `orderResponse`, and [A8 §5] **row 18** answers it: the role the order's own award
+    // resolved, which here is the van line as offeree.
+    expect(hasAuthorityRow('orderResponse')).toBe(true)
+    expect(AUTHORITY_TABLE.orderResponse).toMatchObject({
+      a8Row: 18,
+      boundBy: 'AWARD',
+      authoritative: { kind: 'held', primary: { kind: 'awardedRole' } },
+    })
+
+    // The other two stay owed, for two different reasons, and neither is the enum any more.
+    // `orderAward` mints the award, so it can never be bound to it ([A8 §4.3]'s mint principle,
+    // gated by `MintingActsAreNotBoundToWhatTheyMint`). `orderCancellation` has its binding — the
+    // award resolves the candidates — and not its holder: [A1 §3.5] makes a cancellation after
+    // acceptance "either party", so `authoritative` would be plural and A8-NAMED has no published
+    // tie-break.
     expect(hasAuthorityRow('orderAward')).toBe(false)
-    expect(hasAuthorityRow('orderResponse')).toBe(false)
     expect(hasAuthorityRow('orderCancellation')).toBe(false)
     expect(AUTHORITY_TABLE.orderAward.provisional).toContain('Do not score on this')
+    expect(AUTHORITY_TABLE.orderCancellation.row.owedTo).toContain('What is owed is the HOLDER')
   })
 
-  it('and its binding is owed, deliberately not CUSTODY', () => {
+  it("and `orderAward`'s binding is still owed, deliberately not CUSTODY", () => {
     // "an order is a commitment, not a fact about the goods, and §4.8's fold does not reach it."
     // Holding the car has nothing to do with who may speak for the booking.
     expect(AUTHORITY_TABLE.orderAward.boundBy).toMatchObject({ owed: 'boundBy' })
+    // `orderCancellation`'s is NOT owed any more, and the two being different is the finding this
+    // round added: the enum gap closed for both, and only one of them also had its holder settled.
+    expect(AUTHORITY_TABLE.orderCancellation.boundBy).toBe('AWARD')
   })
 
   it("OWED: the two carriers' shipment numbers are PEER identifiers, not a hierarchy", () => {
