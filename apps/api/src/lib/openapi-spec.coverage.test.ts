@@ -24,6 +24,9 @@ const ALLOWLIST = new Set<string>([
   // Worker-only internal endpoint — gated by the X-Workflow-Broker-Secret header,
   // NOT a vnd_ API-key surface (handlers/workflow-internal.ts). Not for the SDK.
   '/api/v1/internal/tenant-workflows',
+  // Same broker gate; returns the tenant runner's Temporal key (Phase 3b).
+  // Runner-only, never an SDK surface.
+  '/api/v1/internal/temporal-credentials',
 ])
 
 /** Collapse every path param (`:x` or `{x}`) to a single `{}` token so route and

@@ -10,8 +10,11 @@
   (`plans/completed/2b1e2147-durable-workflow-isolation-spike.md`) are there.
 - **Status:** detailed plan approved 2026-09-29. **3a landed** (this PR,
   2026-10-04): DNS Firewall code plus both key downgrades, which are already
-  live. Still owed from 3a: the post-deploy DNS check and the namespace-cap
-  request. **Next: 3b**, in its own `/workstream-start`. This file stays in
+  live. The post-deploy DNS check passed 2026-10-05; still owed from 3a: the
+  namespace-cap request. **3b is in progress**: its detailed plan is
+  `plans/in-progress/tenant-temporal-namespaces.md`. **3b.1 Stage A** (the
+  inert provisioning foundation) is in its PR; Stage B (Cloud identities,
+  guardrail probe, enable PR, staging acceptance) and 3b.2 (routing) follow. This file stays in
   `plans/in-progress/` until 3c lands; each part's PR updates it. (The
   "Approved outline" section at the bottom is the original checklist, copied
   verbatim from the master plan; the detailed plan above supersedes it.)
@@ -129,11 +132,12 @@ command) `saas-api.tmprl.cloud` does not resolve.
     whose EVENT trigger fires on order saves, but `send_sms` returns
     `404 RingCentral is not connected for this account`. That's about 100
     failures a day; a tenant-configuration issue, not a platform fault.
-- [~] Runner-task DNS acceptance check. The image's ENTRYPOINT is fixed and
-  ECS can't override an entrypoint, so the check uses a throwaway
-  `pegasus-dnsprobe-<env>` task definition: stock `python:3.12-slim`, no
-  secrets, the runner's cluster, subnets, security group and exec role.
-  It resolves two names, then deregisters itself.
+- [x] Runner-task DNS acceptance check. **Passed 2026-10-05** in staging and
+      prod: `saas-api.tmprl.cloud` is NXDOMAIN and the control resolves. The image's ENTRYPOINT is fixed and
+      ECS can't override an entrypoint, so the check uses a throwaway
+      `pegasus-dnsprobe-<env>` task definition: stock `python:3.12-slim`, no
+      secrets, the runner's cluster, subnets, security group and exec role.
+      It resolves two names, then deregisters itself.
   - **Baseline (2026-10-04, before deploy, staging):** `saas-api.tmprl.cloud`
     RESOLVES (6 IPs), and the control `pegasus-staging.chgel.tmprl.cloud`
     resolves. The check works.

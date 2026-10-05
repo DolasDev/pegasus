@@ -300,6 +300,7 @@ model Tenant {
   usageStatements         UsageStatement[]
   outboundOAuthTokens     OutboundOAuthToken[]
   brokerCredential        TenantBrokerCredential?
+  temporalNamespace       TenantTemporalNamespace?
   vpnPeer                 VpnPeer?
 
   // Messaging context — RingCentral SMS capture
@@ -2439,6 +2440,71 @@ model TenantBrokerCredential {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@map("tenant_broker_credentials")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant Temporal namespaces — one Temporal Cloud namespace per tenant (3b).
+//
+// Written only by the temporal-provisioner Lambda (lambda-temporal-
+// provisioner.ts), which creates the namespace, a namespace-scoped Write
+// service account and its API key through the Cloud Ops API. The key token is
+// shown once by Temporal Cloud, so it is stored KMS-encrypted (same key as
+// TenantBrokerCredential.tokenCiphertext) the moment it is minted.
+//
+// 3b.1 is inert: nothing routes Automations here yet. 3b.2 adds the DRAINING
+// and ACTIVE states and switches the tenant runner and the API to this
+// namespace with this key. NOT in TENANT_SCOPED_MODELS — read by platform
+// code (admin routes, provisioner, broker) with an explicit tenantId via the
+// root `db`.
+// ---------------------------------------------------------------------------
+
+enum TenantTemporalNamespaceStatus {
+  PROVISIONING
+  READY
+  FAILED
+  DEPROVISIONING
+
+  @@schema("public")
+}
+
+model TenantTemporalNamespace {
+  id       String @id @default(uuid())
+  /// Owning tenant. Unique — at most one namespace per tenant.
+  tenantId String @unique @map("tenant_id")
+
+  /// Full namespace id, `<name>.<account>` (e.g. `pg-staging-a90b22bc4393.chgel`).
+  namespace   String @unique
+  /// gRPC endpoint, `<namespace>.tmprl.cloud:7233`.
+  grpcAddress String @map("grpc_address")
+
+  /// Cloud Ops ids, filled in as the provisioner completes each step.
+  cloudServiceAccountId String?   @map("cloud_service_account_id")
+  apiKeyId              String?   @map("api_key_id")
+  /// KMS-encrypted key token (base64). Never returned in API responses.
+  apiKeyCiphertext      String?   @map("api_key_ciphertext")
+  apiKeyExpiresAt       DateTime? @map("api_key_expires_at")
+
+  /// The key replaced by the last rotation, kept alive until
+  /// `previousKeyRetireAt` so running runners aren't cut off mid-flight.
+  previousApiKeyId    String?   @map("previous_api_key_id")
+  previousKeyRetireAt DateTime? @map("previous_key_retire_at")
+
+  status         TenantTemporalNamespaceStatus @default(PROVISIONING)
+  /// Last completed provisioning step — the provisioner resumes after it.
+  step           String?
+  /// Held by the provisioner while it acts on this row: at most one action
+  /// per tenant. Expires on its own, so a Lambda killed by its timeout
+  /// (no catch block runs) doesn't wedge the row.
+  leaseExpiresAt DateTime?                     @map("lease_expires_at")
+  lastError      String?                       @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("tenant_temporal_namespaces")
   @@schema("public")
 }
 
