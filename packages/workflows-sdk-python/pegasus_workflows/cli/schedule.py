@@ -8,6 +8,8 @@ calling ``pegasus-workflows run`` (sdk-feedback/0023).
 * ``schedule create <workflow> --cron "*/5 * * * *"`` — attach a schedule.
 * ``schedule list   <workflow>`` — list the Automation's schedules.
 * ``schedule delete <workflow> <trigger-id>`` — remove one.
+* ``schedule disable|enable <workflow> <trigger-id>`` — pause / resume a trigger
+  without deleting it (any kind, EVENT included).
 
 Each firing passes a ``{"scheduledAt": "<ISO8601>", "schedule": "<cron>",
 "triggerId": "..."}`` envelope (at ``arg["input"]``) — a documented input shape
@@ -16,7 +18,8 @@ resolver keys on ``scheduledAt``.
 
 Auth mirrors ``push``: a ``vnd_`` API key via ``--token`` /
 ``$PEGASUS_WORKFLOW_TOKEN`` (the ``workflow_developer`` role's
-``ManageWorkflowTriggers`` covers create/delete; ``ReadWorkflow`` covers list).
+``ManageWorkflowTriggers`` covers create/delete/enable/disable; ``ReadWorkflow``
+covers list).
 """
 
 from __future__ import annotations
@@ -134,3 +137,53 @@ def schedule_delete_command(
         f"deleted schedule {trigger_id} from {row['name']}@{row['version']}",
         fg=typer.colors.GREEN,
     )
+
+
+def _set_enabled(
+    workflow: str,
+    trigger_id: str,
+    enabled: bool,
+    token: str | None,
+    base_url: str | None,
+    profile: str | None,
+) -> None:
+    client = _client(token, base_url, profile)
+    try:
+        row = _resolve_workflow(client, workflow)
+        client.update_trigger(row["id"], trigger_id, enabled=enabled)
+    except PegasusApiError as exc:
+        typer.secho(f"error: {exc.message or exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    verb = "enabled" if enabled else "disabled"
+    typer.secho(
+        f"{verb} trigger {trigger_id} on {row['name']}@{row['version']}",
+        fg=typer.colors.GREEN,
+    )
+
+
+@schedule_app.command("disable")
+def schedule_disable_command(
+    workflow: str = typer.Argument(..., help="Automation name or name@version."),
+    trigger_id: str = typer.Argument(..., help="The trigger id to pause."),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
+) -> None:
+    """Pause a trigger without deleting it (it is kept but never fires).
+
+    Works for any trigger id on the Automation, EVENT as well as SCHEDULE.
+    """
+    _set_enabled(workflow, trigger_id, False, token, base_url, profile)
+
+
+@schedule_app.command("enable")
+def schedule_enable_command(
+    workflow: str = typer.Argument(..., help="Automation name or name@version."),
+    trigger_id: str = typer.Argument(..., help="The trigger id to resume."),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
+) -> None:
+    """Resume a paused trigger. Works for EVENT as well as SCHEDULE triggers."""
+    _set_enabled(workflow, trigger_id, True, token, base_url, profile)

@@ -43,6 +43,10 @@ class _FakeClient:
     def delete_trigger(self, workflow_id, trigger_id):  # noqa: ANN001
         _FakeClient.last["delete"] = (workflow_id, trigger_id)
 
+    def update_trigger(self, workflow_id, trigger_id, **fields):  # noqa: ANN001, ANN003
+        _FakeClient.last["update"] = (workflow_id, trigger_id, fields)
+        return {"id": trigger_id, **fields}
+
 
 @pytest.fixture(autouse=True)
 def _patch_client(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: ANN001
@@ -89,6 +93,16 @@ def test_delete_removes_by_trigger_id() -> None:
     assert result.exit_code == 0, result.output
     assert _FakeClient.last["delete"] == ("wf-1", "trg-9")
     assert "deleted" in result.output
+
+
+@pytest.mark.parametrize(("command", "enabled"), [("disable", False), ("enable", True)])
+def test_enable_disable_patches_only_enabled(command: str, enabled: bool) -> None:
+    result = runner.invoke(
+        sched.schedule_app, [command, "ade_lead_poll", "trg-9", "--token", _TOKEN]
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["update"] == ("wf-1", "trg-9", {"enabled": enabled})
+    assert f"{command}d trigger trg-9" in result.output
 
 
 def test_unknown_workflow_is_an_error() -> None:
