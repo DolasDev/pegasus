@@ -695,11 +695,19 @@ sources:
   priority: P1
   status: analyzed
   urls: [https://unece.org/trade/uncefact/rdm]
-  files:
-    - {path: sources/uncefact-mmt-rdm/local/uncefact-reference-data-models/, sha256: n/a, retrieved: 2026-09-17, from: user (browser download)}
+  obtain: >
+    Re-download the RDM package from unece.org if a round needs the primary material. It is free and
+    public; it is NOT retained in this repository (see notes).
   notes: >
-    245 MB package, local-only for size (UNECE material is freely available; kept out
-    of git to avoid the bulk). Contains: MMT-RDM_D19A (UML + XSD), the MMT business
+    NOT RETAINED — read 2026-09-17 in round 1, and the 245 MB package is on no checkout of this
+    repository (verified 2026-10-05 across the primary checkout and every worktree). It was never
+    committed: local-only for size, UNECE material being freely available. The entry used to claim a
+    stored copy under local/ with `sha256: n/a`, which was a claim about a file that is gone — and
+    with no hash recorded, a fresh download could not be checked against what was read. **The
+    surviving record of it is sources/uncefact-mmt-rdm/analysis.md**, which is what later rounds
+    cite. One consequence, recorded because a plan got it wrong: its code lists were READ and ship as
+    bare enumerations with no names, so re-obtaining the package cannot close `roleClass` — see
+    analysis/round-1-crosscheck.md under "A8 Parties & roles". Contained: MMT-RDM_D19A (UML + XSD), the MMT business
     requirements spec BRS_T+L-MMT.pdf + BRS_T+L-MMTDataElements.xls, the full
     SCRDM_D22A supply-chain RDM (UML, XSD, Context CCL spreadsheets), BuyShipPay BRS,
     and the RDM guideline/white paper. Most complete neutral transport reference model —
@@ -1130,10 +1138,14 @@ sources:
   priority: P2
   status: analyzed
   urls: [https://unece.org/trade/uncefact/rdm]
-  files:
-    - {path: sources/uncefact-mmt-rdm/local/uncefact-reference-data-models/SCRDM_D22A/, sha256: n/a, retrieved: 2026-09-17, from: user (browser download)}
+  obtain: >
+    Re-download the RDM package from unece.org if a round needs the primary material; SCRDM_D22A is a
+    subtree of it. Free and public; NOT retained in this repository (see notes).
   notes: >
-    Shares the local tree with src:uncefact-mmt-rdm. The ordering/settlement half of
+    NOT RETAINED — read 2026-09-17 in round 1, gone with the rest of the RDM package (verified
+    2026-10-05 on every checkout), and its `sha256` was never recorded, so a fresh download is not
+    verifiable against what was read. The surviving record is
+    sources/uncefact-scrdm/analysis.md. Shared the local tree with src:uncefact-mmt-rdm. The ordering/settlement half of
     the UN/CEFACT model (UML, XSD, Context CCL spreadsheets) plus BRS_BuyShipPay_v1.0,
     RSM_SCRDM, the RDM guideline and white paper. Read after MMT — MMT is the
     transport-execution half and matters more for A3/A4.
@@ -1275,10 +1287,17 @@ sources:
   priority: P1
   status: analyzed
   urls: ["https://unece.org/trade/uncefact/unece-recommendations"]
-  files:
-    - {path: sources/uncefact-rec24/local/, sha256: n/a, retrieved: 2026-09-17, from: unece.org — Rec 24 rev1 (2000), rev3 (2004) code list, rev5 (2009), plus a JSON-LD vocabulary capture and rec24-codes-extracted.tsv}
+  obtain: >
+    Re-download Rec 24 (rev1 2000, rev3 2004 code list, rev5 2009) from unece.org, and RE-EXTRACT the
+    code table — the previous extraction is lost (see notes). Free and public.
   notes: >
-    The NAMED status vocabulary behind the 336-value StatusCode enumeration in the captured
+    NOT RETAINED, and this one lost WORK as well as a download — read 2026-09-17 in round 1, and the
+    local/ tree held the three revisions, a JSON-LD vocabulary capture and a
+    `rec24-codes-extracted.tsv` that we had extracted ourselves. None of it is on any checkout
+    (verified 2026-10-05) and no hash was recorded. A round that wants the named codes must
+    re-download AND re-extract; sources/uncefact-rec24/analysis.md is the surviving record of what was
+    concluded. This matters more than the other two UN/CEFACT entries because it is the NAMED status
+    vocabulary behind the 336-value StatusCode enumeration in the captured
     UN/CEFACT package — which ships as bare values with no names or definitions, so round 1's
     highest A4 coverage score is for a count, not a vocabulary. This is the one candidate for a
     neutral-standards-body status vocabulary rather than a vendor's.
