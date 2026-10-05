@@ -2242,9 +2242,11 @@ loop outlives jest's 15s default.
 
 **Likely fix, UNVERIFIED:** drop the outer async `act` and use the documented RNTL idiom —
 `fireEvent.press(...)` then `await waitFor(() => expect(mockSelectTenant).toHaveBeenCalledWith(…))`.
-`waitFor` polls with a bounded timeout instead of draining VirtualizedList's timer loop. Four
-tests in that file share the pattern. Recorded rather than applied, because it cannot be
-reproduced locally — it needs its own PR and several real CI runs to confirm.
+`waitFor` polls with a bounded timeout instead of draining VirtualizedList's timer loop. **Three**
+tests share the pattern — lines 59, 70 and 90 of a 6-test file, counted 2026-10-05; an earlier
+version of this entry and of the plan both said "four", which was wrong. Recorded rather than
+applied, because it cannot be reproduced locally — it needs its own PR and several real CI runs to
+confirm.
 
 **Update 2026-10-03 — the leaked timer was real, and it was in a DIFFERENT FILE.** A later run
 added "A worker process has failed to exit gracefully and has been force exited … Active timers
@@ -2546,3 +2548,50 @@ Finally, the version you think is installed may not be: the primary checkout had
 had not been reinstalled since the bump. Fresh worktrees got 2.11.5 and the behavior; the primary
 checkout did not. Check `node -p "require('turbo/package.json').version"` before concluding turbo
 does or does not do something.
+
+## `@playwright/mcp` shadows the Playwright runner — never `npx playwright` in `apps/e2e`
+
+`apps/e2e` declares `@playwright/mcp`, which depends on a **prerelease** `playwright`. npm
+installs that at `apps/e2e/node_modules/playwright`, so **anything resolving the binary from that
+directory gets the prerelease runner** while the specs still `import from '@playwright/test'` at
+the root's stable version. The mismatch does not announce itself as a version problem:
+
+```
+Error: Playwright Test did not expect test.describe() to be called here.
+Error: test.skip() can only be called inside test, describe block or fixture
+Error: No tests found
+```
+
+Root `node_modules/.bin/playwright` is linked from `@playwright/test` **itself**, so runner and
+library can never disagree there. **Always invoke it as
+`node ../../node_modules/.bin/playwright`** — the same convention as every other tool in this repo
+(see the `.bin`-by-path entry above). Bare `playwright` in an `apps/e2e` npm script hits the shadow
+too, because npm puts that workspace's `.bin` first on `PATH`.
+
+Broke the **staging E2E gate** on 2026-10-04 after #762 bumped the prerelease to
+1.64.0-alpha (fixed in **#784**). Note which invocations survived and why: the PR-level E2E job
+uses the `.bin` path and stayed green; only the one step that used `npx` failed. `install:browsers`
+was shadowed as well — worse than a failure there, since it would fetch a Chromium build for a
+version nothing runs. Reproduced off-runner in one command each:
+
+```
+cd apps/e2e && E2E_TARGET=remote E2E_API_BASE_URL=https://example.invalid \
+  npx playwright test --list                          # 21 error lines, "No tests found", 0 tests
+  node ../../node_modules/.bin/playwright test --list  # 10 tests in 4 files
+```
+
+**How close it came to being invisible:** a 0-test run that exited 0 would have read as a pass and
+auto-promoted to the prod deploy job. The gate's `E2E_MIN_EXECUTED_TESTS` skip-guard is the only
+thing standing between that and a bad release — here Playwright exited 1 first, so the guard was
+not needed. Do not remove that floor.
+
+The repo already knew this for **imports** —
+`apps/mobile/store-assets/scripts/capture-screens.mjs` has long carried a comment explaining why it
+takes `chromium` from `@playwright/test` rather than bare `playwright` — and had simply never
+applied the same rule to the **commands**. Rules written for one call-site shape do not transfer
+themselves.
+
+Open question, recorded in `plans/todo/ci-blockers-after-security-backlog.md`: `.claude/settings.json`
+launches the MCP server as `npx @playwright/mcp@latest`, so the declared `apps/e2e` dependency's
+only observable effect in CI is this shadowing. Removing it would delete the hazard rather than
+route around it.
