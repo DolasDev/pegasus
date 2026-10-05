@@ -190,6 +190,12 @@ account work blocks the code.
     past their grace. Step 6 schedules it daily.
   - **Readiness** uses the stored key through `getDecryptedKey`, the same
     path 3b.2 will use.
+  - **Retiring a previous key first checks the current key** (`checkReady`
+    with the stored key). If the current key isn't authorized, the previous
+    one may be the only key that works, so it is kept and `lastError` says
+    why. This applies to the sweep and to rotate's retire-first path.
+  - `grantNamespaceAccess` was dropped from the Cloud Ops client: nothing
+    calls it since the platform service account was dropped.
 - [x] Step 6: infra. A `TemporalProvisionerFunction` inside the
       Temporal-configured branch, gated on `temporalProvisionerSecretArn`
       (`TEMPORAL_SECRET_ARNS[env].temporalProvisioner`, optional and unset).
@@ -221,6 +227,13 @@ account work blocks the code.
       platform service account), `GOTCHAS.md` (the Cloud Ops traps), and
       `durable-workflow-worker.md` (3a DNS check ticked, 3b in progress).
       Then `/workstream-finish` with `/security-review`.
+
+**Owed before 3b.2 depends on rotation:** rotate has no rollback to the
+previous key, because its ciphertext is overwritten when the new key is stored.
+If a new key is minted but never authorized, the row keeps serving it. The
+sweep won't delete the old key (see Step 5), but nothing serves it either. Fix
+with a `previousApiKeyCiphertext` column, or a swap-back action, before
+runners rely on rotation.
 
 **Step 1 ⚠️ (Stage B, after Stage A merges; user, one-time, Cloud account):
 create the provisioner identity, one per environment.** Needs a **Global Admin or

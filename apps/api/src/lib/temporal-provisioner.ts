@@ -142,6 +142,35 @@ export async function runTemporalProvisioner(
     log.info('temporal_provisioner.key_deleted', { audit: true, tenantId, apiKeyId: keyId })
   }
 
+  /**
+   * Deletes the rotated-out key, but only after confirming the CURRENT key
+   * is authorized: if a rotation's new key never worked, the previous key
+   * is the only one that does, and deleting it would cut every runner off.
+   */
+  async function retirePreviousKey(tenantId: string, previousApiKeyId: string): Promise<void> {
+    const current = await repo.getDecryptedKey(tenantId)
+    let ready = false
+    if (current) {
+      try {
+        ready = await deps.checkReady({
+          namespace: current.namespace,
+          grpcAddress: current.grpcAddress,
+          apiKey: current.apiKey,
+        })
+      } catch (err) {
+        log.warn('temporal_provisioner.current_key_check_failed', {
+          tenantId,
+          error: errorMessage(err),
+        })
+      }
+    }
+    if (!ready) {
+      throw new Error(`current key not authorized; previous key ${previousApiKeyId} kept`)
+    }
+    await deleteKeyIfExists(tenantId, previousApiKeyId)
+    await repo.clearPreviousKey(tenantId)
+  }
+
   async function waitNamespaceActive(namespace: string) {
     const start = now().getTime()
     for (;;) {
@@ -202,10 +231,7 @@ export async function runTemporalProvisioner(
       await withLease(
         row.tenantId,
         ['READY', 'FAILED'],
-        async () => {
-          await deleteKeyIfExists(row.tenantId, row.previousApiKeyId!)
-          await repo.clearPreviousKey(row.tenantId)
-        },
+        () => retirePreviousKey(row.tenantId, row.previousApiKeyId!),
         (message) => repo.setLastError(row.tenantId, message),
       )
     }
@@ -354,8 +380,7 @@ export async function runTemporalProvisioner(
               `previous key ${row.previousApiKeyId} is still in its grace period until ${row.previousKeyRetireAt.toISOString()}`,
             )
           }
-          await deleteKeyIfExists(tenantId, row.previousApiKeyId)
-          await repo.clearPreviousKey(tenantId)
+          await retirePreviousKey(tenantId, row.previousApiKeyId)
         }
         const expiresAt = new Date(now().getTime() + KEY_TTL_MS)
         const key = await cloud.createApiKey({

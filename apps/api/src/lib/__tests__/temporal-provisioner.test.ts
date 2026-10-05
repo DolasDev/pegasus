@@ -456,6 +456,27 @@ describe.skipIf(!hasDb)('runTemporalProvisioner (integration)', () => {
       expect(cloud.keys.size).toBe(2)
     })
 
+    it('keeps an expired previous key when the current key is not authorized', async () => {
+      const { cloud, oldKeyId } = await provisioned()
+      await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))
+      const mid = await repo.findByTenant(tenantId)
+
+      const later = deps(cloud, {
+        now: () => new Date('2026-10-07T00:00:00.000Z'),
+        checkReady: vi.fn(async () => false),
+      })
+      expect(await runTemporalProvisioner({ action: 'rotate', tenantId }, later)).toEqual({
+        outcome: 'failed',
+      })
+      const row = await repo.findByTenant(tenantId)
+      // The old key may be the only one that works: it stays, and so does the row.
+      expect(cloud.keys.has(oldKeyId)).toBe(true)
+      expect(row!.status).toBe('READY')
+      expect(row!.apiKeyId).toBe(mid!.apiKeyId)
+      expect(row!.previousApiKeyId).toBe(oldKeyId)
+      expect(row!.lastError).toMatch(/current key not authorized/)
+    })
+
     it('is refused on a row that is not READY', async () => {
       const cloud = new FakeCloud()
       const out = await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))
@@ -486,6 +507,26 @@ describe.skipIf(!hasDb)('runTemporalProvisioner (integration)', () => {
       expect(row!.previousApiKeyId).toBeNull()
       expect(row!.previousKeyRetireAt).toBeNull()
       expect(row!.status).toBe('READY')
+    })
+
+    it('keeps the previous key when the current key is not authorized', async () => {
+      const cloud = new FakeCloud()
+      await runTemporalProvisioner({ action: 'provision', tenantId }, deps(cloud))
+      const oldKeyId = (await repo.findByTenant(tenantId))!.apiKeyId!
+      await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))
+
+      const checkReady = vi.fn(async () => false)
+      const later = deps(cloud, { now: () => new Date('2026-10-07T00:00:00.000Z'), checkReady })
+      await runTemporalProvisioner({ action: 'retire-previous-keys' }, later)
+
+      const row = await repo.findByTenant(tenantId)
+      expect(cloud.keys.has(oldKeyId)).toBe(true)
+      expect(row!.previousApiKeyId).toBe(oldKeyId)
+      expect(row!.lastError).toMatch(/current key not authorized/)
+      // Checked with the CURRENT key, not the one being retired.
+      expect(checkReady).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: cloud.keys.get(row!.apiKeyId!)!.token }),
+      )
     })
 
     it('treats an already-deleted previous key as retired', async () => {

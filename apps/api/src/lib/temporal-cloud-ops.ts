@@ -167,8 +167,6 @@ export type CloudOpsClientOptions = {
   baseUrl?: string
 }
 
-export type NamespacePermission = 'PERMISSION_WRITE' | 'PERMISSION_READ'
-
 export function createTemporalCloudOpsClient(opts: CloudOpsClientOptions) {
   const doFetch = opts.fetch ?? fetch
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
@@ -392,29 +390,6 @@ export function createTemporalCloudOpsClient(opts: CloudOpsClientOptions) {
           async_operation_id: input.asyncOperationId,
         },
       })
-      return { asyncOperationId: operationId(body) }
-    },
-
-    /** The narrow grant: needs namespace Admin on `namespace` only. */
-    async grantNamespaceAccess(input: {
-      namespace: string
-      serviceAccountId: string
-      permission: NamespacePermission
-      resourceVersion: string
-      asyncOperationId: string
-    }): Promise<{ asyncOperationId: string }> {
-      assertProvisionableName(env, input.namespace)
-      const body = await request(
-        'POST',
-        `/cloud/namespaces/${enc(input.namespace)}/service-accounts/${enc(input.serviceAccountId)}/access`,
-        {
-          body: {
-            access: { permission: input.permission },
-            resource_version: input.resourceVersion,
-            async_operation_id: input.asyncOperationId,
-          },
-        },
-      )
       return { asyncOperationId: operationId(body) }
     },
 

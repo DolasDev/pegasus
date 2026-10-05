@@ -318,28 +318,6 @@ describe('createTemporalCloudOpsClient — requests', () => {
     expect(await client.getApiKey('key-1')).toEqual({ id: 'key-1', resourceVersion: 'r1' })
     expect(await client.getApiKey('key-1')).toBeNull()
   })
-
-  it('grantNamespaceAccess posts the narrow per-namespace grant', async () => {
-    const { client, calls } = harness([
-      { status: 200, body: { async_operation: op('op-6', 'STATE_PENDING') } },
-    ])
-    await client.grantNamespaceAccess({
-      namespace: NS_ID,
-      serviceAccountId: 'sa-1',
-      permission: 'PERMISSION_WRITE',
-      resourceVersion: 'r1',
-      asyncOperationId: 'g1',
-    })
-    expect(calls[0]).toMatchObject({
-      method: 'POST',
-      url: `https://saas-api.tmprl.cloud/cloud/namespaces/${NS_ID}/service-accounts/sa-1/access`,
-      body: {
-        access: { permission: 'PERMISSION_WRITE' },
-        resource_version: 'r1',
-        async_operation_id: 'g1',
-      },
-    })
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -373,17 +351,6 @@ describe('createTemporalCloudOpsClient — name guard', () => {
         c.createScopedServiceAccount({
           name: 'n',
           namespace: 'pg-prod-a90b22bc4393.chgel',
-          asyncOperationId: 'x',
-        }),
-    ],
-    [
-      'grantNamespaceAccess',
-      (c: ReturnType<typeof harness>['client']) =>
-        c.grantNamespaceAccess({
-          namespace: 'pegasus-staging.chgel',
-          serviceAccountId: 's',
-          permission: 'PERMISSION_WRITE',
-          resourceVersion: 'r',
           asyncOperationId: 'x',
         }),
     ],
