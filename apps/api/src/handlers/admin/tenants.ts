@@ -20,6 +20,7 @@ import { adminTenantUsersRouter } from './tenant-users'
 import { adminVpnRouter } from './vpn'
 import { adminVpnDiagnoseRouter } from './vpn-diagnose'
 import { adminTenantUsageRouter } from './tenant-usage'
+import { adminTemporalNamespaceRouter } from './temporal-namespace'
 
 const TenantStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'OFFBOARDED'])
 
@@ -786,6 +787,15 @@ adminTenantsRouter.route('/:tenantId/users', adminTenantUsersRouter)
 // ---------------------------------------------------------------------------
 adminTenantsRouter.route('/:tenantId/vpn', adminVpnRouter)
 adminTenantsRouter.route('/:tenantId/vpn', adminVpnDiagnoseRouter)
+
+// ---------------------------------------------------------------------------
+// Mount the tenant Temporal-namespace sub-router (Phase 3b)
+//
+// Routes: GET|POST /api/admin/tenants/:tenantId/temporal-namespace
+//         POST /api/admin/tenants/:tenantId/temporal-namespace/rotate-key
+//         POST /api/admin/tenants/:tenantId/temporal-namespace/deprovision
+// ---------------------------------------------------------------------------
+adminTenantsRouter.route('/:tenantId/temporal-namespace', adminTemporalNamespaceRouter)
 
 // ---------------------------------------------------------------------------
 // Mount tenant usage sub-router (automation plan + billable-action usage)

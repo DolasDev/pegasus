@@ -197,7 +197,17 @@ account work blocks the code.
       audit trail). Tests cover both the unset and the set case. **Gotcha:**
       the `_deploy.yml` pre-flight greps every `arn:aws:secretsmanager:`
       literal in `bin/app.ts`, comments included.
-- [ ] Step 7: admin API + admin-web
+- [x] Step 7: `handlers/admin/temporal-namespace.ts` (a sub-router like
+      `vpn.ts`), `lib/temporal-provisioner-invoke.ts`, and admin-web's
+      `TenantTemporalNamespaceSection`. Deviations:
+  - **GET with no row returns 200 `{data: null, configured}`, not 404**, so
+    admin-web can tell "no namespace" apart from "not configured" without a
+    second call.
+  - A PROVISIONING or DEPROVISIONING row is re-invoked only when its lease
+    has expired (a killed run). A live run just gets 202.
+  - A failed invoke returns 502 and marks the row FAILED (rotate excepted).
+  - The namespace id is `tenantNamespaceName(tenantTaskQueueEnv(), tenantId)`
+    plus the account suffix from `TEMPORAL_NAMESPACE`.
 - [ ] Step 8: broker credentials endpoint
 - [ ] Step 10: docs + `/workstream-finish`
 

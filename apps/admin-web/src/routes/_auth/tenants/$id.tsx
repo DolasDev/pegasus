@@ -15,6 +15,7 @@ import type { TenantDetail } from '@/api/tenants'
 import { TenantFormDialog } from '@/components/TenantFormDialog'
 import { TenantUsersSection } from '@/components/TenantUsersSection'
 import { TenantVpnSection } from '@/components/TenantVpnSection'
+import { TenantTemporalNamespaceSection } from '@/components/TenantTemporalNamespaceSection'
 import { TenantUsageSection } from '@/components/TenantUsageSection'
 import { ApiError } from '@/api/client'
 
@@ -606,6 +607,14 @@ export function TenantDetailPage() {
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-foreground">WireGuard VPN</h2>
             <TenantVpnSection tenantId={id} />
+          </section>
+        )}
+
+        {/* Temporal namespace (Phase 3b) — the tenant's own namespace for Automations */}
+        {tenant.status !== 'OFFBOARDED' && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-foreground">Temporal namespace</h2>
+            <TenantTemporalNamespaceSection tenantId={id} />
           </section>
         )}
 

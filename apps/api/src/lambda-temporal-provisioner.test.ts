@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const send = vi.fn()
+const { send, runTemporalProvisioner } = vi.hoisted(() => ({
+  send: vi.fn(),
+  runTemporalProvisioner: vi.fn(async () => ({ outcome: 'done' })),
+}))
 vi.mock('@aws-sdk/client-secrets-manager', () => ({
   SecretsManagerClient: vi.fn(function () {
     return { send }
@@ -10,11 +13,10 @@ vi.mock('@aws-sdk/client-secrets-manager', () => ({
   }),
 }))
 
-const runTemporalProvisioner = vi.fn(async () => ({ outcome: 'done' }))
 vi.mock('./lib/temporal-provisioner', () => ({ runTemporalProvisioner }))
 vi.mock('./db', () => ({ db: {} }))
 
-const { handler } = await import('./lambda-temporal-provisioner')
+import { handler } from './lambda-temporal-provisioner'
 
 describe('lambda-temporal-provisioner handler', () => {
   beforeEach(() => {
