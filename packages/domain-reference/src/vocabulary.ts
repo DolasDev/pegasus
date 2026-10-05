@@ -780,10 +780,25 @@ export function isSingletonFamily(family: SubjectFamilyName): boolean {
  *
  * "The spellings in the first column are the vocabulary; the rest are prose aliases." Held here so
  * a reader who finds `time.arrival` or `delivery-performance` in [A3] or [fork-time] can map it.
+ *
+ * Note 5's table is **quoted**, never extended here: a row this map carries and the table does not
+ * is a divergence `documents.test.ts` records in both directions. `time.delivery` arrived by the
+ * table gaining the row first (decision C4, 2026-10-04), which is the only order the register
+ * permits.
  */
 export const PROSE_ALIASES = {
   'time.arrival': 'arrival',
   'time.departure': 'departure',
+  /**
+   * [`fork-time` §8.1]'s spelling for a committed delivery time — note 5's missing row, added by
+   * decision C4.
+   *
+   * **It resolves the `type` and not the record.** §8.1's value is a `LocalDateRange`, which
+   * `fork-time` §(b)(5) decides and the shared layer never adopted, so the record it writes is
+   * still unpublishable. {@link TypedTimeValuesAreUnadopted} in
+   * `tests/conformance/time-value-shape-refuses.ts` is that finding, held as a type.
+   */
+  'time.delivery': 'delivery',
   'delivery-performance': 'delivery',
   'load performance': 'loading',
   'unload performance': 'unloading',
