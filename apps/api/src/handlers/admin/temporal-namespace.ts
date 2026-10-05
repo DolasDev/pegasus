@@ -58,7 +58,7 @@ function toDto(row: TenantTemporalNamespaceRow) {
 
 /** Audit snapshots: the DTO, which never carries key material. */
 function snapshot(row: TenantTemporalNamespaceRow | null): Prisma.InputJsonValue | null {
-  return row ? (toDto(row) as unknown as Prisma.InputJsonValue) : null
+  return row ? toDto(row) : null
 }
 
 /**
