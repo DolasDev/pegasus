@@ -18,6 +18,7 @@ const { repo } = vi.hoisted(() => ({
     listSites: vi.fn(),
     listCompanies: vi.fn(),
     findSite: vi.fn(),
+    findCompany: vi.fn(),
     ensureDefaultTarget: vi.fn(),
     createCompany: vi.fn(),
     updateCompany: vi.fn(),
@@ -29,7 +30,29 @@ vi.mock('../repositories/company.repository', async () => {
   return { ...actual, createCompanyRepository: vi.fn(() => repo) }
 })
 
+const { memberships, listSalesmen, resolveCaller } = vi.hoisted(() => ({
+  memberships: {
+    listSyncUsers: vi.fn(),
+    listExisting: vi.fn(),
+    applyPlan: vi.fn(),
+    listForCompany: vi.fn(),
+  },
+  listSalesmen: vi.fn(),
+  resolveCaller: vi.fn(),
+}))
+vi.mock('../repositories/company-membership.repository', () => ({
+  createCompanyMembershipRepository: vi.fn(() => memberships),
+}))
+vi.mock('../gateways/salesman-gateway.factory', () => ({
+  resolveSalesmanGateway: vi.fn(async (_db: unknown, _t: unknown, callerOf: () => unknown) => {
+    await callerOf()
+    return { listSalesmen }
+  }),
+}))
+vi.mock('../lib/pegii-request-context', () => ({ resolvePegiiCaller: resolveCaller }))
+
 import { settingsCompaniesHandler } from './settings-companies'
+import { PegiiApiError } from '../lib/pegii-api-client'
 
 const SITE = '11111111-1111-4111-8111-111111111111'
 const json = (res: Response) => res.json() as Promise<Record<string, unknown>>
@@ -202,5 +225,115 @@ describe('PATCH /sites/:id', () => {
       send('PATCH', { cloudAuthEnabled: true }),
     )
     expect(res.status).toBe(403)
+  })
+})
+
+describe('POST /companies/:id/membership-sync', () => {
+  const salesman = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    email: null,
+    winUsername: null,
+    active: true,
+    dateTerminated: null,
+    ...over,
+  })
+
+  beforeEach(() => {
+    repo.findCompany.mockResolvedValue({
+      id: 'co-usa',
+      code: 'QMM-USA',
+      dataSourceKey: 'PegQMMUSA',
+    })
+    memberships.listExisting.mockResolvedValue([])
+    memberships.applyPlan.mockResolvedValue(undefined)
+  })
+
+  it("reads the company's directory as the calling admin and applies the plan", async () => {
+    listSalesmen.mockResolvedValue([
+      salesman('1001', { email: 'jane@qmm.com', winUsername: 'jdoe' }),
+      salesman('1002', { email: 'gone@qmm.com', active: false }),
+    ])
+    memberships.listSyncUsers.mockResolvedValue([
+      { id: 'u1', email: 'jane@qmm.com', legacyWindowsUsername: null },
+      { id: 'u2', email: 'nobody@qmm.com', legacyWindowsUsername: null },
+    ])
+
+    const res = await buildApp().request('/companies/co-usa/membership-sync', { method: 'POST' })
+
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual({
+      employees: 2,
+      linked: 1,
+      newlyLinked: 1,
+      deactivated: 0,
+      unmatched: 1,
+      ambiguous: 0,
+      unmatchedUserIds: ['u2'],
+      ambiguousMatches: [],
+    })
+    expect(resolveCaller).toHaveBeenCalledWith(expect.anything(), { companyId: 'co-usa' })
+    expect(listSalesmen).toHaveBeenCalledWith()
+    const [tenantId, companyId, plan] = memberships.applyPlan.mock.calls[0]!
+    expect([tenantId, companyId]).toEqual(['tenant-1', 'co-usa'])
+    expect(plan.writes).toEqual([
+      expect.objectContaining({ tenantUserId: 'u1', employeeCode: 1001, status: 'LINKED' }),
+    ])
+  })
+
+  it("404s for a company that isn't the tenant's, without calling pegII", async () => {
+    repo.findCompany.mockResolvedValue(null)
+
+    const res = await buildApp().request('/companies/foreign/membership-sync', { method: 'POST' })
+
+    expect(res.status).toBe(404)
+    expect(listSalesmen).not.toHaveBeenCalled()
+  })
+
+  it('maps an old site build to 503 PEGII_CAPABILITY_MISSING and writes nothing', async () => {
+    listSalesmen.mockRejectedValue(
+      new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'does not support: pegii.salesmen.list.v1'),
+    )
+
+    const res = await buildApp().request('/companies/co-usa/membership-sync', { method: 'POST' })
+
+    expect(res.status).toBe(503)
+    expect((await json(res))['code']).toBe('PEGII_CAPABILITY_MISSING')
+    expect(memberships.applyPlan).not.toHaveBeenCalled()
+  })
+
+  it("maps the site's COMPANY_NOT_FOUND (no SpokeConnections entry) to a legible 404", async () => {
+    listSalesmen.mockRejectedValue(
+      new PegiiApiError('PEGII_API_HTTP_ERROR', 'x', 404, 'COMPANY_NOT_FOUND'),
+    )
+
+    const res = await buildApp().request('/companies/co-usa/membership-sync', { method: 'POST' })
+
+    expect(res.status).toBe(404)
+    expect((await json(res))['code']).toBe('COMPANY_NOT_FOUND')
+  })
+
+  it('requires UpdateSettings', async () => {
+    const res = await buildApp(null).request('/companies/co-usa/membership-sync', {
+      method: 'POST',
+    })
+    expect(res.status).toBe(403)
+  })
+})
+
+describe('GET /companies/:id/memberships', () => {
+  it('returns the members and unmatched users', async () => {
+    repo.findCompany.mockResolvedValue({ id: 'co-1' })
+    memberships.listForCompany.mockResolvedValue({ members: [], unmatched: [{ id: 'u1' }] })
+
+    const res = await buildApp().request('/companies/co-1/memberships')
+
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual({ members: [], unmatched: [{ id: 'u1' }] })
+    expect(memberships.listForCompany).toHaveBeenCalledWith('tenant-1', 'co-1')
+  })
+
+  it("404s for a company that isn't the tenant's", async () => {
+    repo.findCompany.mockResolvedValue(null)
+    expect((await buildApp().request('/companies/x/memberships')).status).toBe(404)
   })
 })

@@ -73,6 +73,56 @@ describe('buildPegiiTokenClaims', () => {
     expect(buildPegiiTokenClaims(input(), ISSUER, 1, 'j')).not.toHaveProperty('emp')
   })
 
+  it("stamps a user's membership as emp + wun (I3)", () => {
+    const c = buildPegiiTokenClaims(
+      input({
+        principal: {
+          tenantUserId: 'user-1',
+          isServiceAccount: false,
+          attribution: { employeeCode: 4471, windowsUsername: 'jdoe' },
+        },
+      }),
+      ISSUER,
+      1,
+      'j',
+    )
+    expect(c).toMatchObject({ ptype: 'user', emp: 4471, wun: 'jdoe' })
+  })
+
+  it('omits wun when the linked employee has no Windows username', () => {
+    const c = buildPegiiTokenClaims(
+      input({
+        principal: {
+          tenantUserId: 'user-1',
+          isServiceAccount: false,
+          attribution: { employeeCode: 4471, windowsUsername: null },
+        },
+      }),
+      ISSUER,
+      1,
+      'j',
+    )
+    expect(c.emp).toBe(4471)
+    expect(c).not.toHaveProperty('wun')
+  })
+
+  it("a service account keeps the company's system employee even if attribution is passed", () => {
+    const c = buildPegiiTokenClaims(
+      input({
+        principal: {
+          tenantUserId: 'svc-1',
+          isServiceAccount: true,
+          attribution: { employeeCode: 4471, windowsUsername: 'jdoe' },
+        },
+      }),
+      ISSUER,
+      1,
+      'j',
+    )
+    expect(c.emp).toBe(1001)
+    expect(c).not.toHaveProperty('wun')
+  })
+
   it.each([null, undefined, ''])('refuses to mint without a subject (%s)', (sub) => {
     expect(() =>
       buildPegiiTokenClaims(
@@ -102,7 +152,7 @@ describe('createPegiiTokenMinter', () => {
     expect(payload['cid']).toBe('QMM_CA')
   })
 
-  it('caches per (tenant, principal, site, company) until shortly before exp', async () => {
+  it('caches per (tenant, principal, site, company, attribution) until shortly before exp', async () => {
     const { signer } = await localKeys()
     let now = 1_000_000_000_000
     const minter = createPegiiTokenMinter({ signer, issuer: ISSUER, now: () => now })
@@ -113,6 +163,15 @@ describe('createPegiiTokenMinter', () => {
     expect(
       await minter.mint(input({ company: { dataSourceKey: 'QMM_US', systemEmployeeCode: null } })),
     ).not.toBe(first)
+
+    const linked = input({
+      principal: {
+        tenantUserId: 'user-1',
+        isServiceAccount: false,
+        attribution: { employeeCode: 4471, windowsUsername: 'jdoe' },
+      },
+    })
+    expect(await minter.mint(linked)).not.toBe(first)
 
     now += (PEGII_TOKEN_TTL_SECONDS - 61) * 1000
     expect(await minter.mint(input())).toBe(first)

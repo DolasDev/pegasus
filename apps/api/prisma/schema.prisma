@@ -284,6 +284,7 @@ model Tenant {
   workflows               Workflow[]
   sites                   Site[]
   companies               Company[]
+  companyMemberships      CompanyMembership[]
   workflowTriggers        WorkflowTrigger[]
   integrationConfigs      IntegrationConfig[]
   domainEvents            DomainEvent[]
@@ -506,8 +507,9 @@ model TenantUser {
   apiClientsActedAs ApiClient[] @relation("ApiClientActsAs")
   crewMember        CrewMember?
 
-  deviceTokens      DeviceToken[]
-  pushNotifications PushNotificationOutbox[]
+  deviceTokens       DeviceToken[]
+  pushNotifications  PushNotificationOutbox[]
+  companyMemberships CompanyMembership[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3274,12 +3276,61 @@ model Company {
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  site   Site   @relation(fields: [siteId], references: [id])
+  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+  site        Site                @relation(fields: [siteId], references: [id])
+  memberships CompanyMembership[]
 
   @@unique([tenantId, code])
   @@unique([siteId, dataSourceKey])
   @@index([tenantId])
   @@map("companies")
+  @@schema("public")
+}
+
+/// LINKED: the user is this employee in this company (attribution claims are
+/// minted). INACTIVE: the matched employee is inactive, terminated or gone —
+/// kept, never deleted, so the admin view shows the history.
+enum CompanyMembershipStatus {
+  LINKED
+  INACTIVE
+
+  @@schema("public")
+}
+
+/// How the membership sync matched the user to the employee row.
+enum CompanyMembershipMatch {
+  EMAIL
+  WIN_USERNAME
+
+  @@schema("public")
+}
+
+/// A cloud user's identity in one company: the legacy employee row they are
+/// (cloud identity I3). Written only by the membership sync, which matches a
+/// TenantUser to the company's pegII salesman directory by email, then Windows
+/// username. A LINKED row puts `emp`/`wun` on the user's pegII tokens for that
+/// company — attribution only (D-I1), never an access decision.
+model CompanyMembership {
+  id                    String                  @id @default(uuid())
+  tenantId              String                  @map("tenant_id")
+  companyId             String                  @map("company_id")
+  tenantUserId          String                  @map("tenant_user_id")
+  /// salesman.code in the company's database.
+  employeeCode          Int                     @map("employee_code")
+  /// salesman.win_username, as the sync last saw it.
+  legacyWindowsUsername String?                 @map("legacy_windows_username")
+  status                CompanyMembershipStatus
+  matchedBy             CompanyMembershipMatch  @map("matched_by")
+  lastSyncedAt          DateTime                @map("last_synced_at")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tenantUser TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, tenantUserId])
+  @@index([tenantId])
+  @@map("company_memberships")
   @@schema("public")
 }

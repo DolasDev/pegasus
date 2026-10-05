@@ -20,6 +20,7 @@ describe('mapPegiiSalesmanToRecord', () => {
       isActive: true,
       startDate: '2017-04-17T00:00:00',
       dateTerminated: null,
+      winUsername: null,
     }
 
     expect(mapPegiiSalesmanToRecord(dto)).toEqual({
@@ -38,6 +39,7 @@ describe('mapPegiiSalesmanToRecord', () => {
       active: true,
       startDate: '2017-04-17T00:00:00',
       dateTerminated: null,
+      winUsername: null,
     })
   })
 
@@ -67,6 +69,7 @@ describe('mapPegiiSalesmanToRecord', () => {
       active: true,
       startDate: null,
       dateTerminated: null,
+      winUsername: null,
     })
   })
 

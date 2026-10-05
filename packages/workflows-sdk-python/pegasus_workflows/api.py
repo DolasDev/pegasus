@@ -2065,14 +2065,23 @@ class PegasusClient:
         For use inside workflow activities. Pass through query params such as
         ``active`` (``"true"``/``"false"``) as keyword arguments.
 
+        Reads every salesman in the tenant's default company, live from the
+        site's pegII directory (all pages). Fields the directory doesn't carry
+        (``avlCode``, ``title``, ``extension``, ``agencyCode``, ``roles``,
+        ``startDate``) come back null — fetch one with ``get_salesman`` for
+        the full record.
+
         Returns:
             A list of salesman rows (``{id, avlCode, firstName, lastName, name,
             title, email, extension, branch, agencyCode, roles, employeeType,
             active, startDate, dateTerminated}``).
 
         Raises:
-            PegasusApiError: On 403 (manifest lacks ``ReadSalesman``) or any
-                other non-2xx.
+            PegasusApiError: On 403 (manifest lacks ``ReadSalesman``); 503
+                ``PEGII_CAPABILITY_MISSING`` when the site's pegII API build
+                predates ``pegii.salesmen.list.v1``; 502 when the site is
+                unreachable or rejects the platform's credential; or any other
+                non-2xx.
         """
         return self._get_json("/api/v1/pegii/salesmen", **params)["data"]
 

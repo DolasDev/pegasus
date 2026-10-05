@@ -3,6 +3,23 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.45.1
+
+### Changed — `list_salesmen` returns the live directory
+
+- `list_salesmen()` used to return an empty list: the platform had no pegII
+  directory to read. It now reads every salesman in the tenant's default
+  company, live from the site (`GET /api/v1/pegii/salesmen`, all pages). No
+  SDK code changed; this release documents the new behaviour.
+- **It can now fail where it used to return `[]`:** 503
+  `PEGII_CAPABILITY_MISSING` on a site whose pegII API build predates
+  `pegii.salesmen.list.v1`, and 502 on a site that is unreachable or not yet
+  set up to accept the platform's credential. Catch `PegasusApiError` if an
+  Automation should carry on without it.
+- Directory rows carry no `avlCode`, `title`, `extension`, `agencyCode`,
+  `roles` or `startDate` (null). `get_salesman(id)` still returns the full
+  record.
+
 ## 0.45.0
 
 ### Added — update or pause a trigger without deleting it

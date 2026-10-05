@@ -67,5 +67,6 @@ export function mapPegiiSalesmanToRecord(dto: PegiiSalesmanDto): SalesmanRecord 
     active: mapActive(dto.isActive),
     startDate: dto.startDate ?? null,
     dateTerminated: dto.dateTerminated ?? null,
+    winUsername: dto.winUsername?.trim() || null,
   }
 }

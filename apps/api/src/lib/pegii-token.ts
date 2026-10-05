@@ -6,7 +6,7 @@
 // the request's principal. pegII validates it against GET /.well-known/jwks.json
 // and checks only signature/iss/aud/exp — WHICH principal may do what was
 // already decided by Cedar before the bridge call (the cloud is the gate).
-// `emp` is for attribution only, never for access.
+// `emp`/`wun` are for attribution only, never for access.
 //
 // The claim set is the "Token contract (I1 ↔ I2)" in the design doc; the shared
 // fixture under src/__fixtures__/pegii-token/ pins it for both repos.
@@ -31,6 +31,12 @@ export interface PegiiTokenPrincipal {
   /** TenantUser.id — the human user, or the service account an ApiClient acts as. */
   tenantUserId: string | null | undefined
   isServiceAccount: boolean
+  /**
+   * A human user's LINKED CompanyMembership in the target company (cloud
+   * identity I3) → `emp`/`wun`. Ignored for service accounts, which take the
+   * company's systemEmployeeCode instead.
+   */
+  attribution?: { employeeCode: number; windowsUsername: string | null } | null
 }
 
 export interface PegiiTokenCompany {
@@ -59,6 +65,7 @@ export interface PegiiTokenClaims {
   jti: string
   cid?: string
   emp?: number
+  wun?: string
 }
 
 export interface PegiiTokenMinter {
@@ -105,6 +112,11 @@ export function buildPegiiTokenClaims(
   if (service && input.company.systemEmployeeCode != null) {
     claims.emp = input.company.systemEmployeeCode
   }
+  const attribution = input.principal.attribution
+  if (!service && attribution) {
+    claims.emp = attribution.employeeCode
+    if (attribution.windowsUsername) claims.wun = attribution.windowsUsername
+  }
   return claims
 }
 
@@ -123,8 +135,17 @@ export function createPegiiTokenMinter(opts: {
 }): PegiiTokenMinter {
   const now = opts.now ?? Date.now
   const cache = new Map<string, { token: string; renewAt: number }>()
+  // Attribution is in the key, so a membership change (a sync) re-mints at once
+  // instead of riding a cached token with the old `emp`/`wun`.
   const keyOf = (i: MintPegiiTokenInput) =>
-    `${i.tenantId}|${i.principal.tenantUserId ?? ''}|${i.siteId}|${i.company.dataSourceKey ?? ''}`
+    [
+      i.tenantId,
+      i.principal.tenantUserId ?? '',
+      i.siteId,
+      i.company.dataSourceKey ?? '',
+      i.principal.attribution?.employeeCode ?? '',
+      i.principal.attribution?.windowsUsername ?? '',
+    ].join('|')
 
   return {
     async mint(input) {

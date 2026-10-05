@@ -1026,7 +1026,7 @@ client.get_order("SO-12345")         # ReadOrder — projected row {id, orderNum
 client.list_tasks(order_id="SO-12345")   # ReadTask
 client.get_task("task-1")            # ReadTask
 client.close_task(order_id="SO-12345", task_type="date_confirmation", reason="done")  # CloseTask
-client.list_salesmen(active="true")  # ReadSalesman
+client.list_salesmen(active="true")  # ReadSalesman — the whole directory, live from the site
 client.get_salesman("213056")        # ReadSalesman — {id, name, email, branch, active, …}
 ```
 

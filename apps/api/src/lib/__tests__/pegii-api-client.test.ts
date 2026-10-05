@@ -178,6 +178,20 @@ describe('createPegiiApiClient.getHealth', () => {
 })
 
 describe('pegiiApiErrorToHttp', () => {
+  it("maps the site's COMPANY_NOT_FOUND to its own 404, and never as a record not-found", () => {
+    const err = new PegiiApiError('PEGII_API_HTTP_ERROR', 'x', 404, 'COMPANY_NOT_FOUND')
+    expect(pegiiApiErrorToHttp(err)).toMatchObject({ status: 404, code: 'COMPANY_NOT_FOUND' })
+    expect(isPegiiNotFound(err)).toBe(false)
+  })
+
+  it('maps COMPANY_SCHEMA_UNAVAILABLE to 503 with its own code', () => {
+    expect(
+      pegiiApiErrorToHttp(
+        new PegiiApiError('PEGII_API_HTTP_ERROR', 'x', 503, 'COMPANY_SCHEMA_UNAVAILABLE'),
+      ),
+    ).toMatchObject({ status: 503, code: 'COMPANY_SCHEMA_UNAVAILABLE' })
+  })
+
   it('maps NOT_CONFIGURED to 503 PEGII_SOURCE_UNAVAILABLE', () => {
     expect(pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_NOT_CONFIGURED', 'x'))).toMatchObject({
       status: 503,

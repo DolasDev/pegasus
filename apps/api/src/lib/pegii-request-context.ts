@@ -11,9 +11,15 @@
 // PEGII_PRINCIPAL_UNRESOLVED — so a site that doesn't verify cloud tokens yet
 // keeps working through the legacy credential path.
 //
-// The company is the tenant's default company (I1 has no per-call company
-// selection; the SDK `company=` parameter comes later). A tenant wired to pegII
-// after the backfill gets its Primary site + default company on first use.
+// The company is the tenant's default company unless the caller names one
+// (`opts.companyId` — the I3 membership sync, which reads each company's
+// directory). Workflows have no per-call company selection yet; the SDK
+// `company=` parameter comes later. A tenant wired to pegII after the backfill
+// gets its Primary site + default company on first use.
+//
+// A human user with a LINKED CompanyMembership in the target company carries
+// it as `emp`/`wun` (attribution only, D-I1); service accounts take the
+// company's systemEmployeeCode in the minter instead.
 // Every read goes through the tenant-scoped client, so a cross-tenant company
 // or site — and therefore a cross-tenant `cid`/`aud` — can't be resolved.
 // ---------------------------------------------------------------------------
@@ -21,7 +27,8 @@
 import type { Context } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
-import { createCompanyRepository } from '../repositories/company.repository'
+import { createCompanyRepository, type CompanyTarget } from '../repositories/company.repository'
+import { createCompanyMembershipRepository } from '../repositories/company-membership.repository'
 import type { PegiiTokenCompany, PegiiTokenPrincipal } from './pegii-token'
 
 export interface PegiiCaller {
@@ -33,7 +40,10 @@ export interface PegiiCaller {
   company: PegiiTokenCompany & { id: string; code: string }
 }
 
-export async function resolvePegiiCaller(c: Context<AppEnv>): Promise<PegiiCaller> {
+export async function resolvePegiiCaller(
+  c: Context<AppEnv>,
+  opts: { companyId?: string } = {},
+): Promise<PegiiCaller> {
   const tenantId = c.get('tenantId')
   const db = c.get('db') as PrismaClient
   const tenantUserId = c.get('apiClient')?.actsAsUserId ?? c.get('userId') ?? null
@@ -46,7 +56,18 @@ export async function resolvePegiiCaller(c: Context<AppEnv>): Promise<PegiiCalle
     : null
 
   const repo = createCompanyRepository(db)
-  let target = await repo.getDefaultTarget()
+  let target: CompanyTarget | null
+  if (opts.companyId) {
+    // Tenant-scoped reads: another tenant's company id resolves to nothing.
+    const company = await repo.findCompany(opts.companyId)
+    const site = company ? await repo.findSite(company.siteId) : null
+    if (!company || !site) {
+      throw new Error(`company ${opts.companyId} not found while resolving the pegII caller`)
+    }
+    target = { company, site }
+  } else {
+    target = await repo.getDefaultTarget()
+  }
   if (!target) {
     const tenant = await db.tenant.findUnique({
       where: { id: tenantId },
@@ -56,12 +77,23 @@ export async function resolvePegiiCaller(c: Context<AppEnv>): Promise<PegiiCalle
     target = await repo.ensureDefaultTarget(tenant)
   }
 
+  const attribution =
+    user && !user.isServiceAccount
+      ? await createCompanyMembershipRepository(db).findLinked(target.company.id, user.id)
+      : null
+
   return {
     tenantId,
     correlationId: c.get('correlationId') ?? 'unknown',
     principal: {
       tenantUserId: user?.id ?? null,
       isServiceAccount: user?.isServiceAccount ?? false,
+      attribution: attribution
+        ? {
+            employeeCode: attribution.employeeCode,
+            windowsUsername: attribution.legacyWindowsUsername,
+          }
+        : null,
     },
     site: { id: target.site.id, cloudAuthEnabled: target.site.cloudAuthEnabled },
     company: {

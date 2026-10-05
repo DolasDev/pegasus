@@ -144,7 +144,10 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
   }),
   '/api/v1/pegii/salesmen': apiKeyGet('listPegiiSalesmen', 'List pegII salesmen (ReadSalesman)', {
     tags: ['pegII'],
-    query: [{ name: 'active', description: 'filter by active state' }],
+    query: [{ name: 'active', description: 'filter by active state: true | false (omit for all)' }],
+    responseDescription:
+      "Every salesman in the default company's directory, read live from the site (all pages). " +
+      "503 PEGII_CAPABILITY_MISSING when the site's pegII API build predates pegii.salesmen.list.v1.",
   }),
   '/api/v1/pegii/salesmen/{salesmanId}': apiKeyGet(
     'getPegiiSalesman',

@@ -113,6 +113,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // cross-tenant `cid`/`aud` can never be minted.
   'Site',
   'Company',
+  // CompanyMembership — a TenantUser's employee row in one company (cloud
+  // identity I3). Written by the membership sync, read when minting pegII
+  // tokens; both go through the scoped client, so a membership from another
+  // tenant can never put `emp`/`wun` on a token. Creates set tenantId explicitly.
+  'CompanyMembership',
   // UsageEvent — the billable-action meter. Creates are NOT rewritten by the
   // extension, so the meter sets tenantId explicitly; the statement-close cron
   // reads cross-tenant via the root client.
