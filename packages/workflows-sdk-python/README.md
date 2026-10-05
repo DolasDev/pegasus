@@ -231,9 +231,27 @@ entry_points = ["order_saved.workflow:OrderSavedWorkflow"]
 required_actions = ["SendSms"]
 ```
 
-`send_sms` raises `PegasusApiError` (403) if `SendSms` is absent from `required_actions`,
-or (404) if the tenant has no SMS provider connected. The `to` number must be E.164
-(e.g. `"+16308868537"`).
+`send_sms` raises `PegasusApiError` (403) if `SendSms` is absent from `required_actions`.
+The `to` number must be E.164 (e.g. `"+16308868537"`).
+
+**Skip cleanly when the tenant has no SMS channel.** If the tenant has no active
+RingCentral connection (never connected, token expired, disconnected), `send_sms`
+raises `SmsChannelNotConnected` (HTTP 404, `code="SMS_NOT_CONNECTED"`). Catch it so
+the run finishes COMPLETED instead of FAILED:
+
+```python
+from pegasus_workflows import SmsChannelNotConnected
+
+try:
+    return client.send_sms(to=phone, body=text, dedup_key=key)
+except SmsChannelNotConnected:
+    return {"skipped": "no_sms_channel"}
+```
+
+It subclasses `PegasusApiError`, so existing `except PegasusApiError` handlers still
+catch it. Other failures stay plain `PegasusApiError`s, including a generic 404
+`NOT_FOUND` (a misrouted request) and 503 `SERVICE_UNAVAILABLE` (SMS disabled
+platform-wide, an operator fault). Let those fail the run.
 
 **Never text a number twice by accident — pass `dedup_key`.** Activities are
 retried, and a retried `send_sms` without a key texts the customer again. With a

@@ -3,6 +3,26 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.44.0
+
+### Added — skip cleanly when the tenant has no SMS channel
+
+- `SmsChannelNotConnected` (a `PegasusApiError` subclass, exported from
+  `pegasus_workflows`). `send_sms` raises it when the tenant has no active
+  RingCentral connection (HTTP 404 `SMS_NOT_CONNECTED`). Catch it so an
+  Automation can skip the text and end COMPLETED instead of FAILED. Existing
+  `except PegasusApiError` handlers still catch it.
+- Other failures are unchanged plain `PegasusApiError`s, deliberately including
+  the router's generic 404 `NOT_FOUND` (a misroute) and 503
+  `SERVICE_UNAVAILABLE` (SMS disabled platform-wide).
+
+### Changed — API
+
+- `POST /api/v1/sms/send` returns `code: "SMS_NOT_CONNECTED"` (was the generic
+  `"NOT_FOUND"`) for "no active RingCentral connection". The status is still 404.
+  Code that matched `NOT_FOUND` on this endpoint should catch
+  `SmsChannelNotConnected` instead.
+
 ## 0.43.0
 
 ### Added — usage summary and the billable-action contract

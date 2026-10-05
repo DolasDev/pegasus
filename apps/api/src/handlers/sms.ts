@@ -11,7 +11,9 @@
 // for every platform text. Failure modes of /send:
 //   400 VALIDATION_ERROR       — invalid E.164 `to`, body out of range, bad key
 //   403 Forbidden              — Cedar denies (no SendSms permission)
-//   404 NOT_FOUND              — tenant has no active RingCentral connection
+//   404 SMS_NOT_CONNECTED      — tenant has no active RingCentral connection
+//                                (distinct from the router's generic 404 NOT_FOUND,
+//                                so callers can skip on it without hiding misroutes)
 //   409 SMS_OPTED_OUT          — the recipient opted out (keyword or provider)
 //   409 SMS_SEND_IN_PROGRESS   — same dedupKey is mid-send; retry later
 //   409 SMS_SEND_IN_DOUBT      — same dedupKey stuck PENDING; outcome unknown
@@ -77,7 +79,7 @@ smsHandler.use('*', dualAuthMiddleware)
 //
 // Response: { data: { id, status } }  (202 Accepted)
 //           { error, code: VALIDATION_ERROR } (400)
-//           { error, code: NOT_FOUND }        (404) — no active connection
+//           { error, code: SMS_NOT_CONNECTED } (404) — no active connection
 //           { error }                         (429) — rate limited
 //           { error, code: UPSTREAM_ERROR }   (502) — permanent RC error
 //           { error }                         (503) — integration disabled
@@ -112,7 +114,7 @@ smsHandler.post(
           )
         case 'no_connection':
           return c.json(
-            { error: 'RingCentral is not connected for this account', code: 'NOT_FOUND' },
+            { error: 'RingCentral is not connected for this account', code: 'SMS_NOT_CONNECTED' },
             404,
           )
         case 'opted_out':

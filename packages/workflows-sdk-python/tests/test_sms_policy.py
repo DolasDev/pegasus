@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from pegasus_workflows.api import PegasusApiError, PegasusClient
+from pegasus_workflows.api import PegasusApiError, PegasusClient, SmsChannelNotConnected
 
 
 def _client_with(handler) -> PegasusClient:
@@ -98,3 +98,65 @@ def test_mark_text_message_read_posts_and_returns_data() -> None:
         return httpx.Response(200, json={"data": data})
 
     assert _client_with(handler).mark_text_message_read("m-1")["readStatus"] == "Read"
+
+
+# ── SmsChannelNotConnected (0.44.0) ─────────────────────────────────────────
+
+_NO_CHANNEL = {
+    "error": "RingCentral is not connected for this account",
+    "code": "SMS_NOT_CONNECTED",
+}
+
+
+def test_send_sms_without_a_channel_raises_sms_channel_not_connected() -> None:
+    client = _client_with(lambda r: httpx.Response(404, json=_NO_CHANNEL))
+    with pytest.raises(SmsChannelNotConnected) as err:
+        client.send_sms("+15551234567", "hi")
+    assert (err.value.status_code, err.value.code) == (404, "SMS_NOT_CONNECTED")
+    assert "not connected" in (err.value.message or "")
+    # A subclass, so existing `except PegasusApiError` handlers still catch it.
+    assert isinstance(err.value, PegasusApiError)
+
+
+def test_sms_channel_not_connected_is_exported_from_the_package() -> None:
+    import pegasus_workflows
+
+    assert pegasus_workflows.SmsChannelNotConnected is SmsChannelNotConnected
+    assert "SmsChannelNotConnected" in pegasus_workflows.__all__
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        # The router's generic 404 (route not mounted, stale deploy, misroute)
+        # must NOT read as "no channel" — skipping on it would hide the bug.
+        (404, {"error": "Not found", "code": "NOT_FOUND"}),
+        (404, {"error": "RingCentral is not connected for this account", "code": "NOT_FOUND"}),
+        (404, None),
+        (404, []),
+        (403, {"error": "Forbidden", "code": "SMS_NOT_CONNECTED"}),
+        # Integration disabled platform-wide is an operator fault: fail loudly.
+        (503, {"error": "RingCentral integration is not enabled", "code": "SERVICE_UNAVAILABLE"}),
+        (502, {"error": "upstream", "code": "UPSTREAM_ERROR"}),
+    ],
+)
+def test_other_send_failures_stay_plain_pegasus_api_errors(status: int, body: dict | None) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if body is None:
+            return httpx.Response(status, text="<html>not found</html>")
+        return httpx.Response(status, json=body)
+
+    with pytest.raises(PegasusApiError) as err:
+        _client_with(handler).send_sms("+15551234567", "hi")
+    assert not isinstance(err.value, SmsChannelNotConnected)
+    assert err.value.status_code == status
+
+
+def test_send_sms_dry_run_never_reaches_the_channel_check() -> None:
+    client = PegasusClient(
+        base_url="https://api.test",
+        token="vnd_test",
+        dry_run=True,
+        transport=httpx.MockTransport(lambda r: pytest.fail("dry-run must not call the API")),
+    )
+    assert client.send_sms("+15551234567", "hi")["data"]["dryRun"] is True
