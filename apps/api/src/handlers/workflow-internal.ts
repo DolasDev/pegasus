@@ -40,6 +40,9 @@
 // PATCH  /workflow-executions/:id      — worker write-back: status / result
 // GET    /tenant-workflows             — runner artifact discovery (Unit 8):
 //                                        executable workflows + presigned GETs
+// GET    /temporal-credentials         — the tenant's own Temporal namespace
+//                                        + scoped key (Phase 3b; inert until
+//                                        3b.2 points runners at it)
 // ---------------------------------------------------------------------------
 
 import { timingSafeEqual } from 'node:crypto'
@@ -54,6 +57,7 @@ import type { WorkflowExecutionStatus } from '../repositories/workflow-execution
 import { decryptRuntimeToken } from '../lib/runtime-token-crypto'
 import { presignDownload } from '../lib/documents-s3'
 import { verifyTenantBrokerToken } from '../lib/tenant-broker-credential'
+import { createTenantTemporalNamespaceRepository } from '../repositories/tenant-temporal-namespace.repository'
 import { logger } from '../lib/logger'
 import type { AppEnv, WorkflowBrokerAuth } from '../types'
 
@@ -516,4 +520,76 @@ workflowInternalHandler.get('/tenant-workflows', async (c) => {
   // Presigned URLs are short-lived credentials — keep every cache out.
   c.header('Cache-Control', 'no-store')
   return c.json({ data })
+})
+
+// ---------------------------------------------------------------------------
+// GET /temporal-credentials
+//
+// Phase 3b: the tenant's own Temporal Cloud namespace and its namespace-scoped
+// Write key, for the tenant runner to fetch at start (3b.2). The key is held
+// KMS-encrypted on TenantTemporalNamespace and decrypted only here.
+//
+// This is the first broker route that returns a SECRET the platform minted
+// (the others return a status, a presigned URL, or the per-workflow `vnd_`
+// token). So:
+//   * READY only (3b.2 switches this to ACTIVE): any other status, no row, or
+//     no stored key is 404, and the key is never decrypted for those.
+//   * Tenant confinement: a `wbk_` token only ever gets its own tenant. A
+//     `tenantId` param naming another tenant is 404 (not 400, unlike
+//     /tenant-workflows), looked up for nothing, so it reveals nothing. The
+//     shared secret must name a tenant.
+//   * `Cache-Control: no-store` on every response; the key never goes into a
+//     log line or an error body.
+//
+// Request:  GET /temporal-credentials[?tenantId=<uuid>]
+// Response: { data: { address, namespace, apiKey } } | 400 | 401 | 404 | 500
+// ---------------------------------------------------------------------------
+
+const temporalNamespaces = createTenantTemporalNamespaceRepository(basePrisma)
+
+workflowInternalHandler.get('/temporal-credentials', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const auth = c.get('brokerAuth')
+  const requestedTenantId = c.req.query('tenantId')
+  const notFound = () =>
+    c.json({ error: 'No Temporal credentials for this tenant', code: 'NOT_FOUND' }, 404)
+
+  let tenantId: string
+  if (auth?.kind === 'tenant') {
+    if (requestedTenantId !== undefined && requestedTenantId !== auth.tenantId) return notFound()
+    tenantId = auth.tenantId
+  } else {
+    const parsed = z.string().uuid().safeParse(requestedTenantId)
+    if (!parsed.success) {
+      return c.json(
+        { error: 'tenantId query param (uuid) is required', code: 'VALIDATION_ERROR' },
+        400,
+      )
+    }
+    tenantId = parsed.data
+  }
+
+  try {
+    const row = await temporalNamespaces.findByTenant(tenantId)
+    if (!row || row.status !== 'READY') return notFound()
+    const key = await temporalNamespaces.getDecryptedKey(tenantId)
+    if (!key) return notFound()
+
+    logger.info('broker.temporal_credentials.issued', {
+      tenantId,
+      namespace: key.namespace,
+      apiKeyId: key.apiKeyId,
+      authKind: auth?.kind ?? 'unknown',
+    })
+    return c.json({
+      data: { address: key.grpcAddress, namespace: key.namespace, apiKey: key.apiKey },
+    })
+  } catch (err) {
+    // Only the error's name: a message could in principle echo input.
+    logger.error('broker.temporal_credentials.failed', {
+      tenantId,
+      errorName: err instanceof Error ? err.name : 'unknown',
+    })
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
 })

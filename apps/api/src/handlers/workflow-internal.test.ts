@@ -16,6 +16,10 @@
 //     tenantId params 400, shared secret requires an explicit tenantId,
 //     non-executable / digest-less rows are excluded by the where clause,
 //     presigned URL + sha fields present, Cache-Control: no-store.
+//   - GET /temporal-credentials (Phase 3b): the first broker route that
+//     returns a SECRET (the tenant's Temporal API key) — READY-only, tenant
+//     confinement (cross-tenant = 404), no-store, and the key never reaches
+//     a logger call or an error body.
 //
 // Strategy: mock the `db` module (so no real Prisma is needed) and the
 // runtime-token-crypto + tenant-scoped Prisma helpers. The validator and
@@ -42,6 +46,7 @@ const {
   mockExecRepo,
   mockDecryptRuntimeToken,
   mockPresignDownload,
+  mockTemporalNsRepo,
 } = vi.hoisted(() => ({
   mockExecutionFindUnique: vi.fn(),
   mockWorkflowFindUnique: vi.fn(),
@@ -54,6 +59,10 @@ const {
   },
   mockDecryptRuntimeToken: vi.fn(),
   mockPresignDownload: vi.fn(),
+  mockTemporalNsRepo: {
+    findByTenant: vi.fn(),
+    getDecryptedKey: vi.fn(),
+  },
 }))
 
 vi.mock('../db', () => ({
@@ -82,7 +91,12 @@ vi.mock('../repositories/workflow-execution.repository', () => ({
   createWorkflowExecutionRepository: vi.fn(() => mockExecRepo),
 }))
 
+vi.mock('../repositories/tenant-temporal-namespace.repository', () => ({
+  createTenantTemporalNamespaceRepository: vi.fn(() => mockTemporalNsRepo),
+}))
+
 import { workflowInternalHandler } from './workflow-internal'
+import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -826,6 +840,144 @@ describe('workflow-internal handler', () => {
     it('sets Cache-Control: no-store (presigned URLs are credentials)', async () => {
       const res = await getTenantWorkflows({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
       expect(res.headers.get('cache-control')).toBe('no-store')
+    })
+  })
+
+  // ── GET /temporal-credentials (Phase 3b) ───────────────────────────────────
+
+  describe('GET /temporal-credentials', () => {
+    const API_KEY = 'tenant-temporal-api-key-SECRET'
+    const NS = 'pg-staging-111111111111.chgel'
+    const readyRow = (overrides: Record<string, unknown> = {}) => ({
+      tenantId: TENANT_A,
+      namespace: NS,
+      grpcAddress: `${NS}.tmprl.cloud:7233`,
+      status: 'READY',
+      ...overrides,
+    })
+
+    function getCredentials(headers: Record<string, string>, query = '') {
+      return buildApp().request(`/temporal-credentials${query}`, { method: 'GET', headers })
+    }
+
+    beforeEach(() => {
+      stubCredentials()
+      mockTemporalNsRepo.findByTenant.mockImplementation((tenantId: string) =>
+        Promise.resolve(tenantId === TENANT_A ? readyRow() : null),
+      )
+      mockTemporalNsRepo.getDecryptedKey.mockImplementation((tenantId: string) =>
+        Promise.resolve(
+          tenantId === TENANT_A
+            ? {
+                namespace: NS,
+                grpcAddress: `${NS}.tmprl.cloud:7233`,
+                apiKeyId: 'k1',
+                apiKey: API_KEY,
+              }
+            : null,
+        ),
+      )
+    })
+
+    it('401s with no credential', async () => {
+      const res = await getCredentials({})
+      expect(res.status).toBe(401)
+      expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
+    })
+
+    it('401s an invalid token', async () => {
+      const res = await getCredentials({
+        'X-Workflow-Broker-Token': `wbk_${TENANT_A}_${'ef'.repeat(24)}`,
+      })
+      expect(res.status).toBe(401)
+      expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
+    })
+
+    it('returns the address, namespace and key for the token own READY tenant', async () => {
+      const res = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        data: { address: `${NS}.tmprl.cloud:7233`, namespace: NS, apiKey: API_KEY },
+      })
+      expect(res.headers.get('cache-control')).toBe('no-store')
+      expect(mockTemporalNsRepo.findByTenant).toHaveBeenCalledWith(TENANT_A)
+    })
+
+    it('accepts an explicit tenantId that matches the token', async () => {
+      const res = await getCredentials(
+        { 'X-Workflow-Broker-Token': TENANT_A_TOKEN },
+        `?tenantId=${TENANT_A}`,
+      )
+      expect(res.status).toBe(200)
+    })
+
+    it('404s a token asking for another tenant, without looking it up', async () => {
+      const res = await getCredentials(
+        { 'X-Workflow-Broker-Token': TENANT_B_TOKEN },
+        `?tenantId=${TENANT_A}`,
+      )
+      expect(res.status).toBe(404)
+      expect(res.headers.get('cache-control')).toBe('no-store')
+      expect(mockTemporalNsRepo.findByTenant).not.toHaveBeenCalled()
+      expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
+      expect(JSON.stringify(await json(res))).not.toContain(API_KEY)
+    })
+
+    it('404s a token whose own tenant has no namespace', async () => {
+      const res = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_B_TOKEN })
+      expect(res.status).toBe(404)
+      expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
+    })
+
+    it.each(['PROVISIONING', 'FAILED', 'DEPROVISIONING'])(
+      '404s while the namespace is %s, without decrypting the key',
+      async (status) => {
+        mockTemporalNsRepo.findByTenant.mockResolvedValue(readyRow({ status }))
+        const res = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+        expect(res.status).toBe(404)
+        expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
+      },
+    )
+
+    it('404s a READY row with no stored key', async () => {
+      mockTemporalNsRepo.getDecryptedKey.mockResolvedValue(null)
+      const res = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+      expect(res.status).toBe(404)
+    })
+
+    it('requires an explicit uuid tenantId with the shared secret', async () => {
+      const missing = await getCredentials({ 'X-Workflow-Broker-Secret': BROKER_SECRET })
+      expect(missing.status).toBe(400)
+      const bad = await getCredentials(
+        { 'X-Workflow-Broker-Secret': BROKER_SECRET },
+        '?tenantId=not-a-uuid',
+      )
+      expect(bad.status).toBe(400)
+      const ok = await getCredentials(
+        { 'X-Workflow-Broker-Secret': BROKER_SECRET },
+        `?tenantId=${TENANT_A}`,
+      )
+      expect(ok.status).toBe(200)
+    })
+
+    it('never passes the key to any logger call, on success or failure', async () => {
+      const spies = (['debug', 'info', 'warn', 'error'] as const).map((m) =>
+        vi.spyOn(logger, m).mockImplementation(() => {}),
+      )
+      try {
+        await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+        await getCredentials({ 'X-Workflow-Broker-Token': TENANT_B_TOKEN }, `?tenantId=${TENANT_A}`)
+        mockTemporalNsRepo.getDecryptedKey.mockRejectedValueOnce(new Error('KMS unavailable'))
+        const failed = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+        expect(failed.status).toBe(500)
+        expect(await failed.text()).not.toContain(API_KEY)
+
+        const calls = spies.flatMap((s) => s.mock.calls)
+        expect(calls.length).toBeGreaterThan(0)
+        expect(JSON.stringify(calls)).not.toContain(API_KEY)
+      } finally {
+        for (const s of spies) s.mockRestore()
+      }
     })
   })
 })

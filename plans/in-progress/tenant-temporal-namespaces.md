@@ -208,7 +208,14 @@ account work blocks the code.
   - A failed invoke returns 502 and marks the row FAILED (rotate excepted).
   - The namespace id is `tenantNamespaceName(tenantTaskQueueEnv(), tenantId)`
     plus the account suffix from `TEMPORAL_NAMESPACE`.
-- [ ] Step 8: broker credentials endpoint
+- [x] Step 8: `GET /api/v1/internal/temporal-credentials` returns
+      `{data: {address, namespace, apiKey}}`. It's READY-only, and the key
+      is not decrypted for any other status. A token asking for another
+      tenant gets 404 (deliberately unlike `/tenant-workflows`' 400) and
+      triggers no lookup. Every response is `no-store`; a decrypt failure is
+      a 500 that logs only the error name. Allowlisted in the OpenAPI
+      coverage test (runner-only). `admin/temporal-namespace.ts` was added to
+      `db-access-guard`'s base-client allowlist.
 - [ ] Step 10: docs + `/workstream-finish`
 
 **Step 1 ⚠️ (Stage B, after Stage A merges; user, one-time, Cloud account):
