@@ -41,8 +41,8 @@
 // GET    /tenant-workflows             — runner artifact discovery (Unit 8):
 //                                        executable workflows + presigned GETs
 // GET    /temporal-credentials         — the tenant's own Temporal namespace
-//                                        + scoped key (Phase 3b; inert until
-//                                        3b.2 points runners at it)
+//                                        + scoped key (Phase 3b; wbk_ tokens
+//                                        only; inert until 3b.2)
 // ---------------------------------------------------------------------------
 
 import { timingSafeEqual } from 'node:crypto'
@@ -534,15 +534,19 @@ workflowInternalHandler.get('/tenant-workflows', async (c) => {
 // token). So:
 //   * READY only (3b.2 switches this to ACTIVE): any other status, no row, or
 //     no stored key is 404, and the key is never decrypted for those.
-//   * Tenant confinement: a `wbk_` token only ever gets its own tenant. A
-//     `tenantId` param naming another tenant is 404 (not 400, unlike
-//     /tenant-workflows), looked up for nothing, so it reveals nothing. The
-//     shared secret must name a tenant.
+//   * Per-tenant `wbk_` tokens ONLY. The shared secret is refused (403
+//     TENANT_TOKEN_REQUIRED) even though it has full access on the other
+//     routes: only a tenant's own runner needs that tenant's key, and the
+//     shared secret would otherwise reach every tenant's 1-year key. A missing
+//     principal is refused too (fail closed, as deniedForTenant does).
+//   * Tenant confinement: a token only ever gets its own tenant. A `tenantId`
+//     param naming another tenant is 404 (not 400, unlike /tenant-workflows),
+//     looked up for nothing, so it reveals nothing.
 //   * `Cache-Control: no-store` on every response; the key never goes into a
 //     log line or an error body.
 //
-// Request:  GET /temporal-credentials[?tenantId=<uuid>]
-// Response: { data: { address, namespace, apiKey } } | 400 | 401 | 404 | 500
+// Request:  GET /temporal-credentials[?tenantId=<own tenant uuid>]
+// Response: { data: { address, namespace, apiKey } } | 401 | 403 | 404 | 500
 // ---------------------------------------------------------------------------
 
 const temporalNamespaces = createTenantTemporalNamespaceRepository(basePrisma)
@@ -554,20 +558,16 @@ workflowInternalHandler.get('/temporal-credentials', async (c) => {
   const notFound = () =>
     c.json({ error: 'No Temporal credentials for this tenant', code: 'NOT_FOUND' }, 404)
 
-  let tenantId: string
-  if (auth?.kind === 'tenant') {
-    if (requestedTenantId !== undefined && requestedTenantId !== auth.tenantId) return notFound()
-    tenantId = auth.tenantId
-  } else {
-    const parsed = z.string().uuid().safeParse(requestedTenantId)
-    if (!parsed.success) {
-      return c.json(
-        { error: 'tenantId query param (uuid) is required', code: 'VALIDATION_ERROR' },
-        400,
-      )
-    }
-    tenantId = parsed.data
+  if (auth?.kind !== 'tenant') {
+    return c.json(
+      { error: 'A per-tenant broker token is required', code: 'TENANT_TOKEN_REQUIRED' },
+      403,
+    )
   }
+  if (requestedTenantId !== undefined && deniedForTenant(auth, requestedTenantId)) {
+    return notFound()
+  }
+  const tenantId = auth.tenantId
 
   try {
     const row = await temporalNamespaces.findByTenant(tenantId)
@@ -579,7 +579,6 @@ workflowInternalHandler.get('/temporal-credentials', async (c) => {
       tenantId,
       namespace: key.namespace,
       apiKeyId: key.apiKeyId,
-      authKind: auth?.kind ?? 'unknown',
     })
     return c.json({
       data: { address: key.grpcAddress, namespace: key.namespace, apiKey: key.apiKey },

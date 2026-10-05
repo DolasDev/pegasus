@@ -17,9 +17,9 @@
 //     non-executable / digest-less rows are excluded by the where clause,
 //     presigned URL + sha fields present, Cache-Control: no-store.
 //   - GET /temporal-credentials (Phase 3b): the first broker route that
-//     returns a SECRET (the tenant's Temporal API key) — READY-only, tenant
-//     confinement (cross-tenant = 404), no-store, and the key never reaches
-//     a logger call or an error body.
+//     returns a SECRET (the tenant's Temporal API key) — wbk_ tokens only
+//     (shared secret = 403), READY-only, tenant confinement (cross-tenant =
+//     404), no-store, and the key never reaches a logger call or error body.
 //
 // Strategy: mock the `db` module (so no real Prisma is needed) and the
 // runtime-token-crypto + tenant-scoped Prisma helpers. The validator and
@@ -945,19 +945,15 @@ describe('workflow-internal handler', () => {
       expect(res.status).toBe(404)
     })
 
-    it('requires an explicit uuid tenantId with the shared secret', async () => {
-      const missing = await getCredentials({ 'X-Workflow-Broker-Secret': BROKER_SECRET })
-      expect(missing.status).toBe(400)
-      const bad = await getCredentials(
-        { 'X-Workflow-Broker-Secret': BROKER_SECRET },
-        '?tenantId=not-a-uuid',
-      )
-      expect(bad.status).toBe(400)
-      const ok = await getCredentials(
-        { 'X-Workflow-Broker-Secret': BROKER_SECRET },
-        `?tenantId=${TENANT_A}`,
-      )
-      expect(ok.status).toBe(200)
+    it('refuses the shared secret (403), with or without a tenantId, decrypting nothing', async () => {
+      for (const query of ['', `?tenantId=${TENANT_A}`, '?tenantId=not-a-uuid']) {
+        const res = await getCredentials({ 'X-Workflow-Broker-Secret': BROKER_SECRET }, query)
+        expect(res.status).toBe(403)
+        expect((await json(res))['code']).toBe('TENANT_TOKEN_REQUIRED')
+        expect(res.headers.get('cache-control')).toBe('no-store')
+      }
+      expect(mockTemporalNsRepo.findByTenant).not.toHaveBeenCalled()
+      expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
     })
 
     it('never passes the key to any logger call, on success or failure', async () => {

@@ -219,7 +219,9 @@ account work blocks the code.
       `{data: {address, namespace, apiKey}}`. It's READY-only, and the key
       is not decrypted for any other status. A token asking for another
       tenant gets 404 (deliberately unlike `/tenant-workflows`' 400) and
-      triggers no lookup. Every response is `no-store`; a decrypt failure is
+      triggers no lookup. **`wbk_` tokens only:** the shared secret, or a
+      missing principal, gets 403 (fail closed, matching `deniedForTenant`).
+      Every response is `no-store`; a decrypt failure is
       a 500 that logs only the error name. Allowlisted in the OpenAPI
       coverage test (runner-only). `admin/temporal-namespace.ts` was added to
       `db-access-guard`'s base-client allowlist.
@@ -440,7 +442,10 @@ TenantTemporalNamespace?` on Tenant.
 **Step 8: broker credentials endpoint (inert until 3b.2).**
 
 - `GET /api/v1/internal/temporal-credentials`, using `requireBrokerAuth()`.
-  A tenant token pins the tenant; the shared secret requires `?tenantId`.
+  A tenant token pins the tenant. **The shared secret is refused (403
+  `TENANT_TOKEN_REQUIRED`; changed after the security review, 2026-10-05):**
+  only a tenant's own runner needs its key, and the shared secret would
+  otherwise reach every tenant's 1-year key.
 - Returns `{address, namespace, apiKey}` **only when the status is
   READY**; 404 otherwise. Sets `Cache-Control: no-store` and logs without
   the key. In 3b.2 the condition becomes ACTIVE.
