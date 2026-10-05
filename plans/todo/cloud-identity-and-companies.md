@@ -45,7 +45,7 @@
   - Cloud: `cloudAuthEnabled = true` on site `631fce83`. Verified with a positive read (`GET /pegii/salesmen/1..3` → 200 from `PegQMM`).
   - Companies: `QUALITY-MOVE-MANAGEMENT` renamed `QMM-CANADA` "QMM Canada" (default, `PegQMM`); `QMM-USA` "QMM USA" created with `dataSourceKey = PegQMMUSA`.
   - **Check the migration with SQL, not logs:** the pegII service logs to the Windows Application event log (source `PegasusApi`), where Information lines likely don't appear. `SELECT COUNT(*) FROM <db>.dbo.__SchemaMigrations` per company DB.
-- **I3 built (not yet shipped):** see the I3 row below and `plans/completed/*-cloud-identity-i3.md` once it merges.
+- **I3 built (not yet shipped):** see the I3 row below and `plans/completed/a64d3dd9-cloud-identity-i3.md`.
 
 **Next, in order:**
 
