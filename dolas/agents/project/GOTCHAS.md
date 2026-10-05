@@ -2546,3 +2546,38 @@ Finally, the version you think is installed may not be: the primary checkout had
 had not been reinstalled since the bump. Fresh worktrees got 2.11.5 and the behavior; the primary
 checkout did not. Check `node -p "require('turbo/package.json').version"` before concluding turbo
 does or does not do something.
+
+## Temporal Cloud Ops: async mutations, a token shown once, and no VPC
+
+Found building the 3b.1 provisioner (`apps/api/src/lib/temporal-cloud-ops.ts`,
+`lib/temporal-provisioner.ts`), 2026-10-05.
+
+- **Every mutation is asynchronous.** Each one returns an `async_operation` that
+  you poll (`GET /cloud/operations/{id}`, honouring `check_duration`). There is a
+  cap of **10 concurrent async operations per account**, and staging and prod
+  share the account. Don't fan out.
+- **`async_operation_id` is Temporal's idempotency key.** Retrying a step that
+  ended `STATE_FAILED` with the same id replays the failure. So the provisioner
+  uses a per-run nonce in its op ids and makes each step idempotent by
+  **checking Cloud state first** (`getNamespace`, `findServiceAccountByName`,
+  `listApiKeys`).
+- **An API key's `token` is returned once**, in the `POST /cloud/api-keys`
+  response. Store it (KMS-encrypted) before any other call that can fail. A key
+  whose token was lost can't be recovered: delete it and mint a new one.
+- **A Lambda killed by its timeout runs no `catch`.** A status-only guard
+  (`PROVISIONING`) would wedge the row forever. `TenantTemporalNamespace` has a
+  `leaseExpiresAt` instead, and the provisioner's async invoke has
+  `retryAttempts: 0` (the lease would make Lambda's retries skip anyway).
+- **The provisioner must not be in the WireGuard VPC.** 3a's DNS Firewall makes
+  `saas-api.tmprl.cloud` NXDOMAIN there. API-stack Lambdas aren't VPC-attached,
+  and an infra test pins that.
+- **The HTML API docs are JS-rendered** (`saas-api.tmprl.cloud/docs/httpapi.html`
+  fetches as an empty shell). The source of truth is `temporalio/api-cloud`:
+  `cloudservice/v1/service.proto` for the HTTP bindings and
+  `request_response.proto` for the bodies. Pin `temporal-cloud-api-version` to
+  its `VERSION` file (`v0.23.0` at the time). Note that `GetServiceAccounts`
+  returns its repeated field as `service_account` (singular).
+- **The `_deploy.yml` secret pre-flight greps every `arn:aws:secretsmanager:`
+  literal in `packages/infra/bin/app.ts`, comments included**, and fails the
+  deploy on a NotFound. Never write an example ARN in a comment there, and add
+  an ARN only once its secret exists.

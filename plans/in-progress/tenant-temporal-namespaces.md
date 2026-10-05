@@ -10,9 +10,10 @@
   3a/3b/3c split, decisions DECIDE-1..4) and
   `plans/in-progress/long-running-workflows-and-automations.md` (D1–D5).
   Phase 2 evidence: `plans/completed/2b1e2147-durable-workflow-isolation-spike.md`.
-- **Status:** seeded 2026-10-05. The detailed plan below was written in this
-  session; **execution starts in a new session** (user instruction: "pause
-  after the plan is written and scaffolding is done").
+- **Status:** Stage A (Steps 3–8 and 10) coded 2026-10-05 on this branch and
+  going through `/workstream-finish`. **Next: Stage B**, which starts with
+  Step 1 ⚠️ (the user creates the provisioner identities and secrets) after
+  Stage A merges and deploys.
 
 ## Detailed plan (written 2026-10-05; execution starts in a new session)
 
@@ -216,7 +217,10 @@ account work blocks the code.
       a 500 that logs only the error name. Allowlisted in the OpenAPI
       coverage test (runner-only). `admin/temporal-namespace.ts` was added to
       `db-access-guard`'s base-client allowlist.
-- [ ] Step 10: docs + `/workstream-finish`
+- [x] Step 10: docs. `DECISIONS.md` (Developer-role provisioner, and no
+      platform service account), `GOTCHAS.md` (the Cloud Ops traps), and
+      `durable-workflow-worker.md` (3a DNS check ticked, 3b in progress).
+      Then `/workstream-finish` with `/security-review`.
 
 **Step 1 ⚠️ (Stage B, after Stage A merges; user, one-time, Cloud account):
 create the provisioner identity, one per environment.** Needs a **Global Admin or
