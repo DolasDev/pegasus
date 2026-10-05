@@ -1394,3 +1394,120 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+describe('ApiStack — Temporal namespace provisioner (Phase 3b)', () => {
+  const PROVISIONER_ARN =
+    'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-provisioner-aBcDeF'
+  const temporalProps = {
+    env: { account: '111111111111', region: 'us-east-1' },
+    temporalAddress: 'pegasus-staging.chgel.tmprl.cloud:7233',
+    temporalNamespace: 'pegasus-staging.chgel',
+    temporalTaskQueue: 'pegasus-stdlib-staging',
+    temporalCloudSecretArn:
+      'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-aBcDeF',
+  }
+
+  function synth(extra: { temporalProvisionerSecretArn?: string } = {}) {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [], env: 'staging' } })
+    return Template.fromStack(
+      new ApiStack(app, 'TestApiProvisioner', { ...temporalProps, ...extra }),
+    )
+  }
+
+  type Resource = { Properties?: Record<string, unknown> }
+  const vars = (fn: Resource) =>
+    ((fn.Properties?.['Environment'] as { Variables?: Record<string, unknown> } | undefined)
+      ?.Variables ?? {}) as Record<string, unknown>
+  const provisionerFns = (template: Template) =>
+    Object.entries(template.findResources('AWS::Lambda::Function')).filter(
+      ([, fn]) => vars(fn)['TEMPORAL_PROVISIONER_SECRET_ARN'] !== undefined,
+    )
+
+  describe('without temporalProvisionerSecretArn (Stage A: inert)', () => {
+    it('creates no provisioner function, no schedule, and no API env', () => {
+      const template = synth()
+      expect(provisionerFns(template)).toHaveLength(0)
+      for (const fn of Object.values(template.findResources('AWS::Lambda::Function'))) {
+        expect(vars(fn)).not.toHaveProperty('TEMPORAL_PROVISIONER_FUNCTION_NAME')
+      }
+      const rules = Object.values(template.findResources('AWS::Events::Rule'))
+      expect(
+        rules.some((r) => String(r.Properties?.Description).includes('Temporal API keys')),
+      ).toBe(false)
+    })
+
+    it('references no temporal-provisioner secret anywhere', () => {
+      expect(JSON.stringify(synth().toJSON())).not.toContain('temporal-provisioner')
+    })
+  })
+
+  describe('with temporalProvisionerSecretArn', () => {
+    it('creates exactly one provisioner: Node 24, no VPC, 15 min, 256 MB, no async retries', () => {
+      const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
+      const fns = provisionerFns(template)
+      expect(fns).toHaveLength(1)
+      const [logicalId, fn] = fns[0]!
+      expect(fn.Properties).toMatchObject({ Runtime: 'nodejs24.x', Timeout: 900, MemorySize: 256 })
+      // saas-api.tmprl.cloud is NXDOMAIN inside the WireGuard VPC (3a).
+      expect(fn.Properties).not.toHaveProperty('VpcConfig')
+      expect(vars(fn)).toMatchObject({
+        ENV_NAME: 'staging',
+        TEMPORAL_PROVISIONER_SECRET_ARN: PROVISIONER_ARN,
+        DATABASE_URL: expect.anything(),
+        WORKFLOW_TOKEN_KMS_KEY_ID: expect.anything(),
+      })
+      // The key is read at runtime, never injected as a plaintext env var.
+      expect(JSON.stringify(vars(fn))).not.toContain('apiKey')
+      template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
+        FunctionName: { Ref: logicalId },
+        MaximumRetryAttempts: 0,
+      })
+    })
+
+    it('lets only the provisioner read the provisioner secret', () => {
+      const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
+      const [provisionerId, provisioner] = provisionerFns(template)[0]!
+      const policies = Object.values(template.findResources('AWS::IAM::Policy'))
+      const readers = policies.filter((p) =>
+        JSON.stringify(p.Properties?.['PolicyDocument']).includes('temporal-provisioner'),
+      )
+      expect(readers).toHaveLength(1)
+      const role = (provisioner.Properties?.['Role'] as { 'Fn::GetAtt': string[] })['Fn::GetAtt'][0]
+      expect(readers[0]!.Properties?.['Roles']).toEqual([{ Ref: role }])
+      expect(provisionerId).toBeTruthy()
+    })
+
+    it('gives the API the function name and invoke on the provisioner only', () => {
+      const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
+      const [provisionerId] = provisionerFns(template)[0]!
+      const withName = Object.values(template.findResources('AWS::Lambda::Function')).filter(
+        (fn) => vars(fn)['TEMPORAL_PROVISIONER_FUNCTION_NAME'] !== undefined,
+      )
+      expect(withName).toHaveLength(1)
+      expect(vars(withName[0]!)['TEMPORAL_PROVISIONER_FUNCTION_NAME']).toEqual({
+        Ref: provisionerId,
+      })
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: 'lambda:InvokeFunction',
+              Resource: Match.arrayWith([{ 'Fn::GetAtt': [provisionerId, 'Arn'] }]),
+            }),
+          ]),
+        },
+      })
+    })
+
+    it('schedules the daily retire-previous-keys sweep', () => {
+      const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
+      template.hasResourceProperties('AWS::Events::Rule', {
+        ScheduleExpression: 'rate(1 day)',
+        Targets: Match.arrayWith([
+          Match.objectLike({ Input: JSON.stringify({ action: 'retire-previous-keys' }) }),
+        ]),
+      })
+    })
+  })
+})

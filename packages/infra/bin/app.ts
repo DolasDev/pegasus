@@ -220,9 +220,16 @@ export const TEMPORAL_ADDRESS: Record<Exclude<EnvName, 'dev'>, string> = {
 // suffix never changes for the lifetime of the secret, so this is stable.
 // If a secret is ever ROTATED-by-recreation, update the suffix here in
 // the same change.
+//
+// `temporalProvisioner` (Phase 3b, optional): the per-env Cloud Ops key that
+// creates per-tenant Temporal namespaces. While it is absent, ApiStack
+// creates no provisioner Lambda and the admin provisioning endpoints answer
+// 503. Add it only once the secret exists: the _deploy.yml pre-flight greps
+// every secretsmanager ARN literal in this file (comments too, so never write
+// an example one here) and fails the deploy on a NotFound.
 export const TEMPORAL_SECRET_ARNS: Record<
   Exclude<EnvName, 'dev'>,
-  { temporalCloud: string; workflowBroker: string }
+  { temporalCloud: string; workflowBroker: string; temporalProvisioner?: string }
 > = {
   staging: {
     temporalCloud:
@@ -389,6 +396,8 @@ const apiTemporalCloudSecretArn =
   envName === 'dev' ? undefined : TEMPORAL_SECRET_ARNS[envName].temporalCloud
 const apiWorkflowBrokerSecretArn =
   envName === 'dev' ? undefined : TEMPORAL_SECRET_ARNS[envName].workflowBroker
+const apiTemporalProvisionerSecretArn =
+  envName === 'dev' ? undefined : TEMPORAL_SECRET_ARNS[envName].temporalProvisioner
 
 const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   env,
@@ -414,6 +423,10 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   temporalTaskQueue: apiTemporalTaskQueue,
   temporalCloudSecretArn: apiTemporalCloudSecretArn,
   workflowBrokerSecretArn: apiWorkflowBrokerSecretArn,
+  // Phase 3b — unset until the provisioner secret exists (see TEMPORAL_SECRET_ARNS).
+  ...(apiTemporalProvisionerSecretArn
+    ? { temporalProvisionerSecretArn: apiTemporalProvisionerSecretArn }
+    : {}),
   // Phase 3 Unit 9 — tenant-runner orchestration. Runner tasks launch into
   // the same PRIVATE_WITH_EGRESS subnets the stdlib worker uses, behind an
   // egress-only SG owned by WireGuardStack (see ApiStackProps for why the

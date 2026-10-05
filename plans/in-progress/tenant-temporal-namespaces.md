@@ -189,7 +189,14 @@ account work blocks the code.
     past their grace. Step 6 schedules it daily.
   - **Readiness** uses the stored key through `getDecryptedKey`, the same
     path 3b.2 will use.
-- [ ] Step 6: infra
+- [x] Step 6: infra. A `TemporalProvisionerFunction` inside the
+      Temporal-configured branch, gated on `temporalProvisionerSecretArn`
+      (`TEMPORAL_SECRET_ARNS[env].temporalProvisioner`, optional and unset).
+      Async `retryAttempts: 0` (the lease would only make retries skip), a
+      daily `retire-previous-keys` rule, and a 1-year log retention (it's an
+      audit trail). Tests cover both the unset and the set case. **Gotcha:**
+      the `_deploy.yml` pre-flight greps every `arn:aws:secretsmanager:`
+      literal in `bin/app.ts`, comments included.
 - [ ] Step 7: admin API + admin-web
 - [ ] Step 8: broker credentials endpoint
 - [ ] Step 10: docs + `/workstream-finish`

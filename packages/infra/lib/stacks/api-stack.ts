@@ -132,6 +132,16 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly temporalCloudSecretArn?: string
 
   /**
+   * FULL Secrets Manager ARN (with suffix) of `pegasus/<env>/temporal-provisioner`,
+   * JSON `{"apiKey": "..."}`: the per-env Developer-role Cloud Ops key that
+   * creates per-tenant Temporal namespaces (Phase 3b). When unset, no
+   * provisioner Lambda is created and the admin provisioning endpoints answer
+   * 503 TEMPORAL_PROVISIONING_NOT_CONFIGURED. Also requires the Temporal
+   * props above.
+   */
+  readonly temporalProvisionerSecretArn?: string
+
+  /**
    * FULL Secrets Manager ARN (with the 6-char random suffix) for the
    * worker→API broker shared secret. The internal handlers
    * (POST /workflow-runtime-token, PATCH /workflow-executions/:id) compare
@@ -825,6 +835,83 @@ export class ApiStack extends cdk.Stack {
           'Dispatches undispatched domain events to matching workflow triggers (event-driven executions).',
         targets: [new eventsTargets.LambdaFunction(dispatchTriggersFunction)],
       })
+
+      // -----------------------------------------------------------------------
+      // Temporal namespace provisioner (Phase 3b)
+      //
+      // Creates, rotates and deletes each tenant's own Temporal Cloud
+      // namespace through the Cloud Ops API, invoked asynchronously by the
+      // admin routes (and daily, to retire rotated-out keys). Its own function
+      // so the Cloud Ops key never sits in the API's request path: ONLY this
+      // function can read `pegasus/<env>/temporal-provisioner`, and it reads
+      // it at runtime (no plaintext env var).
+      //
+      // NOT VPC-attached: 3a's DNS Firewall blocks saas-api.tmprl.cloud in
+      // the WireGuard VPC. Created only when the secret ARN is configured
+      // (Stage A of 3b.1 ships without it: inert).
+      // -----------------------------------------------------------------------
+      if (props.temporalProvisionerSecretArn) {
+        const provisionerSecret = secretsmanager.Secret.fromSecretCompleteArn(
+          this,
+          'TemporalProvisionerSecret',
+          props.temporalProvisionerSecretArn,
+        )
+        const provisionerLogGroup = new logs.LogGroup(this, 'TemporalProvisionerLogGroup', {
+          retention: logs.RetentionDays.ONE_YEAR,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        })
+        cronLogGroupNames.push(provisionerLogGroup.logGroupName)
+
+        const provisionerFunction = new nodejs.NodejsFunction(this, 'TemporalProvisionerFunction', {
+          runtime: lambda.Runtime.NODEJS_24_X,
+          entry: path.join(__dirname, '../../../../apps/api/src/lambda-temporal-provisioner.ts'),
+          handler: 'handler',
+          environment: {
+            NODE_ENV: 'production',
+            DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+            LOG_LEVEL: 'INFO',
+            ENV_NAME: envName,
+            WORKFLOW_TOKEN_KMS_KEY_ID: workflowTokenKey.keyId,
+            TEMPORAL_PROVISIONER_SECRET_ARN: props.temporalProvisionerSecretArn,
+          },
+          bundling: {
+            minify: true,
+            sourceMap: true,
+            externalModules: ['@aws-sdk/*'],
+          },
+          memorySize: 256,
+          // A provision waits on Cloud operations and up to 10 minutes for
+          // the new key to be authorized. Matches the provisioner's lease.
+          timeout: cdk.Duration.minutes(15),
+          // A failed run marks the row FAILED; an admin re-invokes. Lambda's
+          // automatic async retries would only race the lease.
+          retryAttempts: 0,
+          logGroup: provisionerLogGroup,
+        })
+
+        dbSecret.grantRead(provisionerFunction)
+        provisionerSecret.grantRead(provisionerFunction)
+        // Encrypts each tenant key it mints; decrypts it for the readiness check.
+        workflowTokenKey.grantEncryptDecrypt(provisionerFunction)
+
+        provisionerFunction.grantInvoke(apiFunction)
+        apiFunction.addEnvironment(
+          'TEMPORAL_PROVISIONER_FUNCTION_NAME',
+          provisionerFunction.functionName,
+        )
+
+        new events.Rule(this, 'TemporalProvisionerRetireKeysSchedule', {
+          schedule: events.Schedule.rate(cdk.Duration.days(1)),
+          description:
+            'Deletes rotated-out tenant Temporal API keys whose grace period has passed.',
+          targets: [
+            new eventsTargets.LambdaFunction(provisionerFunction, {
+              event: events.RuleTargetInput.fromObject({ action: 'retire-previous-keys' }),
+              retryAttempts: 0,
+            }),
+          ],
+        })
+      }
 
       // -----------------------------------------------------------------------
       // Tenant-runner orchestration wiring (Phase 3 Unit 9 — scale-to-zero).
