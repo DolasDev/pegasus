@@ -138,8 +138,10 @@ describe('[A9 §3.3] the witnessed-scheme table', () => {
   it('the six rows the corpus names and does not define are named', () => {
     // [A9 §3.3(b)]: `definedNotMerelyNamed` is the column that separates C1 from C2 on this area, and
     // the worst case is `scac` — six witnesses, no definition, because the source that would give
-    // one (`src:nmfta-scac`, the only registry entry whose `areas:` is `[A9]` alone) is
-    // `status: candidate` and was never fetched.
+    // one (`src:nmfta-scac`, the only registry entry whose `areas:` is `[A9]` alone) was never
+    // fetched and is now `status: skipped` on the 2026-10-04 C1 decision. The row stays here: C1
+    // settled that we are not closing this gap by buying the authority's material, not that the
+    // corpus now defines the code — which is why this list is unchanged by that decision.
     const named = [...table.rows.values()].filter((row) => !row.definedNotMerelyNamed)
     expect(names(named)).toEqual([
       'mcNumber',

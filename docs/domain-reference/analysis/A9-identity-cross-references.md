@@ -704,10 +704,16 @@ as the record of what the field was when this round read it; §1.2 finding 3 car
    enumeration with no names — and A9 owes its own because the sources are read and **say the
    vocabulary should not be closed**. The Owed page cannot tell those two apart, which is worth
    knowing before reading it as a backlog.
-2. **A definition of SCAC.** Six witness rows use the code; none defines the issuing authority's
-   rules. `src:nmfta-scac` — the **only** registry entry whose `areas:` is `[A9]` and nothing else,
-   and the issuing body's own material — is `status: candidate` and has never been fetched. This is
-   the cheapest resolvable gap in the area and it is a `needs-user` fetch, not a modelling question.
+2. **A definition of SCAC — still owed, and now owed with the fetch ruled out.** Six witness rows
+   use the code; none defines the issuing authority's rules, so `definedNotMerelyNamed` is `false`
+   and §3.3(b) keeps it there. `src:nmfta-scac` — the **only** registry entry whose `areas:` is
+   `[A9]` and nothing else, and the issuing body's own material — was never fetched and is
+   `status: skipped` on the **C1 decision of 2026-10-04**: the identifier _concept_ is what
+   modelling needs, the six rows above already witness it, and the authority's paid material buys a
+   definition nothing in the model consumes. **The decision closes the fetch, not the gap.** This
+   entry therefore stays, and what changed is only that it is no longer waiting on anybody: a round
+   that wants SCAC _defined_ must reopen the registry entry and argue for the purchase, which is a
+   different ask from the one this item used to carry.
 3. **The subject of an acceptance** (§3.4). Not minted, and not obviously A9's: it is an act, and it
    is the same shape as [A6]'s `documentIssuance` and [A7]'s `chargeCollection`. Recorded so that
    whoever takes [SD §1.2]'s act-subject question finds three instances rather than two.
@@ -724,14 +730,14 @@ as the record of what the field was when this round read it; §1.2 finding 3 car
 
 ## 7. Confidence, and what would change this
 
-| Claim                                                | Confidence | What would move it                                                                                              |
-| ---------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------- |
-| §3.2's refusal to close `identityScheme`             | **high**   | A source publishing a closed HHG identifier-scheme list **with no escape hatch**. None of the six in §3.2(a) is |
-| §3.6's party-grain finding                           | **high**   | Structural, and checked at load and at compile time. It moves when [A8 §9 item 1] lands, not before             |
-| §3.3's table being the schemes the corpus witnesses  | medium     | Fifteen registry entries are `needs-user` and two A9-relevant ones are `candidate`; a fetch adds rows           |
-| §3.4's one unsettled bit being the only one          | medium     | Same. It is a statement about twenty rows, not about the industry                                               |
-| §3.8's single witness for the van-line registration  | **high**   | A second external publisher of a van-line registration scheme. `src:weichert-supplier-api` states its absence   |
-| §3.1's second witness for the issuer/authority split | medium     | Secondary evidence read from one analysis; a capture of the eBOL spec would raise it                            |
+| Claim                                                | Confidence | What would move it                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §3.2's refusal to close `identityScheme`             | **high**   | A source publishing a closed HHG identifier-scheme list **with no escape hatch**. None of the six in §3.2(a) is                                                                                                                                                                                       |
+| §3.6's party-grain finding                           | **high**   | Structural, and checked at load and at compile time. It moves when [A8 §9 item 1] lands, not before                                                                                                                                                                                                   |
+| §3.3's table being the schemes the corpus witnesses  | medium     | A `needs-user` or `candidate` registry entry that names A9 and is then fetched adds rows. The number of those is a count over a discovery artefact and is deliberately not written here or gated — `source-registry.test.ts`'s header says why. `src:nmfta-scac` is no longer one of them (§6 item 2) |
+| §3.4's one unsettled bit being the only one          | medium     | Same. It is a statement about twenty rows, not about the industry                                                                                                                                                                                                                                     |
+| §3.8's single witness for the van-line registration  | **high**   | A second external publisher of a van-line registration scheme. `src:weichert-supplier-api` states its absence                                                                                                                                                                                         |
+| §3.1's second witness for the issuer/authority split | medium     | Secondary evidence read from one analysis; a capture of the eBOL spec would raise it                                                                                                                                                                                                                  |
 
 **The evidence base's own weakness, stated plainly and enumerated rather than counted.** Exactly two
 of the thirteen sources §3.3 cites are quoted at **primary** grade — `src:cfr-49-375` and
