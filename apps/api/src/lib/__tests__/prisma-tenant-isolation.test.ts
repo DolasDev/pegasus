@@ -963,6 +963,7 @@ describe('Schema-sync: TENANT_SCOPED_MODELS matches schema.prisma', () => {
       'AuthSession', // short-lived auth handshake record — no tenant-API reads
       'ApiClient', // M2M auth — accessed by api-client-auth middleware, not tenant handlers
       'TenantBrokerCredential', // broker auth + runner dispatcher only (lib/tenant-broker-credential.ts) — both use the root db, never tenant handlers
+      'TenantTemporalNamespace', // platform-only — admin routes, the temporal-provisioner Lambda and the broker credentials route, all via the root db with an explicit tenantId
       'VpnPeer', // admin/platform-only — accessed by platform_admin routes and the hub reconcile agent (scope vpn:sync), never by tenant handlers
       'Workflow', // visibility=GLOBAL requires reading rows owned by another tenant; the repo scopes manually via OR [{tenantId}, {visibility: 'GLOBAL'}]
       'IntegrationConfig', // same as Workflow — visibility=GLOBAL (platform tenant) is read cross-tenant; the repo hand-scopes via OR [{tenantId}, {visibility: 'GLOBAL'}]
