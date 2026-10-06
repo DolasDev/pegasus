@@ -434,7 +434,7 @@ shade of meaning. The distinction is Shippeo's grid; the placement on the outcom
 Reason {
   code          from the published, versioned reason vocabulary        MANDATORY
   scope         ACT | GOODS | PARTY | RESOURCE | SITE | ADMINISTRATIVE MANDATORY   [ORIGINAL]
-  attribution   { party?, roleClass }                                  MANDATORY   [ORIGINAL] (see below)
+  attribution   { party?, roleClass } | { roleClass: NO_PARTY }        MANDATORY   [ORIGINAL] (see below)
   appliesTo[]   SubjectRef[] at portion or item grain                  OPTIONAL
   remedy        typed per code                                         per code
   remark        free text                                              MANDATORY when code = OTHER
@@ -476,6 +476,28 @@ Keying Error`; Shippeo separates `NJU` "not justified by carrier" from `DIV` "by
    on an `EXTDate` exception record, X12 keys 1651 to a responsible party on a status message, DTR
    attributes at segment grain. Attribution belongs to the **reason**, which is the thing all
    three sources actually attach it to.
+
+   > **NARROWED by [`A8` §9 item 2](A8-authority-skeleton.md) on 2026-10-06, and the shape block above
+   > is amended with it.** `attribution` is still mandatory and `roleClass` is still mandatory within
+   > it, but `attribution` is now a **two-branch union**: a class with an optional `party`, or
+   > `ATTRIBUTION_NO_PARTY` with `party` **forbidden**. Two published reason codes need it —
+   > `FORCE_MAJEURE` and `DEADLINE_LAPSED`, the latter because `src:dtr-part-iv` §C.4.b makes
+   > non-response to an award a typed event "caused by nobody" — and until the branch existed neither
+   > could be recorded without inventing a `roleClass` member, which §0 forbids.
+   >
+   > **The no-party value is declared by the SHAPE and is not a member of the `roleClass`
+   > vocabulary**, which [`A8` §9 item 2](A8-authority-skeleton.md) now **refuses on the evidence** of
+   > `src:stedi-x12-reference` element 98. The line is this document's own: §2.6's note sends a
+   > shortfall to "an unknown role class rather than to nobody", so `unknown` is a class of party and
+   > belongs inside the vocabulary, while nobody has no class of party and belongs outside it. The
+   > mechanism is rule 3's, one field over: `OTHER` is "declared by the shape, not by the vocabulary A4
+   > published", and so is this.
+   >
+   > **And a rule follows that nothing in this section could state before.** **A8-NO-PARTY:** a code
+   > whose `partyRequired` is `true` may not be attributed to nobody at all — the five are
+   > `INSTRUCTED_CHANGE`, `PARTY_ABSENT`, `PARTY_NOT_READY`, `PARTY_REFUSED` and `PARTY_RESCHEDULED`.
+   > `partyRequired` was unfalsifiable against anything until there was a no-party value for it to
+   > contradict.
 
 `Reason.scope` is **[ORIGINAL]**. It exists so a consumer can separate "something is wrong with the
 goods" from "something is wrong with the site" without reading a code list, and because HHG's
@@ -538,6 +560,13 @@ Act  type=Delivery  subject=shipment:S  context=[stop:T2]  basis=ACTUAL
 > and `SHORT` reads as a magnitude, which the outcome axis carries. The published members are
 > `PARTY_ABSENT`, `GOODS_DAMAGED` and `GOODS_MISSING`, and the scenario is unchanged in every other
 > respect — including that a shortfall is attributed to an unknown role class rather than to nobody.
+
+> **That last clause turned out to be load-bearing, and [`A8` §9 item 2](A8-authority-skeleton.md)
+> cites it as the line.** `unknown` and nobody are **different values** — a party acted and its class
+> is unknown, versus no party acted — so `unknown` is a class of party and lives inside the
+> `roleClass` vocabulary, while nobody is not and lives in the shape as `ATTRIBUTION_NO_PARTY`
+> (§2.4 rule 6's note). The three literals above remain illustrations and A4 published none of them;
+> what this clause published, without anyone noticing at the time, is the **distinction**.
 > The mapping is carried as `illustrativeOnly.supersededBy` in
 > `packages/domain-reference/data/reasons.json`, and nothing here is retracted: the shape these
 > literals were written to demonstrate is exactly the shape A4 filled.
@@ -2854,7 +2883,12 @@ RELEASE|RECEIPT, —}`; they key differently, so each is resolved on its own key
   beyond `newWindow`, of which the one that matters opens a SIT stay and was owed to A5. **That one
   is now published**: [`A5` §3.2](A5-storage-in-transit.md) types it as `opensStay`, and no
   remaining remedy shape has a named requester anywhere in the corpus, so the owed value was
-  discharged rather than re-owned.
+  discharged rather than re-owned. **And the other half is now settled too, on 2026-10-06, in a way
+  this line did not anticipate:** [`A8` §9 item 2](A8-authority-skeleton.md) **refused** the
+  `roleClass` enum on the evidence of `src:stedi-x12-reference` element 98 and paid A4's concrete
+  requirement anyway, as `ATTRIBUTION_NO_PARTY` on `Attribution`'s **shape** rather than as a member
+  of the enum (§2.4 rule 6's note). So the requirement is discharged and the enum is refused; neither
+  is waiting on the other.
 - **Custody authority's owner** (conflict #7) — **partially closed, and the cap has moved rather
   than lifted.** _(What `Custody` **is** is no longer open: §4.8 settles it as a projection, and
   `boundBy = CUSTODY` now resolves against the envelope. What remains open is whose assertions win,

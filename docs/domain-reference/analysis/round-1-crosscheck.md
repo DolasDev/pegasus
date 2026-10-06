@@ -237,6 +237,21 @@ Recorded only because the round produced a surprise worth acting on. A10 and A11
 
 - SHOULD — X12 element 98 (party role codes) and X12 transaction set 212 (Delivery Trailer Manifest), both on stedi.com, both one page. Element 98 is the single list the stedi analysis did not read, and it holds the thing A8 most needs from X12; the A8 score there is explicitly provisional without it. The 212 matters more: it is BY DEFINITION multiple shipments on one trailer, and every source in the corpus fails A3's consolidation question. Stedi's open question 2 argues it is the most likely place a standard models what we call a trip. Reading it before concluding A3 is an original design decision is cheap insurance.
 
+  > **DISCHARGED — both halves, and the element-98 half answered the opposite way from the one this
+  > item expected.** The 212 was read 2026-09-30 (`src:x12-212-trailer-manifest`, its own registry
+  > entry: consolidation is first-class, but there are no stops, no legs and no driver, so it is a
+  > **load plan** and not a trip). Element 98 was read 2026-10-06
+  > (`sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md`), and **it does not
+  > hold "the thing A8 most needs from X12"**: it is `Entity Identifier Code`, the identifier
+  > qualifier on an `N1` loop, whose own definition covers "an organizational entity, a physical
+  > location, property or an individual" and whose list delivers all four, flat and ungrouped, across
+  > freight, healthcare, mortgage, oil-and-gas and education. So the A8 score it was supposed to
+  > settle **stands unchanged** with its ground
+  > restated from evidence, and [A8 §9 item 2] refused `roleClass` on what the list contains rather
+  > than leaving it pending on the list not having been opened. This item's premise — that a vetted
+  > role vocabulary was sitting one fetch away — is the part that was wrong, and it was cheap to find
+  > out: one page.
+
 - WORTH OBTAINING — src:iso-17451 (registry P1, needs-user, paid: ISO 17451-1:2016 HHG inventory/condition/transport codes and ISO/TS 17451-2:2017 XML inventory messaging). This is the ONLY formal removals data standard in existence, it is the only registry entry aimed squarely at HHG inventory and condition, and it has never been obtained. Out of v1 scope (A2/A6/A10/A11) so not blocking now, but it is the source A10/A11 will need and buying it has a lead time. Same tier: src:werc-mobility-data-standard (needs-user), which would give the RMC↔supplier exchange vocabulary Weichert, SIRVA and Cartus share — directly relevant since our one live external integration is an RMC.
 
 - PROBABLY NOT WORTH IT — src:transflo (candidate): driver workflow, stop actions Accept/Start/Pickup/Deliver/Complete, geofence, eDocuments, signatures. It is a comparator in an area (A4 mechanism, A6 evidence) already read at grade A from both Samsara and Omnitracs. Skip unless a tenant runs it. Likewise src:ubl-2-4, src:iata-one-record, src:uncefact-bsp-vocabulary, src:oracle-otm, src:sap-tm, src:federated-ontology, src:trucker-tools, src:orbcomm, src:nmfta-scac, src:motive, src:geotab and src:edi-explainer-guides — every one is a comparator in an area covered three or more times, and reading them will not change an area verdict. src:x12-partner-guides would only re-make the point the FCA 858 guide already made (partners switch off half the standard, including the time-zone element).

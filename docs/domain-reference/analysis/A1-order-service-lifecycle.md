@@ -696,10 +696,25 @@ members, which A4 cut from execution-event sources.
 It passes [SD §2.4]'s six rules. Rule 1 — it names no outcome and no completion verb; the outcome is
 `NOT_COMPLETED` and the code says why, which is that time ran out. Rule 4 — it is grain-independent
 and reaches an execution act directly: a delivery window that expires unattempted is the same fact.
-Rule 6 — it is the **third** published code that attributes to **nobody**, after `FORCE_MAJEURE` and
-`CAUSE_UNKNOWN`, and this one is regulation-grade about it. That strengthens rather than repeats
-[A4 §5]'s hand-off: the owed `roleClass` enum needs an explicit non-party member, and it is now
-required by three members of a published vocabulary.
+Rule 6 — it is a published code that attributes to **nobody**, and the only one a regulation is
+outright about. That strengthens rather than repeats [A4 §5]'s hand-off: the owed `roleClass` enum
+needs an explicit non-party member.
+
+> **AMENDED 2026-10-06, twice over.** This paragraph said "the **third** published code that
+> attributes to nobody, after `FORCE_MAJEURE` and `CAUSE_UNKNOWN`… required by three members of a
+> published vocabulary." The ordinal and the count are both withdrawn under §9's own rule, and the
+> count was carrying a claim rather than a tally: `CAUSE_UNKNOWN` attributing to nobody is
+> contradicted by [shared §2.6](00-shared-decisions.md)'s note that a shortfall goes to "an unknown
+> role class rather than to nobody", and an unknown cause plausibly means a party acted whose class is
+> unknown. **Two** codes positively require it — this one and `FORCE_MAJEURE` — and `CAUSE_UNKNOWN` is
+> recorded as open with three candidate readings and no pick.
+>
+> **And the requirement is DISCHARGED, though not where this paragraph expected.**
+> [`A8` §9 item 2](A8-authority-skeleton.md) refused the `roleClass` vocabulary on the evidence of
+> `src:stedi-x12-reference` element 98 and published the value as `ATTRIBUTION_NO_PARTY`, declared by
+> `Attribution`'s **shape**: no-party is not a class of party. So the hand-off is paid and the
+> vocabulary it was addressed to is refused — which is a better outcome than the one this sentence
+> asked for, because it does not depend on the vocabulary ever closing.
 
 #### The three that are not A4's, with the argument in each case
 

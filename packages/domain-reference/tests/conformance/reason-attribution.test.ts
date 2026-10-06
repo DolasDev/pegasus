@@ -96,18 +96,19 @@ describe('A8-NO-PARTY — the codes that may not be attributed to nobody', () =>
     expect(attributionIsLegalFor('FORCE_MAJEURE', 'unknown')).toBe(true)
   })
 
-  it('the `partyRequired` set and the `PARTY`-scope set COINCIDE today, and that is gated', () => {
-    // Measured, not assumed — and the draft of this file assumed the other way round, asserting
-    // that `INSTRUCTED_CHANGE` was `partyRequired` at a non-`PARTY` scope and so proved the two
-    // axes come apart. It is `PARTY`-scoped, and the two sets are identical.
+  it("holds [A4 §5]'s biconditional: `partyRequired` iff `PARTY`-scope", () => {
+    // [A4 §5] item 1 states it outright — "`partyRequired` is true for every `PARTY`-scope member
+    // and no other" — and until A8-NO-PARTY existed **nothing could test it**, because there was no
+    // no-party value for `partyRequired` to contradict. That is why it is gated by this round and
+    // not by A4's.
     //
-    // The rule still reads the CODE list rather than `scope`, because `data/reasons.json` declares
-    // the discipline per code — its note says `partyRequired` is "optional BY DEFAULT, refined per
-    // code" — so the coincidence is a property of the current vocabulary and not a rule. This
-    // assertion is what makes that claim falsifiable: the day a code is `partyRequired` at another
-    // scope, or a `PARTY`-scope code is added without the flag, it fails **naming the code that
-    // moved** rather than silently making `attributionIsLegalFor` disagree with a reader who
-    // reimplemented it over `scope`.
+    // The draft of this file got it backwards, asserting that `INSTRUCTED_CHANGE` was `partyRequired`
+    // at a non-`PARTY` scope and so proved the two axes come apart. It is `PARTY`-scoped and the sets
+    // are identical, which is A4's sentence rather than a coincidence.
+    //
+    // `attributionIsLegalFor` still reads the CODE list rather than `scope`, because the discipline is
+    // declared per code (`data/reasons.json`: "optional BY DEFAULT, refined per code"), so the two are
+    // independent declarations and this comparison can fail — naming the code that moved.
     const partyRequired = vocabulary.codes
       .filter((entry) => entry.partyRequired)
       .map((entry) => entry.code)

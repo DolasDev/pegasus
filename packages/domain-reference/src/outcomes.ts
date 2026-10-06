@@ -592,7 +592,8 @@ export function reasonCode(code: string): ReasonCode {
  * item, [fork-time §7]'s `(b)(1)` row and that source's own open question 1 all named it — is
  * `Entity Identifier Code`, the identifier qualifier on an `N1` loop. Its own definition is _"Code
  * identifying an organizational entity, a physical location, property or an individual"_ and the
- * list delivers all four, flat and ungrouped, across five industries. So it is at the wrong grain
+ * list delivers all four, flat and ungrouped, with freight, healthcare, mortgage, oil-and-gas and
+ * education sharing one alphabet. So it is at the wrong grain
  * twice over: **no class axis** for classes to be cut from, and **no member meaning no party at
  * all**. `sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md` is the read.
  *

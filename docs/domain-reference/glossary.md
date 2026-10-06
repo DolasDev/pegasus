@@ -2107,7 +2107,7 @@ it because no source publishes a no-party attribution to state it about.
 
 - **Kind:** a code that must name a party may not be attributed to nobody at all
 - **Marker:** [ORIGINAL]
-- **Cited:** [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Cited:** [[A4 §5]](analysis/A4-execution-events.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
 - **Declared by:** `attributionIsLegalFor` in `packages/domain-reference/src/rules/authority.ts`
 
 ### `B-ONWARD` (rule)
@@ -2353,7 +2353,7 @@ splitting a shipment." The SIT remainder is a Portion; the shipment is untouched
 
 ### `RoleClassStaysOwed` (rule)
 
-The gate behind [A8 §9 item 2]'s refusal to close `roleClass`, and the sixth case along from
+The gate behind [A8 §9 item 2]'s refusal to close `roleClass`, and the next case along from
 [A5 §9], [A2 §9], [A6 §9], [A7 §9] and [A9 §3.2].
 
 - **Kind:** [A8 §9 item 2] refuses to close `roleClass` on the evidence of X12 element 98

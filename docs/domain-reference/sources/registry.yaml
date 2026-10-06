@@ -657,7 +657,7 @@ sources:
   status: analyzed
   urls: ["https://www.stedi.com/edi/x12-004010/214"]
   files:
-    - {path: sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md, sha256: 1ba2224339b61146cc6dcfedf971616c7ea9056184c26ac0d985ba016996c9ee, retrieved: 2026-10-06, from: "notes + short excerpts of https://www.stedi.com/edi/x12-004010/element/98, per sources/README.md"}
+    - {path: sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md, sha256: 78f4f2c1c3afbe790b6a671a8368c6ca486fb452bafd9eff950995ac3dbdca38, retrieved: 2026-10-06, from: "notes + short excerpts of https://www.stedi.com/edi/x12-004010/element/98, per sources/README.md"}
     - {path: sources/stedi-x12-reference/local/element-98.html, sha256: 76c58639f6d57b4237d59512a654a6df226ddd4bf1120d0ed35f351bd91d9b4b, retrieved: 2026-10-06, from: "https://www.stedi.com/edi/x12-004010/element/98"}
   notes: >
     Element 98 Entity Identifier Code was read 2026-10-06, discharging round-1's SHOULD item and

@@ -320,6 +320,28 @@ billing."
    as caused by **nobody** — an absent act with a typed notice and an escalation behind it. The
    requirement is now regulation-grade rather than inferred from two codes' semantics.
 
+   > **DISCHARGED 2026-10-06, and the count above is withdrawn — the slip is visible in this item's
+   > own wording.** The requirement is paid: [`A8` §9 item 2](A8-authority-skeleton.md) publishes
+   > `ATTRIBUTION_NO_PARTY`, declared by `Attribution`'s **shape** rather than as a member of the role
+   > enum, because `roleClass` is the class of _party_ a reason is attributed to and a reason caused by
+   > no party has no class of party. The same round **refused** the `roleClass` vocabulary on the
+   > evidence of `src:stedi-x12-reference` element 98, so paying the requirement into the shape rather
+   > than into the enum is what makes it payable at all.
+   >
+   > **And "three such codes" is two.** The sentence above this one says `CAUSE_UNKNOWN` "attributes to
+   > nobody **yet**" — which is a _third_ state, not the no-party one — and [`A1` §3.6]'s paragraph
+   > dropped the "yet" and counted it. [shared §2.6](00-shared-decisions.md)'s note is the tie-break
+   > and goes the other way: a shortfall is attributed to "an unknown role class rather than to
+   > nobody". So **two** codes positively require the value, `FORCE_MAJEURE` and `DEADLINE_LAPSED`, and
+   > `CAUSE_UNKNOWN`'s attribution is recorded as open with three candidate readings — a party of
+   > unknown class, no party, or unknown whether any party — and no pick, because deciding it needs the
+   > vocabulary that was just refused.
+   >
+   > **One thing in this item became falsifiable and is now gated.** "`partyRequired` is true for every
+   > `PARTY`-scope member and no other" was a biconditional nothing could test, because there was no
+   > no-party value for it to contradict. **A8-NO-PARTY** is the rule it implies — such a code may not
+   > be attributed to nobody — and `reason-attribution.test.ts` holds both halves by name.
+
 2. **Remedy shapes beyond `newWindow` — CLOSED at [A5 §3.2], and the refusal was right.**
    [SD §2.4] rule 5's one sourced shape is `src:shippeo`'s `new_slot {start, end}`, required on its
    appointment events. A4 types it as `NewWindow` — spelled after [SD §2.6]'s `newWindow` rather
@@ -471,16 +493,16 @@ written and gated ([A1 §9]).
 
 ## 8. Confidence
 
-| Decision                                       | Confidence                                                      | What would move it                                                                                                                                                 |
-| ---------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The 23 members as a set                        | **Medium-high**                                                 | An HHG-native reason vocabulary from an external publisher. None exists in the corpus; `src:sirva-ade` is a van line's own contract and has none                   |
-| §4.1 `MQP`/`MQT` collapsed                     | **High**                                                        | A case where the outcome axis cannot carry the magnitude. [SD §3.4] is the argument it can                                                                         |
-| §4.4 The `SITE` members are sourced            | **High**                                                        | Nothing short of Item 125.1 not saying what it says                                                                                                                |
-| §4.2 `OVERFLOW` scoped `RESOURCE`              | **Medium**                                                      | A consumer that filters on scope and wants overflow under `GOODS`. The scope axis is **[ORIGINAL]** and its members are glossed, not defined                       |
-| §4.5 `CAUSE_UNKNOWN` published                 | **Medium**                                                      | Evidence that producers use it to avoid recording a reason they know. That is a capture-rule question ([SD §5]), not a vocabulary one                              |
-| §4.6 `INSTRUCTED_CHANGE` over the tariff split | **High**, up from medium-high — the condition is **discharged** | [`A7` §3.9](A7-charges-billing.md) decided it does **not** need the distinction at capture time, so the row is settled rather than conditional. See the note below |
-| §5.1 `roleClass` left owed                     | **High**                                                        | [A8 §9 item 2] landing                                                                                                                                             |
-| §7 `publishedOwedVocabulary` as additive       | **Medium**                                                      | A real consumer broken by the narrowing on the captured face. Survivable at `0.2.0` either way                                                                     |
+| Decision                                       | Confidence                                                      | What would move it                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The 23 members as a set                        | **Medium-high**                                                 | An HHG-native reason vocabulary from an external publisher. None exists in the corpus; `src:sirva-ade` is a van line's own contract and has none                                                                                                                                                           |
+| §4.1 `MQP`/`MQT` collapsed                     | **High**                                                        | A case where the outcome axis cannot carry the magnitude. [SD §3.4] is the argument it can                                                                                                                                                                                                                 |
+| §4.4 The `SITE` members are sourced            | **High**                                                        | Nothing short of Item 125.1 not saying what it says                                                                                                                                                                                                                                                        |
+| §4.2 `OVERFLOW` scoped `RESOURCE`              | **Medium**                                                      | A consumer that filters on scope and wants overflow under `GOODS`. The scope axis is **[ORIGINAL]** and its members are glossed, not defined                                                                                                                                                               |
+| §4.5 `CAUSE_UNKNOWN` published                 | **Medium**                                                      | Evidence that producers use it to avoid recording a reason they know. That is a capture-rule question ([SD §5]), not a vocabulary one                                                                                                                                                                      |
+| §4.6 `INSTRUCTED_CHANGE` over the tariff split | **High**, up from medium-high — the condition is **discharged** | [`A7` §3.9](A7-charges-billing.md) decided it does **not** need the distinction at capture time, so the row is settled rather than conditional. See the note below                                                                                                                                         |
+| §5.1 `roleClass` left owed                     | **High**                                                        | [A8 §9 item 2] landing. **2026-10-06: it landed as a REFUSAL** — element 98 read, no class axis, no non-party member — so the decision to leave it owed is vindicated rather than superseded, and what would now change this row is new evidence against that argument rather than somebody doing the work |
+| §7 `publishedOwedVocabulary` as additive       | **Medium**                                                      | A real consumer broken by the narrowing on the captured face. Survivable at `0.2.0` either way                                                                                                                                                                                                             |
 
 > **§4.6's discharge, in full** ([`A7` §3.9](A7-charges-billing.md)). Item 28.4's three exclusion
 > conditions each turn on a fact the recording party does not hold: whether the shipment had

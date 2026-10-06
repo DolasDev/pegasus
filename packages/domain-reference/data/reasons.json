@@ -406,7 +406,11 @@
     "marker": "[ORIGINAL]",
     "sourcedPart": "That reason vocabularies are ORGANISED BY RESPONSIBLE PARTY is sourced: src:stedi-x12-reference element 1651's 86 values are organised that way (consignee-, driver-, shipper-, other-carrier-related) and include 'BF Carrier Keying Error'; src:shippeo separates NJU 'not justified by carrier' from DIV 'by the counterparty'.",
     "authoredPart": "[ORIGINAL]: lifting attribution out of the code into its own field. It removes the duplication both sources carry — Shippeo's REFUSED_LOAD / LOADING_REFUSED_BY_SHIPPER_VARIOUS_REASON are ONE reason with two attributions.",
-    "citation": "[SD §2.4] rule 6"
+    "citation": "[SD §2.4] rule 6",
+    "roleClassRefusedOnEvidence": "REFUSED 2026-10-06, not merely unread. X12 element 98 — the one list round-1-crosscheck.md, [fork-time §7]'s (b)(1) row and src:stedi-x12-reference's own open question 1 all named as the blocker — is Entity Identifier Code, a flat N1 identifier qualifier covering 'an organizational entity, a physical location, property or an individual'. No class axis to cut classes from, and no member meaning no party at all. Held by RoleClassStaysOwed in src/rules/authority.ts; the wire carries x-owed-state = refusedOnEvidence.",
+    "noPartyValue": "ATTRIBUTION_NO_PARTY",
+    "noPartyValueWhy": "Declared by the Attribution SHAPE and NOT a member of the owed roleClass vocabulary, the same way OTHER is declared by the Reason shape and not by the vocabulary A4 published. roleClass is the class of PARTY a reason is attributed to; a reason caused by no party has no class of party. [SD §2.6]'s note draws the line by sending a shortfall to 'an unknown role class rather than to nobody' — so unknown is a class and stays inside the refused vocabulary, and nobody is outside it. Required by FORCE_MAJEURE and DEADLINE_LAPSED (src:dtr-part-iv §C.4.b, 'caused by nobody'); CAUSE_UNKNOWN's attribution is OPEN. [ORIGINAL] as the line and as the spelling. [A8 §9 item 2]",
+    "noPartyForbiddenOn": "A8-NO-PARTY — a code whose partyRequired is true may not be attributed to nobody at all. Enumerated in src/rules/authority.ts as CODES_THAT_FORBID_NO_PARTY_ATTRIBUTION and gated both directions by tests/conformance/reason-attribution.test.ts, which is also where [A4 §5] item 1's partyRequired-iff-PARTY-scope biconditional is finally testable."
   },
   "remedy": {
     "note": "THE SETTLED POINT: a reason may carry its own remedy, and FOR SOME CODES MUST.",

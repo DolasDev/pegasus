@@ -1824,7 +1824,7 @@ export function authorityToDeclare(
 /* -------------------------------------------------------------------------------------------- */
 
 /**
- * The gate behind [A8 §9 item 2]'s refusal to close `roleClass`, and the sixth case along from
+ * The gate behind [A8 §9 item 2]'s refusal to close `roleClass`, and the next case along from
  * [A5 §9], [A2 §9], [A6 §9], [A7 §9] and [A9 §3.2].
  *
  * **Why it is refused rather than pending.** `roleClass` shipped `pending` on the ground that its
@@ -1842,8 +1842,11 @@ export function authorityToDeclare(
  *    no role family, spanning freight, healthcare, mortgage, oil-and-gas and education. A class
  *    list cut out of it by hand would be **ours**, which is the [ORIGINAL] value [SD §0] forbids.
  * 2. **It has no member meaning no party at all.** Searched and absent; the nearest misses are
- *    `B2 Other Unlisted Type of Organizational Entity` and `ZZ Mutually Defined`, both of which are
- *    still an organization, and `QD Responsible Party`, which is a person.
+ *    `B2 Other Unlisted Type of Organizational Entity`, which is an organization; `QD Responsible
+ *    Party`, which is _"a person responsible for the affairs of the person having services
+ *    rendered"_; and `ZZ Mutually Defined`, which is whatever the trading partners agreed it is.
+ *    None of the three means **no party**, and `ZZ` is the one that could be mistaken for it — it
+ *    means the slot is filled by something unlisted, not that the slot is empty.
  *
  * So this is [A9 §3.2]'s shape rather than a backlog item: the gap does not close by effort, and a
  * round that closes it has to answer an argument first. What element 98 **does** supply is a
@@ -1870,7 +1873,8 @@ export type RoleClassStaysOwed = Exact<RoleClass, OwedCode<'roleClass'>>
 
 /**
  * The assignment that makes {@link RoleClassStaysOwed} a gate rather than an alias — [A5 §9]'s
- * finding, applied for the sixth time.
+ * finding. No ordinal: the register of where this pattern is used is `RULES` in
+ * `tools/generate-glossary.ts`, which is generated, and a number written here is not.
  */
 const _roleClassStaysOwed: RoleClassStaysOwed = true
 void _roleClassStaysOwed
@@ -1908,11 +1912,15 @@ export const CODES_THAT_FORBID_NO_PARTY_ATTRIBUTION = [
  * the discipline is published per **code**: `data/reasons.json`'s own note says `partyRequired` is
  * "optional BY DEFAULT, refined per code".
  *
- * **The two sets coincide today, and that is a measurement rather than a rule.** All five
- * `partyRequired` codes are `PARTY`-scoped and every `PARTY`-scoped code is `partyRequired`, so a
- * reader who reimplemented this over `scope === 'PARTY'` would get the same answers — for now.
- * `reason-attribution.test.ts` gates the coincidence, so the day the two come apart it fails naming
- * the code that moved instead of leaving two implementations quietly disagreeing.
+ * **The two sets coincide, and that is [A4 §5] item 1's own sentence** — "`partyRequired` is true for
+ * every `PARTY`-scope member and no other" — so a reader who reimplemented this over
+ * `scope === 'PARTY'` would get the same answers today. It is still read off the code list, because
+ * the table declares the discipline per code and the two are then independent declarations.
+ *
+ * **A4 could not gate that biconditional and this round can**, which is why the gate lands here:
+ * `partyRequired` had nothing to contradict until there was a no-party value for it to be
+ * incompatible with. `reason-attribution.test.ts` holds it, and the day the two sets come apart it
+ * fails naming the code that moved.
  */
 export function attributionIsLegalFor(code: string, roleClassValue: string): boolean {
   if (roleClassValue !== ATTRIBUTION_NO_PARTY) return true

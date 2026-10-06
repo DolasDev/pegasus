@@ -78,9 +78,11 @@ Each of these is a zero result over the parsed page bytes, not over a summary:
 The nearest things to a "no party" value are `B2 Other Unlisted Type of Organizational
 Entity` — *"An organization, e.g., a business, the description of which cannot be
 accomplished using the existing code list and for which the trading partners have not
-mutually agreed to a definition for it"* — and `ZZ Mutually Defined`. **Both are still an
-organization.** `QD Responsible Party` is a person. Nothing in the list means *no party at
-all*.
+mutually agreed to a definition for it"* — `ZZ Mutually Defined`, and `QD Responsible Party`,
+*"person responsible for the affairs of the person having services rendered"*. `B2` is an
+organization and `QD` is a person. `ZZ` is the one a reader could mistake for a no-party
+value and it is not: it means the slot is filled by **something the partners agreed**, not
+that the slot is empty. Nothing in the list means *no party at all*.
 
 ## Cross-walk: `ROLE_NAMES` against element 98
 
@@ -149,7 +151,8 @@ A8 §2's Trap 2: the word is exactly as ambiguous here as `src:cfr-49-375` §375
 grain for it in two independent ways, and both are visible above rather than inferred:
 
 - **No class axis.** One flat table; nothing to cut classes from. A class list derived by
-  hand from 1312 flat codes spanning five industries would be ours.
+  hand from 1312 flat codes spanning freight, healthcare, mortgage, oil-and-gas and education would be
+ours.
 - **No non-party member.** Nothing in 1312 codes means *no party at all*; the searched-and-absent
   table above is the check, and `B2` / `ZZ` / `QD` are the nearest misses. **No document in the
   corpus predicted this** — the sentence that looks like a prediction is `[fork-time §5.3]`'s and
