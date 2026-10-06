@@ -7,6 +7,12 @@ It replaces `plans/in-progress/domain-reference-roleclass.md`, whose round lande
 is `plans/completed/domain-reference-roleclass.md`, and its transferable lessons are carried into §3,
 §4 and §6 of this file rather than left to be rediscovered.
 
+> **Current as of 2026-10-06 (late), `main` @ `c60c00db`.** Three PRs landed after this file was first
+> written and two of them were not domain-reference work at all: **#804** the `roleClass` round,
+> **#808** a critical-advisory fix that had turned `main` red, and **#807** two new `GOTCHAS.md`
+> entries. §6's "Workflows and CI" carries what the detour taught, because the next round will meet
+> the same three hazards and two of them are invisible from inside this package.
+
 > **§1 IS A SEED, AND IT SAYS SO.** Unlike the last plan, §1 here is **not** a measured design. It
 > names a deliverable the corpus has owed since A8 was written, and **the one decision it turns on is a
 > schema question nobody has answered in writing.** §1.3 is a list of what to measure before designing
@@ -488,6 +494,11 @@ rule's premise** — measuring first cost one script; measuring after would have
   with no analysis. The split is on the presence of a score table and **never** on `status:`.
   `tools/source-registry.ts` is the one reader; import it rather than writing a second parser. **A count
   over the registry is deliberately deleted rather than gated.**
+- **Two new `GOTCHAS.md` entries (#807) are the durable home for traps this effort keeps re-hitting**,
+  and both are about a tool reporting _nothing_: "Watching a fresh PR's CI: three ways `gh` reports
+  'nothing' when something is wrong" (an instant `--watch` is an alarm, not a pass;
+  `gh run list --branch` answers with stale data; filter on `headSha` yourself) and "Two `WebFetch`
+  reads that agree with each other are not a source — parse the bytes".
 - **`grep` here is a ugrep wrapper with `-I`, and one NUL byte makes it skip a file silently.** **All
   three generators** hold literal NULs. **When a negative grep result is load-bearing, use
   `/usr/bin/grep -a`.** In `dolas/agents/project/GOTCHAS.md`.
@@ -530,7 +541,37 @@ API**. `generate-context-map.ts` imports its model, citation and owed readers fr
 
 ### Workflows and CI
 
+- **A docs-only PR is green on every branch check and can still be EJECTED from the merge queue, by a
+  failure on `main` that has nothing to do with it.** This round's own shape, and it will be the next
+  round's too, because a domain-reference PR is often `docs/` + `packages/domain-reference/` only.
+  `ci.yml` path-filters the heavy jobs away for such a diff — `Lint`, which carries
+  **`Audit dependencies`**, reports `skipping` and branch protection is satisfied vacuously. The merge
+  queue runs every job **unconditionally**. So the first PR to enter the queue discovers any
+  pre-existing `main` failure and gets blamed for it. #807 was ejected by a critical `shell-quote`
+  advisory (#808). **Before blaming your diff, check whether the same job passes on `main`'s head
+  commit**, and read `plans/todo/ci-blockers-after-security-backlog.md` → "Five diagnosis traps"
+  first — it had the answers to two of the three traps that round hit.
+- **The advisory gate can flip red mid-round with no code change, and right now there is NO warning.**
+  `audit-ci` reads a live feed. Worse, **`Dependabot Updates` has been failing since 2026-10-05**, so no
+  bot PR appears when an advisory lands and "no Dependabot PR" no longer means "no advisory". Until that
+  is fixed, run `npx --no-install audit-ci --config ./audit-ci.jsonc` **before enqueuing**. Tracked as
+  the first Live-work item in the CI-blockers plan.
+- **`apps/api/vitest.config.ts` goes dirty on its own and must NOT be committed.** Running the api
+  suite locally lets the coverage ratchet's `autoUpdate` **raise** the floors to whatever the local run
+  measured; committing those ejects a later PR. `git checkout -- apps/api/vitest.config.ts`. Same for
+  `apps/e2e/.env.test` (worktree Postgres port) and stray `package-lock.json` churn — the CI-blockers
+  plan's "Do not commit these" is the list. **Nothing in `packages/domain-reference` needs the api
+  suite**, so the cheapest avoidance is not to run it; the pre-push hook will, and that is fine because
+  it reverts nothing — you must.
+- **A fresh worktree's Postgres can be many migrations behind `main`**, which fails the pre-push hook in
+  the api suite with `The table public.<x> does not exist` — nothing to do with your change. Fix:
+  `DATABASE_URL=<the worktree's url> npx prisma migrate deploy` then `npx prisma generate` from
+  `apps/api`. **Check which `DATABASE_URL` line is live first** — `apps/api/.env` also carries an inert
+  Neon URL (prefixed `1DATABASE_URL` to disable it), and running migrations against that would be a
+  very bad afternoon.
 - **Parallel authoring causes drift.** Settle a shared layer FIRST, then fan out.
+- **`GOTCHAS.md` is a hot file** — every stream appends to its tail, so two active sessions conflict
+  there. Resolve append-vs-append by keeping both entries, theirs first.
 - **CI runners are slower than this machine.** `testTimeout` covers test **bodies** only — `beforeAll`
   needs `hookTimeout`.
 - **Betterleaks scans full history**, so removing a file in a later commit does not help — amend.
@@ -602,17 +643,21 @@ archived to `plans/completed/<slug>.md` **before** opening it.
    rounds each found their plan wrong about something.
 2. `plans/completed/domain-reference-roleclass.md` — the round that just landed, its three
    plan-was-wrong findings, and the three lessons it adds to §4.
-3. `docs/domain-reference/analysis/A8-authority-skeleton.md` **§9 item 1**, and **§3** — item 1 is the
+3. `plans/todo/ci-blockers-after-security-backlog.md` — **"Five diagnosis traps" and "Do not commit
+   these", before you touch anything.** Not domain-reference work, but the `roleClass` round lost real
+   time to two traps already written down there, and its first Live-work item (`Dependabot Updates`
+   failing) is why the advisory gate can now go red without warning.
+4. `docs/domain-reference/analysis/A8-authority-skeleton.md` **§9 item 1**, and **§3** — item 1 is the
    deliverable; §3 is why authority attaches to `(role, factClass, interval)` and never to a party, and
    A8-SELF is the rule this round makes testable.
-4. `docs/domain-reference/analysis/A9-identity-cross-references.md` **§3.6** — the second and
+5. `docs/domain-reference/analysis/A9-identity-cross-references.md` **§3.6** — the second and
    independent reason to mint the party, and §3.6 item 2's ruling-out of `partyRole`. Then
    `data/identity-schemes.json`'s five `party`-grain rows and the loader invariant that holds their
    blockers.
-5. `docs/domain-reference/context-map.md` — its **join surface**, where `PartyId` is measured as the
+6. `docs/domain-reference/context-map.md` — its **join surface**, where `PartyId` is measured as the
    widest-spread concept with no aggregate behind it, and its **debt** section, which enumerates the
    three `TODO(…)` markers naming this item.
-6. `docs/domain-reference/analysis/published-event-catalog.md` **§2.3** and **§2.3.1** — the change
+7. `docs/domain-reference/analysis/published-event-catalog.md` **§2.3** and **§2.3.1** — the change
    classes and the pre-1.0 version rule. `newAggregateKind` already exists and `[SD §1.2]` states its
    permission outright, so this round may not need to mint a class — **which would be the first round
    since A5 that did not**.

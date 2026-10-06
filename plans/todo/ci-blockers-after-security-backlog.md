@@ -1,8 +1,15 @@
 # CI blockers + merge-queue maintenance left after the security backlog
 
-> **Resume point — refreshed 2026-10-06 against `main` @ `892f0c53`.** Every fact below was
+> **Resume point — refreshed 2026-10-06 (late) against `main` @ `c60c00db`.** Every fact below was
 > re-verified that day against the working tree, not carried over. Read "State of play", then
 > pick from "Live work"; each item says what it is, what it would cost, and what I'd do.
+>
+> ⚠️ **This file said "nothing is blocking" at `892f0c53` and was falsified two hours later.** A
+> newly-published **critical** advisory flipped `audit-ci` red on `main` with no code change, and the
+> first PR to enter the merge queue after it was **ejected** by a failure that had nothing to do with
+> it. Fixed in **#808**. The state-of-play section below now leads with what that exposed, because the
+> interesting part is not the advisory — it is that **the automation that should have caught it is
+> itself broken, silently**, and this file's own "No Dependabot PRs open" line read as good news.
 >
 > Successor to `plans/completed/security-backlog-and-sort-hardening.md` (fully discharged).
 > Narrative write-ups for everything closed live in `dolas/agents/project/GOTCHAS.md` and the PR
@@ -13,13 +20,30 @@
 
 ## State of play
 
-**`main` is green through prod.** At `892f0c53` the commit's own check-runs read **29 success, 6
-skipped, 0 failures**, including `Deploy to prod`, `Tag prod release` and `Record deployed SHA`.
-Working tree clean. **No Dependabot PRs open** — only `#145` (the Cognito/SES change, explicitly
-on hold).
+**`main` is green again, through prod, at `c60c00db`** — `CI`, `CodeQL` and `Deploy` all success on
+that commit and on `1fd5f284` before it. Working tree clean.
 
-**Everything that was blocking is now closed.** Nine fixes landed 2026-10-02 → 10-05; detail is
-in GOTCHAS and the PRs, so one line each:
+**But it was RED from ~15:51Z to 16:18Z, and the cause is still live.**
+
+- **`GHSA-pqg4-j6r4-53mv` (`shell-quote`, CRITICAL, CVSS 8.1, `>=1.8.4 <1.11.0`)** published while
+  installed was 1.10.0, flipping the `Lint` job's `audit-ci` gate. **Fourth** advisory flip this repo
+  has taken, and the **second** on `shell-quote` specifically — both landed _above the floor the
+  existing override pinned_. Fixed in **#808**: floor `>=1.9.0` → `>=1.11.0`, 3-line lockfile diff.
+  The `//overrides` note now records the stacking pattern, as `brace-expansion`'s does.
+- **`Dependabot Updates` — GitHub's own service run, not one of our workflows — is FAILING, and has
+  been since 2026-10-05.** Failures at `786ece6` (10-05 20:59Z), `3399b3c` (10-06 13:07Z) and
+  `1fd5f284` (10-06 16:17Z); the last success was `786ece6` at 21:56Z. Annotation is just "Dependabot
+  encountered an error performing the update". **This is why the critical advisory had no Dependabot
+  PR**, and why this file's "No Dependabot PRs open" line was a symptom rather than a clean bill of
+  health. See Live work.
+
+**The lesson worth more than the fix: this file already contained the answers to two of the three
+traps I hit, and I hit them because I had not read it.** The `gh run list --branch main` staleness and
+the `apps/api/vitest.config.ts` coverage-floor drift are both documented below, and both cost time
+anyway. **Read "Do not commit these" and "Three diagnosis traps" before starting, not after.**
+
+**Everything from the previous round is still closed.** Nine fixes landed 2026-10-02 → 10-05; detail
+is in GOTCHAS and the PRs, so one line each:
 
 - **E2E died on `.bin/tsx`** → **#779.** Not the range conflict this file predicted — a nested
   vite 8.3.1 left the root `tsx` slot holding vite 8.3.0's _optional peer_, which npm never
@@ -55,8 +79,40 @@ in GOTCHAS and the PRs, so one line each:
 
 ## Live work
 
-Nothing here blocks a merge or a deploy. Two are decisions, two are optional hardening, one is a
-loose end, and one is explicitly no-action.
+**One item now blocks nothing today but guarantees a repeat**, and it is first because it is the
+reason this file's previous revision was wrong. The rest: two decisions, two optional hardening, one
+loose end, one explicitly no-action.
+
+### [ ] `Dependabot Updates` is erroring — the dependency safety net is down
+
+**Not one of our workflows.** It is GitHub's Dependabot service run, triggered `dynamic`, and it
+appears in `gh run list` as `Dependabot Updates`. It has failed on every run since 2026-10-05
+(`786ece6` 20:59Z, `3399b3c` 13:07Z, `1fd5f284` 16:17Z); last success `786ece6` 21:56Z. The job log
+annotation is only **"Dependabot encountered an error performing the update"** — the useful detail is
+in the job's own expanded log, which `gh run view --log-failed` does not surface for a service run.
+
+**Why it is the highest-consequence item on this page.** Memory and this file both say "check for an
+existing Dependabot PR first — it opens one within about a minute of the alert" (see "Don't redo
+these"). On 2026-10-06 a **critical** advisory was live and there was **no PR**. That absence read as
+"nothing to do" when it meant "the opener is broken". So the repo currently has open alerts, no update
+PRs, and **no warning before the next advisory flips `audit-ci` red mid-merge** — which is exactly how
+#807 got ejected.
+
+**What I'd do, in order:**
+
+1. Open the failing run in the browser (`gh run view <id> --web`) and read the expanded **Run
+   Dependabot** step; the API does not return it for service runs.
+2. Check `.github/dependabot.yml` against the current overrides — **#808 added a `shell-quote`
+   floor and #799-era work changed others**, and a `versioning-strategy` / `ignore` entry that cannot
+   be satisfied is a plausible cause of "error performing the update".
+3. Check the Insights → Dependency graph → Dependabot tab for a per-ecosystem error; it reports a
+   reason the Actions run does not.
+4. **Do not** treat "no Dependabot PR" as evidence of no advisory again until this is green. Until
+   then, the manual check is `npx --no-install audit-ci --config ./audit-ci.jsonc` locally before
+   enqueuing anything.
+
+**Distinct from `DEPENDABOT_AUTOMERGE_PAT` below.** That one is about the queue not building a
+_bot-enqueued_ PR. This one is about the bot never opening a PR at all. Fixing either leaves the other.
 
 ### [ ] `DEPENDABOT_AUTOMERGE_PAT` — owner-only, and the highest-leverage item left
 
@@ -226,7 +282,7 @@ looked like a broken gate and was only a stale branch.
 gh api graphql -f query='{repository(owner:"DolasDev",name:"pegasus"){mergeQueue(branch:"main"){entries(first:10){nodes{position state enqueuedAt pullRequest{number}}}}}}'
 ```
 
-### Three diagnosis traps
+### Five diagnosis traps
 
 - **`gh run list --event merge_group` returns STALE data here** — it reported only runs from six
   days earlier while today's were live. Filter client-side instead:
@@ -240,6 +296,24 @@ gh api graphql -f query='{repository(owner:"DolasDev",name:"pegasus"){mergeQueue
   `gh api "repos/DolasDev/pegasus/commits/$(/usr/bin/git rev-parse origin/main)/check-runs?per_page=40"`,
   grouped by `conclusion`. Same family as the two traps above: a tool that answers confidently
   with old data is more dangerous than one that errors.
+- **A docs-only PR can be green on every branch check and still be ejected — and this is
+  structural, not a flake.** `ci.yml` path-filters the heavy jobs away for a docs/plans-only diff, so
+  `Lint` (which carries `Audit dependencies`) reports `skipping` and branch protection is satisfied
+  vacuously. The merge queue runs every job **unconditionally** — the
+  `|| github.event_name == 'merge_group'` clause `ci.yml` documents and `scripts/check_ci_merge_group.py`
+  enforces — so a docs PR is the **first thing to discover a pre-existing failure on `main`**, and the
+  ejection names it as the culprit. #807 was ejected by #808's advisory. **Before blaming your diff,
+  check whether the same job passes on `main`'s own head commit.**
+- **`npm update <pkg> --package-lock-only` can GUT the lockfile and report success.** Run while
+  `package.json`'s `overrides` contained an invalid entry, it deleted **32,997 lines** of
+  `package-lock.json`, printed a cheerful `up to date, audited 16 packages`, and exited **0**. The next
+  `npm install` then failed with an `ERESOLVE` about `react-native-worklets` peer ranges — which reads
+  as a genuine dependency conflict and is nothing of the kind. **Check `git diff --stat package-lock.json`
+  after any lock-affecting command**; a 3-line change is a floor raise, a 30,000-line change is damage.
+  Recovery is `git checkout origin/main -- package-lock.json` then one plain `npm install`.
+  (The invalid entry, for the record: a `//`-prefixed comment key placed **inside** `overrides`. Those
+  belong in the sibling top-level **`//overrides`** block — npm rejects them in `overrides` with
+  "Override without name".)
 
 ---
 
