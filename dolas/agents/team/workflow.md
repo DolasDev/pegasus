@@ -73,6 +73,8 @@ Every plan file must contain:
 
 **Write and get the plan approved before implementing.** Update it after every completed subtask — it is the source of truth for progress.
 
+**Checkpoint before clearing context.** Run `/keep-going` (`.claude/skills/keep-going/`) before `/clear`: it brings the plan file current — a `## Resume here` section with the exact next action, uncommitted work, in-flight PR/CI state, decisions and dead ends — and prints the plan path plus a paste-ready resume prompt for the fresh session.
+
 ## Concurrent Work & The Merge Queue
 
 When multiple sessions run in parallel, each works in its own worktree on its own branch (see `scripts/new-worktree.sh`). Sessions never share a working directory and never coordinate directly — the merge queue is the coordination point.
