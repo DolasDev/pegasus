@@ -608,7 +608,10 @@ export class CognitoStack extends cdk.Stack {
     // POST /api/v1/desktop/session for a pegII token for one company.
     //
     //   - generateSecret: false — public client; nothing secret ships in the exe.
-    //   - No authFlows: the desktop never collects a password itself.
+    //   - ExplicitAuthFlows pinned to ALLOW_REFRESH_TOKEN_AUTH only: the desktop
+    //     never collects a password (the Hosted UI does). CDK renders NO
+    //     ExplicitAuthFlows for `authFlows: {}`, and Cognito then applies its
+    //     defaults (SRP + CUSTOM + refresh), so the override is load-bearing.
     //   - callbackUrls: Cognito matches callback URLs EXACTLY (no wildcard
     //     port), so three fixed loopback ports are registered; the desktop
     //     listens on the first free one.
@@ -625,7 +628,6 @@ export class CognitoStack extends cdk.Stack {
     this.desktopAppClient = this.userPool.addClient('DesktopAppClient', {
       userPoolClientName: 'desktop-app-client',
       generateSecret: false,
-      authFlows: {},
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
@@ -637,6 +639,10 @@ export class CognitoStack extends cdk.Stack {
       refreshTokenValidity: cdk.Duration.days(30),
       enableTokenRevocation: true,
     })
+    ;(this.desktopAppClient.node.defaultChild as cognito.CfnUserPoolClient).addPropertyOverride(
+      'ExplicitAuthFlows',
+      ['ALLOW_REFRESH_TOKEN_AUTH'],
+    )
 
     // -------------------------------------------------------------------------
     // JWKS URL
