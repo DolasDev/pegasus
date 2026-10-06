@@ -2664,3 +2664,84 @@ Open question, recorded in `plans/todo/ci-blockers-after-security-backlog.md`: `
 launches the MCP server as `npx @playwright/mcp@latest`, so the declared `apps/e2e` dependency's
 only observable effect in CI is this shadowing. Removing it would delete the hazard rather than
 route around it.
+
+## Watching a fresh PR's CI: three ways `gh` reports "nothing" when something is wrong
+
+**Symptom (2026-10-06, #804).** Seconds after pushing the branch and running `gh pr create`:
+
+```
+$ gh pr checks 804 --watch
+no checks reported on the 'chore/dr-roleclass' branch     # exits 0
+
+$ gh run list --branch chore/dr-roleclass --limit 10 --json ...
+[]
+```
+
+Both false. Three distinct causes, and **the first guess was wrong** — these were traced, not inferred.
+
+**1. The runs did not exist yet, and `--watch` exits 0 on that.** For roughly the first 30–60s after
+`gh pr create`, no workflow run has been created and `gh pr view --json statusCheckRollup` is `[]`.
+`--watch` does not wait for checks to _appear_; it returns immediately and **exits 0**. A pipeline that
+reads that as "CI passed" will merge a PR nothing has run against. Thirty seconds later the same
+commands showed `CI | pull_request | queued`.
+
+**2. `gh run list --branch main` is reliably STALE — reproducibly, not as a one-off.** On 2026-10-06 it
+returned runs from **2026-09-23** while the repo-wide `gh run list` showed that day's runs carrying
+`headBranch: main`. Re-checked minutes later: same stale answer. Cause not established; what is
+established is that the result is not usable. **This is the dangerous shape — not empty, plausibly
+_short_, so nothing looks wrong.** It is how you would conclude "no deploy run exists for my merge
+commit".
+
+**3. `headBranch` for a CodeQL run IS `refs/pull/<N>/head`.** This is the narrower real hazard and it is
+specific to the `dynamic` event: `pull_request`-event runs (`CI`, `Dependency Review`,
+`Dependabot Auto-Merge`) do carry the branch name, so `--branch <feature>` finds those — but it misses
+the PR's CodeQL run, which is a required context. On `main`, CodeQL's `headBranch` is `main` as usual.
+
+**How to work:**
+
+- **List without `--branch` and filter on `headSha` yourself.** Get the SHA from `git rev-parse HEAD`
+  (pre-merge) or `gh pr view <N> --json mergeCommit` (post-merge). Never pad a short hash to 40 chars.
+- **An instant `--watch` is an alarm, not a pass.** Re-query after a beat; if a watcher finds nothing to
+  watch, make it say so rather than fall through to the success branch.
+- For the merge queue, query GraphQL — `repository.mergeQueue(branch:"main").entries` gives
+  `position` / `state` / `pullRequest.number`. Note `mergeStateStatus: CLEAN` with
+  `autoMergeRequest: null` is the **normal** shape for a queued PR, not a failed enqueue.
+- Same class as "a `grep -v node_modules` filter deletes every hit you were looking for" above, and as
+  the `skipping` ambiguity: **when a filter's job is to narrow, confirm it did not narrow away the
+  subject.**
+
+## Two `WebFetch` reads that agree with each other are not a source — parse the bytes
+
+**Symptom (2026-10-06, #804).** A decision rested on what one public page (X12 element 98 on
+stedi.com) does and does not contain. I fetched it with `WebFetch` twice, with different prompts. The
+two answers **agreed with each other and were wrong on both numbers that mattered**: they reported
+**829** code values and said the page carries **no** per-code definitions.
+
+```bash
+curl -sL -o el98.html https://www.stedi.com/edi/x12-004010/element/98
+# ~15 lines of re.findall over the <tr><td> rows:
+#   1312 code values, 161 of them carrying a definition sentence
+```
+
+**Why it reads as corroboration and isn't.** `WebFetch` answers via a small fast model. Two runs over
+one page share the model and nearly the prompt, so they fail the same way — agreement measures
+consistency, not accuracy, and the second answer adds no information while feeling like a check.
+
+**The asymmetry that matters: a summarizer's negative is much weaker than a grep.** #804's whole
+decision rested on _absences_ — no class axis, no non-party member, no household-goods role in 1312
+codes. "I did not see one" from a summarizer is not evidence of absence. Its positive claims were
+wrong too: five of the codes eventually quoted in the capture (`B2`, `8F`, `X2`, `R1`, `QD`) carry
+exactly the definition sentences it said did not exist.
+
+**How to work:**
+
+- Use `WebFetch` to **orient** — is the page there, roughly what shape. Do not quote a figure, a code,
+  or an absence from it.
+- When a number or a negative is load-bearing: `curl -sL` into the scratchpad, parse it, and **retain
+  the bytes**. For corpus material that means `docs/domain-reference/sources/<id>/local/` (gitignored)
+  with sha256 + URL in `registry.yaml`, so it is re-obtainable without being redistributed — which is
+  the half `src:uncefact-mmt-rdm` lacked.
+- **Record the method beside the figure.** The capture notes in #804 carry a "How it was read" section
+  saying the summarizers were wrong and what replaced them; that section is why the numbers in it can
+  be trusted.
+- Do not run a second fetch to check a first one. Run a parse.
