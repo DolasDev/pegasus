@@ -33,7 +33,9 @@ import type {
 } from '../custody'
 import { HANDED_OVER, HANDED_OVER_UNDER_CONTINUED_RESPONSIBILITY } from '../custody'
 import type { PartyId } from '../ids'
-import type { Exact, Instant, Owed } from '../primitives'
+import type { RoleClass } from '../outcomes'
+import { ATTRIBUTION_NO_PARTY } from '../outcomes'
+import type { Exact, Instant, Owed, OwedCode } from '../primitives'
 import { assertNever, owed } from '../primitives'
 import type { AssertionType, QualifierByType } from '../vocabulary'
 import { isActType } from '../vocabulary'
@@ -1816,3 +1818,103 @@ export function authorityToDeclare(
 // are visible above and neither is papered over: a `custodyHolder` row can only be matched once a
 // caller resolves the fold's holder to a role (A8-HISTORY's effective-dated role assignments), and
 // an A8-JOINT row returns UNAUTHORISED for every role rather than authorising both sides blind.
+
+/* -------------------------------------------------------------------------------------------- */
+/* §9 item 2 — the refusal: `roleClass` does not close on element 98                            */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * The gate behind [A8 §9 item 2]'s refusal to close `roleClass`, and the sixth case along from
+ * [A5 §9], [A2 §9], [A6 §9], [A7 §9] and [A9 §3.2].
+ *
+ * **Why it is refused rather than pending.** `roleClass` shipped `pending` on the ground that its
+ * source existed and was unread. The source three documents named is `src:stedi-x12-reference`
+ * **element 98** — `round-1-crosscheck.md`'s **`## Unread material`** SHOULD item,
+ * [fork-time §7]'s `(b)(1)` row, and that source's own **`## Open questions`** item 1. It is read
+ * (2026-10-06;
+ * `docs/domain-reference/sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md`)
+ * and it closes nothing, for two reasons that are independent of each other:
+ *
+ * 1. **It has no class axis.** Element 98 is `Entity Identifier Code` and its own definition is
+ *    _"Code identifying an organizational entity, a physical location, property or an individual"_.
+ *    The rendered list delivers all four kinds — `CA Carrier` beside `SF Ship From` beside
+ *    `BA Battery` beside `D1 Driver` — in one flat table with no grouping, no category column and
+ *    no role family, spanning freight, healthcare, mortgage, oil-and-gas and education. A class
+ *    list cut out of it by hand would be **ours**, which is the [ORIGINAL] value [SD §0] forbids.
+ * 2. **It has no member meaning no party at all.** Searched and absent; the nearest misses are
+ *    `B2 Other Unlisted Type of Organizational Entity` and `ZZ Mutually Defined`, both of which are
+ *    still an organization, and `QD Responsible Party`, which is a person.
+ *
+ * So this is [A9 §3.2]'s shape rather than a backlog item: the gap does not close by effort, and a
+ * round that closes it has to answer an argument first. What element 98 **does** supply is a
+ * cross-walk against {@link RoleName}, which is [A8 §9 item 2]'s input — the full role vocabulary —
+ * and not this vocabulary's.
+ *
+ * **The edge the type system can see is a publication**, exactly as [A9 §3.2]'s is. The day a round
+ * narrows `RoleClass` from `OwedCode<'roleClass'>` to a union of published members, this evaluates
+ * to `never`, the assignment below stops compiling, and whoever narrowed it is sent here to answer
+ * the two reasons above.
+ *
+ * **It clears [A2 §9]'s tautology bar.** `RoleClass` is declared in `outcomes.ts`, from [SD §2.4];
+ * the right-hand side is written out **here**, in A8's own module, from [A8 §9 item 2]'s reading.
+ * Neither is generated from the other. And `data/reasons.json`'s `attribution` block is
+ * deliberately **not** in the comparison — it records the same status in prose a consumer reads, and
+ * putting it in would make the gate check a copy of itself rather than two independent declarations.
+ *
+ * **What it does not hold.** It says nothing about `ATTRIBUTION_NO_PARTY`, which is declared by
+ * `Attribution`'s shape and is **not** a member of this vocabulary — that is the one thing a
+ * reader of a refusal is most likely to get backwards, and
+ * `tests/conformance/role-class-refuses.ts` holds it from the other side.
+ */
+export type RoleClassStaysOwed = Exact<RoleClass, OwedCode<'roleClass'>>
+
+/**
+ * The assignment that makes {@link RoleClassStaysOwed} a gate rather than an alias — [A5 §9]'s
+ * finding, applied for the sixth time.
+ */
+const _roleClassStaysOwed: RoleClassStaysOwed = true
+void _roleClassStaysOwed
+
+/**
+ * **A8-NO-PARTY.** The published reason codes whose `attribution` may **not** be
+ * {@link ATTRIBUTION_NO_PARTY}, enumerated rather than counted ([A1 §9]).
+ *
+ * `data/reasons.json` carries `partyRequired` per code — [SD §2.4] rule 6's discipline, true for
+ * every `PARTY`-scope member "because a party-side reason that cannot name the party is the `DIV`
+ * overload invariant 2 exists to remove". A code that **must** name a party cannot be attributed to
+ * no party at all: the two statements contradict each other, and before the no-party branch existed
+ * there was nothing for them to contradict each other about.
+ *
+ * Declared here as names so that a `partyRequired` flipping in the table fails by naming the code
+ * that moved, rather than by moving a total — the positive form of [A1 §9]'s rule. The other half is
+ * the comparison in `tests/conformance/reason-attribution.test.ts`, which derives the same set from
+ * the table and holds the two in both directions.
+ */
+export const CODES_THAT_FORBID_NO_PARTY_ATTRIBUTION = [
+  'INSTRUCTED_CHANGE',
+  'PARTY_ABSENT',
+  'PARTY_NOT_READY',
+  'PARTY_REFUSED',
+  'PARTY_RESCHEDULED',
+] as const
+
+/**
+ * A8-NO-PARTY as a predicate — for a consumer holding a runtime reason. [SD §2.4] rule 6,
+ * [A8 §9 item 2]. **[ORIGINAL]** as a rule: that a `partyRequired` code cannot be attributed to
+ * nobody follows from [SD §2.4] rule 6 and `data/reasons.json`'s per-code flag, and no source states
+ * it because no source publishes a no-party attribution to state it about.
+ *
+ * It reads {@link CODES_THAT_FORBID_NO_PARTY_ATTRIBUTION} rather than the reason's `scope`, because
+ * the discipline is published per **code**: `data/reasons.json`'s own note says `partyRequired` is
+ * "optional BY DEFAULT, refined per code".
+ *
+ * **The two sets coincide today, and that is a measurement rather than a rule.** All five
+ * `partyRequired` codes are `PARTY`-scoped and every `PARTY`-scoped code is `partyRequired`, so a
+ * reader who reimplemented this over `scope === 'PARTY'` would get the same answers — for now.
+ * `reason-attribution.test.ts` gates the coincidence, so the day the two come apart it fails naming
+ * the code that moved instead of leaving two implementations quietly disagreeing.
+ */
+export function attributionIsLegalFor(code: string, roleClassValue: string): boolean {
+  if (roleClassValue !== ATTRIBUTION_NO_PARTY) return true
+  return !(CODES_THAT_FORBID_NO_PARTY_ATTRIBUTION as readonly string[]).includes(code)
+}

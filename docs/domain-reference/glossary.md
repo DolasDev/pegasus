@@ -33,8 +33,8 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Catalog faces](#catalog-faces-2) — 2
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
-- [Compatibility change classes](#compatibility-change-classes-15) — 15
-- [Key functions and rules](#key-functions-and-rules-32) — 32
+- [Compatibility change classes](#compatibility-change-classes-17) — 17
+- [Key functions and rules](#key-functions-and-rules-34) — 34
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
@@ -1201,7 +1201,7 @@ The act did not complete as intended and the asserter does not know why — defa
 - **Default scope:** `ACT`
 - **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
 - **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
-- **Cited:** [[A4 §4.5]](analysis/A4-execution-events.md#45-causeunknown-beside-other-and-the-tension-in-it) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Cited:** [[A4 §4.5]](analysis/A4-execution-events.md#45-causeunknown-beside-other-and-the-tension-in-it) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §0]](analysis/00-shared-decisions.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job) · [[SD §2.6]](analysis/00-shared-decisions.md#26-the-critiques-scenario-expressed)
 - **Corpus:** `src:uncefact-rec24`
 - **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
 
@@ -1213,7 +1213,7 @@ A deadline the act was held to ran out before the act was performed — default 
 - **Attribution:** `attribution.party` optional; `roleClass` is not ([SD §2.4] rule 6)
 - **Remedy:** not required ([SD §2.4] rule 5, "for some codes")
 - **Marker:** [SYNTHESIS]
-- **Cited:** [[A1 §3.6]](analysis/A1-order-service-lifecycle.md#36-the-reason-vocabulary-at-commitment-grain--owed-item-5) · [[A1 §Cross-area]](analysis/A1-order-service-lifecycle.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Cited:** [[A1 §3.6]](analysis/A1-order-service-lifecycle.md#36-the-reason-vocabulary-at-commitment-grain--owed-item-5) · [[A1 §9]](analysis/A1-order-service-lifecycle.md) · [[A1 §Cross-area]](analysis/A1-order-service-lifecycle.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job) · [[SD §2.6]](analysis/00-shared-decisions.md#26-the-critiques-scenario-expressed)
 - **Corpus:** `src:alvys-api` · `src:dtr-part-iv` · `src:project44`
 - **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
 
@@ -1868,7 +1868,7 @@ cross-type payload filter would be filtering on a field that only some records c
 - **Cited:** [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Declared by:** `REFUSED_FILTER_AXES` in `packages/domain-reference/src/catalog.ts`
 
-## Compatibility change classes (15)
+## Compatibility change classes (17)
 
 What may change within a major `specVersion` and what may not ([catalog §2.3]). **[SYNTHESIS]**: the classification is ours and each member is a consequence of a sourced rule that it names. `src:dcsa` publishes the _practice_ — per-release changelogs down to a renamed filter — but no source in the corpus publishes the rule.
 
@@ -1959,6 +1959,16 @@ existing row moves, and the new row is complete for the new version.
 - **Cited:** [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
+### `newShapeBranch` (change class)
+
+A new `anyOf` **branch** on an already-published shape, with nothing removed and nothing
+narrowed — the class [A8 §9 item 2] needed for `Attribution`'s no-party branch and no
+existing member covered.
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[catalog §5]](analysis/published-event-catalog.md)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
 ### `publishedOwedShape` (change class)
 
 The **first** publication of a value **shape** that shipped as owed — the change A5 made to
@@ -1970,11 +1980,20 @@ The **first** publication of a value **shape** that shipped as owed — the chan
 ### `publishedOwedVocabulary` (change class)
 
 The **first** publication of a vocabulary that shipped as owed — the change A4 made to the reason
-codes, and the one every remaining owed vocabulary — `roleClass`, `unitOfMeasure`,
-`identityScheme` — will make.
+codes.
 
 - **Marker:** [SYNTHESIS]
-- **Cited:** [[A4 §7]](analysis/A4-execution-events.md) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Cited:** [[A4 §7]](analysis/A4-execution-events.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref)
+- **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
+
+### `refusedOwedVocabulary` (change class)
+
+Moving an owed vocabulary from `pending` to **`refusedOnEvidence`** — the mirror image of
+`ADDITIVE_CHANGES` member `publishedOwedVocabulary`, and the fourth member of the family
+that names changes to the model's bookkeeping about its own incompleteness.
+
+- **Marker:** [SYNTHESIS]
+- **Cited:** [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §0]](analysis/00-shared-decisions.md)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
 ### `reinterpretedMember` (change class)
@@ -1999,7 +2018,7 @@ re-pointed from A11 (a claims area) to `A7 / A12` ([A7 §6]).
 - **Cited:** [[A7 §6]](analysis/A7-charges-billing.md) · [[catalog §2.3.1]](analysis/published-event-catalog.md#231-what-a-breaking-change-costs-while-the-catalog-is-pre-10) · [[catalog §2.3]](analysis/published-event-catalog.md#23-additive-breaking-and-what-a-consumer-may-rely-on) · [[catalog §2.4]](analysis/published-event-catalog.md#24-the-version-this-catalog-is-published-at)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (32)
+## Key functions and rules (34)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
 
@@ -2078,6 +2097,18 @@ Rule **A-COLLECT**, [A7 §3.7]:
 - **Cited:** [[A8 §7.1]](analysis/A8-authority-skeleton.md#71-the-hinge-is-already-in-the-corpus-and-it-is-the-responsibility-distinction) · [[A8 §7.4(b)]](analysis/A8-authority-skeleton.md#74-what-happens-to-the-previous-holders-assertions) · [[SD §4.7.2f]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[SD §4.7]](analysis/00-shared-decisions.md#47-the-canonical-subject-table)
 - **Corpus:** `src:uncefact-rec24`
 - **Declared by:** `authorityMovesAtHandover` in `packages/domain-reference/src/rules/authority.ts`
+
+### `A8-NO-PARTY` (rule)
+
+A8-NO-PARTY as a predicate — for a consumer holding a runtime reason. [SD §2.4] rule 6,
+[A8 §9 item 2]. **[ORIGINAL]** as a rule: that a `partyRequired` code cannot be attributed to
+nobody follows from [SD §2.4] rule 6 and `data/reasons.json`'s per-code flag, and no source states
+it because no source publishes a no-party attribution to state it about.
+
+- **Kind:** a code that must name a party may not be attributed to nobody at all
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
+- **Declared by:** `attributionIsLegalFor` in `packages/domain-reference/src/rules/authority.ts`
 
 ### `B-ONWARD` (rule)
 
@@ -2320,6 +2351,17 @@ splitting a shipment." The SIT remainder is a Portion; the shipment is untouched
 - **Corpus:** `src:dp3-400ng`
 - **Declared by:** `R_WEIGHT_LOWER` in `packages/domain-reference/src/rules/resolution.ts`
 
+### `RoleClassStaysOwed` (rule)
+
+The gate behind [A8 §9 item 2]'s refusal to close `roleClass`, and the sixth case along from
+[A5 §9], [A2 §9], [A6 §9], [A7 §9] and [A9 §3.2].
+
+- **Kind:** [A8 §9 item 2] refuses to close `roleClass` on the evidence of X12 element 98
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A2 §9]](analysis/A2-shipment-structure.md) · [[A5 §9]](analysis/A5-storage-in-transit.md) · [[A6 §9]](analysis/A6-documents-evidence.md) · [[A7 §9]](analysis/A7-charges-billing.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[SD §0]](analysis/00-shared-decisions.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job) · [[fork-time §7]](analysis/fork-time-provenance-corrections.md)
+- **Corpus:** `src:stedi-x12-reference`
+- **Declared by:** `RoleClassStaysOwed` in `packages/domain-reference/src/rules/authority.ts`
+
 ### `custodyAt` (rule)
 
 **The fold.** `custodyAt(goods, instant)` — [SD §4.8.3], as amended by [SD §4.7.2f] §7.1.
@@ -2370,12 +2412,12 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 **Awaiting a source — the gap closes when somebody reads them.**
 
-- `roleClass` _(`packages/domain-reference/src/outcomes.ts`)_ — Awaiting a source: the corpus sources that reason vocabularies are organised by responsible party but publishes no class list. [A8 §9 item 2]
 - `unitOfMeasure` _(`packages/domain-reference/src/assertions.ts`)_ — Awaiting a source: the measurement shape is fixed as (kind, unit, value, source) and no document fixes the unit list. [SD §4.1]
 
 **Refused on the evidence — the gap does not close by effort.**
 
 - `identityScheme` _(`packages/domain-reference/src/identity.ts`)_ — Refused on the evidence rather than awaiting work: the sources publish a closed list beside an open escape hatch, and two of them warn against relying on it. [A9 §3.2], held by `IdentitySchemeStaysOwed`
+- `roleClass` _(`packages/domain-reference/src/outcomes.ts`)_ — Refused on the evidence rather than awaiting a read: X12 element 98, the one list three documents named, is a flat identifier qualifier with no class axis and no non-party member. [A8 §9 item 2], held by `RoleClassStaysOwed`
 
 ### Record types whose authority row is owed
 
@@ -2440,6 +2482,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`A8-INSTANT`](#a8-instant-rule) — rule
 - [`A8-KEY`](#a8-key-rule) — rule
 - [`A8-MOVE`](#a8-move-rule) — rule
+- [`A8-NO-PARTY`](#a8-no-party-rule) — rule
 - [`ACT`](#act-reason-scope) — reason scope
 - [`ACTUAL`](#actual-basis) — basis
 - [`ADDRESS_INCORRECT`](#addressincorrect-reason-code) — reason code
@@ -2524,6 +2567,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`RESOURCE`](#resource-reason-scope) — reason scope
 - [`RESOURCE_FAILURE`](#resourcefailure-reason-code) — reason code
 - [`RESOURCE_UNAVAILABLE`](#resourceunavailable-reason-code) — reason code
+- [`RoleClassStaysOwed`](#roleclassstaysowed-rule) — rule
 - [`SAME_SHIPMENT`](#sameshipment-shipment-continuity-verdict) — shipment continuity verdict
 - [`SCHEME_ACCOUNTABILITY_NOT_PUBLISHED`](#schemeaccountabilitynotpublished-identity-subject) — identity subject
 - [`SECOND_SHIPMENT`](#secondshipment-shipment-continuity-verdict) — shipment continuity verdict
@@ -2585,6 +2629,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`newContextMemberKind`](#newcontextmemberkind-change-class) — change class
 - [`newOptionalPayloadField`](#newoptionalpayloadfield-change-class) — change class
 - [`newRecordType`](#newrecordtype-change-class) — change class
+- [`newShapeBranch`](#newshapebranch-change-class) — change class
 - [`notification`](#notification-record-type) — record type
 - [`order`](#order-aggregate) — aggregate
 - [`orderAward`](#orderaward-record-type) — record type
@@ -2607,6 +2652,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`queried`](#queried-catalog-face) — catalog face
 - [`r19Agent`](#r19agent-role-name) — role name
 - [`recordedAt`](#recordedat-filter-axis) — filter axis
+- [`refusedOwedVocabulary`](#refusedowedvocabulary-change-class) — change class
 - [`reinterpretedMember`](#reinterpretedmember-change-class) — change class
 - [`remarkText`](#remarktext-refused-filter-axis) — refused filter axis
 - [`removedOrRenamedRecordType`](#removedorrenamedrecordtype-change-class) — change class
