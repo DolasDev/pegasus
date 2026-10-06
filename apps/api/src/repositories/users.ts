@@ -27,6 +27,8 @@ export type TenantUserRow = {
   deactivatedAt: Date | null
   /** The CrewMember linked to this login, when one exists (driver persona). */
   crewMember: { id: string; name: string } | null
+  /** Signs in only through the tenant's SSO provider (no Cognito user / invite). */
+  ssoOnly: boolean
 }
 
 const USER_SELECT = {
@@ -42,6 +44,7 @@ const USER_SELECT = {
   activatedAt: true,
   deactivatedAt: true,
   crewMember: { select: { id: true, name: true } },
+  ssoOnly: true,
 } as const
 
 // ---------------------------------------------------------------------------
@@ -99,9 +102,22 @@ export function createUsersRepository(db: PrismaClient) {
      * any API code path; final removal is gated on the migration in
      * plans/in-progress/authz-cedar-avp-followups.md item #6.
      */
-    invite(tenantId: string, email: string, roleNames: string[]): Promise<TenantUserRow> {
+    invite(
+      tenantId: string,
+      email: string,
+      roleNames: string[],
+      opts: { ssoOnly?: boolean; legacyWindowsUsername?: string | null } = {},
+    ): Promise<TenantUserRow> {
       return db.tenantUser.create({
-        data: { tenantId, email: email.toLowerCase(), roleNames },
+        data: {
+          tenantId,
+          email: email.toLowerCase(),
+          roleNames,
+          ...(opts.ssoOnly ? { ssoOnly: true } : {}),
+          ...(opts.legacyWindowsUsername
+            ? { legacyWindowsUsername: opts.legacyWindowsUsername }
+            : {}),
+        },
         select: USER_SELECT,
       })
     },

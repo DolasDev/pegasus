@@ -61,6 +61,22 @@ export interface MembershipSyncResult {
   }>
 }
 
+/** An active employee in a company's pegII directory, for the "Add from pegII" picker. */
+export interface DirectoryEmployee {
+  code: number
+  name: string
+  email: string | null
+  branch: string | null
+  /** The tenant user who already has this email (any status), or null. */
+  existingUserId: string | null
+}
+
+export function getCompanyDirectory(id: string): Promise<DirectoryEmployee[]> {
+  return apiFetch<DirectoryEmployee[]>(
+    `/api/v1/settings/companies/${encodeURIComponent(id)}/directory`,
+  )
+}
+
 export function listCompanies(): Promise<CompaniesResponse> {
   return apiFetch<CompaniesResponse>('/api/v1/settings/companies')
 }

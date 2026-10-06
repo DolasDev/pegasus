@@ -16,6 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ApiError } from '@/api/client'
+import { companySiteErrorMessage } from '@/lib/company-site-errors'
 import type { Company, MembershipSyncResult } from '@/api/companies'
 import {
   companiesQueryOptions,
@@ -38,21 +39,7 @@ const inputClass =
 
 /** A sync failure the admin can act on, phrased for the site's state. */
 export function syncErrorMessage(error: unknown): string {
-  if (!(error instanceof ApiError)) return 'Sync failed.'
-  switch (error.code) {
-    case 'SITE_CLOUD_AUTH_DISABLED':
-      return "Cloud auth isn't on for this company's site yet. It is enabled per site by your Pegasus administrator; sync after that."
-    case 'PEGII_CAPABILITY_MISSING':
-      return "This company's site runs a pegII API build without the employee directory. It updates itself; try again after the next update."
-    case 'COMPANY_NOT_FOUND':
-      return "The site has no database configured for this company's data source key (SpokeConnections)."
-    case 'COMPANY_SCHEMA_UNAVAILABLE':
-      return "This company's database failed its schema migration on the site. Fix it and restart the site's API."
-    case 'PEGII_SOURCE_AUTH_FAILED':
-      return 'The site rejected the cloud token. Check that cloud auth is configured on the site.'
-    default:
-      return error.message
-  }
+  return companySiteErrorMessage(error, 'Sync failed.')
 }
 
 function SyncSummary({ result }: { result: MembershipSyncResult }) {

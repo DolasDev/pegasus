@@ -78,6 +78,7 @@ function makeUser(overrides?: Partial<TenantUser>): TenantUser {
     crewMemberId: null,
     crewMemberName: null,
     longhaulDriverId: null,
+    ssoOnly: false,
     ...overrides,
   }
 }
@@ -168,6 +169,17 @@ describe('UsersPage — resend invite', () => {
     usersData = [makeUser({ id: 'p1', status: 'PENDING', activatedAt: null })]
     renderPage()
     expect(screen.getByRole('button', { name: /resend invite/i })).toBeTruthy()
+  })
+
+  it('marks an SSO-only user and offers neither Resend invite nor Reset password', () => {
+    usersData = [
+      makeUser({ id: 'p1', status: 'PENDING', activatedAt: null, ssoOnly: true }),
+      makeUser({ id: 'a1', email: 'a@x.com', status: 'ACTIVE', ssoOnly: true }),
+    ]
+    renderPage()
+    expect(screen.getAllByText('SSO only')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /resend invite/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /reset password/i })).toBeNull()
   })
 
   it('does not offer it on an ACTIVE user (they get Reset password instead)', () => {

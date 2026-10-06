@@ -22,6 +22,8 @@ export type TenantUser = {
   crewMemberName: string | null
   /** The legacy longhaul driver id (v_longhaul_drivers.driver_id) this login maps to, or null. */
   longhaulDriverId: number | null
+  /** Signs in only through the tenant's SSO provider — no invite, no password. */
+  ssoOnly: boolean
 }
 
 export type InviteUserInput = {
@@ -86,6 +88,54 @@ export function useInviteUser() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: usersKeys.list() })
+    },
+  })
+}
+
+export type ImportUsersInput = {
+  companyId: string
+  /** salesman codes from the company directory; the server re-reads it. */
+  employeeCodes: number[]
+  roleNames: string[]
+  /** false ⇒ SSO-only: no invite email, no password. */
+  sendInvite: boolean
+}
+
+export type ImportUserResult = {
+  code: number
+  email: string | null
+  status: 'created' | 'invited' | 'skipped' | 'failed'
+  userId?: string
+  reason?:
+    | 'NOT_IN_DIRECTORY'
+    | 'INACTIVE'
+    | 'NO_EMAIL'
+    | 'ALREADY_A_USER'
+    | 'ACTIVE_IN_ANOTHER_TENANT'
+    | 'COGNITO_ERROR'
+    | 'ERROR'
+}
+
+export type ImportUsersResponse = {
+  results: ImportUserResult[]
+  created: number
+  membershipSync:
+    { linked: number; newlyLinked: number; ambiguous: number } | { error: string } | null
+}
+
+export function useImportUsers() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: ImportUsersInput) =>
+      apiFetch<ImportUsersResponse>('/api/v1/users/import', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (_data, input) => {
+      void qc.invalidateQueries({ queryKey: usersKeys.list() })
+      // The picker greys out people who now have a login.
+      void qc.invalidateQueries({ queryKey: ['companies', 'directory', input.companyId] })
+      void qc.invalidateQueries({ queryKey: ['companies', 'memberships', input.companyId] })
     },
   })
 }

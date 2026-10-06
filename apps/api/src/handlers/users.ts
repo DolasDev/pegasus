@@ -9,6 +9,8 @@
 //   POST   /invite          — invite a user (AdminCreateUser + TenantUser PENDING)
 //   POST   /:id/resend-invite — re-issue the invite for a PENDING user whose
 //                               temporary password expired (7-day Cognito window)
+//   POST   /import          — create users from a company's pegII employee
+//                               directory, with or without an invite email
 //   PATCH  /:id             — update Cedar role-group memberships (roleNames)
 //   DELETE /:id             — deactivate (TenantUser DEACTIVATED — tenant-scoped only)
 //   POST   /:id/reactivate  — reactivate (TenantUser ACTIVE — tenant-scoped only)
@@ -40,7 +42,15 @@ import {
 } from './admin/cognito'
 import { createUsersRepository, type TenantUserRow } from '../repositories/users'
 import type { AppEnv } from '../types'
+import type { PrismaClient } from '@prisma/client'
 import { logger } from '../lib/logger'
+import {
+  CompanyDirectoryRefused,
+  readCompanyDirectory,
+  syncCompanyMemberships,
+  type MembershipSyncSummary,
+} from '../lib/company-directory'
+import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -57,6 +67,25 @@ const InviteUserBody = z.object({
    *  no implicit role assignment when roleNames is empty (Cedar denies). */
   roleNames: z.array(z.string().min(1)).default(['viewer']),
 })
+
+const ROLE_NAMES = new Set(ROLE_OPTIONS.map((r) => r.name))
+
+/** Most employees one import may create — each is a sequential Cognito call. */
+const IMPORT_MAX = 50
+
+const ImportUsersBody = z
+  .object({
+    companyId: z.string().min(1),
+    /** salesman.code values from GET /settings/companies/:id/directory. */
+    employeeCodes: z.array(z.number().int().nonnegative()).min(1).max(IMPORT_MAX),
+    roleNames: z
+      .array(z.string().min(1))
+      .min(1)
+      .refine((names) => names.every((n) => ROLE_NAMES.has(n)), 'unknown role name'),
+    /** false ⇒ SSO-only: no Cognito user, no email, no password. */
+    sendInvite: z.boolean(),
+  })
+  .strict()
 
 const PatchUserBody = z
   .object({
@@ -102,6 +131,8 @@ type TenantUserResponse = {
   crewMemberId: string | null
   /** The linked CrewMember's display name, or null. */
   crewMemberName: string | null
+  /** Signs in only through the tenant's SSO provider — no invite, no password. */
+  ssoOnly: boolean
 }
 
 function deriveLegacyRole(roleNames: readonly string[]): 'ADMIN' | 'USER' {
@@ -123,6 +154,71 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
     crewMemberId: row.crewMember?.id ?? null,
     crewMemberName: row.crewMember?.name ?? null,
+    ssoOnly: row.ssoOnly,
+  }
+}
+
+function findInviteTenant(db: PrismaClient, tenantId: string) {
+  return db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } })
+}
+
+type CreateUserOutcome =
+  { kind: 'created'; user: TenantUserRow } | { kind: 'conflict' } | { kind: 'cognito_error' }
+
+/**
+ * Create one TenantUser — the core of POST /invite and POST /import.
+ *
+ * `sendInvite` provisions the Cognito user first (AdminCreateUser emails a
+ * temporary password; a person who already has a Cognito identity is reused,
+ * see handlers/admin/cognito.ts), then writes the PENDING row — so a Cognito
+ * failure leaves no row. Without it the row is written SSO-only and Cognito is
+ * never called: cognito/pre-token.ts activates it on the first federated login.
+ */
+async function createTenantUser(
+  db: PrismaClient,
+  tenantId: string,
+  email: string,
+  roleNames: string[],
+  opts: {
+    sendInvite: boolean
+    legacyWindowsUsername?: string | null
+    /** Name + slug for the tenant-aware invite email; looked up when absent. */
+    tenant?: { name: string; slug: string } | null
+  },
+): Promise<CreateUserOutcome> {
+  const repo = createUsersRepository(db)
+  if (opts.sendInvite) {
+    // Tenant name + slug let the CustomMessage Lambda trigger render a
+    // tenant-aware invite email and link to the right login page.
+    const tenant = opts.tenant ?? (await findInviteTenant(db, tenantId))
+    try {
+      await provisionCognitoUser(email, {
+        tenantId,
+        tenantName: tenant?.name ?? '',
+        tenantSlug: tenant?.slug ?? '',
+      })
+    } catch (err) {
+      logger.error('users: Cognito provisioning failed', { error: String(err), email })
+      return { kind: 'cognito_error' }
+    }
+  }
+  try {
+    const user = await repo.invite(tenantId, email, roleNames, {
+      ssoOnly: !opts.sendInvite,
+      legacyWindowsUsername: opts.legacyWindowsUsername ?? null,
+    })
+    return { kind: 'created', user }
+  } catch (err) {
+    // P2002 = unique constraint — race condition (concurrent invite)
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code: string }).code === 'P2002'
+    ) {
+      return { kind: 'conflict' }
+    }
+    throw err
   }
 }
 
@@ -196,55 +292,26 @@ usersHandler.post(
       )
     }
 
-    // Look up tenant name + slug so the CustomMessage Lambda trigger can
-    // render a tenant-aware invite email and link to the right login page.
-    const tenant = await db.tenant.findUnique({
-      where: { id: tenantId },
-      select: { name: true, slug: true },
-    })
-
-    // Provision in Cognito. A person who already has a Cognito identity (invited
-    // before, or registered through another tenant — in any letter case) is
-    // reused, not duplicated; see handlers/admin/cognito.ts's header.
-    try {
-      await provisionCognitoUser(email, {
-        tenantId,
-        tenantName: tenant?.name ?? '',
-        tenantSlug: tenant?.slug ?? '',
-      })
-    } catch (err) {
-      logger.error('POST /users/invite: Cognito provisioning failed', {
-        error: String(err),
-        email,
-      })
+    // Provision in Cognito, then the row. A person who already has a Cognito
+    // identity (invited before, or registered through another tenant — in any
+    // letter case) is reused, not duplicated; see handlers/admin/cognito.ts.
+    const outcome = await createTenantUser(db, tenantId, email, roleNames, { sendInvite: true })
+    if (outcome.kind === 'cognito_error') {
       return c.json(
         { error: 'Failed to create the user account. Please try again.', code: 'COGNITO_ERROR' },
         500,
       )
     }
-
-    // Create TenantUser record
-    try {
-      const user = await repo.invite(tenantId, email, roleNames)
-      return c.json({ data: toResponse(user) }, 201)
-    } catch (err) {
-      // P2002 = unique constraint — race condition (concurrent invite)
-      if (
-        typeof err === 'object' &&
-        err !== null &&
-        'code' in err &&
-        (err as { code: string }).code === 'P2002'
-      ) {
-        return c.json(
-          {
-            error: `User with email "${email}" is already invited to this tenant`,
-            code: 'CONFLICT',
-          },
-          409,
-        )
-      }
-      throw err
+    if (outcome.kind === 'conflict') {
+      return c.json(
+        {
+          error: `User with email "${email}" is already invited to this tenant`,
+          code: 'CONFLICT',
+        },
+        409,
+      )
     }
+    return c.json({ data: toResponse(outcome.user) }, 201)
   },
 )
 
@@ -414,6 +481,15 @@ usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), 
     return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
   }
 
+  // An SSO-only user has no password; resetting would mint a native Cognito
+  // user — a second identity for the same person.
+  if (existing.ssoOnly) {
+    return c.json(
+      { error: 'This user signs in with SSO only and has no password.', code: 'SSO_ONLY' },
+      422,
+    )
+  }
+
   // Only ACTIVE users have a usable password to reset. PENDING users re-resolve
   // through the invite / first-login set-password path; DEACTIVATED users are
   // blocked from signing in at all.
@@ -527,6 +603,19 @@ usersHandler.post('/:id/resend-invite', requirePermission(Actions.InviteUser), a
     return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
   }
 
+  // An SSO-only user was never invited: resending would create a native Cognito
+  // user and email a password — silently converting them, and leaving the
+  // person two identities once they sign in with SSO.
+  if (existing.ssoOnly) {
+    return c.json(
+      {
+        error: 'This user signs in with SSO only; there is no invitation to send.',
+        code: 'SSO_ONLY',
+      },
+      422,
+    )
+  }
+
   // Only PENDING users have an outstanding invitation. An ACTIVE user has
   // "Reset password"; a DEACTIVATED user must be reactivated first.
   if (existing.status !== 'PENDING') {
@@ -610,3 +699,200 @@ usersHandler.post('/:id/resend-invite', requirePermission(Actions.InviteUser), a
 
   return c.json({ data: toResponse(existing) })
 })
+
+// ---------------------------------------------------------------------------
+// POST /import
+//
+// Creates users from a company's pegII employee directory ("Add from pegII").
+// The client sends employee CODES only; the directory is re-read here, so an
+// email never comes from the browser. Each employee is processed on its own —
+// one failure doesn't stop the rest — and the response lists every outcome.
+//
+//   sendInvite: true  — the same path as POST /invite (Cognito user + emailed
+//                       temporary password).
+//   sendInvite: false — SSO-only: the row alone, no Cognito call; the person
+//                       signs in through the tenant's SSO provider, matched by
+//                       email on first login (cognito/pre-token.ts). Requires
+//                       an enabled SSO provider, or they could never sign in.
+//
+// Skips (no row written): not in the directory / not active / no email /
+// already a user of this tenant / — with sendInvite only — an ACTIVE login on
+// another tenant (the #673 roster rule: the shared Cognito identity isn't ours
+// to provision). SSO-only rows skip that check: they touch no Cognito state.
+//
+// A batch is sequential (one Cognito round-trip pair per invited person); if a
+// large one times out, re-running it is safe — created rows skip as
+// ALREADY_A_USER.
+//
+// Afterwards the company's membership sync runs, so new users are linked to
+// their employee rows (emp/wun) at once. A sync failure doesn't undo anything;
+// it is reported in `membershipSync.error`.
+//
+// Response: { data: { results: ImportResult[], created, membershipSync } } (200)
+//           400 VALIDATION_ERROR · 404 NOT_FOUND · 409 SITE_CLOUD_AUTH_DISABLED
+//           422 SSO_NOT_CONFIGURED · pegII failures per pegiiApiErrorToHttp
+// ---------------------------------------------------------------------------
+
+type ImportResult = {
+  code: number
+  email: string | null
+  status: 'created' | 'invited' | 'skipped' | 'failed'
+  userId?: string
+  reason?:
+    | 'NOT_IN_DIRECTORY'
+    | 'INACTIVE'
+    | 'NO_EMAIL'
+    | 'ALREADY_A_USER'
+    | 'ACTIVE_IN_ANOTHER_TENANT'
+    | 'COGNITO_ERROR'
+    | 'ERROR'
+}
+
+const EmailShape = z.string().email()
+
+usersHandler.post(
+  '/import',
+  requirePermission(Actions.InviteUser),
+  validator('json', (value, c) => {
+    const r = ImportUsersBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const db = c.get('db') as PrismaClient
+    const tenantId = c.get('tenantId')
+    const { companyId, employeeCodes, roleNames, sendInvite } = c.req.valid('json')
+
+    if (!sendInvite) {
+      const providers = await db.tenantSsoProvider.count({ where: { tenantId, isEnabled: true } })
+      if (providers === 0) {
+        return c.json(
+          {
+            error:
+              'SSO-only users need an enabled SSO provider to sign in. Turn on "Send invite", or set up SSO first.',
+            code: 'SSO_NOT_CONFIGURED',
+          },
+          422,
+        )
+      }
+    }
+
+    // All employees (not just active): the membership sync below needs leavers.
+    let directory: Awaited<ReturnType<typeof readCompanyDirectory>>['directory']
+    try {
+      ;({ directory } = await readCompanyDirectory(c, companyId))
+    } catch (err) {
+      if (err instanceof CompanyDirectoryRefused) {
+        return c.json({ error: err.message, code: err.code }, err.status)
+      }
+      if (err instanceof PegiiApiError) {
+        const { status, code, message } = pegiiApiErrorToHttp(err)
+        return c.json({ error: message, code, correlationId: c.get('correlationId') }, status)
+      }
+      throw err
+    }
+    const byCode = new Map(directory.map((s) => [Number(s.id), s]))
+    const repo = createUsersRepository(db)
+    const tenant = sendInvite ? await findInviteTenant(db, tenantId) : null
+
+    const results: ImportResult[] = []
+    for (const code of [...new Set(employeeCodes)]) {
+      const employee = byCode.get(code)
+      if (!employee) {
+        results.push({ code, email: null, status: 'skipped', reason: 'NOT_IN_DIRECTORY' })
+        continue
+      }
+      const email = employee.email?.trim().toLowerCase() || null
+      if (!employee.active) {
+        results.push({ code, email, status: 'skipped', reason: 'INACTIVE' })
+        continue
+      }
+      if (!email || !EmailShape.safeParse(email).success) {
+        results.push({ code, email, status: 'skipped', reason: 'NO_EMAIL' })
+        continue
+      }
+      try {
+        const existing = await repo.findByEmail(email, tenantId)
+        if (existing) {
+          results.push({
+            code,
+            email,
+            status: 'skipped',
+            reason: 'ALREADY_A_USER',
+            userId: existing.id,
+          })
+          continue
+        }
+        // The #673 roster rule guards the SHARED Cognito pool, so it applies only
+        // when this import touches it (sendInvite). An SSO-only row touches
+        // nothing in Cognito and grants nothing until this tenant's own IdP
+        // asserts the email — it is the right path for a person who already
+        // signs in elsewhere (an invite would mint them a second, native identity).
+        // TenantUser isn't tenant-scoped: deliberately cross-tenant (see resend-invite).
+        if (sendInvite) {
+          const elsewhere = await db.tenantUser.findFirst({
+            where: {
+              email: { equals: email, mode: 'insensitive' },
+              tenantId: { not: tenantId },
+              status: 'ACTIVE',
+            },
+            select: { id: true },
+          })
+          if (elsewhere) {
+            results.push({ code, email, status: 'skipped', reason: 'ACTIVE_IN_ANOTHER_TENANT' })
+            continue
+          }
+        }
+        const outcome = await createTenantUser(db, tenantId, email, roleNames, {
+          sendInvite,
+          legacyWindowsUsername: employee.winUsername,
+          tenant,
+        })
+        if (outcome.kind === 'created') {
+          results.push({
+            code,
+            email,
+            status: sendInvite ? 'invited' : 'created',
+            userId: outcome.user.id,
+          })
+        } else if (outcome.kind === 'conflict') {
+          results.push({ code, email, status: 'skipped', reason: 'ALREADY_A_USER' })
+        } else {
+          results.push({ code, email, status: 'failed', reason: 'COGNITO_ERROR' })
+        }
+      } catch (err) {
+        logger.error('POST /users/import: row failed', { error: String(err), code, tenantId })
+        results.push({ code, email, status: 'failed', reason: 'ERROR' })
+      }
+    }
+
+    const created = results.filter((r) => r.status === 'created' || r.status === 'invited').length
+    let membershipSync: MembershipSyncSummary | { error: string } | null = null
+    if (created > 0) {
+      try {
+        membershipSync = await syncCompanyMemberships(db, tenantId, companyId, directory)
+      } catch (err) {
+        logger.error('POST /users/import: membership sync failed', {
+          error: String(err),
+          tenantId,
+        })
+        membershipSync = {
+          error:
+            'Users were created, but linking them to employees failed. Run Sync employees on Settings → Companies.',
+        }
+      }
+    }
+
+    // Counts only — no emails in the log.
+    logger.info('POST /users/import', {
+      tenantId,
+      companyId,
+      sendInvite,
+      requested: employeeCodes.length,
+      created,
+      skipped: results.filter((r) => r.status === 'skipped').length,
+      failed: results.filter((r) => r.status === 'failed').length,
+    })
+    return c.json({ data: { results, created, membershipSync } })
+  },
+)

@@ -266,7 +266,8 @@ describe('users handler', () => {
       expect(mockRepo.invite).toHaveBeenCalledWith(
         'test-tenant-id',
         'gigi@example.com',
-        expect.anything(),
+        expect.anything(), // A plain invite is never SSO-only.
+        expect.objectContaining({ ssoOnly: false }),
       )
     })
 
@@ -321,7 +322,8 @@ describe('users handler', () => {
       expect(mockRepo.invite).toHaveBeenCalledWith(
         'test-tenant-id',
         'john.doe@example.com',
-        expect.anything(),
+        expect.anything(), // A plain invite is never SSO-only.
+        expect.objectContaining({ ssoOnly: false }),
       )
     })
 

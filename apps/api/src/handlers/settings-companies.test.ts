@@ -36,6 +36,7 @@ const { memberships, listSalesmen, resolveCaller } = vi.hoisted(() => ({
     listExisting: vi.fn(),
     applyPlan: vi.fn(),
     listForCompany: vi.fn(),
+    listUserEmails: vi.fn(),
   },
   listSalesmen: vi.fn(),
   resolveCaller: vi.fn(),
@@ -274,7 +275,8 @@ describe('POST /companies/:id/membership-sync', () => {
       ambiguousMatches: [],
     })
     expect(resolveCaller).toHaveBeenCalledWith(expect.anything(), { companyId: 'co-usa' })
-    expect(listSalesmen).toHaveBeenCalledWith()
+    // No active filter: the sync must see leavers to deactivate their links.
+    expect(listSalesmen).toHaveBeenCalledWith({})
     const [tenantId, companyId, plan] = memberships.applyPlan.mock.calls[0]!
     expect([tenantId, companyId]).toEqual(['tenant-1', 'co-usa'])
     expect(plan.writes).toEqual([
@@ -348,5 +350,47 @@ describe('GET /companies/:id/memberships', () => {
   it("404s for a company that isn't the tenant's", async () => {
     repo.findCompany.mockResolvedValue(null)
     expect((await buildApp().request('/companies/x/memberships')).status).toBe(404)
+  })
+})
+
+describe('GET /companies/:id/directory', () => {
+  beforeEach(() => {
+    repo.findCompany.mockResolvedValue({ id: 'co-usa', siteId: SITE })
+    repo.findSite.mockResolvedValue({ id: SITE, cloudAuthEnabled: true })
+  })
+
+  it("lists the company's ACTIVE employees, marking those who already have a login", async () => {
+    listSalesmen.mockResolvedValue([
+      { id: '7392', name: 'B ANDREOPULOS', email: ' BAndreopulos@QMM.com ', branch: '01' },
+      { id: '7429', name: 'G DHOOPAR', email: null, branch: '02' },
+    ])
+    memberships.listUserEmails.mockResolvedValue([{ id: 'u1', email: 'bandreopulos@qmm.com' }])
+
+    const res = await buildApp().request('/companies/co-usa/directory')
+
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual([
+      {
+        code: 7392,
+        name: 'B ANDREOPULOS',
+        email: 'BAndreopulos@QMM.com',
+        branch: '01',
+        existingUserId: 'u1',
+      },
+      { code: 7429, name: 'G DHOOPAR', email: null, branch: '02', existingUserId: null },
+    ])
+    expect(listSalesmen).toHaveBeenCalledWith({ active: true })
+    expect(resolveCaller).toHaveBeenCalledWith(expect.anything(), { companyId: 'co-usa' })
+  })
+
+  it('refuses with 409 while the site has cloud auth off', async () => {
+    repo.findSite.mockResolvedValue({ id: SITE, cloudAuthEnabled: false })
+    const res = await buildApp().request('/companies/co-usa/directory')
+    expect(res.status).toBe(409)
+    expect((await json(res))['code']).toBe('SITE_CLOUD_AUTH_DISABLED')
+  })
+
+  it('requires ReadSettings', async () => {
+    expect((await buildApp(null).request('/companies/co-usa/directory')).status).toBe(403)
   })
 })

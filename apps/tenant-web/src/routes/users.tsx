@@ -23,6 +23,7 @@ import {
   Truck,
   KeyRound,
   MailPlus,
+  Building2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
@@ -50,6 +51,7 @@ import {
 } from '@/api/queries/users'
 import { crewMembersQueryOptions, type CrewMember } from '@/api/queries/crew'
 import { longhaulDriversQueryOptions, type LonghaulDriver } from '@/api/queries/longhaul-drivers'
+import { AddFromPegiiPanel } from '@/features/users/AddFromPegiiPanel'
 import { getSession } from '@/auth/session'
 import { usePermissions } from '@/auth/permissions'
 
@@ -968,6 +970,15 @@ function UserRow({
             </span>
             <RoleBadge roleNames={user.roleNames} roleOptions={roleOptions} />
             <StatusBadge status={user.status} />
+            {user.ssoOnly && (
+              <Badge
+                variant="info"
+                className="text-xs"
+                title="Signs in with your SSO provider only — no invite email, no password."
+              >
+                SSO only
+              </Badge>
+            )}
             {isSelf && <span className="text-xs text-muted-foreground">(you)</span>}
           </div>
           <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
@@ -1004,7 +1015,7 @@ function UserRow({
       {!isDeactivated &&
         (canManageRoles ||
           (!isSelf && canDeactivate) ||
-          (canResendInvite && user.status === 'PENDING')) && (
+          (canResendInvite && user.status === 'PENDING' && !user.ssoOnly)) && (
           <div className="flex shrink-0 items-center gap-1">
             {canManageRoles && (
               <Button
@@ -1017,7 +1028,8 @@ function UserRow({
                 Manage roles
               </Button>
             )}
-            {canManageRoles && user.status === 'ACTIVE' && (
+            {/* SSO-only users have no password: resetting would create one. */}
+            {canManageRoles && user.status === 'ACTIVE' && !user.ssoOnly && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1030,7 +1042,9 @@ function UserRow({
             )}
             {/* PENDING is the only state with an outstanding invitation to re-send.
               An ACTIVE user gets "Reset password" above instead. */}
-            {canResendInvite && user.status === 'PENDING' && (
+            {/* An SSO-only user was never invited — sending one would create a
+              password login and a second identity. */}
+            {canResendInvite && user.status === 'PENDING' && !user.ssoOnly && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1078,6 +1092,7 @@ function UserRow({
 type PanelState =
   | { kind: 'none' }
   | { kind: 'invite' }
+  | { kind: 'pegii' }
   | { kind: 'deactivate'; user: TenantUser }
   | { kind: 'reactivate'; user: TenantUser }
   | { kind: 'manage'; user: TenantUser }
@@ -1241,19 +1256,39 @@ export function UsersPage() {
         title="Users"
         breadcrumbs={[{ label: 'Settings' }, { label: 'Users' }]}
         action={
-          panel.kind !== 'invite' && (
-            <Button
-              size="sm"
-              className="gap-2"
-              disabled={!perms.has('user:invite')}
-              title={
-                perms.has('user:invite') ? undefined : 'You do not have permission to invite users.'
-              }
-              onClick={() => setPanel({ kind: 'invite' })}
-            >
-              <UserPlus size={14} />
-              Invite user
-            </Button>
+          panel.kind !== 'invite' &&
+          panel.kind !== 'pegii' && (
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                disabled={!perms.has('user:invite')}
+                title={
+                  perms.has('user:invite')
+                    ? "Pick employees from a company's pegII directory"
+                    : 'You do not have permission to invite users.'
+                }
+                onClick={() => setPanel({ kind: 'pegii' })}
+              >
+                <Building2 size={14} />
+                Add from pegII
+              </Button>
+              <Button
+                size="sm"
+                className="gap-2"
+                disabled={!perms.has('user:invite')}
+                title={
+                  perms.has('user:invite')
+                    ? undefined
+                    : 'You do not have permission to invite users.'
+                }
+                onClick={() => setPanel({ kind: 'invite' })}
+              >
+                <UserPlus size={14} />
+                Invite user
+              </Button>
+            </div>
           )
         }
       />
@@ -1371,6 +1406,13 @@ export function UsersPage() {
 
         {panel.kind === 'invite' && (
           <InviteForm onDone={() => setPanel({ kind: 'none' })} roleOptions={roleOptions ?? []} />
+        )}
+
+        {panel.kind === 'pegii' && (
+          <AddFromPegiiPanel
+            onDone={() => setPanel({ kind: 'none' })}
+            roleOptions={roleOptions ?? []}
+          />
         )}
       </div>
     </div>
