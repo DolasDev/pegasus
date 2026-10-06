@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pegasus.invalid/domain-reference/catalog/0.6.2/captured.schema.json",
+  "$id": "https://pegasus.invalid/domain-reference/catalog/0.6.3/captured.schema.json",
   "title": "Household-goods moving & storage reference catalog — captured face",
   "description": "What anything asserting into the catalog must satisfy. `recordedAt` is server-authored and FORBIDDEN here ([SD §1.1]).",
   "x-generated": "GENERATED FILE — DO NOT EDIT BY HAND",
   "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
   "x-command": "npm run catalog -w @pegasus/domain-reference",
   "x-decided-by": "docs/domain-reference/analysis/published-event-catalog.md",
-  "x-spec-version": "0.6.2",
+  "x-spec-version": "0.6.3",
   "x-face": "captured",
   "x-rule": [
     "[SD §1.3] E-TYPE — a record carrying no `type`, a `type` outside the vocabulary for its `specVersion`, or any second classification alongside it, is rejected at the boundary.",
@@ -18834,17 +18834,32 @@
       ]
     },
     "Attribution": {
-      "type": "object",
-      "properties": {
-        "party": {
-          "$ref": "#/$defs/PartyId"
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "party": {
+              "$ref": "#/$defs/PartyId"
+            },
+            "roleClass": {
+              "$ref": "#/$defs/RoleClass.roleClass"
+            }
+          },
+          "required": ["roleClass"],
+          "additionalProperties": false
         },
-        "roleClass": {
-          "$ref": "#/$defs/RoleClass.roleClass"
+        {
+          "type": "object",
+          "properties": {
+            "party": false,
+            "roleClass": {
+              "const": "NO_PARTY"
+            }
+          },
+          "required": ["roleClass"],
+          "additionalProperties": false
         }
-      },
-      "required": ["roleClass"],
-      "additionalProperties": false
+      ]
     },
     "AuthoritativeHolder": {
       "anyOf": [
@@ -19573,8 +19588,8 @@
       "x-brand": "owedCode:roleClass",
       "x-owed-vocabulary": "roleClass",
       "x-owed": "the code list is owed; the shape is published and the members are not ([SD §0])",
-      "x-owed-state": "pending",
-      "x-owed-why": "Awaiting a source: the corpus sources that reason vocabularies are organised by responsible party but publishes no class list."
+      "x-owed-state": "refusedOnEvidence",
+      "x-owed-why": "Refused on the evidence rather than awaiting a read: X12 element 98, the one list three documents named, is a flat identifier qualifier with no class axis and no non-party member."
     },
     "RuleRef": {
       "type": "object",

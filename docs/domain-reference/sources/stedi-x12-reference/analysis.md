@@ -19,6 +19,12 @@ material: |
     /element/163    — Stop Reason Code, all 19 code values
     /element/558    — Reservation Action Code, all 7 code values
     /element/353    — Transaction Set Purpose Code, codes 00–30
+  Read (web, 2026-10-06), same base URL:
+    /element/98     — Entity Identifier Code, 1312 code values, 161 of them with a
+                      definition sentence. Notes in captured/, raw page in local/,
+                      both recorded in registry.yaml. READ AFTER this analysis was
+                      written, which is why every sentence below calling it unread
+                      carries an annotation rather than a rewrite.
   NOT read: /211, /212, /213, /215, /997, and the ~1 000 other elements; the
     remaining code lists behind "Codes (794)" style links (e.g. element 355 Unit or
     Basis for Measurement, element 128 Reference Identification Qualifier, element
@@ -403,7 +409,7 @@ gap, which is why that guide is worth keeping alongside this one.)
 | A5 Storage-in-transit | 1 | 2 | 0 | 2 | 1 | n/a | n/a | n/a | One code, but the *right* code: **`BC` Storage in Transit** (`/element/1650`), modelled as a **shipment status** rather than a stop type or a separate entity — plus adjacent material in `DT` Drop Trailer, `SL`/`SU` Spot for Load/Unload, `S1` Trailer Spotted at Consignee's Location, and holds (`B4` Held for Payment, `B5` Held for Consignee, `BB` Held per Shipper). C4=2 because the concept is named in the industry's own vocabulary. C1=1 / C3=0: no duration, no in/out pair, no storage account, no warehouse party, no delivery-out leg, no permanent-storage boundary. **Useful as the interop token for SIT, not as a model of it.** |
 | A6 Documents & evidence | 1 | 1 | n/a | 1 | n/a | 2 | 2 | 2 | `POD Proof of Delivery` as a segment at line-item and carton grain in the 210; `EFI`+`BIN` carrying binary data inside a 214; `AT5` bill-of-lading handling requirements; `MAN` marks and numbers; `K1 Remarks`. The document *is* the message in EDI, so this area is structurally thin. C7=2 for `B10-07` (EDI vs keyed) and `BF Carrier Keying Error`. |
 | A7 Charges & billing hooks | 2 | 2 | 1 | 1 | n/a | 2 | 1 | 2 | The 210: `B3` invoice header, `L0` quantity/weight → `L1` rate and charges → `L7` tariff reference per line item, `L9 Charge Detail`, `L3` totals, `ITD` terms of sale, `C3` currency, `C2` bank id, plus a per-stop `S5` loop so **accessorials attach to the stop that incurred them**. `L9 Charge Detail` also appears in the **990**, so a tender acceptance can carry charges. C4=1: line-haul vs accessorial vs tariff reference is the right skeleton; no 400NG, no agent revenue split. |
-| A8 Parties & roles | 2 | 1 | n/a | 0 | n/a | 3 | 1 | 3 | `N1` typed-party loops at header, stop, status and carton grain in both 204 and 214, each with `N2`/`N3`/`N4`/`L11` and (in the 214) `G61 Contact`; `MS3 Interline Information` in both. C6=3: parties are role-qualified, repeatable, and appear at every grain. **C2=1 and C4=0**: the role vocabulary itself is element 98's code list, **which we did not read** — so we can say parties are typed and placed, but not what the types are. Flagged as an open question. |
+| A8 Parties & roles | 2 | 1 | n/a | 0 | n/a | 3 | 1 | 3 | `N1` typed-party loops at header, stop, status and carton grain in both 204 and 214, each with `N2`/`N3`/`N4`/`L11` and (in the 214) `G61 Contact`; `MS3 Interline Information` in both. C6=3: parties are role-qualified, repeatable, and appear at every grain. **C2=1 and C4=0**: the role vocabulary itself is element 98's code list, **which we did not read** — so we can say parties are typed and placed, but not what the types are. Flagged as an open question. **READ 2026-10-06 — the scores are NOT changed, and the reason is the finding** (`captured/stedi-element-98-party-roles-notes.md`): element 98 is a flat identifier qualifier spanning entities, locations, property and individuals, so it supplies no role *vocabulary* to score C2 on, and it names no household-goods role at all, which is C4=0 restated with evidence rather than overturned. What it does supply is a cross-walk against `ROLE_NAMES`, which is in the capture. |
 | A9 Identity & cross-references | 3 | 3 | n/a | 2 | n/a | 3 | 3 | 3 | `B10`'s four side-by-side identifiers each labelled by assigner (carrier PRO / shipper shipment id / SCAC / inquirer's number), `MS2`'s *"identification number assigned by that owner"*, `L11` with a header max use of 300, `MAN` marks and numbers at 9999, `PRF` purchase-order reference, `SPO` shipment purchase order detail, `S510 Standard Point Location Code` (the NMFTA location code). C4=2: PRO, SCAC and BOL are literally our identifiers. C7=3 for `B10-07`. C8=3: every reference is qualifier-typed, so new kinds are code additions. |
 
 Areas **A10–A13** are not scored; see Out-of-v1.
@@ -494,6 +500,10 @@ timestamped transition; **reason codes** — almost certainly free text today.
   element 353's full 65 were not all shown; `element/98` party roles, `element/355` units
   and `element/623` time codes were not read at all). Do not treat any count or
   definition here as authoritative without X12 Glass (src:x12-transportation).
+  **Amended 2026-10-06: `element/98` IS now read** — see `captured/stedi-element-98-party-roles-notes.md`.
+  Element 355 and element 623 remain unread. And the caution in this bullet earned itself twice over:
+  two summarizer reads of the element-98 page agreed on a code count that a parse of the page bytes
+  contradicts, so "read via an HTML→markdown fetch" is not the same standard as "parsed".
 - **42 status codes is a *flat* list mixing granularities and tenses.** `AG Estimated
   Delivery` sits beside `X1 Arrived at Delivery Location` and `CA Shipment Cancelled`.
   A consumer must know which codes are estimates, which are actuals and which are
@@ -512,6 +522,14 @@ timestamped transition; **reason codes** — almost certainly free text today.
   can assert the same status, the asserter must be explicit.
 - **Element 98's party-role code list was not read**, so the role vocabulary — the thing
   A8 most needs from X12 — is an open item, not a finding.
+  **CLOSED 2026-10-06, and it resolves the other way: X12 has no party-role vocabulary to give.**
+  Element 98 is an `N1` identifier qualifier, not a role list — its own definition covers "an
+  organizational entity, a physical location, property or an individual", and the list delivers all
+  four. It names counterparts for `driver`, `customer`, `loadAgent`, `unloadAgent`, `packer`,
+  `sitAgent` and the bill-to/payer split, and **nothing** for `originAgent`, `destinationAgent`,
+  `hauler`, `r19Agent`, `rr19Agent`, `settlingAgent` or `portHandler`. So this stays a cost: A8's
+  cast cannot be checked against an industry vocabulary, because the industry vocabulary at this
+  grain does not exist. `captured/stedi-element-98-party-roles-notes.md` is the cross-walk.
 - **Flat-file structure leaks.** `LX Assigned Number` exists only to open a loop; status
   nests under an assigned number rather than under the thing it describes. Loop
   structure is transport, not domain.
@@ -562,6 +580,14 @@ timestamped transition; **reason codes** — almost certainly free text today.
    vetted role vocabulary, and it is the one list we did not read. Fetch
    `/element/98` (and the `N1` segment page) before phase 3 scores A8, or the score
    above is provisional.
+   **ANSWERED 2026-10-06, after phase 3 scored A8 anyway.** They are entity identifier
+   codes, flat and cross-industry, and the question's own premise — that a "vetted role
+   vocabulary" is what element 98 holds — is what the read corrects. The A8 score stands
+   unchanged with its ground restated; `captured/stedi-element-98-party-roles-notes.md`
+   carries the cross-walk, and `[A8 §2]`'s refusal of element 98 now rests on what it
+   contains rather than on its not having been opened. The `N1` segment page is still
+   unread and is no longer load-bearing: this file's A8 row already records the `N1`
+   loop structure at four grains from the 204 and 214 reads.
 2. **Is the 212 Delivery Trailer Manifest the missing trip source?** Every source in this
    cluster fails A3's consolidation question. A manifest is by definition *"multiple
    shipments on one trailer"* (the eBOL's `manifestId` says so explicitly). Worth

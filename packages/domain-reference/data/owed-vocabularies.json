@@ -20,10 +20,10 @@
     },
     {
       "vocabulary": "roleClass",
-      "state": "pending",
-      "reason": "Awaiting a source: the corpus sources that reason vocabularies are organised by responsible party but publishes no class list.",
+      "state": "refusedOnEvidence",
+      "reason": "Refused on the evidence rather than awaiting a read: X12 element 98, the one list three documents named, is a flat identifier qualifier with no class axis and no non-party member.",
       "citation": "[A8 §9 item 2]",
-      "gate": null
+      "gate": "RoleClassStaysOwed"
     },
     {
       "vocabulary": "unitOfMeasure",

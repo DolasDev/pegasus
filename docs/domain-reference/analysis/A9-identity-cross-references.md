@@ -713,6 +713,26 @@ as the record of what the field was when this round read it; §1.2 finding 3 car
    enumeration with no names — and A9 owes its own because the sources are read and **say the
    vocabulary should not be closed**. The Owed page cannot tell those two apart, which is worth
    knowing before reading it as a backlog.
+
+   > **AMENDED 2026-10-06, and the sentence above contradicted itself.** "The sources it needs are
+   > unread" and "ships as a bare enumeration with no names" cannot both be true of the same package:
+   > **a clause describing what a source contains is a clause reporting a reading.** The second half
+   > is the true one — `round-1-crosscheck.md` read the UN/CEFACT package under its
+   > **`### A8 Parties & roles — thin`** heading and recorded exactly that, and the registry entry now
+   > says the package was read in round 1 and **not retained**. The first half was wrong, and the
+   > plan that quoted this item carried the error forward for two rounds.
+   >
+   > **And the distinction this item exists to draw has now collapsed: both vocabularies are refused
+   > on the evidence.** [A8 §9 item 2] read `src:stedi-x12-reference` **element 98** on 2026-10-06 —
+   > the one list `round-1-crosscheck.md`'s **`## Unread material`** SHOULD item, [`fork-time` §7]'s
+   > `(b)(1)` row and that source's own open question 1 all named — and refused `roleClass` on what it
+   > contains: a flat `N1` identifier qualifier spanning "an organizational entity, a physical
+   > location, property or an individual", with no class axis and no non-party member. So the Owed
+   > page's two states now have **two** entries under `refusedOnEvidence` and one under `pending`
+   > (`unitOfMeasure`), and the sentence "the Owed page cannot tell those two apart" is itself out of
+   > date — `x-owed-state` and `x-owed-why`, added by the cleanup round, are what tell them apart.
+   > The argument of this item stands; only its example has moved.
+
 2. **A definition of SCAC — still owed, and now owed with the fetch ruled out.** Six witness rows
    use the code; none defines the issuing authority's rules, so `definedNotMerelyNamed` is `false`
    and §3.3(b) keeps it there. `src:nmfta-scac` — the **only** registry entry whose `areas:` is

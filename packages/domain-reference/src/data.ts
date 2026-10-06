@@ -952,7 +952,16 @@ export interface ReasonCodeEntry {
    * Whether `attribution.party` must name a party — [SD §2.4] rule 6's discipline, per code.
    *
    * A boolean rather than a default `roleClass`, deliberately: the role enum is owed to
-   * [A8 §9 item 2] and a table that named a member of it would be guessing one into existence.
+   * [A8 §9 item 2] and a table that named a member of it would be guessing one into existence. **That
+   * reads better after 2026-10-06, not worse**: [A8 §9 item 2] refused the vocabulary on the evidence
+   * of element 98, so a default class written here would now have to be defended against an argument
+   * rather than merely replaced.
+   *
+   * **And it became falsifiable on the same day.** This flag asserted something nothing could
+   * contradict — there was no value for "must name a party" to be incompatible with — until
+   * `ATTRIBUTION_NO_PARTY` existed. **A8-NO-PARTY** is the rule that follows
+   * ({@link CODES_THAT_FORBID_NO_PARTY_ATTRIBUTION}), and it is also what finally gates [A4 §5]
+   * item 1's "true for every `PARTY`-scope member and no other".
    */
   readonly partyRequired: boolean
   /** Whether the code must carry a remedy — [SD §2.4] rule 5, "and for some codes must". */

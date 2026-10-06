@@ -454,6 +454,11 @@ export const REASON_CODES = [
    * This is the member that proves `attribution.roleClass` needs an explicit non-party value, which
    * [A8 §9 item 2] owes: force majeure attributes to nobody, and [SD §2.4] forbids attributing to
    * nobody at all.
+   *
+   * **CLOSED 2026-10-06, and not inside `roleClass`.** The value is
+   * {@link ATTRIBUTION_NO_PARTY}, declared by {@link Attribution}'s shape, because no-party is not
+   * a class of party — that constant's docstring is the argument, and `roleClass` itself is now
+   * refused on the evidence of `src:stedi-x12-reference` element 98.
    */
   'FORCE_MAJEURE',
   /**
@@ -489,10 +494,17 @@ export const REASON_CODES = [
    * expires unattempted is the same fact at the goods grain, which is why it is not spelled for the
    * commitment side.
    *
-   * The third member that attributes to **nobody**, after `FORCE_MAJEURE` and `CAUSE_UNKNOWN`, and
-   * the only one where a regulation says so outright — `src:dtr-part-iv` §C.4.b's non-response is
-   * caused by no party at all. [A8 §9 item 2] owes the `roleClass` enum an explicit non-party
-   * member, and this strengthens the requirement rather than repeating it ([A1 §Cross-area]).
+   * A member that attributes to **nobody**, and the only one where a regulation says so outright —
+   * `src:dtr-part-iv` §C.4.b's non-response is caused by no party at all. [A8 §9 item 2] owes the
+   * `roleClass` enum an explicit non-party member, and this strengthens the requirement rather than
+   * repeating it ([A1 §Cross-area]).
+   *
+   * **This sentence said "the third member… after `FORCE_MAJEURE` and `CAUSE_UNKNOWN`" and the
+   * ordinal is withdrawn.** [A1 §9]'s rule — an ordinal dates the sentence around it and depends on
+   * who is counting — and here it also smuggled in a claim: `CAUSE_UNKNOWN` attributing to nobody
+   * is contradicted by [SD §2.6]'s note that a shortfall goes to _"an unknown role class rather
+   * than to nobody"_. The two codes that positively require {@link ATTRIBUTION_NO_PARTY} are this
+   * one and `FORCE_MAJEURE`; `CAUSE_UNKNOWN` is open and its own member says so.
    */
   'DEADLINE_LAPSED',
   /**
@@ -506,6 +518,15 @@ export const REASON_CODES = [
    * Not `OTHER`. `OTHER` means *there is a reason and this list has no code for it*, and owes a
    * narrative ([SD §2.4] rule 3); this means *there is no reason to give yet*. Publishing both is
    * what stops a producer fabricating a remark to satisfy the open member ([A4 §4.5]).
+   *
+   * **Its attribution is an OPEN question, recorded here rather than decided.** `DEADLINE_LAPSED`'s
+   * docstring used to count this member among those attributing to **nobody**; [SD §2.6]'s note
+   * says a shortfall is attributed to _"an unknown role class rather than to nobody"_, and the two
+   * cannot both be right about an unknown cause. There are three candidate readings and the corpus
+   * settles none of them: a party acted and its class is unknown (`unknown`, inside the refused
+   * vocabulary); no party acted ({@link ATTRIBUTION_NO_PARTY}); or it is unknown **whether** any
+   * party acted, which is a third state neither value expresses. Deciding it needs the `roleClass`
+   * vocabulary [A8 §9 item 2] owes, so it waits for that rather than being guessed ([SD §0]).
    */
   'CAUSE_UNKNOWN',
 ] as const
@@ -559,15 +580,80 @@ export function reasonCode(code: string): ReasonCode {
 /**
  * The class of party a reason is attributed to.
  *
- * **Owed.** [SD §2.4] rule 6 makes attribution a structured field and sources the _fact_ that
- * reason vocabularies are organised by responsible party (`src:stedi-x12-reference` element
- * 1651's 86 values; Shippeo's `NJU` vs `DIV`), but no document publishes the class list.
- * [SD §2.6]'s worked example uses `customer`, `carrier` and `unknown`; three examples are not a
- * vocabulary, and [A8 §9 item 2] owes the role enum this would be cut from.
+ * **Owed, and now REFUSED ON THE EVIDENCE rather than awaiting a read.** [SD §2.4] rule 6 makes
+ * attribution a structured field and sources the _fact_ that reason vocabularies are organised by
+ * responsible party (`src:stedi-x12-reference` element 1651's 86 values; Shippeo's `NJU` vs `DIV`),
+ * but no document publishes the class list. [SD §2.6]'s worked example uses `customer`, `carrier`
+ * and `unknown`; three examples are not a vocabulary, and [A8 §9 item 2] owes the role enum this
+ * would be cut from.
+ *
+ * **The one source three documents named as the blocker is read, and it closes nothing.**
+ * `src:stedi-x12-reference` element 98 — `round-1-crosscheck.md`'s **`## Unread material`** SHOULD
+ * item, [fork-time §7]'s `(b)(1)` row and that source's own open question 1 all named it — is
+ * `Entity Identifier Code`, the identifier qualifier on an `N1` loop. Its own definition is _"Code
+ * identifying an organizational entity, a physical location, property or an individual"_ and the
+ * list delivers all four, flat and ungrouped, with freight, healthcare, mortgage, oil-and-gas and
+ * education sharing one alphabet. So it is at the wrong grain
+ * twice over: **no class axis** for classes to be cut from, and **no member meaning no party at
+ * all**. `sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md` is the read.
+ *
+ * What it does yield is a cross-walk against `ROLE_NAMES`, which is [A8 §9 item 2]'s input and not
+ * this type's.
+ *
+ * The refusal is held by `RoleClassStaysOwed` in `rules/authority.ts` — A8's module, because
+ * `roleClass` is A8's — and the two declarations are independent, which is what [A2 §9] requires of
+ * an `Exact<>`. {@link ATTRIBUTION_NO_PARTY} is **not** a member of this vocabulary and the
+ * paragraph on it says why.
  */
 export type RoleClass = OwedCode<'roleClass'>
 
-export const roleClass = (code: string): RoleClass => code as RoleClass
+/**
+ * The attribution that names **no party at all** — declared by {@link Attribution}'s shape, not by
+ * the `roleClass` vocabulary, which stays refused.
+ *
+ * **The need is a finding, and two published reason codes force it.** `FORCE_MAJEURE` is
+ * "something outside every party's control"; `DEADLINE_LAPSED` is the one a regulation is outright
+ * about — `src:dtr-part-iv` §C.4.b makes non-response to an award _"a typed event caused by
+ * nobody"_, and [A1 §3.6] reads it that way. [SD §2.4] makes `attribution` mandatory and
+ * `roleClass` mandatory within it, so before this branch existed neither code could be recorded
+ * without inventing a vocabulary member — which is exactly what [SD §0] forbids.
+ *
+ * **Why it is the shape and not the vocabulary, which is the whole argument.** `roleClass` is _the
+ * class of **party** a reason is attributed to_. A reason caused by no party has no class of party,
+ * so putting "no party" inside a vocabulary of party classes is the category error [SD §2.4] rule 1
+ * forbids one axis over. The corpus draws the line itself: [SD §2.6]'s note says a shortfall is
+ * _"attributed to an unknown role class rather than to nobody"_ — so `unknown` **is** a class (a
+ * party, class unknown) and belongs inside the refused vocabulary, while nobody is outside it.
+ * **[ORIGINAL]** as the line and as the spelling; the need is sourced twice and the distinction
+ * once.
+ *
+ * **The spelling is deliberately not the vocabulary's.** [SD §2.6]'s illustrations are lower-case
+ * words (`customer`, `carrier`, `unknown`); this is `SCREAMING_SNAKE`, so a reader can see it is
+ * from a different namespace, and {@link roleClass} refuses it under any casing so that [A8 §9
+ * item 2]'s eventual casing decision cannot collide with it.
+ *
+ * **What it does not settle.** Whether `CAUSE_UNKNOWN` belongs here is **open** — see
+ * {@link REASON_CODES}' `CAUSE_UNKNOWN` member, whose own note now carries the question.
+ */
+export const ATTRIBUTION_NO_PARTY = 'NO_PARTY' as const
+
+/**
+ * Parse a string into a {@link RoleClass}.
+ *
+ * It refuses {@link ATTRIBUTION_NO_PARTY} under any casing, for the reason that constant's own
+ * docstring gives: no-party is declared by {@link Attribution}'s shape and is not a class of party,
+ * so a code list that admitted it would be asserting the membership this type refuses. Same move as
+ * {@link reasonCode} keeping `OTHER` out — and the casing is folded because the vocabulary's
+ * eventual spelling is [A8 §9 item 2]'s to choose and must not be able to collide with this.
+ */
+export function roleClass(code: string): RoleClass {
+  if (code.toUpperCase() === ATTRIBUTION_NO_PARTY) {
+    throw new RangeError(
+      'use ATTRIBUTION_NO_PARTY; no-party is declared by the Attribution shape, not by the owed roleClass vocabulary',
+    )
+  }
+  return code as RoleClass
+}
 
 /**
  * [SD §2.4] "Attribution is a structured field on the reason, not baked into the code and not on
@@ -576,13 +662,19 @@ export const roleClass = (code: string): RoleClass => code as RoleClass
  * This **supersedes `fork-time` §(b)(7)** ("attribution belongs on the assertion"), which
  * [round-2-critique] "correctly identified as a placement rule no source states". `party` is
  * optional because the responsible party is often unknown at the time the reason is recorded;
- * `roleClass` is not, because a reason that attributes to nobody at all is the `DIV` overload
- * [SD §2.3] invariant 2 exists to remove.
+ * `roleClass` is not, because a reason that attributes to nobody at all **by omission** is the
+ * `DIV` overload [SD §2.3] invariant 2 exists to remove.
+ *
+ * **Two members, because attributing to nobody and failing to attribute are different records.**
+ * The {@link ATTRIBUTION_NO_PARTY} branch says so overtly and forbids `party` in the same breath —
+ * a reason caused by no party that names one is a contradiction, not a record — which is the same
+ * shape as {@link Reason}'s `OTHER` + `remark` pair and {@link ActOutcome}'s `COMPLETED` +
+ * `reasons?: never`. The `DIV` overload is still removed, and now it is removed without making two
+ * published reason codes unrecordable.
  */
-export interface Attribution {
-  readonly party?: PartyId
-  readonly roleClass: RoleClass
-}
+export type Attribution =
+  | { readonly roleClass: RoleClass; readonly party?: PartyId }
+  | { readonly roleClass: typeof ATTRIBUTION_NO_PARTY; readonly party?: never }
 
 /**
  * A new window offered in place of the act that did not happen — [SD §2.4] rule 5's **one sourced

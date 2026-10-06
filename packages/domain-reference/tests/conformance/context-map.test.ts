@@ -186,6 +186,12 @@ describe('the join surface, enumerated rather than counted', () => {
         'PartyId',
         'QualifierByType',
         'RecordType',
+        // Promoted by the `roleClass` round, and the promotion is the point rather than a side
+        // effect: `RoleClass` is declared in `outcomes.ts` from [SD §2.4] and is now referenced in
+        // `rules/authority.ts`, where [A8 §9 item 2] refuses to close it. The concept really does
+        // cross — the reason shape needs it and A8 owes it — and the map had no edge for that until
+        // the refusal was written into A8's own module.
+        'RoleClass',
         'RoleName',
         'RuleRef',
         'SchemeAccountability',

@@ -140,13 +140,38 @@ Four roles are **added** here because they assert facts and ADE has no slot for 
   "RR19 Agent" (GSD p.26), and ADE's own analysis flags it as open question 9 ("a typo or a real
   overload?"). A role table keyed on a colliding code is not a table. We take the `Resource.Type`
   strings.
-- **`src:stedi-x12-reference` element 98 is not used, because it was not read.** The analysis is
-  explicit: "the role vocabulary itself is element 98's code list, **which we did not read** — so we
-  can say parties are typed and placed, but not what the types are," and stedi's own open question 1
-  flags it as blocking A8. What element 98 _does_ supply, structurally, is that `N1` typed-party
-  loops appear at **header, stop, status and carton grain** in both the 204 and the 214 (C6=3) —
-  i.e. the industry places a role-qualified party at every grain, which is the shape §4 assumes.
-  **The vocabulary remains unread and §9.9 keeps it on the ledger.**
+- **`src:stedi-x12-reference` element 98 is not used, and as of 2026-10-06 the reason is what it
+  contains rather than that it was unread.** This bullet used to end "**The vocabulary remains unread
+  and §9.9 keeps it on the ledger**", and that was the honest state until the list was opened. It is
+  now read (`sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md`) and the
+  refusal **stands on stronger ground**: element 98 is `Entity Identifier Code`, the identifier
+  qualifier on an `N1` loop, and its own definition is _"Code identifying an organizational entity, a
+  physical location, property or an individual"_. The rendered list delivers all four kinds in one
+  flat, ungrouped table spanning freight, healthcare, mortgage, oil-and-gas and education — so it is
+  **not a role vocabulary at all**, and a cast cut out of it would be ours rather than X12's.
+
+  What it does supply is a **cross-walk**, which is this section's cast checked against an industry
+  list for the first time. Counterparts exist for `driver` (`D1`), `customer` (`LW`), `loadAgent`
+  (`LP Loading Party`), `unloadAgent` (`UP Unloading Party`), `packer` (`X2 Party to Perform
+Packaging`), `sitAgent` (`WH` / `8F Bailment Warehouse` / `NS Non-Temporary Storage Facility` /
+  `DE Depositor`) and the `accountParty` payer/remitter split. **None exists** for `originAgent`,
+  `destinationAgent`, `hauler`, `r19Agent`, `rr19Agent`, `settlingAgent` or `portHandler` — the
+  nearest are a drayman, a terminal and a storage facility, which are different parties. Three
+  results bear directly on decisions this section took:
+
+  - **Trap 1 is confirmed by the standard.** `booker`'s only neighbour is `OE Booking Office`, which
+    is the ocean/forwarding office — exactly the "dangerous false friend" the crosscheck named in
+    `src:project44`'s `BOOKING_AGENT`. A role table keyed on element 98 would have walked into it.
+  - **Trap 2 is not resolved by the standard.** `SH Shipper` is in the list, bare and with no
+    definition sentence, so X12 adds nothing to the §375.103-versus-DPS inversion. **A8-NAME-2 stands
+    as [ORIGINAL]** and element 98 is not a citation for it.
+  - **`weighMaster` has a near-miss that is instructive.** `R1 Party to Receive Scale Ticket` is the
+    ticket's **recipient**; `src:cfr-49-375` §375.519(a) puts the signature on its **author**. Two
+    parties at opposite ends of one document, and taking X12's name would have inverted the role.
+
+  And what it still does supply structurally is unchanged: `N1` typed-party loops appear at
+  **header, stop, status and carton grain** in both the 204 and the 214 (C6=3) — the industry places
+  a role-qualified party at every grain, which is the shape §4 assumes.
 
 ---
 
@@ -790,6 +815,62 @@ file may be read as deciding them.
    (`src:dp3-400ng` Definitions p.11 — appointed by power of attorney to act **in place of the
    customer**), broker, and the prime / emergency-or-temporary agent split (`src:cfr-49-375`
    §375.205). §5's table is stated in roles it does not define.
+
+   > **Two decisions taken 2026-10-06, and this item stays open after both.**
+   >
+   > **(a) `roleClass` is REFUSED ON THE EVIDENCE, not pending.** The vocabulary this item would cut
+   > `roleClass` from is still owed, but `roleClass`'s own state has changed character. It shipped
+   > `pending` — "the source exists and is unread" — and the source three documents named was
+   > `src:stedi-x12-reference` **element 98**: `round-1-crosscheck.md`'s **`## Unread material`**
+   > SHOULD list, [`fork-time` §7]'s `(b)(1)` row, and that source's own **`## Open questions`**
+   > item 1. §2's amended bullet is the read. It closes nothing, for two reasons that do not depend
+   > on each other — element 98 has **no class axis** (one flat table; a class list cut from it would
+   > be ours, which [shared §0](00-shared-decisions.md) forbids) and **no member meaning no party at
+   > all** — the nearest misses are `B2 Other Unlisted Type of Organizational Entity`, which is an
+   > organization, `QD Responsible Party`, which is a person, and `ZZ Mutually Defined`, which means
+   > the slot is filled by something unlisted rather than that it is empty. So this is
+   > [`A9` §3.2](A9-identity-cross-references.md)'s shape reached by the opposite argument: A9's
+   > sources publish an escape hatch beside every closed list, while element 98 publishes a list at
+   > the wrong grain. `RoleClassStaysOwed` in `src/rules/authority.ts` is the gate, and a later round
+   > that narrows the type has to answer those two reasons rather than merely do the work.
+   >
+   > **(b) The non-party value is published, and it is NOT a member of this vocabulary.** A4 handed
+   > this item one concrete requirement — an explicit non-party member — and `FORCE_MAJEURE` and
+   > `DEADLINE_LAPSED` are the two published codes that need it (`src:dtr-part-iv` §C.4.b calls
+   > non-response "a typed event caused by nobody"). It is published as `ATTRIBUTION_NO_PARTY`,
+   > declared by `Attribution`'s **shape**, because `roleClass` is the class of _party_ a reason is
+   > attributed to and a reason caused by no party has no class of party.
+   > [shared §2.6](00-shared-decisions.md)'s own note draws that line by sending a shortfall to "an
+   > unknown role class rather than to nobody" — so `unknown` is a class and belongs inside the
+   > refused vocabulary, and nobody is outside it. **This item therefore no longer owes a non-party
+   > member**, and a round that closes the vocabulary must not add one.
+   >
+   > **Three pieces of evidence element 98 hands this item, none of them a decision.**
+   >
+   > 1. **The NTS question above has X12 evidence, and it points to a split.** This item asks whether
+   >    "the NTS warehouseman… is the same role as ADE's `SITAgent`". Element 98 keeps them apart as
+   >    three codes: `WH Warehouse`, `8F Bailment Warehouse` — _"a warehouse property that is owned
+   >    by an organization, but the inventory contained in the warehouse belongs to the supplier until
+   >    the organization owning the warehouse legally purchases the goods"_ — and
+   >    `NS Non-Temporary Storage Facility`. Evidence toward a split; the decision is still this
+   >    item's.
+   > 2. **`tariffOwner` has an industry counterpart and stays owed.** `TI Tariff Issuer` (and
+   >    `CO Ocean Tariff Conference`) name the function §5 row 11 calls "the tariff owner (the van
+   >    line / the party whose tariff prices it)", which `ROLE_NAMES` has no member for. What blocks
+   >    the member is **§2's addition test** — a role is added there because it asserts facts and ADE
+   >    has no slot for it — and applying that test is this item's. The owed row's reason is therefore
+   >    unchanged and was deliberately **not** repointed: X12 naming a function is not X12 asserting a
+   >    fact.
+   > 3. **Nothing in 1312 codes names a household-goods role.** Searched: `household`, `van line`,
+   >    `mover`, `relocat`, `moving company` — zero. The cast §2 takes from `src:sirva-ade` is, as far
+   >    as any read source goes, **the only household-goods role vocabulary there is**, and §10's table
+   >    has no row for that exposure: it rates §3 "High" on `src:sirva-ade` grade A with a worked
+   >    sample, and rates the authority rows, not the cast. **This is a new confidence item rather than
+   >    a restatement of one** — a cast resting on one publisher with no industry list to corroborate
+   >    it — and it belongs in §10 when this item is written. Recording it here rather than editing §10
+   >    on the way past, because the row it needs is a judgement about the vocabulary this item owes
+   >    and has not made.
+
 3. **Person vs organisation vs crew-member grain.** `src:milmove-mymove`'s `MTOAgent` is a _person_
    (`RELEASING_AGENT`/`RECEIVING_AGENT`); `src:atlas-world-group-api`'s `OnSiteStaffMember` carries
    `role_ID`/`role_Description` bound to specific `stop_Number`s (column names); `src:sirva-ade`'s

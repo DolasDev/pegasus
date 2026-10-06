@@ -131,8 +131,29 @@ void _catalogIsTheVocabulary
  * 16 → 15, `declaredRecordTypes` 31 → 32 — and carries **no** class, on the rule [catalog §5] and
  * the `0.5.0` row already settle: [catalog §2.3] classifies changes to what is **published**, and an
  * owed count is a change to what is admitted to be **missing**.
+ *
+ * `0.6.3` at the `roleClass` round: **three additive classes, one bump**, and two of the three are
+ * classes this round had to mint.
+ *
+ * - `refusedOwedVocabulary` — `roleClass` moves from `pending` to `refusedOnEvidence` on the
+ *   evidence of `src:stedi-x12-reference` element 98 ([A8 §9 item 2]). Two annotation values on each
+ *   face, `x-owed-state` and `x-owed-why`.
+ * - `newShapeBranch` — {@link Attribution} gains the `ATTRIBUTION_NO_PARTY` branch, which the two
+ *   published reason codes that attribute to nobody need and which the refused vocabulary must not
+ *   contain. **Read the class's docstring before the next one of these:** the branch emits
+ *   `"party": false` and its sibling still accepts what it forbids, so on the wire it discloses a
+ *   constraint it cannot enforce until `roleClass` is published — **the third time [catalog §5]'s
+ *   rule located something the decision did not predict**, after `keySideRole` at `0.3.0` and
+ *   `awardedRole` at `0.6.2`.
+ * - `newClosedEnumMember` — the two classes above join {@link ADDITIVE_CHANGES} itself, which is one
+ *   line each in `index.json`'s `compatibility.additive`, exactly as `repointedOwedOwner` did at
+ *   `0.6.1`.
+ *
+ * Nothing is removed and nothing narrowed in either face. The owed **vocabulary** count does not
+ * move — `roleClass` is still owed, and what changed is the reason — which is the `0.5.0` row's rule
+ * again from the other side.
  */
-export const CATALOG_VERSION = '0.6.2'
+export const CATALOG_VERSION = '0.6.3'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces
@@ -349,8 +370,14 @@ export const ADDITIVE_CHANGES = [
   'newClosedEnumMember',
   /**
    * The **first** publication of a vocabulary that shipped as owed — the change A4 made to the reason
-   * codes, and the one every remaining owed vocabulary — `roleClass`, `unitOfMeasure`,
-   * `identityScheme` — will make.
+   * codes.
+   *
+   * **This docstring used to add "and the one every remaining owed vocabulary — `roleClass`,
+   * `unitOfMeasure`, `identityScheme` — will make", and that was already false when it was written
+   * and is doubly false now.** [A9 §3.2] refuses `identityScheme` and [A8 §9 item 2] now refuses
+   * `roleClass`, so two of the three will make {@link ADDITIVE_CHANGES} member
+   * `refusedOwedVocabulary` instead, and a round that closes either has to overturn an argument
+   * first. `unitOfMeasure` is the one still on this path.
    *
    * Distinguished from {@link ADDITIVE_CHANGES} member `newClosedEnumMember` because it is not an
    * addition to a list: it **narrows a string to an enum**. An owed code publishes as
@@ -409,6 +436,54 @@ export const ADDITIVE_CHANGES = [
    * agreement in both directions, which is what nothing did before.
    */
   'repointedOwedOwner',
+  /**
+   * Moving an owed vocabulary from `pending` to **`refusedOnEvidence`** — the mirror image of
+   * {@link ADDITIVE_CHANGES} member `publishedOwedVocabulary`, and the fourth member of the family
+   * that names changes to the model's bookkeeping about its own incompleteness.
+   *
+   * [A8 §9 item 2]'s change to `roleClass` is the first use. `publishedOwedVocabulary` closes a gap;
+   * this one argues that the gap **does not close by effort**, and the argument is what the
+   * `Exact<…, OwedCode<'v'>>` gate `data/owed-vocabularies.json` then has to name makes
+   * un-overturnable in silence. On the wire it is two annotation values: `x-owed-state` and
+   * `x-owed-why`.
+   *
+   * **Additive on the weakest of the three arguments, and weaker than `repointedOwedOwner`'s.**
+   * Those two each move a `const`; this moves an `x-` **annotation**, which a validator ignores
+   * outright, so no record that validated stops validating and none that failed starts passing.
+   * What changes is what the wire discloses, which is [SD §0]'s direction.
+   *
+   * **Its own class rather than `newAnnotation`, for that member's stated reason.** `newAnnotation`
+   * is a **new** keyword on a shape that had none, and its docstring refuses to be stretched:
+   * "stretching that member to cover both would have made it mean two things". And it is not
+   * `repointedOwedOwner`, which corrects an owed value's **owner** and leaves its state alone.
+   * **[SYNTHESIS]**.
+   */
+  'refusedOwedVocabulary',
+  /**
+   * A new `anyOf` **branch** on an already-published shape, with nothing removed and nothing
+   * narrowed — the class [A8 §9 item 2] needed for {@link Attribution}'s no-party branch and no
+   * existing member covered.
+   *
+   * Distinguished from {@link ADDITIVE_CHANGES} member `publishedOwedShape`, which **replaces** an
+   * `Owed` branch with a real one and therefore removes a `$defs` entry a consumer may have pinned.
+   * This adds a branch beside the existing ones and takes nothing away, so it is additive without
+   * needing the owed-marker-was-published argument at all.
+   *
+   * **The emitted diff says something the decision did not predict, and it is the third time
+   * [catalog §5]'s rule has done that.** The branch the generator writes is
+   * `{"party": false, "roleClass": {"const": "NO_PARTY"}}` — JSON Schema's boolean-`false` schema, so
+   * the prohibition on `party` is real — but its **sibling** branch still types `roleClass` as the
+   * open `OwedCode` string, which accepts `"NO_PARTY"` beside a `party` and therefore accepts every
+   * record the new branch forbids. So on the wire this branch **discloses** a constraint it cannot
+   * yet enforce; the TypeScript type enforces it, because `OwedCode` is a brand and the literal is
+   * not assignable to it.
+   *
+   * That is not a defect to paper over and it is not permanent: the branch starts biting the day
+   * `roleClass` is published as a closed union, which is the edge `RoleClassStaysOwed` guards. The
+   * refusal is the reason the gate cannot bite, which is worth stating plainly rather than leaving a
+   * reader to infer that an `anyOf` must be discriminating. **[SYNTHESIS]**.
+   */
+  'newShapeBranch',
   /**
    * A new `x-` **annotation** on an already-published shape — the class A3 and A4 of the cleanup
    * round needed and no existing member covered.

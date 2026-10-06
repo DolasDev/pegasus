@@ -1207,6 +1207,23 @@ const RULES: readonly {
     what: '[A9 §3.2] refuses to close `identityScheme`, and the refusal is a type',
     export: 'IdentitySchemeStaysOwed',
   },
+  // [A8 §9 item 2]'s refusal, the second of its kind and reached by the opposite argument: A9's
+  // sources publish an escape hatch, while element 98 publishes a list at the wrong grain. Nothing
+  // auto-discovers a `RULES` entry, and `A8-KEY` was missing from this array for four releases
+  // before the owed-closures round noticed — so a gate is registered here when it is written.
+  {
+    term: 'RoleClassStaysOwed',
+    what: '[A8 §9 item 2] refuses to close `roleClass` on the evidence of X12 element 98',
+    export: 'RoleClassStaysOwed',
+  },
+  // A8-NO-PARTY's two halves: the enumeration that says which codes forbid a no-party attribution,
+  // and the predicate over it. A `RULES` entry may point at a **type** or a **constant**, not only a
+  // function ([A8 §9]'s lesson from the cleanup round).
+  {
+    term: 'A8-NO-PARTY',
+    what: 'a code that must name a party may not be attributed to nobody at all',
+    export: 'attributionIsLegalFor',
+  },
 ]
 
 /* ------------------------------------------------------------------------------------------------
