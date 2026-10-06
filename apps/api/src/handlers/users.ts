@@ -158,6 +158,10 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
   }
 }
 
+function findInviteTenant(db: PrismaClient, tenantId: string) {
+  return db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } })
+}
+
 type CreateUserOutcome =
   { kind: 'created'; user: TenantUserRow } | { kind: 'conflict' } | { kind: 'cognito_error' }
 
@@ -175,16 +179,18 @@ async function createTenantUser(
   tenantId: string,
   email: string,
   roleNames: string[],
-  opts: { sendInvite: boolean; legacyWindowsUsername?: string | null },
+  opts: {
+    sendInvite: boolean
+    legacyWindowsUsername?: string | null
+    /** Name + slug for the tenant-aware invite email; looked up when absent. */
+    tenant?: { name: string; slug: string } | null
+  },
 ): Promise<CreateUserOutcome> {
   const repo = createUsersRepository(db)
   if (opts.sendInvite) {
-    // Look up tenant name + slug so the CustomMessage Lambda trigger can
-    // render a tenant-aware invite email and link to the right login page.
-    const tenant = await db.tenant.findUnique({
-      where: { id: tenantId },
-      select: { name: true, slug: true },
-    })
+    // Tenant name + slug let the CustomMessage Lambda trigger render a
+    // tenant-aware invite email and link to the right login page.
+    const tenant = opts.tenant ?? (await findInviteTenant(db, tenantId))
     try {
       await provisionCognitoUser(email, {
         tenantId,
@@ -710,9 +716,13 @@ usersHandler.post('/:id/resend-invite', requirePermission(Actions.InviteUser), a
 //                       an enabled SSO provider, or they could never sign in.
 //
 // Skips (no row written): not in the directory / not active / no email /
-// already a user of this tenant / an ACTIVE login on another tenant (the #673
-// roster rule — the shared Cognito identity isn't ours to provision; use
-// POST /invite deliberately for a multi-tenant person).
+// already a user of this tenant / — with sendInvite only — an ACTIVE login on
+// another tenant (the #673 roster rule: the shared Cognito identity isn't ours
+// to provision). SSO-only rows skip that check: they touch no Cognito state.
+//
+// A batch is sequential (one Cognito round-trip pair per invited person); if a
+// large one times out, re-running it is safe — created rows skip as
+// ALREADY_A_USER.
 //
 // Afterwards the company's membership sync runs, so new users are linked to
 // their employee rows (emp/wun) at once. A sync failure doesn't undo anything;
@@ -783,6 +793,7 @@ usersHandler.post(
     }
     const byCode = new Map(directory.map((s) => [Number(s.id), s]))
     const repo = createUsersRepository(db)
+    const tenant = sendInvite ? await findInviteTenant(db, tenantId) : null
 
     const results: ImportResult[] = []
     for (const code of [...new Set(employeeCodes)]) {
@@ -812,22 +823,30 @@ usersHandler.post(
           })
           continue
         }
+        // The #673 roster rule guards the SHARED Cognito pool, so it applies only
+        // when this import touches it (sendInvite). An SSO-only row touches
+        // nothing in Cognito and grants nothing until this tenant's own IdP
+        // asserts the email — it is the right path for a person who already
+        // signs in elsewhere (an invite would mint them a second, native identity).
         // TenantUser isn't tenant-scoped: deliberately cross-tenant (see resend-invite).
-        const elsewhere = await db.tenantUser.findFirst({
-          where: {
-            email: { equals: email, mode: 'insensitive' },
-            tenantId: { not: tenantId },
-            status: 'ACTIVE',
-          },
-          select: { id: true },
-        })
-        if (elsewhere) {
-          results.push({ code, email, status: 'skipped', reason: 'ACTIVE_IN_ANOTHER_TENANT' })
-          continue
+        if (sendInvite) {
+          const elsewhere = await db.tenantUser.findFirst({
+            where: {
+              email: { equals: email, mode: 'insensitive' },
+              tenantId: { not: tenantId },
+              status: 'ACTIVE',
+            },
+            select: { id: true },
+          })
+          if (elsewhere) {
+            results.push({ code, email, status: 'skipped', reason: 'ACTIVE_IN_ANOTHER_TENANT' })
+            continue
+          }
         }
         const outcome = await createTenantUser(db, tenantId, email, roleNames, {
           sendInvite,
           legacyWindowsUsername: employee.winUsername,
+          tenant,
         })
         if (outcome.kind === 'created') {
           results.push({

@@ -131,6 +131,12 @@ A new worktree, `scripts/workstream-start.sh feat users-from-pegii <this plan>`,
   - The panel caps a submission at 50, matching the API's `IMPORT_MAX`.
   - Site errors share `lib/company-site-errors.ts` with the Companies page.
 - **No OpenAPI or SDK change:** both new routes are session-only admin routes.
+- **Correction to the plan (advisor review):** the `ACTIVE_IN_ANOTHER_TENANT` skip applies **only with "Send invite" on**.
+  - The #673 roster rule guards the shared Cognito pool. An SSO-only row touches no Cognito state, and it is the right path for someone who already signs in elsewhere.
+  - The original "skip, use Invite user" advice led straight to the two-identity hazard: `/invite` checks only native users, so it would mint a federated person a password login.
+- **Tenant name/slug** are looked up once per import, not per row.
+- **Batches are sequential,** so 50 invited people take roughly 10–15s against the API Lambda's 29s timeout. Re-running a timed-out batch is safe: created rows skip as `ALREADY_A_USER`.
+- **Not fixed here (pre-existing):** a plain `POST /users/invite` for a person whose only Cognito identity is federated still creates a native user. Only this tenant's resend and reset paths are guarded.
 
 **Tests:**
 

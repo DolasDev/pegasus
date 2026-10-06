@@ -38,7 +38,8 @@ const REASON_TEXT: Record<NonNullable<ImportUserResult['reason']>, string> = {
   INACTIVE: 'inactive in pegII',
   NO_EMAIL: 'no email in pegII',
   ALREADY_A_USER: 'already a user',
-  ACTIVE_IN_ANOTHER_TENANT: 'already signs in to another Pegasus account — use Invite user',
+  ACTIVE_IN_ANOTHER_TENANT:
+    'already signs in to another Pegasus account — add them with "Send invite" off to use SSO',
   COGNITO_ERROR: 'the sign-in account could not be created',
   ERROR: 'unexpected error',
 }

@@ -154,7 +154,7 @@ describe('POST /import', () => {
     expect(db.tenantSsoProvider.count).not.toHaveBeenCalled()
   })
 
-  it('skips each ineligible employee with its reason and creates nothing for them', async () => {
+  it('skips each ineligible invited employee with its reason and creates nothing for them', async () => {
     readDirectory.mockResolvedValue({
       company: {},
       directory: [
@@ -175,7 +175,7 @@ describe('POST /import', () => {
 
     const res = await buildApp().request(
       '/import',
-      post(body({ employeeCodes: [1, 2, 3, 4, 5, 999] })),
+      post(body({ employeeCodes: [1, 2, 3, 4, 5, 999], sendInvite: true })),
     )
 
     const data = (await json(res))['data'] as {
@@ -192,7 +192,31 @@ describe('POST /import', () => {
     ])
     expect(data.created).toBe(0)
     expect(repo.invite).not.toHaveBeenCalled()
+    expect(provision).not.toHaveBeenCalled()
     expect(syncMemberships).not.toHaveBeenCalled()
+  })
+
+  it('SSO-only adds someone who already signs in to another tenant (no Cognito touched)', async () => {
+    readDirectory.mockResolvedValue({ company: {}, directory: [employee('5')] })
+    db.tenantUser.findFirst.mockResolvedValue({ id: 'other-tenant-user' })
+
+    const res = await buildApp().request('/import', post(body({ employeeCodes: [5] })))
+
+    const results = ((await json(res))['data'] as { results: Array<Record<string, unknown>> })
+      .results
+    expect(results).toEqual([expect.objectContaining({ code: 5, status: 'created' })])
+    // The cross-tenant roster lookup is skipped entirely, and so is Cognito.
+    expect(db.tenantUser.findFirst).not.toHaveBeenCalled()
+    expect(provision).not.toHaveBeenCalled()
+  })
+
+  it('looks the tenant up once for a whole invited batch', async () => {
+    readDirectory.mockResolvedValue({ company: {}, directory: [employee('1'), employee('2')] })
+
+    await buildApp().request('/import', post(body({ employeeCodes: [1, 2], sendInvite: true })))
+
+    expect(db.tenant.findUnique).toHaveBeenCalledTimes(1)
+    expect(provision).toHaveBeenCalledTimes(2)
   })
 
   it('one failing employee does not stop the rest', async () => {
