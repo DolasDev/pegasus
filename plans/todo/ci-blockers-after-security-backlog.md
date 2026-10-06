@@ -1,162 +1,129 @@
 # CI blockers + merge-queue maintenance left after the security backlog
 
-> **Resume point — rewritten 2026-10-05 against `main` @ `fcc934b3`.** Every fact below was
-> re-verified that day, not carried over. Read "State of play", then pick from "Live work" — the
-> items are ordered cheapest-first, and each one names its next command.
+> **Resume point — refreshed 2026-10-06 against `main` @ `892f0c53`.** Every fact below was
+> re-verified that day against the working tree, not carried over. Read "State of play", then
+> pick from "Live work"; each item says what it is, what it would cost, and what I'd do.
 >
 > Successor to `plans/completed/security-backlog-and-sort-hardening.md` (fully discharged).
-> The narrative write-ups for everything already closed now live in
-> `dolas/agents/project/GOTCHAS.md` and the PR bodies; this file keeps only what is still owed,
-> plus the merge-queue runbook, which is the reusable part.
+> Narrative write-ups for everything closed live in `dolas/agents/project/GOTCHAS.md` and the PR
+> bodies; this file keeps only what is still owed, plus the merge-queue runbook, which is the
+> reusable part.
 
 ---
 
 ## State of play
 
-**`main` is green, Deploy included.** CI and Deploy both `success` at `fcc934b3`, and at
-`bc81bd2b` (#791) before it. The staging E2E gate passes.
+**`main` is green through prod.** At `892f0c53` the commit's own check-runs read **29 success, 6
+skipped, 0 failures**, including `Deploy to prod`, `Tag prod release` and `Record deployed SHA`.
+Working tree clean. **No Dependabot PRs open** — only `#145` (the Cognito/SES change, explicitly
+on hold).
 
-**Closed since 2026-10-02** (detail in GOTCHAS + the PRs, not repeated here):
+**Everything that was blocking is now closed.** Nine fixes landed 2026-10-02 → 10-05; detail is
+in GOTCHAS and the PRs, so one line each:
 
-- **Item 2** — E2E died on `.bin/tsx` → **#779.** Not the range conflict this file predicted: a
-  nested vite 8.3.1 left the root `tsx` slot holding vite 8.3.0's _optional peer_, which npm
-  never installs, so `.bin/tsx` was never linked. Fixed with a root `tsx` dependency edge —
-  which root needed anyway for `create-admin-user`. **#762 then merged.**
-- **Item 3** — #746's Test failure → **closed on merge.** Cause never captured; the log had
-  already expired.
-- **Item 1, the _leak_ half** → **#780.** `--detectOpenHandles` found exactly one open handle,
-  and it was in `Dashboard.snapshot.test.tsx`, **not** `tenant-picker.test.tsx` — this file's
-  candidate fix had been aimed at the wrong file for weeks.
-- **Item 5 (new)** — staging Deploy broke on `sharp` → **#783.** Caused _by_ closing item 2:
-  #762 denested `sharp`, and CDK `bundling.nodeModules` needs a **root** lockfile entry. Fixed
-  with a root edge plus a PR-time guard test.
-- **Item 5b** — the staging E2E gate → **#784.** `@playwright/mcp`'s prerelease `playwright`
-  shadowed the runner for `npx` inside `apps/e2e`. Fixed by using the repo's
+- **E2E died on `.bin/tsx`** → **#779.** Not the range conflict this file predicted — a nested
+  vite 8.3.1 left the root `tsx` slot holding vite 8.3.0's _optional peer_, which npm never
+  installs. Fixed with a root `tsx` dependency edge. **#762 then merged.**
+- **#746's Test failure** → closed on merge; cause never captured (log had expired).
+- **The mobile open-handle leak** → **#780.** One handle, in `Dashboard.snapshot.test.tsx` —
+  **not** `tenant-picker.test.tsx`, where this file had aimed its fix for weeks.
+- **Staging Deploy broke on `sharp`** → **#783.** Caused _by_ fixing the first item: #762
+  denested `sharp`, and CDK `bundling.nodeModules` needs a **root** lockfile entry. Fixed with a
+  root edge plus a PR-time guard test.
+- **The staging E2E gate** → **#784.** `@playwright/mcp`'s prerelease `playwright` shadowed the
+  runner for `npx` inside `apps/e2e`. Fixed by using the repo's
   `node ../../node_modules/.bin/playwright` convention everywhere.
-- **turbo writing itself into `AGENTS.md`** → **#791.** `"agentGuidance": false`; the advice
-  kept in `AGENTS.md` in our own words.
+- **turbo writing itself into `AGENTS.md`** → **#791.** `"agentGuidance": false`; the advice kept
+  in `AGENTS.md` in our own words. Re-verified on turbo 2.11.6 after #787.
 - **Runbook pattern (a)** → **#781**, then **#782** correcting it. See the ⚠️ box in the runbook.
-- **Item A (the Dependabot backlog)** → **#785**, **#787** and **#799** all merged; #786 was
-  superseded by #799. It corrected two things: `@dependabot recreate` does **not** fix a
-  `Missing: … from lock file` failure, and **CI runs npm 11.13.0, not the `packageManager`
-  10.8.2 pin** — so validating a lockfile with 10.8.2 is a false green. Item 4 gained an
-  eighth reproduction, measured at 21 min → 5 s.
+- **The Dependabot backlog** → **#785**, **#787**, **#799** merged (#786 superseded by #799);
+  recorded in **#801**.
 
-**The one lesson worth carrying into the next bump:** `turbo typecheck lint test` and the
-PR-level E2E job do **not** exercise CDK bundling or the staging gate's own invocation. #762 went
-green on every PR check and broke `main`'s Deploy **twice**. After merging any broad dependency
-bump, watch `main`'s Deploy to completion before calling it done.
+**Three lessons from that round, in descending order of how much they'd cost to relearn:**
+
+1. **`turbo typecheck lint test` is the floor, not the ceiling.** It does not exercise CDK
+   bundling or the staging gate's own invocation. #762 was green on every PR check and broke
+   `main`'s Deploy **twice**. After any broad dependency bump, watch `main`'s Deploy to
+   completion before calling it done.
+2. **CI runs npm 11.13.0, not the `packageManager: npm@10.8.2` pin.** `actions/setup-node` reads
+   `.nvmrc` with no corepack step, so npm is whatever Node bundles. Validating a lockfile with
+   10.8.2 is a **false green** — on #799 it exited 0 while CI rejected the same file.
+3. **`@dependabot recreate` does not fix a `Missing: … from lock file` failure.** It re-runs the
+   same resolution. Regenerate the lockfile and push it to the branch instead.
 
 ---
 
 ## Live work
 
-### [x] A — Three open Dependabot PRs — ✅ DONE 2026-10-05, all merged
+Nothing here blocks a merge or a deploy. Two are decisions, two are optional hardening, one is a
+loose end, and one is explicitly no-action.
 
-- **#785** `hono 4.13.9 → 4.13.12` — was green but unenqueued; `gh pr merge 785 --auto`. Merged.
-- **#787** `turbo 2.11.5 → 2.11.6` — same. Merged. **Opt-out re-verified on 2.11.6** with a
-  control in a throwaway repo: `agentGuidance: false` → 0 blocks, key removed → block injected,
-  both `parse-ok`. `AGENTS.md` on `main` still has zero managed blocks.
-- **#786** `aws-cdk-lib 2.271.0 → 2.272.0` — **`@dependabot recreate` did NOT fix it.** Dependabot
-  closed #786 in favour of grouped **#799** (`aws-cdk` group, 2 updates), which failed _identically_
-  — recreate just re-runs the same resolution. Fixed by regenerating the lockfile and pushing that
-  onto #799's branch; **merged as #799**.
+### [ ] `DEPENDABOT_AUTOMERGE_PAT` — owner-only, and the highest-leverage item left
 
-**Two corrections this produced — both matter more than the merges.**
+See `plans/todo/dependabot-automerge-pat.md`. **No code change** — the workflow already reads
+`secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN`. It needs the secret set, which only
+you can do.
 
-1. **`@dependabot recreate` is the wrong remedy for a `Missing: … from lock file` failure.** It
-   reproduces the same lockfile. The remedy is to regenerate and push it.
-2. **CI does NOT use the `packageManager: npm@10.8.2` pin.** `.github/actions/setup` runs
-   `actions/setup-node` against `.nvmrc` (24.16.0) with no corepack step, so CI's npm is whatever
-   Node bundles — the failing job's own "Environment details" group reads **`npm: 11.13.0`**.
-   Project memory had prescribed `npx -y npm@10.8.2`, and on #799's broken lockfile that
-   **passes**, proving nothing:
+**Eight reproductions:** #645, #656, #387, #657, #709, #710, **#762**, **#799**. A
+`GITHUB_TOKEN`-initiated enqueue gets a queue entry but **no `merge_group` checks**, so the PR
+sits at the head of the queue doing nothing until someone nudges it. The two measured ones:
 
-   ```
-   npx -y npm@10.8.2 ci --dry-run   -> exit 0   ← FALSE GREEN
-   npm ci --dry-run  (npm 11.13.0)  -> exit 1   ← reproduces CI exactly
-   ```
+| PR   | bot-enqueued, no run for | after dequeue + human-token re-enqueue |
+| ---- | ------------------------ | -------------------------------------- |
+| #762 | 18 min                   | **~28 s**                              |
+| #799 | 21 min                   | **~5 s**                               |
 
-   So: reproduce the failure with plain `npm` on Node 24 first, then
-   `npm install --package-lock-only`, then gate on `npm ci --dry-run` exiting 0. On #799 the churn
-   was tightly scoped — 2386 entries before and after, 20 added, 20 removed, zero other version
-   changes (the bumped packages moved from `packages/infra/node_modules/` to the root). Memory
-   `project_dependabot_lockfile_npm_version_mismatch` has been corrected.
+#799 is the cleanest evidence yet: `pr-798`'s group run had succeeded minutes earlier and Actions
+was `operational`, so neither the queue nor the outage explains it.
 
-**Also worth knowing for next time:** this ran during a GitHub **Actions major outage**. Runner
-starvation presents as uniform ~15m0Xs cancellations with `runner_name=[]` and `steps=0`, and it
-turned `main` red on a docs-only merge. Enqueueing during it was deliberately deferred — a starved
-entry occupies the head of an `ALLGREEN` queue and is dropped at `check_response_timeout_minutes:
-60`, blocking other streams for nothing. Check
-`githubstatus.com/api/v2/components.json` before diagnosing a broad uniform failure as yours.
+**Bookkeeping lesson:** "auto-merge was enabled" and "the queue will actually build it" are
+independent claims. Confirm the second with a `merge_group` run **for that PR number** before
+recording a PR as healthy — see the ⚠️ box in the runbook for why the first claim's usual
+signature lies.
 
-### [ ] B — Item 1 residue: the TENANT-03 **timeout** (the leak is already fixed)
+### [ ] Decision: should `@playwright/mcp` stay an `apps/e2e` dependency?
 
-Current state on `main`, verified: `apps/mobile/jest.config.js` has `testTimeout: 45000` (#775),
-`"test"` is still `jest --forceExit` **deliberately** (dropping it would let a future leak hang a
-CI job rather than warn), and `npm run test:handles` is the discoverable leak check added by #780.
-
-What is still unapplied, and the decision to make:
-
-- The candidate fix is to replace `await act(async () => { fireEvent.press(...) })` with
-  `fireEvent.press(...)` then `await waitFor(() => expect(...))`, in
-  `apps/mobile/__tests__/app/(auth)/tenant-picker.test.tsx` at lines **59, 70, 90** — that is
-  **3 tests, not the "four" this file used to claim** (counted 2026-10-05; the file has 6 tests).
-- It is still **unverifiable locally**: the file passes 6/6 in ~1s with zero open handles, so
-  only several real CI runs could show whether it helps.
-- **So the real question is whether to do it at all.** The 45 s budget has held since #775, and
-  the leak that produced the force-exit warning is gone. Shipping an unverifiable rewrite of 3
-  tests to chase a flake that may no longer fire is a worse trade than leaving it. Recommend:
-  leave it, and only revisit if TENANT-03 exceeds 45 s in a real run. If it does, that run's log
-  is the evidence this item has never had — capture it **while it is live** (an expired log is
-  what cost item 3 its cause).
-
-### [ ] C — Item 4: `DEPENDABOT_AUTOMERGE_PAT` (owner-only, highest leverage — now 8 reproductions)
-
-See `plans/todo/dependabot-automerge-pat.md`. No code change — the workflow already reads
-`secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN`.
-
-**Eight reproductions:** #645, #656, #387, #657, #709, #710, **#762** (2026-10-03/04) and
-**#799** (2026-10-05). #799 is the cleanest measurement yet: enqueued by the auto-merge
-workflow at 22:16:15, it sat at position 1 `AWAITING_CHECKS` for **21 minutes with no
-`merge_group` run**, while `pr-798`'s group run had succeeded minutes earlier and Actions was
-`operational` — so neither the queue nor the outage explains it. A dequeue plus
-`gh pr merge 799 --auto` under a human token produced the `pr-799` run in **~5 seconds**.
-21 min → 5 s.
-
-The
-The #762 one is the measured one: enqueued 23:57:16 by the workflow's `GITHUB_TOKEN`, it sat at
-position 1 `AWAITING_CHECKS` for **18 minutes with no `merge_group` run at all** — while #781,
-enqueued _later_ at position 2, had already produced and passed its own group run. A dequeue plus
-`gh pr merge 762 --auto` under a **human** token produced the `pr-762` run in **~28 seconds**.
-18 min → 28 s is the same shape as #694's 12-second recovery, which is what makes it evidence
-rather than superstition.
-
-A `GITHUB_TOKEN`-initiated enqueue gets a queue entry but no `merge_group` checks. **Bookkeeping
-lesson:** "auto-merge was enabled" and "the queue will actually build it" are independent claims —
-confirm the second with a `merge_group` run for that PR number before recording a PR as healthy.
-
-### [ ] D — Decision: should `@playwright/mcp` be an `apps/e2e` dependency at all?
-
-It depends on a **prerelease** `playwright`, which npm installs at
-`apps/e2e/node_modules/playwright` and which shadows the stable runner for anything resolved from
-that directory. #784 routed around it by using `node ../../node_modules/.bin/playwright`
-everywhere (root `.bin/playwright` is linked from `@playwright/test`, so runner and library
-always agree).
+It pulls a **prerelease** `playwright` into `apps/e2e/node_modules`, which shadows the stable
+runner for anything resolved from that directory. #784 routed around it by spelling out
+`node ../../node_modules/.bin/playwright` at every call site (root `.bin/playwright` is linked
+from `@playwright/test` itself, so runner and library always agree).
 
 But `.claude/settings.json` launches the MCP server as `npx @playwright/mcp@latest`, so **the
-declared dependency's only observable effect in CI is the shadowing**. Removing it would delete
-the hazard instead of routing around it. That is a dependency decision, not a pipeline fix, which
-is why #784 left it alone. Dependabot will keep bumping it and it will keep dragging a prerelease
-`playwright` in.
+declared dependency's only observable effect in CI is the shadowing.** Removing it would delete
+the hazard rather than route around it. Still declared as `^0.0.83` (verified 2026-10-06), and
+Dependabot will keep bumping it.
 
-### [ ] E — Optional hardening: three `nodeModules` entries are root-resolvable _by luck_
+**What I'd do:** remove it. The routing-around is in place and documented, so this is cleanup
+rather than a fix — but every future bump re-drags a prerelease runner into the tree for a server
+that is fetched by `npx` anyway.
 
-PR #783 added `packages/infra/lib/stacks/__tests__/cdk-node-modules-root-resolvable.test.ts`, which
+### [ ] Decision: the TENANT-03 **timeout** (the leak half is already fixed)
+
+Verified on `main` 2026-10-06: `apps/mobile/jest.config.js` has `testTimeout: 45000` (#775),
+`"test"` is still `jest --forceExit` **deliberately** (dropping it would let a future leak hang a
+CI job rather than warn), and `npm run test:handles` is the discoverable leak check from #780.
+
+The unapplied candidate: replace `await act(async () => { fireEvent.press(...) })` with
+`fireEvent.press(...)` then `await waitFor(() => expect(...))` in
+`apps/mobile/__tests__/app/(auth)/tenant-picker.test.tsx` — **3 of its 6 tests**, at lines 59, 70
+and 90 (re-counted 2026-10-06; this file once claimed "four").
+
+It remains **unverifiable locally** — the file passes 6/6 in ~1s with zero open handles, so only
+several real CI runs could show whether it helps.
+
+**What I'd do: leave it.** The 45 s budget has held since #775 and the leak that produced the
+force-exit warning is gone, so this would be an unverifiable rewrite chasing a flake that may no
+longer fire. Revisit only if TENANT-03 actually exceeds 45 s in a real run — and then capture
+that run's log **while it is live**, because it is the evidence this item has never had. (An
+expired log is exactly what cost #746 its cause.)
+
+### [ ] Optional hardening: three `nodeModules` entries are root-resolvable _by luck_
+
+#783 added `packages/infra/lib/stacks/__tests__/cdk-node-modules-root-resolvable.test.ts`, which
 asserts every CDK `bundling.nodeModules` package has a root `node_modules/<pkg>` lockfile entry
-(static, ~130 ms, and proven red against #762's actual lockfile).
+(static, ~130 ms, proven red against #762's actual lockfile).
 
-Verified 2026-10-05 — `sharp` is now declared at the root; these three are **not**, and resolve
+Re-verified 2026-10-06 — `sharp` is now declared at the root; these three are **not**, and sit
 there only because nothing has displaced them yet:
 
 | package                    | root entry                                            | declared at root? |
@@ -166,15 +133,37 @@ there only because nothing has displaced them yet:
 | `expo-server-sdk`          | 6.1.0                                                 | no                |
 
 **Not a blocker** — the guard turns each into a red PR check the day it denests, which is the
-whole point of it. Declaring them at the root pre-emptively is cheap insurance; doing nothing is
-also defensible now that the gate exists.
+whole point of it. Declaring them at the root is cheap insurance; doing nothing is also
+defensible now that the gate exists.
 
-### [ ] F — Loose end: `check-overrides.mjs` reports 43 of 49 overrides "inert"
+### [ ] Loose end: `check-overrides.mjs` reports 47 of 49 overrides as removal candidates
 
-Observed locally. On a set this carefully curated that is almost certainly a false signal — most
-likely because `npm ls --all --json` under **npm 11** (local) no longer emits the `overridden`
-flag the script keys on, while CI pins `npm@10.8.2`. **Confirm that before anyone acts on one of
-its monthly reports** — the workflow files an issue from them, so a false signal becomes a ticket.
+**Its stated cause in this file was wrong, and is corrected here.** The old note blamed a
+local-vs-CI npm split — local npm 11 not emitting the `overridden` flag "while CI pins
+npm@10.8.2". Both halves are false:
+
+- `.github/workflows/override-expiry.yml` uses `actions/setup-node` with `node-version-file:
+.nvmrc`, so **the workflow runs npm 11.13.0 too.** There is no divergence to explain, and the
+  monthly issue it files would say the same thing a local run does.
+- **npm 11 does still emit `overridden`** — measured on this tree: exactly **2** nodes, and they
+  are precisely the 2 the script reports as active (`react`, `react-native`). So the script's key
+  works; the flag is simply narrow.
+
+Measured 2026-10-06: 49 targets checked → **4 dead** (`@eslint/eslintrc`, `handlebars`,
+`path-to-regexp`, `rollup` — package no longer in the tree at all), **43 inert** (installed, no
+node marked `overridden`), **2 active**.
+
+So the real question is narrower than "is this a false signal?": **is npm's `overridden` flag now
+marking only the node that directly satisfies the override, rather than every instance it
+forced?** If so, "no node marked overridden" is not evidence an override is inert, and 43 is an
+over-count.
+
+The script already states the right caveat and the test for it — a removal candidate is not a
+safe delete, because "removing it lets the resolver run unconstrained, which can pull a lower
+version a parent range still permits." Its recipe: delete the entry,
+`rm -rf node_modules package-lock.json && npm install`, then run the affected suite. The 4 dead
+ones are the cheapest place to start — though note `handlebars` is there for CVE-2019-19919, so
+read the `//overrides` note before removing a security entry even when the package is gone.
 
 ### (no action) `audit-ci` "Consider not allowlisting" for `decode-uri-component` and `uuid`
 
@@ -237,7 +226,7 @@ looked like a broken gate and was only a stale branch.
 gh api graphql -f query='{repository(owner:"DolasDev",name:"pegasus"){mergeQueue(branch:"main"){entries(first:10){nodes{position state enqueuedAt pullRequest{number}}}}}}'
 ```
 
-### Two diagnosis traps
+### Three diagnosis traps
 
 - **`gh run list --event merge_group` returns STALE data here** — it reported only runs from six
   days earlier while today's were live. Filter client-side instead:
@@ -245,6 +234,12 @@ gh api graphql -f query='{repository(owner:"DolasDev",name:"pegasus"){mergeQueue
 - **An ejected PR's failing run is NOT among its own checks.** `isInMergeQueue:false` while still
   `OPEN` means ejected; the run lives at `gh-readonly-queue/main/pr-<N>-<base>`. Find it with the
   client-side query above, then `gh run view --log-failed --job <id>`.
+- **`gh run list --branch main` goes stale too, and far worse.** On 2026-10-06 it returned runs
+  from **September 23** as its newest rows, which reads as "main's last CI was weeks ago". Do not
+  diagnose `main`'s health from it. Ask the commit instead — this cannot drift:
+  `gh api "repos/DolasDev/pegasus/commits/$(/usr/bin/git rev-parse origin/main)/check-runs?per_page=40"`,
+  grouped by `conclusion`. Same family as the two traps above: a tool that answers confidently
+  with old data is more dangerous than one that errors.
 
 ---
 
