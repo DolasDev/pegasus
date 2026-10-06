@@ -8,11 +8,12 @@
 - Model a customer **tenant** as an organization containing one or more **companies** (legal entities, each one legacy database).
 - Retire the on-prem hub, so hub users and cloud users become the same people.
 
-**Status:** IN PROGRESS. Direction approved 2026-10-02.
+**Status:** IN PROGRESS. Direction approved 2026-10-02. I1, I2 and I3 are **live**; QMM is the only site on cloud auth. **Next phase: I4** (desktop sign-in through the cloud).
 
 - **I1 is live** (pegasus #770 → `dd1bbc56`, 2026-10-03).
-- **I2 is on alpha** (`2026.10.5.2+69e6c050`). **QMM's site has cloud auth on** (2026-10-05, verified end to end); NW and RVS are on hold (Steve).
-- **I3 is built** (movemanager branch `feat/cloud-identity-i3-salesmen-list` @ `f555bed3`, not yet on `dev`; pegasus PR on `feat/cloud-identity-i3`). See "Next session — start here".
+- **I2 is live on alpha** (movemanager `69e6c050`). **QMM's site has cloud auth on** (2026-10-05, verified end to end). NW and RVS are on hold (Steve).
+- **I3 is live** (pegasus #800 → `478d9027`, SDK 0.45.1; movemanager `dev` `2364ca3b` → alpha `2026.10.5.4`). Both QMM companies are synced (2026-10-06).
+- **"Add from pegII"** (Users page; optional invite, SSO-only users) is live: pegasus #802 → `892f0c53`.
 
 **A new session starts at "Next session — start here" below.**
 
@@ -34,27 +35,45 @@
 
 ---
 
-## Next session — start here (updated 2026-10-05, evening)
+## Next session — start here (updated 2026-10-06)
 
 **Done:**
 
 - **I1 (pegasus):** KMS ES256 minting, `/.well-known/jwks.json`, `Site`/`Company` + backfill, `Site.cloudAuthEnabled`. Plan: `plans/completed/17a1705d-cloud-identity-i1.md`.
-- **I2 (movemanager):** the `Cloud` scheme, hub routes `HubOnly` (D-I7), routing by `cid`, migrations on every `SpokeConnections` database, `pegii.cloud-auth.v1`, `install.ps1 -CloudIssuer -SiteId`. On alpha as `2026.10.5.2+69e6c050`. Plan: movemanager `plans/completed/75f99aa5-cloud-identity-i2.md`.
-- **QMM rollout (2026-10-05):**
-  - Site env (Machine scope): `Api__CloudAuth__Issuer`, `Api__CloudAuth__SiteId = 631fce83-…`, and `SpokeConnections__PegQMMUSA` on SQL instance `localhost\Pegasus`. `PegQMMUSA` migrated (`dbo.__SchemaMigrations` exists) once a placeholder password in that variable was fixed.
-  - Cloud: `cloudAuthEnabled = true` on site `631fce83`. Verified with a positive read (`GET /pegii/salesmen/1..3` → 200 from `PegQMM`).
-  - Companies: `QUALITY-MOVE-MANAGEMENT` renamed `QMM-CANADA` "QMM Canada" (default, `PegQMM`); `QMM-USA` "QMM USA" created with `dataSourceKey = PegQMMUSA`.
-  - **Check the migration with SQL, not logs:** the pegII service logs to the Windows Application event log (source `PegasusApi`), where Information lines likely don't appear. `SELECT COUNT(*) FROM <db>.dbo.__SchemaMigrations` per company DB.
-- **I3 built (not yet shipped):** see the I3 row below and `plans/completed/a64d3dd9-cloud-identity-i3.md`.
+- **I2 (movemanager):** the `Cloud` scheme, hub routes `HubOnly` (D-I7), routing by `cid`, migrations on every `SpokeConnections` database, `pegii.cloud-auth.v1`, `install.ps1 -CloudIssuer -SiteId`. Plan: movemanager `plans/completed/75f99aa5-cloud-identity-i2.md`.
+- **I3:**
+  - pegII: `GET /api/v1/pegii/salesmen` (`pegii.salesmen.list.v1`).
+  - Cloud: `CompanyMembership`, the on-demand sync in Settings → Companies, and `emp`/`wun` on user tokens.
+  - Plans: `plans/completed/a64d3dd9-cloud-identity-i3.md` and movemanager `plans/completed/f555bed3-cloud-identity-i3-salesmen-list.md`.
+- **"Add from pegII"** (Users page): pick employees from a company directory and create their logins; "Send invite" is optional, and off means SSO-only. Plan: `plans/completed/2e770fbd-users-from-pegii.md`; `DECISIONS.md` "SSO-only users".
+- **QMM rollout (2026-10-05/06):**
+  - **Site env** (Machine scope): `Api__CloudAuth__Issuer`, `Api__CloudAuth__SiteId = 631fce83-…`, and `SpokeConnections__PegQMMUSA` on SQL instance `localhost\Pegasus`.
+  - **Cloud:** `cloudAuthEnabled = true` on site `631fce83`.
+  - **Companies:** `QMM-CANADA` "QMM Canada" (default, `PegQMM`) and `QMM-USA` "QMM USA" (`dataSourceKey = PegQMMUSA`).
+  - **Sync results (2026-10-06):**
 
-**Next, in order:**
+    | Company    | Employees | Linked                                          | Ambiguous | Unmatched                         |
+    | ---------- | --------- | ----------------------------------------------- | --------- | --------------------------------- |
+    | QMM-CANADA | 807       | `gdhoopar@qmm.com` → 7429 (by Windows username) | 7392      | —                                 |
+    | QMM-USA    | 23        | —                                               | 7392      | `gdhoopar@qmm.com` (no row there) |
 
-1. **Land I3's movemanager half:** run `scripts/test.ps1` on Windows against branch `feat/cloud-identity-i3-salesmen-list`, merge `origin/dev`, archive its plan, fast-forward `dev`. Then confirm alpha's manifest moves past `2026.10.5.2` and QMM's `/version` lists `pegii.salesmen.list.v1`.
-2. **Merge the pegasus I3 PR**, then tag and publish SDK `0.45.1`.
-3. **Live check on QMM** (tenant-admin session): Settings → Companies → Sync employees on `QMM-CANADA`, then on `QMM-USA` (the first real `cid = PegQMMUSA` request).
-4. **NW / RVS rollout (on hold — Steve, 2026-10-05).** Same env pair per site (ids below), confirm `/version`, then `PATCH /api/v1/settings/sites/:id {"cloudAuthEnabled": true}` with that tenant's admin session (`/settings/*` is Cognito-only; an API key is refused). For NW also set `systemEmployeeCode = 1001` on its company.
+    7392 is ambiguous in both: see open item 2.
+
+**Open items, in order:**
+
+1. **Live test of an SSO-only user.**
+   - **Needs:** a QMM employee whose pegII `email_address` equals their Microsoft (Entra) sign-in email, and a QMM tenant-admin session.
+   - **Steps:**
+     1. Users → Add from pegII, with "Send invite" **off**.
+     2. Confirm the row shows "SSO only" and Pending, and is LINKED on Settings → Companies.
+     3. The person signs in with Microsoft; the row becomes Active.
+   - **If it fails:** first login reports `SSO_ERROR_NOT_ROSTERED`, which means the emails differ.
+2. **Clear the test Windows username on `steve@dolas.dev`.** It is `bandreopulos`, the same as `bandreopulos@qmm.com`, so employee 7392 is ambiguous and links nobody. Clear it on Settings → Users, then **Sync employees** on both QMM companies.
+3. **NW / RVS rollout (on hold — Steve).**
+   - Per site: set the env pair (ids below), confirm `/version` lists `pegii.cloud-auth.v1`, then `PATCH /api/v1/settings/sites/:id {"cloudAuthEnabled": true}` with **that tenant's** admin session. `/settings/*` is Cognito-only; an API key is refused at `tenantMiddleware`.
+   - For NW, also set `systemEmployeeCode = 1001` on its company (Settings → Companies), then sync.
    - **Open:** do the `-test`/`-qa` tenants have their own servers? One server can hold only one site id.
-   - **Why it matters:** every prod tenant has `pegii_api_key_ref = NULL`, so a site without cloud auth gets **no credential**; token-gated routes (serialized reads, order search, email, and now the salesman list) fail there.
+   - **Why it matters:** every prod tenant has `pegii_api_key_ref = NULL`, so a site without cloud auth gets **no credential**. Token-gated routes fail there: serialized reads, order search, email, the salesman list, and the membership sync. The sync answers 409 `SITE_CLOUD_AUTH_DISABLED`.
 
    | Tenant slug                   | Site.id                                                |
    | ----------------------------- | ------------------------------------------------------ |
@@ -65,9 +84,15 @@
    | `reliable-van-and-storage`    | `1a723d1d-e3fa-4fb7-ba71-ae1d2cd83d34`                 |
    | `reliable-van-and-storage-qa` | `a4988cac-e18f-41d3-a1cd-c86873b8a43f`                 |
 
-5. **NW pulse Phases 6–7** consume `emp`/`wun` for `created_by`/`who_called`.
+4. **NW pulse Phases 6–7** (`plans/in-progress/nw-pulse-texting-platform.md`) consume `emp`/`wun` for `created_by`/`who_called`. This needs NW's rollout (item 3).
+5. **A known gap, not yet fixed:** `POST /users/invite` (the plain Invite button) for a person whose **only** Cognito identity is federated still creates a second, native identity. `provisionCognitoUser` checks native users only. "Add from pegII" avoids this (its SSO-only rows touch no Cognito state), and resend/reset refuse SSO-only rows. The fix is to make invite federated-aware: refuse, or offer SSO-only.
+6. **I4 plan** (plan mode + Steve's approval): a new Cognito public app client for the desktop (**never edit an existing client**; see Risks), `POST /api/v1/desktop/session`, MoveManager Hosted-UI sign-in, the cloud company picker from `CompanyMembership`, and the site connection lookup by `cid`. Membership becomes an access decision from I4; until then it is attribution only.
 
-**Users from the directory (2026-10-06):** Users → **Add from pegII** creates logins from a company's directory, with "Send invite" optional; unchecked means SSO-only (no Cognito user until the first SSO login). New users are linked by the membership sync straight away. See `DECISIONS.md` ("SSO-only users") and `plans/completed/2e770fbd-users-from-pegii.md`.
+**Operational notes (learned 2026-10-05/06):**
+
+- **Checking a company DB's migrations:** check with SQL, not logs: `SELECT COUNT(*) FROM <db>.dbo.__SchemaMigrations` per company DB. pegII logs to the Windows Application event log under source **`Pegasus.Api`** (the .NET application name, not the service name `PegasusApi`), and Information lines likely don't appear.
+- **Company databases drift:** `PegQMMUSA` came up `COMPANY_SCHEMA_UNAVAILABLE` after the alpha update because a table was missing, which blocked a migration. Steve fixed it and restarted the service. Expect per-company migration failures whenever a release adds scripts.
+- **Site env changes need a service restart.** A placeholder password left in `SpokeConnections__*` shows up as the company never migrating.
 
 **Companies as they are (verified 2026-10-05, read-only):**
 
@@ -203,7 +228,7 @@ Two repos implement opposite ends of one token, so the contract lives here, plus
 | --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
 | **I1 ✅** | pegasus     | `Site` / `Company` models + backfill (`CompanyMembership` moved to I3); KMS signing key + JWKS endpoint; `lib/pegii-token.ts` minting; `pegii-api-client` sends the cloud token (plus `x-correlation-id`) when the site advertises `pegii.cloud-auth.v1`, else falls back to today's path                                                                                | I2                                    |
 | **I2 ✅** | movemanager | the cloud JWT scheme (JWKS + pinned-key fallback); hub routes `HubOnly` (D-I7), cloud-facing routes hub-or-cloud; `pegii.cloud-auth.v1`; per-request company routing by `cid`; multi-database migration runner. **Built on top of** the NW Phase 5 branch (`feat/order-read-normalization-and-search`, after `149c4c82`; no rebase), so the branch pushes once with both | NW Phase 5 push; QMM's second company |
-| **I3**    | both        | the `salesmen` list endpoint (`pegii.salesmen.list.v1`); `CompanyMembership` + the on-demand membership sync (email, then Windows username; ambiguity links nobody) in Settings → Companies; `emp`/`wun` on user tokens from a LINKED membership; service accounts keep the company's `systemEmployeeCode` (per-account override deferred). No cron.                     | NW Phases 6–7 attribution             |
+| **I3 ✅** | both        | the `salesmen` list endpoint (`pegii.salesmen.list.v1`); `CompanyMembership` + the on-demand membership sync (email, then Windows username; ambiguity links nobody) in Settings → Companies; `emp`/`wun` on user tokens from a LINKED membership; service accounts keep the company's `systemEmployeeCode` (per-account override deferred). No cron.                     | NW Phases 6–7 attribution             |
 | **I4**    | both        | the new Cognito app client (desktop); `POST /desktop/session`; MoveManager Hosted-UI sign-in + cloud company picker; site connection lookup by `cid`                                                                                                                                                                                                                     | I5                                    |
 | **I5**    | movemanager | retire the on-prem hub (`hub_user`, `hub_company`, `/auth/login`, hub admin endpoints) once every API-mode site is on I4; the cloud company registry is authoritative                                                                                                                                                                                                    | I6                                    |
 | **I6**    | movemanager | retire `salesman` password logins in the desktop's direct-database mode; cloud identity becomes the only user store                                                                                                                                                                                                                                                      | —                                     |
