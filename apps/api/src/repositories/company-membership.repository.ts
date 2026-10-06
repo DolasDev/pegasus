@@ -40,6 +40,14 @@ export function createCompanyMembershipRepository(db: PrismaClient) {
   return {
     listSyncUsers,
 
+    /** Every human user's email (any status) — to mark employees who already have a login. */
+    listUserEmails(tenantId: string): Promise<Array<{ id: string; email: string }>> {
+      return db.tenantUser.findMany({
+        where: { tenantId, isServiceAccount: false },
+        select: { id: true, email: true },
+      })
+    },
+
     async listExisting(companyId: string): Promise<ExistingMembership[]> {
       return db.companyMembership.findMany({
         where: { companyId },

@@ -67,6 +67,8 @@
 
 5. **NW pulse Phases 6–7** consume `emp`/`wun` for `created_by`/`who_called`.
 
+**Users from the directory (2026-10-06):** Users → **Add from pegII** creates logins from a company's directory, with "Send invite" optional; unchecked means SSO-only (no Cognito user until the first SSO login). New users are linked by the membership sync straight away. See `DECISIONS.md` ("SSO-only users") and `plans/completed/*-users-from-pegii.md`.
+
 **Companies as they are (verified 2026-10-05, read-only):**
 
 - **NW and RVS are single-company:** their default DB is their only company.

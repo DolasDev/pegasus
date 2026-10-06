@@ -111,6 +111,7 @@ describe('CompaniesSettingsPage', () => {
 describe('syncErrorMessage', () => {
   it.each([
     ['SITE_CLOUD_AUTH_DISABLED', /Cloud auth isn't on/],
+    ['SSO_NOT_CONFIGURED', /enabled SSO provider/],
     ['PEGII_CAPABILITY_MISSING', /without the employee directory/],
     ['COMPANY_NOT_FOUND', /SpokeConnections/],
     ['COMPANY_SCHEMA_UNAVAILABLE', /schema migration/],

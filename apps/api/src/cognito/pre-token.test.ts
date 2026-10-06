@@ -204,6 +204,43 @@ describe('pre-token trigger', () => {
   // hosted UI, so that is what the real trigger event looks like. `identities` alone does
   // not make a login federated — a linked user carries it on password logins too.
   describe('federated login — provider/tenant binding', () => {
+    // "Add from pegII" with "Send invite" off writes ONLY this row — no Cognito
+    // user. The first SSO login must activate it with the federated sub.
+    it('activates a PENDING SSO-only row on its first federated login', async () => {
+      mockSsoProviderFindMany.mockResolvedValue([
+        { tenantId: 'tenant-from-provider', isEnabled: true },
+      ])
+      mockTenantUserFindFirst.mockResolvedValue({
+        id: 'sso-only-user',
+        roleNames: ['viewer'],
+        status: 'PENDING',
+      })
+      mockTenantUserUpdate.mockResolvedValue({})
+
+      const event = await handler(
+        makeEvent({
+          email: 'new.hire@qmm.com',
+          sub: 'federated-sub',
+          identities: identitiesAttr('AcmeOkta'),
+          triggerSource: HOSTED_AUTH,
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      expect(mockTenantUserUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'sso-only-user' },
+          data: expect.objectContaining({ status: 'ACTIVE', cognitoSub: 'federated-sub' }),
+        }),
+      )
+      expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
+        'tenant-from-provider',
+      )
+    })
+
     it('resolves the tenant from the provider, not the email roster', async () => {
       mockSsoProviderFindMany.mockResolvedValue([
         {

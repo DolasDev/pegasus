@@ -492,6 +492,13 @@ model TenantUser {
   /// Cedar/AVP authorization runs through the same code path as human users.
   isServiceAccount Boolean @default(false) @map("is_service_account")
 
+  /// Signs in ONLY through the tenant's SSO provider: created without a Cognito
+  /// user, invite email or password ("Add from pegII" with "Send invite" off).
+  /// cognito/pre-token.ts activates the row on the first federated login.
+  /// Resend-invite and reset-password refuse these rows — either would mint a
+  /// native Cognito user and give the person a second identity.
+  ssoOnly Boolean @default(false) @map("sso_only")
+
   /// Per-user UI preferences, read/written via /api/v1/me/preferences. Parsed
   /// with zod defaults on every read (see lib/user-preferences.ts), exactly like
   /// Tenant.appSettings — so adding a new preference is a code change, NOT a

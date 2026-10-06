@@ -57,6 +57,22 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
     expect(user.deactivatedAt).toBeNull()
   })
 
+  it('invite defaults to a password user, and writes SSO-only + Windows username when asked', async () => {
+    const repo = createUsersRepository(testDb)
+    const plain = await repo.invite(testTenantId, `plain+${Date.now()}@example.com`, ['viewer'])
+    expect(plain.ssoOnly).toBe(false)
+    expect(plain.legacyWindowsUsername).toBeNull()
+
+    const sso = await repo.invite(testTenantId, `sso+${Date.now()}@example.com`, ['viewer'], {
+      ssoOnly: true,
+      legacyWindowsUsername: 'jdoe',
+    })
+    expect(sso.ssoOnly).toBe(true)
+    expect(sso.legacyWindowsUsername).toBe('jdoe')
+    expect(sso.status).toBe('PENDING')
+    expect(sso.cognitoSub).toBeNull()
+  })
+
   it('listByTenant returns the invited user after invite', async () => {
     const repo = createUsersRepository(testDb)
     const users = await repo.listByTenant(testTenantId)
