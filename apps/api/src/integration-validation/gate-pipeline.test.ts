@@ -223,4 +223,52 @@ describe('runGatePipeline', () => {
     expect(report.problems.some((p) => p.stage === 'mapping-format')).toBe(true)
     expect(report.corpus.passed).toBe(0)
   })
+
+  // sdk-feedback 0043 — the filed probe: the shipped mapping with the six
+  // per-shipment cost components removed. It used to fail structurally on every
+  // corpus case (`expected number, received undefined`), because the components
+  // were required keys; omitting them is now legal.
+  describe('surveyed cost components are omittable (0043)', () => {
+    const COMPONENTS = [
+      'surveyedStorageCostFirstDay',
+      'surveyedStorageCostAdditionalDays',
+      'surveyedStorageCostDeliveryOut',
+      'surveyedThirdPartyCrateAndUncrateCosts',
+      'surveyedThirdPartyCosts',
+      'surveyedThirdPartyOtherCosts',
+    ]
+
+    const withoutComponents = (keep: string[] = []): Record<string, unknown> => {
+      const shipments = base.mapping['shipments'] as {
+        $from: string
+        $each: Record<string, unknown>
+      }
+      const each = Object.fromEntries(
+        Object.entries(shipments.$each).filter(
+          ([k]) => !COMPONENTS.includes(k) || keep.includes(k),
+        ),
+      )
+      return { ...base.mapping, shipments: { ...shipments, $each: each } }
+    }
+
+    it('raises no structural failure when none of the six is mapped', () => {
+      const report = runGatePipeline(base, {
+        mapping: withoutComponents(),
+        rules: base.rules,
+        corpus,
+      })
+      expect(report.problems).toEqual([])
+      expect(report.corpus.failures.filter((f) => f.reason === 'structural')).toEqual([])
+    })
+
+    it('raises no structural failure when only some are mapped', () => {
+      const report = runGatePipeline(base, {
+        mapping: withoutComponents(['surveyedThirdPartyCosts', 'surveyedThirdPartyOtherCosts']),
+        rules: base.rules,
+        corpus,
+      })
+      expect(report.problems).toEqual([])
+      expect(report.corpus.failures.filter((f) => f.reason === 'structural')).toEqual([])
+    })
+  })
 })

@@ -45,7 +45,10 @@ import {
 } from '../../integration-validation/registry'
 import type { IntegrationDefinition, ValidationInput } from '../../integration-validation/types'
 import { mappingFormatJsonSchema } from '../../integration-validation/transform/mapping-format'
-import { canonicalSchemaPaths } from '../../integration-validation/transform/mapping-static-check'
+import {
+  canonicalRequiredPaths,
+  canonicalSchemaPaths,
+} from '../../integration-validation/transform/mapping-static-check'
 import { inboundBlockJsonSchema } from '../../lib/ingress'
 import { createIntegrationProjectionRepository } from '../../repositories/integration-projection.repository'
 import { db as basePrisma } from '../../db'
@@ -100,12 +103,18 @@ integrationValidationHandler.get('/integrations/inbound-schema', (c) => {
 function floorDetail(floorId: string): Record<string, unknown> | null {
   const floor = getFloor(floorId)
   if (!floor) return null
-  const canonicalFields = [...canonicalSchemaPaths(z.toJSONSchema(floor.structuralContract))].sort()
+  const contract = z.toJSONSchema(floor.structuralContract)
+  const canonicalFields = [...canonicalSchemaPaths(contract)].sort()
   return {
     floor: floor.floor,
     // Legal mapping TARGET paths (a mapping may only write these). Array element
     // paths are marked with `[]` (e.g. "Resources[].Id").
     canonicalFields,
+    // The subset a mapping MUST produce. The key has to be present, though a
+    // nullable one may be null. Everything else in canonicalFields may be left
+    // out, so an author can tell what is optional without probing the gate
+    // (sdk-feedback 0043).
+    requiredCanonicalFields: [...canonicalRequiredPaths(contract)].sort(),
     // Legal rule FACTS (name → type). A rule's `fact` must be one of these; its
     // `field` must be one of `canonicalFields`.
     factCatalog: floor.factCatalog,
@@ -122,7 +131,18 @@ function floorDetail(floorId: string): Record<string, unknown> | null {
     // declare no input roots.
     ...(floor.inputFieldRoots ? { inputFieldRoots: floor.inputFieldRoots } : {}),
     defaultAction: floor.defaultAction,
-    ...(floor.projection ? { projection: { entityType: floor.projection.entityType } } : {}),
+    // The projection binding, plus the local entity kind a projection may be
+    // correlated to (`put_projection(..., local_entity_type=…)`). Without
+    // `localEntityType` a correlation is refused `unsupported` and the cache is
+    // readable only by the partner's key (sdk-feedback 0045).
+    ...(floor.projection
+      ? {
+          projection: {
+            entityType: floor.projection.entityType,
+            ...(floor.correlation ? { localEntityType: floor.correlation.localEntityType } : {}),
+          },
+        }
+      : {}),
   }
 }
 

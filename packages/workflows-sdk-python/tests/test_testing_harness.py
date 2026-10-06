@@ -335,6 +335,30 @@ def test_offline_record_matches_server_side_dry_run(call) -> None:
     assert isinstance(entry["args"], dict)
 
 
+def _dry_client() -> PegasusClient:
+    return PegasusClient(base_url="http://dry-run.invalid", token="dry-run", dry_run=True)
+
+
+@pytest.mark.parametrize("make", [fake_client, _dry_client], ids=["offline", "dry_run"])
+def test_put_projection_rehearsal_reports_a_requested_correlation(make) -> None:
+    # sdk-feedback 0045 B: the docstring tells authors to check `correlation`
+    # when they rely on reading back by local id. If the synthetic result left
+    # the key out, that check could never fire in the one rehearsal meant to
+    # catch a missing binding before production.
+    row = make().put_projection(
+        "weichert", "order", "O-1", {"x": 1}, local_entity_type="order", local_entity_id="490317"
+    )
+    assert row["correlation"] == {"outcome": "dryRun"}
+
+
+@pytest.mark.parametrize("make", [fake_client, _dry_client], ids=["offline", "dry_run"])
+def test_put_projection_rehearsal_omits_correlation_when_none_requested(make) -> None:
+    # …and leaves the key out when no binding was asked for, like the server, so
+    # `row.get("correlation")` tells the two cases apart offline.
+    row = make().put_projection("weichert", "order", "O-1", {"x": 1})
+    assert "correlation" not in row
+
+
 def test_every_mutation_has_a_parity_call() -> None:
     # Keep the parity matrix exhaustive: one call per classified mutation.
     covered = {c(_MethodRecorder()) for c in _MUTATION_CALLS}

@@ -331,3 +331,81 @@ describe('load-only milestone rules an overlay can now author (sdk-feedback 0035
     ).toEqual(['delivered-requires-load-delivery-actuals'])
   })
 })
+
+// sdk-feedback 0043 — 0041 made the order-level total mappable, but the six
+// per-shipment components stayed REQUIRED keys (`number | null`, not
+// `.optional()`), so a one-total partner still had to map six fields it does not
+// send. The only config-only escape was pointing each at a path that never
+// exists. They are now omittable, and an omitted component contributes nothing.
+describe('deriveDemoPartnerFacts — omittable surveyed cost components (0043)', () => {
+  const COMPONENTS = [
+    'surveyedStorageCostFirstDay',
+    'surveyedStorageCostAdditionalDays',
+    'surveyedStorageCostDeliveryOut',
+    'surveyedThirdPartyCrateAndUncrateCosts',
+    'surveyedThirdPartyCosts',
+    'surveyedThirdPartyOtherCosts',
+  ] as const
+
+  /** A shipment carrying ONLY the components named in `keep`; the rest are absent. */
+  const partial = (
+    keep: Partial<Record<(typeof COMPONENTS)[number], number>>,
+  ): DemoPartnerShipment => {
+    const s: Record<string, unknown> = { ...shipment('S1', {}) }
+    for (const k of COMPONENTS) delete s[k]
+    return { ...s, ...keep } as DemoPartnerShipment
+  }
+
+  const order = (shipments: DemoPartnerShipment[], total?: number): DemoPartnerOrder => ({
+    serviceOrderNumber: 'O-1',
+    supplierContactName: 'Cora',
+    supplierContactEmail: 'cora@example.com',
+    serviceStatus: 'Submitted',
+    contactMadeDate: '2026-01-02',
+    surveyDate: '2026-01-03',
+    ...(total === undefined ? {} : { estimatedTotalCost: total }),
+    shipments,
+  })
+
+  const derive = (o: DemoPartnerOrder) =>
+    deriveDemoPartnerFacts({ order: o, prior: null, action: 'status-change' })
+
+  const submitCostRule = demoPartnerRules.filter(
+    (r) => r.id === 'submit-requires-estimated-total-cost',
+  )
+
+  it('accepts a shipment carrying none of the six against the structural contract', () => {
+    expect(DemoPartnerOrderSchema.safeParse(order([partial({})])).success).toBe(true)
+  })
+
+  it('takes the mapped order-level total when no component is sent', () => {
+    const f = derive(order([partial({})], 10590.87))
+
+    expect(f['estimatedTotalCost']).toBe(10590.87)
+    expect(evaluateRules(submitCostRule, f)).toEqual([])
+  })
+
+  it('treats omitted components as "none": the sum is 0 and the submit rule fires', () => {
+    const f = derive(order([partial({})]))
+
+    expect(f['estimatedTotalCost']).toBe(0)
+    expect(evaluateRules(submitCostRule, f).map((v) => v.ruleId)).toEqual([
+      'submit-requires-estimated-total-cost',
+    ])
+  })
+
+  it('sums only the components that are present', () => {
+    const f = derive(
+      order([partial({ surveyedThirdPartyCosts: 820, surveyedThirdPartyOtherCosts: 150 })]),
+    )
+
+    expect(f['estimatedTotalCost']).toBe(970)
+  })
+
+  it('derives the same facts for an omitted component as for an explicit null', () => {
+    const omitted = derive(order([partial({ surveyedThirdPartyCosts: 820 })]))
+    const nulled = derive(order([{ ...shipment('S1', {}), surveyedThirdPartyCosts: 820 }]))
+
+    expect(omitted).toEqual(nulled)
+  })
+})

@@ -39,10 +39,21 @@ export const shipmentStatusUpdateFloor: TypeFloor = {
   factCatalog: demoPartnerFactCatalog,
   factDocs: demoPartnerFactDocs,
   defaultAction: 'save',
-  // A shipment-status order is keyed by its service order number, so the
-  // validator can load the order's last-known state as `prior`.
+  // A shipment-status order is keyed by the partner's service order number. The
+  // validate endpoint looks the cached state up by that key and passes it in as
+  // `prior` (handlers/integration-validation/validate.ts). The facts above never
+  // read `prior`, though, so the cached state's shape does not affect validation
+  // on this floor.
   projection: {
     entityType: 'order',
     key: (o) => (typeof o?.serviceOrderNumber === 'string' ? o.serviceOrderNumber : null),
+  },
+  // Every status update is ABOUT one pegII order, so the projection binds to it
+  // and the cache can be read back by OUR order number (`get_correlated_state`)
+  // without re-deriving the partner's key from the order (sdk-feedback 0045).
+  // The local id is supplied by the caller, not derived; see
+  // IntegrationCorrelationBinding.
+  correlation: {
+    localEntityType: 'order',
   },
 }
