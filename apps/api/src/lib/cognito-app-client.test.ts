@@ -7,7 +7,7 @@
 // outage than the SSO bug this code exists to fix.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider'
 import {
   addProviderToAppClient,
@@ -241,6 +241,11 @@ describe('cognito-app-client', () => {
     beforeEach(() => {
       vi.stubEnv('COGNITO_USER_POOL_ID', POOL)
       vi.stubEnv('COGNITO_TENANT_CLIENT_ID', CLIENT)
+      vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', '')
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
     })
 
     it('repairs drift using the pool and client from the environment', async () => {
@@ -281,6 +286,34 @@ describe('cognito-app-client', () => {
       mockSend.mockRejectedValue(new Error('AccessDeniedException'))
 
       await expect(reconcileTenantAppClientFromEnv(['Microsoft'])).resolves.toBeUndefined()
+    })
+
+    // Cloud identity I4: the desktop client is its own CFN resource, so a CDK edit to
+    // it resets ITS list independently. The login-path repair must cover it too.
+    it('also repairs the desktop app client when one is configured', async () => {
+      vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', 'desktop-client-id')
+
+      await reconcileTenantAppClientFromEnv(['Microsoft'])
+
+      const targets = sentUpdates().map((u) => u['ClientId'])
+      expect(targets).toEqual([CLIENT, 'desktop-client-id'])
+      for (const u of sentUpdates()) {
+        expect(u['SupportedIdentityProviders']).toEqual(['COGNITO', 'Microsoft'])
+      }
+    })
+
+    it('still repairs the desktop client when the tenant client repair fails', async () => {
+      vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', 'desktop-client-id')
+      mockSend.mockImplementation(async (cmd: Cmd) => {
+        if (cmd['ClientId'] === CLIENT) throw new Error('AccessDeniedException')
+        if (cmd.__cmd === 'DescribeUserPoolClient')
+          return { UserPoolClient: { ...describedClient } }
+        return {}
+      })
+
+      await reconcileTenantAppClientFromEnv(['Microsoft'])
+
+      expect(sentUpdates().map((u) => u['ClientId'])).toEqual(['desktop-client-id'])
     })
   })
 })

@@ -1,0 +1,141 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CognitoStack — existing app clients are frozen > admin-app-client properties are unchanged 1`] = `
+{
+  "Properties": {
+    "AccessTokenValidity": 60,
+    "AllowedOAuthFlows": [
+      "code",
+    ],
+    "AllowedOAuthFlowsUserPoolClient": true,
+    "AllowedOAuthScopes": [
+      "email",
+      "openid",
+      "profile",
+    ],
+    "CallbackURLs": [
+      "http://localhost:5174/auth/callback",
+    ],
+    "ClientName": "admin-app-client",
+    "EnableTokenRevocation": true,
+    "ExplicitAuthFlows": [
+      "ALLOW_USER_PASSWORD_AUTH",
+      "ALLOW_ADMIN_USER_PASSWORD_AUTH",
+      "ALLOW_USER_SRP_AUTH",
+      "ALLOW_REFRESH_TOKEN_AUTH",
+    ],
+    "GenerateSecret": false,
+    "IdTokenValidity": 60,
+    "LogoutURLs": [
+      "http://localhost:5174/login",
+    ],
+    "PreventUserExistenceErrors": "ENABLED",
+    "RefreshTokenValidity": 60,
+    "SupportedIdentityProviders": [
+      "COGNITO",
+    ],
+    "TokenValidityUnits": {
+      "AccessToken": "minutes",
+      "IdToken": "minutes",
+      "RefreshToken": "minutes",
+    },
+    "UserPoolId": {
+      "Ref": "UserPool6BA7E5F2",
+    },
+  },
+  "Type": "AWS::Cognito::UserPoolClient",
+  "logicalId": "UserPoolAdminAppClientCD59D221",
+}
+`;
+
+exports[`CognitoStack — existing app clients are frozen > mobile-app-client properties are unchanged 1`] = `
+{
+  "Properties": {
+    "AccessTokenValidity": 480,
+    "AllowedOAuthFlows": [
+      "code",
+    ],
+    "AllowedOAuthFlowsUserPoolClient": true,
+    "AllowedOAuthScopes": [
+      "email",
+      "openid",
+      "profile",
+    ],
+    "CallbackURLs": [
+      "movingapp://auth/callback",
+    ],
+    "ClientName": "mobile-app-client",
+    "EnableTokenRevocation": true,
+    "ExplicitAuthFlows": [
+      "ALLOW_USER_PASSWORD_AUTH",
+      "ALLOW_USER_SRP_AUTH",
+      "ALLOW_REFRESH_TOKEN_AUTH",
+    ],
+    "GenerateSecret": false,
+    "IdTokenValidity": 480,
+    "LogoutURLs": [
+      "movingapp://auth/logout",
+    ],
+    "RefreshTokenValidity": 43200,
+    "SupportedIdentityProviders": [
+      "COGNITO",
+    ],
+    "TokenValidityUnits": {
+      "AccessToken": "minutes",
+      "IdToken": "minutes",
+      "RefreshToken": "minutes",
+    },
+    "UserPoolId": {
+      "Ref": "UserPool6BA7E5F2",
+    },
+  },
+  "Type": "AWS::Cognito::UserPoolClient",
+  "logicalId": "UserPoolMobileAppClient2650C7F3",
+}
+`;
+
+exports[`CognitoStack — existing app clients are frozen > tenant-app-client properties are unchanged 1`] = `
+{
+  "Properties": {
+    "AccessTokenValidity": 480,
+    "AllowedOAuthFlows": [
+      "code",
+    ],
+    "AllowedOAuthFlowsUserPoolClient": true,
+    "AllowedOAuthScopes": [
+      "email",
+      "openid",
+      "profile",
+    ],
+    "CallbackURLs": [
+      "http://localhost:5173/login/callback",
+    ],
+    "ClientName": "tenant-app-client",
+    "ExplicitAuthFlows": [
+      "ALLOW_USER_PASSWORD_AUTH",
+      "ALLOW_REFRESH_TOKEN_AUTH",
+    ],
+    "GenerateSecret": false,
+    "IdTokenValidity": 480,
+    "LogoutURLs": [
+      "http://localhost:5173/login",
+      "http://localhost:5173/login/signed-out",
+    ],
+    "PreventUserExistenceErrors": "ENABLED",
+    "RefreshTokenValidity": 43200,
+    "SupportedIdentityProviders": [
+      "COGNITO",
+    ],
+    "TokenValidityUnits": {
+      "AccessToken": "minutes",
+      "IdToken": "minutes",
+      "RefreshToken": "minutes",
+    },
+    "UserPoolId": {
+      "Ref": "UserPool6BA7E5F2",
+    },
+  },
+  "Type": "AWS::Cognito::UserPoolClient",
+  "logicalId": "UserPoolTenantAppClientA86A3129",
+}
+`;

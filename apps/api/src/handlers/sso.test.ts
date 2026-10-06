@@ -12,7 +12,7 @@
 // calls are captured and verified without hitting AWS.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
@@ -907,6 +907,123 @@ describe('SSO handler', () => {
       const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
+      expect(mockDb.tenantSsoProvider.delete).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── Desktop app client (cloud identity I4) ────────────────────────────────
+  // The MoveManager desktop signs in through its own Cognito app client, which needs
+  // the same SupportedIdentityProviders or desktop SSO 400s at the callback.
+  describe('desktop app client', () => {
+    const DESKTOP = 'desktop-client-id'
+
+    /** ClientId of every app-client write, in order. */
+    function writeTargets(): string[] {
+      return mockSend.mock.calls
+        .map((c) => c[0] as { __cmd?: string; ClientId?: string })
+        .filter((c) => c.__cmd === 'UpdateUserPoolClient')
+        .map((c) => c.ClientId ?? '')
+    }
+
+    beforeEach(() => {
+      vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', DESKTOP)
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('GET /providers repairs drift on the desktop client as well as the tenant client', async () => {
+      mockDb.tenantSsoProvider.findMany.mockResolvedValue([mockProviderRow])
+
+      const res = await buildApp().request('/providers')
+
+      expect(res.status).toBe(200)
+      expect(writeTargets()).toHaveLength(2)
+      expect(writeTargets()[1]).toBe(DESKTOP)
+      expect(appClientWrites()).toEqual([
+        ['COGNITO', 'GoogleOIDC'],
+        ['COGNITO', 'GoogleOIDC'],
+      ])
+    })
+
+    it('POST /providers permits the new provider on the desktop client too', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+
+      expect(res.status).toBe(201)
+      expect(writeTargets()[1]).toBe(DESKTOP)
+      expect(appClientWrites()).toEqual([
+        ['COGNITO', 'GoogleOIDC'],
+        ['COGNITO', 'GoogleOIDC'],
+      ])
+    })
+
+    // The tenant client already lists the provider by then; rolling the IdP back
+    // would poison it. resolve-tenants repairs the desktop client on next sign-in.
+    it('POST /providers still succeeds (no rollback) when only the desktop permit fails', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string; ClientId?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') return { UserPoolClient: { ...mockAppClient } }
+        if (cmd?.__cmd === 'UpdateUserPoolClient' && cmd.ClientId === DESKTOP) {
+          throw new Error('AccessDeniedException')
+        }
+        return {}
+      })
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+
+      expect(res.status).toBe(201)
+      expect(DeleteIdentityProviderCommand).not.toHaveBeenCalled()
+      expect(mockDb.tenantSsoProvider.delete).not.toHaveBeenCalled()
+    })
+
+    it('DELETE /providers/:id revokes on both clients before deleting the IdP', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') {
+          return {
+            UserPoolClient: {
+              ...mockAppClient,
+              SupportedIdentityProviders: ['COGNITO', 'GoogleOIDC'],
+            },
+          }
+        }
+        return {}
+      })
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+
+      expect(res.status).toBe(204)
+      expect(appClientWrites()).toEqual([['COGNITO'], ['COGNITO']])
+      expect(writeTargets()[1]).toBe(DESKTOP)
+      const order = mockSend.mock.calls.map((c) => (c[0] as { __cmd?: string }).__cmd ?? 'idp')
+      expect(order.lastIndexOf('UpdateUserPoolClient')).toBeLessThan(order.lastIndexOf('idp'))
+    })
+
+    it('DELETE /providers/:id returns 500 and keeps the IdP when the desktop revoke fails', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string; ClientId?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') {
+          return {
+            UserPoolClient: {
+              ...mockAppClient,
+              SupportedIdentityProviders: ['COGNITO', 'GoogleOIDC'],
+            },
+          }
+        }
+        if (cmd?.__cmd === 'UpdateUserPoolClient' && cmd.ClientId === DESKTOP) {
+          throw new Error('AccessDeniedException')
+        }
+        return {}
+      })
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+
+      expect(res.status).toBe(500)
+      expect(DeleteIdentityProviderCommand).not.toHaveBeenCalled()
       expect(mockDb.tenantSsoProvider.delete).not.toHaveBeenCalled()
     })
   })

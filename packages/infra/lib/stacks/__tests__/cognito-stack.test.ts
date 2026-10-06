@@ -1,7 +1,7 @@
 import { describe, it, beforeAll, expect } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
-import { CognitoStack } from '../cognito-stack'
+import { CognitoStack, DESKTOP_LOOPBACK_PORTS } from '../cognito-stack'
 
 // ---------------------------------------------------------------------------
 // Synthesise once — CDK runs esbuild to bundle the trigger Lambdas, which
@@ -616,6 +616,98 @@ describe('CognitoStack — Mobile app client', () => {
     // Mobile app client addition must not add any Lambda functions
     template.resourceCountIs('AWS::Lambda::Function', 4)
   })
+})
+
+// ---------------------------------------------------------------------------
+// Desktop app client (cloud identity I4)
+// ---------------------------------------------------------------------------
+
+describe('CognitoStack — Desktop app client', () => {
+  const desktop = () => {
+    const clients = template.findResources('AWS::Cognito::UserPoolClient', {
+      Properties: { ClientName: 'desktop-app-client' },
+    })
+    const ids = Object.keys(clients)
+    expect(ids).toHaveLength(1)
+    return clients[ids[0]!]!.Properties as Record<string, unknown>
+  }
+
+  it('is a public client (no secret) with no password auth flows', () => {
+    const p = desktop()
+    expect(p.GenerateSecret).toBe(false)
+    // The desktop never collects a password; only refresh is allowed.
+    expect(p.ExplicitAuthFlows ?? []).not.toEqual(
+      expect.arrayContaining(['ALLOW_USER_PASSWORD_AUTH']),
+    )
+    expect(p.ExplicitAuthFlows ?? []).not.toEqual(expect.arrayContaining(['ALLOW_USER_SRP_AUTH']))
+  })
+
+  it('uses the authorization code grant with email/openid/profile scopes', () => {
+    const p = desktop()
+    expect(p.AllowedOAuthFlows).toEqual(['code'])
+    expect(p.AllowedOAuthScopes).toEqual(expect.arrayContaining(['email', 'openid', 'profile']))
+  })
+
+  it('registers exactly the loopback callback + logout URLs for each desktop port', () => {
+    const p = desktop()
+    expect(p.CallbackURLs).toEqual(
+      DESKTOP_LOOPBACK_PORTS.map((port) => `http://localhost:${port}/callback`),
+    )
+    expect(p.LogoutURLs).toEqual(
+      DESKTOP_LOOPBACK_PORTS.map((port) => `http://localhost:${port}/signed-out`),
+    )
+  })
+
+  it('issues 1h ID/access tokens and a 30d refresh token, with revocation on', () => {
+    const p = desktop()
+    expect(p.IdTokenValidity).toBe(60)
+    expect(p.AccessTokenValidity).toBe(60)
+    expect(p.RefreshTokenValidity).toBe(43200)
+    expect(p.TokenValidityUnits).toEqual({
+      IdToken: 'minutes',
+      AccessToken: 'minutes',
+      RefreshToken: 'minutes',
+    })
+    expect(p.EnableTokenRevocation).toBe(true)
+  })
+
+  it('publishes the client id to SSM, a named output, and a pinned export for api-stack', () => {
+    template.hasResourceProperties('AWS::SSM::Parameter', {
+      Name: '/pegasus/desktop/cognito-client-id',
+    })
+    template.hasOutput('DesktopClientId', { Export: { Name: 'PegasusCognitoDesktopClientId' } })
+    template.hasOutput('DesktopAppClientRefExport', {
+      Export: { Name: 'TestCognito:DesktopAppClientRefExport' },
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #494/#518 guard: existing app clients must never change
+//
+// ANY edit to an AWS::Cognito::UserPoolClient makes CloudFormation rewrite it,
+// which resets SupportedIdentityProviders to COGNITO and kills SSO (22h prod
+// outage, 2026-07-21). New needs get a NEW client. If this snapshot fails, the
+// change is to an existing client: undo it, or update the snapshot only after
+// planning the SSO repair (reconcileTenantAppClientFromEnv) and verifying it.
+// ---------------------------------------------------------------------------
+
+describe('CognitoStack — existing app clients are frozen', () => {
+  it('has exactly four app clients (admin, tenant, mobile, desktop)', () => {
+    template.resourceCountIs('AWS::Cognito::UserPoolClient', 4)
+  })
+
+  it.each(['admin-app-client', 'tenant-app-client', 'mobile-app-client'])(
+    '%s properties are unchanged',
+    (name) => {
+      const clients = template.findResources('AWS::Cognito::UserPoolClient', {
+        Properties: { ClientName: name },
+      })
+      const ids = Object.keys(clients)
+      expect(ids).toHaveLength(1)
+      expect({ logicalId: ids[0], ...clients[ids[0]!] }).toMatchSnapshot()
+    },
+  )
 })
 
 // ---------------------------------------------------------------------------

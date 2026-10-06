@@ -89,6 +89,7 @@ import { blobsHandler } from './handlers/blobs'
 import { meHandler } from './handlers/me'
 import { clientErrorsHandler } from './handlers/client-errors'
 import { deviceTokensHandler } from './handlers/device-tokens'
+import { desktopHandler } from './handlers/desktop'
 import { notificationsHandler } from './handlers/notifications'
 import { smsHandler } from './handlers/sms'
 import { emailHandler } from './handlers/email'
@@ -431,6 +432,9 @@ v1.route('/client-errors', clientErrorsHandler)
 // device, no permission gate); notifications/send is staff-gated (SendNotification).
 v1.route('/device-tokens', deviceTokensHandler)
 v1.route('/notifications', notificationsHandler)
+// MoveManager desktop sign-in (cloud identity I4). Ungated like device-tokens:
+// the access decision is the caller's OWN company memberships (desktop-session.ts).
+v1.route('/desktop', desktopHandler)
 // /sms moved to the m2mV1 (dual-auth) router above — see note there.
 v1.route('/sso', ssoHandler)
 v1.route('/users', usersHandler)

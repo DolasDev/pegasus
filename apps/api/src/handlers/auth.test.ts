@@ -596,6 +596,36 @@ describe('POST /api/auth/validate-token', () => {
     expect(data['ssoProvider']).toBe('acme-okta')
   })
 
+  // Cloud identity I4: the desktop client's audience is accepted when configured
+  // and is never required (a missing id must not 500 web/mobile login).
+  it('verifies against tenant + mobile, and the desktop client only when configured', async () => {
+    const payload = {
+      sub: 'user-sub-123',
+      email: 'user@acme.com',
+      exp: 9999999999,
+      token_use: 'id',
+      'custom:tenantId': 'tenant-abc',
+      'custom:roles': JSON.stringify(['viewer']),
+    }
+    mockJwtVerify.mockResolvedValueOnce({ payload })
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(200)
+    expect((mockJwtVerify.mock.calls[0]![2] as { audience: string[] }).audience).toEqual([
+      'tenant-client-id',
+      'mobile-client-id',
+    ])
+
+    vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', 'desktop-client-id')
+    mockJwtVerify.mockResolvedValueOnce({ payload })
+    const res2 = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res2.status).toBe(200)
+    expect((mockJwtVerify.mock.calls[1]![2] as { audience: string[] }).audience).toEqual([
+      'tenant-client-id',
+      'mobile-client-id',
+      'desktop-client-id',
+    ])
+  })
+
   // Case 3: Unknown audience — jose throws generic error (audience mismatch path)
   it('returns 401 UNAUTHORIZED when token audience does not match', async () => {
     mockJwtVerify.mockRejectedValueOnce(new Error('JWT audience mismatch'))
