@@ -2457,11 +2457,25 @@ class PegasusClient:
     def get_floor(self, floor_id: str) -> dict[str, Any]:
         """A floor's machine-readable authoring contract (sdk-feedback 0024).
 
-        Returns ``{floor, canonicalFields, factCatalog, factDocs?, inputFieldRoots?,
-        defaultAction, projection?}``:
+        Returns ``{floor, canonicalFields, requiredCanonicalFields, factCatalog,
+        factDocs?, inputFieldRoots?, defaultAction, projection?}``:
 
         - ``canonicalFields`` — the ONLY legal mapping *targets* (a ``mapping.json``
           may only write these paths; array-element paths are marked ``[]``).
+        - ``requiredCanonicalFields`` — the subset a mapping MUST produce. The key
+          must be present, but a nullable one may map to ``null``. Every other
+          canonical field may be left out of the mapping entirely. On
+          ``shipment_status_update``, for example, the six
+          ``shipments[].surveyed*`` cost components and ``estimatedTotalCost`` are
+          optional, so a partner that sends one total maps only that
+          (sdk-feedback 0043).
+        - ``projection`` — ``{entityType, localEntityType?}``. ``localEntityType``
+          is the local entity kind a cached projection may be correlated to via
+          ``put_projection(..., local_entity_type=…, local_entity_id=…)``. When it
+          is absent, a correlation comes back ``unsupported``. On
+          ``shipment_status_update`` it is ``"order"`` (your pegII order number),
+          so ``get_correlated_state`` reads the cache by your id
+          (sdk-feedback 0045).
         - ``factCatalog`` — the ONLY legal rule *facts* (name → type). A rule's
           ``fact`` must be one of these; its ``field`` one of ``canonicalFields``.
         - ``factDocs`` — what each fact MEANS (name → one line), when the floor
@@ -2803,9 +2817,9 @@ class PegasusClient:
     #
     # A per-record cache of an external system's last-known state, keyed by
     # (integration, entity_type, key) within the tenant. A workflow mirrors the
-    # external system into this cache; the Pegasus integration validator reads
-    # the matching ``state`` back as the ``prior`` input when pre-validating an
-    # update. For use inside workflow activities only (httpx is sandboxed in
+    # external system into this cache. ``state`` is an opaque blob in the
+    # partner's shape (see put_projection for its one coupling to the validator's
+    # ``prior``). For use inside workflow activities only (httpx is sandboxed in
     # workflow code). Requires the workflow manifest to declare
     # ``required_actions = ["ReadIntegrationProjection", "WriteIntegrationProjection"]``.
 
@@ -2880,32 +2894,63 @@ class PegasusClient:
         server validates ``local_entity_type`` against that declaration, so a
         typo cannot bind a settlement to a "vehicle".
 
+        Which kind a floor binds to is published as
+        ``get_floor(...)["projection"]["localEntityType"]``. When it is absent,
+        the floor has no binding.
+
         Args:
             integration: Integration slug, e.g. ``"demo_partner"``.
-            entity_type: Logical record type, e.g. ``"order"``.
+            entity_type: Logical record type, e.g. ``"order"``. **Free-form**: it
+                is not checked against the floor's ``projection.entityType``. It
+                namespaces your rows, so a second entity type (e.g. an index) is
+                legal. Correlations are only resolved for the type you write them
+                under.
             key: External record key, e.g. the service order number.
-            state: The record's last-known state, in the integration's NATIVE
-                payload shape (the same shape the validator accepts as ``order``/
-                ``prior``). Must be JSON-serializable and ≤ 256 KB serialized.
-            local_entity_type: Pegasus entity kind to bind to, e.g. ``"shipment"``.
-                Must be given together with ``local_entity_id``.
-            local_entity_id: The Pegasus entity's id. Must be given together with
-                ``local_entity_type``.
+            state: The partner's record as you want to cache it, in the
+                PARTNER's own shape. For an outbound integration that is usually
+                the external body you sent, or what they acknowledged. **Opaque**:
+                the server stores any JSON value as-is and never validates it
+                against a schema. It must be JSON-serializable and ≤ 256 KB
+                serialized.
+
+                One coupling to know about: when you call the validate endpoint
+                without a ``prior``, the platform looks this state up by the
+                floor's projection key and runs it through the integration's
+                INPUT mapping as ``prior``. If it doesn't fit that mapping, it is
+                silently treated as "no prior". No built-in floor's facts read
+                ``prior`` today, so this has no effect on validation yet.
+            local_entity_type: Pegasus entity kind to bind to, e.g. ``"order"``.
+                Must match the floor's declared kind. Must be given together with
+                ``local_entity_id``.
+            local_entity_id: YOUR id for that entity (e.g. the pegII order
+                number). Must be given together with ``local_entity_type``.
 
         Returns:
             The created/updated projection row (including its ``state`` and
             ``version``). When a correlation was requested, the row also carries
-            a ``"correlation"`` key describing what happened to the BINDING —
-            ``created`` / ``unchanged`` / ``rebound`` (the partner re-issued its
-            key; we re-pointed), ``conflict`` (that key is already bound to a
-            different entity, so it was left alone), ``rejected`` (wrong
-            ``local_entity_type`` for this floor) or ``unsupported`` (the
-            integration declares no correlation binding).
+            a ``"correlation"`` key: an **object**
+            ``{"outcome": <str>, "error": <str, optional>}`` describing what
+            happened to the BINDING. Compare ``row["correlation"]["outcome"]``,
+            not ``row["correlation"]`` itself. The outcomes are:
+
+            - ``created`` / ``unchanged``: the binding is in place.
+            - ``rebound``: the partner re-issued its key, and the binding was
+              re-pointed.
+            - ``conflict``: that key is already bound to a different entity, so
+              it was left alone.
+            - ``rejected``: wrong ``local_entity_type`` for this floor.
+            - ``unsupported``: the integration declares no correlation binding.
+            - ``dryRun``: only under ``--dry-run`` or ``pegasus_workflows.testing``.
+              A binding was requested and would be attempted, but the real
+              outcome is unknowable without the server.
+
+            ``error`` explains a ``rejected`` / ``unsupported`` / ``conflict``.
+            When no binding was requested, the key is absent.
 
             A correlation problem never fails the write: the cached state is the
-            durable artifact and the binding is an index into it. **Check this
-            key if you rely on reading back by local id** — the projection can
-            succeed while the binding did not.
+            durable artifact and the binding is an index into it. **Check
+            ``outcome`` if you rely on reading back by local id**, because the
+            projection can succeed while the binding did not.
 
         Raises:
             ValueError: If only one of ``local_entity_type`` / ``local_entity_id``
@@ -2935,7 +2980,19 @@ class PegasusClient:
                     else {}
                 ),
             },
-            {"state": state, "version": 1, "dryRun": True},
+            {
+                "state": state,
+                "version": 1,
+                "dryRun": True,
+                # Carry the key whenever a binding was requested, so an author's
+                # `correlation` check runs in a rehearsal instead of reading None
+                # (sdk-feedback 0045 B).
+                **(
+                    {"correlation": {"outcome": "dryRun"}}
+                    if local_entity_type is not None
+                    else {}
+                ),
+            },
         )
         if captured is not _NOT_CAPTURED:
             return captured

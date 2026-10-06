@@ -3,6 +3,49 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.46.0
+
+### Changed — `shipment_status_update`: optional cost components + an order binding
+
+- **The six `shipments[].surveyed*` cost components are optional** on the
+  `shipment_status_update` canonical contract (sdk-feedback 0043). A partner
+  that sends one total maps `estimatedTotalCost` and leaves all six out. You no
+  longer have to point each one at a path that never exists. An omitted
+  component counts as nothing in the fallback sum, exactly like `null`.
+  Configs that map all six behave the same as before. **This is canonical-only:**
+  the external mapping is untouched. A partner body that still reads a
+  component gets `null` for it, as before, so nothing changes on the wire unless
+  you also drop it from `external-mapping.json`.
+- **`get_floor` / `list_floors` return `requiredCanonicalFields`**: the subset of
+  `canonicalFields` a mapping must produce. Anything else may be left out.
+- **`shipment_status_update` declares a correlation binding to `"order"`**
+  (sdk-feedback 0045). `put_projection(..., local_entity_type="order",
+local_entity_id=<pegII order number>)` now returns `outcome: "created"`
+  instead of `unsupported`, and `get_correlated_state(id, "order", "order", n)`
+  reads the cache by your order number. The floor publishes it as
+  `get_floor(...)["projection"]["localEntityType"]`.
+- **Under `--dry-run` and `pegasus_workflows.testing`, `put_projection` with a
+  binding returns `correlation: {"outcome": "dryRun"}`.** Before, the key was
+  missing, so an author's correlation check could never fire in a rehearsal.
+  Without a binding the key is still absent.
+
+### Fixed — `put_projection` docs
+
+- `correlation` is documented as the object the server returns,
+  `{"outcome", "error"?}`. It was documented as the bare outcome string, so
+  `row["correlation"] == "created"` was always false.
+- `state` is documented as an opaque blob in the partner's own shape (for an
+  outbound integration, the external body). `entity_type` and `state` are both
+  documented as free-form: neither is validated.
+- **`prior` stays in the docs, because it is real.** sdk-feedback 0045 D found
+  no `prior` parameter on `PegasusClient` and concluded nothing implements it.
+  There is no client parameter, but the coupling is real on the server: the
+  validate endpoint, called without `prior`, loads the cached state by the
+  floor's projection key and runs it through the integration's input mapping
+  as `prior`. A state that doesn't fit is silently treated as no prior. The
+  docstring now says that, and that no built-in floor's facts read `prior`
+  today.
+
 ## 0.45.1
 
 ### Changed — `list_salesmen` returns the live directory

@@ -127,6 +127,28 @@ describe('registry overlay', () => {
     expect(def.mapping).toEqual(globalOverride)
   })
 
+  it('gives a config-only partner on shipment_status_update the floor order binding (0045)', async () => {
+    // The `weichert` shape: no built-in overlay, only a TENANT row naming the
+    // floor. The correlation binding must come with the floor, or
+    // put_projection(..., local_entity_*) answers `unsupported`.
+    const def = (await resolveIntegrationDefinition(
+      scopedDb(
+        {
+          integrationId: 'acme_movers',
+          floor: 'shipment_status_update',
+          version: 1,
+          mapping: { serviceOrderNumber: 'Id' },
+          rules: [],
+        },
+        null,
+      ),
+      'acme_movers',
+      't1',
+    ))!
+    expect(def.correlation).toEqual({ localEntityType: 'order' })
+    expect(def.projection?.entityType).toBe('order')
+  })
+
   it('resolveIntegrationDefinition falls back to the built-in when no config applies', async () => {
     const def = (await resolveIntegrationDefinition(scopedDb(null, null), 'demo_partner', 't1'))!
     expect(def.mapping['serviceStatus']).toBe('Survey.SerivceStatus')

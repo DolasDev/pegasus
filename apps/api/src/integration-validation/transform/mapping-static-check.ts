@@ -73,6 +73,44 @@ export function canonicalSchemaPaths(schema: unknown): Set<string> {
   return out
 }
 
+/**
+ * The subset of {@link canonicalSchemaPaths} a mapping MUST produce: a path is
+ * required when its key is in its object's `required` list and every ancestor
+ * is required too. A required key under an omittable parent is not, because
+ * omitting the parent satisfies the contract. Nullable-but-required keys count as
+ * required: the key has to be present even though its value may be null
+ * (sdk-feedback 0043).
+ *
+ * The walk descends into a nullable parent's object branch, so for
+ * `foo: z.object({ bar }).nullable()` it reports `foo.bar` as required even
+ * though `foo: null` is legal. Read it as "required whenever the parent is
+ * present". No current floor has that shape.
+ */
+export function canonicalRequiredPaths(schema: unknown): Set<string> {
+  const out = new Set<string>()
+  const walk = (node: unknown, prefix: string): void => {
+    if (!node || typeof node !== 'object') return
+    const n = node as Record<string, unknown>
+    for (const comb of ['anyOf', 'oneOf', 'allOf'] as const) {
+      const branches = n[comb]
+      if (Array.isArray(branches)) branches.forEach((s) => walk(s, prefix))
+    }
+    const props = n['properties']
+    if (props && typeof props === 'object') {
+      const required = new Set(Array.isArray(n['required']) ? (n['required'] as string[]) : [])
+      for (const [key, sub] of Object.entries(props)) {
+        if (!required.has(key)) continue
+        const path = prefix ? `${prefix}.${key}` : key
+        out.add(path)
+        walk(sub, path)
+      }
+    }
+    if (n['items']) walk(n['items'], `${prefix}[]`)
+  }
+  walk(schema, '')
+  return out
+}
+
 /** The enum `const` set at a node, looking through `anyOf`/`oneOf`/`allOf` branches. */
 function enumOf(node: unknown): string[] | null {
   if (!node || typeof node !== 'object') return null

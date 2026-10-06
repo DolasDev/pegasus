@@ -77,12 +77,20 @@ export const DemoPartnerShipmentSchema = z.object({
   packDate1: milestoneDate,
   loadDate1: milestoneDate,
   deliveryDate1: milestoneDate,
-  surveyedStorageCostFirstDay: moneyOrNull,
-  surveyedStorageCostAdditionalDays: moneyOrNull,
-  surveyedStorageCostDeliveryOut: moneyOrNull,
-  surveyedThirdPartyCrateAndUncrateCosts: moneyOrNull,
-  surveyedThirdPartyCosts: moneyOrNull,
-  surveyedThirdPartyOtherCosts: moneyOrNull,
+  // The six surveyed cost components are add-ons summed into the
+  // `estimatedTotalCost` fact when the order-level total is not mapped. They are
+  // OMITTABLE, not just nullable: a partner that sends one total (0041) has no
+  // components to send, and a required key forced it to point all six at a path
+  // that never exists (sdk-feedback 0043). An omitted component contributes
+  // nothing to the sum, exactly like a null one. Leaving one out on the canonical
+  // side does not put a null into the external body. That is the external
+  // mapping's job.
+  surveyedStorageCostFirstDay: moneyOrNull.optional(),
+  surveyedStorageCostAdditionalDays: moneyOrNull.optional(),
+  surveyedStorageCostDeliveryOut: moneyOrNull.optional(),
+  surveyedThirdPartyCrateAndUncrateCosts: moneyOrNull.optional(),
+  surveyedThirdPartyCosts: moneyOrNull.optional(),
+  surveyedThirdPartyOtherCosts: moneyOrNull.optional(),
   notIncludedComments: optStr,
   thirdPartyAndOtherCostsComments: optStr,
   comments: optStr,

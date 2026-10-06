@@ -1794,7 +1794,7 @@ export function getOpenApiSpec() {
           operationId: 'listFloors',
           summary: 'List built-in integration floors (public)',
           description:
-            'Each floor is a per-type, partner-neutral contract. Returns each floor id + its canonicalFields (legal mapping targets) + factCatalog (legal rule facts) + factDocs (what each fact means, when documented) + inputFieldRoots (legal mapping source roots, when declared) + defaultAction + projection.',
+            'Each floor is a per-type, partner-neutral contract. Returns each floor id + its canonicalFields (legal mapping targets) + requiredCanonicalFields (the subset a mapping must produce) + factCatalog (legal rule facts) + factDocs (what each fact means, when documented) + inputFieldRoots (legal mapping source roots, when declared) + defaultAction + projection.',
           tags: ['Integrations'],
           responses: {
             '200': { description: 'data: array of floor detail objects (see /floors/{floorId})' },
@@ -1806,7 +1806,7 @@ export function getOpenApiSpec() {
           operationId: 'getFloor',
           summary: 'A floor’s machine-readable contract (public)',
           description:
-            'The contract an author writes a config AGAINST: `canonicalFields` are the only legal mapping targets; `factCatalog` are the only legal rule facts; `factDocs` (when present) says what each fact MEANS — read it before choosing between similarly-named facts, since AND-ed count predicates are evaluated independently (a paired fact exists where two dates must belong to the same related record), and counts of related records use the `{op:"lte", value:0}` idiom for "at least one"; `inputFieldRoots` (when present) are the legal mapping SOURCE roots a `$from` may read — a bare entry opens a whole native root, a dotted entry opens only that curated sub-path, and the gate enforces them against every `$from`, composing reads inside `$each` with the array\'s own source path so element-scope reads are checked in order scope.',
+            'The contract an author writes a config AGAINST: `canonicalFields` are the only legal mapping targets, and `requiredCanonicalFields` is the subset a mapping must produce (the rest may be left out); `factCatalog` are the only legal rule facts; `factDocs` (when present) says what each fact MEANS — read it before choosing between similarly-named facts, since AND-ed count predicates are evaluated independently (a paired fact exists where two dates must belong to the same related record), and counts of related records use the `{op:"lte", value:0}` idiom for "at least one"; `inputFieldRoots` (when present) are the legal mapping SOURCE roots a `$from` may read — a bare entry opens a whole native root, a dotted entry opens only that curated sub-path, and the gate enforces them against every `$from`, composing reads inside `$each` with the array\'s own source path so element-scope reads are checked in order scope.',
           tags: ['Integrations'],
           parameters: [{ name: 'floorId', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
@@ -1822,6 +1822,12 @@ export function getOpenApiSpec() {
                         properties: {
                           floor: { type: 'string' },
                           canonicalFields: { type: 'array', items: { type: 'string' } },
+                          requiredCanonicalFields: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            description:
+                              'The subset of canonicalFields a mapping MUST produce. The key must be present, though a nullable one may be null. Any canonicalField not listed here may be left out.',
+                          },
                           factCatalog: {
                             type: 'object',
                             additionalProperties: { enum: ['string', 'number', 'boolean'] },
@@ -1836,7 +1842,14 @@ export function getOpenApiSpec() {
                           defaultAction: { type: 'string' },
                           projection: {
                             type: 'object',
-                            properties: { entityType: { type: 'string' } },
+                            properties: {
+                              entityType: { type: 'string' },
+                              localEntityType: {
+                                type: 'string',
+                                description:
+                                  'The local entity kind a projection on this floor may be correlated to (put_projection local_entity_type). Absent ⇒ correlation is `unsupported`.',
+                              },
+                            },
                           },
                         },
                       },

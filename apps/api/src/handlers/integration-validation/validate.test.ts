@@ -143,6 +143,36 @@ describe('POST /integrations/:integrationId/validate', () => {
     expect(body.data.factDocs['shipmentsWithLoadDeliveryActual']).toMatch(/independently/)
   })
 
+  it('says which canonical fields are required, so omission is discoverable (0043)', async () => {
+    // Without this an author can only learn that a key is required by watching
+    // the gate fail on every corpus case.
+    const res = await buildApp().request('/api/v1/integrations/floors/shipment_status_update')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      data: { canonicalFields: string[]; requiredCanonicalFields: string[] }
+    }
+    const required = body.data.requiredCanonicalFields
+    expect(required).toContain('serviceOrderNumber')
+    expect(required).toContain('shipments')
+    expect(required).toContain('shipments[].packDate1')
+    // The six cost components and the order-level total are omittable.
+    expect(required).not.toContain('estimatedTotalCost')
+    expect(required).not.toContain('shipments[].surveyedThirdPartyCosts')
+    expect(required).not.toContain('shipments[].surveyedStorageCostFirstDay')
+    // Every required field is also a legal mapping target.
+    expect(required.every((f) => body.data.canonicalFields.includes(f))).toBe(true)
+  })
+
+  it('declares the order correlation binding on shipment_status_update (0045)', async () => {
+    // The cache was write-only in practice: with no binding declared, a
+    // put_projection(..., local_entity_*) came back `unsupported` and the state
+    // was readable only by the partner's own key.
+    const res = await buildApp().request('/api/v1/integrations/floors/shipment_status_update')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { projection?: Record<string, unknown> } }
+    expect(body.data.projection).toEqual({ entityType: 'order', localEntityType: 'order' })
+  })
+
   it('omits inputFieldRoots for a partner-neutral floor that declares none', async () => {
     const res = await buildApp().request('/api/v1/integrations/floors/shipment_lifecycle_event')
     expect(res.status).toBe(200)

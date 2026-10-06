@@ -822,7 +822,7 @@ required_actions = ["ReadIntegrationProjection", "WriteIntegrationProjection"]
 @activity.defn
 async def cache_order(order: dict) -> None:
     client = PegasusClient.from_runtime()
-    # Mirror the external record (native payload shape, ≤ 256 KB serialized).
+    # Mirror the partner's record, in the partner's shape (≤ 256 KB serialized).
     client.put_projection("demo_partner", "order", order["serviceOrderNumber"], order)
 
     prior = client.get_projection("demo_partner", "order", "SO-12345")  # None on miss
@@ -833,6 +833,19 @@ async def cache_order(order: dict) -> None:
 `get_projection` returns `None` on a cache miss; the write methods raise
 `PegasusApiError` (403) if the matching action is absent from `required_actions`,
 and `put_projection` raises 413 if the serialized state exceeds 256 KB.
+
+**What the server does and doesn't check:**
+
+- `state` is an **opaque JSON blob**. Cache the partner's record in the partner's
+  own shape. For an outbound integration, that is the external body you sent or
+  what they acknowledged, not the pegII order you mapped from. Nothing validates
+  it against a schema.
+- `entity_type` is **free-form**. It isn't checked against the floor's
+  `projection.entityType`, so a second type, such as an index, is legal.
+- One coupling: the validate endpoint, called without a `prior`, loads this state
+  by the floor's projection key and runs it through the integration's input
+  mapping as `prior`. If it doesn't fit that mapping it is silently skipped. No
+  built-in floor's facts read `prior` today.
 
 #### Reading the cache by YOUR id instead of theirs
 
@@ -855,8 +868,18 @@ found = client.get_correlated_state("atlas_settlement", "settlement", "shipment"
 
 You supply the local id because the partner's payload does not contain it — it
 carries _their_ identifiers. The floor declares which **kind** of entity its
-records describe, and the server validates `local_entity_type` against that, so a
-typo cannot bind a settlement to a `"vehicle"`.
+records describe (`get_floor(id)["projection"]["localEntityType"]`), and the
+server validates `local_entity_type` against that, so a typo cannot bind a
+settlement to a `"vehicle"`. `shipment_status_update` binds to `"order"`, your
+pegII order number:
+
+```python
+client.put_projection(
+    "weichert", "order", body["serviceOrderNumber"], body,
+    local_entity_type="order", local_entity_id="490317",
+)
+client.get_correlated_state("weichert", "order", "order", "490317")
+```
 
 Three return states, and the difference between the last two matters:
 
@@ -868,12 +891,21 @@ Three return states, and the difference between the last two matters:
 
 `put_projection` never fails because of the binding — the cached state is the
 durable artifact and the binding is an index into it. When you pass a
-correlation, the returned row carries a `correlation` key reporting what happened
-to it (`created`, `unchanged`, `rebound` when the partner re-issued its key,
-`conflict` when that key is already bound to a different entity, `rejected` for
-the wrong `local_entity_type`, `unsupported` when the integration declares no
-binding). **Check it if you depend on reading back by local id** — the write can
-succeed while the binding did not. Supplying only one of the two arguments raises
+correlation, the returned row carries a `correlation` **object**,
+`{"outcome": …, "error": …?}`, reporting what happened to it. The outcomes:
+
+- `created` / `unchanged`: the binding is in place.
+- `rebound`: the partner re-issued its key.
+- `conflict`: that key is already bound to a different entity.
+- `rejected`: the wrong `local_entity_type`.
+- `unsupported`: the integration declares no binding.
+- `dryRun`: under `--dry-run` or `pegasus_workflows.testing`, where the real
+  outcome is unknowable.
+
+**Check `row["correlation"]["outcome"]` if you depend on reading back by local
+id.** Comparing `row["correlation"]` to a string is always false. The write can
+succeed while the binding did not. Without a requested binding the key is
+absent, in a rehearsal too. Supplying only one of the two arguments raises
 `ValueError` before any request is made.
 
 ### Workflow state (ledgers, claims, reservations)
@@ -1335,6 +1367,11 @@ declares the only legal mapping _targets_ and rule _facts_. Author against it:
 client.list_floors()                    # [{floor, canonicalFields, factCatalog, factDocs?, …}]
 client.get_floor("shipment_lifecycle_event")
 #  → canonicalFields:  legal mapping targets    (what a mapping may WRITE)
+#  → requiredCanonicalFields: the subset a mapping MUST produce (key present; a
+#      nullable one may be null). Anything else may be left out, so omit a field
+#      you don't send instead of pointing it at a path that never exists.
+#  → projection:       {entityType, localEntityType?}: what put_projection may
+#      correlate to (see "Reading the cache by YOUR id")
 #  → factCatalog:      legal rule facts         (name → type)
 #  → factDocs:         what each fact MEANS     (name → one line), when documented
 #  → inputFieldRoots:  legal mapping source roots (what a $from may READ), when declared.
