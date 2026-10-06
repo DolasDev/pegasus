@@ -63,7 +63,7 @@
     "undici": "HTTP request smuggling fixes + GHSA-vmh5-mc38-953g (improper cert validation, fixed in 7.28.0). Raised to >=7.29.1 on 2026-09-29 for GHSA-3wwx-pv8p-q78v (moderate, DoS via an unhandled error in WebSocket permessage-deflate decompression, vulnerable >=7.28.0 <7.29.1) - the advisory landed on the very release the previous floor pinned to, so expect to raise it again. Previously raised to >=7.29.0 on 2026-08-05 for GHSA-4cwx-7wf7-3272 (high, cross-user information disclosure + parse-time crash via degenerate private cache directives, vulnerable >=7.0.0 <7.29.0), which also clears four moderates in the same release (GHSA-8xcm/-m8rv/-jr45/-v3r7). Reachable copies are transitive: jsdom (admin-web test env) and expo-server-sdk (api push). Stays inside 7.x — jsdom@29 declares undici ^7.",
     "path-to-regexp": "ReDoS vulnerability",
     "picomatch": "ReDoS vulnerability",
-    "shell-quote": "GHSA-395f-4hp3-45gv (high, quadratic-complexity DoS in parse(), range <=1.8.4). react-native@0.83.6 > react-devtools-core pins shell-quote@1.8.4 (dev/debug tooling); force >=1.9.0 (resolves 1.10.0, API-compatible). Remove once react-devtools-core ships a patched shell-quote.",
+    "shell-quote": "GHSA-pqg4-j6r4-53mv (CRITICAL, CVSS 8.1, `quote()` command injection via a line terminator in a token after a `{ comment }` token, range >=1.8.4 <1.11.0) — force >=1.11.0. SECOND advisory to land above this floor: the override was added at >=1.9.0 on 2026-07-20 for GHSA-395f-4hp3-45gv (high, quadratic-complexity DoS in parse(), <=1.8.4), 1.10.0 satisfied it, and on 2026-10-06 the new range swallowed 1.10.0 too and flipped audit-ci red on main with no code change. Same stacking pattern as brace-expansion below, so expect to raise it again. react-native > react-devtools-core is the only consumer (dev/debug tooling, not shipped), but audit-ci gates on critical regardless; the single copy is root-hoisted, so unlike the aws-cdk-lib bundled cases an override DOES reach it. Raise it with `npm install` after editing this floor — never by editing lock keys (see GOTCHAS, `npm overrides: two mechanics`). Remove once react-devtools-core ships a patched shell-quote.",
     "rollup": "esbuild CVE transitive fix",
     "yaml": "CVE-2023-2251 code injection",
     "@istanbuljs/load-nyc-config": "js-yaml: GHSA-52cp-r559-cp3m (<=3.14.2) and GHSA-5p4m-2wfm-xmqj / CVE-2026-59870 (high, quadratic CPU in !!omap resolution, <3.15.1 — not backported) and GHSA-2883-xcg3-v3hh (high, maxTotalMergeKeys does not limit CPU for empty merge sources, <3.15.2) — each published just above the floor the last one set, so expect to raise it again. This package (babel-plugin-istanbul coverage tooling) pins js-yaml@^3.13.1. Scoped to the PARENT, not `js-yaml@3`: a version-scoped key mis-applied the 3.x pin to @expo/xcpretty's ^4.1.0 dep. Remove once the coverage toolchain moves off js-yaml 3.",
@@ -110,7 +110,7 @@
     "undici": ">=7.29.1 <8.0.0",
     "path-to-regexp": ">=8.4.0",
     "picomatch": ">=4.0.4",
-    "shell-quote": ">=1.9.0",
+    "shell-quote": ">=1.11.0",
     "rollup": ">=4.58.1",
     "yaml": ">=2.8.3",
     "@istanbuljs/load-nyc-config": {
