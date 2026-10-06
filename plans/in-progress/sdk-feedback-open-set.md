@@ -84,13 +84,20 @@ One PR, because both changes touch the same floor and share one SDK bump.
 
 ## Phase 2 — An unmatched route answers 404, not 401 (0044 C), API only
 
-- [ ] Find the cause first. `m2mV1` and `v1` are both mounted at `/api/v1` (`app.ts`). An authenticated `vnd_` request that matches no `m2mV1` route falls through to `v1`'s tenant middleware, which rejects a non-Cognito token at `middleware/tenant.ts:73` before `app.notFound` can answer. Confirm with a failing test: a valid `vnd_` key on `POST /api/v1/pegii/orders/zzz/close` → today 401.
-- [ ] Fix: add a terminal `.all('*')` that returns `404 NOT_FOUND` inside `pegiiRuntimeHandler`, after dual auth. It's narrow, it matches the spec's AC literally, and it covers the `/pegii/tasks` routes that 0046's probes hit.
+**Done 2026-10-06 on `fix/pegii-unmatched-route-404`.** Phase 1 merged as #812 (`97d24ae3`), and SDK 0.46.0 was tagged and released. Red then green: 4 invented routes returned 401 before the fix and 404 after. API tests 3985/3985.
+
+- The fix is a terminal `pegiiRuntimeHandler.all('*')` 404 after dual auth.
+- New test `__tests__/pegii-unmatched-route.test.ts` drives the real `app` with only dual-auth mocked. It checks that invented routes return 404, a bad key returns 401, and a real route is unchanged.
+- GOTCHAS gained a paragraph under the existing `/api/v1` split section, and the SDK README got a note in the `api_get` section. No SDK bump.
+- Other m2m sub-routers still answer 401 on an unmatched route. That is out of scope for 0044 C, and documented in GOTCHAS.
+
+- [x] Find the cause first. `m2mV1` and `v1` are both mounted at `/api/v1` (`app.ts`). An authenticated `vnd_` request that matches no `m2mV1` route falls through to `v1`'s tenant middleware, which rejects a non-Cognito token at `middleware/tenant.ts:73` before `app.notFound` can answer. Confirm with a failing test: a valid `vnd_` key on `POST /api/v1/pegii/orders/zzz/close` → today 401.
+- [x] Fix: add a terminal `.all('*')` that returns `404 NOT_FOUND` inside `pegiiRuntimeHandler`, after dual auth. It's narrow, it matches the spec's AC literally, and it covers the `/pegii/tasks` routes that 0046's probes hit.
   - **Not** in `tenant.ts`. That would make the Cognito plane verify API keys on every `vnd_` request, in the same class of file that broke in #447/#526.
   - **Not** as a catch-all on `m2mV1`. It shares the `/api/v1` mount with `v1`, so it would swallow every Cognito route. If broader coverage is wanted later, the safe form is one terminal catch-all per m2m subrouter.
   - Run the whole `/internal` broker suite and the authz smoke checks.
-- [ ] Tests: a valid key on an invented route → 404; a bad key on an invented route → 401; a valid key on a real route → unchanged.
-- [ ] Note in the SDK README's error section. No SDK bump needed unless `PegasusApiError` text references the old status.
+- [x] Tests: a valid key on an invented route → 404; a bad key on an invented route → 401; a valid key on a real route → unchanged.
+- [x] Note in the SDK README's error section. No SDK bump needed unless `PegasusApiError` text references the old status.
 
 ## Phase 3 — Feedback forms: strict question keys + `display` on `rating` (0033) → next SDK minor
 

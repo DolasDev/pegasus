@@ -292,3 +292,20 @@ pegiiRuntimeHandler.post(
     return c.json({ data: { ...toTaskResponse(task), alreadyClosed } })
   },
 )
+
+// ── Unmatched routes ──────────────────────────────────────────────────────
+
+// Terminal catch-all: MUST stay the last registration on this router. A caller
+// who passed dual-auth above but matched no route here would otherwise fall
+// through to app.ts's `v1` router (same `/api/v1` prefix), whose tenant
+// middleware only accepts Cognito sessions and answers `401 "Invalid or
+// unverifiable token"` to a valid `vnd_` key. That made "no such route"
+// indistinguishable from "bad credentials" (sdk-feedback 0044 Part C).
+//
+// Safe because no `v1` route lives under `/api/v1/pegii/*`; session pegII
+// routes are deliberately mounted at sibling prefixes (`/pegii-reports`,
+// `/settings/pegii`) for the reason route-prefix-middleware-bleed.test.ts pins.
+// An unauthenticated caller never reaches this: dual-auth answers 401 first.
+pegiiRuntimeHandler.all('*', (c) =>
+  c.json({ error: `No such route: ${c.req.method} ${c.req.path}`, code: 'NOT_FOUND' }, 404),
+)

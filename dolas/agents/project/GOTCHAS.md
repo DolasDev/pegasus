@@ -880,6 +880,23 @@ mounting a deliberate `/runtime`-style read mirror (see `handlers/runtime-reads.
 for exactly this reason) or using a Cognito principal instead. Widening a Cedar policy is never
 the fix.
 
+**And a `vnd_` key on a route that doesn't exist is told its credentials are bad.** A key that
+authenticates on `m2mV1` but matches no handler there falls through to `v1`, whose
+`tenantMiddleware` answers `401 "Invalid or unverifiable token"`. So "no such route" and "bad key"
+look identical from the client. sdk-feedback 0044 needed a known-good route and an invented one as
+controls just to prove a pegII order-write route was missing. `/pegii/*` now ends with a terminal
+`.all('*')` 404 after dual auth (`handlers/pegii-runtime.ts`, pinned by
+`__tests__/pegii-unmatched-route.test.ts`).
+
+- **The safe fix is one terminal catch-all per m2m sub-router**, and only where no `v1` route
+  shares that sub-prefix.
+- **Never put a catch-all on `m2mV1` itself.** It shares the `/api/v1` mount, so it would swallow
+  every Cognito route.
+- **Never teach `tenantMiddleware` to verify API keys.** That puts a key lookup on the session
+  plane, the class of change behind #447/#526.
+- Other m2m sub-routers still have the old behaviour. If you see the `401` on a valid key, check
+  whether the route exists before you debug the key.
+
 ## Two predicates on ONE column: Planning's `move_type` filter vs the `Is_Trip_Planning` whitelist
 
 > **Resolved — kept as the worked example behind the rule at the end of this section.**

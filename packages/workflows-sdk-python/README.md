@@ -1122,6 +1122,13 @@ use the typed methods — they route through the dry-run capture path, which a g
 call would bypass. `api_get` is likewise **not** stubbed by the offline test harness
 (use a typed read helper there); it's meant for ops/reconciliation on a real client.
 
+**A path that doesn't exist.** Under `/api/v1/pegii/*`, a valid key on a route
+that isn't there gets `404 NOT_FOUND` naming the method and path, and a bad key
+gets `401`. Elsewhere, a route that doesn't exist can still answer
+`401 "Invalid or unverifiable token"` even though your key is fine. If you see
+that 401 with a key that works on other calls, check the path against
+`/openapi.json` before you debug the key.
+
 ## Visualizing Automations
 
 An Automation is published as opaque Python, so the Pegasus tenant UI can't infer
