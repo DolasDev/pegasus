@@ -60,6 +60,19 @@ const USER_POOL_ID = process.env['COGNITO_USER_POOL_ID'] ?? ''
 // returned code, and then fails the callback with a bare 400 and no error_description.
 const TENANT_CLIENT_ID = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
 
+// The MoveManager desktop client (cloud identity I4) needs the same providers, or
+// desktop SSO fails the callback exactly the same way. Empty when not deployed.
+// Read per call (not at module load) so tests can stub it.
+function desktopClientId(): string {
+  return process.env['COGNITO_DESKTOP_CLIENT_ID'] ?? ''
+}
+
+/** The tenant client (always — unchanged behaviour), then the desktop client when set. */
+function ssoAppClientIds(): string[] {
+  const desktop = desktopClientId()
+  return desktop ? [TENANT_CLIENT_ID, desktop] : [TENANT_CLIENT_ID]
+}
+
 // ---------------------------------------------------------------------------
 // Zod schemas
 // ---------------------------------------------------------------------------
@@ -272,12 +285,10 @@ ssoHandler.get('/providers', requirePermission(Actions.ManageSsoProviders), asyn
     // anyone edits the tenant app client in CDK, CFN resets the list and every tenant's
     // SSO breaks at once, silently. Reconciling here means the next visit to the SSO
     // settings page repairs it. Fail-open: never break the page over a failed repair.
-    await reconcileAppClientProvidersSafely(
-      cognito,
-      USER_POOL_ID,
-      TENANT_CLIENT_ID,
-      providers.filter((p) => p.isEnabled).map((p) => p.cognitoProviderName),
-    )
+    const enabledNames = providers.filter((p) => p.isEnabled).map((p) => p.cognitoProviderName)
+    for (const clientId of ssoAppClientIds()) {
+      await reconcileAppClientProvidersSafely(cognito, USER_POOL_ID, clientId, enabledNames)
+    }
 
     return c.json({
       data: {
@@ -444,6 +455,24 @@ ssoHandler.post(
 
       await db.tenantSsoProvider.delete({ where: { id: provider.id } })
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    }
+
+    // Step 4 — Permit it on the desktop client too (cloud identity I4). Best-effort:
+    // the tenant web client is what this endpoint promises, and POST
+    // /auth/resolve-tenants reconciles the desktop client on the next sign-in, so a
+    // failure here only delays desktop SSO. Rolling back the IdP instead would poison
+    // the tenant client, which already lists it.
+    const desktop = desktopClientId()
+    if (desktop) {
+      try {
+        await addProviderToAppClient(cognito, USER_POOL_ID, desktop, body.cognitoProviderName)
+      } catch (desktopErr) {
+        logger.warn('POST /providers: failed to permit provider on desktop app client', {
+          error: String(desktopErr),
+          providerId: provider.id,
+          clientId: desktop,
+        })
+      }
     }
 
     return c.json({ data: toResponse(provider) }, 201)
@@ -675,20 +704,24 @@ ssoHandler.delete('/providers/:id', requirePermission(Actions.ManageSsoProviders
   // validates SupportedIdentityProviders on every client update, so a list naming a
   // provider that no longer exists poisons the client — the next update, for any other
   // provider, fails with "The provider X does not exist for User Pool ...".
-  try {
-    await removeProviderFromAppClient(
-      cognito,
-      USER_POOL_ID,
-      TENANT_CLIENT_ID,
-      existing.cognitoProviderName,
-    )
-  } catch (clientErr) {
-    logger.error('DELETE /providers/:id: failed to revoke provider on app client', {
-      error: String(clientErr),
-      providerId: id,
-      clientId: TENANT_CLIENT_ID,
-    })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  // Every client that may list it — the tenant client and the desktop client (I4) —
+  // must drop it first, or the IdP delete below poisons whichever one still names it.
+  for (const clientId of ssoAppClientIds()) {
+    try {
+      await removeProviderFromAppClient(
+        cognito,
+        USER_POOL_ID,
+        clientId,
+        existing.cognitoProviderName,
+      )
+    } catch (clientErr) {
+      logger.error('DELETE /providers/:id: failed to revoke provider on app client', {
+        error: String(clientErr),
+        providerId: id,
+        clientId,
+      })
+      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    }
   }
 
   // Step 3 — Remove from Cognito

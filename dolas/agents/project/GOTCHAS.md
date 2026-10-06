@@ -563,6 +563,19 @@ If it reads `["COGNITO"]` while tenants have providers enabled, this is it. The
 gzipped `state` param in the `/error` URL base64url-decodes to JSON naming the pool,
 the IdP, the client id and the callback — decode it before theorizing.
 
+**There are TWO clients to keep right now (cloud identity I4, 2026-10-06):** the
+MoveManager desktop signs in through its own `desktop-app-client`. It is a separate
+CFN resource, so it drifts separately, and SSO IdPs must be listed on it too, or
+desktop SSO fails the same undiagnosable way. Every IdP path covers both clients:
+create (best-effort on the desktop client), delete (both required before the IdP
+goes), `GET /providers` and `resolve-tenants` reconcile. When diagnosing, check both
+ids. The mobile client has never carried tenant IdPs.
+
+**The CI guard:** `cognito-stack.test.ts` → "existing app clients are frozen" pins
+the admin/tenant/mobile client properties in a snapshot and asserts exactly four
+clients. If it fails, you edited an existing client. Undo it, or update the snapshot
+only after planning and verifying the SSO repair. A new need gets a **new** client.
+
 ## Adding a built-in DOMAIN_EVENT_TYPE breaks four exact-list assertions
 
 `DOMAIN_EVENT_TYPES` in `apps/api/src/lib/domain-events.ts` is a public contract,

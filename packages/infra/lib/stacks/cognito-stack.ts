@@ -35,6 +35,13 @@ import type { Construct } from 'constructs'
 const WEB_DOMAIN_NAME_PARAM = '/dolas/pegasus/web/domain-name'
 const ADMIN_DOMAIN_NAME_PARAM = '/dolas/pegasus/admin/domain-name'
 
+/**
+ * Loopback ports the MoveManager desktop listens on for the Hosted UI redirect
+ * (cloud identity I4). The desktop ships the same list; changing it means
+ * changing both, and editing the desktop client (see the #518 note below).
+ */
+export const DESKTOP_LOOPBACK_PORTS = [47615, 47616, 47617] as const
+
 export interface CognitoStackProps extends cdk.StackProps {
   /**
    * CloudFront distributionDomainName token from FrontendStack (e.g. xxx.cloudfront.net, no protocol).
@@ -98,6 +105,12 @@ export class CognitoStack extends cdk.Stack {
    * No client secret — standard practice for mobile clients.
    */
   public readonly mobileAppClient: cognito.UserPoolClient
+
+  /**
+   * App client used by the MoveManager desktop (cloud identity I4): Hosted UI in
+   * the system browser, Authorization Code + PKCE, loopback redirect. No secret.
+   */
+  public readonly desktopAppClient: cognito.UserPoolClient
 
   /**
    * JWKS endpoint URL for the user pool.
@@ -587,6 +600,51 @@ export class CognitoStack extends cdk.Stack {
     })
 
     // -------------------------------------------------------------------------
+    // Desktop app client (cloud identity I4)
+    //
+    // Used by the MoveManager desktop to sign in through the Cognito Hosted UI
+    // in the system browser (RFC 8252: Authorization Code + PKCE, loopback
+    // redirect). The desktop then exchanges its ID token at
+    // POST /api/v1/desktop/session for a pegII token for one company.
+    //
+    //   - generateSecret: false — public client; nothing secret ships in the exe.
+    //   - ExplicitAuthFlows pinned to ALLOW_REFRESH_TOKEN_AUTH only: the desktop
+    //     never collects a password (the Hosted UI does). CDK renders NO
+    //     ExplicitAuthFlows for `authFlows: {}`, and Cognito then applies its
+    //     defaults (SRP + CUSTOM + refresh), so the override is load-bearing.
+    //   - callbackUrls: Cognito matches callback URLs EXACTLY (no wildcard
+    //     port), so three fixed loopback ports are registered; the desktop
+    //     listens on the first free one.
+    //   - 1h ID/access tokens: the desktop renews silently with the 30d refresh
+    //     token.
+    //
+    // ⚠ Same #494/#518 trap as the tenant client above: ANY later edit to this
+    // client resets its SupportedIdentityProviders to COGNITO. SSO IdPs are
+    // attached at runtime (apps/api/src/lib/cognito-app-client.ts), and
+    // POST /auth/resolve-tenants reconciles this client too. A new client is
+    // added rather than editing an existing one; the cognito-stack test pins the
+    // other three clients' properties.
+    // -------------------------------------------------------------------------
+    this.desktopAppClient = this.userPool.addClient('DesktopAppClient', {
+      userPoolClientName: 'desktop-app-client',
+      generateSecret: false,
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
+        callbackUrls: DESKTOP_LOOPBACK_PORTS.map((p) => `http://localhost:${p}/callback`),
+        logoutUrls: DESKTOP_LOOPBACK_PORTS.map((p) => `http://localhost:${p}/signed-out`),
+      },
+      idTokenValidity: cdk.Duration.hours(1),
+      accessTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(30),
+      enableTokenRevocation: true,
+    })
+    ;(this.desktopAppClient.node.defaultChild as cognito.CfnUserPoolClient).addPropertyOverride(
+      'ExplicitAuthFlows',
+      ['ALLOW_REFRESH_TOKEN_AUTH'],
+    )
+
+    // -------------------------------------------------------------------------
     // JWKS URL
     //
     // This is a public endpoint; no secret is required to fetch it. The API
@@ -630,6 +688,12 @@ export class CognitoStack extends cdk.Stack {
       parameterName: '/pegasus/mobile/cognito-client-id',
       stringValue: this.mobileAppClient.userPoolClientId,
       description: 'Pegasus mobile app client ID (no secret — SRP only)',
+    })
+
+    new ssm.StringParameter(this, 'DesktopClientIdParam', {
+      parameterName: '/pegasus/desktop/cognito-client-id',
+      stringValue: this.desktopAppClient.userPoolClientId,
+      description: 'Pegasus desktop (MoveManager) app client ID (no secret — PKCE only)',
     })
 
     new ssm.StringParameter(this, 'JwksUrlParam', {
@@ -682,6 +746,11 @@ export class CognitoStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'MobileClientId', {
       value: this.mobileAppClient.userPoolClientId,
       exportName: 'PegasusCognitoMobileClientId',
+    })
+
+    new cdk.CfnOutput(this, 'DesktopClientId', {
+      value: this.desktopAppClient.userPoolClientId,
+      exportName: 'PegasusCognitoDesktopClientId',
     })
 
     new cdk.CfnOutput(this, 'HostedUiBaseUrl', {
@@ -745,6 +814,14 @@ export class CognitoStack extends cdk.Stack {
     mobileClientRefExport.overrideLogicalId(
       'ExportsOutputRefUserPoolMobileAppClient2650C7F34B844422',
     )
+
+    // Desktop client (I4): born explicit, so its logical ID + export name are
+    // chosen here rather than pinned to a CDK auto-generated hash.
+    const desktopClientRefExport = new cdk.CfnOutput(this, 'AssetsDesktopClientRefExport', {
+      value: this.desktopAppClient.userPoolClientId,
+      exportName: `${this.stackName}:DesktopAppClientRefExport`,
+    })
+    desktopClientRefExport.overrideLogicalId('DesktopAppClientRefExport')
 
     const hostedUiDomainRefExport = new cdk.CfnOutput(this, 'AssetsHostedUiDomainRefExport', {
       value: hostedUiDomain.domainName,

@@ -40,6 +40,7 @@ import { tenantMiddleware } from './tenant'
 
 const TENANT_CLIENT = 'web-client-id'
 const MOBILE_CLIENT = 'mobile-client-id'
+const DESKTOP_CLIENT = 'desktop-client-id'
 
 function buildApp() {
   const app = new Hono<AppEnv>()
@@ -67,6 +68,7 @@ beforeEach(() => {
     'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_pool/.well-known/jwks.json'
   process.env['COGNITO_TENANT_CLIENT_ID'] = TENANT_CLIENT
   process.env['COGNITO_MOBILE_CLIENT_ID'] = MOBILE_CLIENT
+  delete process.env['COGNITO_DESKTOP_CLIENT_ID']
   mockTenantFindUnique.mockResolvedValue({ id: 't1', status: 'ACTIVE', policyStoreId: 'ps1' })
   mockTenantUserFindFirst.mockResolvedValue({ id: 'tu-1', crewMember: null })
 })
@@ -100,5 +102,15 @@ describe('tenantMiddleware — token audience', () => {
     await req(buildApp())
     const opts = mockJwtVerify.mock.calls[0]![2] as { audience: string[] }
     expect(opts.audience).toEqual([TENANT_CLIENT])
+  })
+
+  // Cloud identity I4: the MoveManager desktop sends its own client's ID token to
+  // POST /api/v1/desktop/session.
+  it('also accepts the desktop client id when it is configured', async () => {
+    process.env['COGNITO_DESKTOP_CLIENT_ID'] = DESKTOP_CLIENT
+    mockJwtVerify.mockResolvedValue({ payload: idPayload() })
+    await req(buildApp())
+    const opts = mockJwtVerify.mock.calls[0]![2] as { audience: string[] }
+    expect(opts.audience).toEqual([TENANT_CLIENT, MOBILE_CLIENT, DESKTOP_CLIENT])
   })
 })

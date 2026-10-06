@@ -29,6 +29,7 @@ import { createRemoteJWKSet, jwtVerify, errors } from 'jose'
 import { db } from '../db'
 import { logger } from '../lib/logger'
 import { reconcileTenantAppClientFromEnv } from '../lib/cognito-app-client'
+import { tenantIdTokenAudiences } from '../lib/cognito-audiences'
 
 // ---------------------------------------------------------------------------
 // JWKS cache — initialized on the first request, shared across warm Lambda
@@ -429,6 +430,8 @@ authHandler.post(
     const tenantClientId = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
     const mobileClientId = process.env['COGNITO_MOBILE_CLIENT_ID'] ?? ''
 
+    // The desktop client (I4) is accepted when configured but NOT required: a
+    // missing COGNITO_DESKTOP_CLIENT_ID must never take web/mobile login down.
     if (!jwksUrl || !tenantClientId || !mobileClientId) {
       logger.error(
         'validate-token: COGNITO_JWKS_URL, COGNITO_TENANT_CLIENT_ID, or COGNITO_MOBILE_CLIENT_ID not set',
@@ -443,7 +446,7 @@ authHandler.post(
     try {
       const result = await jwtVerify(idToken, getJwks(), {
         issuer: deriveIssuer(jwksUrl),
-        audience: [tenantClientId, mobileClientId],
+        audience: tenantIdTokenAudiences(),
         algorithms: ['RS256'],
       })
       payload = result.payload as Record<string, unknown>

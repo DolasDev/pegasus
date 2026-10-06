@@ -51,6 +51,14 @@ export interface MintPegiiTokenInput {
   siteId: string
   company: PegiiTokenCompany
   principal: PegiiTokenPrincipal
+  /**
+   * `scp` — what the token may be used FOR at the site, beyond the ordinary
+   * bridge routes. `desktop` is minted only by POST /api/v1/desktop/session, after
+   * the membership check (cloud identity I4), and is what pegII's desktop
+   * connection route requires. Bridge tokens carry no `scp`: they are minted for
+   * any signed-in user, so they must never unlock a connection string.
+   */
+  scope?: 'desktop'
 }
 
 export interface PegiiTokenClaims {
@@ -66,6 +74,7 @@ export interface PegiiTokenClaims {
   cid?: string
   emp?: number
   wun?: string
+  scp?: 'desktop'
 }
 
 export interface PegiiTokenMinter {
@@ -117,6 +126,17 @@ export function buildPegiiTokenClaims(
     claims.emp = attribution.employeeCode
     if (attribution.windowsUsername) claims.wun = attribution.windowsUsername
   }
+  if (input.scope) {
+    // A service account never holds a desktop session; refuse rather than mint a
+    // shape pegII's desktop policy (ptype=user) would reject anyway.
+    if (service) {
+      throw new PegiiApiError(
+        'PEGII_PRINCIPAL_UNRESOLVED',
+        'a service account cannot be issued a scoped (desktop) pegII token',
+      )
+    }
+    claims.scp = input.scope
+  }
   return claims
 }
 
@@ -145,6 +165,9 @@ export function createPegiiTokenMinter(opts: {
       i.company.dataSourceKey ?? '',
       i.principal.attribution?.employeeCode ?? '',
       i.principal.attribution?.windowsUsername ?? '',
+      // A desktop-scoped token and a bridge token for the same principal must
+      // never be served from one cache slot.
+      i.scope ?? '',
     ].join('|')
 
   return {
@@ -164,6 +187,19 @@ export function createPegiiTokenMinter(opts: {
       cache.delete(keyOf(input))
     },
   }
+}
+
+/**
+ * The `exp` (epoch seconds) of a token this module minted. Reads the payload
+ * without verifying — only ever called on a token we just signed ourselves.
+ */
+export function pegiiTokenExpiresAt(token: string): number {
+  const payload = token.split('.')[1] ?? ''
+  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+    exp?: unknown
+  }
+  if (typeof claims.exp !== 'number') throw new Error('pegII token has no numeric exp')
+  return claims.exp
 }
 
 /** Configured signing key ids (first = current signer), from PEGII_TOKEN_KMS_KEY_IDS. */

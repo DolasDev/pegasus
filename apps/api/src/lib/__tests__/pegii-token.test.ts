@@ -7,6 +7,7 @@ import {
   buildPegiiTokenClaims,
   createPegiiTokenMinter,
   pegiiSiteAudience,
+  pegiiTokenExpiresAt,
   PEGII_TOKEN_TTL_SECONDS,
   type MintPegiiTokenInput,
 } from '../pegii-token'
@@ -123,6 +124,24 @@ describe('buildPegiiTokenClaims', () => {
     expect(c).not.toHaveProperty('wun')
   })
 
+  // Cloud identity I4: only POST /desktop/session mints `scp`, after its
+  // membership check; pegII's desktop connection route requires it.
+  it('stamps scp=desktop only when a scope is requested', () => {
+    expect(buildPegiiTokenClaims(input(), ISSUER, 1, 'j')).not.toHaveProperty('scp')
+    expect(buildPegiiTokenClaims(input({ scope: 'desktop' }), ISSUER, 1, 'j').scp).toBe('desktop')
+  })
+
+  it('refuses a scoped token for a service account', () => {
+    expect(() =>
+      buildPegiiTokenClaims(
+        input({ scope: 'desktop', principal: { tenantUserId: 'svc-1', isServiceAccount: true } }),
+        ISSUER,
+        1,
+        'j',
+      ),
+    ).toThrow(expect.objectContaining({ code: 'PEGII_PRINCIPAL_UNRESOLVED' }) as PegiiApiError)
+  })
+
   it.each([null, undefined, ''])('refuses to mint without a subject (%s)', (sub) => {
     expect(() =>
       buildPegiiTokenClaims(
@@ -177,6 +196,31 @@ describe('createPegiiTokenMinter', () => {
     expect(await minter.mint(input())).toBe(first)
     now += 2000
     expect(await minter.mint(input())).not.toBe(first)
+  })
+
+  it('never serves a desktop-scoped token from the bridge cache slot (or vice versa)', async () => {
+    const { signer, jwks } = await localKeys()
+    const minter = createPegiiTokenMinter({ signer, issuer: ISSUER })
+
+    const bridge = await minter.mint(input())
+    const desktop = await minter.mint(input({ scope: 'desktop' }))
+
+    expect(desktop).not.toBe(bridge)
+    expect(await minter.mint(input())).toBe(bridge)
+    const verify = (t: string) =>
+      jwtVerify(t, jwks, { issuer: ISSUER, audience: pegiiSiteAudience(SITE) })
+    expect((await verify(bridge)).payload).not.toHaveProperty('scp')
+    expect((await verify(desktop)).payload['scp']).toBe('desktop')
+  })
+
+  it('pegiiTokenExpiresAt reads exp from a minted token', async () => {
+    const { signer } = await localKeys()
+    const now = 1_000_000_000_000
+    const minter = createPegiiTokenMinter({ signer, issuer: ISSUER, now: () => now })
+
+    const token = await minter.mint(input())
+
+    expect(pegiiTokenExpiresAt(token)).toBe(now / 1000 + PEGII_TOKEN_TTL_SECONDS)
   })
 
   it('re-mints after invalidate', async () => {
@@ -238,5 +282,56 @@ describe('shared token fixture', () => {
     const noCid = (await verifyAtFixtureNow(token('noCid'))).payload
     expect(noCid).not.toHaveProperty('cid')
     expect(noCid.exp! - noCid.iat!).toBeLessThanOrEqual(300)
+  })
+})
+
+// The I4 desktop-session fixture (its own key; the I1 fixture is never
+// regenerated). Every sample is a valid cloud token; the desktop connection
+// route tells them apart by ptype + scp. movemanager verifies the same bytes.
+describe('shared desktop-session token fixture', () => {
+  const dir = join(__dirname, '..', '..', '__fixtures__', 'pegii-token-desktop')
+  const jwks = JSON.parse(readFileSync(join(dir, 'jwks.json'), 'utf8')) as {
+    keys: Record<string, unknown>[]
+  }
+  const fixture = JSON.parse(readFileSync(join(dir, 'tokens.json'), 'utf8')) as {
+    now: number
+    maxClockSkewSeconds: number
+    issuer: string
+    audience: string
+    expectDesktopConnection: Record<string, string>
+    tokenSegments: Record<string, [string, string, string]>
+  }
+  const keySet = createLocalJWKSet({ keys: jwks.keys })
+  const verify = (name: string) =>
+    jwtVerify(fixture.tokenSegments[name]!.join('.'), keySet, {
+      issuer: fixture.issuer,
+      audience: fixture.audience,
+      algorithms: ['ES256'],
+      currentDate: new Date(fixture.now * 1000),
+      clockTolerance: fixture.maxClockSkewSeconds,
+    })
+
+  it('publishes only public key material', () => {
+    for (const k of jwks.keys) expect(k).not.toHaveProperty('d')
+  })
+
+  it.each(Object.entries(fixture.expectDesktopConnection))('%s → %s', async (name, verdict) => {
+    // Valid as a cloud token in every case…
+    const { payload } = await verify(name)
+    // …and the desktop policy is exactly ptype=user AND scp=desktop.
+    const desktopPolicy = payload['ptype'] === 'user' && payload['scp'] === 'desktop'
+    expect(desktopPolicy).toBe(verdict.startsWith('serve'))
+  })
+
+  it('carries cid/emp/wun on the linked sample and none on the bootstrap sample', async () => {
+    expect((await verify('desktop')).payload).toMatchObject({
+      cid: 'QMM_US',
+      emp: 7429,
+      wun: 'jdoe',
+    })
+    expect((await verify('desktopNoCid')).payload).not.toHaveProperty('cid')
+    const unlinked = (await verify('desktopUnlinked')).payload
+    expect(unlinked).not.toHaveProperty('emp')
+    expect(unlinked).not.toHaveProperty('wun')
   })
 })

@@ -4,6 +4,7 @@ import { Template, Match } from 'aws-cdk-lib/assertions'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import { ApiStack } from '../api-stack'
+import { CognitoStack } from '../cognito-stack'
 
 function synthApiStack() {
   const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
@@ -121,6 +122,44 @@ describe('ApiStack — Lambda function', () => {
         }),
       },
     })
+  })
+
+  // Cloud identity I4: the desktop client id is imported from the cognito stack's
+  // explicit DesktopAppClientRefExport — a name chosen in cognito-stack.ts, so it
+  // can't drift the way the CDK auto-generated export ids did.
+  it('imports COGNITO_DESKTOP_CLIENT_ID from the pinned desktop client export', () => {
+    const template = synthApiStackWithCognito()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          COGNITO_DESKTOP_CLIENT_ID: {
+            'Fn::ImportValue': 'TestCognitoStack:DesktopAppClientRefExport',
+          },
+        }),
+      },
+    })
+  })
+
+  // Fn::ImportValue resolves by export NAME at deploy time, so a typo synthesizes
+  // fine and only fails the CloudFormation deploy. Pin every import against the
+  // real CognitoStack's exports.
+  it('every Cognito import names an export the CognitoStack actually publishes', () => {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const cognito = Template.fromStack(new CognitoStack(app, 'TestCognitoStack'))
+    const exported = new Set(
+      Object.values(cognito.toJSON()['Outputs'] as Record<string, { Export?: { Name?: unknown } }>)
+        .map((o) => o.Export?.Name)
+        .filter((n): n is string => typeof n === 'string'),
+    )
+    const imports = new Set(
+      [
+        ...JSON.stringify(synthApiStackWithCognito().toJSON()).matchAll(
+          /"Fn::ImportValue":"(TestCognitoStack:[^"]+)"/g,
+        ),
+      ].map((m) => m[1]!),
+    )
+    expect(imports.size).toBeGreaterThan(0)
+    expect([...imports].filter((i) => !exported.has(i))).toEqual([])
   })
 
   it('sets COGNITO_HOSTED_UI_DOMAIN environment variable for mobile SSO', () => {

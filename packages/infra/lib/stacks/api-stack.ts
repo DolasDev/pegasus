@@ -357,6 +357,7 @@ export class ApiStack extends cdk.Stack {
     const cognitoMobileClientId = importCognito(
       'ExportsOutputRefUserPoolMobileAppClient2650C7F34B844422',
     )
+    const cognitoDesktopClientId = importCognito('DesktopAppClientRefExport')
     // jwksUrl reuses the pinned UserPool ref — no separate export.
     const cognitoJwksUrl = cognitoStackName
       ? cdk.Fn.join('', [
@@ -417,6 +418,10 @@ export class ApiStack extends cdk.Stack {
         // mobile app can authenticate against Cognito without baking credentials
         // into the app bundle.
         COGNITO_MOBILE_CLIENT_ID: cognitoMobileClientId,
+        // Desktop (MoveManager) app client ID — cloud identity I4. Accepted as an
+        // ID-token audience by tenantMiddleware + /validate-token, and SSO IdPs
+        // are attached to it alongside the tenant client (cognito-app-client.ts).
+        COGNITO_DESKTOP_CLIENT_ID: cognitoDesktopClientId,
         // Cognito Hosted UI domain. Returned by GET /api/auth/mobile-config so
         // the mobile app can build OAuth authorize URLs for SSO login flows.
         COGNITO_HOSTED_UI_DOMAIN: cognitoHostedUiDomain,

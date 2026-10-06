@@ -174,4 +174,24 @@ describe.skipIf(!hasDb)('CompanyMembershipRepository (integration)', () => {
     ])
     expect(view.unmatched.map((u) => u.email)).toEqual(['bob@a.test'])
   })
+
+  // Cloud identity I4: the desktop company picker reads the caller's OWN LINKED rows.
+  it('listLinkedForUser returns only LINKED rows, keyed by company, tenant-scoped', async () => {
+    await sync(companyA, [emp(100, 'alice@a.test')])
+    const repoA = createCompanyMembershipRepository(scoped(tenantA.id))
+
+    const alice = await repoA.listLinkedForUser(userAlice)
+    expect([...alice.entries()]).toEqual([
+      [companyA, { employeeCode: 100, legacyWindowsUsername: 'wun100' }],
+    ])
+    expect((await repoA.listLinkedForUser(userBob)).size).toBe(0)
+
+    // Alice's employee is terminated: the INACTIVE row grants nothing.
+    await sync(companyA, [{ ...emp(100, 'alice@a.test'), active: false }])
+    expect((await repoA.listLinkedForUser(userAlice)).size).toBe(0)
+
+    await sync(companyA, [emp(100, 'alice@a.test')])
+    const fromB = createCompanyMembershipRepository(scoped(tenantB.id))
+    expect((await fromB.listLinkedForUser(userAlice)).size).toBe(0)
+  })
 })

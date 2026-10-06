@@ -66,6 +66,25 @@ export function createCompanyMembershipRepository(db: PrismaClient) {
       })
     },
 
+    /**
+     * Every company the user holds a LINKED membership in (cloud identity I4: the
+     * desktop company picker). Tenant-scoped by the extension.
+     */
+    async listLinkedForUser(
+      tenantUserId: string,
+    ): Promise<Map<string, { employeeCode: number; legacyWindowsUsername: string | null }>> {
+      const rows = await db.companyMembership.findMany({
+        where: { tenantUserId, status: 'LINKED' },
+        select: { companyId: true, employeeCode: true, legacyWindowsUsername: true },
+      })
+      return new Map(
+        rows.map((r) => [
+          r.companyId,
+          { employeeCode: r.employeeCode, legacyWindowsUsername: r.legacyWindowsUsername },
+        ]),
+      )
+    },
+
     /** The admin view: every membership row, plus the users with no LINKED row. */
     async listForCompany(
       tenantId: string,
