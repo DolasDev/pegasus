@@ -1228,9 +1228,27 @@ class PegasusClient:
         Args:
             form_key: The form's stable key/slug (e.g. ``"post-move-csat"``).
             title: Human-facing title shown on the rendered form.
-            definition: ``{questions: [{id, type, label, required?, ...}]}``. Types:
-                ``rating`` (int min..max, default 1..5), ``number`` (min/max),
-                ``text`` (maxLength), ``select`` (options[]), ``boolean``.
+            definition: ``{questions: [{id, type, label, required?, ...}]}``. Every
+                question takes ``id``, ``type``, ``label`` and ``required``.
+                The keys each type adds:
+
+                - ``rating``: an integer answer in ``min..max`` (default 1..5).
+                  Optional ``display`` sets how the hosted form draws it:
+                  ``"numeric"`` (default, numbered buttons), ``"faces"``
+                  (least to most satisfied, at most 7 points) or ``"stars"``.
+                  Optional ``scaleLabels`` maps a scale point to a caption,
+                  e.g. ``{"1": "Very poor", "5": "Excellent"}``. The ends are
+                  shown under the scale. The answer is the integer whichever
+                  display you pick (0.47.0+).
+                - ``number``: ``min`` / ``max``.
+                - ``text``: ``maxLength``.
+                - ``select``: ``options[]``.
+                - ``boolean``: no extra keys.
+
+                **Keys are strict** (0.47.0+). A question key not listed for its
+                type, or a top-level key other than ``questions``, is an error
+                naming the key, never a silent no-op. A ``valid`` result
+                therefore means every field you wrote is honored.
 
         Returns:
             ``{valid: bool, errors: [str]}``.

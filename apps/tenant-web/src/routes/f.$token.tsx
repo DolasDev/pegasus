@@ -5,6 +5,7 @@ import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ApiError } from '@/api/client'
+import { RatingInput } from '@/components/feedback/RatingInput'
 import {
   getPublicFeedbackForm,
   submitPublicFeedback,
@@ -38,29 +39,10 @@ function QuestionField({
   )
 
   if (question.type === 'rating') {
-    const min = question.min ?? 1
-    const max = question.max ?? 5
-    const options = Array.from({ length: max - min + 1 }, (_, i) => min + i)
     return (
       <div>
         {label}
-        <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={question.label}>
-          {options.map((n) => (
-            <button
-              key={n}
-              type="button"
-              aria-pressed={value === n}
-              onClick={() => onChange(n)}
-              className={`h-10 w-10 rounded-md border text-sm font-medium transition ${
-                value === n
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-input bg-background text-foreground hover:bg-muted'
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
+        <RatingInput question={question} value={value} onChange={onChange} />
       </div>
     )
   }

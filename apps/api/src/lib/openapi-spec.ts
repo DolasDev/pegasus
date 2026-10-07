@@ -1709,7 +1709,7 @@ export function getOpenApiSpec() {
           operationId: 'publishFeedbackForm',
           summary: 'Publish a new immutable feedback form version (ManageFeedbackForms)',
           description:
-            'Body: { title, definition: { questions: [...] }, messageTemplate? }. The definition is validated as a supported question-list subset; a publish supersedes the prior published version for the key.',
+            'Body: { title, definition: { questions: [...] }, messageTemplate? }. Every question takes id, type, label and required? and the keys its type adds: rating → min, max (default 1..5), display ("numeric" default | "faces" ≤ 7 points | "stars"; presentation only, the answer stays an integer), scaleLabels ({ "<point>": "caption" }); number → min, max; text → maxLength; select → options[]; boolean → none. Keys are strict: an unrecognized question key, or a top-level key other than `questions`, is a 400 naming it. A publish supersedes the prior published version for the key.',
           tags: ['Feedback'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [{ name: 'formKey', in: 'path', required: true, schema: { type: 'string' } }],
@@ -1724,6 +1724,8 @@ export function getOpenApiSpec() {
         post: {
           operationId: 'validateFeedbackForm',
           summary: 'Dry-run a feedback form definition, no write (ManageFeedbackForms)',
+          description:
+            'Same checks as publish (see publishFeedbackForm for the per-type key allowlist); `valid: false` lists every problem, including unrecognized keys.',
           tags: ['Feedback'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [{ name: 'formKey', in: 'path', required: true, schema: { type: 'string' } }],
