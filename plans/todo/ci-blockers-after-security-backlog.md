@@ -119,9 +119,11 @@ sees a same-day advisory hours to days before Dependabot does. The pre-enqueue c
 on 2026-10-07 with reasons (see "Don't redo these"). Unverified at the time of writing: no push to
 `main` had happened since. If a `for katex` run goes red again after one, the dismissal theory is wrong.
 
-**Optional, not started:** a daily `schedule:` job running `audit-ci` on `main` (precedent:
-`override-expiry.yml`) would turn a same-day advisory into a red mark on `main` instead of an
-ejection of whichever PR enters the queue next.
+**Done — daily audit of `main`:** `.github/workflows/dependency-audit.yml` runs `audit-ci` at 07:23 UTC
+(and on `workflow_dispatch`). A failure turns the run red and opens — or comments on — the issue
+**"Daily dependency audit: main is red"**; the next green run closes it. CI's `Lint` job and the daily
+job share `scripts/audit-ci.sh`, so the gate (and its npm-endpoint-error pass-through) cannot drift.
+**When that issue is open, fix `main` before enqueuing anything** — every queued PR will be ejected.
 
 ### [ ] `DEPENDABOT_AUTOMERGE_PAT` — owner-only, and the highest-leverage item left
 
