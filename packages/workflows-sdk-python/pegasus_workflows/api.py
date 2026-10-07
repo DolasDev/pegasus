@@ -2080,6 +2080,13 @@ class PegasusClient:
     # job is to advance or close out operational tasks in response to events
     # uses these. Reads are gated by ``ReadTask``; ``close_task`` by
     # ``CloseTask`` — declared in the workflow manifest ``required_actions``.
+    #
+    # STUB (sdk-feedback 0046): the platform does not yet read pegII's real
+    # tasks. Every row is synthesized: two seeded types per order
+    # (``date_confirmation``, ``survey_scheduling``), for ANY order id, kept in
+    # memory and reset on a cold start. Rows carry ``stub: True`` (0.48.1+). Do
+    # not build behavior that depends on the task data being real until that
+    # flag is gone. The real bridge (create, close by id) is NW pulse Phase 6.
 
     def list_tasks(self, order_id: str | None = None, **params: Any) -> list[dict[str, Any]]:
         """List pegII tasks, optionally scoped to one order. Requires ``ReadTask``.
@@ -2091,7 +2098,9 @@ class PegasusClient:
 
         Returns:
             A list of task rows (``{id, orderId, taskType, status, reason,
-            createdAt, updatedAt, closedAt}``).
+            createdAt, updatedAt, closedAt, stub}``). ``stub`` is ``True`` while
+            the rows are synthesized rather than read from pegII (see the note
+            above this method).
 
         Raises:
             PegasusApiError: On 403 (manifest lacks ``ReadTask``) or any other
@@ -2103,6 +2112,10 @@ class PegasusClient:
 
     def get_task(self, task_id: str) -> dict[str, Any]:
         """Fetch a single pegII task by id. Requires ``ReadTask``.
+
+        Returns:
+            The task row, same shape as :meth:`list_tasks` (``stub: True`` while
+            synthesized).
 
         Raises:
             PegasusApiError: On 403 (manifest lacks ``ReadTask``), 404 (no such
@@ -2131,12 +2144,18 @@ class PegasusClient:
             reason: Optional human-readable note recorded on the close.
 
         Returns:
-            The closed task row (``status == "closed"``). The response also
-            carries ``alreadyClosed: True`` when the task was already closed.
+            The closed task row (``status == "closed"``, ``stub: True`` while
+            synthesized). The response also carries ``alreadyClosed: True``
+            when the task was already closed. That replay is not billed.
 
         Raises:
-            PegasusApiError: On 403 (manifest lacks ``CloseTask``), 404 (no such
-                order/task), or any other non-2xx.
+            PegasusApiError: On 403 (manifest lacks ``CloseTask``), **404
+                ``TASK_NOT_FOUND``** when the order has no task of that type
+                (0.48.1+; it used to answer 200 with a task invented and closed on
+                the spot, and that miss was billed), or any other non-2xx. A
+                404 creates nothing and is not billed. Under ``--dry-run`` and
+                ``pegasus_workflows.testing`` the close is captured, not sent,
+                so a miss can't surface there.
         """
         payload: dict[str, Any] = {"orderId": order_id, "taskType": task_type}
         if reason is not None:

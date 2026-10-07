@@ -3,6 +3,23 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.48.1
+
+### Fixed — the pegII task stub is honest about what it is
+
+- `close_task` on a task type the order doesn't have now raises
+  `PegasusApiError` 404 `TASK_NOT_FOUND`. Before, the server invented the task,
+  closed it in the same millisecond and answered 200, so a caller couldn't tell
+  a real close from a miss, and the miss was billed as a `CloseTask` action
+  (sdk-feedback 0046 B). A 404 creates nothing and isn't billed. A genuine
+  repeat close still succeeds with `alreadyClosed: True` and still isn't
+  billed.
+- Every task row from `list_tasks` / `get_task` / `close_task` carries
+  `stub: True` (0046 C, interim). The rows are synthesized, not read from
+  pegII. Treat the data as placeholder until the flag is gone.
+- No SDK code changed. The behavior change is server-side; this release
+  documents it in the docstrings and README.
+
 ## 0.48.0
 
 ### Added — retire a published workflow

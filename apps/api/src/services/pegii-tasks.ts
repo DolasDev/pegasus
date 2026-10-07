@@ -113,35 +113,32 @@ export interface CloseResult {
 /**
  * Close an order's task by `(orderId, taskType)`. Idempotent — closing an
  * already-closed task is a no-op success with `alreadyClosed: true`.
+ *
+ * Returns null when the order has no task of that type. It must NOT invent
+ * one: a close that fabricated the row it closed answered 200 for a task that
+ * never existed, so a caller couldn't tell a real close from a miss, and the
+ * miss was metered as a billable action (sdk-feedback 0046 B). The handler
+ * maps null to a 404, which the meter never counts.
  */
 export function closeTask(
   tenantId: string,
   opts: { orderId: string; taskType: string; reason?: string | null },
-): CloseResult {
+): CloseResult | null {
   const { orderId, taskType } = opts
   ensureSeeded(tenantId, orderId)
   const k = key(tenantId, orderId, taskType)
   const existing = store.get(k)
+  if (!existing) return null
 
-  const now = new Date().toISOString()
-  if (existing && existing.status === 'closed') {
+  if (existing.status === 'closed') {
     return { task: existing, alreadyClosed: true }
   }
 
-  const base: TaskRecord = existing ?? {
-    id: stableId(tenantId, orderId, taskType),
-    orderId,
-    taskType,
-    status: 'open',
-    reason: null,
-    createdAt: now,
-    updatedAt: now,
-    closedAt: null,
-  }
+  const now = new Date().toISOString()
   const closed: TaskRecord = {
-    ...base,
+    ...existing,
     status: 'closed',
-    reason: opts.reason ?? base.reason,
+    reason: opts.reason ?? existing.reason,
     updatedAt: now,
     closedAt: now,
   }

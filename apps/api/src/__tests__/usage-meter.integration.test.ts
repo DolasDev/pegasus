@@ -124,6 +124,15 @@ describe.skipIf(!hasDb)('usage meter through the real m2m stack (integration)', 
     expect(await metered()).toHaveLength(1)
   })
 
+  it('a close that matches no task is a 404 and counts nothing (sdk-feedback 0046)', async () => {
+    const res = await runtime('/pegii/tasks/close', {
+      method: 'POST',
+      body: JSON.stringify({ orderId, taskType: 'never_existed_type' }),
+    })
+    expect(res.status).toBe(404)
+    expect(await metered()).toHaveLength(1)
+  })
+
   it('a billable route that fails (non-2xx) counts nothing', async () => {
     // No RingCentral platform config in the test env → /sms/send answers 503.
     const res = await runtime('/sms/send', {

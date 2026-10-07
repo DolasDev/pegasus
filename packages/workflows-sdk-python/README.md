@@ -1091,6 +1091,18 @@ client.list_salesmen(active="true")  # ReadSalesman — the whole directory, liv
 client.get_salesman("213056")        # ReadSalesman — {id, name, email, branch, active, …}
 ```
 
+> **Tasks are a stub today.** The platform does not read pegII's real tasks
+> yet. Every order, including one that doesn't exist, returns two synthesized
+> tasks (`date_confirmation`, `survey_scheduling`), held in memory and reset on a
+> cold start, and every row carries `stub: true`.
+>
+> `close_task` on a task type the order doesn't have raises `PegasusApiError`
+> 404 `TASK_NOT_FOUND`. It creates nothing and isn't billed. Before 0.48.1 it
+> answered 200 with a task invented on the spot, and billed for it.
+>
+> There is no `create_task` and no close-by-id yet. Both arrive with the real
+> pegII task bridge.
+
 To dry-run a **published integration** against a real order id — "does this
 production order pass the mapping?" — fetch the order's **native** pegII payload
 (the same `{Id, Survey, InvolvedParties, KeyMoveDates, …}` shape a partner posts to
