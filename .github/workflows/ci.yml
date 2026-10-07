@@ -167,25 +167,11 @@ jobs:
       # Dependency-security gate lives here (not in Test) so a new CVE fails
       # fast and independently of the Postgres container spin-up.
       #
-      # npm's advisory endpoint intermittently returns malformed responses that
-      # break `npm audit`; audit-ci surfaces this as "code undefined: Exiting..."
-      # with no advisories listed and exits 1, which stalled the entire merge
-      # queue on 2026-07-26. Pass ONLY on that endpoint-error signature — real
-      # high/critical advisories print their GHSA ids, never "code undefined", so
-      # they still fail the gate. (`pass-enoaudit` in audit-ci.jsonc covers the
-      # separate offline / missing-lockfile case.)
+      # The invocation, including the pass-through for npm's flaky advisory
+      # endpoint, lives in scripts/audit-ci.sh so the daily run on main
+      # (dependency-audit.yml) executes exactly the same gate.
       - name: Audit dependencies
-        run: |
-          if out=$(npx --no-install audit-ci --config ./audit-ci.jsonc 2>&1); then
-            echo "$out"
-          else
-            echo "$out"
-            if printf '%s' "$out" | grep -q 'code undefined'; then
-              echo "::warning::audit-ci could not complete (npm advisory endpoint error) — passing; real advisories still block. Re-run once npm recovers."
-              exit 0
-            fi
-            exit 1
-          fi
+        run: scripts/audit-ci.sh
 
       # Structural guard on this very file: a path-filtered job must also run in
       # the merge queue, because a SKIPPED required check satisfies branch

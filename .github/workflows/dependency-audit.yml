@@ -1,0 +1,89 @@
+# Daily dependency-security audit of main.
+#
+# audit-ci reads a LIVE advisory feed, so a newly published advisory can turn
+# main red with no commit of ours. Without this job the first thing to notice is
+# whichever PR next enters the merge queue: its Lint job fails and the PR is
+# ejected for a problem it did not cause (#807, ejected by the shell-quote
+# advisory #808 fixed). Dependabot is no early warning here: GitHub raises an
+# alert ~24h after an advisory is published (median, measured 2026-10-07) and
+# sometimes weeks later, while npm's endpoint, which audit-ci uses, has it the
+# same day. See plans/todo/ci-blockers-after-security-backlog.md.
+#
+# On a failure it opens one issue (or comments on the open one) naming the
+# advisories; the next green run closes it. The run itself also goes red.
+# Triage is manual: fix with an override, or allowlist in audit-ci.jsonc with a
+# reason, exactly as for a PR the gate blocks.
+name: Dependency Audit
+on:
+  schedule:
+    - cron: '23 7 * * *' # daily, 07:23 UTC (off the hour to dodge cron congestion)
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  issues: write
+jobs:
+  audit:
+    name: audit-ci on main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ISSUE_TITLE: 'Daily dependency audit: main is red'
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes; don't leave the token in .git/config for npm ci's install scripts.
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      # continue-on-error so the issue steps below still run; the last step
+      # turns a failed audit back into a red run.
+      - name: Audit dependencies
+        id: audit
+        continue-on-error: true
+        shell: bash
+        run: scripts/audit-ci.sh | tee "$RUNNER_TEMP/audit.log"
+
+      - name: Open or update the issue
+        if: steps.audit.outcome == 'failure'
+        # Token scoped to the gh steps only, not to npm ci's install scripts.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          {
+            echo "The scheduled \`audit-ci\` run on \`main\` failed at $(git rev-parse --short HEAD): $RUN_URL"
+            echo
+            echo "Every PR that enters the merge queue will be ejected by this until it is fixed."
+            echo "Fix with an \`overrides\` floor, or allowlist in \`audit-ci.jsonc\` with a reason."
+            echo
+            echo '```'
+            # audit-ci colors its output; strip the ANSI codes for the issue body.
+            sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/audit.log" | grep -E 'GHSA-|Failed|Found|Passed' | tail -n 40
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+          existing=$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number,title \
+            --jq "[.[] | select(.title == env.ISSUE_TITLE)][0].number // empty")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body-file "$RUNNER_TEMP/body.md" --label dependencies
+          fi
+
+      - name: Close the issue once green
+        if: steps.audit.outcome == 'success'
+        # Token scoped to the gh steps only, not to npm ci's install scripts.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" --json number,title \
+            --jq '.[] | select(.title == env.ISSUE_TITLE) | .number' |
+            while read -r n; do
+              gh issue close "$n" --comment "\`audit-ci\` passes on \`main\` again: $RUN_URL"
+            done
+
+      - name: Fail the run if the audit failed
+        if: steps.audit.outcome == 'failure'
+        run: exit 1
