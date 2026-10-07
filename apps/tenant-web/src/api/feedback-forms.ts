@@ -22,6 +22,10 @@ export interface FeedbackQuestion {
   max?: number
   maxLength?: number
   options?: string[]
+  /** rating only: how the hosted form draws it. The answer is an integer either way. */
+  display?: 'faces' | 'stars' | 'numeric'
+  /** rating only: scale point → caption, e.g. `{"1": "Very poor", "5": "Excellent"}`. */
+  scaleLabels?: Record<string, string>
 }
 
 export interface FeedbackFormDefinition {

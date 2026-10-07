@@ -99,7 +99,13 @@ def validate_command(
     base_url: str = base_url_option(),
     profile: str = profile_option(),
 ) -> None:
-    """Dry-run the form definition (no write). Exits non-zero if invalid."""
+    """Dry-run the form definition (no write). Exits non-zero if invalid.
+
+    Keys are strict: an unrecognized question key fails with an error naming it.
+    A rating question takes min/max (default 1..5), display ("numeric" | "faces"
+    up to 7 points | "stars") and scaleLabels ({"1": "Very poor", ...}). The
+    answer is always the integer.
+    """
     title, definition, _ = _load_form(directory)
     client = _client(token, base_url, profile)
     try:

@@ -3,6 +3,35 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.47.0
+
+### Added — rating `display` and `scaleLabels` on feedback forms
+
+- A `rating` question takes an optional `display` (sdk-feedback 0033 A):
+  - `"numeric"` (the default, numbered buttons, as before).
+  - `"faces"`: least to most satisfied, at most 7 points. A wider scale fails
+    `validate`.
+  - `"stars"`: a star bar.
+- An optional `scaleLabels` captions scale points, e.g.
+  `{"1": "Very poor", "5": "Excellent"}`. The two ends show under the scale,
+  and each labelled point's caption is part of its accessible name.
+- The submitted answer is still the integer, so `feedback.submitted` consumers
+  are unaffected. Forms without `display` render exactly as before.
+
+### Changed — feedback form keys are strict
+
+- `validate_feedback_form` / `publish_feedback_form` (and the CLI) now reject
+  an unrecognized question key for its type (e.g. `display` on a `text`
+  question, or a typo) and any top-level definition key other than
+  `questions`. The error names the key (sdk-feedback 0033 B).
+- Before, such keys validated clean and were ignored, so a `valid` result said
+  nothing about whether a field would be honored.
+- **Already-published versions are not re-validated** and keep working. Only
+  the next `validate`/`publish` of a definition carrying a stray key fails.
+- Nothing dropped `display` on publish or pull before this release either: the
+  definition is stored and returned as authored. The field simply had no
+  effect.
+
 ## 0.46.0
 
 ### Changed — `shipment_status_update`: optional cost components + an order binding

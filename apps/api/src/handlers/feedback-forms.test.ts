@@ -144,6 +144,46 @@ describe('POST /:formKey (publish)', () => {
     )
   })
 
+  it('stores display + scaleLabels exactly as authored (0033 round trip)', async () => {
+    // The spec saw a published definition come back without `display`. Nothing
+    // here strips keys; the definition reaches the repository as authored.
+    const faces = {
+      questions: [
+        {
+          id: 'pack_day_rating',
+          type: 'rating',
+          label: 'How was pack day?',
+          required: true,
+          min: 1,
+          max: 5,
+          display: 'faces',
+          scaleLabels: { '1': 'Very poor', '5': 'Excellent' },
+        },
+      ],
+    }
+    mockRepo.publish.mockResolvedValue(formRow({ definition: faces }))
+    const res = await buildApp().request(
+      '/feedback-forms/pack-day-csat',
+      post({ title: 'Pack day', definition: faces }),
+    )
+    expect(res.status).toBe(201)
+    expect(mockRepo.publish).toHaveBeenCalledWith(expect.objectContaining({ definition: faces }))
+    expect(((await json(res)).data as { definition: unknown }).definition).toEqual(faces)
+  })
+
+  it('400s an unknown question key instead of publishing it silently (0033 B)', async () => {
+    const res = await buildApp().request(
+      '/feedback-forms/post-move-csat',
+      post({
+        title: 'x',
+        definition: { questions: [{ id: 'q', type: 'rating', label: 'x', zzz_nonsense: 'x' }] },
+      }),
+    )
+    expect(res.status).toBe(400)
+    expect((await json(res)).error).toContain('questions[0].zzz_nonsense is not a recognized key')
+    expect(mockRepo.publish).not.toHaveBeenCalled()
+  })
+
   it('400s a bad definition (no write)', async () => {
     const res = await buildApp().request(
       '/feedback-forms/post-move-csat',

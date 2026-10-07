@@ -99,19 +99,27 @@ One PR, because both changes touch the same floor and share one SDK bump.
 - [x] Tests: a valid key on an invented route → 404; a bad key on an invented route → 401; a valid key on a real route → unchanged.
 - [x] Note in the SDK README's error section. No SDK bump needed unless `PegasusApiError` text references the old status.
 
-## Phase 3 — Feedback forms: strict question keys + `display` on `rating` (0033) → next SDK minor
+## Phase 3 — Feedback forms: strict question keys + `display` on `rating` (0033) → SDK 0.47.0
 
-- [ ] B first (tests first) in `apps/api/src/lib/feedback-form.ts`: an allowlist of keys per question type. An unknown key gives an error naming the key and the question path. Run the D6 prod query before merging.
-- [ ] A: `rating` accepts `display: "faces" | "stars" | "numeric"` (default `numeric`) and an optional `scaleLabels` keyed by scale value.
+**Code done 2026-10-07 on `feat/feedback-form-strict-rating-display`.** API 3999/3999, tenant-web 1550/1550, SDK 444. Typecheck, eslint and `ruff check` are clean. Phase 2 merged as #813 (`c26b2b03`).
+
+- **[ ] D6 prod check still owed before merge.** AWS SSO had expired. The query is a read-only scratchpad script (`feedback-form-stray-keys.sh`: `DATABASE_URL` from the prod API Lambda env, then `psql` with `default_transaction_read_only`). It lists stored question keys outside the allowlist, plus top-level keys other than `questions`. The PR is open WITHOUT auto-merge until it runs.
+- **The "drop" was not real.** Neither the API (`PublishBody` is `z.record`, Prisma `Json`) nor the SDK/CLI (`_load_form` passes `definition` through) strips keys. The spec's pulled form had simply been published without `display`. A handler test pins the round trip.
+- **Wider than the plan:** unknown TOP-LEVEL definition keys are rejected too. That covers the same silent-accept class, and the D6 query checks for them as well.
+- The rating control was extracted to `apps/tenant-web/src/components/feedback/RatingInput.tsx`, with component tests. No browser e2e: the e2e suite has no `/f/:token` coverage to extend. An unknown `display` value falls back to numeric, so a newer definition never fails to render on an older build.
+- MCP: no feedback-specific resource exists, and `pegasus://reference/api` is generated from docstrings, so the docstring change covers it.
+
+- [x] B first (tests first) in `apps/api/src/lib/feedback-form.ts`: an allowlist of keys per question type. An unknown key gives an error naming the key and the question path. Run the D6 prod query before merging.
+- [x] A: `rating` accepts `display: "faces" | "stars" | "numeric"` (default `numeric`) and an optional `scaleLabels` keyed by scale value.
   - `faces` with `max - min + 1 > 7` is rejected.
   - Confirm `display` round-trips through publish and pull. The API looks like it stores `definition` raw (`PublishBody` is `z.record(z.string(), z.unknown())`) and `feedback-public` returns it raw. So the drop the spec saw may be on the SDK side (the CLI's form loader or `publish_feedback_form`). Find that first, and don't scope the fix to the API until it's known.
   - `compileResponseSchema` is unchanged: the response is still an integer.
-- [ ] Rendering, `apps/tenant-web/src/routes/f.$token.tsx` (the hosted form renders `rating` as number buttons today):
+- [x] Rendering, `apps/tenant-web/src/routes/f.$token.tsx` (the hosted form renders `rating` as number buttons today):
   - `faces`: least to most satisfied faces, each with an `aria-label` that carries the number.
   - `stars`: a star bar.
   - `scaleLabels` captions the two ends. Omitting `display` renders exactly as today.
   - Component tests for all three modes, plus a browser e2e if the feedback e2e suite covers `/f/:token`.
-- [ ] SDK: the `validate_feedback_form` docstring documents `display`, `scaleLabels` and the unknown-key policy. Also update the README, MCP reference, CLI `feedback-form --help` and OpenAPI.
+- [x] SDK: the `validate_feedback_form` docstring documents `display`, `scaleLabels` and the unknown-key policy. Also update the README, MCP reference, CLI `feedback-form --help` and OpenAPI.
 
 ## Phase 4 — Retire a published workflow (0032) → next SDK minor
 

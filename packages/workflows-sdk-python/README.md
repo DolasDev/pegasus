@@ -393,7 +393,14 @@ Author the form (once), from a working directory holding `form.json`:
   "title": "How did we do?",
   "definition": {
     "questions": [
-      { "id": "rating", "type": "rating", "label": "Rate your crew", "required": true },
+      {
+        "id": "rating",
+        "type": "rating",
+        "label": "Rate your crew",
+        "required": true,
+        "display": "faces",
+        "scaleLabels": { "1": "Very poor", "5": "Excellent" }
+      },
       { "id": "comments", "type": "text", "label": "Anything else?", "maxLength": 500 }
     ]
   }
@@ -424,8 +431,30 @@ async def request_feedback_activity(move: dict) -> dict:
 ```
 
 `create_feedback_request` needs `required_actions = ["CreateFeedbackRequest"]`;
-form authoring (`publish_feedback_form`, …) needs `ManageFeedbackForms`. Question
-types: `rating` (int, default 1..5), `number`, `text`, `select` (options), `boolean`.
+form authoring (`publish_feedback_form`, …) needs `ManageFeedbackForms`. Every
+question takes `id`, `type`, `label` and `required`. The keys each type adds:
+
+| Type      | Keys                                                  |
+| --------- | ----------------------------------------------------- |
+| `rating`  | `min`, `max` (default 1..5), `display`, `scaleLabels` |
+| `number`  | `min`, `max`                                          |
+| `text`    | `maxLength`                                           |
+| `select`  | `options`                                             |
+| `boolean` | none                                                  |
+
+On a `rating`, `display` sets how the hosted form draws the scale:
+
+- `"numeric"` (default): numbered buttons.
+- `"faces"`: least to most satisfied, at most 7 points.
+- `"stars"`: a star bar.
+
+`scaleLabels` captions points on the scale, and the two ends are shown under it.
+The submitted answer is the integer whichever display you pick.
+
+**Keys are strict (0.47.0+):** an unrecognized question key, or a top-level key
+other than `questions`, fails `validate` and `publish` with an error naming it. A
+`valid` therefore means every field you wrote will be honored.
+
 Poll a request with `client.get_feedback_request(request_id)`. The whole feature is
 server-gated behind `FEEDBACK_ENABLED`.
 

@@ -14,10 +14,16 @@
 //
 // Supported question types (v1):
 //   rating  → integer in [min,max]           (default 1..5)
+//             display: faces | stars | numeric (default numeric), scaleLabels
 //   number  → number in [min,max]            (bounds optional)
 //   text    → string, maxLength (default 1000)
 //   select  → string, enum = options[]
 //   boolean → boolean
+//
+// Keys are STRICT: a question key not listed for its type, or a top-level key
+// other than `questions`, is an error. A lenient validator let an author's
+// reasonable guess (`display: "faces"` before it existed) validate clean and
+// publish an immutable version that ignored it (sdk-feedback 0033 B).
 // ---------------------------------------------------------------------------
 
 export type FeedbackQuestionType = 'rating' | 'number' | 'text' | 'select' | 'boolean'
@@ -29,6 +35,25 @@ const QUESTION_TYPES: readonly FeedbackQuestionType[] = [
   'select',
   'boolean',
 ]
+
+/** Keys every question may carry, whatever its type. */
+const COMMON_KEYS = ['id', 'type', 'label', 'required'] as const
+
+/** The per-type keys on top of COMMON_KEYS. Anything else is rejected. */
+const TYPE_KEYS: Record<FeedbackQuestionType, readonly string[]> = {
+  rating: ['min', 'max', 'display', 'scaleLabels'],
+  number: ['min', 'max'],
+  text: ['maxLength'],
+  select: ['options'],
+  boolean: [],
+}
+
+/** How the hosted form draws a rating. The answer is an integer whichever is chosen. */
+export type RatingDisplay = 'faces' | 'stars' | 'numeric'
+const RATING_DISPLAYS: readonly RatingDisplay[] = ['faces', 'stars', 'numeric']
+
+/** Faces read as a sentiment ramp only over a short scale. Wider ones must pick stars or numeric. */
+const MAX_FACES_POINTS = 7
 
 /** A question-id slug — lowercase, dot/underscore/hyphen, ≤64 chars. */
 const QUESTION_ID_RE = /^[a-z][a-z0-9_.-]{0,63}$/
@@ -61,6 +86,11 @@ export function validateFormDefinition(definition: unknown): DefinitionCheck {
   if (!Array.isArray(questions) || questions.length === 0) {
     return { ok: false, errors: ['definition.questions must be a non-empty array'] }
   }
+  for (const key of Object.keys(definition)) {
+    if (key !== 'questions') {
+      errors.push(`definition.${key} is not a recognized key (allowed: questions)`)
+    }
+  }
   const seen = new Set<string>()
   questions.forEach((q, i) => validateQuestion(q, i, seen, errors))
   return errors.length === 0 ? { ok: true } : { ok: false, errors }
@@ -91,6 +121,14 @@ function validateQuestion(q: unknown, i: number, seen: Set<string>, errors: stri
   if ('required' in q && typeof q['required'] !== 'boolean') {
     errors.push(`${at}.required must be a boolean`)
   }
+  const allowed = [...COMMON_KEYS, ...TYPE_KEYS[type as FeedbackQuestionType]]
+  for (const key of Object.keys(q)) {
+    if (!allowed.includes(key)) {
+      errors.push(
+        `${at}.${key} is not a recognized key for a ${type} question (allowed: ${allowed.join(', ')})`,
+      )
+    }
+  }
 
   switch (type as FeedbackQuestionType) {
     case 'rating':
@@ -102,6 +140,7 @@ function validateQuestion(q: unknown, i: number, seen: Set<string>, errors: stri
       if (typeof min === 'number' && typeof max === 'number' && min > max) {
         errors.push(`${at}.min must be ≤ max`)
       }
+      if (type === 'rating') validateRatingPresentation(q, at, errors)
       break
     }
     case 'text': {
@@ -124,6 +163,45 @@ function validateQuestion(q: unknown, i: number, seen: Set<string>, errors: stri
     }
     case 'boolean':
       break
+  }
+}
+
+/** `display` and `scaleLabels` on a rating: presentation only, never the answer's shape. */
+function validateRatingPresentation(
+  q: Record<string, unknown>,
+  at: string,
+  errors: string[],
+): void {
+  const min = typeof q['min'] === 'number' ? q['min'] : DEFAULT_RATING_MIN
+  const max = typeof q['max'] === 'number' ? q['max'] : DEFAULT_RATING_MAX
+  if (min > max) return // already reported; the scale has no points to check against
+
+  const display = q['display']
+  if (display !== undefined) {
+    if (typeof display !== 'string' || !RATING_DISPLAYS.includes(display as RatingDisplay)) {
+      errors.push(`${at}.display must be one of ${RATING_DISPLAYS.join(', ')}`)
+    } else if (display === 'faces' && max - min + 1 > MAX_FACES_POINTS) {
+      errors.push(
+        `${at}.display "faces" supports at most ${MAX_FACES_POINTS} points; this scale has ${max - min + 1}`,
+      )
+    }
+  }
+
+  const labels = q['scaleLabels']
+  if (labels === undefined) return
+  if (!isPlainObject(labels)) {
+    errors.push(`${at}.scaleLabels must be an object of scale point → label`)
+    return
+  }
+  for (const [point, label] of Object.entries(labels)) {
+    // Canonical integer spelling only: the form looks labels up by String(n), so
+    // "01" or "1.0" would validate yet never render.
+    const n = Number(point)
+    if (!Number.isInteger(n) || String(n) !== point || n < min || n > max) {
+      errors.push(`${at}.scaleLabels["${point}"] is not a point on the ${min}..${max} scale`)
+    } else if (typeof label !== 'string' || label.trim().length === 0) {
+      errors.push(`${at}.scaleLabels["${point}"] must be a non-empty string`)
+    }
   }
 }
 
