@@ -43,8 +43,12 @@ is `plans/completed/domain-reference-roleclass.md`, and its transferable lessons
 - [ ] §1.3 item 5 — is `[A8 §9 item 5]` (role cardinality) reachable once a party exists?
 - [ ] §1.2 — **the decision**: fifteenth `aggregate` kind, or stays outside the subject enum?
 - [ ] implementation, gates, tamper pass, cross-area edits, round record
-- [ ] **the ordinal sweep §1.3.1 found** — `fourteen` / `fifteenth` across `src/`, `tests/`, `tools/`
-      and five analysis documents, one of which **renders into `glossary.md`**
+- [ ] **the ordinal sweep §1.3.1 found and enumerates** — `fourteen` / `fifteenth`, where half the
+      hits for the word are a different claim wearing the same number; one of the real ones
+      **renders into `glossary.md`**
+- [ ] **the `PartyId` brand collision** (§1.3.1) — `Brand<string, 'party'>` against
+      `AggregateId<'party'>`'s `Brand<string, 'id:party'>`, two brands for one concept on one record.
+      A §1.2 cost input, not yet decided
 - [ ] **four defects found in passing** (§1.3.1's own list) — three counts and two colliding ordinals
 
 **The previous round (`roleClass`) is fully landed and is NOT this round.** `plans/completed/domain-reference-roleclass.md`.
@@ -66,9 +70,12 @@ is `legal name`'s home**, and it is a two-branch decision with a live precedent 
   field the corpus witnesses only as _"denormalised name+id string pairs on a flat row"_ — i.e. a
   shape `[SD §0]` would read as `[ORIGINAL]` unless the grade is stated.
 
-**Measure before deciding**, as §1.3's own preamble requires: whether any `AssertionType` or published
-record already carries a party's name, and what `[SD §0]`'s rules make of a field witnessed only
-denormalised. **Then** §1.2, whose two branches §1.2 already costs.
+**One measurement is already taken and must not be re-run:** no member of `ASSERTION_TYPES` carries a
+name of anything, and neither `src/vocabulary.ts` nor `src/assertions.ts` has a name field — checked
+2026-10-07. **What is left to measure is the evidence question only:** what `[SD §0]`'s rules make of
+a field the corpus witnesses solely as a denormalised string pair, and therefore what grade a
+`legalName` field could be published at. **Then** §1.2 — which now carries one more cost than §1.2
+itself states, the `PartyId` brand collision in §1.3.1.
 
 **Do not start the implementation before that decision**, and when it is made, re-read §1.3.1's "what
 it deliberately does not decide" — items 2 and 3 there are the two things a round is most likely to
@@ -318,8 +325,8 @@ Measured against `packages/domain-reference/data/identity-schemes.json` (its fiv
 
 **`scac`, `usDotNumber`, `mcNumber`, `agentCode` and `gbloc` are `identity` assertions whose
 `subject` is a party — the table's whole `party`-grain set, gated by name. `legal name` is a field.
-The branch grain and the hierarchy dissolve.** And the assertion half needs **no new machinery
-whatever**, which is the measurement's sharpest result:
+The branch grain and the hierarchy dissolve.** And the assertion half needs **nothing minted beyond
+the enum member itself**, which is the measurement's sharpest result:
 
 > `src/vocabulary.ts` declares `identity`'s canonical subject family as **`anyAggregate`**, whose
 > membership is `AGGREGATE_KINDS` **itself** — quoted from `[SD §7.1]`, _"`subject` may be **any**
@@ -327,9 +334,27 @@ whatever**, which is the measurement's sharpest result:
 > party subject **by construction**. There is nothing to widen, no family to extend, and no row to
 > add to `CANONICAL_SUBJECT_FAMILY`.
 
-**That answers §1.3 item 2 before it is asked, for the assertion half.** Minting the
-`AggregateKind` member is the entire mechanism for all five schemes. No new record type, no new
-fact class, no new subject family.
+**That answers §1.3 item 2 before it is asked, for the assertion half.** Minting the `AggregateKind`
+member is the whole mechanism for all five schemes: **no new record type, no new fact class, no new
+subject family.**
+
+> **It is not, however, "no new machinery" — there is one brand collision and it is §1.2's cost, not
+> a detail.** `PartyId` is `Brand<string, 'party'>`, while `AggregateId<'party'>` would be
+> `Brand<string, 'id:party'>`. So the moment `party` is a kind, **one identity record carries two
+> different brands for the same concept**: `subject` as `AggregateId<'party'>` beside `issuer` and
+> `vocabularyScope.authority` as `PartyId`. Two branches, and the round must pick one in writing:
+>
+> - **`PartyId` becomes `AggregateId<'party'>`** and `partyId()` becomes `makeId('party', …)` — one
+>   concept, one brand. The alias is referenced from `data.ts`, `ids.ts`, `custody.ts`,
+>   `outcomes.ts`, `envelope.ts`, `assertions.ts`, `identity.ts` and `rules/`'s
+>   `identity-schemes.ts`, `authority.ts` and `corrections.ts`, plus two `tests/conformance/*-refuses.ts`
+>   files, `context-map.test.ts` and `generate-context-map.ts` — wide, and probably breaking nothing.
+>   **Read the emitted schema diff before believing that** (§3 item 8): the question is whether
+>   either brand reaches the wire.
+> - **Both brands coexist**, with a stated reason — which would need one, since a reader meeting both
+>   on one record will otherwise read the difference as meaningful.
+>
+> Measured, not decided here. It belongs to §1.2 and is a cost §1 did not carry.
 
 #### What the measurement hands forward, and what it deliberately does not decide
 
@@ -338,6 +363,16 @@ fact class, no new subject family.
    not answer it here — it is §1.2's neighbour, not part of this measurement, and A6's precedent
    (a central deliverable that was a decision **not** to widen a published union, with an empty
    diff) is live.
+
+   > **And there is a THIRD branch that typechecks today, which is why it has to be ruled out in
+   > writing rather than left unmentioned.** `SchemeName` is `OwedCode<'identityScheme'>` and
+   > `schemeName(raw)` casts **any** string, so an identity assertion under a `legalName` scheme
+   > compiles right now. **It is still wrong**: `data/identity-schemes.json` is the catalogue of what
+   > the **external corpus witnesses** — `[A9 §3.2]` refuses to close `identityScheme` precisely so
+   > the table is never read as the list of schemes that exist — and no source publishes a legal name
+   > as a scheme-assigned identifier. Minting one would be the `[ORIGINAL]` guess `[SD §0]` forbids,
+   > reached through a cast rather than through a decision. Say so where a reader will meet it.
+
 2. **The branch grain and the hierarchy must not be described as discharged by this round.** The
    first is `[A8 §9 item 3]`'s and the second has no fact class; §1.3 item 3's warning —
    _"a party entity that cannot tell a company from the individual who signs would not discharge
@@ -385,7 +420,8 @@ None was predicted by this plan, and all four are §3 item 10's shape.
    envelope union"), `tools/generate-glossary.ts` (defect 3, which renders into `glossary.md`),
    `[A7]` and `[SD]`. The other hits are **different fourteens and must be left alone**: `[A6]`'s is
    fourteen _named instruments_, `[A9]`'s two are fourteen _registry pairs_ (and its second hit is
-   A9 retracting that very number), and `[A8]`'s two count the rows of its own _role table_. `fifteenth`
+   A9 retracting that very number), and `[A8]`'s two count the owed **authority rows** of its own §9
+   item 8 ledger (_"Twelve of the fourteen that remain are blocked on the corpus"_). `fifteenth`
    is the smaller and cleaner set — `src/ids.ts`, `src/custody.ts`,
    `tests/conformance/identity-scheme-refuses.ts`, `context-map.md`, `[A8]` and `[A9]` — and every
    one of those six is about an aggregate kind.
