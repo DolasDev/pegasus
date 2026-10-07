@@ -37,8 +37,9 @@ to read this; the next action below creates one.
 State of play). The `Live work` checkboxes are accurate as of 2026-10-07.
 
 **Next action — declare the three `bundling.nodeModules` packages at the root** (the optional
-hardening item below; the PAT item is owner-only, and the two decisions are both settled "leave
-it"). `@napi-rs/canvas`, `@cedar-policy/cedar-wasm` and `expo-server-sdk` are root-resolvable only
+hardening item below; the PAT item is owner-only, and both decisions are now settled — the
+`@playwright/mcp` one by **removing** it in #819, the TENANT-03 one by deliberately leaving it).
+`@napi-rs/canvas`, `@cedar-policy/cedar-wasm` and `expo-server-sdk` are root-resolvable only
 because nothing has displaced them yet, and #783's precedent for `sharp` is exactly this edit.
 Concretely:
 
