@@ -139,8 +139,11 @@ being machine-dependent.
   Playwright HTML report + trace artifacts, which is precisely the input a
   triage agent (or Claude pointed at the artifact) needs. No bespoke e2e AI
   tool needed.
-- **AI spec authoring: yes, genuinely valuable here.** `@playwright/mcp` is
-  already a devDependency (`apps/e2e/package.json:13`). The browser-coverage
+- **AI spec authoring: yes, genuinely valuable here.** Playwright MCP is already
+  wired up — `.claude/settings.json` launches it as `npx @playwright/mcp@latest`.
+  (It used to be an `apps/e2e` devDependency too; that was removed in #819
+  because the `npx` launch never needed it and the declaration dragged a
+  prerelease `playwright` into the tree. The practice is unaffected.) The browser-coverage
   gap (Finding 1) is exactly the toil AI removes well: drive the running app
   via Playwright MCP, then have Claude generate page objects + specs matching
   the existing longhaul PO conventions. This is a _practice_, not
@@ -165,8 +168,8 @@ being machine-dependent.
     working-directory: apps/e2e
     run: |
     ran=$(jq '.stats.expected + .stats.flaky' results.json)
-        echo "Executed (passed) tests: $ran"
-        if [ "$ran" -lt 30 ]; then
+    echo "Executed (passed) tests: $ran"
+    if [ "$ran" -lt 30 ]; then
     echo "::error::Only $ran tests executed — the suite silently skipped (E2E_SKIP / missing env?). Floor is 30."
     exit 1
     fi
@@ -279,11 +282,11 @@ being machine-dependent.
     if: failure()
     env:
     GH_TOKEN: ${{ github.token }}
-      run: |
-        title="QA longhaul nightly failed"
-        existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
-        body="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} — report artifact: playwright-report-qa-longhaul. Traces are in the artifact (trace on-first-retry)."
-        if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body";
+    run: |
+    title="QA longhaul nightly failed"
+    existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+    body="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} — report artifact: playwright-report-qa-longhaul. Traces are in the artifact (trace on-first-retry)."
+    if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body";
     else gh issue create --title "$title" --label e2e-flake --body "$body"; fi
     `
     One open issue, refreshed per failure — gives Unit 12's triage agent

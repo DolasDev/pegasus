@@ -33,10 +33,12 @@ import { existsSync } from 'node:fs'
 import { dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Import from @playwright/test, NOT bare 'playwright': @playwright/mcp hoists a
-// prerelease `playwright` to the repo root that shadows the stable one and asks
-// for a Chromium build nobody installs. @playwright/test is the version the e2e
-// suite already pins and installs browsers for.
+// Import from @playwright/test, NOT bare 'playwright': @playwright/test is the
+// version the e2e suite pins and installs browsers for, and it is the only
+// `playwright` this repo deliberately resolves. Bare 'playwright' picks up
+// whichever copy a dependency happens to have nested — which once meant
+// @playwright/mcp's prerelease, asking for a Chromium build nobody installs
+// (#784; that dependency was dropped in #819, the import style stays).
 import { chromium } from '@playwright/test'
 
 const HERE = dirname(fileURLToPath(import.meta.url))

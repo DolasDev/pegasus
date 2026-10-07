@@ -4,14 +4,13 @@
   "private": true,
   "scripts": {
     "test": "echo 'use npm run e2e'",
-    "//playwright-path": "Both commands below spell out ../../node_modules/.bin/playwright on purpose. Bare `playwright` resolves through this workspace's node_modules/.bin first, and @playwright/mcp (below) depends on a PRERELEASE `playwright` that npm installs right there — so bare invocations get a runner that disagrees with the root @playwright/test the specs import, which fails as 'Playwright Test did not expect test.describe() to be called here' and then 'No tests found'. For install:browsers it is worse than a failure: it would fetch a Chromium build for a version nothing runs. Root .bin/playwright is linked from @playwright/test itself, so runner and library always match.",
+    "//playwright-path": "Both commands below spell out ../../node_modules/.bin/playwright on purpose. Bare `playwright` resolves through this workspace's node_modules/.bin FIRST, so any dependency added here that brings its own `playwright` silently becomes the runner — while the specs keep importing the root @playwright/test. A mismatched pair fails as 'Playwright Test did not expect test.describe() to be called here' and then 'No tests found'; for install:browsers it is worse than a failure, since it would fetch a Chromium build for a version nothing runs. Root .bin/playwright is linked from @playwright/test itself, so runner and library always match. This bit us through @playwright/mcp, whose PRERELEASE `playwright` shadowed the runner here (#784); that devDependency is gone as of #819 — .claude/settings.json launches the MCP server as `npx @playwright/mcp@latest` and never needed it declared — but keep the explicit paths: they are what makes the next such dependency harmless.",
     "e2e": "node ../../node_modules/.bin/playwright test",
     "install:browsers": "node ../../node_modules/.bin/playwright install chromium",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1144.0",
-    "@playwright/mcp": "^0.0.83",
     "@playwright/test": "^1.63.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",

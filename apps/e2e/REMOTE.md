@@ -60,12 +60,13 @@ full run. To run only the safe read-only subset:
 See `apps/e2e/QA.md`.
 
 > Always invoke Playwright as `node ../../node_modules/.bin/playwright`, never bare
-> `playwright` or `npx playwright`. `@playwright/mcp` pulls a **prerelease** `playwright` into
-> `apps/e2e/node_modules`, which shadows the stable runner for anything resolved from this
-> directory and disagrees with the `@playwright/test` the specs import — it fails as
+> `playwright` or `npx playwright`. Those resolve the binary from `apps/e2e/node_modules/.bin`
+> first, so any dependency declared here that brings its own `playwright` silently becomes the
+> runner while the specs keep importing the root `@playwright/test` — a mismatched pair fails as
 > "Playwright Test did not expect test.describe() to be called here" and then "No tests found",
-> which is a zero-test run rather than an obvious error. See the `//playwright-path` note in
-> `apps/e2e/package.json`.
+> which is a zero-test run rather than an obvious error. `@playwright/mcp` and its **prerelease**
+> `playwright` were the shadow that taught us this (#784); the dependency was dropped in #819, but
+> the explicit path stays. See the `//playwright-path` note in `apps/e2e/package.json`.
 
 ## What the staging gate runs today
 

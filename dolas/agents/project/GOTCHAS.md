@@ -2648,12 +2648,14 @@ Found building the 3b.1 provisioner (`apps/api/src/lib/temporal-cloud-ops.ts`,
   deploy on a NotFound. Never write an example ARN in a comment there, and add
   an ARN only once its secret exists.
 
-## `@playwright/mcp` shadows the Playwright runner — never `npx playwright` in `apps/e2e`
+## A nested `playwright` shadows the runner — never `npx playwright` in `apps/e2e`
 
-`apps/e2e` declares `@playwright/mcp`, which depends on a **prerelease** `playwright`. npm
-installs that at `apps/e2e/node_modules/playwright`, so **anything resolving the binary from that
-directory gets the prerelease runner** while the specs still `import from '@playwright/test'` at
-the root's stable version. The mismatch does not announce itself as a version problem:
+A dependency of `apps/e2e` that brings its own `playwright` gets it installed at
+`apps/e2e/node_modules/playwright`, so **anything resolving the binary from that directory gets
+that copy as the runner** while the specs still `import from '@playwright/test'` at the root's
+stable version. `@playwright/mcp` and its **prerelease** `playwright` were the instance that bit
+us — see the resolution at the end of this entry — but the hazard belongs to the directory, not to
+that package. The mismatch does not announce itself as a version problem:
 
 ```
 Error: Playwright Test did not expect test.describe() to be called here.
@@ -2690,10 +2692,19 @@ takes `chromium` from `@playwright/test` rather than bare `playwright` — and h
 applied the same rule to the **commands**. Rules written for one call-site shape do not transfer
 themselves.
 
-Open question, recorded in `plans/todo/ci-blockers-after-security-backlog.md`: `.claude/settings.json`
-launches the MCP server as `npx @playwright/mcp@latest`, so the declared `apps/e2e` dependency's
-only observable effect in CI is this shadowing. Removing it would delete the hazard rather than
-route around it.
+**Resolved in #819 — the dependency is gone.** `.claude/settings.json` launches the MCP server as
+`npx @playwright/mcp@latest`, so declaring it in `apps/e2e/package.json` bought nothing and its only
+observable effect was this shadowing; every bump re-dragged a prerelease runner into the tree.
+Dropping it is a 48-line lockfile deletion with no behaviour change, and the proof is positional
+rather than a passing suite: `apps/e2e/node_modules/.bin/` **no longer exists at all**, and
+`cd apps/e2e && npx --no-install playwright --version` now prints `1.63.0` instead of the alpha.
+
+**But keep invoking it by path anyway.** That is what makes the next such dependency a non-event,
+and the next one will arrive without announcing itself — `@playwright/mcp` was a devDependency
+nobody thought of as a `playwright` provider either. Note also what the lockfile shows after the
+removal: there is **no root `node_modules/playwright`**. The runner comes from
+`node_modules/@playwright/test/node_modules/playwright` via the root `.bin` link, so
+`require('playwright/...')` does not resolve from `apps/e2e` and is not supposed to.
 
 ## Watching a fresh PR's CI: three ways `gh` reports "nothing" when something is wrong
 

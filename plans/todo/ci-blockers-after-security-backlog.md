@@ -1,8 +1,10 @@
 # CI blockers + merge-queue maintenance left after the security backlog
 
-> **Resume point — refreshed 2026-10-06 (late) against `main` @ `c60c00db`.** Every fact below was
-> re-verified that day against the working tree, not carried over. Read "State of play", then
-> pick from "Live work"; each item says what it is, what it would cost, and what I'd do.
+> **Resume point — refreshed 2026-10-07 against `main` @ `be16d7d2`, in the PR that closes the
+> `@playwright/mcp` item (#819).** Read **"Resume here"** immediately below, then "State of play",
+> then pick from "Live work"; each item says what it is, what it would cost, and what I'd do. The
+> body was last fully re-verified 2026-10-06 (late) against `c60c00db`; the 2026-10-07 passes
+> re-verified the health line, the open-PR list and every "Live work" claim, and closed one of them.
 >
 > ⚠️ **This file said "nothing is blocking" at `892f0c53` and was falsified two hours later.** A
 > newly-published **critical** advisory flipped `audit-ci` red on `main` with no code change, and the
@@ -23,10 +25,112 @@
 
 ---
 
+## Resume here
+
+**Where:** primary checkout `/home/steve/repos/pegasus`, branch `main`, last commit
+`be16d7d2 feat(workflows): retire a published workflow (SDK 0.48.0) (#817)`. No worktree is needed
+to read this; the next action below creates one.
+
+**Status:** nothing from the previous session is in flight. Everything it touched is merged:
+#779, #780, #781, #782, #783, #784, #785, #787, #791, #795, #799, #801, #806. The
+`@playwright/mcp` item below is closed by **#819** (this PR). `main` is green through prod (see
+State of play). The `Live work` checkboxes are accurate as of 2026-10-07.
+
+**Next action — declare the three `bundling.nodeModules` packages at the root** (the optional
+hardening item below; the PAT item is owner-only, and the two decisions are both settled "leave
+it"). `@napi-rs/canvas`, `@cedar-policy/cedar-wasm` and `expo-server-sdk` are root-resolvable only
+because nothing has displaced them yet, and #783's precedent for `sharp` is exactly this edit.
+Concretely:
+
+1. `scripts/new-worktree.sh chore root-nodemodules-edges` — but **read the slug trap below first**.
+2. Add the three to the **root** `package.json` `dependencies` at the versions already in the
+   lockfile (`@napi-rs/canvas` 0.1.100, `@cedar-policy/cedar-wasm` 4.13.0, `expo-server-sdk` 6.1.0),
+   the way #783 added `sharp`. Match #783's placement and any `//`-note convention it used.
+3. `npm install --package-lock-only`, then **`git diff --stat package-lock.json`** — three root
+   edges should be a small diff. A 30,000-line change is damage, not a bump: see the last of the
+   Five diagnosis traps.
+4. `npm ci` with the **plain `npm` on Node 24 (11.13.0)**, never `npm@10.8.2` (lesson 2).
+5. `npx vitest run lib/stacks/__tests__/cdk-node-modules-root-resolvable.test.ts` from
+   `packages/infra` — the #783 guard, ~130 ms, is the direct assertion for this change.
+6. The real ceiling is the CDK synth, not `turbo`: from `packages/infra`,
+   `npx turbo run build --filter=@pegasus/domain` then
+   `npx cdk synth PegasusStaging-DocumentsStack -c env=staging --app "npx tsx bin/app.ts"`. See the
+   Verification recipe — and **watch `main`'s Deploy to completion after it merges**, because this
+   is the exact class of change that broke it twice via #762.
+
+**What #819 actually did, and what it proved** (so nobody re-opens it):
+
+- Removed `"@playwright/mcp": "^0.0.83"` from `apps/e2e/package.json`. Lockfile effect: **48
+  deletions, zero additions** — the `apps/e2e` package stanza line plus three nested entries
+  (`@playwright/mcp`, `playwright` 1.64.0-alpha, `playwright-core` 1.64.0-alpha).
+- The proof is **positional, not a passing suite**, because nothing was broken beforehand:
+  `apps/e2e/node_modules/.bin/` **no longer exists at all**, and from `apps/e2e`,
+  `npx --no-install playwright --version` now prints `1.63.0` where it used to print the alpha. The
+  lockfile keeps only `node_modules/@playwright/test/node_modules/playwright`. `--list` still gives
+  10 tests in 4 files.
+- The `node ../../node_modules/.bin/playwright` convention **stays everywhere** — it is what makes
+  the next such dependency a non-event. The five places that explained it in terms of
+  `@playwright/mcp` were rewritten to explain it in terms of the directory instead: `apps/e2e`'s
+  `//playwright-path` note, `deploy.yml`'s staging-gate comment, `apps/e2e/REMOTE.md`,
+  `capture-screens.mjs`, and the GOTCHAS entry (now titled for the mechanism, not the package).
+  `capture-screens.mjs`'s comment was also **wrong** — it said mcp hoisted a prerelease "to the repo
+  root"; it nested under `apps/e2e`, and there is no root `node_modules/playwright` at all.
+- `.claude/settings.json` is untouched: it launches the server as `npx @playwright/mcp@latest`, so
+  Playwright MCP still works and the practice `plans/in-progress/audit-e2e-strategy.md` Finding 7
+  builds on is unaffected (that line was corrected to say so).
+
+**Three traps hit in this session, none of which were in this file:**
+
+- **`scripts/new-worktree.sh` derives the Postgres port from the slug, and collides.** The slug this
+  file told the next agent to use — `drop-playwright-mcp` — hashed to port **5459**, already held by
+  `pegasus-pg-deps-advisory-flip`. Provisioning fails **after creating the worktree and branch**, so
+  the state is half-built; `scripts/rm-worktree.sh <slug>` cleans it and a different slug
+  (`drop-pw-mcp-dep` → 5489) works first time. The script names the colliding container, so the
+  error is self-diagnosing — just do not read it as a bug in your change.
+- **A session hook rejects `git checkout <file>` as a branch switch.** In a worktree,
+  `git checkout package-lock.json` is refused with "Branch switch blocked on the PRIMARY worktree".
+  Use the explicit `git checkout -- package-lock.json`. This matters because reverting the
+  provisioner's lockfile churn is step zero of any dependency work here.
+- **`npm install --package-lock-only` also dropped a stale `"peer": true`** from
+  `apps/api/node_modules/hono` (1 line). That is **correct and was kept**: that node is forced by the
+  root `overrides` entry `"hono": ">=4.13.3 <5"`, not by a peer edge, so npm 11 is fixing stale
+  metadata. Hand-reverting it would only re-churn on the next install. Expect this hunk alongside a
+  genuine lockfile edit and do not go looking for a cause in your own diff.
+
+**In flight (not mine):** `#818` (`fix(pegii): the task stub stops inventing tasks`) and `#145`
+(Cognito/SES, on explicit hold) were the only other open PRs at #819's creation. Four other
+worktrees belong to other streams — one of them (`pegasus-deps-advisory-flip`, parked on
+`chore/parked-dr`) is what owns port 5459. Re-check with `gh pr list --state open` and
+`git worktree list`.
+
+**One dead end still worth not re-walking** (the rest are in State of play's three lessons and in
+`Five diagnosis traps`): **enqueuing was deliberately deferred during a GitHub Actions
+`major_outage`** rather than pushed through. A starved entry holds the head of an `ALLGREEN` queue
+and is dropped at `check_response_timeout_minutes: 60`, blocking every other stream for no benefit —
+and nothing merges during the outage anyway. Check
+`curl -s https://www.githubstatus.com/api/v2/components.json` before diagnosing a broad, uniform CI
+failure as yours.
+
+**Do not commit from the primary checkout.** It stays parked on `main` (see
+`dolas/agents/team/workflow.md`), and a session hook enforces it. This file is edited in the
+worktree and lands with the code, one PR — if a copy of it is dirty in the primary, discard that
+with `git checkout -- plans/todo/ci-blockers-after-security-backlog.md` once the PR carries the
+content.
+
+**Verification still owed:** none from #819 — `turbo typecheck lint test` green, `npm ci` clean on
+npm 11.13.0, the three positional playwright proofs above, and `--list` at 10 tests in 4 files. The
+one thing that cannot be done before merge is **watching `main`'s Deploy to completion**, since this
+touches `apps/e2e`'s tree and that is exactly what the staging E2E gate (#784) exercises.
+
+---
+
 ## State of play
 
-**`main` is green again, through prod, at `c60c00db`** — `CI`, `CodeQL` and `Deploy` all success on
-that commit and on `1fd5f284` before it. Working tree clean.
+**`main` is green through prod at `be16d7d2`** (re-verified 2026-10-07 from the commit's own
+check-runs, **not** `gh run list` — see the traps): **41 success, 1 skipped, 0 failures**, with
+`Lint` (the `audit-ci` gate), `Test`, `Deploy to staging` and `Deploy to prod` all success. One
+`E2E Tests` run was still `in_progress` at checkpoint time. Working tree clean apart from this
+file — see "Resume here".
 
 **But it was RED from ~15:51Z to 16:18Z, and the cause is still live.**
 
@@ -46,7 +150,7 @@ that commit and on `1fd5f284` before it. Working tree clean.
 **The lesson worth more than the fix: this file already contained the answers to two of the three
 traps I hit, and I hit them because I had not read it.** The `gh run list --branch main` staleness and
 the `apps/api/vitest.config.ts` coverage-floor drift are both documented below, and both cost time
-anyway. **Read "Do not commit these" and "Three diagnosis traps" before starting, not after.**
+anyway. **Read "Do not commit these" and "Five diagnosis traps" before starting, not after.**
 
 **Everything from the previous round is still closed.** Nine fixes landed 2026-10-02 → 10-05; detail
 is in GOTCHAS and the PRs, so one line each:
@@ -86,8 +190,9 @@ is in GOTCHAS and the PRs, so one line each:
 ## Live work
 
 **One item now blocks nothing today but guarantees a repeat**, and it is first because it is the
-reason this file's previous revision was wrong. The rest: two decisions, two optional hardening, one
-loose end, one explicitly no-action.
+reason this file's previous revision was wrong. The rest: two decisions (**both now settled** — one
+removed in #819, one deliberately left), one optional hardening (the current next action), one loose
+end, one explicitly no-action.
 
 ### [x] `Dependabot Updates` "erroring" — NOT broken; the premise was wrong (closed 2026-10-07)
 
@@ -148,21 +253,21 @@ independent claims. Confirm the second with a `merge_group` run **for that PR nu
 recording a PR as healthy — see the ⚠️ box in the runbook for why the first claim's usual
 signature lies.
 
-### [ ] Decision: should `@playwright/mcp` stay an `apps/e2e` dependency?
+### [x] Decision: should `@playwright/mcp` stay an `apps/e2e` dependency? — NO, removed (#819)
 
-It pulls a **prerelease** `playwright` into `apps/e2e/node_modules`, which shadows the stable
+It pulled a **prerelease** `playwright` into `apps/e2e/node_modules`, which shadows the stable
 runner for anything resolved from that directory. #784 routed around it by spelling out
 `node ../../node_modules/.bin/playwright` at every call site (root `.bin/playwright` is linked
-from `@playwright/test` itself, so runner and library always agree).
+from `@playwright/test` itself, so runner and library always agree) — but `.claude/settings.json`
+launches the MCP server as `npx @playwright/mcp@latest`, so **the declared dependency's only
+observable effect in CI was the shadowing**, and every Dependabot bump re-dragged a prerelease
+runner into the tree for a server fetched by `npx` anyway.
 
-But `.claude/settings.json` launches the MCP server as `npx @playwright/mcp@latest`, so **the
-declared dependency's only observable effect in CI is the shadowing.** Removing it would delete
-the hazard rather than route around it. Still declared as `^0.0.83` (verified 2026-10-06), and
-Dependabot will keep bumping it.
-
-**What I'd do:** remove it. The routing-around is in place and documented, so this is cleanup
-rather than a fix — but every future bump re-drags a prerelease runner into the tree for a server
-that is fetched by `npx` anyway.
+**Removed in #819** — 48 lockfile deletions, zero additions, no behaviour change. The decision was
+"delete the hazard rather than route around it", and the routing-around **stays**: the explicit
+`.bin` path is what makes the next such dependency a non-event, and it is now documented in terms of
+the directory rather than this one package. Full outcome and the three positional proofs are under
+"Resume here".
 
 ### [ ] Decision: the TENANT-03 **timeout** (the leak half is already fixed)
 
@@ -339,9 +444,16 @@ got swept into a CI hotfix on 2026-10-04 and had to be amended out.
 2. **`apps/e2e/.env.test`** — the worktree's Postgres port.
 3. **`package-lock.json`** — `scripts/new-worktree.sh` runs `npm install`, and local **npm 11**
    prunes a nested `apps/mobile/node_modules/babel-preset-expo` (116 lines) that the committed
-   lockfile keeps. Showed up unrelated in three worktrees. `git checkout package-lock.json`
+   lockfile keeps. Showed up unrelated in three worktrees. `git checkout -- package-lock.json`
    unless you deliberately changed a dependency — this prune is also why #779's lockfile edit was
-   made by hand rather than by `npm install --package-lock-only`.
+   made by hand rather than by `npm install --package-lock-only`. Note the `--`: without it a session
+   hook rejects the command as a branch switch on the primary worktree.
+
+   > A second, _smaller_ lockfile churn to expect and **keep**: `npm install --package-lock-only`
+   > drops a stale `"peer": true` from `apps/api/node_modules/hono` (1 line). That node is forced by
+   > the root `overrides` entry `"hono": ">=4.13.3 <5"`, not by a peer edge, so npm 11 is correcting
+   > the metadata. Observed on #819. Unlike the `babel-preset-expo` prune this is not a structural
+   > change, and hand-reverting it only re-churns on the next install.
 
    > ✅ A fourth, `AGENTS.md`, is **resolved** — see #791 above. It is no longer expected to go
    > dirty on its own.
