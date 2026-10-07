@@ -8,8 +8,13 @@
 > newly-published **critical** advisory flipped `audit-ci` red on `main` with no code change, and the
 > first PR to enter the merge queue after it was **ejected** by a failure that had nothing to do with
 > it. Fixed in **#808**. The state-of-play section below now leads with what that exposed, because the
-> interesting part is not the advisory — it is that **the automation that should have caught it is
-> itself broken, silently**, and this file's own "No Dependabot PRs open" line read as good news.
+> interesting part is not the advisory — it is that **Dependabot was never going to catch it**, and
+> this file's own "No Dependabot PRs open" line read as good news.
+>
+> ⚠️ **Corrected 2026-10-07: the "Dependabot is broken" diagnosis this file carried was wrong.**
+> Every red `Dependabot Updates` run was a security update Dependabot _correctly_ declined; the
+> shell-quote advisory had no PR because GitHub had **not yet raised an alert** for it. See the
+> closed item under Live work.
 >
 > Successor to `plans/completed/security-backlog-and-sort-hardening.md` (fully discharged).
 > Narrative write-ups for everything closed live in `dolas/agents/project/GOTCHAS.md` and the PR
@@ -30,12 +35,13 @@ that commit and on `1fd5f284` before it. Working tree clean.
   has taken, and the **second** on `shell-quote` specifically — both landed _above the floor the
   existing override pinned_. Fixed in **#808**: floor `>=1.9.0` → `>=1.11.0`, 3-line lockfile diff.
   The `//overrides` note now records the stacking pattern, as `brace-expansion`'s does.
-- **`Dependabot Updates` — GitHub's own service run, not one of our workflows — is FAILING, and has
-  been since 2026-10-05.** Failures at `786ece6` (10-05 20:59Z), `3399b3c` (10-06 13:07Z) and
-  `1fd5f284` (10-06 16:17Z); the last success was `786ece6` at 21:56Z. Annotation is just "Dependabot
-  encountered an error performing the update". **This is why the critical advisory had no Dependabot
-  PR**, and why this file's "No Dependabot PRs open" line was a symptom rather than a clean bill of
-  health. See Live work.
+- **`Dependabot Updates` shows red runs, and they are NOT an outage** (diagnosed 2026-10-07). Each
+  failure is a per-advisory security update that cannot be done — `security_update_not_possible`
+  (katex: `mermaid@11.17.2 requires katex@^0.16.47`; brace-expansion: the copy bundled in
+  aws-cdk-lib) or `NoChangeError` (grpc-js: npm will not re-resolve it, as `audit-ci.jsonc`
+  records). The weekly version-update runs succeeded throughout. **The critical shell-quote advisory
+  had no PR because it had no alert**: published 13:40Z, fixed by #808 at 16:17Z, and GitHub turns an
+  advisory into an alert ~24h after publication (median of the last 30), sometimes weeks. See Live work.
 
 **The lesson worth more than the fix: this file already contained the answers to two of the three
 traps I hit, and I hit them because I had not read it.** The `gh run list --branch main` staleness and
@@ -83,36 +89,39 @@ is in GOTCHAS and the PRs, so one line each:
 reason this file's previous revision was wrong. The rest: two decisions, two optional hardening, one
 loose end, one explicitly no-action.
 
-### [ ] `Dependabot Updates` is erroring — the dependency safety net is down
+### [x] `Dependabot Updates` "erroring" — NOT broken; the premise was wrong (closed 2026-10-07)
 
-**Not one of our workflows.** It is GitHub's Dependabot service run, triggered `dynamic`, and it
-appears in `gh run list` as `Dependabot Updates`. It has failed on every run since 2026-10-05
-(`786ece6` 20:59Z, `3399b3c` 13:07Z, `1fd5f284` 16:17Z); last success `786ece6` 21:56Z. The job log
-annotation is only **"Dependabot encountered an error performing the update"** — the useful detail is
-in the job's own expanded log, which `gh run view --log-failed` does not surface for a service run.
+**What the red runs actually are.** Read with `gh api repos/DolasDev/pegasus/actions/jobs/<job-id>/logs`
+(`gh run view --log` returns zero lines for a service run — see GOTCHAS). Every failure since
+2026-10-01 is a **security** job for one alert that cannot be satisfied:
 
-**Why it is the highest-consequence item on this page.** Memory and this file both say "check for an
-existing Dependabot PR first — it opens one within about a minute of the alert" (see "Don't redo
-these"). On 2026-10-06 a **critical** advisory was live and there was **no PR**. That absence read as
-"nothing to do" when it meant "the opener is broken". So the repo currently has open alerts, no update
-PRs, and **no warning before the next advisory flips `audit-ci` red mid-merge** — which is exactly how
-#807 got ejected.
+| Run          | Package         | Error                                     | Why                                                                                                 |
+| ------------ | --------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 10-06 ×3     | katex           | `security_update_not_possible`            | `mermaid@11.17.2 requires katex@^0.16.47`; fix is 0.18.2. Mermaid 12.1.0 still declares `^0.16.47`. |
+| 10-02        | brace-expansion | `security_update_not_possible`            | resolves to 5.0.9 — the copy bundled in aws-cdk-lib, which overrides cannot reach                   |
+| 10-01, 10-02 | @grpc/grpc-js   | `NoChangeError` ("No files were updated") | the same no-op re-resolution `audit-ci.jsonc`'s GHSA-m9gg entry records                             |
+| 10-05 20:59Z | aws-cdk-lib     | unknown (log expired: `BlobNotFound`)     | succeeded on the same commit 57 min later — transient                                               |
 
-**What I'd do, in order:**
+The weekly **version-update** runs (npm, pip, actions, 10-02 → 10-04) all succeeded. There is nothing
+to fix in `.github/dependabot.yml`.
 
-1. Open the failing run in the browser (`gh run view <id> --web`) and read the expanded **Run
-   Dependabot** step; the API does not return it for service runs.
-2. Check `.github/dependabot.yml` against the current overrides — **#808 added a `shell-quote`
-   floor and #799-era work changed others**, and a `versioning-strategy` / `ignore` entry that cannot
-   be satisfied is a plausible cause of "error performing the update".
-3. Check the Insights → Dependency graph → Dependabot tab for a per-ecosystem error; it reports a
-   reason the Actions run does not.
-4. **Do not** treat "no Dependabot PR" as evidence of no advisory again until this is green. Until
-   then, the manual check is `npx --no-install audit-ci --config ./audit-ci.jsonc` locally before
-   enqueuing anything.
+**Why shell-quote had no PR — the real lesson.** No shell-quote alert exists in any state.
+`GHSA-pqg4-j6r4-53mv` was published 13:40Z on 10-06; `audit-ci` (npm's bulk advisory endpoint) went
+red ~15:51Z; #808 merged 16:17Z. GitHub had not yet raised an alert, so Dependabot had nothing to act
+on. Advisory → alert lag over the last 30 alerts: **median ~24h**, min 0.1h, and 12–107 days for
+five of them (sprintf-js, braces, node-forge, fflate, image-size; cause not established).
 
-**Distinct from `DEPENDABOT_AUTOMERGE_PAT` below.** That one is about the queue not building a
-_bot-enqueued_ PR. This one is about the bot never opening a PR at all. Fixing either leaves the other.
+**So, permanently, not "until it's green":** "no Dependabot PR" never means "no advisory". `audit-ci`
+sees a same-day advisory hours to days before Dependabot does. The pre-enqueue check stays:
+`npx --no-install audit-ci --config ./audit-ci.jsonc`.
+
+**The red runs should stop.** Security jobs are driven by **open** alerts, and all nine were dismissed
+on 2026-10-07 with reasons (see "Don't redo these"). Unverified at the time of writing: no push to
+`main` had happened since. If a `for katex` run goes red again after one, the dismissal theory is wrong.
+
+**Optional, not started:** a daily `schedule:` job running `audit-ci` on `main` (precedent:
+`override-expiry.yml`) would turn a same-day advisory into a red mark on `main` instead of an
+ejection of whichever PR enters the queue next.
 
 ### [ ] `DEPENDABOT_AUTOMERGE_PAT` — owner-only, and the highest-leverage item left
 
@@ -346,8 +355,9 @@ dependency work — either check alone would have missed one of them.
 - **The `audit-ci` high-advisory gate** (`@grpc/grpc-js`, `brace-expansion` ×3, `node-forge`) was
   cleared by **#755** and **#760**. `main`'s gate passes. The `brace-expansion` allowlist entries
   were re-pointed from the three old GHSAs to the new ones, because `aws-cdk-lib` still bundles a
-  copy an override cannot reach. Open Dependabot **alerts** for these remain, by design — an open
-  alert is not a failing gate.
+  copy an override cannot reach. Their Dependabot **alerts** — and katex, sprintf-js, braces,
+  node-forge — were **dismissed 2026-10-07** with a reason and a "revisit when" comment each; zero open.
+  Dismissed alerts do not reopen on their own, so those comments are the only reminder.
 - **A PyJWT bump** — Dependabot files its PR within about a minute of the alert. #751 was opened
   as a duplicate of **#750** and closed.
 
