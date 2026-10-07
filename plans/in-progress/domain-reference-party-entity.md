@@ -7,11 +7,131 @@ It replaces `plans/in-progress/domain-reference-roleclass.md`, whose round lande
 is `plans/completed/domain-reference-roleclass.md`, and its transferable lessons are carried into §3,
 §4 and §6 of this file rather than left to be rediscovered.
 
-> **Current as of 2026-10-06 (late), `main` @ `c60c00db`.** Three PRs landed after this file was first
-> written and two of them were not domain-reference work at all: **#804** the `roleClass` round,
-> **#808** a critical-advisory fix that had turned `main` red, and **#807** two new `GOTCHAS.md`
-> entries. §6's "Workflows and CI" carries what the detour taught, because the next round will meet
-> the same three hazards and two of them are invisible from inside this package.
+---
+
+## Resume here
+
+**Checkpointed 2026-10-07.** Everything below was checked in the session that wrote it, not recalled.
+
+### Where
+
+- **Branch:** `chore/parked-dr` — this worktree's **parked** branch, fast-forwarded to `main`. It is
+  **not** a work branch and holds none of this round's work. The round has no branch yet.
+- **Worktree:** `/home/steve/repos/pegasus-deps-advisory-flip` (Postgres `pegasus-pg-deps-advisory-flip`
+  on port **5459**, migrations applied 2026-10-06 and current as of then).
+- **Last commit:** `be16d7d2 feat(workflows): retire a published workflow (SDK 0.48.0) (#817)` —
+  i.e. `main`'s head, not this round's.
+
+### Status — THIS ROUND HAS NOT STARTED
+
+- [ ] §1.3 item 1 — are the party's attributes **fields** or `identity` **assertions**?
+- [ ] §1.3 item 2 — does the party need a fact class of its own, or is it a bare subject?
+- [ ] §1.3 item 3 — take or explicitly decline `[A8 §9 item 3]` (person vs organisation vs crew grain)
+- [ ] §1.3 item 4 — what does `custody.ts`'s `TODO([A8 §9 items 1-3])` actually need?
+- [ ] §1.3 item 5 — is `[A8 §9 item 5]` (role cardinality) reachable once a party exists?
+- [ ] §1.2 — **the decision**: fifteenth `aggregate` kind, or stays outside the subject enum?
+- [ ] implementation, gates, tamper pass, cross-area edits, round record
+
+**The previous round (`roleClass`) is fully landed and is NOT this round.** `plans/completed/domain-reference-roleclass.md`.
+
+### Next action
+
+**Run §1.3 item 1, because it is the measurement most likely to invalidate §1's framing.** Concretely:
+read `[A8 §9 item 1]` (`docs/domain-reference/analysis/A8-authority-skeleton.md`, the paragraph naming
+"legal name, DOT/MC number, SCAC … agent code, the branch grain … and the hierarchy"), then classify
+each attribute it names — **legal name, DOT number, MC number, SCAC, agent code, the branch grain,
+the hierarchy** — against `packages/domain-reference/data/identity-schemes.json`'s rows and
+`[SD §7.1]`. (Enumerated rather than counted: A8's prose says "DOT/MC number" as one phrase while
+`data/identity-schemes.json` carries `usDotNumber` and `mcNumber` as **two** schemes, so any tally of
+"the party's fields" is wrong before you start — §3 item 10.) The question to answer in writing before
+designing anything:
+
+> How many of the party's named attributes are **fields on an aggregate**, and how many are
+> `identity` **assertions whose subject is the party**?
+
+`[A9 §3.6]`'s whole finding is that they are the latter, and
+`data/identity-schemes.json` already carries five `party`-grain rows (`scac`, `usDotNumber`,
+`mcNumber`, `gbloc`, `agentCode`) each blocked on this item. **A party entity that carried SCAC as a
+field would re-make the mistake A9 found** — so if the answer is "assertions", this round may mint one
+`AggregateKind` member and **no new record type at all**, and its diff would be five blockers coming
+off plus one enum member.
+
+Do **not** start with §1.2's schema decision; it is downstream of this measurement.
+
+### Uncommitted work
+
+**This file's own `## Resume here` section, and nothing else.** The checkpoint was written under
+`/keep-going`, which is explicitly checkpoint-only — "do not start new implementation, do not commit,
+do not push" — so the edit is deliberately left in the working tree of
+`/home/steve/repos/pegasus-deps-advisory-flip` on `chore/parked-dr`.
+
+**Consequence worth knowing:** a _fresh worktree_ provisioned by `scripts/workstream-start.sh` branches
+from `origin/main` and will **not** contain this section. Either resume in this worktree, or commit
+this file first (`git add plans/in-progress/domain-reference-party-entity.md`) and let
+`workstream-start.sh` seed the committed version. Nothing of the round itself exists yet.
+
+### In flight
+
+**Nothing of this round.** Everything this session opened is merged and verified on `main`:
+
+| PR   | What                                       | Merge commit |
+| ---- | ------------------------------------------ | ------------ |
+| #804 | the `roleClass` round, catalog `0.6.3`     | `89f4767a`   |
+| #808 | `shell-quote >=1.11.0` — critical advisory | `1fd5f284`   |
+| #807 | two new `GOTCHAS.md` entries               | `c60c00db`   |
+| #810 | both resume points refreshed               | `fb57d5ae`   |
+
+Re-check with `gh pr view <N> --json state,mergedAt,mergeCommit`. No branches of mine survive; no
+watchers, deploys or queue entries are outstanding.
+
+### Decisions & dead ends from the session that wrote this
+
+- **`chore/parked-dr` was fast-forwarded to `main`** so this worktree's files are current. It had no
+  commits of its own, so this restores its parked meaning rather than changing anything.
+- **`.claude/skills/keep-going/` does not exist on `chore/parked-dr`'s old tip**, which is why the
+  skill was not loadable until the fast-forward. If a skill the repo has is missing from a session,
+  check whether the worktree is behind.
+- **Two worktrees were deliberately left alone** on the user's instruction: `pegasus-a9-identity`
+  (#746 merged) and `pegasus-ringcentral-forward-skip-unconfigured` (#728 merged) both hold
+  merged-and-deleted branches and are teardown candidates for a session that owns them
+  (`scripts/rm-worktree.sh <slug>`). `pegasus-retire-workflow` is **live** — do not touch.
+- **Eleven merged local branches were deleted; four were kept and why matters.**
+  `chore/enable-ses-invite-email` is PR #145, on hold for the SES sandbox.
+  `chore/archive-feedback-requests-plan` is PR **#536 CLOSED UNMERGED** — a `gone`/deleted remote ref
+  and a closed-unmerged PR look identical from `git branch -vv`, so **verify PR state, never the
+  tracking marker**. (Its one commit is a stale rename of a file `main` already has, so it is moot.)
+  `pr505` has no upstream and one commit not on `main`; unverifiable, so left.
+
+### Gotchas the next step depends on
+
+- **§0's numbers were re-measured 2026-10-07 and all still hold**: catalog `0.6.3`, 34 published record
+  types, 33 of 87 sources analysed, 14 rounds landed, owed vocabularies
+  `identityScheme` / `roleClass` / `unitOfMeasure` with **two refused** and `unitOfMeasure` the only
+  `pending` one. **No other session has touched `docs/domain-reference` or
+  `packages/domain-reference` since #804** — verified with
+  `git log 89f4767a..HEAD -- docs/domain-reference packages/domain-reference`, whose only hit is #810.
+- **`npm install` is already current in this worktree** after the fast-forward (`npm install --dry-run`
+  changes 1 package; `shell-quote@1.12.0` resolved). A _fresh_ worktree will need a real `npm install`.
+- **Read §6's "Workflows and CI" before pushing anything.** A `docs/` + `packages/domain-reference/`
+  PR path-filters `Lint` away, passes every branch check, and can then be **ejected** from the merge
+  queue by a pre-existing `main` failure. Check `main`'s head first:
+  `gh api "repos/DolasDev/pegasus/commits/$(git rev-parse origin/main)/check-runs?per_page=50"`.
+- **`Dependabot Updates` is still failing** (since 2026-10-05), so no bot PR no longer means no
+  advisory. #816 added a daily `audit-ci` run on `main` that files an issue, which mitigates but does
+  not fix it. Run `npx --no-install audit-ci --config ./audit-ci.jsonc` before enqueuing.
+- **Never commit `apps/api/vitest.config.ts`.** Running the api suite locally lets the coverage
+  ratchet raise the floors, and a locally-measured floor ejects a later PR.
+- **`tests/conformance/identity-scheme-refuses.ts` is written to be INVERTED by this round** — its
+  `@ts-expect-error` on `partyIsNotAnAggregate` stops compiling the day `party` becomes an
+  `AggregateKind`. That is the deliverable, not an obstacle.
+
+### Verification still owed
+
+Nothing for this round — it has not started. The gate commands are in §2; `tsc`, `eslint`, the vitest
+suite, Alloy, the three generators and `prettier --check` were all green at `#810` and nothing has
+touched the package since.
+
+---
 
 > **§1 IS A SEED, AND IT SAYS SO.** Unlike the last plan, §1 here is **not** a measured design. It
 > names a deliverable the corpus has owed since A8 was written, and **the one decision it turns on is a
