@@ -159,22 +159,31 @@ One PR, because both changes touch the same floor and share one SDK bump.
 
 Applies only if D7 is approved. This changes `services/pegii-tasks.ts`, which pulse Phase 6 deletes.
 
-- [ ] A close matching a task that was never listed or created → `404`. No row is created, and no usage is metered.
-- [ ] Every stub row carries `stub: true`, and the SDK docstrings for `list_tasks`, `get_task` and `close_task` say so.
-- [ ] Add the close route to OpenAPI and give `listPegiiTasks` a response schema.
+**Done 2026-10-07 on `fix/honest-pegii-task-stub`.** Phase 4 merged as #817 (`be16d7d2`), and SDK 0.48.0 is published. API 4019/4019, SDK 452.
+
+- `closeTask` returns null instead of fabricating a row, and the route answers `404 TASK_NOT_FOUND`. A new real-DB case in `__tests__/usage-meter.integration.test.ts` proves the miss is not metered.
+- `toTaskResponse` sets `stub: true`.
+- OpenAPI gains `closePegiiTask` plus list/get response descriptions. SDK docstrings, README and CHANGELOG (0.48.1) are updated; no SDK code changed.
+- The "Pulse plan Phase 6" ACs below were folded into `nw-pulse-texting-platform.md` Phase 6 in this same PR, with a version-drift note.
+
+- [x] A close matching a task that was never listed or created → `404`. No row is created, and no usage is metered.
+- [x] Every stub row carries `stub: true`, and the SDK docstrings for `list_tasks`, `get_task` and `close_task` say so.
+- [x] Add the close route to OpenAPI and give `listPegiiTasks` a response schema.
 
 ## Pulse plan Phase 6: add these ACs (0046)
 
+**Folded in 2026-10-07**, alongside Phase 5. The checkboxes below mean "added to the pulse plan", not "built". The work is tracked there.
+
 `plans/in-progress/nw-pulse-texting-platform.md` Phase 6 already covers `create_task`, close by id, `list_tasks` filters and the desktop guard fix. Spec 0046 adds the items below. Fold them into that plan's Phase 6 checklist; don't duplicate the work here.
 
-- [ ] Task ids are opaque per-instance ids (the `Tasks.id` PK), never `task_{orderId}_{taskType}`.
-- [ ] `close_task`: pass exactly one of `task_id` or `(order_id, task_type)`, or get a `ValueError` before any request. An `(order_id, task_type)` matching two or more open tasks → `409` naming the candidate ids. A match on nothing → `404`. A genuine repeat close still returns `alreadyClosed: true`.
-- [ ] Metering: a refused close (404 or 409) and an `alreadyClosed` replay don't meter. Only a real close does.
-- [ ] `list_tasks` for a nonexistent order → `404` (or `502 PEGII_SOURCE_*`). An order with no tasks returns `[]`. Nothing is minted at read time.
-- [ ] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`.
-- [ ] `create_task` is in `testing._MUTATIONS` and captured under `--dry-run`.
-- [ ] OpenAPI documents the create route; the MCP `pegasus://reference/api` resource lists `create_task` and the new `close_task` signature.
-- [ ] **Version drift:** that plan still names SDK 0.44.0 and 0.45.0 for Phases 6 and 7. #792 and #793 have already used both. Renumber to "next free minor at merge".
+- [x] Task ids are opaque per-instance ids (the `Tasks.id` PK), never `task_{orderId}_{taskType}`.
+- [x] `close_task`: pass exactly one of `task_id` or `(order_id, task_type)`, or get a `ValueError` before any request. An `(order_id, task_type)` matching two or more open tasks → `409` naming the candidate ids. A match on nothing → `404`. A genuine repeat close still returns `alreadyClosed: true`.
+- [x] Metering: a refused close (404 or 409) and an `alreadyClosed` replay don't meter. Only a real close does.
+- [x] `list_tasks` for a nonexistent order → `404` (or `502 PEGII_SOURCE_*`). An order with no tasks returns `[]`. Nothing is minted at read time.
+- [x] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`.
+- [x] `create_task` is in `testing._MUTATIONS` and captured under `--dry-run`.
+- [x] OpenAPI documents the create route; the MCP `pegasus://reference/api` resource lists `create_task` and the new `close_task` signature.
+- [x] **Version drift:** that plan still names SDK 0.44.0 and 0.45.0 for Phases 6 and 7. #792 and #793 have already used both. Renumber to "next free minor at merge".
 
 ## Phase 6 — Order write-back (0044 A/B): movemanager first, then pegasus
 

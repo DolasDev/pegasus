@@ -106,6 +106,11 @@ function toTaskResponse(task: TaskRecord) {
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
     closedAt: task.closedAt,
+    // Every task row is synthesized by the in-memory stub (services/pegii-tasks)
+    // until the real pegII task bridge lands (NW pulse Phase 6), which drops
+    // this flag. It is on the row so no caller can mistake a fake for pegII
+    // state (sdk-feedback 0046 C).
+    stub: true as const,
   }
 }
 
@@ -283,11 +288,23 @@ pegiiRuntimeHandler.post(
     const tenantId = c.get('tenantId')
     const { orderId, taskType, reason } = c.req.valid('json')
 
-    const { task, alreadyClosed } = closeTask(tenantId, {
+    const result = closeTask(tenantId, {
       orderId,
       taskType,
       reason: reason ?? null,
     })
+    if (!result) {
+      // A miss is a 404, never a fabricated success. The meter skips non-2xx,
+      // so a close that closed nothing is not billed (sdk-feedback 0046 B).
+      return c.json(
+        {
+          error: `No ${taskType} task on order ${orderId}`,
+          code: 'TASK_NOT_FOUND',
+        },
+        404,
+      )
+    }
+    const { task, alreadyClosed } = result
     logger.info('pegII task closed', { orderId, taskType, alreadyClosed, tenantId })
     return c.json({ data: { ...toTaskResponse(task), alreadyClosed } })
   },

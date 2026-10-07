@@ -342,6 +342,19 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 - [ ] SDK `create_task(...)` with `dedup_key` → pegII `idempotencyKey`; `list_tasks` gains filters; `close_task(task_id=…)`.
 - [ ] Discoverability checklist.
 
+**Acceptance criteria from sdk-feedback 0046** (folded in 2026-10-07 by `plans/in-progress/sdk-feedback-open-set.md`; the interim stub fixes shipped in its Phase 5, SDK 0.48.1):
+
+- [ ] Task ids are opaque per-instance ids (the `Tasks.id` PK), never `task_{orderId}_{taskType}`. Two same-type tasks on one order have different ids.
+- [ ] `close_task`: exactly one of `task_id` or `(order_id, task_type)`, else `ValueError` before any request. An `(order_id, task_type)` matching two or more OPEN tasks → `409` naming the candidate ids, with nothing closed. A match on nothing → `404 TASK_NOT_FOUND` (the stub already does this). A genuine repeat close → `alreadyClosed: true`.
+- [ ] Metering: a refused close (404 or 409) and an `alreadyClosed` replay don't meter. Only a real close does. The usage-meter integration test already pins the 404 case.
+- [ ] `list_tasks` for a nonexistent order → `404` (or `502 PEGII_SOURCE_*`). An order with no tasks → `[]`. Nothing is minted at read time, and `createdAt` is stable and earlier than the read.
+- [ ] Drop `stub: true` from `toTaskResponse` (`handlers/pegii-runtime.ts`) when the stub is replaced.
+- [ ] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`.
+- [ ] `create_task` is in `testing._MUTATIONS` and captured under `--dry-run`.
+- [ ] OpenAPI documents the create route; `closePegiiTask` gains the `taskId` form and the 409. The MCP `pegasus://reference/api` resource lists `create_task` and the new `close_task` signature.
+
+**Version note:** SDK 0.44.0 and 0.45.0, named in this plan's Phase 6/7 headings, were used by #792 and #793. 0.46.0–0.48.1 were used by the sdk-feedback open-set plan. Take the next free minor at merge.
+
 ## Phase 7 — Memos + text read-mirror + conversation links → SDK 0.45.0
 
 **Constraint (S7):** a trigger on `memos` matches `%REJECTED%` in `action` and spawns a system memo, so `action` must carry a fixed template, never raw customer text. Put the reply excerpt in `regarding` or `next_action`, whichever the desktop shows. Confirm which one in the movemanager plan.

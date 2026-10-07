@@ -442,4 +442,50 @@ describe('POST /pegii/tasks/close', () => {
     const res = await app.request('/pegii/tasks/close', post({ orderId: '', taskType: 'x' }))
     expect(res.status).toBe(400)
   })
+
+  // sdk-feedback 0046 B. A close that matched nothing used to answer 200 with
+  // a row created and closed in the same millisecond, so "I closed the
+  // follow-up" and "there was no follow-up" looked identical, and closing
+  // nothing was billable. A miss is now a 404 that creates nothing.
+  it('404s a task type that does not exist on the order, and creates nothing', async () => {
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request(
+      '/pegii/tasks/close',
+      post({ orderId: 'zzz-probe-order-0046', taskType: 'never_existed_type' }),
+    )
+
+    expect(res.status).toBe(404)
+    expect(await json(res)).toMatchObject({ code: 'TASK_NOT_FOUND' })
+    const list = (await json(await app.request('/pegii/tasks?orderId=zzz-probe-order-0046')))[
+      'data'
+    ] as Array<Record<string, unknown>>
+    expect(list.map((t) => t['taskType'])).not.toContain('never_existed_type')
+  })
+})
+
+// sdk-feedback 0046 C, interim. Until the real pegII task bridge lands (NW pulse
+// Phase 6), every task row is synthesized. It has to SAY so, because a silent
+// fake is what let this surface reach a customer proposal.
+describe('stub task rows are marked', () => {
+  it('carries stub: true on list, get and close', async () => {
+    const app = buildApp(['workflow_runtime'])
+
+    const list = (await json(await app.request('/pegii/tasks?orderId=ord-1')))['data'] as Array<
+      Record<string, unknown>
+    >
+    expect(list.length).toBeGreaterThan(0)
+    expect(list.every((t) => t['stub'] === true)).toBe(true)
+
+    const one = await json(await app.request(`/pegii/tasks/${String(list[0]?.['id'])}`))
+    expect((one['data'] as Record<string, unknown>)['stub']).toBe(true)
+
+    const closed = await json(
+      await app.request(
+        '/pegii/tasks/close',
+        post({ orderId: 'ord-1', taskType: 'date_confirmation' }),
+      ),
+    )
+    expect((closed['data'] as Record<string, unknown>)['stub']).toBe(true)
+  })
 })

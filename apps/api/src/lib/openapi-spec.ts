@@ -154,12 +154,24 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     'Get a pegII salesman (ReadSalesman)',
     { tags: ['pegII'], path: ['salesmanId'] },
   ),
-  '/api/v1/pegii/tasks': apiKeyGet('listPegiiTasks', 'List pegII tasks (ReadTask)', {
-    tags: ['pegII'],
-  }),
+  '/api/v1/pegii/tasks': apiKeyGet(
+    'listPegiiTasks',
+    'List pegII tasks (ReadTask). STUB: rows are synthesized and carry stub: true',
+    {
+      tags: ['pegII'],
+      query: [
+        { name: 'orderId', description: 'Scope to one order' },
+        { name: 'status', description: 'open | closed' },
+      ],
+      responseDescription:
+        '{data: [{id, orderId, taskType, status: "open"|"closed", reason, createdAt, updatedAt, closedAt, stub: true}], meta: {count}}. Until the real pegII task bridge lands, every row is synthesized in memory (two seeded types per order) and marked stub: true.',
+    },
+  ),
   '/api/v1/pegii/tasks/{taskId}': apiKeyGet('getPegiiTask', 'Get a pegII task (ReadTask)', {
     tags: ['pegII'],
     path: ['taskId'],
+    responseDescription:
+      '{data: task} (same shape as listPegiiTasks rows, stub: true); 404 if unknown',
   }),
   '/api/v1/orders': apiKeyGet('listOrders', 'List orders — legacy M2M order surface (ReadOrder)', {
     tags: ['Orders'],
@@ -1691,6 +1703,24 @@ export function getOpenApiSpec() {
             { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
           ],
           responses: { '201': { description: 'New execution started ({data: execution})' } },
+        },
+      },
+      '/api/v1/pegii/tasks/close': {
+        post: {
+          operationId: 'closePegiiTask',
+          summary: 'Close an order task by (orderId, taskType) (CloseTask, billable)',
+          description:
+            'Body: { orderId, taskType, reason? }. Idempotent: closing an already-closed task is 200 with alreadyClosed: true, and that replay is not billed. A close that matches no task is 404 TASK_NOT_FOUND. Nothing is created, and nothing is billed. STUB: until the real pegII task bridge lands, tasks are synthesized in memory and carry stub: true.',
+          tags: ['pegII'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '200': {
+              description: '{data: {...task, stub: true, alreadyClosed: boolean}}',
+            },
+            '400': { description: 'VALIDATION_ERROR' },
+            '403': { description: 'Missing CloseTask' },
+            '404': { description: 'TASK_NOT_FOUND: no task of that type on the order' },
+          },
         },
       },
       '/api/v1/workflows/retire': {
