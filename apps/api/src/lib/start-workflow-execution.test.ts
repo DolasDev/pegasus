@@ -144,6 +144,9 @@ const curatedWorkflow: WorkflowRow = {
   artifactSha256: 'abc123',
   artifactSizeBytes: 1024,
   executable: true,
+  status: 'ACTIVE',
+  retiredAt: null,
+  retiredByUserId: null,
   createdAt: now,
   updatedAt: now,
 }

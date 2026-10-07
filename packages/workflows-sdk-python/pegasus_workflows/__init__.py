@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         PegasusApiError,
         PegasusClient,
         SmsChannelNotConnected,
+        WorkflowInUse,
         WorkflowStateConflict,
     )
     from .manifest import Manifest, ManifestError, load_manifest
@@ -43,6 +44,7 @@ __all__ = [
     "PegasusApiError",
     "WorkflowStateConflict",
     "SmsChannelNotConnected",
+    "WorkflowInUse",
     "Manifest",
     "ManifestError",
     "load_manifest",
@@ -60,6 +62,7 @@ _LAZY_EXPORTS = {
     "PegasusApiError": "api",
     "WorkflowStateConflict": "api",
     "SmsChannelNotConnected": "api",
+    "WorkflowInUse": "api",
     "Manifest": "manifest",
     "ManifestError": "manifest",
     "load_manifest": "manifest",

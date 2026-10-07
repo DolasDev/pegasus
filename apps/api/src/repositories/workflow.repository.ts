@@ -59,9 +59,40 @@ export type WorkflowRow = {
    * rows to the tenant runner (curated names → stdlib lane).
    */
   executable: boolean
+  /** ACTIVE, or RETIRED (sdk-feedback 0032). Default reads return ACTIVE rows only. */
+  status: WorkflowStatus
+  retiredAt: Date | null
+  retiredByUserId: string | null
   createdAt: Date
   updatedAt: Date
 }
+
+export type WorkflowStatus = 'ACTIVE' | 'RETIRED'
+
+/** Opt-in for the reads that must still see retired rows: execution history, triggers. */
+export type RetiredFilter = { includeRetired?: boolean }
+
+const activeOnly = (opts?: RetiredFilter) =>
+  opts?.includeRetired ? {} : { status: 'ACTIVE' as const }
+
+/** A row named in a retire outcome. */
+export type RetireRef = { id: string; name: string; version: string }
+
+/** What blocks a retire: a live binding that would silently stop working. */
+export type RetireBlocker = { id: string; workflowId: string; version: string }
+
+export type RetireOutcome =
+  | { kind: 'not_found' }
+  | { kind: 'blocked'; enabledTriggers: RetireBlocker[]; openExecutions: RetireBlocker[] }
+  | {
+      kind: 'retired'
+      retired: RetireRef[]
+      alreadyRetired: RetireRef[]
+      /** Tenant forks of the retired rows. They are independent rows and keep running. */
+      forkCount: number
+    }
+
+const OPEN_EXECUTION_STATUSES = ['QUEUED', 'RUNNING'] as const
 
 const WORKFLOW_SELECT = {
   id: true,
@@ -79,6 +110,9 @@ const WORKFLOW_SELECT = {
   artifactSha256: true,
   artifactSizeBytes: true,
   executable: true,
+  status: true,
+  retiredAt: true,
+  retiredByUserId: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -124,12 +158,20 @@ export function createWorkflowRepository(db: PrismaClient) {
      * - rows with visibility=GLOBAL are visible to every tenant
      * - everything else returns null (treated as 404 by the handler — avoids
      *   leaking the existence of other tenants' workflows)
+     * - a RETIRED row is null too, unless the caller opts in. That makes get,
+     *   run, fork, download, trigger create/enable and the trigger dispatcher
+     *   all refuse a retired workflow by default (sdk-feedback 0032).
      */
-    async findByIdForTenant(id: string, tenantId: string): Promise<WorkflowRow | null> {
+    async findByIdForTenant(
+      id: string,
+      tenantId: string,
+      opts?: RetiredFilter,
+    ): Promise<WorkflowRow | null> {
       return db.workflow.findFirst({
         where: {
           id,
           OR: [{ tenantId }, { visibility: 'GLOBAL' }],
+          ...activeOnly(opts),
         },
         select: WORKFLOW_SELECT,
       })
@@ -137,15 +179,106 @@ export function createWorkflowRepository(db: PrismaClient) {
 
     /**
      * List every workflow visible to a tenant: the tenant's own rows union
-     * everything tagged GLOBAL. Sorted newest-first for display.
+     * everything tagged GLOBAL. Sorted newest-first for display. Retired rows
+     * are left out unless the caller opts in.
      */
-    async listForTenant(tenantId: string): Promise<WorkflowRow[]> {
+    async listForTenant(tenantId: string, opts?: RetiredFilter): Promise<WorkflowRow[]> {
       return db.workflow.findMany({
         where: {
           OR: [{ tenantId }, { visibility: 'GLOBAL' }],
+          ...activeOnly(opts),
         },
         select: WORKFLOW_SELECT,
         orderBy: { createdAt: 'desc' },
+      })
+    },
+
+    /**
+     * Retire every version of `name` the OWNER tenant holds, or just `version`
+     * (sdk-feedback 0032). Soft: rows stay for audit, see findByIdForTenant.
+     * Only rows the owner tenant holds can match, so a tenant can never retire
+     * another tenant's row, GLOBAL or not.
+     *
+     * All-or-nothing, and refused while anything would silently break: an
+     * ENABLED trigger, or a QUEUED/RUNNING execution, on any matching row, from
+     * ANY tenant. That is why this must be given the ROOT client. A GLOBAL
+     * workflow is triggered and run by tenants that never forked it, and a
+     * tenant-scoped client would hide exactly those rows. Disabled triggers and
+     * finished executions do not block. Forks are separate rows and keep
+     * running; their count is reported.
+     *
+     * The guard and the update share one transaction. A trigger created
+     * between them would land on a row that is retired the moment this
+     * commits, and the dispatcher skips retired rows.
+     */
+    async retire(input: {
+      ownerTenantId: string
+      name: string
+      version?: string | undefined
+      retiredByUserId: string
+    }): Promise<RetireOutcome> {
+      return db.$transaction(async (tx) => {
+        const rows = await tx.workflow.findMany({
+          where: {
+            tenantId: input.ownerTenantId,
+            name: input.name,
+            ...(input.version !== undefined ? { version: input.version } : {}),
+          },
+          select: { id: true, name: true, version: true, status: true },
+          orderBy: { createdAt: 'asc' },
+        })
+        if (rows.length === 0) return { kind: 'not_found' }
+
+        const active = rows.filter((r) => r.status === 'ACTIVE')
+        const alreadyRetired = rows
+          .filter((r) => r.status === 'RETIRED')
+          .map(({ id, name, version }) => ({ id, name, version }))
+        if (active.length === 0) {
+          return { kind: 'retired', retired: [], alreadyRetired, forkCount: 0 }
+        }
+
+        const ids = active.map((r) => r.id)
+        const versionOf = new Map(active.map((r) => [r.id, r.version]))
+        const [triggers, executions] = await Promise.all([
+          tx.workflowTrigger.findMany({
+            where: { workflowId: { in: ids }, enabled: true },
+            select: { id: true, workflowId: true },
+            orderBy: { createdAt: 'asc' },
+          }),
+          tx.workflowExecution.findMany({
+            where: { workflowId: { in: ids }, status: { in: [...OPEN_EXECUTION_STATUSES] } },
+            select: { id: true, workflowId: true },
+            orderBy: { queuedAt: 'asc' },
+          }),
+        ])
+        const ref = (b: { id: string; workflowId: string }): RetireBlocker => ({
+          id: b.id,
+          workflowId: b.workflowId,
+          version: versionOf.get(b.workflowId) ?? '',
+        })
+        if (triggers.length > 0 || executions.length > 0) {
+          return {
+            kind: 'blocked',
+            enabledTriggers: triggers.map(ref),
+            openExecutions: executions.map(ref),
+          }
+        }
+
+        await tx.workflow.updateMany({
+          where: { id: { in: ids }, status: 'ACTIVE' },
+          data: {
+            status: 'RETIRED',
+            retiredAt: new Date(),
+            retiredByUserId: input.retiredByUserId,
+          },
+        })
+        const forkCount = await tx.workflow.count({ where: { forkedFromWorkflowId: { in: ids } } })
+        return {
+          kind: 'retired',
+          retired: active.map(({ id, name, version }) => ({ id, name, version })),
+          alreadyRetired,
+          forkCount,
+        }
       })
     },
 

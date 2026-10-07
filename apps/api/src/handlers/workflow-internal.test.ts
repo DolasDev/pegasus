@@ -743,12 +743,14 @@ describe('workflow-internal handler', () => {
     it("lists the token tenant's own executable workflows", async () => {
       const res = await getTenantWorkflows({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
       expect(res.status).toBe(200)
-      // The where clause IS the tenant scope + executability + digest gate.
+      // The where clause IS the tenant scope + executability + digest gate,
+      // and a retired row (sdk-feedback 0032) is never handed to the runner.
       expect(mockWorkflowFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             tenantId: TENANT_A,
             executable: true,
+            status: 'ACTIVE',
             artifactSha256: { not: null },
           },
         }),

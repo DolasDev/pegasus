@@ -468,6 +468,10 @@ workflowInternalHandler.get('/tenant-workflows', async (c) => {
     where: {
       tenantId,
       executable: true,
+      // A retired row has no open executions (retire refuses while one is
+      // QUEUED/RUNNING) and can start no new ones, so the runner has nothing to
+      // load it for (sdk-feedback 0032).
+      status: 'ACTIVE',
       // executable:true implies a Unit-6 finalize, but the digest is what
       // the runner's whole security model hangs on — filter explicitly.
       artifactSha256: { not: null },

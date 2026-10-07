@@ -16,6 +16,7 @@ from pegasus_workflows.api import (
     MAX_ARTIFACT_BYTES,
     PegasusApiError,
     PegasusClient,
+    WorkflowInUse,
 )
 
 _TOKEN = "vnd_" + "a" * 48
@@ -178,6 +179,69 @@ def test_list_workflows_returns_data_array() -> None:
 
     client = _client_with(handler)
     assert client.list_workflows() == [{"id": "wf-1"}]
+
+
+def test_list_workflows_asks_for_retired_rows_only_when_told() -> None:
+    queries: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        queries.append(request.url.query.decode())
+        return httpx.Response(200, json={"data": [], "meta": {"count": 0}})
+
+    client = _client_with(handler)
+    client.list_workflows()
+    client.list_workflows(include_retired=True)
+    assert queries == ["", "includeRetired=true"]
+
+
+def test_retire_workflow_posts_name_and_optional_version() -> None:
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/workflows/retire"
+        bodies.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "retired": [{"id": "wf-1", "name": "old", "version": "0.2.0"}],
+                    "alreadyRetired": [],
+                    "forkCount": 0,
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    out = client.retire_workflow("old")
+    client.retire_workflow("old", version="0.2.0")
+
+    assert bodies == [{"name": "old"}, {"name": "old", "version": "0.2.0"}]
+    assert out["retired"][0]["version"] == "0.2.0"
+
+
+def test_retire_workflow_in_use_raises_with_the_code() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            409,
+            json={
+                "error": "old is still in use (1 enabled trigger(s))",
+                "code": "WORKFLOW_IN_USE",
+                "enabledTriggers": [{"id": "trig-1", "workflowId": "wf-1", "version": "0.2.0"}],
+                "openExecutions": [],
+            },
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(WorkflowInUse) as exc_info:
+        client.retire_workflow("old")
+    assert isinstance(exc_info.value, PegasusApiError)
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "WORKFLOW_IN_USE"
+    assert exc_info.value.enabled_triggers == [
+        {"id": "trig-1", "workflowId": "wf-1", "version": "0.2.0"}
+    ]
+    assert exc_info.value.open_executions == []
 
 
 def test_get_download_url() -> None:

@@ -16,7 +16,7 @@ Two responsibilities:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -131,6 +131,42 @@ class SmsChannelNotConnected(PegasusApiError):
     other non-2xx (including the router's generic 404 ``NOT_FOUND``) stays a
     plain :class:`PegasusApiError`.
     """
+
+
+@dataclass
+class WorkflowInUse(PegasusApiError):
+    """A retire was refused because the workflow is still in use (HTTP 409).
+
+    Raised by :meth:`PegasusClient.retire_workflow` with ``code``
+    ``"WORKFLOW_IN_USE"``. Nothing was retired.
+
+    Attributes:
+        enabled_triggers: ``[{id, workflowId, version}]``: enabled triggers, from
+            any tenant, bound to a version you tried to retire. Disable them.
+        open_executions: ``[{id, workflowId, version}]``: QUEUED/RUNNING
+            executions of such a version. Let them finish, or cancel them.
+    """
+
+    enabled_triggers: list[dict[str, Any]] = field(default_factory=list)
+    open_executions: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _raise_for_workflow_in_use(response: httpx.Response) -> None:
+    """Raise :class:`WorkflowInUse` for a 409 ``WORKFLOW_IN_USE``."""
+    if response.status_code != 409:
+        return
+    try:
+        body = response.json()
+    except ValueError:
+        return
+    if isinstance(body, dict) and body.get("code") == "WORKFLOW_IN_USE":
+        raise WorkflowInUse(
+            status_code=409,
+            code="WORKFLOW_IN_USE",
+            message=body.get("error"),
+            enabled_triggers=list(body.get("enabledTriggers") or []),
+            open_executions=list(body.get("openExecutions") or []),
+        )
 
 
 def _raise_for_sms_channel_not_connected(response: httpx.Response) -> None:
@@ -624,14 +660,67 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
-    def list_workflows(self) -> list[dict[str, Any]]:
+    def list_workflows(self, *, include_retired: bool = False) -> list[dict[str, Any]]:
         """List every workflow visible to the caller's tenant (its own ∪ GLOBAL).
+
+        Args:
+            include_retired: Also list RETIRED rows (0.48.0+). Off by default, so
+                the list is the live catalog. See :meth:`retire_workflow`.
 
         Returns:
             A list of ``WorkflowResponse`` objects (id, name, version, visibility,
-            createdAt, …). Requires ``ReadWorkflow``.
+            status, retiredAt, createdAt, …). ``status`` is ``"ACTIVE"`` or
+            ``"RETIRED"``. Requires ``ReadWorkflow``.
         """
-        return self._get_json("/api/v1/workflows")["data"]
+        path = "/api/v1/workflows" + ("?includeRetired=true" if include_retired else "")
+        return self._get_json(path)["data"]
+
+    def retire_workflow(self, name: str, version: str | None = None) -> dict[str, Any]:
+        """Retire a published workflow: every version of ``name``, or one (0.48.0+).
+
+        The fix for a rename or a bad publish (sdk-feedback 0032). Retiring is
+        **soft**. The rows stay for audit and their execution history stays
+        readable, but a retired version is no longer listed (unless
+        ``list_workflows(include_retired=True)``), fetched, run, forked,
+        downloaded or triggered (``get_workflow`` / ``run_workflow`` → 404).
+        Versions stay immutable, so re-pushing a retired ``name@version`` still
+        409s; publish a new version instead.
+
+        Only the **owning** tenant can retire. A platform (GLOBAL) workflow is
+        retired by the platform tenant, and another tenant that can see it gets
+        403. Gated like a publish: the key needs ``UploadWorkflow``.
+
+        **Refused while in use, all-or-nothing:** if any matching version has an
+        ENABLED trigger, or a QUEUED/RUNNING execution, from ANY tenant, nothing
+        is retired. The 409 ``WORKFLOW_IN_USE`` error names the blockers.
+        Disable those triggers (``pegasus-workflows schedule disable``) and let
+        the runs finish, then retry. Tenant forks are independent rows and keep
+        running; ``forkCount`` reports how many there are.
+
+        Args:
+            name: The workflow name.
+            version: One version to retire. Omit it to retire every version.
+
+        Returns:
+            ``{retired: [{id, name, version}], alreadyRetired: [...],
+            forkCount}``. Idempotent: versions that were already retired are
+            listed in ``alreadyRetired``.
+
+        Raises:
+            WorkflowInUse: 409 ``WORKFLOW_IN_USE``. Its ``enabled_triggers`` /
+                ``open_executions`` name what to disable or wait for. Subclasses
+                :class:`PegasusApiError`.
+            PegasusApiError: 403 (not the owner, or no ``UploadWorkflow``), 404
+                (nothing visible by that name/version), or any other non-2xx.
+        """
+        body: dict[str, Any] = {"name": name}
+        if version is not None:
+            body["version"] = version
+        with self._client() as client:
+            response = client.post("/api/v1/workflows/retire", json=body)
+        _raise_for_workflow_in_use(response)
+        _raise_for_status(response)
+        return response.json()["data"]
 
     def get_workflow(self, workflow_id: str) -> dict[str, Any]:
         """Fetch a single workflow's metadata by id.

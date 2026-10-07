@@ -1295,6 +1295,39 @@ falls back to `http://localhost:3000` for local dev.
 > (`PEGASUS_API_BASE_URL` / `PEGASUS_RUNTIME_TOKEN`) that the tenant runner injects
 > for `PegasusClient.from_runtime()` inside activities.
 
+## Retiring an Automation (renames, bad publishes)
+
+A publish can't be undone, and a rename is really a new publish under a new
+name, so the old name would otherwise stay listed and runnable forever. Retire it
+(0.48.0+):
+
+```bash
+pegasus-workflows retire send_order_to_partner            # every version
+pegasus-workflows retire weichert-milestone-update@0.6.3  # one version
+```
+
+```python
+client.retire_workflow("send_order_to_partner")             # or version="0.6.3"
+client.list_workflows(include_retired=True)                 # rows carry status
+```
+
+- **Soft.** The rows and their execution history stay readable. A retired
+  version is no longer listed (unless you ask for `include_retired=True`),
+  fetched, run, forked, downloaded or triggered, so `get_workflow` and
+  `run_workflow` return 404.
+- **Versions stay immutable.** Re-pushing a retired `name@version` still 409s.
+  Publish a new version instead.
+- **Only the owner can retire.** A platform (GLOBAL) Automation is retired with a
+  platform-tenant key, and any other tenant gets 403. The key needs
+  `UploadWorkflow`, the same right as `push`.
+- **Refused while in use, all-or-nothing.** If any version you name still has an
+  **enabled** trigger, or a queued/running execution, from any tenant, nothing
+  is retired. `retire_workflow` raises `WorkflowInUse`, whose
+  `enabled_triggers` / `open_executions` name what to disable
+  (`pegasus-workflows schedule disable`) or wait for.
+- **Forks keep running.** A tenant's fork is its own row; the result's
+  `forkCount` says how many exist.
+
 ## Deployment ledger — `deployments.toml`
 
 Automation ids are **environment-specific** — publishing the same Automation to QA and
@@ -1330,6 +1363,7 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows diagram [-C <dir>] [-w <name>] [-o <file>]`                     | Print a prompt for your coding agent to draw `workflow.mmd`.   |
 | `pegasus-workflows package`                                                        | Zip each declared Automation into `dist/<name>-<version>.zip`. |
 | `pegasus-workflows push [--profile <name>] [--env <name>] [--token=…]`             | Package → upload → finalize; records `deployments.toml`.       |
+| `pegasus-workflows retire <name>[@<version>] [--yes]`                              | Retire every version (or one) your tenant published.           |
 | `pegasus-workflows test <workflow>`                                                | Start local Temporal and run the Automation with a stub input. |
 | `pegasus-workflows executions list <wf-id> --token=<vnd_…>`                        | List recent executions of an Automation (newest first).        |
 | `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`              | Show one execution's input/result/error + history timeline.    |

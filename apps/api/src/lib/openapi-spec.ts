@@ -75,10 +75,10 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     ),
   '/api/v1/workflows': apiKeyGet(
     'listWorkflows',
-    'List automations visible to the tenant (∪ GLOBAL)',
+    'List automations visible to the tenant (∪ GLOBAL); retired ones only with ?includeRetired=true',
     {
       tags: ['Workflows'],
-      responseDescription: '{data: WorkflowResponse[]}',
+      responseDescription: '{data: WorkflowResponse[]} (each carries status: ACTIVE | RETIRED)',
     },
   ),
   '/api/v1/workflows/requirements-summary': apiKeyGet(
@@ -1691,6 +1691,40 @@ export function getOpenApiSpec() {
             { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
           ],
           responses: { '201': { description: 'New execution started ({data: execution})' } },
+        },
+      },
+      '/api/v1/workflows/retire': {
+        post: {
+          operationId: 'retireWorkflow',
+          summary: 'Retire a published automation, every version or one (UploadWorkflow)',
+          description:
+            'Body: { name, version? }. Soft retire: the rows stay for audit and their executions stay readable, but a retired row is no longer listed (unless ?includeRetired=true), fetched, run, forked, downloaded or triggered. Only the owning tenant can retire, so a platform (GLOBAL) workflow is retired by the platform tenant; another tenant gets 403. All-or-nothing, and refused 409 WORKFLOW_IN_USE while any matching row has an ENABLED trigger or a QUEUED/RUNNING execution from ANY tenant, naming them. Tenant forks are separate rows and keep running; their count is returned. Versions stay immutable: re-pushing a retired name@version still 409s. Idempotent: already-retired versions are reported in alreadyRetired.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '200': { description: '{data: {retired[], alreadyRetired[], forkCount}}' },
+            '403': { description: 'A visible platform workflow the caller does not own' },
+            '404': { description: 'Nothing by that name/version is visible' },
+            '409': {
+              description: 'WORKFLOW_IN_USE {enabledTriggers[], openExecutions[]}; nothing retired',
+            },
+          },
+        },
+      },
+      '/api/v1/workflows/{id}/retire': {
+        post: {
+          operationId: 'retireWorkflowById',
+          summary: 'Retire one published automation version by id (UploadWorkflow)',
+          description: 'Same contract as retireWorkflow, scoped to the single row `id`.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: '{data: {retired[], alreadyRetired[], forkCount}}' },
+            '403': { description: 'A visible platform workflow the caller does not own' },
+            '404': { description: 'Not visible' },
+            '409': { description: 'WORKFLOW_IN_USE; nothing retired' },
+          },
         },
       },
       '/api/v1/feedback-forms/{formKey}': {

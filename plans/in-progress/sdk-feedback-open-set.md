@@ -103,7 +103,7 @@ One PR, because both changes touch the same floor and share one SDK bump.
 
 **Code done 2026-10-07 on `feat/feedback-form-strict-rating-display`.** API 3999/3999, tenant-web 1550/1550, SDK 444. Typecheck, eslint and `ruff check` are clean. Phase 2 merged as #813 (`c26b2b03`).
 
-- **[ ] D6 prod check still owed before merge.** AWS SSO had expired. The query is a read-only scratchpad script (`feedback-form-stray-keys.sh`: `DATABASE_URL` from the prod API Lambda env, then `psql` with `default_transaction_read_only`). It lists stored question keys outside the allowlist, plus top-level keys other than `questions`. The PR is open WITHOUT auto-merge until it runs.
+- **[x] D6 prod check done 2026-10-07 (clean):** 1 feedback form across all tenants, 0 stray question keys, 0 stray top-level keys. Posted on #814 before enabling auto-merge. #814 merged as `b64f7400`, and SDK 0.47.0 is published.
 - **The "drop" was not real.** Neither the API (`PublishBody` is `z.record`, Prisma `Json`) nor the SDK/CLI (`_load_form` passes `definition` through) strips keys. The spec's pulled form had simply been published without `display`. A handler test pins the round trip.
 - **Wider than the plan:** unknown TOP-LEVEL definition keys are rejected too. That covers the same silent-accept class, and the D6 query checks for them as well.
 - The rating control was extracted to `apps/tenant-web/src/components/feedback/RatingInput.tsx`, with component tests. No browser e2e: the e2e suite has no `/f/:token` coverage to extend. An unknown `display` value falls back to numeric, so a newer definition never fails to render on an older build.
@@ -121,24 +121,38 @@ One PR, because both changes touch the same floor and share one SDK bump.
   - Component tests for all three modes, plus a browser e2e if the feedback e2e suite covers `/f/:token`.
 - [x] SDK: the `validate_feedback_form` docstring documents `display`, `scaleLabels` and the unknown-key policy. Also update the README, MCP reference, CLI `feedback-form --help` and OpenAPI.
 
-## Phase 4 — Retire a published workflow (0032) → next SDK minor
+## Phase 4 — Retire a published workflow (0032) → SDK 0.48.0
+
+**Code done 2026-10-07 on `feat/retire-workflow`.** The `Workflow.kind` migration from the long-running plan was neither on `main` nor in flight, so this went first; that plan rebases onto `status`. API 4016/4016, SDK 452 (+8).
+
+- **Migration** `20261007182425_add_workflow_status`. Expand-only: a new enum, `status` NOT NULL DEFAULT `ACTIVE`, and nullable `retired_at` / `retired_by_user_id`.
+- **One choke point.** `findByIdForTenant` / `listForTenant` hide RETIRED rows unless `{ includeRetired: true }`. Get, download-url, fork, run, retry, trigger create/patch, requirements-summary and the trigger DISPATCHER (which skips them as `WORKFLOW_NOT_FOUND`) all refuse a retired row by default. Execution list/get/history/cancel and trigger list/delete opt in, so history and cleanup still work. The runner's artifact list (`/internal/tenant-workflows`) filters `status: 'ACTIVE'`.
+- **Routes:** `POST /workflows/retire {name, version?}` and `POST /workflows/:id/retire`, gated by `UploadWorkflow`.
+  - 200 returns `{retired, alreadyRetired, forkCount}`.
+  - 409 `WORKFLOW_IN_USE` names the blockers.
+  - 403 for a visible GLOBAL workflow the caller doesn't own; 404 otherwise. A body key outside the schema is a 400.
+- **Guards use the ROOT client** (`WorkflowRepository.retire`, one transaction). A GLOBAL workflow is triggered and run by tenants that never forked it. `workflows.ts` joins the db-access-guard allowlist with that justification, and ownership is the explicit `tenantId` predicate.
+  - Proven against a real DB in `repositories/__tests__/workflow-retire.repository.test.ts`, with another tenant's trigger and execution, all-or-nothing, the fork count, and idempotency.
+- **SDK:** `retire_workflow`, `list_workflows(include_retired=)`, and a new `WorkflowInUse(PegasusApiError)` carrying `enabled_triggers` / `open_executions`. The CLI is a TOP-LEVEL `pegasus-workflows retire <name>[@version] [--yes]`, because there is no `workflow` group.
+- **tenant-web:** no change. The list hides retired rows because the API default does. A "show retired" toggle is not built.
+- **MCP:** `pegasus://reference/api` picks up `retire_workflow` from its docstring. No other MCP surface lists commands.
 
 **Ordering:** `apps/api/prisma/schema.prisma` is a hot file. The long-running plan adds `Workflow.kind` plus a migration. Whichever starts second rebases onto the first; don't run both at once. Retirement must work the same for both kinds, Automation and Workflow.
 
-- [ ] Prisma: `Workflow.status` (`ACTIVE | RETIRED`, default `ACTIVE`), plus `retiredAt` and `retiredByUserId`, with a migration.
-- [ ] API `handlers/workflows.ts`: `POST /workflows/:id/retire`, and a by-name form for "every version". Guards per D2, auth per D3.
+- [x] Prisma: `Workflow.status` (`ACTIVE | RETIRED`, default `ACTIVE`), plus `retiredAt` and `retiredByUserId`, with a migration.
+- [x] API `handlers/workflows.ts`: `POST /workflows/:id/retire`, and a by-name form for "every version". Guards per D2, auth per D3.
   - `GET /workflows` hides RETIRED rows unless `?includeRetired=true`.
   - `get`, `run`, `fork` and download-url return 404 for a retired row. The dispatcher's trigger resolution also skips retired rows.
   - `push` of a retired `(name, version)` still returns 409, because versions are immutable.
-- [ ] SDK: `retire_workflow(name, version=None)`, `list_workflows(include_retired=False)`, and a CLI verb (`pegasus-workflows workflow retire <name>[@version]`, fitted to the existing command layout).
-- [ ] tenant-web: the workflows list hides retired rows, or greys them behind a toggle.
-- [ ] Tests (integration):
+- [x] SDK: `retire_workflow(name, version=None)`, `list_workflows(include_retired=False)`, and a CLI verb (`pegasus-workflows workflow retire <name>[@version]`, fitted to the existing command layout).
+- [x] tenant-web: the workflows list hides retired rows, or greys them behind a toggle.
+- [x] Tests (integration):
   - The platform tenant retires a GLOBAL workflow, then `get` and `run` return 404 and the list drops it.
   - A non-platform caller gets 403 on GLOBAL.
   - An enabled trigger blocks the retire with 409.
   - An open execution blocks the retire with 409.
   - A fork stays runnable after its source is retired.
-- [ ] Discovery: README, MCP, `--help`, OpenAPI, the authoring repo's `CLAUDE.md`.
+- [x] Discovery: README, MCP, `--help`, OpenAPI, the authoring repo's `CLAUDE.md`.
 - [ ] After merge: the platform retires `send_order_to_partner` and the test-vehicle `weichert-milestone-update` versions the author lists. This is the spec's e2e AC, and it is the author's call.
 
 ## Phase 5 — Make the task stub honest until pulse Phase 6 lands (0046 B/C, interim) → patch bump

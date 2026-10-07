@@ -1677,6 +1677,14 @@ enum WorkflowExecutionTriggerSource {
   @@schema("public")
 }
 
+/// Lifecycle of a published workflow row (sdk-feedback 0032).
+enum WorkflowStatus {
+  ACTIVE
+  RETIRED
+
+  @@schema("public")
+}
+
 model Workflow {
   id       String @id @default(uuid())
   tenantId String @map("tenant_id")
@@ -1738,6 +1746,17 @@ model Workflow {
   /// curated-names gate (lib/curated-workflows.ts) until Phase 3 Unit 10;
   /// this flag records *eligibility*, it does not open execution yet.
   executable Boolean @default(false)
+
+  /// ACTIVE, or RETIRED (sdk-feedback 0032). A retired row is kept for audit and
+  /// its executions stay readable, but it is not listed by default and cannot be
+  /// fetched, run, forked, downloaded or triggered. Versions stay immutable: a
+  /// retired (name, version) still blocks a re-push of the same pair.
+  status WorkflowStatus @default(ACTIVE)
+
+  /// When the row was retired, and by which TenantUser.id. Null while ACTIVE.
+  /// Not an FK, so the row survives user deletion.
+  retiredAt       DateTime? @map("retired_at")
+  retiredByUserId String?   @map("retired_by_user_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
