@@ -3,6 +3,27 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.48.0
+
+### Added — retire a published workflow
+
+- `retire_workflow(name, version=None)` and the CLI command
+  `pegasus-workflows retire <name>[@version]` retire every version of a
+  workflow your tenant published, or one version (sdk-feedback 0032).
+- Retiring is soft. The rows and their execution history stay. A retired
+  version is no longer listed, fetched, run, forked, downloaded or triggered,
+  and re-pushing the same `name@version` still 409s.
+- Only the owning tenant can retire. A platform (GLOBAL) workflow needs a
+  platform-tenant key with `UploadWorkflow`; any other tenant gets 403.
+- The server refuses, retiring nothing, while any named version has an
+  **enabled** trigger or a queued/running execution from any tenant. The new
+  `WorkflowInUse` error (a `PegasusApiError`, exported from the package)
+  carries `enabled_triggers` / `open_executions` naming them.
+- Tenant forks are separate rows and keep running; the result reports
+  `forkCount`.
+- `list_workflows(include_retired=True)` also lists retired rows. Every row now
+  carries `status` (`ACTIVE` | `RETIRED`) and `retiredAt`.
+
 ## 0.47.0
 
 ### Added — rating `display` and `scaleLabels` on feedback forms

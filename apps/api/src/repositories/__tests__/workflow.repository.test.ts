@@ -36,6 +36,9 @@ const sourceRow: WorkflowRow = {
   artifactSha256: 'a'.repeat(64),
   artifactSizeBytes: 2116,
   executable: true,
+  status: 'ACTIVE',
+  retiredAt: null,
+  retiredByUserId: null,
   createdAt: new Date('2026-06-01T00:00:00Z'),
   updatedAt: new Date('2026-06-01T00:00:00Z'),
 }

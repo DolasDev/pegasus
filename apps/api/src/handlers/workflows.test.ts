@@ -58,6 +58,7 @@ const {
       findByNaturalKey: vi.fn(),
       forkGlobalToTenant: vi.fn(),
       attachRuntimeToken: vi.fn(),
+      retire: vi.fn(),
     },
     mockApiClientRepo: {
       create: vi.fn(),
@@ -275,6 +276,9 @@ const mockRow = {
   artifactSha256: validArtifactSha256,
   artifactSizeBytes: validArtifactZip.length,
   executable: true,
+  status: 'ACTIVE' as const,
+  retiredAt: null,
+  retiredByUserId: null,
   createdAt: now,
   updatedAt: now,
 }
@@ -2023,6 +2027,137 @@ describe('workflows handler', () => {
       mockRepo.findByIdForTenant.mockResolvedValue(null)
       const res = await buildApp().request('/wf-1/triggers/trig-1', del())
       expect(res.status).toBe(404)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Retire (sdk-feedback 0032). The guards themselves (cross-tenant triggers
+  // and executions, all-or-nothing) are proven against a real database in
+  // repositories/__tests__/workflow-retire.repository.test.ts. These cover
+  // the HTTP contract: auth, ownership, status mapping, and which reads still
+  // see a retired row.
+  // -------------------------------------------------------------------------
+  describe('retire', () => {
+    const retired = {
+      kind: 'retired' as const,
+      retired: [{ id: 'wf-1', name: 'send_quote_followup', version: '1.0.0' }],
+      alreadyRetired: [],
+      forkCount: 2,
+    }
+
+    it('retires every version by name and reports the forks it leaves running', async () => {
+      mockRepo.retire.mockResolvedValue(retired)
+
+      const res = await buildApp().request('/retire', post({ name: 'send_quote_followup' }))
+
+      expect(res.status).toBe(200)
+      expect((await json(res))['data']).toEqual({
+        retired: retired.retired,
+        alreadyRetired: [],
+        forkCount: 2,
+      })
+      expect(mockRepo.retire).toHaveBeenCalledWith({
+        ownerTenantId: 'test-tenant-id',
+        name: 'send_quote_followup',
+        version: undefined,
+        retiredByUserId: 'user-1',
+      })
+    })
+
+    it('retires the single row named by id', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(mockRow)
+      mockRepo.retire.mockResolvedValue(retired)
+
+      const res = await buildApp().request('/wf-1/retire', post({}))
+
+      expect(res.status).toBe(200)
+      expect(mockRepo.findByIdForTenant).toHaveBeenCalledWith('wf-1', 'test-tenant-id', {
+        includeRetired: true,
+      })
+      expect(mockRepo.retire).toHaveBeenCalledWith(
+        expect.objectContaining({ name: mockRow.name, version: mockRow.version }),
+      )
+    })
+
+    it('409s WORKFLOW_IN_USE, naming the blockers, when a trigger or run would break', async () => {
+      mockRepo.retire.mockResolvedValue({
+        kind: 'blocked',
+        enabledTriggers: [{ id: 'trig-1', workflowId: 'wf-1', version: '1.0.0' }],
+        openExecutions: [],
+      })
+
+      const res = await buildApp().request('/retire', post({ name: 'send_quote_followup' }))
+
+      expect(res.status).toBe(409)
+      const body = await json(res)
+      expect(body['code']).toBe('WORKFLOW_IN_USE')
+      expect(body['enabledTriggers']).toEqual([
+        { id: 'trig-1', workflowId: 'wf-1', version: '1.0.0' },
+      ])
+      expect(body['error']).toContain('1 enabled trigger(s)')
+    })
+
+    it("403s a tenant naming a visible platform workflow it doesn't own", async () => {
+      mockRepo.retire.mockResolvedValue({ kind: 'not_found' })
+      mockRepo.listForTenant.mockResolvedValue([globalRow])
+
+      const res = await buildApp().request('/retire', post({ name: globalRow.name }))
+
+      expect(res.status).toBe(403)
+      expect((await json(res))['code']).toBe('FORBIDDEN')
+    })
+
+    it('404s a name nothing visible carries', async () => {
+      mockRepo.retire.mockResolvedValue({ kind: 'not_found' })
+      mockRepo.listForTenant.mockResolvedValue([])
+
+      const res = await buildApp().request('/retire', post({ name: 'ghost' }))
+
+      expect(res.status).toBe(404)
+    })
+
+    it('403s without UploadWorkflow (the publish right), before touching the repo', async () => {
+      const res = await buildApp(['viewer']).request('/retire', post({ name: 'x' }))
+
+      expect(res.status).toBe(403)
+      expect(mockRepo.retire).not.toHaveBeenCalled()
+    })
+
+    it('400s an unknown body key rather than ignoring it', async () => {
+      const res = await buildApp().request('/retire', post({ name: 'x', cascade: true }))
+
+      expect(res.status).toBe(400)
+      expect(mockRepo.retire).not.toHaveBeenCalled()
+    })
+
+    it('lists retired rows only when asked', async () => {
+      mockRepo.listForTenant.mockResolvedValue([])
+
+      await buildApp().request('/')
+      await buildApp().request('/?includeRetired=true')
+
+      expect(mockRepo.listForTenant).toHaveBeenNthCalledWith(1, 'test-tenant-id', {
+        includeRetired: false,
+      })
+      expect(mockRepo.listForTenant).toHaveBeenNthCalledWith(2, 'test-tenant-id', {
+        includeRetired: true,
+      })
+    })
+
+    it('keeps execution history readable but refuses a run and a retry', async () => {
+      // The repository returns null for a retired row unless includeRetired is
+      // passed. Model exactly that, so each route's choice is what is tested.
+      mockRepo.findByIdForTenant.mockImplementation(
+        async (_id: string, _t: string, opts?: { includeRetired?: boolean }) =>
+          opts?.includeRetired ? { ...mockRow, status: 'RETIRED' } : null,
+      )
+      mockExecutionRepo.listByWorkflow.mockResolvedValue([])
+
+      expect((await buildApp().request('/wf-1/executions')).status).toBe(200)
+      expect((await buildApp().request('/wf-1')).status).toBe(404)
+      expect((await buildApp().request('/wf-1/run', post({}))).status).toBe(404)
+      expect((await buildApp().request('/wf-1/fork', post({}))).status).toBe(404)
+      expect((await buildApp().request('/wf-1/executions/ex-1/retry', post({}))).status).toBe(404)
     })
   })
 })

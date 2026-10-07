@@ -34,7 +34,12 @@ import { requirePermission } from '../middleware/rbac'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions, ALL_ACTIONS } from '../authz/actions'
 import { createWorkflowRepository } from '../repositories/workflow.repository'
-import type { WorkflowRow, WorkflowVisibility } from '../repositories/workflow.repository'
+import type {
+  WorkflowRow,
+  WorkflowStatus,
+  WorkflowVisibility,
+} from '../repositories/workflow.repository'
+import { db as basePrisma } from '../db'
 import {
   createWorkflowExecutionRepository,
   TERMINAL_STATUSES,
@@ -342,6 +347,9 @@ type WorkflowResponse = {
   artifactSha256: string | null
   artifactSizeBytes: number | null
   executable: boolean
+  /** ACTIVE | RETIRED (sdk-feedback 0032). Only `?includeRetired=true` lists RETIRED rows. */
+  status: WorkflowStatus
+  retiredAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -497,6 +505,9 @@ function startResultToResponse(
  */
 async function loadExecutionForTenant(
   c: Context<AppEnv>,
+  // A retired workflow's history stays readable (and cancellable), but a retry
+  // is a new run and must be refused like any other run (sdk-feedback 0032).
+  opts: { includeRetired: boolean } = { includeRetired: true },
 ): Promise<
   | { ok: true; workflow: WorkflowRow; execution: WorkflowExecutionRow; db: PrismaClient }
   | { ok: false; response: Response }
@@ -506,7 +517,7 @@ async function loadExecutionForTenant(
   const executionId = c.req.param('executionId') ?? ''
   const db = c.get('db')
 
-  const workflow = await createWorkflowRepository(db).findByIdForTenant(workflowId, tenantId)
+  const workflow = await createWorkflowRepository(db).findByIdForTenant(workflowId, tenantId, opts)
   if (!workflow) {
     return { ok: false, response: c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404) }
   }
@@ -561,6 +572,8 @@ function toResponse(row: WorkflowRow): WorkflowResponse {
     artifactSha256: row.artifactSha256,
     artifactSizeBytes: row.artifactSizeBytes,
     executable: row.executable,
+    status: row.status,
+    retiredAt: row.retiredAt ? row.retiredAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
@@ -829,8 +842,140 @@ workflowsHandler.post(
 workflowsHandler.get('/', requirePermission(Actions.ReadWorkflow), async (c) => {
   const tenantId = c.get('tenantId')
   const repo = createWorkflowRepository(c.get('db'))
-  const rows = await repo.listForTenant(tenantId)
+  // Retired rows (sdk-feedback 0032) are history, not the catalog: opt in.
+  const includeRetired = c.req.query('includeRetired') === 'true'
+  const rows = await repo.listForTenant(tenantId, { includeRetired })
   return c.json({ data: rows.map(toResponse), meta: { count: rows.length } })
+})
+
+// ---------------------------------------------------------------------------
+// POST /retire  { name, version? }
+// POST /:id/retire
+//
+// Retire a published workflow: every version of `name` the caller's tenant
+// owns, or one version, or the single row `:id` (sdk-feedback 0032). Soft. The
+// rows stay for audit and their executions stay readable, but a retired row is
+// no longer listed, fetchable, runnable, forkable, downloadable or triggerable.
+// Versions stay immutable, so re-pushing a retired (name, version) still 409s.
+//
+// Gated like a publish (UploadWorkflow), and only the OWNING tenant can retire.
+// GLOBAL rows are owned by the platform tenant, so a tenant that can see a
+// GLOBAL workflow gets 403, not 404, when it tries.
+//
+//   200 { data: { retired[], alreadyRetired[], forkCount } }
+//   409 WORKFLOW_IN_USE { enabledTriggers[], openExecutions[] }: an enabled
+//       trigger or a QUEUED/RUNNING execution, from ANY tenant, would silently
+//       break. Nothing is retired. Disable the trigger or let the run finish.
+//   403 a visible GLOBAL workflow the caller does not own
+//   404 nothing by that name/version/id is visible to the caller
+// ---------------------------------------------------------------------------
+const RetireBody = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    version: z.string().trim().min(1).max(100).optional(),
+  })
+  .strict()
+
+async function retireAndRespond(
+  c: Context<AppEnv>,
+  target: { name: string; version?: string | undefined },
+) {
+  const tenantId = c.get('tenantId')
+  const userId = c.get('userId')
+  if (!userId) {
+    throw new DomainError('Authenticated user required to retire workflows', 'UNAUTHENTICATED')
+  }
+  // The ROOT client on purpose: the in-use guards must see other tenants'
+  // triggers and executions on a GLOBAL row (see WorkflowRepository.retire).
+  // Ownership is enforced inside retire() by the explicit tenantId predicate.
+  const outcome = await createWorkflowRepository(basePrisma).retire({
+    ownerTenantId: tenantId,
+    name: target.name,
+    version: target.version,
+    retiredByUserId: userId,
+  })
+
+  if (outcome.kind === 'not_found') {
+    // Distinguish "it's the platform's" from "it doesn't exist", but only for
+    // rows the caller can already see, so nothing new is disclosed.
+    const visible = await createWorkflowRepository(c.get('db')).listForTenant(tenantId, {
+      includeRetired: true,
+    })
+    const platformOwned = visible.some(
+      (r) =>
+        r.name === target.name &&
+        (target.version === undefined || r.version === target.version) &&
+        r.tenantId !== tenantId,
+    )
+    if (platformOwned) {
+      return c.json(
+        {
+          error: `${target.name} is a platform workflow; only the platform tenant can retire it`,
+          code: 'FORBIDDEN',
+        },
+        403,
+      )
+    }
+    return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  if (outcome.kind === 'blocked') {
+    const reasons = [
+      outcome.enabledTriggers.length > 0
+        ? `${outcome.enabledTriggers.length} enabled trigger(s)`
+        : null,
+      outcome.openExecutions.length > 0
+        ? `${outcome.openExecutions.length} queued/running execution(s)`
+        : null,
+    ].filter(Boolean)
+    return c.json(
+      {
+        error: `${target.name} is still in use (${reasons.join(', ')}); disable the triggers and let the runs finish, then retry`,
+        code: 'WORKFLOW_IN_USE',
+        enabledTriggers: outcome.enabledTriggers,
+        openExecutions: outcome.openExecutions,
+      },
+      409,
+    )
+  }
+
+  logger.info('Workflow retired', {
+    tenantId,
+    name: target.name,
+    version: target.version ?? null,
+    retired: outcome.retired.map((r) => r.version),
+    alreadyRetired: outcome.alreadyRetired.map((r) => r.version),
+    forkCount: outcome.forkCount,
+    retiredByUserId: userId,
+  })
+  return c.json({
+    data: {
+      retired: outcome.retired,
+      alreadyRetired: outcome.alreadyRetired,
+      forkCount: outcome.forkCount,
+    },
+  })
+}
+
+workflowsHandler.post(
+  '/retire',
+  requirePermission(Actions.UploadWorkflow),
+  validator('json', (value, c) => {
+    const r = RetireBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => retireAndRespond(c, c.req.valid('json')),
+)
+
+workflowsHandler.post('/:id/retire', requirePermission(Actions.UploadWorkflow), async (c) => {
+  const tenantId = c.get('tenantId')
+  const id = c.req.param('id') ?? ''
+  const row = await createWorkflowRepository(c.get('db')).findByIdForTenant(id, tenantId, {
+    includeRetired: true,
+  })
+  if (!row) return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+  return retireAndRespond(c, { name: row.name, version: row.version })
 })
 
 // ---------------------------------------------------------------------------
@@ -1056,7 +1201,7 @@ workflowsHandler.get('/:id/executions', requirePermission(Actions.ReadWorkflow),
   const db = c.get('db')
 
   const repo = createWorkflowRepository(db)
-  const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+  const workflow = await repo.findByIdForTenant(workflowId, tenantId, { includeRetired: true })
   if (!workflow) {
     return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
   }
@@ -1247,7 +1392,7 @@ workflowsHandler.post(
     if (!userId) {
       throw new DomainError('Authenticated user required to retry workflows', 'UNAUTHENTICATED')
     }
-    const loaded = await loadExecutionForTenant(c)
+    const loaded = await loadExecutionForTenant(c, { includeRetired: false })
     if (!loaded.ok) return loaded.response
     const { workflow, execution, db } = loaded
 
@@ -1365,7 +1510,7 @@ workflowsHandler.get('/:id/triggers', requirePermission(Actions.ReadWorkflow), a
   const db = c.get('db')
 
   const repo = createWorkflowRepository(db)
-  const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+  const workflow = await repo.findByIdForTenant(workflowId, tenantId, { includeRetired: true })
   if (!workflow) {
     return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
   }
@@ -1485,7 +1630,7 @@ workflowsHandler.delete(
     const db = c.get('db')
 
     const repo = createWorkflowRepository(db)
-    const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+    const workflow = await repo.findByIdForTenant(workflowId, tenantId, { includeRetired: true })
     if (!workflow) {
       return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
     }

@@ -33,6 +33,10 @@ const WORKFLOW_SELECT = {
   visibility: true,
   manifest: true,
   createdByUserId: true,
+  // Admin sees the whole GLOBAL catalog, retired rows included, marked
+  // (sdk-feedback 0032), so a rename's leftover is visible as retired here.
+  status: true,
+  retiredAt: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -67,6 +71,8 @@ adminWorkflowsRouter.get('/', async (c) => {
       visibility: r.visibility,
       manifest: r.manifest,
       createdByUserId: r.createdByUserId,
+      status: r.status,
+      retiredAt: r.retiredAt,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }))

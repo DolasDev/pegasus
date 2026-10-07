@@ -221,6 +221,13 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'settings-pegii.ts',
   'vpn-agent.ts',
   'workflow-internal.ts',
+  // Workflow retire only (sdk-feedback 0032). Its in-use guards must count
+  // OTHER tenants' enabled triggers and open executions on a GLOBAL workflow,
+  // which the tenant-scoped client hides, so it would pass while another
+  // tenant's trigger was live. Ownership is the explicit `tenantId` predicate
+  // inside WorkflowRepository.retire, and that query touches only the caller's
+  // own rows. Every other route here still uses c.get('db').
+  'workflows.ts',
 ])
 
 // Matches relative imports of the root Prisma base client — patterns like:

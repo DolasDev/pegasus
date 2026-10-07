@@ -38,6 +38,7 @@ from .package import package_command
 from .profile_config import configure_command, profile_app
 from .push import push_command
 from .requirements import requirements_command
+from .retire import retire_command
 from .run import run_command
 from .schedule import schedule_app
 from .secrets_config import config_app, secrets_app
@@ -83,6 +84,7 @@ app.command("diagram")(diagram_command)
 app.command("package")(package_command)
 app.command("push")(push_command)
 app.command("run")(run_command)
+app.command("retire")(retire_command)
 app.command("test")(test_command)
 app.command("configure")(configure_command)
 app.command("mcp")(mcp_command)
