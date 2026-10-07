@@ -15,60 +15,76 @@ is `plans/completed/domain-reference-roleclass.md`, and its transferable lessons
 
 ### Where
 
-- **Branch:** `chore/parked-dr` — this worktree's **parked** branch, fast-forwarded to `main`. It is
-  **not** a work branch and holds none of this round's work. The round has no branch yet.
+- **Branch:** `chore/dr-party`, cut from `chore/parked-dr` at `main`'s head on 2026-10-07. This
+  worktree's parked branch `chore/parked-dr` is left parked and untouched, per §9's last box — the
+  owed-closures, context-map and `roleClass` rounds all worked on a branch in an existing worktree
+  and it cost nothing.
 - **Worktree:** `/home/steve/repos/pegasus-deps-advisory-flip` (Postgres `pegasus-pg-deps-advisory-flip`
   on port **5459**, migrations applied 2026-10-06 and current as of then).
-- **Last commit:** `be16d7d2 feat(workflows): retire a published workflow (SDK 0.48.0) (#817)` —
-  i.e. `main`'s head, not this round's.
+- **Last commit:** `6f992717` — this round's first, carrying the previous session's resume
+  checkpoint, over `be16d7d2` (`main`'s head, `#817`).
 
-### Status — THIS ROUND HAS NOT STARTED
+### Status — the planning pass has started; nothing is implemented
 
-- [ ] §1.3 item 1 — are the party's attributes **fields** or `identity` **assertions**?
-- [ ] §1.3 item 2 — does the party need a fact class of its own, or is it a bare subject?
+- [x] **§1.3 item 1 — DONE, and it refuted the question's own dichotomy. `§1.3.1` is the record.**
+      Five of the attributes are `identity` assertions, **one** (`legal name`) is a field, and **two**
+      (the branch grain, the hierarchy) are neither — they are already witnesses on the `agentCode`
+      row plus a residue belonging to `[A8 §9 item 3]`. **And `[A8 §9 item 1]` omits a fifth
+      party-grain scheme, `gbloc`.**
+- [x] **§1.3 item 2 — answered for the assertion half by the same measurement.** `identity`'s
+      canonical subject family is `anyAggregate`, whose membership **is** `AGGREGATE_KINDS`, so
+      minting the member admits a party subject by construction: **no new record type, no new fact
+      class, no new subject family.** What is left of item 2 is only `legal name`'s home.
+- [x] **§1.3 item 4 — measured: `custody.ts`'s TODO does NOT come off**, it re-points. See §1.3.1's
+      closing paragraph.
+- [ ] **§1.3 item 2, residue — does this round carry `legal name`, or mint a bare subject?** The one
+      open design question, and the next action.
 - [ ] §1.3 item 3 — take or explicitly decline `[A8 §9 item 3]` (person vs organisation vs crew grain)
-- [ ] §1.3 item 4 — what does `custody.ts`'s `TODO([A8 §9 items 1-3])` actually need?
 - [ ] §1.3 item 5 — is `[A8 §9 item 5]` (role cardinality) reachable once a party exists?
 - [ ] §1.2 — **the decision**: fifteenth `aggregate` kind, or stays outside the subject enum?
 - [ ] implementation, gates, tamper pass, cross-area edits, round record
+- [ ] **the ordinal sweep §1.3.1 found** — `fourteen` / `fifteenth` across `src/`, `tests/`, `tools/`
+      and five analysis documents, one of which **renders into `glossary.md`**
+- [ ] **four defects found in passing** (§1.3.1's own list) — three counts and two colliding ordinals
 
 **The previous round (`roleClass`) is fully landed and is NOT this round.** `plans/completed/domain-reference-roleclass.md`.
 
 ### Next action
 
-**Run §1.3 item 1, because it is the measurement most likely to invalidate §1's framing.** Concretely:
-read `[A8 §9 item 1]` (`docs/domain-reference/analysis/A8-authority-skeleton.md`, the paragraph naming
-"legal name, DOT/MC number, SCAC … agent code, the branch grain … and the hierarchy"), then classify
-each attribute it names — **legal name, DOT number, MC number, SCAC, agent code, the branch grain,
-the hierarchy** — against `packages/domain-reference/data/identity-schemes.json`'s rows and
-`[SD §7.1]`. (Enumerated rather than counted: A8's prose says "DOT/MC number" as one phrase while
-`data/identity-schemes.json` carries `usDotNumber` and `mcNumber` as **two** schemes, so any tally of
-"the party's fields" is wrong before you start — §3 item 10.) The question to answer in writing before
-designing anything:
+**§1.3 item 1 is done — read `§1.3.1` first, because it narrowed §1.2 rather than merely feeding it.**
+The assertion half needs nothing but the enum member, so **the only design question left before §1.2
+is `legal name`'s home**, and it is a two-branch decision with a live precedent on each side:
 
-> How many of the party's named attributes are **fields on an aggregate**, and how many are
-> `identity` **assertions whose subject is the party**?
+> Does this round **carry `legal name` as a field on a minted party record type**, or **mint a bare
+> subject** and leave the name owed?
 
-`[A9 §3.6]`'s whole finding is that they are the latter, and
-`data/identity-schemes.json` already carries five `party`-grain rows (`scac`, `usDotNumber`,
-`mcNumber`, `gbloc`, `agentCode`) each blocked on this item. **A party entity that carried SCAC as a
-field would re-make the mistake A9 found** — so if the answer is "assertions", this round may mint one
-`AggregateKind` member and **no new record type at all**, and its diff would be five blockers coming
-off plus one enum member.
+- **Bare subject** keeps the round's diff to one `AggregateKind` member, five blockers coming off, the
+  inverted `identity-scheme-refuses.ts` gate, the loader invariant, the cross-area annotations and the
+  ordinal sweep — and nothing published gains a field. A6's precedent is that a decision **not** to
+  widen a published union can be the central deliverable.
+- **Carrying the name** mints the round's first new record type and needs an evidence grade for a
+  field the corpus witnesses only as _"denormalised name+id string pairs on a flat row"_ — i.e. a
+  shape `[SD §0]` would read as `[ORIGINAL]` unless the grade is stated.
 
-Do **not** start with §1.2's schema decision; it is downstream of this measurement.
+**Measure before deciding**, as §1.3's own preamble requires: whether any `AssertionType` or published
+record already carries a party's name, and what `[SD §0]`'s rules make of a field witnessed only
+denormalised. **Then** §1.2, whose two branches §1.2 already costs.
+
+**Do not start the implementation before that decision**, and when it is made, re-read §1.3.1's "what
+it deliberately does not decide" — items 2 and 3 there are the two things a round is most likely to
+over-claim.
 
 ### Uncommitted work
 
-**This file's own `## Resume here` section, and nothing else.** The checkpoint was written under
-`/keep-going`, which is explicitly checkpoint-only — "do not start new implementation, do not commit,
-do not push" — so the edit is deliberately left in the working tree of
-`/home/steve/repos/pegasus-deps-advisory-flip` on `chore/parked-dr`.
+**None at the checkpoint.** The previous session's `/keep-going` checkpoint — this file's
+`## Resume here` section — was committed as `6f992717` on `chore/dr-party` before any measurement was
+taken, precisely so the round's starting state is in history rather than in a working tree. `§1.3.1`
+and this section land with the commit after it.
 
-**Consequence worth knowing:** a _fresh worktree_ provisioned by `scripts/workstream-start.sh` branches
-from `origin/main` and will **not** contain this section. Either resume in this worktree, or commit
-this file first (`git add plans/in-progress/domain-reference-party-entity.md`) and let
-`workstream-start.sh` seed the committed version. Nothing of the round itself exists yet.
+**Nothing of the round's implementation exists**: `src/`, `data/`, `tests/` and the generated artefacts
+are untouched, and no `AggregateKind` member has been minted. A _fresh worktree_ provisioned by
+`scripts/workstream-start.sh` branches from `origin/main` and so would carry none of this; resume on
+`chore/dr-party` in this worktree.
 
 ### In flight
 
@@ -268,6 +284,155 @@ round.
 5. **Is `[A8 §9 item 5]` (role cardinality and exclusivity) reachable once a party exists?** A8-SELF
    needs party identity to compare, so some of item 5 may become decidable as a side effect. Measure;
    do not promise.
+
+### 1.3.1 THE MEASUREMENT — taken 2026-10-07, and it refutes §1.3 item 1's dichotomy
+
+**§1.3 item 1 asked a binary question — field or `identity` assertion — and the corpus answers in
+three buckets.** **The branch grain** and **the hierarchy** are neither: they are already _witnesses
+on one scheme row_ plus a residue that belongs to a different owed item. **Legal name** is a field
+with nowhere to go. And the enumeration itself is wrong in one direction: **`gbloc` is blocked on
+this item and `[A8 §9 item 1]` does not name it.**
+
+> **Do not tally this section.** `[A8 §9 item 1]`'s prose and the scheme table disagree about what
+> the set even is, in **both** directions — A8 writes "DOT/MC number" as one phrase where the table
+> carries `usDotNumber` and `mcNumber` as two rows, and A8 omits `gbloc` which the table carries and
+> blocks on this very item. So "the party's attributes" has no single cardinality to count, and every
+> claim below is enumerated by name instead (§3 item 10).
+
+Measured against `packages/domain-reference/data/identity-schemes.json` (its five rows whose
+`identifies` is `party`), `[SD §7.1]`'s identifier shape, and `src/vocabulary.ts`'s
+`CANONICAL_SUBJECT_FAMILY` / `SUBJECT_FAMILIES`.
+
+| What `[A8 §9 item 1]` names   | Where it lands                                                                                                    | The evidence                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SCAC**                      | `identity` assertion, `subject` = the party                                                                       | the `scac` row — six witness rows, four publishing bodies, `definedNotMerelyNamed: false`                                                                                                                                                                                                                                                                           |
+| **DOT number**                | `identity` assertion                                                                                              | the `usDotNumber` row — `src:cfr-49-375` Appendix A item 2, captured and primary                                                                                                                                                                                                                                                                                    |
+| **MC number**                 | `identity` assertion                                                                                              | the `mcNumber` row — kept separate because the regulation offers the two as **alternatives**, which under **I-KEY** makes two vocabularies rather than two values                                                                                                                                                                                                   |
+| **agent code**                | `identity` assertion                                                                                              | the `agentCode` row — `authority: "the van line"`, `definedNotMerelyNamed: true`                                                                                                                                                                                                                                                                                    |
+| **the branch grain**          | **neither** — already inside `agentCode`, plus a grain question that is `[A8 §9 item 3]`'s                        | the `agentCode` row's own note: _"the code CARRIES the branch, so the identifier encodes a hierarchy the model would otherwise have to store"_. `src:sirva-ade`'s trailing three digits are **part of the id**, so nothing is left to carry as a field. The residue — _is a branch its own party?_ — is a question about the **subject's grain**, which is item 3's |
+| **the hierarchy**             | **neither** — also inside `agentCode`'s witnesses, and the rest is a party→party **relation** no fact class holds | the same row's second witness: `src:atlas-world-group-api`'s `parentAgentCode` and `/Agents/{agentCode}/Family`, **column names only**. A parent-of edge is not an `identity` assertion (it names no scheme and assigns no id) and not a field on either party (it is symmetric debt between two). **No `AssertionType` in `src/vocabulary.ts` takes it**           |
+| **legal name**                | **field** — and it is the one residue                                                                             | no row of the twenty is a name scheme, and no member of `ASSERTION_TYPES` carries a name of anything. The crosscheck's finding, quoted in item 1 itself, is that SIRVA, Atlas and pegII _"all carry denormalised name+id string pairs on a flat row"_ — so a name is witnessed everywhere and schematised nowhere                                                   |
+| _(not named by A8)_ **GBLOC** | `identity` assertion — **and `[A8 §9 item 1]` omits it**                                                          | the `gbloc` row, blocked on this item, `definedNotMerelyNamed: true`. `[A9 §3.6]`'s set is _"`scac`, `usDotNumber`, `mcNumber`, `gbloc` and `agentCode`"_ — five, enumerated by name in `identity-schemes.test.ts` — while A8's prose names four                                                                                                                    |
+
+#### The answer, stated so the next step can use it
+
+**`scac`, `usDotNumber`, `mcNumber`, `agentCode` and `gbloc` are `identity` assertions whose
+`subject` is a party — the table's whole `party`-grain set, gated by name. `legal name` is a field.
+The branch grain and the hierarchy dissolve.** And the assertion half needs **no new machinery
+whatever**, which is the measurement's sharpest result:
+
+> `src/vocabulary.ts` declares `identity`'s canonical subject family as **`anyAggregate`**, whose
+> membership is `AGGREGATE_KINDS` **itself** — quoted from `[SD §7.1]`, _"`subject` may be **any**
+> aggregate kind"_. So the moment `party` is a member of that enum, `Assertion<'identity'>` admits a
+> party subject **by construction**. There is nothing to widen, no family to extend, and no row to
+> add to `CANONICAL_SUBJECT_FAMILY`.
+
+**That answers §1.3 item 2 before it is asked, for the assertion half.** Minting the
+`AggregateKind` member is the entire mechanism for all five schemes. No new record type, no new
+fact class, no new subject family.
+
+#### What the measurement hands forward, and what it deliberately does not decide
+
+1. **The one open design question is now narrow: does this round carry `legal name`, or mint a bare
+   subject and leave the name owed?** It is the only attribute item 1 names with no home either way. Do
+   not answer it here — it is §1.2's neighbour, not part of this measurement, and A6's precedent
+   (a central deliverable that was a decision **not** to widen a published union, with an empty
+   diff) is live.
+2. **The branch grain and the hierarchy must not be described as discharged by this round.** The
+   first is `[A8 §9 item 3]`'s and the second has no fact class; §1.3 item 3's warning —
+   _"a party entity that cannot tell a company from the individual who signs would not discharge
+   `[A8 §9 item 3]`"_ — applies verbatim to claiming either.
+3. **`[A9 §3.6]` overclaims against `[A8 §9 item 1]`, by one row.** Its opening says item 1 _"already
+   names these very identifiers among its fields"_. It names four of the five; **GBLOC it does not
+   name**, and A9's own §3.6 closing paragraph and `[SD §7.2]`'s A9 note both rely on GBLOC being
+   one of them. The house fix is a marked `> **AMENDED 2026-10-07**` on `[A8 §9 item 1]` naming the
+   five, **not** a rewrite and **not** an edit to A9 — §3 item 14.
+
+#### Four defects found on the way, three of them counts
+
+None was predicted by this plan, and all four are §3 item 10's shape.
+
+1. **`data/identity-schemes.json`'s `gbloc` note says _"one of the six party-grain rows"_. There are
+   five**, and `[A9 §3.6]` names five. Not emitted — a note body reaches no generated artefact — so
+   the fix costs no bump.
+2. **`src/data.ts`'s `SchemeSubject` docstring says _"six of the table's rows identify a party"_.
+   Same defect, same five, second home.** §3 item 9's rule generalises: a **count** may have more
+   than two homes too. Also not emitted; the context map carries only the citations off that
+   docstring (`data.ts:SchemeSubject.aggregate`), not its prose.
+
+   > **And both contradict a LIVE gate rather than merely being stale.**
+   > `identity-schemes.test.ts`'s test is titled _"exactly five rows identify a party, and they are
+   > named"_ and asserts the five by name. So this is not a count nobody is keeping — it is a count
+   > kept **correctly in a gate and wrongly in two docstrings**, which is the inverse of §3 item 10's
+   > usual failure and worth saying out loud: a passing suite did not protect the prose.
+
+3. **`tools/generate-glossary.ts`'s `aggregate` blurb says _"The fourteen members of `[SD §1.2]`'s
+   versioned closed enum"_, and it RENDERS** — `docs/domain-reference/glossary.md`. A hand-written
+   count inside a generator, ungated, which minting a fifteenth member makes wrong in the published
+   artefact. §3 item 10's remedy is to delete it rather than increment it; the glossary enumerates
+   the members immediately below, so the count carries nothing.
+4. **Two independent `TODO(…)`s each claim the SAME ordinal.** `ids.ts`'s says the party may become
+   _"a fifteenth aggregate kind"_; `custody.ts`'s says a **place** is _"either a fifteenth aggregate
+   kind or an attribute of a Stop"_ — and the **context map publishes custody's text verbatim** in
+   its debt section. Whichever lands first makes the other's ordinal wrong, which is §4's
+   _"an ordinal is usually a count someone else is keeping differently"_ with both keepers inside
+   this package.
+
+   **The sweep, enumerated — and a `grep` for the word is NOT the sweep.** `fourteen` appears in
+   eleven files and **only these say "fourteen aggregate kinds"** or a paraphrase of it:
+   `src/vocabulary.ts`, `src/rules/charges.ts`, `tests/conformance/charge-collection-refuses.ts`,
+   `tools/generate-catalog.ts` (twice — "fourteen aggregate id types" and "the fourteen-member
+   envelope union"), `tools/generate-glossary.ts` (defect 3, which renders into `glossary.md`),
+   `[A7]` and `[SD]`. The other hits are **different fourteens and must be left alone**: `[A6]`'s is
+   fourteen _named instruments_, `[A9]`'s two are fourteen _registry pairs_ (and its second hit is
+   A9 retracting that very number), and `[A8]`'s two count the rows of its own _role table_. `fifteenth`
+   is the smaller and cleaner set — `src/ids.ts`, `src/custody.ts`,
+   `tests/conformance/identity-scheme-refuses.ts`, `context-map.md`, `[A8]` and `[A9]` — and every
+   one of those six is about an aggregate kind.
+
+   So the blast radius of minting a member is a real ordinal sweep and a real cost input into §1.2
+   that §1 did not cost — **and the sweep has to be read, not grepped**, which is §4's lesson one
+   level in: half the hits for the word are a different claim wearing the same number.
+
+#### THREE things invert, not one — §6's list is short by two
+
+§6 and §1.2 both name `identity-scheme-refuses.ts`'s `partyIsNotAnAggregate` as the gate written to be
+inverted by this round. **It is one of three, and the other two are enforcement rather than a
+compile-time witness**, so a round that inverts only the named one leaves the suite red for reasons it
+did not predict:
+
+1. **`tests/conformance/identity-scheme-refuses.ts`** — `partyIsNotAnAggregate`'s `@ts-expect-error`
+   goes unused (`TS2578`). The one §6 names.
+2. **`identity-schemes.test.ts`'s blocker invariant**, whose own comment says so:
+   _"If a later round mints the party, these blockers come off and this fails by name."_ It asserts
+   every `party` row carries `[A8 §9 item 1]` **and** every aggregate row's blocker is `null`, so it
+   fails from both sides once the blockers come off.
+3. **`loadIdentitySchemes`'s two load-time refusals** — it throws on a `party` row with no blocker and
+   on `[A8 §9 item 1]` written onto an aggregate-grain row, and **both have their own tamper tests**.
+   Taking the blockers off makes the first refusal reject the corrected data. This is the one most
+   easily missed, because it is in `src/` and not in a test file.
+
+**And the `$comment` at the head of `data/identity-schemes.json` states the premise in prose** —
+`identifies` is _"an `[SD §1.2]` aggregate kind or the literal `party`, which is not one"_ — so it is a
+fourth place the decision has to reach, with no gate on it at all.
+
+#### One drift recorded and deliberately not fixed
+
+**`assertedBy.partyRef` names a field the code spells `party`.** `[SD §1.1]` quotes the shape as
+`{partyRef, role}`; `src/envelope.ts`'s `AssertedBy` declares `readonly party: PartyId` — and
+`[A8 §9 item 1]`'s first sentence and `rules/authority.ts`'s closing `TODO([A8 §9 items 1-3, 5])`
+both cite `partyRef`. **Renaming the field is breaking and out of this round's scope**; recorded so
+a later round does not read the citation as naming a field that exists.
+
+#### And one thing this round must not claim, measured rather than assumed — §1.3 item 4
+
+**`custody.ts`'s `TODO([A8 §9 items 1-3])` does not come off.** Its `CustodyHolder` union exists
+because `[SD §4.8.3]` returns `holder` as a **`partyRole`** while `[SD §8.2]`'s `performedBy` is a
+**party**; minting the party aggregate gives the second a subject and **does not resolve one to the
+other**. That resolution is the person-vs-organisation grain, i.e. item 3. Expect to **re-point**
+the marker, not delete it — and re-pointing is a real deliverable only under §3 item 16's test
+(what the item is owed **for** has changed), which here it has: the TODO currently names item 1
+among its blockers and after this round it would not.
 
 ### 1.4 What this round must not do
 
