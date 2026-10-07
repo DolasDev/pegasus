@@ -2775,3 +2775,36 @@ exactly the definition sentences it said did not exist.
   saying the summarizers were wrong and what replaced them; that section is why the numbers in it can
   be trusted.
 - Do not run a second fetch to check a first one. Run a parse.
+
+## A red `Dependabot Updates` run is usually Dependabot declining, not Dependabot broken
+
+**Symptom (2026-10-05 → 10-07).** `Dependabot Updates` showed only failures for two days, each
+annotated "Dependabot encountered an error performing the update". That, plus a critical advisory
+with no Dependabot PR, was read as "the dependency safety net is down" and written into the CI resume
+plan as its highest-consequence item. It was not down.
+
+**Reading the log.** `gh run view <id> --log` and `--log-failed` print **zero lines** for a Dependabot
+service run. The job log is reachable directly:
+
+```bash
+job=$(gh api repos/DolasDev/pegasus/actions/runs/<run-id>/jobs --jq '.jobs[0].id')
+gh api repos/DolasDev/pegasus/actions/jobs/$job/logs | grep -a -A8 -E 'Errors|conflicting dependenc'
+```
+
+Logs expire; an old one returns an XML `BlobNotFound` with HTTP 404.
+
+**What the errors meant.** Each red run was a **security** job (title `… for <pkg>`) for one alert it
+could not satisfy — `security_update_not_possible` (a parent's range blocks the fix: `mermaid requires
+katex@^0.16.47`; or the copy is bundled in another package) or `NoChangeError` (npm would not
+re-resolve). Version-update runs were green throughout. A red security run is the expected outcome
+for every alert this repo allowlists in `audit-ci.jsonc`; it repeats on each push to `main` while the
+alert stays open.
+
+**Why the critical advisory had no PR.** GitHub had not raised an alert yet. Advisory → alert lag
+measured over 30 alerts: **median ~24h**, sometimes weeks. `audit-ci` uses npm's advisory endpoint and
+saw it the same afternoon. **Dependabot is not an early warning for a same-day advisory, ever** —
+the local `audit-ci` run before enqueuing is.
+
+**How to apply:** before calling Dependabot broken, read one failed job's log and check whether any
+**version-update** run failed. If only `for <pkg>` security runs are red, the cause is the advisory,
+not the service — triage the alert (fix, or dismiss with a reason).
