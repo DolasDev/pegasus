@@ -107,7 +107,8 @@ export class CognitoStack extends cdk.Stack {
   public readonly mobileAppClient: cognito.UserPoolClient
 
   /**
-   * App client used by the MoveManager desktop (cloud identity I4): Hosted UI in
+   * App client used by the MoveManager desktop (cloud identity I4): password
+   * sign-in in-app via InitiateAuth USER_PASSWORD_AUTH; SSO via the Hosted UI in
    * the system browser, Authorization Code + PKCE, loopback redirect. No secret.
    */
   public readonly desktopAppClient: cognito.UserPoolClient
@@ -602,16 +603,25 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     // Desktop app client (cloud identity I4)
     //
-    // Used by the MoveManager desktop to sign in through the Cognito Hosted UI
-    // in the system browser (RFC 8252: Authorization Code + PKCE, loopback
-    // redirect). The desktop then exchanges its ID token at
-    // POST /api/v1/desktop/session for a pegII token for one company.
+    // Used by the MoveManager desktop. SSO sign-in goes through the Cognito
+    // Hosted UI in the system browser (RFC 8252: Authorization Code + PKCE,
+    // loopback redirect). Password sign-in is in-app: the desktop calls
+    // InitiateAuth USER_PASSWORD_AUTH directly, exactly as tenant-web does. The
+    // desktop then exchanges its ID token at POST /api/v1/desktop/session for a
+    // pegII token for one company.
     //
     //   - generateSecret: false — public client; nothing secret ships in the exe.
-    //   - ExplicitAuthFlows pinned to ALLOW_REFRESH_TOKEN_AUTH only: the desktop
-    //     never collects a password (the Hosted UI does). CDK renders NO
-    //     ExplicitAuthFlows for `authFlows: {}`, and Cognito then applies its
+    //   - ExplicitAuthFlows pinned to USER_PASSWORD_AUTH + REFRESH_TOKEN_AUTH.
+    //     Password sign-in must NOT go through the Hosted UI password page: that
+    //     yields TokenGeneration_HostedAuth, which pre-token treats as federated
+    //     for any user with a linked identity and resolves to identities[0]'s
+    //     tenant instead of the select-tenant choice (the 2026-10-08 QMM live
+    //     test failed exactly so; see pre-token.ts). InitiateAuth yields
+    //     TokenGeneration_Authentication, where select-tenant wins. CDK renders
+    //     NO ExplicitAuthFlows for `authFlows: {}`, and Cognito then applies its
     //     defaults (SRP + CUSTOM + refresh), so the override is load-bearing.
+    //   - preventUserExistenceErrors: as the tenant and admin clients — a wrong
+    //     email can't be told from a wrong password.
     //   - callbackUrls: Cognito matches callback URLs EXACTLY (no wildcard
     //     port), so three fixed loopback ports are registered; the desktop
     //     listens on the first free one.
@@ -623,7 +633,10 @@ export class CognitoStack extends cdk.Stack {
     // attached at runtime (apps/api/src/lib/cognito-app-client.ts), and
     // POST /auth/resolve-tenants reconciles this client too. A new client is
     // added rather than editing an existing one; the cognito-stack test pins the
-    // other three clients' properties.
+    // other three clients' properties. Editing THIS client (as the password
+    // sign-in change did) resets its IdPs once; that's accepted because the
+    // desktop always calls resolve-tenants before a sign-in, which re-adds the
+    // tenant's providers. Verify with describe-user-pool-client after deploy.
     // -------------------------------------------------------------------------
     this.desktopAppClient = this.userPool.addClient('DesktopAppClient', {
       userPoolClientName: 'desktop-app-client',
@@ -638,10 +651,11 @@ export class CognitoStack extends cdk.Stack {
       accessTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.days(30),
       enableTokenRevocation: true,
+      preventUserExistenceErrors: true,
     })
     ;(this.desktopAppClient.node.defaultChild as cognito.CfnUserPoolClient).addPropertyOverride(
       'ExplicitAuthFlows',
-      ['ALLOW_REFRESH_TOKEN_AUTH'],
+      ['ALLOW_USER_PASSWORD_AUTH', 'ALLOW_REFRESH_TOKEN_AUTH'],
     )
 
     // -------------------------------------------------------------------------

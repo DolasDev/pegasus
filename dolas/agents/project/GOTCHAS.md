@@ -331,12 +331,38 @@ that caused an intermittent "account has not been granted access" failure:
   "not granted access"). There is no email-domain fallback — the `email_domains`
   column was removed. A user belonging to multiple tenants cannot be auto-resolved
   on a bare token refresh and is told to sign in again rather than guessed at.
+  The MoveManager desktop refreshes silently anyway by calling `select-tenant`
+  immediately before each refresh: the fresh `AuthSession` wins, exactly as at
+  sign-in. Any other client that wants silent multi-tenant refresh must do the same.
 
 Cognito wraps any pre-token `throw` as `UserLambdaValidationException` with the
 message `PreTokenGeneration failed with error <msg>.`. `unwrapPreTokenMessage`
 in `packages/auth/src/cognito-client.ts` strips that wrapper (and Cognito's
 appended period) so only the Lambda's own sentence reaches the login UI — keep
 pre-token error strings user-ready.
+
+## Password sign-in through the Hosted UI resolves a linked user to the WRONG tenant
+
+Password login must call Cognito `InitiateAuth USER_PASSWORD_AUTH` directly (tenant-web:
+`apps/tenant-web/src/auth/cognito.ts` via `packages/auth/src/cognito-client.ts`; the
+MoveManager desktop: its in-app password form). **Never** route it through the Hosted UI's
+own password page, even though that page works and looks the same.
+
+Why: pre-token's `isFederatedSignIn` (`apps/api/src/cognito/pre-token.ts`) classifies a
+sign-in by `triggerSource`. `InitiateAuth` yields `TokenGeneration_Authentication` →
+native → the `select-tenant` pick wins. The Hosted UI yields `TokenGeneration_HostedAuth`
+→ treated as federated whenever the account carries a linked identity
+(`cognito/pre-sign-up.ts` links them) → the tenant comes from `identities[0]`'s provider.
+For a user linked to another tenant's IdP, that is the wrong tenant, and the
+AuthSession-disagreement check refuses it:
+`PreTokenGeneration failed … session does not match the identity provider`.
+
+Hit 2026-10-08 on the desktop's first QMM live sign-in: "Email and password" opened the
+Hosted UI, the user's `identities[0]` was another tenant's Microsoft provider, and the
+QMM pick was refused. Fix: the desktop app client allows `USER_PASSWORD_AUTH`
+(`cognito-stack.ts`, pinned in `cognito-stack.test.ts`) and the desktop signs in in-app.
+Unlinked users don't hit it, so a test account without a linked identity will not
+reproduce it — test with a linked one.
 
 ## Ported longhaul CSS relies on browser-default headings that Tailwind Preflight strips
 

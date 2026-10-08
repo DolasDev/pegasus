@@ -136,23 +136,31 @@ function extractProviderName(identitiesAttr: string | undefined): string | null 
 // question. It separates the two flows cleanly because of how the apps sign in:
 //
 //   - Native password → InitiateAuth USER_PASSWORD_AUTH (apps/tenant-web/src/auth/
-//     cognito.ts) → TokenGeneration_Authentication. Never touches the hosted UI.
+//     cognito.ts, and the MoveManager desktop's in-app password sign-in) →
+//     TokenGeneration_Authentication. Never touches the hosted UI.
 //   - Federated → /oauth2/authorize?identity_provider=<name> → TokenGeneration_HostedAuth.
 //     The identity_provider hint skips the hosted UI's own password form, so for a tenant
 //     app client HostedAuth means an IdP round-trip and nothing else.
 //   - admin-web does use the hosted UI, but the admin client returns above, long before
 //     tenant resolution.
 //
-// ⚠️ This couples us to that login design. If tenant password login is ever moved onto the
-// hosted UI, a linked user would be misclassified as federated all over again. Change this
-// check in the same commit as any such move.
+// ⚠️ This couples us to that login design. If password login — tenant-web's OR the
+// desktop's — is ever moved onto the hosted UI, a linked user would be misclassified as
+// federated all over again. Change this check in the same commit as any such move. The
+// desktop did exactly that once: its first QMM live test (2026-10-08) sent "Email and
+// password" through the hosted UI password page, and a user linked to another tenant's
+// Microsoft IdP was resolved to that tenant and refused. It now calls InitiateAuth.
 //
-// ⚠️ TokenGeneration_RefreshTokens is deliberately NOT treated as federated: no client in
-// this repo refreshes today (every exchange is grant_type=authorization_code), so it never
-// fires. Whoever adds refresh must decide how to resolve the tenant for a LINKED user —
-// at refresh neither `identities` nor `triggerSource` distinguishes native from federated,
-// and the AuthSession is 10-minute TTL (handlers/auth.ts) so it is long expired. Read this
-// note before you wire one up.
+// ⚠️ TokenGeneration_RefreshTokens is deliberately NOT treated as federated, so it takes
+// the native path: a live AuthSession wins, otherwise a single roster row. At refresh
+// neither `identities` nor `triggerSource` distinguishes native from federated, and the
+// sign-in's AuthSession (10-minute TTL, handlers/auth.ts) is long expired. The MoveManager
+// desktop is the client that refreshes (InitiateAuth REFRESH_TOKEN_AUTH or /oauth2/token),
+// and it calls POST /api/auth/select-tenant immediately before each refresh, so the fresh
+// AuthSession resolves the refresh to the tenant it signed in to — including for a
+// multi-tenant or linked user. The roster row must still exist and not be deactivated,
+// as at sign-in. Any new refreshing client must do the same, or a multi-tenant user's
+// refresh fails on the multiple-roster-rows branch.
 //
 // Fail-safe direction: anything unrecognized falls to the native path, which is strictly
 // more restrictive — it still requires an AuthSession or an unambiguous roster row.
