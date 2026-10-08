@@ -310,16 +310,81 @@ Measured against `packages/domain-reference/data/identity-schemes.json` (its fiv
 `identifies` is `party`), `[SD §7.1]`'s identifier shape, and `src/vocabulary.ts`'s
 `CANONICAL_SUBJECT_FAMILY` / `SUBJECT_FAMILIES`.
 
-| What `[A8 §9 item 1]` names   | Where it lands                                                                                                    | The evidence                                                                                                                                                                                                                                                                                                                                                        |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **SCAC**                      | `identity` assertion, `subject` = the party                                                                       | the `scac` row — six witness rows, four publishing bodies, `definedNotMerelyNamed: false`                                                                                                                                                                                                                                                                           |
-| **DOT number**                | `identity` assertion                                                                                              | the `usDotNumber` row — `src:cfr-49-375` Appendix A item 2, captured and primary                                                                                                                                                                                                                                                                                    |
-| **MC number**                 | `identity` assertion                                                                                              | the `mcNumber` row — kept separate because the regulation offers the two as **alternatives**, which under **I-KEY** makes two vocabularies rather than two values                                                                                                                                                                                                   |
-| **agent code**                | `identity` assertion                                                                                              | the `agentCode` row — `authority: "the van line"`, `definedNotMerelyNamed: true`                                                                                                                                                                                                                                                                                    |
-| **the branch grain**          | **neither** — already inside `agentCode`, plus a grain question that is `[A8 §9 item 3]`'s                        | the `agentCode` row's own note: _"the code CARRIES the branch, so the identifier encodes a hierarchy the model would otherwise have to store"_. `src:sirva-ade`'s trailing three digits are **part of the id**, so nothing is left to carry as a field. The residue — _is a branch its own party?_ — is a question about the **subject's grain**, which is item 3's |
-| **the hierarchy**             | **neither** — also inside `agentCode`'s witnesses, and the rest is a party→party **relation** no fact class holds | the same row's second witness: `src:atlas-world-group-api`'s `parentAgentCode` and `/Agents/{agentCode}/Family`, **column names only**. A parent-of edge is not an `identity` assertion (it names no scheme and assigns no id) and not a field on either party (it is symmetric debt between two). **No `AssertionType` in `src/vocabulary.ts` takes it**           |
-| **legal name**                | **field** — and it is the one residue                                                                             | no row of the twenty is a name scheme, and no member of `ASSERTION_TYPES` carries a name of anything. The crosscheck's finding, quoted in item 1 itself, is that SIRVA, Atlas and pegII _"all carry denormalised name+id string pairs on a flat row"_ — so a name is witnessed everywhere and schematised nowhere                                                   |
-| _(not named by A8)_ **GBLOC** | `identity` assertion — **and `[A8 §9 item 1]` omits it**                                                          | the `gbloc` row, blocked on this item, `definedNotMerelyNamed: true`. `[A9 §3.6]`'s set is _"`scac`, `usDotNumber`, `mcNumber`, `gbloc` and `agentCode`"_ — five, enumerated by name in `identity-schemes.test.ts` — while A8's prose names four                                                                                                                    |
+| What `[A8 §9 item 1]` names   | Where it lands                                                                                                    | The evidence                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SCAC**                      | `identity` assertion, `subject` = the party                                                                       | the `scac` row — six witness rows, four publishing bodies, `definedNotMerelyNamed: false`                                                                                                                                                                                                                                                                                                            |
+| **DOT number**                | `identity` assertion                                                                                              | the `usDotNumber` row — `src:cfr-49-375` Appendix A item 2, captured and primary                                                                                                                                                                                                                                                                                                                     |
+| **MC number**                 | `identity` assertion                                                                                              | the `mcNumber` row — kept separate because the regulation offers the two as **alternatives**, which under **I-KEY** makes two vocabularies rather than two values                                                                                                                                                                                                                                    |
+| **agent code**                | `identity` assertion                                                                                              | the `agentCode` row — `authority: "the van line"`, `definedNotMerelyNamed: true`                                                                                                                                                                                                                                                                                                                     |
+| **the branch grain**          | **neither** — already inside `agentCode`, plus a grain question that is `[A8 §9 item 3]`'s                        | the `agentCode` row's own note: _"the code CARRIES the branch, so the identifier encodes a hierarchy the model would otherwise have to store"_. `src:sirva-ade`'s trailing three digits are **part of the id**, so nothing is left to carry as a field. The residue — _is a branch its own party?_ — is a question about the **subject's grain**, which is item 3's                                  |
+| **the hierarchy**             | **neither** — also inside `agentCode`'s witnesses, and the rest is a party→party **relation** no fact class holds | the same row's second witness: `src:atlas-world-group-api`'s `parentAgentCode` and `/Agents/{agentCode}/Family`, **column names only**. A parent-of edge is not an `identity` assertion (it names no scheme and assigns no id) and not a field on either party (it is symmetric debt between two). **No `AssertionType` in `src/vocabulary.ts` takes it**                                            |
+| **legal name**                | **an attribute whose GRAIN is undecided** — not a field, not an assertion. **AMENDED 2026-10-08**, below          | no row of the twenty is a name scheme, and no member of `ASSERTION_TYPES` carries a name of anything. The crosscheck's finding, quoted in item 1 itself, is that SIRVA, Atlas and pegII _"all carry denormalised name+id string pairs on a flat row"_. The 2026-10-08 measurement went to the primary bytes and found the shapes **disagree**, which the phrase "denormalised string pairs" conceals |
+| _(not named by A8)_ **GBLOC** | `identity` assertion — **and `[A8 §9 item 1]` omits it**                                                          | the `gbloc` row, blocked on this item, `definedNotMerelyNamed: true`. `[A9 §3.6]`'s set is _"`scac`, `usDotNumber`, `mcNumber`, `gbloc` and `agentCode`"_ — five, enumerated by name in `identity-schemes.test.ts` — while A8's prose names four                                                                                                                                                     |
+
+> **AMENDED 2026-10-08 — the `legal name` row, measured against the primary bytes.**
+>
+> The table's first pass called `legal name` a **field**, on the ground that nothing else in the model
+> could hold it. **That was an inference from the model's own silence, not a measurement of the
+> corpus**, and it is the defect `[SD §0]`'s disclosure rule exists to stop: no source was cited for
+> it, because `[A8 §9 item 1]` cites none either — it cites `src:dtr-part-iv` for SCAC,
+> `src:sirva-ade` for the branch grain and `src:atlas-world-group-api` for the hierarchy, and **"legal
+> name" is the one attribute in its own list with no citation at all.**
+>
+> **It has one now, and it is primary and captured.** `src:cfr-49-375`, read from
+> `captured/cfr-49-375.xml` rather than from an analysis, publishes the requirement **three times in
+> two independent places** — and headings, not line numbers (§5's last bullet):
+>
+> - **§ 375.505 _"Must I write up a bill of lading?"_ (b)(1)** — _"Your legal or trade name (i.e.,
+>   doing business as name) **as it is registered with FMCSA**, to include your physical address."_
+>   The binding rule, first of the seventeen items a bill of lading must carry.
+> - **Appendix A → _"Bill of Lading"_ item 1** — the **same** requirement restated for the consumer.
+>   **Not an independent witness**, and must not be counted as one.
+> - **Appendix A → _"Bill of Lading"_ item 2** — _"The **names**, telephone numbers, addresses, and
+>   USDOT Numbers of any motor carriers, when known, who will participate in transportation of the
+>   shipment."_ A **different** requirement: the participating carriers, plural, name paired with
+>   USDOT.
+> - **§ 375.207 _"What items must be in my advertisements?"_ (b)(1)** — _"Your name or trade name, **as
+>   it appears on our document assigning you a U.S. DOT number**"_. A different context again, and the
+>   one that **couples the name to the USDOT registration** rather than to the party.
+>
+> And a second publisher corroborates the coupling at `secondary` grade — `src:dp3-tender-of-service`
+> §B.3.f p.19, obligation row 10: the TSP must record the _"legal name and US DOT number of the
+> service provider **actually hauling** the shipment"_ within 2 GBD, **in DPS General Remarks**.
+> Graded `secondary` deliberately: that source has **no `captured/` and no `local/` directory**, so
+> the sentence is quoted from its own `analysis.md` and the rule in `data/identity-schemes.json`'s
+> `$comment` applies.
+>
+> **Three findings, and the third decides §1.2.**
+>
+> 1. **What the regulation publishes is a DISJUNCTION, not a field.** _"legal **or** trade name (i.e.,
+>    doing business as name)"_ — two kinds of name, offered as alternatives, with DBA named as the
+>    second. A record with one `legalName: string` slot flattens that, and the table already contains
+>    the house ruling on exactly this shape: the `mcNumber` row is separate from `usDotNumber`
+>    _"because the regulation offers them as alternatives, which under **I-KEY** makes them two
+>    vocabularies and not two values"_.
+> 2. **It arrives bundled with an address, which the model cannot hold either.** Both statements of
+>    the rule end _"to include its physical address"_, and `[SD §1.2]` has no `place` aggregate —
+>    `custody.ts`'s own `TODO([SD §1.2] / A3)` says a place _"is either a fifteenth aggregate kind or
+>    an attribute of a Stop"_. So carrying the name as published needs a second owed aggregate.
+> 3. **THE DECIDING ONE: the name is blocked on `[A8 §9 item 3]`, not on item 1.**
+>    `src:sirva-ade`'s `Resource` is `{Id, Name, Type, Owner}`, and its own contract says `Id` _"can
+>    contain agent, vendor, driver **or equipment** code based on the resource `Type`"_ — so `Name`
+>    names **whatever `Type` says**: a company, a person, or a **tractor**. The grade-A partner
+>    contract that has a name field is the same one that fuses the three grains. **Naming a party
+>    requires first deciding what a party is**, which is `[A8 §9 item 3]` verbatim. `src:atlas-world-group-api`
+>    is no help: it has a party **record** with temporal validity (`AgentModel`,
+>    `CompanyModel.effectiveDate`/`expirationDate`) and **no visible name field**, and `[SD §0]` holds
+>    that its vocabulary is _"not merely unfetched but unpublished"_, so nothing may be scheduled
+>    against fetching it.
+>
+> **One parallel recorded and REJECTED, because the next session will reach for it.** _"As it is
+> registered with FMCSA"_ makes FMCSA an `authority` in `[SD §7.1]`'s exact sense, and the alternatives
+> test above is the table's own. Both tempt toward minting a `legalName` **scheme** and filing the name
+> as an `identity` assertion. **It is still wrong:** `[SD §7.1]` defines a scheme as _"the naming
+> system, which DEFINES who assigns and what it identifies"_, and **a name does not identify.** The
+> `scac` row's six witnesses cite the code **because** it identifies a carrier uniquely; nothing in
+> `src:cfr-49-375` says a name is unique, and two carriers may trade under one name in two states.
+> FMCSA registering a name makes FMCSA an authority **without making the name an `id`**.
 
 #### The answer, stated so the next step can use it
 
@@ -358,11 +423,12 @@ subject family.**
 
 #### What the measurement hands forward, and what it deliberately does not decide
 
-1. **The one open design question is now narrow: does this round carry `legal name`, or mint a bare
-   subject and leave the name owed?** It is the only attribute item 1 names with no home either way. Do
-   not answer it here — it is §1.2's neighbour, not part of this measurement, and A6's precedent
-   (a central deliverable that was a decision **not** to widen a published union, with an empty
-   diff) is live.
+1. **ANSWERED 2026-10-08: the round does NOT carry `legal name`, and the reason is sourced rather
+   than scope control.** The AMENDED block above is the measurement. The name is blocked on
+   `[A8 §9 item 3]` — a party that cannot tell a company from a tractor cannot be named — it is
+   published as a **disjunction** rather than a field, and it arrives bundled with an address the
+   model has no aggregate for. Choosing one of those shapes would be the `[ORIGINAL]` guess
+   `[SD §0]` forbids. **It stays owed on `[A8 §9 item 1]`, now with the citation item 1 never had.**
 
    > **And there is a THIRD branch that typechecks today, which is why it has to be ruled out in
    > writing rather than left unmentioned.** `SchemeName` is `OwedCode<'identityScheme'>` and
