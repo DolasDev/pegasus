@@ -291,16 +291,18 @@ jobs:
         # below still has a playwright-report/ to ship.
         #
         # `node ../../node_modules/.bin/playwright`, NOT `npx playwright`, and not
-        # bare `playwright`: `@playwright/mcp` (an apps/e2e devDependency) depends
-        # on a PRERELEASE `playwright`, which npm installs at
-        # apps/e2e/node_modules/playwright. Anything resolving the binary from
-        # this working directory therefore gets that prerelease runner while the
-        # specs still `import from '@playwright/test'` at the root's stable
-        # version — a runner/library mismatch that fails as
-        # "Playwright Test did not expect test.describe() to be called here"
-        # and then "No tests found", i.e. a GREEN-looking zero-test run away from
-        # the skip-guard below. Root `.bin/playwright` is linked from
-        # @playwright/test itself, so the versions always agree. Same reason
+        # bare `playwright`: both of those resolve the binary from this working
+        # directory, so any apps/e2e dependency that brings its own `playwright`
+        # silently becomes the runner while the specs still
+        # `import from '@playwright/test'` at the root's stable version — a
+        # runner/library mismatch that fails as "Playwright Test did not expect
+        # test.describe() to be called here" and then "No tests found", i.e. a
+        # GREEN-looking zero-test run away from the skip-guard below. Root
+        # `.bin/playwright` is linked from @playwright/test itself, so the
+        # versions always agree. `@playwright/mcp` was the dependency that did
+        # this to us (#784) and it was dropped from apps/e2e in #819, but the
+        # explicit path stays: it is what makes the next such dependency a
+        # non-event. Same reason
         # apps/mobile/store-assets/scripts/capture-screens.mjs imports chromium
         # from '@playwright/test' rather than bare 'playwright'.
         run: node ../../node_modules/.bin/playwright test --reporter=list,html,json
