@@ -979,7 +979,7 @@ export const ABSENT_AND_OWED = [
    * the SUBJECT does not exist.** [A5 §3.6]'s three storage classes are blocked on a party class
    * [A8 §9 item 1] has not defined; `shipmentCommitment` is blocked on **who** commits, which three
    * sources answer three ways. This one never reaches the authority ledger at all, because
-   * [SD §1.2]'s fourteen aggregate kinds contain no `invoice` and no `payment`. The model's other
+   * [SD §1.2]'s aggregate kinds contain no `invoice` and no `payment`. The model's other
    * instance of the same shape is `placeRef`, owed to [SD §1.2] because there is no `place`
    * aggregate.
    *

@@ -120,8 +120,10 @@ export interface ExternallyPerformedLeg {
  * no target schema. Represented as owed rather than typed as a string, because a bare string here
  * would read as a settled shape.
  *
- * TODO([SD §1.2] / A3): a place is either a fifteenth aggregate kind or an attribute of a Stop.
- * No document in the binding layer decides which.
+ * TODO([SD §1.2] / A3): a place is either an `aggregate` kind of its own or an attribute of a
+ * Stop. No document in the binding layer decides which. **No ordinal here on purpose**: the enum
+ * is open to addition, so naming a position dates the sentence the next addition lands — and one
+ * did, when `party` landed as [A8 §9 item 1]'s.
  */
 export type LegEndpoint =
   | { readonly kind: 'stop'; readonly stop: SubjectRef<'stop'> }

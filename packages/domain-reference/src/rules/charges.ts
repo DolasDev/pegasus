@@ -6,7 +6,7 @@
  * `type` with a declared qualifier, a six-member `context[]` and an **assigned** authority row
  * ([A8 §5] row 11). What it does not have is any record of an act performed **on** a charge —
  * nothing says a charge was billed, collected, paid, disputed, denied or set off — and the reason
- * sits one level above the record vocabulary: [SD §1.2]'s fourteen aggregate kinds contain no
+ * sits one level above the record vocabulary: [SD §1.2]'s aggregate kinds contain no
  * `invoice` and no `payment`. So unlike A2's gap and A6's gap, **the subject is missing too**, and
  * the question never reaches [A8 §9 item 8]'s ledger.
  *

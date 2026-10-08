@@ -429,9 +429,9 @@ The glossary's **Owed** section groups the inventory by what is undecided. This 
 A second ledger of the same kind as the owed inventory, and the one no generated artefact has published. `collectOwedInventory` reads the `owed(…)` constructor, the `Owed<…>` type and `OwedCode<…>`, and those three reach the glossary and `catalog/index.json`; the `TODO(…)` markers reach neither. Each names the document or the module that has to act. Read from the raw source text, because several are `//` comments inside a function body and attach to no declaration.
 
 - `packages/domain-reference/src/assertions.ts:557` → **corrections area** (_names no area_) — [SD §6]'s semantics — the amendment window, Correction.authority…
-- `packages/domain-reference/src/custody.ts:123` → **[SD §1.2] / A3** ([**A3**](analysis/A3-trip-stop-assignment.md)) — a place is either a fifteenth aggregate kind or an attribute of a Stop.
-- `packages/domain-reference/src/custody.ts:139` → **[A8 §9 items 1-3]** ([**A8**](analysis/A8-authority-skeleton.md)) — when the party model lands, decide whether a leg's performedBy is…
-- `packages/domain-reference/src/custody.ts:286` → **[SD §3] / A5** ([**A5**](analysis/A5-storage-in-transit.md)) — whether a shipment-subject handover also moves custody of a Portion of that…
+- `packages/domain-reference/src/custody.ts:123` → **[SD §1.2] / A3** ([**A3**](analysis/A3-trip-stop-assignment.md)) — a place is either an aggregate kind of its own or an attribute of a…
+- `packages/domain-reference/src/custody.ts:141` → **[A8 §9 items 1-3]** ([**A8**](analysis/A8-authority-skeleton.md)) — when the party model lands, decide whether a leg's performedBy is…
+- `packages/domain-reference/src/custody.ts:288` → **[SD §3] / A5** ([**A5**](analysis/A5-storage-in-transit.md)) — whether a shipment-subject handover also moves custody of a Portion of that…
 - `packages/domain-reference/src/envelope.ts:63` → **capture rules** (_names no area_) — M1-M7 are predicates over (type, basis, capturedBy, outcome) and belong to…
 - `packages/domain-reference/src/identity.ts:21` → **A9** ([**A9**](analysis/A9-identity-cross-references.md)) — the scheme list is A9's. Until it lands, a scheme is an owed code.
 - `packages/domain-reference/src/ids.ts:167` → **A8 §9 item 1** ([**A8**](analysis/A8-authority-skeleton.md)) — when the party entity lands, decide whether it becomes a fifteenth…
@@ -589,7 +589,7 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
   - [**A9**](analysis/A9-identity-cross-references.md) via `RoleClass` · `SchemeAccountability` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
 - **Aggregates whose record rows cite it:** _none_
 - **Owed to it:**
-  - `packages/domain-reference/src/custody.ts:286` → **[SD §3] / A5**
+  - `packages/domain-reference/src/custody.ts:288` → **[SD §3] / A5**
 
 ### A6 — Documents & evidence
 
@@ -645,7 +645,7 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
   - **A11** via `AssertionType` · `BoundBy`
 - **Aggregates whose record rows cite it:** `order` · `shipment` · `portion` · `stay` · `trip` · `stop` · `stopAction` · `assignment` · `partyRole` · `item` · `charge` · `resource` · `document` · `externallyPerformedLeg`
 - **Owed to it:**
-  - `packages/domain-reference/src/custody.ts:139` → **[A8 §9 items 1-3]**
+  - `packages/domain-reference/src/custody.ts:141` → **[A8 §9 items 1-3]**
   - `packages/domain-reference/src/ids.ts:167` → **A8 §9 item 1**
   - `packages/domain-reference/src/rules/authority.ts:163` → **[A8 §10] §4.2 row**
   - `packages/domain-reference/src/rules/authority.ts:562` → **reconcile with `data/authority-table.json`**

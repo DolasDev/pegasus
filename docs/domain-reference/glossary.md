@@ -40,7 +40,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 
 ## Aggregates (14)
 
-The fourteen members of [SD §1.2]'s versioned closed enum — "open to _addition_ in a later `specVersion`, never to reinterpretation". One record names exactly one of these as its `subject`, never a path and never two. `custody` is deliberately absent: it is a projection ([SD §4.8]), not an aggregate.
+The members of [SD §1.2]'s versioned closed enum, enumerated below — "open to _addition_ in a later `specVersion`, never to reinterpretation". One record names exactly one of these as its `subject`, never a path and never two. `custody` is deliberately absent: it is a projection ([SD §4.8]), not an aggregate.
 
 ### `assignment` (aggregate)
 
