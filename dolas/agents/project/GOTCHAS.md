@@ -2819,3 +2819,57 @@ the local `audit-ci` run before enqueuing is.
 **How to apply:** before calling Dependabot broken, read one failed job's log and check whether any
 **version-update** run failed. If only `for <pkg>` security runs are red, the cause is the advisory,
 not the service — triage the alert (fix, or dismiss with a reason).
+
+---
+
+## An enumeration can have a home a `grep` for the member name will not find
+
+**Discovered 2026-10-08**, minting the `party` aggregate kind (`packages/domain-reference`,
+catalog `0.6.4`).
+
+Adding one member to a closed `as const` enum in `src/` looked like a one-line change, and the
+planning pass enumerated every place the enum's _ordinal_ was written down. It missed the place the
+enum's _membership_ is written down a second time: **`data/canonical-subjects.json` carries
+`families.anyAggregate.members` as a hand-written copy of `AGGREGATE_KINDS`**, and
+`loadCanonicalSubjects` compares the two as a **set**.
+
+A `grep` for the new member's name cannot find that file, because the member is not in it yet — that
+is the whole failure mode. What found it was the suite:
+
+```
+DataDefect: canonical-subjects.families.members.anyAggregate.members:
+  is [order, …, externallyPerformedLeg]
+  where SUBJECT_FAMILIES.anyAggregate is [order, …, externallyPerformedLeg, party]
+```
+
+**Why that message mattered more than the failure.** It names the **set difference**, so the fix was
+one read rather than a debugging session. It also took `vocabulary.test.ts` down at _file load_ and
+failed eleven cases in `data-tables.test.ts` behind it — sixteen failures, one cause. A gate that
+printed only "expected 14, got 15" would have cost an hour.
+
+**How to apply:** before adding a member to any closed vocabulary in `packages/domain-reference/src`,
+grep `packages/domain-reference/data/` for a sibling member's name, not the new one. If a data file
+lists the members, it is a second home and the loader is comparing them. The same rule generalises
+past this repo: **a hand-written copy of a closed set is invisible to a search for what is missing
+from it** — search for what is already there.
+
+---
+
+## Replacing a count with a comparison: right fix, and verify the reason before writing it down
+
+**Same round.** `data-tables.test.ts` asserted
+`expect(admissibleSubjectKinds(table, 'identity')).toHaveLength(14)`. The new member made it 15 and
+the gate went red — a count standing in for "the whole enum", which dates on contact. Replacing it
+with `toEqual([...AGGREGATE_KINDS])` is correct and is the house rule (prefer a gate that enumerates
+or compares over one that counts).
+
+**What is worth recording is the claim that did not survive.** The write-up was about to say the
+count _also_ "passes a half-tamper" — drop one member while adding another and 15 − 1 = 14, so the
+length assertion would pass a silently broken family. Running the tamper refuted it: the data-table
+loader's set comparison (above) throws **upstream of every assertion in that file**, so the
+half-tamper never reaches the count at all. The count was never what held that claim.
+
+**How to apply:** tamper first, then name the tamper's shape. "This gate would pass a half-tamper" is
+a claim about _which_ gate holds a property, and in a suite with layered loaders the answer is often
+a gate you were not looking at. Fix the dating count anyway — just do not credit it with catching
+something.

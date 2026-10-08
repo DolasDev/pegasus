@@ -35,19 +35,20 @@ that mints **no** change class.
 
 ### Everything else the round touched
 
-| What                                                         | Why                                                                                         |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| five blockers off `data/identity-schemes.json`               | the schemes have a `subject` now                                                            |
-| `loadIdentitySchemes`'s invariant **inverted**               | no row may name `[A8 §9 item 1]` — it used to be the opposite                               |
-| `identity-scheme-refuses.ts` **inverted**                    | the discharged claim asserted positively; a **new** refusal in its place                    |
-| `identity-schemes.test.ts` **inverted**                      | the blocker invariant and its tamper test, which now pushes the blocker _back_              |
-| `ids.ts`'s `partyRole` docstring                             | it said _"Note what is **not** here: a `party`"_                                            |
-| `SchemeSubject`'s union **collapsed**                        | its second branch was the literal `party`, "which is not one" — the fossil, not the finding |
-| `data/canonical-subjects.json`                               | `families.anyAggregate.members` is a hand-written copy of the enum, compared as a set       |
-| `custody.ts`'s `TODO` **re-pointed** to items 2-3            | minting a subject does not resolve `performedBy` to a `partyRole`                           |
-| two gates that counted now **compare**                       | `toHaveLength(14)` dated on contact; the TODO ledger's two renamed markers added by name    |
-| the ordinal sweep (its own commit)                           | two TODOs each claimed "a fifteenth aggregate kind", one for a **place**                    |
-| `[A8 §9 item 1]`, `[A9 §3.6]`, `[SD §7.1]`, `[catalog §2.4]` | marked annotations in both directions                                                       |
+| What                                                         | Why                                                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| five blockers off `data/identity-schemes.json`               | the schemes have a `subject` now                                                                 |
+| `loadIdentitySchemes`'s invariant **inverted**               | no row may name `[A8 §9 item 1]` — it used to be the opposite                                    |
+| `identity-scheme-refuses.ts` **inverted**                    | the discharged claim asserted positively; a **new** refusal in its place                         |
+| `identity-schemes.test.ts` **inverted**                      | the blocker invariant and its tamper test, which now pushes the blocker _back_                   |
+| `ids.ts`'s `partyRole` docstring                             | it said _"Note what is **not** here: a `party`"_                                                 |
+| `SchemeSubject`'s union **collapsed**                        | its second branch was the literal `party`, "which is not one" — the fossil, not the finding      |
+| `data/canonical-subjects.json`                               | `families.anyAggregate.members` is a hand-written copy of the enum, compared as a set            |
+| `custody.ts`'s `TODO` **re-pointed** to items 2-3            | minting a subject does not resolve `performedBy` to a `partyRole`                                |
+| `index.ts`'s barrel comment and `schemeBlocker`'s docstring  | both narrated the finding in the present tense; `schemeBlocker` now returns `null` for every row |
+| two gates that counted now **compare**                       | `toHaveLength(14)` dated on contact; the TODO ledger's two renamed markers added by name         |
+| the ordinal sweep (its own commit)                           | two TODOs each claimed "a fifteenth aggregate kind", one for a **place**                         |
+| `[A8 §9 item 1]`, `[A9 §3.6]`, `[SD §7.1]`, `[catalog §2.4]` | marked annotations in both directions                                                            |
 
 ### What it deliberately did not do
 
@@ -185,6 +186,34 @@ Committed first (§3 item 6), then each tamper run and restored.
 All gates green at the end: `tsc` silent · `eslint` clean · **539 tests** · Alloy exits clean · all
 three generators are prettier fixed points · `prettier --check` clean over both trees with no
 exception.
+
+### The §Cross-area pass, run in both directions after the last prose (§3 item 14)
+
+**It found two things, which is why §4 says bracket the pass rather than precede it.**
+
+1. **An edit made and not declared.** `src/index.ts`'s barrel comment and `schemeBlocker`'s own
+   docstring both narrated `[A9 §3.6]` in the present tense (_"identifies the one thing `[SD §1.2]`
+   has no aggregate for"_). Both were rewritten, and neither appeared in this record's table until
+   this pass added the row above.
+2. **A cross-reference asserted and wrong — in the NEXT round's plan, written minutes earlier.** Its
+   §1.3 item 4 cited `[SD §7.3]` for _"releasing and receiving parties"_. That phrase is
+   **`[A8 §7.3]`**'s — heading _"There is exactly one instant where two roles are jointly
+   authoritative, and the model is forbidden to pick"_ — because `[A8 §9 item 3]` writes a bare
+   "§7.3" meaning its own. `[SD §7.3]` is "The vocabulary scope". **A bare `§n` across documents is
+   the same defect as a line number pretending to be a section**, and it took reading both headings
+   to see it. Repaired, with the heading named.
+
+**One claim verified rather than remembered:** `[A7 §6]`'s heading is "What only the user can decide,
+and what is owed elsewhere", and it is the right citation for the double-counting warning this record
+leans on twice.
+
+**And a third thing, found on the second lap of the same pass** — which is A9's lesson exactly
+(_"budgeting the pass is not the same as the pass working"_). The sentence repairing defect 2 **above**
+pointed at "§5's last bullet" of the next round's plan for the cite-a-heading rule. **That plan's §5
+last bullet is about `[SD §10.4]` and the `place` aggregate.** A false cross-reference, inside the
+paragraph recording a false cross-reference, written while fixing one. The rule had lived in the
+_previous_ plan's §5 and the new plan carried §5 by reference instead of restating it. Repaired by
+carrying the bullet forward for real, so the reference now resolves. **Run the pass twice.**
 
 ---
 

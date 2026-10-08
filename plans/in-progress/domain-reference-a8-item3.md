@@ -69,8 +69,10 @@ It already gathers four sources that disagree, and names them:
 - `src:dp3-tender-of-service` **NTS §1.4.13.1** requires an **NTS TSP company official** — a named
   individual, not the company — to sight-verify firearms within 72 hours.
 
-And the item states the question it owes: **§7.3's "releasing and receiving parties" is written at
-company grain, and A8 must decide whether the _individual_ who signs is a distinct asserter.**
+And the item states the question it owes — quoted verbatim, bare `§n` and all, because the bare
+reference is **A8's own** and resolves inside A8 (see §1.3 item 4): **"§7.3's 'releasing and
+receiving parties' is written at company grain, and A8 must decide whether the _individual_ who
+signs is a distinct asserter."**
 
 ### 1.2 The decision this turns on, and it is NOT yet a schema question
 
@@ -110,10 +112,16 @@ first**, so each item is a question whose answer changes the design.
    `src:dp3-tender-of-service`'s company official **sight-verifies**, which is an assertion;
    `ProofOfDeliveryName` (`src:sirva-ade`) is a _value_ on a delivery, which is not. **Enumerate
    which of the four sources puts an individual in an asserting position.**
-4. **What does `[SD §7.3]`'s "releasing and receiving parties" actually require?** Read `[SD §7.3]`
-   and `[SD §4.8.3]`'s fold before assuming the company grain is a defect. The party round found
-   that `custody.ts`'s union exists because two **published inputs** disagree, not because the model
-   is careless.
+4. **What does `[A8 §7.3]`'s "releasing and receiving parties" actually require?** — **A8's own
+   §7.3**, heading _"There is exactly one instant where two roles are jointly authoritative, and the
+   model is forbidden to pick"_, which A8 calls _"the strongest-sourced finding in the document"_.
+   **Not `[SD §7.3]`**, which is "The vocabulary scope" and has nothing to do with this; §9 item 3
+   writes a bare "§7.3" and means its own. _(This plan cited the wrong document on its first draft —
+   caught by the §Cross-area pass, and §5's bullet on bare `§n` citations now carries the general
+   form: **cite the heading**, and verify by reading the target.)_
+   Read it with `[SD §4.8.3]`'s fold before assuming the company grain is a defect — the party round
+   found that `custody.ts`'s union exists because two **published inputs** disagree, not because the
+   model is careless.
 5. **Does any of this reach the wire?** `[SD §1.1]`'s `assertedBy {party, role}` is on **every**
    envelope, so a person/organisation distinction landing there is a change to every record.
    **Measure the emitted diff before classifying** — §3 item 8, which has now located something the
@@ -222,6 +230,17 @@ touches:
 - **`[SD §10.4]`** still carries items open, and **`custody.ts` still wants a `place`** — the
   standing candidate for the next aggregate kind, whose `TODO` deliberately no longer claims an
   ordinal.
+- **A bare `§n` cited ACROSS documents, and it is not one plan's defect.** `[A2]`'s §Cross-area note
+  to `[A3]` cites _"(§1207, §1289, §3.3's diversion row, §5.1's note at :544)"_, and neither `1207`
+  nor `1289` is a heading in either document — they are **line offsets** into `[A3]`. Repairing it is
+  `[A2]`'s and `[A3]`'s, via a marked annotation; recorded here so a round that opens either document
+  for another reason fixes it in passing. **The same defect has a second form that this corpus hits
+  more often: a bare `§n` that is a real heading in the WRONG document.** `[A8 §9 item 3]` writes
+  "§7.3" meaning **A8's own**, and this plan's own §1.3 item 4 read it as `[SD §7.3]` on its first
+  draft — which is "The vocabulary scope" and unrelated. **The general form: cite the heading, and
+  where the headings are named rather than numbered, name the heading.** The `roleClass` round is the
+  proof it is not cosmetic: a line-number citation is what let a plan attribute a prediction to a
+  section making a different claim.
 
 ---
 
