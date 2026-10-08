@@ -294,7 +294,7 @@ describe('the TODO ledger — the register no other artefact reads', () => {
         'rules/authority.ts → [A8 §9 item 7]',
         'rules/authority.ts → [SD §4.2]',
         'rules/authority.ts → [A1 §3.5]',
-        'rules/authority.ts → [A8 §9 items 1-3, 5]',
+        'rules/authority.ts → [A8 §9 items 2-3, 5]',
         'rules/capture.ts → [SD §4.7.3]',
         'rules/corrections.ts → [SD §4.7.3] / A4',
         'rules/corrections.ts → [SD §4.7.2b] / A7 / A12',

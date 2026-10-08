@@ -230,7 +230,7 @@ A declaration carrying **type parameters** is machinery rather than a concept an
 - **Sites whose docstring names an area** — the edges this map is about:
   - `assertions.ts:PartyRoleValue.role` — [[A8 §3(b)]](analysis/A8-authority-skeleton.md) [[A8 §3(c)]](analysis/A8-authority-skeleton.md) [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them) [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
   - `data.ts:InputAuthority.roles` — [[A8 §5 r7]](analysis/A8-authority-skeleton.md)
-  - `data.ts:readRoleName` — [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) [[A8 §9 item 2]](analysis/A8-authority-skeleton.md)
+  - `data.ts:readRoleName` — [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) [[A8 §9 item 8]](analysis/A8-authority-skeleton.md)
   - `envelope.ts:AssertedBy.role` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
   - `rules/authority.ts:AuthoritativeHolder.role` — [[A8 §2]](analysis/A8-authority-skeleton.md)
   - `rules/authority.ts:AuthorityClaim.role` — [[A8 §5]](analysis/A8-authority-skeleton.md) [[A8 §6]](analysis/A8-authority-skeleton.md) [[A8 §8]](analysis/A8-authority-skeleton.md)
@@ -328,7 +328,7 @@ A declaration carrying **type parameters** is machinery rather than a concept an
 - **Areas that cite a reference site:** [**A4**](analysis/A4-execution-events.md) · [**A5**](analysis/A5-storage-in-transit.md) · [**A7**](analysis/A7-charges-billing.md) · [**A8**](analysis/A8-authority-skeleton.md)
 - **Modules that reference it:** `outcomes.ts`
 - **Sites whose docstring names an area** — the edges this map is about:
-  - `outcomes.ts:OpensStay.location` — [[A4 §5]](analysis/A4-execution-events.md) [[A5 §3.2]](analysis/A5-storage-in-transit.md#32-the-remedy-that-opens-a-stay--owed-item-1) [[A5 §3.6]](analysis/A5-storage-in-transit.md#36-the-rubrics-five-triaged--owed-item-5) [[A5 §Cross-area]](analysis/A5-storage-in-transit.md) [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class) [[SD §4.3]](analysis/00-shared-decisions.md#43-resolution--factresolved) [[SD §5.3]](analysis/00-shared-decisions.md#53-the-store-in-act-and-the-sit-entry-date-are-two-fact-classes)
+  - `outcomes.ts:OpensStay.location` — [[A4 §5]](analysis/A4-execution-events.md) [[A5 §3.2]](analysis/A5-storage-in-transit.md#32-the-remedy-that-opens-a-stay--owed-item-1) [[A5 §3.6]](analysis/A5-storage-in-transit.md#36-the-rubrics-five-triaged--owed-item-5) [[A5 §Cross-area]](analysis/A5-storage-in-transit.md) [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) [[SD §1.3]](analysis/00-shared-decisions.md#13-one-classification-axis-type-is-the-fact-class) [[SD §4.3]](analysis/00-shared-decisions.md#43-resolution--factresolved) [[SD §5.3]](analysis/00-shared-decisions.md#53-the-store-in-act-and-the-sit-entry-date-are-two-fact-classes)
 
 ## The aggregates, and the record types asserted about each
 
@@ -434,7 +434,7 @@ The glossary's **Owed** section groups the inventory by what is undecided. This 
 
 A second ledger of the same kind as the owed inventory, and the one no generated artefact has published. `collectOwedInventory` reads the `owed(…)` constructor, the `Owed<…>` type and `OwedCode<…>`, and those three reach the glossary and `catalog/index.json`; the `TODO(…)` markers reach neither. Each names the document or the module that has to act. Read from the raw source text, because several are `//` comments inside a function body and attach to no declaration.
 
-- `packages/domain-reference/src/assertions.ts:557` → **corrections area** (_names no area_) — [SD §6]'s semantics — the amendment window, Correction.authority…
+- `packages/domain-reference/src/assertions.ts:558` → **corrections area** (_names no area_) — [SD §6]'s semantics — the amendment window, Correction.authority…
 - `packages/domain-reference/src/custody.ts:123` → **[SD §1.2] / A3** ([**A3**](analysis/A3-trip-stop-assignment.md)) — a place is either an aggregate kind of its own or an attribute of a…
 - `packages/domain-reference/src/custody.ts:148` → **[A8 §9 items 2-3]** ([**A8**](analysis/A8-authority-skeleton.md)) — decide whether a leg's performedBy is resolvable to a partyRole on…
 - `packages/domain-reference/src/custody.ts:296` → **[SD §3] / A5** ([**A5**](analysis/A5-storage-in-transit.md)) — whether a shipment-subject handover also moves custody of a Portion of that…
@@ -449,16 +449,16 @@ A second ledger of the same kind as the owed inventory, and the one no generated
 - `packages/domain-reference/src/rules/authority.ts:815` → **[A8 §9 item 7]** ([**A8**](analysis/A8-authority-skeleton.md) · **A13**) — revenue allocation is A13's and this row must not be read as settling it.
 - `packages/domain-reference/src/rules/authority.ts:844` → **[SD §4.2]** (_names no area_) — src:dcsa forces eventClassifierCode = ACT on ISSU, so the corpus…
 - `packages/domain-reference/src/rules/authority.ts:1141` → **[A1 §3.5]** ([**A1**](analysis/A1-order-service-lifecycle.md)) — the deadline-lapse edge is an orderResponse at NOT_COMPLETED with…
-- `packages/domain-reference/src/rules/authority.ts:1815` → **[A8 §9 items 1-3, 5]** ([**A8**](analysis/A8-authority-skeleton.md)) — authorityToDeclare compares ROLE NAMES, because assertedBy.partyRef…
+- `packages/domain-reference/src/rules/authority.ts:1823` → **[A8 §9 items 2-3, 5]** ([**A8**](analysis/A8-authority-skeleton.md)) — authorityToDeclare compares ROLE NAMES, and the releasing/receiving…
 - `packages/domain-reference/src/rules/capture.ts:264` → **[SD §4.7.3]** (_names no area_) — record position as absent and owed, or mint it — either is [SD §4.7]'s to do.
 - `packages/domain-reference/src/rules/corrections.ts:106` → **[SD §4.7.3] / A4** ([**A4**](analysis/A4-execution-events.md)) — mint estimate (and survey) as fact classes, then carry §375.401(i) as…
 - `packages/domain-reference/src/rules/corrections.ts:199` → **[SD §4.7.2b] / A7 / A12** ([**A7**](analysis/A7-charges-billing.md) · **A12**) — when the charge value lands, this should take the two assertions…
 - `packages/domain-reference/src/rules/corrections.ts:292` → **[A8 §9 item 6]** ([**A8**](analysis/A8-authority-skeleton.md)) — note the sourced anti-pattern the resolution must preserve when it…
 - `packages/domain-reference/src/rules/resolution.ts:217` → **[SD §4.4] / A4** ([**A4**](analysis/A4-execution-events.md)) — that named rule is not published. It is not this one — R-WEIGHT-LOWER…
-- `packages/domain-reference/src/vocabulary.ts:404` → **authority module** ([**A8**](analysis/A8-authority-skeleton.md)) — carry [A8 §5]'s role table and boundBy, with the owed rows marked…
-- `packages/domain-reference/src/vocabulary.ts:708` → **[SD §4.7.3] / A1** ([**A1**](analysis/A1-order-service-lifecycle.md)) — either mint a state fact class or record state as absent and owed…
-- `packages/domain-reference/src/vocabulary.ts:807` → **ingest** (_names no area_) — E-CANON-RESOLVE (the named, versioned subject-resolution rule that must return…
-- `packages/domain-reference/src/vocabulary.ts:1027` → **projections** (_names no area_) — custodyAt(goods, instant) ([SD §4.8.3]) is a fold over published records…
+- `packages/domain-reference/src/vocabulary.ts:406` → **authority module** ([**A8**](analysis/A8-authority-skeleton.md)) — carry [A8 §5]'s role table and boundBy, with the owed rows marked…
+- `packages/domain-reference/src/vocabulary.ts:710` → **[SD §4.7.3] / A1** ([**A1**](analysis/A1-order-service-lifecycle.md)) — either mint a state fact class or record state as absent and owed…
+- `packages/domain-reference/src/vocabulary.ts:809` → **ingest** (_names no area_) — E-CANON-RESOLVE (the named, versioned subject-resolution rule that must return…
+- `packages/domain-reference/src/vocabulary.ts:1037` → **projections** (_names no area_) — custodyAt(goods, instant) ([SD §4.8.3]) is a fold over published records…
 
 ### The declared owed values, by owner
 
@@ -495,7 +495,7 @@ Every `owed(name, owedTo)` and `Owed<Name, Owner>` in `src/`, keyed on the owner
 - `notification` — **owed**, `boundBy` `owed` — [A8 §9 item 6] — the party as a notification target; the row is provisional throughout ([SD §4.7.3]) ([**A8**](analysis/A8-authority-skeleton.md))
 - `orderAward` — **owed**, `boundBy` `owed` — [A8 §9 item 8] — [A8 §5] has no order row ([**A8**](analysis/A8-authority-skeleton.md))
 - `orderCancellation` — **owed**, `boundBy` `AWARD` — [A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one. ([**A1**](analysis/A1-order-service-lifecycle.md) · [**A8**](analysis/A8-authority-skeleton.md))
-- `partyRole` — **owed**, `boundBy` `owed` — [A8 §9 items 1-2] — both the party entity and the role enum are undefined ([**A8**](analysis/A8-authority-skeleton.md))
+- `partyRole` — **owed**, `boundBy` `owed` — [A8 §9 item 2] — the role enum, refused on evidence ([**A8**](analysis/A8-authority-skeleton.md))
 - `tripCancellation` — **owed**, `boundBy` `owed` — [A8 §9 item 8] — [A8 §5] has no trip row ([**A8**](analysis/A8-authority-skeleton.md))
 - `tripDelay` — **owed**, `boundBy` `owed` — [A8 §9 item 8] — [A8 §5] has no trip row, and no source in the corpus binds a plan change to an asserting role ([**A8**](analysis/A8-authority-skeleton.md))
 - `tripResequence` — **owed**, `boundBy` `owed` — [A8 §9 item 8] — [A8 §5] has no trip row ([**A8**](analysis/A8-authority-skeleton.md))
@@ -520,7 +520,7 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
 - **Aggregates whose record rows cite it:** `order`
 - **Owed to it:**
   - `packages/domain-reference/src/rules/authority.ts:1141` → **[A1 §3.5]**
-  - `packages/domain-reference/src/vocabulary.ts:708` → **[SD §4.7.3] / A1**
+  - `packages/domain-reference/src/vocabulary.ts:710` → **[SD §4.7.3] / A1**
   - `orderCancellation`'s authority row — [A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one.
 
 ### A2 — Shipment structure
@@ -657,9 +657,9 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
   - `packages/domain-reference/src/rules/authority.ts:562` → **reconcile with `data/authority-table.json`**
   - `packages/domain-reference/src/rules/authority.ts:751` → **[A8 §9 item 2]**
   - `packages/domain-reference/src/rules/authority.ts:815` → **[A8 §9 item 7]**
-  - `packages/domain-reference/src/rules/authority.ts:1815` → **[A8 §9 items 1-3, 5]**
+  - `packages/domain-reference/src/rules/authority.ts:1823` → **[A8 §9 items 2-3, 5]**
   - `packages/domain-reference/src/rules/corrections.ts:292` → **[A8 §9 item 6]**
-  - `packages/domain-reference/src/vocabulary.ts:404` → **authority module**
+  - `packages/domain-reference/src/vocabulary.ts:406` → **authority module**
   - `authorityRow` — [A8 §9 item 8] — the fact class has no row in A8 §5
   - `notificationTarget` — A8 §9 item 6 — the party as a notification target
   - `notificationValue` — A8 §9 item 6 — the party as a notification target
@@ -674,7 +674,7 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
   - `notification`'s authority row — [A8 §9 item 6] — the party as a notification target; the row is provisional throughout ([SD §4.7.3])
   - `orderAward`'s authority row — [A8 §9 item 8] — [A8 §5] has no order row
   - `orderCancellation`'s authority row — [A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one.
-  - `partyRole`'s authority row — [A8 §9 items 1-2] — both the party entity and the role enum are undefined
+  - `partyRole`'s authority row — [A8 §9 item 2] — the role enum, refused on evidence
   - `tripCancellation`'s authority row — [A8 §9 item 8] — [A8 §5] has no trip row
   - `tripDelay`'s authority row — [A8 §9 item 8] — [A8 §5] has no trip row, and no source in the corpus binds a plan change to an asserting role
   - `tripResequence`'s authority row — [A8 §9 item 8] — [A8 §5] has no trip row

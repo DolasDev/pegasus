@@ -19,7 +19,7 @@
           "unresolved": [
             {
               "designation": "the leg's authoritativeAsserter on an ExternallyPerformedLeg",
-              "owedTo": "[SD §8.2] carries the field; the asserter it names is a party, and [A8 §9 item 1] leaves the party entity undefined"
+              "owedTo": "[SD §8.2] carries the field; the asserter it names is a PARTY and this column takes a ROLE. RE-POINTED at catalog 0.6.4: this read '[A8 §9 item 1] leaves the party entity undefined' until item 1 minted the party aggregate. The entity exists now and the designation is STILL not a role — which the old reason obscured — so what is owed is [A8 §9 item 8]'s authority ledger"
             }
           ],
           "note": "Not a fixed list: 'the role holding custody at that stop'. driver where the stop is on our trip, hauler where the trip is the hauling agent's. Which one applies is computed by custodyAt(goods, instant) at the instant the fact is ABOUT ([A8 §4.2] A8-INSTANT), never by recency.",
@@ -67,7 +67,7 @@
           "unresolved": [
             {
               "designation": "the leg's authoritativeAsserter on an ExternallyPerformedLeg",
-              "owedTo": "[SD §8.2] carries the field; [A8 §9 item 1] leaves the party entity undefined"
+              "owedTo": "[SD §8.2] carries the field; the asserter it names is a PARTY and this column takes a ROLE, so what is owed is [A8 §9 item 8]'s authority ledger. RE-POINTED at catalog 0.6.4 from '[A8 §9 item 1] leaves the party entity undefined': the entity has landed and the designation is still not a role"
             }
           ],
           "note": "as row 1. Expanded rather than left as 'as #1': a row that says 'as #1' is prose, and a table consumers read mechanically cannot follow a back-reference.",
@@ -191,7 +191,7 @@
           "unresolved": [
             {
               "designation": "the leg's authoritativeAsserter where delivery is externally performed",
-              "owedTo": "[SD §8.2] carries the field; [A8 §9 item 1] leaves the party entity undefined"
+              "owedTo": "[SD §8.2] carries the field; the asserter it names is a PARTY and this column takes a ROLE, so what is owed is [A8 §9 item 8]'s authority ledger. RE-POINTED at catalog 0.6.4 from '[A8 §9 item 1] leaves the party entity undefined': the entity has landed and the designation is still not a role"
             }
           ],
           "note": "rr19Agent under a Reverse Rule 19.",
@@ -430,7 +430,7 @@
           "unresolved": [
             {
               "designation": "the ISSUER of the scheme, and nobody else, for the value under that scheme",
-              "owedTo": "Not a role at all — a PARTY. [SD §7.1] defines issuer as 'the PARTY that assigned this value under that scheme', and [A8 §9 item 1] leaves the party entity undefined, so it cannot be an enum member."
+              "owedTo": "Not a role at all — a PARTY. [SD §7.1] defines issuer as 'the PARTY that assigned this value under that scheme', so it cannot be a ROLE_NAMES member. RE-POINTED at catalog 0.6.4: this read 'and [A8 §9 item 1] leaves the party entity undefined' — item 1 minted the party aggregate and the issuer is still not a role, so the obstacle was never the entity's absence. Owed to [A8 §9 item 8]'s authority ledger."
             }
           ],
           "note": "Authority NEVER MOVES. This is the one row where boundBy is not custody and not the principal: it is the naming scheme, and the scheme does not change hands. Note that an issuer's RESPONSIBILITY can be reassigned with an effective date (src:dp3-400ng GBLOC, Regionalization p.17), which is why [SD §7.2]'s interval carries it rather than a static field.",
@@ -776,7 +776,7 @@
           "unresolved": [
             {
               "designation": "the ISSUER of the document's own number scheme, and nobody else",
-              "owedTo": "Not a role at all — a PARTY, exactly as row 10. [A8 §9 item 1] leaves the party entity undefined, so the issuer cannot be an enum member here either. The DESIGNATION is resolved and the party class is not, which is the distinction this row turns on: nothing is owed about WHO holds authority, only about how the model spells a party."
+              "owedTo": "Not a role at all — a PARTY, exactly as row 10, so the issuer cannot be a ROLE_NAMES member here either. RE-POINTED at catalog 0.6.4 from '[A8 §9 item 1] leaves the party entity undefined', for row 10's reason. The DESIGNATION is resolved and the party class is not, which is the distinction this row turns on: nothing is owed about WHO holds authority, only about how the model spells a party."
             }
           ],
           "note": "Authority NEVER MOVES, inherited from row 10 rather than re-argued. [A6 §3.2(b)]: for the one document kind in the corpus with a scheme of its own, the party controlling the number scheme IS the party issuing the instrument — src:cfr-49-375 §375.505(a) has the carrier issue its own BL and §375.103 defines a Government bill of lading shipper separately, so which instrument is in play decides the issuer and the scheme is what says which instrument it is.",

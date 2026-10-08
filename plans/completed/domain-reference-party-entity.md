@@ -30,8 +30,32 @@ Purely additive on both faces. Nothing removed, nothing narrowed, nothing repoin
 - **one line in `index.json`**, where `identity`'s subject list gains `party`. That line is the
   deliverable: `[A9 §3.6]`'s five schemes becoming assertable, visible on the wire.
 
-**Class `newAggregateKind`, additive, patch slot — `0.6.3` → `0.6.4`.** The first round since A5
-that mints **no** change class.
+**Two additive classes, one bump — `0.6.3` → `0.6.4`, the patch slot — and the first round since A5
+to mint neither of them.** `newAggregateKind`, and `repointedOwedOwner` (A7's, on its second use):
+`partyRole`'s authority row read _"[A8 §9 items 1-2] — both the party entity and the role enum are
+undefined"_, and **this round discharges one of those two blockers**, so it re-points to item 2 alone
+and the survivor is a **refusal** rather than a pending list. §3 item 16's test — what the item is
+owed FOR changed — rather than tidiness.
+
+> **The second class was nearly missed, and the near-miss is the fourth finding.** The round swept
+> the **phrase** it had falsified (`PartyId` as _"an identifier with no aggregate behind it"_) and
+> fixed every site. It had not swept the **item**. `grep "A8 §9 item 1"` found present-tense
+> _"until it lands"_ prose in `vocabulary.ts`'s `partyRole` member — **a second copy of the exact
+> docstring shape the round had already named as its fourth inversion, in a different file** —
+> `rules/authority.ts`'s third `TODO`, `data/authority-table.json`'s four `owedTo` reasons, and
+> `partyRole`'s authority row, **which is emitted**. **Sweeping the phrase you changed is not the
+> same as sweeping the item you closed**, and only the first is discoverable from the diff you have
+> just written.
+>
+> **Three of those sites carried a misattribution older than this round**, which is why they read as
+> closable. `stayAuthorisation`'s and `chargeCollection`'s absence notes and `OpensStay`'s each said
+> their asserting role is _"a party class `[A8 §9 item 1]` has not defined"_ — but an asserting role
+> needs a `ROLE_NAMES` member, which is **item 2**'s, and §9 item 2 owes the government offices
+> **by name**. `[A5]` carried the same sentence twice and is annotated rather than rewritten.
+> `authority-table.json`'s four reasons gave the party entity's absence as why an issuer _"cannot be
+> an enum member"_; the entity exists now and the issuer is **still not a role**. **A citation naming
+> the wrong owed item reads as closable the day that item closes** — which is exactly how all of
+> these surfaced, and the only reason they did.
 
 ### Everything else the round touched
 

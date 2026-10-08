@@ -295,9 +295,11 @@ export const NON_ACT_TYPES = [
    * ([A8 §3(b)], **A8-HISTORY**): "you cannot ask 'who was authoritative on 3 March' of a roster
    * that has since been rewritten."
    *
-   * **Provisional** ([SD §4.7.3]), and its own row records a defect: §4.7.3 says the `context[]`
-   * carries "the party", and a party is deliberately not an aggregate kind, so it cannot be a
-   * `SubjectRef` until [A8 §9 item 1] lands.
+   * **Provisional** ([SD §4.7.3]). Its own row used to record a defect — §4.7.3 says the
+   * `context[]` carries "the party", and a party was not an aggregate kind, so it could not be a
+   * `SubjectRef` — and **[A8 §9 item 1] discharged it at catalog 0.6.4**: `party` is a kind, so a
+   * `context[]` member naming one is expressible. What stays owed is this row's **authority**,
+   * which needs the role enum ([A8 §9 item 2], `refusedOnEvidence`).
    */
   'partyRole',
 ] as const
@@ -887,8 +889,15 @@ export const ABSENT_AND_OWED = [
    * `SUBMITTED` → `APPROVED` | `REJECTED` with a `rejectionReason`.
    *
    * Absent rather than minted because its asserting role is a **Government transportation office**
-   * (the PPSO) or a van line's own supervisor — a party class [A8 §9 item 1] has not defined — so
-   * the row would be [A8 §9 item 8]-owed on the day it was written, trading one gap for two.
+   * (the PPSO) or a van line's own supervisor — a **role** [A8 §9 item 2] has not defined, which is
+   * where the government offices (PPSO/PPPO/TO/ITO/JPPSO/SB/SPM) are owed by name — so the row
+   * would be [A8 §9 item 8]-owed on the day it was written, trading one gap for two.
+   *
+   * **The citation here used to read [A8 §9 item 1], and that was wrong before this round and is
+   * visibly wrong after it.** Item 1 owes the party **entity** and landed at catalog 0.6.4; an
+   * asserting role needs a `ROLE_NAMES` member, which is item 2's and is `refusedOnEvidence`. So
+   * minting the party moved this not at all, and the blocker is stronger than the old citation
+   * implied rather than weaker.
    * [A5 §3.2] is explicit that the `opensStay` remedy does **not** stand in for it.
    */
   'stayAuthorisation',
@@ -976,9 +985,10 @@ export const ABSENT_AND_OWED = [
    * only published statement that the instrument of collection varies.
    *
    * **Its blocker is a kind none of the entries above has, and the model has met it once before:
-   * the SUBJECT does not exist.** [A5 §3.6]'s three storage classes are blocked on a party class
-   * [A8 §9 item 1] has not defined; `shipmentCommitment` is blocked on **who** commits, which three
-   * sources answer three ways. This one never reaches the authority ledger at all, because
+   * the SUBJECT does not exist.** [A5 §3.6]'s three storage classes are blocked on a **role**
+   * [A8 §9 item 2] has not defined (re-attributed from item 1, which owed the party entity and
+   * landed at catalog 0.6.4 — see `stayAuthorisation` above); `shipmentCommitment` is blocked on
+   * **who** commits, which three sources answer three ways. This one never reaches the authority ledger at all, because
    * [SD §1.2]'s aggregate kinds contain no `invoice` and no `payment`. The model's other
    * instance of the same shape is `placeRef`, owed to [SD §1.2] because there is no `place`
    * aggregate.

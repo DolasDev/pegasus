@@ -485,9 +485,9 @@ that has since been rewritten."
 
 - **Canonical subject family:** `partyRole` = {`partyRole`}
 - **Qualifier:** none — the fact key is `(subject, type)`
-- **Authority:** **owed** — [A8 §9 items 1-2] — both the party entity and the role enum are undefined. `boundBy = owed`. Provisional reading [SYNTHESIS], **do not score**: [SYNTHESIS] of [SD §1.2] (the aggregate exists) and [A3 §3.2]'s stopAction row ('a fact about the RELATION, not about either end'). Carries effectiveFrom/effectiveTo per [SD §7.1] and is never overwritten (A8-HISTORY).
+- **Authority:** **owed** — [A8 §9 item 2] — the role enum, refused on evidence. `boundBy = owed`. Provisional reading [SYNTHESIS], **do not score**: [SYNTHESIS] of [SD §1.2] (the aggregate exists) and [A3 §3.2]'s stopAction row ('a fact about the RELATION, not about either end'). Carries effectiveFrom/effectiveTo per [SD §7.1] and is never overwritten (A8-HISTORY).
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
-- **Cited:** [[A8 §3(b)]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
+- **Cited:** [[A8 §3(b)]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `pieceCount` (record type)
@@ -1141,7 +1141,7 @@ The scheme is not known to be document-accountable, or is not known at all.
 
 ## Whitelist residue reasons (4)
 
-Why a row of `src:dtr-part-iv` Table A-402-4's published mutability whitelist has nowhere to land in the vocabulary ([A6 §3.6]). Four reasons, and the distinction between them is the finding: two of the four fields are owed elsewhere (`placeRef` to [SD §1.2], `partyRole`'s row to [A8 §9 items 1-2]), one needs a vocabulary a landed area **refused on evidence** ([A2 §3.3]'s `shipmentType`), and one is not a domain fact at all — so the sub-fact grain `authority.ts` used to ask for would move none of them.
+Why a row of `src:dtr-part-iv` Table A-402-4's published mutability whitelist has nowhere to land in the vocabulary ([A6 §3.6]). Four reasons, and the distinction between them is the finding: two of the four fields are owed elsewhere (`placeRef` to [SD §1.2], `partyRole`'s row to [A8 §9 item 2]), one needs a vocabulary a landed area **refused on evidence** ([A2 §3.3]'s `shipmentType`), and one is not a domain fact at all — so the sub-fact grain `authority.ts` used to ask for would move none of them.
 
 ### `AGGREGATE_OWED` (whitelist residue reason)
 
@@ -2435,7 +2435,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 **Blocked on the corpus, not on effort** — the `trip`, `membership` and `assignment` families: no external source binds a plan change, a membership offer or an assignment to an asserting role, so a row for one would be [ORIGINAL], and [SD §4.7] note 3 bars a provisional reading from scoring anyway.
 
-**Owed to A8 itself** — `partyRole` (the party entity and the role enum, [A8 §9 items 1-2]) and `notification` (a role resolved to a contactable address, item 6).
+**Owed to A8 itself** — `partyRole` (the role enum, [A8 §9 item 2]; the party entity was item 1 and landed at `0.6.4`) and `notification` (a role resolved to a contactable address, item 6).
 
 **The order lifecycle, and its three rows are three different cases.** [A1 §Cross-area] showed the corpus names a party on every order transition, so none of them was ever corpus-blocked: what blocked them was that [A8 §4.3] had no member for a role resolved by the order's own award. That member is **`AWARD`**, and it did not close all three. `orderResponse` is **closed** at [A8 §5] row 18, because [A1 §3.5] puts acceptance and refusal on "the offeree, and only the offeree" — one holder, resolved from the award. `orderCancellation` keeps `boundBy = AWARD` and an **owed holder**: [A1 §3.5] makes a cancellation after acceptance "either party", so `authoritative` would be plural and [A8 §4.4] A8-NAMED has no published tie-break for it. `orderAward` is blocked by A8's own **mint principle** — it mints the award, so it can be bound neither to `PRINCIPAL` nor to `AWARD` — which `MintingActsAreNotBoundToWhatTheyMint` now holds over the table.
 
@@ -2450,7 +2450,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - `notification` — **owed**, owed to [A8 §9 item 6] — the party as a notification target; the row is provisional throughout ([SD §4.7.3]) (`boundBy = owed`)
 - `orderAward` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no order row (`boundBy = owed`)
 - `orderCancellation` — **owed**, owed to [A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one. (`boundBy = AWARD`)
-- `partyRole` — **owed**, owed to [A8 §9 items 1-2] — both the party entity and the role enum are undefined (`boundBy = owed`)
+- `partyRole` — **owed**, owed to [A8 §9 item 2] — the role enum, refused on evidence (`boundBy = owed`)
 - `tripCancellation` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row (`boundBy = owed`)
 - `tripDelay` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row, and no source in the corpus binds a plan change to an asserting role (`boundBy = owed`)
 - `tripResequence` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row (`boundBy = owed`)

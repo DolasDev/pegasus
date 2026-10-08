@@ -153,10 +153,23 @@ void _catalogIsTheVocabulary
  * move — `roleClass` is still owed, and what changed is the reason — which is the `0.5.0` row's rule
  * again from the other side.
  *
- * `0.6.4` at the party round: **one additive class, and the first round since A5 that mints none.**
+ * `0.6.4` at the party round: **two additive classes, one bump, and the first round since A5 that
+ * mints neither of them.**
  *
  * - `newAggregateKind` — `party` joins [SD §1.2]'s enum ([A8 §9 item 1]). The enum states the
  *   permission outright, so this is the one row of [catalog §2.3] that needed no argument.
+ * - `repointedOwedOwner` — A7's class, on its second use. `partyRole`'s authority row read
+ *   _"[A8 §9 items 1-2] — both the party entity and the role enum are undefined"_; **one of those
+ *   two blockers is discharged by this very round**, so the row is re-pointed to item 2 alone and
+ *   the surviving blocker is a **refusal** rather than a pending list. One line in `index.json`.
+ *   **It passes §3 item 16's test rather than being tidiness:** what the item is owed FOR changed.
+ *
+ * **And it was nearly missed, which is the part worth keeping.** The round swept the *phrase*
+ * "an identifier with no aggregate behind it" and fixed every site. It had not swept the *item* —
+ * `grep "A8 §9 item 1"` — and that turned up present-tense "until it lands" prose in
+ * `vocabulary.ts` (the `partyRole` member, whose docstring **renders**), `rules/authority.ts`'s
+ * third `TODO`, `data/authority-table.json`'s four `owedTo` reasons and this row. **Sweeping the
+ * phrase you changed is not the same as sweeping the item you closed.**
  *
  * **The whole emitted change is three defs and one line**, and the one line is the deliverable:
  * `$defs/AggregateId.party` and `$defs/SubjectRef.party` appear, `SubjectRef`'s `anyOf` and

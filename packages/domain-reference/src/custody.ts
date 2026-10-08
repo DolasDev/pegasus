@@ -345,7 +345,8 @@ function sideOf(handover: HandoverAssertion): HandoverSide {
  * Structural rather than referential because two records published by two parties carry two
  * objects, and C5 and C6 both turn on whether they name the same holder. The union's two arms are
  * compared on their own terms; there is no cross-arm equality, and inventing one would be deciding
- * [A8 §9 items 1-3]'s owed party grain by side effect.
+ * [A8 §9 item 3]'s owed party grain by side effect. (Items 1-3 before catalog 0.6.4; item 1 minted
+ * the party aggregate and the grain is item 3's alone.)
  */
 function sameHolder(left: CustodyHolder, right: CustodyHolder): boolean {
   if (left.kind === 'partyRole' && right.kind === 'partyRole') {

@@ -504,18 +504,18 @@
       "family": "partyRole",
       "qualifier": null,
       "context": ["shipment", "order", "trip"],
-      "contextNote": "The [SD §4.7.3] row also names 'the party'. A party is deliberately NOT an aggregate kind ([SD §1.2] has partyRole and no party), so it cannot appear in context[] — which is a SubjectRef[] — until [A8 §9 item 1] lands. Recorded rather than smuggled in.",
+      "contextNote": "The [SD §4.7.3] row also names 'the party'. Until catalog 0.6.4 a party was deliberately NOT an aggregate kind ([SD §1.2] had partyRole and no party), so it could not appear in context[] — which is a SubjectRef[]. [A8 §9 item 1] minted the kind and that half is discharged; what stays owed on this row is its AUTHORITY, which needs the role enum ([A8 §9 item 2], refusedOnEvidence). Kept rather than deleted because the row's provisional reading was argued from the defect. The row's `owedTo` was RE-POINTED at catalog 0.6.4 for the same reason — it read '[A8 §9 items 1-2] — both the party entity and the role enum are undefined', and one of those two blockers is now discharged while the survivor is a refusal rather than a pending list (`repointedOwedOwner`). Formerly: until [A8 §9 item 1] lands. Recorded rather than smuggled in.",
       "authority": {
         "status": "owed",
         "boundBy": "owed",
-        "owedTo": "[A8 §9 items 1-2] — both the party entity and the role enum are undefined",
+        "owedTo": "[A8 §9 item 2] — the role enum, refused on evidence",
         "provisional": {
           "marker": "[SYNTHESIS]",
           "reading": "[SYNTHESIS] of [SD §1.2] (the aggregate exists) and [A3 §3.2]'s stopAction row ('a fact about the RELATION, not about either end'). Carries effectiveFrom/effectiveTo per [SD §7.1] and is never overwritten (A8-HISTORY).",
           "roles": []
         },
         "scoring": "do-not-score",
-        "citations": ["[SD §4.7.3]", "[A8 §9 items 1-2]", "[A8 §3 A8-HISTORY]"]
+        "citations": ["[SD §4.7.3]", "[A8 §9 item 2]", "[A8 §9 item 1]", "[A8 §3 A8-HISTORY]"]
       },
       "citations": ["[SD §4.7.3] — provisional row"]
     },

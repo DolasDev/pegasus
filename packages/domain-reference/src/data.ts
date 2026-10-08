@@ -204,8 +204,11 @@ function readFamilyName(path: string, value: unknown): SubjectFamilyName {
  * A bare string in an authority position must be a member of the role vocabulary. Anything else —
  * "the tariff owner", "the leg's authoritativeAsserter", "everyone else" — is a designation the
  * role enum does not contain, and the tables carry those in `unresolved`, each naming what it is
- * owed to ([A8 §9 item 2] for the enum, [A8 §9 item 1] for the party entity). The split is the
- * whole point: it makes the gap countable instead of letting prose sit where a role belongs.
+ * owed to — [A8 §9 item 2] for the enum, and for a designation that names a **party** rather than a
+ * role, [A8 §9 item 8]'s authority ledger. (Those rows cited [A8 §9 item 1] until catalog 0.6.4;
+ * the party entity has landed and the designation is **still** not a role, which is the point the
+ * old citation obscured.) The split is the whole point: it makes the gap countable instead of
+ * letting prose sit where a role belongs.
  */
 function readRoleName(path: string, value: unknown): RoleName {
   const raw = readString(path, value)

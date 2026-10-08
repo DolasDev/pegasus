@@ -773,7 +773,7 @@
       {
         "type": "partyRole",
         "status": "owed",
-        "owedTo": "[A8 §9 items 1-2] — both the party entity and the role enum are undefined",
+        "owedTo": "[A8 §9 item 2] — the role enum, refused on evidence",
         "boundBy": "owed"
       },
       {
