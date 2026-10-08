@@ -632,12 +632,17 @@ describe('CognitoStack — Desktop app client', () => {
     return clients[ids[0]!]!.Properties as Record<string, unknown>
   }
 
-  it('is a public client (no secret) that allows refresh only — no password flows', () => {
+  it('is a public client (no secret) that allows in-app password sign-in + refresh only', () => {
     const p = desktop()
     expect(p.GenerateSecret).toBe(false)
     // Pinned explicitly: an ABSENT ExplicitAuthFlows means Cognito's defaults,
-    // which include SRP and CUSTOM auth.
-    expect(p.ExplicitAuthFlows).toEqual(['ALLOW_REFRESH_TOKEN_AUTH'])
+    // which include SRP and CUSTOM auth. USER_PASSWORD_AUTH is the desktop's
+    // in-app InitiateAuth sign-in (never the Hosted UI password page).
+    expect(p.ExplicitAuthFlows).toEqual(['ALLOW_USER_PASSWORD_AUTH', 'ALLOW_REFRESH_TOKEN_AUTH'])
+  })
+
+  it('hides user existence, so a wrong email reads like a wrong password', () => {
+    expect(desktop().PreventUserExistenceErrors).toBe('ENABLED')
   })
 
   it('uses the authorization code grant with email/openid/profile scopes', () => {
