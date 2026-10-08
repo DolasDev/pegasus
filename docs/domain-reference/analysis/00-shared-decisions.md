@@ -1660,7 +1660,7 @@ A5's missing party class, nor A2's and A1's missing `boundBy` member, nor A6's m
   conditional on a **tender of payment** of the lawful maximum; §375.801 makes the _"balance due
   invoice"_ the trigger of the Subpart H collection regime. `src:milmove-mymove`'s `PaymentRequest`
   runs six states with a timestamp each; `src:dtr-part-iv` chooses between **DD 139 and DD 1131 by
-  pay status**. **What blocks it is one level above this table**: §1.2's fourteen aggregate kinds
+  pay status**. **What blocks it is one level above this table**: §1.2's aggregate kinds
   contain no `invoice` and no `payment`, so the question never reaches
   [`A8` §9 item 8](A8-authority-skeleton.md)'s ledger at all. The model's other instance of that
   shape is `placeRef`, owed to §1.2 because there is no `place` aggregate. **The aggregate is not
@@ -2235,6 +2235,15 @@ coincide explicitly rather than by a reader's inference.
 > — neither field is a `subject` — but it means an identity assertion **about** a party (a SCAC, a
 > USDOT number, a GBLOC) has nowhere to go. [A9 §3.6] is the finding and it mints nothing, because
 > [A8 §9 item 1] already owes the entity and already names those identifiers among its fields.
+>
+> > **AMENDED 2026-10-08. [A8 §9 item 1] landed and §7.1 needs none of this undone.** `party` is an
+> > `aggregate` kind at catalog **0.6.4**, so an identity assertion **about** a party now has
+> > somewhere to go and §7.1's own sentence — "`subject` may be **any** aggregate kind" — is what
+> > made the mint sufficient on its own. **Two things this does NOT change.** `PartyId` is still the
+> > type of both fields above and still branded `party`, deliberately: neither is a `subject`, and no
+> > published rule compares a party-as-subject with a party-as-reference, so unifying the brand with
+> > the subject form is owed to [A8] rather than done. And **§7.2's GBLOC witness becomes writable** —
+> > the worked example a reader reaches for is no longer the one A9 could not write down.
 
 ### 7.2 The effective interval — sourced twice
 

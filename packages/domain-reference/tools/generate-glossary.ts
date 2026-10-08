@@ -857,7 +857,8 @@ const VOCABULARIES: readonly {
     name: 'aggregate',
     heading: 'Aggregates',
     blurb:
-      'The fourteen members of [SD §1.2]\'s versioned closed enum — "open to _addition_ in a later ' +
+      'The members of [SD §1.2]\'s versioned closed enum, enumerated below — "open to _addition_ in ' +
+      'a later ' +
       '`specVersion`, never to reinterpretation". One record names exactly one of these as its ' +
       '`subject`, never a path and never two. `custody` is deliberately absent: it is a projection ' +
       '([SD §4.8]), not an aggregate.',
@@ -983,7 +984,7 @@ const VOCABULARIES: readonly {
       "Why a row of `src:dtr-part-iv` Table A-402-4's published mutability whitelist has nowhere to " +
       'land in the vocabulary ([A6 §3.6]). Four reasons, and the distinction between them is the ' +
       "finding: two of the four fields are owed elsewhere (`placeRef` to [SD §1.2], `partyRole`'s " +
-      'row to [A8 §9 items 1-2]), one needs a vocabulary a landed area **refused on evidence** ' +
+      'row to [A8 §9 item 2]), one needs a vocabulary a landed area **refused on evidence** ' +
       "([A2 §3.3]'s `shipmentType`), and one is not a domain fact at all — so the sub-fact grain " +
       '`authority.ts` used to ask for would move none of them.',
     symbols: ['WHITELIST_RESIDUE_REASONS'],
@@ -1621,7 +1622,7 @@ function renderOwed(model: Model, table: CanonicalTable, lines: string[]): void 
       'families: no external source binds a plan change, a membership offer or an assignment to an ' +
       'asserting role, so a row for one would be [ORIGINAL], and [SD §4.7] note 3 bars a ' +
       'provisional reading from scoring anyway.\n\n' +
-      '**Owed to A8 itself** — `partyRole` (the party entity and the role enum, [A8 §9 items 1-2]) ' +
+      '**Owed to A8 itself** — `partyRole` (the role enum, [A8 §9 item 2]; the party entity was item 1 and landed at `0.6.4`) ' +
       'and `notification` (a role resolved to a contactable address, item 6).\n\n' +
       '**The order lifecycle, and its three rows are three different cases.** [A1 §Cross-area] ' +
       'showed the corpus names a party on every order transition, so none of them was ever ' +

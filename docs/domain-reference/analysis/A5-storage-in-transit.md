@@ -742,10 +742,24 @@ argument is the same one in all three cases, so it is given once:
 > **Each of these acts is performed by a Government transportation office or by a van line's own
 > approving supervisor.** [A8 §9 item 1] has not defined the party entity and [A8 §9 item 2] has not
 > defined the role enum — so a [SD §4.7.1] row written today would carry `authority: owed` and would
-> land on [A8 §9 item 8]'s ledger on the day it was written. That trades one honest gap for two, and
-> [SD §4.7] note 3 already bars a provisional authority reading from scoring. The physical acts on a
-> stay have a warehouseman who performs them and are therefore closed; the administrative acts do
-> not, and are therefore not.
+> land on [A8 §9 item 8]'s ledger on the day it was written.
+>
+> > **AMENDED 2026-10-08 — the argument survives, and one of its two premises does not.**
+> > **[A8 §9 item 1] landed** at catalog `0.6.4`: `party` is an [SD §1.2] `aggregate` kind. **That
+> > changes nothing here**, and saying why is the point. What these three acts need is an asserting
+> > **role**, and §9 item 2 owes the government offices (PPSO/PPPO/TO/ITO/JPPSO/SB/SPM) **by name**.
+> > So the surviving blocker is item 2 alone — and it is now **`refusedOnEvidence`** rather than
+> > pending ([A8 §9 item 2], on `src:stedi-x12-reference` element 98), which makes the case for
+> > leaving these three absent **stronger** than this paragraph stated, not weaker.
+> >
+> > **The same correction applies to §7's reading of the split** (_"a Government transportation
+> > office that [A8 §9 item 1] has not defined"_) and to the identical sentence in
+> > `src/vocabulary.ts`, `src/outcomes.ts` and `data/authority-table.json`: an asserting role was
+> > never item 1's to define. **A citation that names the wrong owed item reads as closable the day
+> > that item closes**, which is how this one surfaced. That trades one honest gap for two, and
+> > [SD §4.7] note 3 already bars a provisional authority reading from scoring. The physical acts on a
+> > stay have a warehouseman who performs them and are therefore closed; the administrative acts do
+> > not, and are therefore not.
 
 - **`stayAuthorisation`** — the act that authorises a stay. `src:dtr-part-iv` §D.5.a (TSP requests →
   PPSO approves or denies → DPS issues the control number); `src:atlas-world-group-api`

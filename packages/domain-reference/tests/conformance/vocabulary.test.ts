@@ -94,7 +94,8 @@ describe('[SD §4.7.1] every record type has a canonical subject family', () => 
   it('admits exactly the family it declares, and refuses everything else — E-CANON-STRICT', () => {
     // [SD §4.6.2]: "The admission check is purely structural… The boundary performs no
     // substitution, no nearest-match and no best-guess." Run over the whole cross-product, so the
-    // claim is tested for all 31 × 14 pairs rather than for the two the documents work through.
+    // claim is tested for every (type, kind) pair rather than for the two the documents work
+    // through. Deliberately not a product of two counts: both factors grow.
     for (const type of ASSERTION_TYPES) {
       const members: readonly AggregateKind[] = SUBJECT_FAMILIES[CANONICAL_SUBJECT_FAMILY[type]]
       for (const kind of AGGREGATE_KINDS) {

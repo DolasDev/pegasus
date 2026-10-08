@@ -531,7 +531,7 @@ authority settled.
 **What does not exist, and it is the rubric's own second clause.** Nothing in [SD §4.7.1] records a
 charge being **billed**, **invoiced**, **collected**, **paid**, **disputed**, **denied**,
 **refunded** or **set off**. And the reason is one level above the record vocabulary: **[SD §1.2]'s
-fourteen aggregate kinds contain no `invoice` and no `payment`.** So unlike A2's and A6's gaps,
+aggregate kinds contain no `invoice` and no `payment`.** So unlike A2's and A6's gaps,
 A7's is not a missing fact class over an existing subject — **the subject is missing too.**
 
 **Why that is not simply "nobody minted it", and the evidence is the disagreement itself.** An

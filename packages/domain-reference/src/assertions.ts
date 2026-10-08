@@ -284,8 +284,9 @@ void _valueTableIsComplete
  * both sides.
  *
  * Grain is **owed** and is carried as the union rather than invented: [SD §4.8.3] returns `holder`
- * as a `partyRole` while [SD §8.2]'s `performedBy` is a party, and [A8 §9 items 1-3] owe the party
- * entity and the person-vs-organisation grain ({@link CustodyHolder}).
+ * as a `partyRole` while [SD §8.2]'s `performedBy` is a party, and [A8 §9 item 3] owes the
+ * person-vs-organisation grain ({@link CustodyHolder}). ([A8 §9 item 1] owed the party entity and
+ * minted it at catalog 0.6.4; the grain is what keeps the union.)
  *
  * All three are optional-`never` on every other act, so they cannot drift onto `loading` or
  * `delivery` — which matters because **A8-MOVE** is defined on `custodyBasis`, and a second place

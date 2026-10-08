@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DataDefect,
+  AGGREGATE_KINDS,
   admissibleSubjectKinds,
   loadAuthorityTable,
   loadCanonicalSubjects,
@@ -82,8 +83,10 @@ describe('[SD §4.7.1] the canonical-subject table', () => {
     expect(admissibleSubjectKinds(table, 'arrival')).toEqual(['stop', 'externallyPerformedLeg'])
     // [SD §3.3]: the [ORIGINAL] `goods` family, which lets a separately-timed act name a Portion.
     expect(admissibleSubjectKinds(table, 'delivery')).toEqual(['shipment', 'portion'])
-    // [SD §7.1]: "subject may be ANY aggregate kind".
-    expect(admissibleSubjectKinds(table, 'identity')).toHaveLength(14)
+    // [SD §7.1]: "subject may be ANY aggregate kind". Gated as the COMPARISON the sentence makes
+    // rather than as a total ([A1 §9], §3 item 10): a length was a stand-in for "the whole enum",
+    // and it dated the moment [A8 §9 item 1] added `party`. This version cannot.
+    expect(admissibleSubjectKinds(table, 'identity')).toEqual([...AGGREGATE_KINDS])
   })
 
   it('says how much of the authority column is owed, rather than implying it is filled in', () => {

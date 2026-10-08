@@ -750,8 +750,9 @@ export type StayLocation = (typeof STAY_LOCATIONS)[number]
  * act — the TSP requests in DPS, the PPSO approves or denies, DPS issues the SIT control number —
  * and `src:atlas-world-group-api` carries the same shape as `supervisor_approval_by`/`_on` beside
  * an `auto_authorized` flag. That act is its own fact class, and it is **absent and owed**
- * ([A5 §3.6]): its asserting role is a Government transportation office, a party class
- * [A8 §9 item 1] has not defined.
+ * ([A5 §3.6]): its asserting role is a Government transportation office, a **role**
+ * [A8 §9 item 2] has not defined. (Re-attributed from item 1 at catalog 0.6.4: item 1 owed the party
+ * **entity** and has landed; an asserting role needs a `ROLE_NAMES` member, which is item 2's.)
  */
 export interface OpensStay {
   /**

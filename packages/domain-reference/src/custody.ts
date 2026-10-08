@@ -120,8 +120,10 @@ export interface ExternallyPerformedLeg {
  * no target schema. Represented as owed rather than typed as a string, because a bare string here
  * would read as a settled shape.
  *
- * TODO([SD §1.2] / A3): a place is either a fifteenth aggregate kind or an attribute of a Stop.
- * No document in the binding layer decides which.
+ * TODO([SD §1.2] / A3): a place is either an `aggregate` kind of its own or an attribute of a
+ * Stop. No document in the binding layer decides which. **No ordinal here on purpose**: the enum
+ * is open to addition, so naming a position dates the sentence the next addition lands — and one
+ * did, when `party` landed as [A8 §9 item 1]'s.
  */
 export type LegEndpoint =
   | { readonly kind: 'stop'; readonly stop: SubjectRef<'stop'> }
@@ -132,12 +134,20 @@ export type LegEndpoint =
  *
  * Two members because the two published inputs disagree about grain, and the disagreement is a
  * finding rather than something to smooth over: [SD §4.8.3] returns `holder` as a **`partyRole`**,
- * while [SD §8.2]'s `performedBy` — the fold's other input — is a **party**. [A8 §9 items 1 and 3]
- * owe the party entity and the person-vs-organisation grain, so nothing in the binding layer
- * reconciles them.
+ * while [SD §8.2]'s `performedBy` — the fold's other input — is a **party**.
  *
- * TODO([A8 §9 items 1-3]): when the party model lands, decide whether a leg's `performedBy` is
- * resolvable to a `partyRole` on the leg, and collapse this union if it is.
+ * **RE-POINTED at [A8 §9 item 1] (catalog 0.6.4), and the union does NOT collapse.** The marker
+ * used to name items 1-3 and to say "when the party model lands". The party aggregate has landed,
+ * and it **does not resolve one input to the other**: minting a subject gives `performedBy` a
+ * subject it never lacked as a reference, while the question — whether a leg's `performedBy` is
+ * resolvable to a `partyRole` on the leg — is the person-vs-organisation grain, which is
+ * [A8 §9 item 3]'s, plus the role vocabulary, which is item 2's. **Re-pointing rather than deleting
+ * is the test [A8 §9 item 1]'s own round applied to itself**: a blocker moves only when what the
+ * item is owed FOR has changed, and here one of its three blockers is discharged and two are not.
+ *
+ * TODO([A8 §9 items 2-3]): decide whether a leg's `performedBy` is resolvable to a `partyRole` on
+ * the leg, and collapse this union if it is. Needs the role vocabulary (item 2, `refusedOnEvidence`)
+ * and the person-vs-organisation grain (item 3).
  */
 export type CustodyHolder =
   | { readonly kind: 'partyRole'; readonly partyRole: SubjectRef<'partyRole'> }
@@ -335,7 +345,8 @@ function sideOf(handover: HandoverAssertion): HandoverSide {
  * Structural rather than referential because two records published by two parties carry two
  * objects, and C5 and C6 both turn on whether they name the same holder. The union's two arms are
  * compared on their own terms; there is no cross-arm equality, and inventing one would be deciding
- * [A8 §9 items 1-3]'s owed party grain by side effect.
+ * [A8 §9 item 3]'s owed party grain by side effect. (Items 1-3 before catalog 0.6.4; item 1 minted
+ * the party aggregate and the grain is item 3's alone.)
  */
 function sameHolder(left: CustodyHolder, right: CustodyHolder): boolean {
   if (left.kind === 'partyRole' && right.kind === 'partyRole') {

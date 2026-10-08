@@ -1812,9 +1812,16 @@ export function authorityToDeclare(
   }
 }
 
-// TODO([A8 §9 items 1-3, 5]): `authorityToDeclare` compares ROLE NAMES, because `assertedBy.partyRef`
-// has no target schema until the party entity lands, and because the releasing/receiving roles at a
-// custody boundary are a property of the boundary rather than of the fact class. Two consequences
+// RE-POINTED at [A8 §9 item 1] (catalog 0.6.4). The marker used to name items 1-3 and 5, and to say
+// `assertedBy.partyRef` "has no target schema until the party entity lands". **The party entity has
+// landed**, so that clause is discharged — and `authorityToDeclare` still compares ROLE NAMES,
+// because what it lacks is the role vocabulary (item 2, `refusedOnEvidence`) and the
+// person-vs-organisation grain (item 3), not a subject. Re-pointed rather than deleted on the test
+// [A8 §9 item 1]'s own round applied to itself: a blocker moves when what the item is owed FOR has
+// changed, and here one of four blockers is discharged and three are not.
+//
+// TODO([A8 §9 items 2-3, 5]): `authorityToDeclare` compares ROLE NAMES, and the releasing/receiving
+// roles at a custody boundary are a property of the boundary rather than of the fact class. Two consequences
 // are visible above and neither is papered over: a `custodyHolder` row can only be matched once a
 // caller resolves the fold's holder to a role (A8-HISTORY's effective-dated role assignments), and
 // an A8-JOINT row returns UNAUTHORISED for every role rather than authorising both sides blind.
