@@ -149,18 +149,19 @@ function extractProviderName(identitiesAttr: string | undefined): string | null 
 // federated all over again. Change this check in the same commit as any such move. The
 // desktop did exactly that once: its first QMM live test (2026-10-08) sent "Email and
 // password" through the hosted UI password page, and a user linked to another tenant's
-// Microsoft IdP was resolved to that tenant and refused. It now calls InitiateAuth.
+// Microsoft IdP was resolved to that tenant and refused. Its password sign-in moves to
+// InitiateAuth (the desktop client allows USER_PASSWORD_AUTH from 2026-10-08).
 //
 // ⚠️ TokenGeneration_RefreshTokens is deliberately NOT treated as federated, so it takes
 // the native path: a live AuthSession wins, otherwise a single roster row. At refresh
 // neither `identities` nor `triggerSource` distinguishes native from federated, and the
 // sign-in's AuthSession (10-minute TTL, handlers/auth.ts) is long expired. The MoveManager
-// desktop is the client that refreshes (InitiateAuth REFRESH_TOKEN_AUTH or /oauth2/token),
-// and it calls POST /api/auth/select-tenant immediately before each refresh, so the fresh
-// AuthSession resolves the refresh to the tenant it signed in to — including for a
-// multi-tenant or linked user. The roster row must still exist and not be deactivated,
-// as at sign-in. Any new refreshing client must do the same, or a multi-tenant user's
-// refresh fails on the multiple-roster-rows branch.
+// desktop is the client that refreshes (InitiateAuth REFRESH_TOKEN_AUTH or /oauth2/token).
+// From its in-app sign-in release it calls POST /api/auth/select-tenant immediately before
+// each refresh, so the fresh AuthSession resolves the refresh to the tenant it signed in
+// to — including for a multi-tenant or linked user. The roster row must still exist and
+// not be deactivated, as at sign-in. Any new refreshing client must do the same, or a
+// multi-tenant user's refresh fails on the multiple-roster-rows branch.
 //
 // Fail-safe direction: anything unrecognized falls to the native path, which is strictly
 // more restrictive — it still requires an AuthSession or an unambiguous roster row.

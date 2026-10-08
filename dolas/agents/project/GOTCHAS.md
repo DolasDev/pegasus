@@ -331,7 +331,8 @@ that caused an intermittent "account has not been granted access" failure:
   "not granted access"). There is no email-domain fallback — the `email_domains`
   column was removed. A user belonging to multiple tenants cannot be auto-resolved
   on a bare token refresh and is told to sign in again rather than guessed at.
-  The MoveManager desktop refreshes silently anyway by calling `select-tenant`
+  The MoveManager desktop (from its in-app password sign-in release) refreshes
+  silently anyway by calling `select-tenant`
   immediately before each refresh: the fresh `AuthSession` wins, exactly as at
   sign-in. Any other client that wants silent multi-tenant refresh must do the same.
 
