@@ -1338,19 +1338,15 @@ export interface SchemeWitness {
 }
 
 /**
- * What an identity scheme identifies — an [SD §1.2] aggregate kind, or a **party**, which is not
- * one.
+ * What an identity scheme identifies — an [SD §1.2] aggregate kind, and nothing else.
  *
- * [A9 §3.6] is this union: six of the table's rows identify a party, `ids.ts` already records that
- * `PartyId` "is an identifier with no aggregate behind it", and [A8 §9 item 1] already owes the
- * entity. A `party` row is therefore a row whose assertion has no `subject`, which is why
- * {@link loadIdentitySchemes} refuses one that does not carry a blocker.
+ * **COLLAPSED at [A8 §9 item 1] (catalog 0.6.4).** This used to be a two-branch union, the second
+ * branch being the literal `party`, "which is not one" — [A9 §3.6]'s finding that five of the
+ * table's rows identify the one thing [SD §1.2] had no aggregate for. `party` is an aggregate kind
+ * now, so the second branch and the first say the same thing, and keeping both would publish two
+ * representations of one subject. The union was the fossil, not the finding.
  */
-export type SchemeSubject =
-  | { readonly kind: 'aggregate'; readonly aggregate: AggregateKind }
-  | {
-      readonly kind: 'party'
-    }
+export type SchemeSubject = AggregateKind
 
 /**
  * One row of [A9 §3.3]'s witnessed-scheme table.
@@ -1384,9 +1380,8 @@ export interface IdentitySchemeTable {
 }
 
 function readSchemeSubject(path: string, value: unknown): SchemeSubject {
-  const raw = readString(path, value)
-  if (raw === 'party') return { kind: 'party' }
-  return { kind: 'aggregate', aggregate: readAggregateKind(path, raw) }
+  // No `party` special case since [A8 §9 item 1]: `readAggregateKind` admits it like any other.
+  return readAggregateKind(path, readString(path, value))
 }
 
 function readSchemeWitness(path: string, value: unknown): SchemeWitness {
@@ -1410,11 +1405,14 @@ function readAccountability(path: string, value: unknown): boolean | 'undetermin
  * Neither is a shape check, and that is the point — a row can be well-formed and still assert
  * something [A9] refused:
  *
- * 1. **A `party` row must name a blocker, and no other row may name [A8 §9 item 1].** [A9 §3.6]'s
- *    finding is that the corpus's best-witnessed scheme identifies the one thing [SD §1.2] has no
- *    aggregate for. If a later round mints the party entity, the blocker comes off these rows and
- *    the first half fires; if someone writes the blocker onto an aggregate-grain row, the second
- *    half fires. [A1 §9]'s rule, in the direction it was written for: the failure names the row.
+ * 1. **INVERTED at [A8 §9 item 1] (catalog 0.6.4): NO row may name [A8 §9 item 1] any more.** The
+ *    invariant used to require the opposite — a `party` row had to carry that blocker and no other
+ *    row could — because [A9 §3.6]'s finding was that the corpus's best-witnessed scheme identified
+ *    the one thing [SD §1.2] had no aggregate for. The party is a subject now, so the five rows'
+ *    blockers came off and the invariant holds the discharge instead: re-adding the blocker to any
+ *    row fails, and the failure names the row ([A1 §9]'s rule, in the direction it was written for).
+ *    **This is not a loosening.** The old rule was two halves and so is this one — what changed is
+ *    which state is illegal, and the half that checked aggregate-grain rows now checks every row.
  * 2. **`documentAccountable: true` implies `identifies: document`.** [A6 §3.2] defines the bit as
  *    "assigned to the form, independently of any shipment", so a scheme that is accountable and
  *    identifies something other than the form is a contradiction rather than a row.
@@ -1549,22 +1547,13 @@ export function loadIdentitySchemes(raw: unknown): IdentitySchemeTable {
       object['documentAccountable'],
     )
 
-    if (identifies.kind === 'party' && blocker === null) {
+    if (blocker !== null && blocker.includes('A8 §9 item 1')) {
       fail(
         `${at}.blocker`,
-        `${scheme} identifies a party and [SD §1.2] has no party aggregate, so it cannot be null`,
+        `${scheme} identifies a ${identifies}, and [A8 §9 item 1] minted the party aggregate at catalog 0.6.4; it no longer blocks any row`,
       )
     }
-    if (identifies.kind !== 'party' && blocker !== null && blocker.includes('A8 §9 item 1')) {
-      fail(
-        `${at}.blocker`,
-        `${scheme} identifies a ${identifies.aggregate}, which is an aggregate kind; [A8 §9 item 1] is the party entity and does not block it`,
-      )
-    }
-    if (
-      documentAccountable === true &&
-      !(identifies.kind === 'aggregate' && identifies.aggregate === 'document')
-    ) {
+    if (documentAccountable === true && identifies !== 'document') {
       fail(
         `${at}.documentAccountable`,
         `${scheme} is document-accountable under [A6 §3.2] but does not identify a document`,

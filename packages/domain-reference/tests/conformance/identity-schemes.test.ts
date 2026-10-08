@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CORRELATION_IS_AN_OBLIGATION_NOT_A_LINK,
   documentIdentitySubject,
+  isAggregateKind,
   loadIdentitySchemes,
   partyGrainSchemes,
   schemeAccountability,
@@ -206,17 +207,24 @@ describe('[A9 §3.6] the party-grain schemes have no subject, and the blocker is
     ])
   })
 
-  it('every one of them carries [A8 §9 item 1] and no aggregate-grain row does', () => {
-    // The finding stated as an invariant rather than as a sentence: A9 mints no owed item, because
-    // [A8 §9 item 1] already owes the party entity and already names SCAC and DOT/MC among its
-    // fields. If a later round mints the party, these blockers come off and this fails by name.
+  it('carries NO blocker on any row, because [A8 §9 item 1] minted the party', () => {
+    // INVERTED at [A8 §9 item 1] (catalog 0.6.4), and the old assertion is kept in the comment
+    // because the inversion is the deliverable. It used to read: a `party` row must carry
+    // '[A8 §9 item 1]' and every other row must carry null. The party is a subject now, so all
+    // five blockers came off and the invariant is one-sided. Changed deliberately, not loosened —
+    // `loadIdentitySchemes` fails if the blocker is written back onto ANY row, which the tamper
+    // test below exercises.
     for (const row of table.rows.values()) {
-      const blocker = schemeBlocker(table, schemeName(row.scheme))
-      if (row.identifies.kind === 'party') {
-        expect(blocker).toContain('A8 §9 item 1')
-      } else {
-        expect(blocker).toBeNull()
-      }
+      expect(schemeBlocker(table, schemeName(row.scheme)), row.scheme).toBeNull()
+    }
+  })
+
+  it('still identifies a party on exactly the five rows, which is what got a subject', () => {
+    // The five are unchanged by the mint; what changed is that `party` is now an aggregate kind
+    // like `document`, so these rows are ordinary rather than blocked.
+    for (const row of partyGrainSchemes(table)) {
+      expect(row.identifies, row.scheme).toBe('party')
+      expect(isAggregateKind(row.identifies), row.scheme).toBe(true)
     }
   })
 
@@ -238,11 +246,13 @@ describe('[A9 §3.6] the party-grain schemes have no subject, and the blocker is
     expect(scac?.witnesses.length).toBe(widest)
   })
 
-  it('the loader refuses a party row whose blocker was taken off', () => {
+  it('the loader refuses [A8 §9 item 1] written back onto a PARTY-grain row', () => {
+    // The direction this inverted to. Before catalog 0.6.4 the tamper was taking the blocker OFF
+    // `scac`; now it is putting it back, and `party` is the grain that used to be exempt.
     const tampered = broken(identitySchemes)
     const row = rawSchemes(tampered).find((entry) => entry['scheme'] === 'scac')
     expect(row).toBeDefined()
-    if (row) row['blocker'] = null
+    if (row) row['blocker'] = '[A8 §9 item 1] — no party entity'
     expect(() => loadIdentitySchemes(tampered)).toThrow(/scac identifies a party/)
   })
 

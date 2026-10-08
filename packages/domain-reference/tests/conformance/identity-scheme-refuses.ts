@@ -1,26 +1,33 @@
 /**
- * Conformance — the shapes [A9 §3.6]'s finding must keep illegal.
+ * Conformance — what [A8 §9 item 1] keeps illegal now that [A9 §3.6]'s finding is discharged.
  *
  * Same contract as `core-vocabulary-refuses.ts`, `document-evidence-refuses.ts` and
  * `charge-collection-refuses.ts`: every `@ts-expect-error` must fire. If an illegal state ever
  * becomes legal, TypeScript reports the directive as unused (`TS2578`) and this file stops
  * compiling.
  *
- * **What it holds is [A9 §3.6]'s structural claim**, and like [A7 §3.2]'s it is a claim about the
- * layer above the vocabulary rather than about a member of one: _the best-witnessed identity scheme
- * in the corpus identifies a **party**, and [SD §1.2] has no party aggregate, so the assertion has
- * no `subject`._ Six witness rows carry a SCAC, from four publishing bodies; `ids.ts` already records that
- * `PartyId` "is an identifier with no aggregate behind it"; and [A8 §9 item 1] already owes the
- * party entity and already names "DOT/MC number, SCAC (`src:dtr-part-iv` #665), agent code" among
- * its fields.
+ * **INVERTED at [A8 §9 item 1] (catalog 0.6.4), which is what this file was written to force.**
+ * It used to hold [A9 §3.6]'s structural claim — _the best-witnessed identity scheme in the corpus
+ * identifies a **party**, and [SD §1.2] has no party aggregate, so the assertion has no `subject`._
+ * `party` **is** an aggregate kind now, so that directive went unused (`TS2578`) and the file
+ * stopped compiling, exactly as designed. The two halves were then changed deliberately rather than
+ * loosened, which is the house move ([A6 §9]):
  *
- * **The difference from A7's file, and it is the reason A9 mints nothing.** A7's `invoice` and
- * `payment` were nobody's: no area owed them, so [A7 §3.2] had to argue from the grain
- * disagreement why minting was wrong. A9's missing subject is **already owed by name**, so the only
- * thing to hold is that it has not quietly arrived. `ids.ts`'s own `TODO(A8 §9 item 1)` asks
- * whether the party becomes a fifteenth aggregate kind or stays outside the subject enum — this
- * file makes the day it becomes one a compile failure, which sends whoever does it to
- * `data/identity-schemes.json`'s five party-grain rows to take their blockers off.
+ * 1. **The discharged claim is now asserted positively**, below — `party` is an `AggregateKind`, so
+ *    an `identity` assertion about a party has a `subject`. If a later round removed the member,
+ *    this stops compiling from the other side.
+ * 2. **A new refusal takes its place, and it is the one the round's own decision creates:** the
+ *    party is a **bare subject**, so it is not a fact class. [A9 §3.6] needed only a `subject`, and
+ *    minting a record type was measured to be unnecessary — every attribute [A8 §9 item 1] named is
+ *    either an `identity` assertion or still owed to [A8 §9 item 3]. A round that mints a party
+ *    record type inverts the directive below, and should answer that measurement rather than merely
+ *    do the work.
+ *
+ * **What is NOT held here, and why.** [A9 §3.6] item 2's rule — that a SCAC must not be filed
+ * against `partyRole`, because it "belongs to the company whatever it is doing on this shipment" —
+ * **has no edge the types can see**: `partyRole` is a legal `AggregateKind` and `identity`'s family
+ * is the whole enum, so filing it there typechecks and always did. It is a modelling rule, stated in
+ * `ids.ts`'s two member docstrings, and [A6 §9]'s test says to say so rather than gate it badly.
  *
  * **The second refusal is held elsewhere and deliberately so**: that `identityScheme` is still owed
  * is `IdentitySchemeStaysOwed` in `src/rules/identity-schemes.ts`, an `Exact<>` with its assignment
@@ -31,18 +38,20 @@
  * enumerates rather than counts ([A1 §9]).
  */
 import type { AggregateKind } from '../../src/ids'
+import type { AssertionType } from '../../src/vocabulary'
 
 /* ------------------------------------------------------------------------------------------------
- * [SD §1.2] — the aggregate enum has no party
+ * [SD §1.2] — the aggregate enum HAS a party, and the party has no fact class
  * ---------------------------------------------------------------------------------------------- */
 
 /**
- * Two legal kinds either side of the refusal, so a tamper that empties the enum is caught too.
- * `partyRole` is the near miss that makes the refusal worth stating: the enum **does** carry a
- * party-**role**, and [SD §1.1] "puts the role on the assertion rather than on the party". A SCAC
- * is not a fact about a role — it belongs to the company whatever it is doing on this shipment —
- * so the nearest legal subject is the wrong one, which is exactly the trap a reader falls into.
- * `document` is the other neighbour, and is here because [A9 §3.3]'s table has four rows on it.
+ * Two legal kinds beside the party, so a tamper that empties the enum is caught too.
+ * `partyRole` is the near miss worth keeping named: the enum carries a party-**role** as well as a
+ * party, and [SD §1.1] "puts the role on the assertion rather than on the party". A SCAC is not a
+ * fact about a role — it belongs to the company whatever it is doing on this shipment — so the
+ * *nearest* legal subject is still the wrong one even now that the right one exists, which is the
+ * trap a reader falls into. `document` is the other neighbour, and is here because [A9 §3.3]'s
+ * table has four rows on it.
  */
 const theRoleThatIsNotTheParty: AggregateKind = 'partyRole'
 const theFormItself: AggregateKind = 'document'
@@ -51,10 +60,9 @@ void theFormItself
 
 /**
  * [A9 §3.6]: five of [A9 §3.3]'s rows identify a party — `scac`, `usDotNumber`, `mcNumber`,
- * `gbloc` and `agentCode` — and every one of them carries [A8 §9 item 1] as its blocker, enforced
- * at load by `loadIdentitySchemes`. The scheme with the widest publisher base in the whole table is
- * among them. Both counts are gated in `identity-schemes.test.ts`, which enumerates the five by
- * name rather than counting them ([A1 §9]).
+ * `gbloc` and `agentCode` — and **their blockers came off at [A8 §9 item 1]**, because the party is
+ * a subject now. `loadIdentitySchemes` enforces the new state as it enforced the old one, and
+ * `identity-schemes.test.ts` enumerates the five by name rather than counting them ([A1 §9]).
  *
  * Written as a named value rather than an annotated literal for `document-evidence-refuses.ts`'s
  * reason: `@ts-expect-error` covers **one** line, so the value is named first and the assignment is
@@ -62,6 +70,22 @@ void theFormItself
  */
 const thePartyFiveSchemesIdentify = 'party'
 
-// @ts-expect-error [A9 §3.6] — [SD §1.2] declares no `party` aggregate; [A8 §9 item 1] owes it.
-const partyIsNotAnAggregate: AggregateKind = thePartyFiveSchemesIdentify
-void partyIsNotAnAggregate
+/**
+ * **The deliverable, asserted so its removal fails here too.** `party` is an `AggregateKind`, which
+ * is the whole mechanism [A9 §3.6] needed: [SD §7.1] says "`subject` may be **any** aggregate kind"
+ * and `identity`'s canonical family is the enum itself, so this one member is what makes a SCAC
+ * assertion expressible. No directive — it is meant to compile.
+ */
+const thePartyIsAnAggregate: AggregateKind = thePartyFiveSchemesIdentify
+void thePartyIsAnAggregate
+
+/**
+ * **The new refusal: the party is a BARE subject.** [A8 §9 item 1] minted a subject and no fact
+ * class, because every attribute it named is either an `identity` assertion ([SD §7.1]) or still
+ * owed to [A8 §9 item 3] — the name and the branch grain, since `src:sirva-ade`'s `Resource.Name`
+ * names a company, a person or a tractor. So `party` is an `aggregate` kind and **not** an
+ * `AssertionType`, and a round that mints a party fact class inverts this.
+ */
+// @ts-expect-error [A8 §9 item 1] — `party` is a subject, not a fact class; no record type was minted.
+const partyIsNotAFactClass: AssertionType = thePartyFiveSchemesIdentify
+void partyIsNotAFactClass

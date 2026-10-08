@@ -2235,6 +2235,15 @@ coincide explicitly rather than by a reader's inference.
 > — neither field is a `subject` — but it means an identity assertion **about** a party (a SCAC, a
 > USDOT number, a GBLOC) has nowhere to go. [A9 §3.6] is the finding and it mints nothing, because
 > [A8 §9 item 1] already owes the entity and already names those identifiers among its fields.
+>
+> > **AMENDED 2026-10-08. [A8 §9 item 1] landed and §7.1 needs none of this undone.** `party` is an
+> > `aggregate` kind at catalog **0.6.4**, so an identity assertion **about** a party now has
+> > somewhere to go and §7.1's own sentence — "`subject` may be **any** aggregate kind" — is what
+> > made the mint sufficient on its own. **Two things this does NOT change.** `PartyId` is still the
+> > type of both fields above and still branded `party`, deliberately: neither is a `subject`, and no
+> > published rule compares a party-as-subject with a party-as-reference, so unifying the brand with
+> > the subject form is owed to [A8] rather than done. And **§7.2's GBLOC witness becomes writable** —
+> > the worked example a reader reaches for is no longer the one A9 could not write down.
 
 ### 7.2 The effective interval — sourced twice
 

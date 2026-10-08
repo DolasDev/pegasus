@@ -84,11 +84,12 @@ export type UndeterminedReason =
  *    chooses on. Composing them is the caller's business, and [A9 §3.4] keeps them apart because
  *    the two questions have different owners: A6 owns the difference between a document's own fact
  *    and a fact it carries, A9 owns the scheme list.
- * 3. **It says nothing about whether the assertion can be made.** Five of the table's rows identify
- *    a **party** and have no `subject` at all ([A9 §3.6], [A8 §9 item 1]) — and every one of them
- *    answers `documentAccountable: false` here, correctly and uselessly. {@link schemeBlocker} is
- *    the separate question, and keeping them separate is deliberate: a scheme can be perfectly
- *    determined and still be unassertable.
+ * 3. **It says nothing about whether the assertion can be made.** The five rows that identify a
+ *    **party** used to have no `subject` at all ([A9 §3.6]) and still answered
+ *    `documentAccountable: false` here, correctly and uselessly; [A8 §9 item 1] gave them one at
+ *    catalog 0.6.4. {@link schemeBlocker} is still the separate question and keeping them separate
+ *    is still deliberate: a scheme can be perfectly determined and still be unassertable, and the
+ *    next such row is likelier than not.
  *
  * The two `undetermined` reasons are kept distinct because they fail for opposite causes. A scheme
  * the corpus never names is the ordinary path. A scheme the corpus names and leaves open is a
@@ -137,28 +138,44 @@ export function schemeAccountabilityForDId(
  * The separate question I-ACCOUNT deliberately does not fold in: can an assertion under this scheme
  * be made at all?
  *
- * Returns the blocker's text where there is one, `null` where the scheme's subject exists. [A9 §3.6]
- * is the finding this exposes: **the best-witnessed scheme in the corpus identifies the one thing
- * [SD §1.2] has no aggregate for.** Six witness rows carry a SCAC and they are four publishing
- * bodies — the DoD twice (`src:dtr-part-iv`, `src:dp3-400ng`), X12 twice (`src:stedi-x12-reference`,
- * `src:x12-212-trailer-manifest`), NMFTA and project44; `ids.ts` already records that `PartyId` "is
- * an identifier with no aggregate behind it"; and
- * [A8 §9 item 1] already owes the party entity and already names "DOT/MC number, SCAC
- * (`src:dtr-part-iv` #665), agent code" among the fields it would carry.
+ * Returns the blocker's text where there is one, `null` where the scheme's subject exists.
  *
- * **A9 mints nothing here, and that is the decision rather than the omission.** [A7 §3.2] is the
- * precedent in shape — a question that never reaches [A8 §9 item 8]'s ledger because the subject is
- * missing — and the difference is that A7's missing subject was nobody's, while this one is already
- * owed by name. Recording it as A9's own owed item would double-count a single gap, which is what
- * [A7 §6] warns about one level down: an owed inventory is a set of claims like any other.
+ * **[A9 §3.6] is DISCHARGED, and this function now returns `null` for every row** — [A8 §9 item 1]
+ * minted the `party` aggregate at catalog 0.6.4. The finding it exposed was that the corpus's
+ * best-witnessed scheme identified the one thing [SD §1.2] had no aggregate for: six witness rows
+ * carry a SCAC and they are four publishing bodies — the DoD twice (`src:dtr-part-iv`,
+ * `src:dp3-400ng`), X12 twice (`src:stedi-x12-reference`, `src:x12-212-trailer-manifest`), NMFTA
+ * and project44 — and not one of those statements was expressible. All five party-grain rows
+ * (`scac`, `usDotNumber`, `mcNumber`, `gbloc`, `agentCode`) now assert against a `party` subject.
+ *
+ * **A9 minted nothing for this, and that was the decision rather than the omission — unchanged by
+ * the discharge.** [A7 §3.2] is the precedent in shape — a question that never reaches
+ * [A8 §9 item 8]'s ledger because the subject is missing — and the difference was that A7's missing
+ * subject was nobody's while this one was already owed by name. Recording it as A9's own owed item
+ * would have double-counted a single gap, which is what [A7 §6] warns about one level down: an owed
+ * inventory is a set of claims like any other. **The round that closed it closed [A8 §9 item 1],
+ * which is the item A9 named** — so the arrangement is what made the discharge a one-line change
+ * rather than a reconciliation of two ledgers.
+ *
+ * **The function stays, and that is deliberate rather than tidiness deferred.** [A9 §3.2] refuses
+ * to close `identityScheme`, so the table keeps growing from the corpus, and a later row may name a
+ * subject the model does not have — `placeRef` is the standing candidate ([SD §1.2] has no `place`
+ * aggregate, `custody.ts`'s own TODO). The question "can an assertion under this scheme be made at
+ * all?" is not answered by this round; it is answered `yes` for every row this round can see.
+ * {@link loadIdentitySchemes} holds the discharge as an invariant: no row may name [A8 §9 item 1].
  */
 export function schemeBlocker(table: IdentitySchemeTable, scheme: SchemeName): string | null {
   return table.rows.get(scheme)?.blocker ?? null
 }
 
-/** The rows whose subject is a party, in table order — [A9 §3.6]'s set. */
+/**
+ * The rows whose subject is a party, in table order — [A9 §3.6]'s set.
+ *
+ * Still five and still named, but no longer the blocked set: since [A8 §9 item 1] these are simply
+ * the rows whose `identifies` is `party`, like the four whose `identifies` is `document`.
+ */
 export function partyGrainSchemes(table: IdentitySchemeTable): readonly IdentityScheme[] {
-  return [...table.rows.values()].filter((row) => row.identifies.kind === 'party')
+  return [...table.rows.values()].filter((row) => row.identifies === 'party')
 }
 
 /* ------------------------------------------------------------------------------------------------

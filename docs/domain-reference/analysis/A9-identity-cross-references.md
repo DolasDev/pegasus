@@ -461,6 +461,23 @@ assertion under any of them has no `subject`. A9 mints nothing, records no new o
 [A8 §9 item 1] as the blocker — because [A8 §9 item 1] already owes the party entity and already
 names these very identifiers among its fields.**
 
+> **CLOSED 2026-10-08, and the arrangement above is why it closed in one line.** `party` is an
+> [SD §1.2] `aggregate` kind at catalog **0.6.4** ([A8 §9 item 1]), so all five rows' blockers are
+> off and every one of these schemes now asserts against a `party` subject. `identity`'s canonical
+> family is the enum itself ([SD §7.1]), so **no record type, fact class or subject family was
+> added** — the finding needed a `subject` and nothing else. **A9 was right to mint nothing:**
+> because the gap was recorded against [A8 §9 item 1] rather than opened as A9's own, the discharge
+> was one enum member and five `null`s instead of a reconciliation of two ledgers. That is [A7 §6]'s
+> warning paying off in the direction nobody tests for.
+>
+> **One correction to this paragraph's last clause, found by the round that closed it.**
+> [A8 §9 item 1] does **not** name "these very identifiers" — it names four of the five. Its prose
+> writes "DOT/MC number" as one phrase where this table carries `usDotNumber` and `mcNumber` as two
+> schemes, and **it never names `gbloc` at all** (§7.2's own witness, the scheme this section's
+> closing paragraph calls out as the one A9 cannot write down). The claim held for four; the fifth it
+> inherited from nowhere. **Repaired on [A8 §9 item 1] rather than here**, which is the house
+> direction for an item's own list, and recorded here because this is where the overclaim was made.
+
 [A2 §3.6] instructed A6, A7 **and A9** each to run the same check on its own aggregate. The three
 prior answers were all different — A2 found no act and a `boundBy` gap, A6 found no act and an
 answerable authority, A7 found no act and a missing **subject**. A9's is a **split**, and §3.7 is

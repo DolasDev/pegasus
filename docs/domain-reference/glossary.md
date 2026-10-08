@@ -14,7 +14,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 
 ## Contents
 
-- [Aggregates](#aggregates-14) — 14
+- [Aggregates](#aggregates-15) — 15
 - [Record types](#record-types-32) — 32
 - [Fact-class families](#fact-class-families-8) — 8
 - [Bases](#bases-5) — 5
@@ -38,7 +38,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
-## Aggregates (14)
+## Aggregates (15)
 
 The members of [SD §1.2]'s versioned closed enum, enumerated below — "open to _addition_ in a later `specVersion`, never to reinterpretation". One record names exactly one of these as its `subject`, never a path and never two. `custody` is deliberately absent: it is a projection ([SD §4.8]), not an aggregate.
 
@@ -105,13 +105,23 @@ N may be 1, and may be 0.
 - **Cited:** [[SD §4.7.2e]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[fork-order §3.1]](analysis/fork-order-shipment-cardinality.md#31-recommended-shape--one-shape-stated-in-full)
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
+### `party` (aggregate)
+
+A party — a company or a person that asserts facts, holds roles and is identified by schemes
+whose authority is somebody else. Minted at [A8 §9 item 1], whose first sentence is the reason:
+_"Until it lands, `assertedBy.partyRef` has no target schema."_
+
+- **Cited:** [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
+- **Corpus:** `src:atlas-world-group-api` · `src:sirva-ade`
+- **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
+
 ### `partyRole` (aggregate)
 
 The **role-holding** itself — [SD §4.7.3], "the role-holding itself is an aggregate (§1.2)".
 [SD §1.1] puts the role on the assertion rather than on the party, and [A8 §3(a)] makes role
 "an attribute of the _assignment_, never of the party".
 
-- **Cited:** [[A8 §3(a)]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
+- **Cited:** [[A8 §3(a)]](analysis/A8-authority-skeleton.md) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `portion` (aggregate)
@@ -341,7 +351,7 @@ its qualifier is `{scheme, vocabularyScope}`, which is **I-KEY**. `primary` is n
 flag but the output of `FactResolved` over that key ([SD §7.5]). [A8 §5] row 10 binds authority
 to the scheme's **issuer**, where it never moves.
 
-- **Canonical subject family:** `anyAggregate` = {`order`, `shipment`, `portion`, `stay`, `trip`, `stop`, `stopAction`, `assignment`, `partyRole`, `item`, `charge`, `resource`, `document`, `externallyPerformedLeg`}
+- **Canonical subject family:** `anyAggregate` = {`order`, `shipment`, `portion`, `stay`, `trip`, `stop`, `stopAction`, `assignment`, `partyRole`, `item`, `charge`, `resource`, `document`, `externallyPerformedLeg`, `party`}
 - **Qualifier:** `{scheme, vocabularyScope}` — [SD §7.1] — the I-KEY tuple. Neither field enumerates: scheme is an owed code list and vocabularyScope is a structure, so 'values' is null rather than an invented enum.
 - **Authority:** **assigned**, `boundBy = SCHEME`. [A8 §5] row 10. The ISSUER of the scheme, and nobody else, for the value under that scheme. Authority NEVER moves.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
@@ -2640,6 +2650,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`outcome`](#outcome-filter-axis) — filter axis
 - [`packer`](#packer-role-name) — role name
 - [`packing`](#packing-record-type) — record type
+- [`party`](#party-aggregate) — aggregate
 - [`partyRole`](#partyrole-aggregate) — aggregate
 - [`partyRole`](#partyrole-fact-class-family) — fact-class family
 - [`partyRole`](#partyrole-record-type) — record type

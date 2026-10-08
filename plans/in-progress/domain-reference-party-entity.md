@@ -52,15 +52,19 @@ is `plans/completed/domain-reference-roleclass.md`, and its transferable lessons
 - [ ] **the ordinal sweep §1.3.1 found and enumerates** — `fourteen` / `fifteenth`, where half the
       hits for the word are a different claim wearing the same number; one of the real ones
       **renders into `glossary.md`**
-- [x] **the `PartyId` brand collision — DECIDED, and it is REQUIRED rather than polish.** A8-SELF
-      compares two parties, so the subject brand and the reference brand must be one or the round
-      ships a capability it cannot prove. **`PartyId = AggregateId<'party'>` was measured and does NOT
-      work** — it emits two byte-identical `$defs` under two names. The alias must be **deleted**,
-      which removes the published `$defs/PartyId` that six defs reference, `AssertedBy` among them.
-- [ ] **mint `removedPublishedDef` in `[catalog §2.3]`'s Breaking table** — no existing row
-      fits, so this round mints a change class after all
-- [ ] **version: `0.7.0`, not `0.6.4`** — breaking takes the minor slot pre-1.0 (`[catalog §2.3.1]`),
-      and one `specVersion` carries both decisions
+- [x] **the `PartyId` brand collision — DECIDED: NOT unified in this round, deferred with its
+      evidence.** `§1.2.1`'s first draft said unification was required because A8-SELF compares two
+      parties — **false**: `corroborationIsIndependent` already types **both** sides as `PartyId`, so
+      A8-SELF never compares a reference with a `subject`. With no live rule needing it, breaking the
+      wire would be a change made for a prospect. Recorded as a **new owed item to `[A8]`** with the
+      successor shape (`SubjectRef<'party'>` at six sites) and its class (`changedValueShape`).
+- [x] **`removedPublishedDef` — UNMINTED.** It was the right class for a change no longer being
+      made, so it is deliberately **not** added to `[catalog §2.3]`.
+- [x] **version: `0.6.4`** — `newAggregateKind` alone, additive, the patch slot
+      (`[catalog §2.3.1]`).
+- [ ] **a FOURTH thing inverts** — `src/ids.ts`'s **`partyRole` member docstring** says _"Note what
+      is **not** here: a `party`"_, which Decision 1 makes false. Nothing fails when a sibling
+      member's prose goes stale, so it is the one a round ships wrong.
 - [ ] **four defects found in passing** (§1.3.1's own list) — three counts and two colliding ordinals
 
 **The previous round (`roleClass`) is fully landed and is NOT this round.** `plans/completed/domain-reference-roleclass.md`.
@@ -84,18 +88,19 @@ Then, in order:
    bold marker, `_x_` never `*x*`).
 3. **`data/canonical-subjects.json`'s `families.anyAggregate.members`** — the home §1.2 and §1.3.1
    both missed, and the loader fails by name with the set difference. Measured, not predicted.
-4. **Delete the `PartyId` alias**, repointing `AssertedBy`, `Attribution`, `CustodyHolder`,
-   `IdentityValue`, `PartyRoleValue` and `VocabularyScope` to `AggregateId<'party'>`, and replace
-   `partyId()`. **`tsc`'s 29 `TS2305`s are the checklist for this step** — they are import lines and
-   nothing else; the whole semantic fan-out is one `TS2578` (§1.2.1).
+4. **Leave `PartyId` and `partyId()` exactly as they are** — Decision 2, corrected. What this
+   step costs instead is **prose**: the phrase _"an identifier with no aggregate behind it"_ is
+   `[A9 §3.6]`'s finding and this round discharges it, in `src/ids.ts` (twice — including the
+   `partyRole` member's docstring, which becomes false), `src/data.ts`,
+   `src/rules/identity-schemes.ts` and `data/identity-schemes.json`'s `scac` note.
 5. **Take the five blockers off** `data/identity-schemes.json`, and **invert all three enforcement
    sites plus the `$comment`** — §1.3.1's "THREE things invert" list. `loadIdentitySchemes`'s two
    refusals are the ones most easily missed, because they are in `src/` and not in a test.
 6. **Fix the two `six party-grain rows` docstrings** (§1.3.1 defects 1 and 2) — they contradict a
    live gate.
-7. **Mint `removedPublishedDef`** in `[catalog §2.3]`'s Breaking table, bump
-   `CATALOG_VERSION` to **`0.7.0`**, then `npm run glossary`, `npm run catalog`,
-   `npm run context-map`, then the suite.
+7. **Bump `CATALOG_VERSION` to `0.6.4`** — `newAggregateKind`, additive, patch slot; **no new
+   change class.** Then `npm run glossary`, `npm run catalog`, `npm run context-map`, then the
+   suite.
 8. **Cross-area edits**: a marked `> **AMENDED 2026-10-08**` on `[A8 §9 item 1]` naming the **five**
    party-grain schemes (it omits `gbloc`) and recording the legal-name citation and its item-3
    blocker; re-point `custody.ts`'s `TODO` to items 2-3 rather than deleting it; `[catalog]`'s new
@@ -318,70 +323,78 @@ faces:
 change class — provided Decision 2 does not need one, which is the next subsection. Under
 `[catalog §2.3.1]` additive takes the **patch** slot: `0.6.3` → **`0.6.4`**.
 
-#### Decision 2 — the `PartyId` brand, and the measurement REFUTED the planned fix
+#### Decision 2 — the `PartyId` brand: measured, found NOT required, and DEFERRED with its evidence
 
-**This is required, not polish, and the round's own deliverable is what requires it.** §3 item 22
-says publishing a value makes old claims testable, and names this round's instance: **A8-SELF** — _"a
-party holding two roles does not corroborate itself"_ — becomes testable for the first time. A8-SELF
-is a **comparison of two parties**. If the party-as-subject and the party-as-reference are different
-branded types, that comparison does not typecheck, and the round would ship the capability it claims
-while making the claim unprovable. So the brands must be one.
+> **CORRECTED 2026-10-08, and the correction is this round's sharpest plan-was-wrong finding —
+> because the plan it refutes is `§1.2.1`'s own first draft.** That draft said unification was
+> _"required, not polish"_ on the ground that **A8-SELF** compares two parties and would not
+> typecheck across two brands. **That premise is false, and `rules/authority.ts` says so:**
+>
+> ```
+> export function corroborationIsIndependent(
+>   authoritative: PartyId,
+>   corroborating: PartyId,
+> ): boolean
+> ```
+>
+> **Both sides are already `PartyId`.** A8-SELF compares an authoritative asserter with a
+> corroborating asserter — two **references** — and never compares a reference with a `subject`. It
+> typechecks today and will typecheck unchanged after Decision 1. **§3 item 22 was right that
+> publishing the party makes old claims testable; it was the inference from that to this particular
+> fix that was wrong.** A citation is two claims, and the draft checked neither.
 
-**The planned fix was `PartyId = AggregateId<'party'>`. Measured, it does not work** — and this is
-the round's plan-was-wrong finding:
+**What survives the correction, and what does not.**
 
-> `generate-catalog.ts`'s `refineName` names a branded `$def` `<alias>.<brand-suffix>`, and the
-> generator emits **one `$def` per exported type alias**. So aliasing `PartyId` to
-> `AggregateId<'party'>` publishes **two `$defs` with byte-identical bodies under two names** —
-> `AggregateId.party` **and** `PartyId.party`, both
-> `{"type":"string","x-brand":"id:party","x-aggregate":"party"}` — while `#/$defs/PartyId` **ceases
-> to exist** and the six defs that referenced it repoint to `PartyId.party`. **It trades two brands
-> for one concept for two `$defs` for one concept, and dangles a published `$ref` as well.**
-> Re-measured with `export type { PartyId }` instead of an inline export: **identical result**, so
-> it is the alias that is emitted and not the export syntax.
+- **Gone:** the claim that a live rule needs the brands unified. **No rule in the model compares a
+  party-as-subject with a party-as-reference.** Measured, not assumed: `FactResolved` contests are
+  per `(subject, scheme, vocabularyScope)` and never cross the two; `authorityToDeclare` compares
+  **role names** (its own `TODO`); `I-ACCOUNT` is about documents. The comparison a unified brand
+  would enable — _"was this SCAC asserted by its own owner?"_ — is one `[SD §7.1]`'s issuer/authority
+  split **invites** and no published rule **asks**.
+- **Survives:** that two branded types for one real-world identifier is a defect. And it has a
+  sharper form than the first draft found, which is an observation about the **house pattern** rather
+  than a prospect: **every other aggregate is referenced by `SubjectRef<K>`, never by a bare id.**
+  `LegEndpoint.stop` is `SubjectRef<'stop'>`; `CustodyHolder.partyRole` is `SubjectRef<'partyRole'>`.
+  `PartyId` is a bare brand **because there was no aggregate** — `ids.ts` says exactly that. Once
+  Decision 1 lands, **the fossil is the brand, not the comparison.**
 
-**So the only arrangement that publishes one party id is to DELETE the `PartyId` alias** and have its
-referencing sites name `AggregateId<'party'>` directly. On the wire that leaves `AggregateId.party`
-alone — and it **removes the published `$defs/PartyId`**, which six published defs reference:
-`AssertedBy`, `Attribution`, `CustodyHolder`, `IdentityValue`, `PartyRoleValue` and
-`VocabularyScope`. **`AssertedBy` is on every envelope**, so `PartyId` is reachable from every record
-the catalog publishes.
+**So the brand is not unified in this round, and the round stays ADDITIVE.** Three reasons, each a
+rule this repo already follows rather than a preference:
 
-**Class: `[catalog §2.3]` has no row for this, in either table — so the round mints one after all.**
-Neither `newAnnotation` (nothing is added; a published `$def` is **removed**) nor any Breaking row
-fits: `removedOrRenamedRecordType` is about a `type` and its "why" is _"it is a fact key component"_,
-which a `$def` name is not; the rest are about families, qualifiers, obligations, meanings and role
-spellings.
+1. **The licence to break came from the false premise.** With no live rule needing it, breaking the
+   wire would be a change made for a prospect — which `[SD §0]`'s disclosure discipline and this
+   plan's own _"measure; do not promise"_ both refuse.
+2. **A6's precedent is exactly this shape**: its central deliverable was a decision **not** to widen
+   a published union, and its diff was empty.
+3. **Deferring costs nothing extra.** `[catalog §2.3.1]` makes breaking cost the **minor** slot for
+   as long as the major is `0`, and `[catalog §2.4]` forbids `1.0.0` until §5's inventory is
+   discharged. **This round and a later round pay the same slot** — which is the same arithmetic the
+   first draft used to argue for acting now, read correctly.
 
-**Name it for what it does, and say WHICH READER breaks — because the two answers differ.** The
-change is a published `$def` removed and six `$ref`s repointed: `AssertedBy`, `Attribution`,
-`CustodyHolder`, `IdentityValue`, `PartyRoleValue` and `VocabularyScope` stop pointing at
-`#/$defs/PartyId` and point at `#/$defs/AggregateId.party`.
+**It is recorded as a NEW owed item rather than dropped**, because §3 item 16 makes the owner part
+of the value and A7 §6 makes the owed inventory auditable:
 
-- **A validator does not break.** Both targets are `{"type": "string"}`, so **every record that
-  validated still validates** — which is the exact test every §2.3 **additive** row turns on.
-- **A `$ref`-following schema reader does break.** `#/$defs/PartyId` ceases to exist, so anything
-  that dereferences it by name — codegen, a doc tool, a pinned fragment — dangles.
+> **Owed to `[A8]` — the party's id shape.** Two brands are emitted for one concept:
+> `PartyId` (`x-brand: "party"`) for every reference, and `AggregateId.party`
+> (`x-brand: "id:party"`, `x-aggregate: "party"`) for the subject. The house pattern references an
+> aggregate by `SubjectRef<K>`, so the successor shape is `SubjectRef<'party'>` at the six declaring
+> sites — `AssertedBy`, `Attribution`, `CustodyHolder`, `IdentityValue`, `PartyRoleValue`,
+> `VocabularyScope`. **Closing it is `changedValueShape` — breaking**, and it needs a rule that wants
+> the comparison before it is worth the slot.
 
-**So it is breaking, and the reader it breaks is the schema reader rather than the record.** The row
-must say so, because reading `[catalog §2.3]`'s mechanical test alone would classify this additive
-and be wrong. Proposed name: **`removedPublishedDef`**, _why breaking_: _"a `$ref`-following reader
-dangles; records are unaffected"_. `[catalog §2.3]`'s Breaking table is edited to carry it (§3 item
-14 — if your decision narrows a sentence in `[catalog]`, edit `[catalog]`).
+**Class: `newAggregateKind` alone, and `removedPublishedDef` is UNMINTED.** It was the right class
+for a change this round is no longer making, so it is not added to `[catalog §2.3]` — a stranded
+change class would be worse than none. **Version: `0.6.3` → `0.6.4`**, the patch slot, per
+`[catalog §2.3.1]`.
 
-**Breaking takes the MINOR slot pre-1.0 — so the round publishes `0.7.0`, not `0.6.4`.** One
-`specVersion` names a published state rather than a piece of work (§3 item 5), so `0.7.0` carries
-**both** decisions: `newAggregateKind` and `removedPublishedDef`.
-
-> **And the cost argument for doing it now is NOT that later is dearer — that would be wrong.**
-> `[catalog §2.3.1]` makes breaking cost the minor slot for as long as the major is `0`, and
-> `[catalog §2.4]` forbids `1.0.0` until §5's inventory is discharged, which is far off. **This round
-> and a later round pay the same slot.** The argument for now is that the alternative **publishes a
-> defect**: two branded types for one real-world identifier, which is the crosscheck's own finding
-> one level up — _"all carry denormalised name+id string pairs on a flat row"_ — committed by the
-> document that exists to catch it. And `PartyId`'s docstring justification evaporates the moment
-> Decision 1 lands: it reads _"an identifier with no aggregate behind it"_, and after Decision 1
-> there is one.
+**And one gate inverts that §1.3.1 did not list, so the list is FOUR.** The phrase
+_"an identifier with no aggregate behind it"_ is `[A9 §3.6]`'s finding and this round discharges it.
+It appears in `src/ids.ts` twice — once on `PartyId` and once inside the **`partyRole` member's own
+docstring**, which says _"Note what is **not** here: a `party`"_ and **becomes false the moment
+Decision 1 lands** — plus `src/data.ts`, `src/rules/identity-schemes.ts`,
+`data/identity-schemes.json`'s `scac` note, `tests/conformance/identity-scheme-refuses.ts`,
+`[A9 §3.6]` and `[SD §7.1]`'s A9 note. **The `partyRole` docstring is the one a round would ship
+wrong**, because nothing fails when a sibling member's prose goes stale.
 
 #### What Decision 2 does NOT license
 
@@ -412,15 +425,16 @@ dangles; records are unaffected"_. `[catalog §2.3]`'s Breaking table is edited 
 The first write-up of this decision said _"`tsc` is the checklist here"_ **without having run it**.
 Run now, in two variants, because the variants separate mechanical repair from real fan-out.
 
-**Variant A — delete the `PartyId` alias (the shipping shape): `tsc` reports 30 errors**, and the
-breakdown is the point rather than the total: **29 are `TS2305`** _"module has no exported member"_ —
+**Variant A — delete the `PartyId` alias: `tsc` reports 30 errors**, and the breakdown is the point
+rather than the total: **29 are `TS2305`** _"module has no exported member"_ —
 one import line per file across `src/assertions.ts`, `src/custody.ts`, `src/envelope.ts`,
 `src/identity.ts`, `src/outcomes.ts`, `src/rules/authority.ts`, `src/rules/corrections.ts`,
 `src/rules/e-canon.ts` and twenty-one test files. **Mechanical, and they mask whatever is behind
 them.**
 
 **Variant B — retype the alias in place (`PartyId = AggregateId<'party'>`), so every import still
-resolves: `tsc` reports EXACTLY ONE error.**
+resolves: `tsc` reports EXACTLY ONE error.** This is also the measurement that tells you Decision 1
+**alone** costs one error, since the retype itself changes nothing `tsc` can see:
 
 ```
 tests/conformance/identity-scheme-refuses.ts(65,1): error TS2578: Unused '@ts-expect-error' directive.
@@ -456,10 +470,10 @@ produces"_), and the **disclosure gate** fails because the experiment's member c
 1. the ordinal sweep (below — it goes first);
 2. `'party'` into `AGGREGATE_KINDS` **with a JSDoc carrying a citation**;
 3. **`data/canonical-subjects.json`'s `anyAggregate.members`** — the home the plan missed;
-4. delete the `PartyId` alias and repoint the six declaring sites plus `partyId()`; **variant A's 29
-   `TS2305`s are the checklist for this step and nothing more**;
+4. **nothing** — Decision 2 is deferred, so neither variant's errors are this round's. They are
+   kept above as the **measured cost of the owed item**, for the round that closes it;
 5. the five blockers, the three enforcement sites and the `$comment` (§1.3.1);
-6. regenerate all three artefacts, bump to `0.7.0`, re-run.
+6. regenerate all three artefacts, bump to `0.6.4`, re-run.
 
 #### The first implementation step is the ordinal sweep, not the enum member
 

@@ -1,5 +1,5 @@
 {
-  "$comment": "A9 §3.3 — the witnessed-scheme table. NOT a closed vocabulary: [A9 §3.2] refuses to close `identityScheme`, and this table is the catalogue of the schemes the external corpus actually witnesses, not the list of the schemes that exist. `documentAccountable` is the one bit [A6 §3.2(a)] asks A9 for, and rule I-ACCOUNT ([A9 §3.4]) is the partial function over it that D-ID takes as an input. Grades follow [A6 §2] and [A7 §2]: `primary` = quoted from captured material in this repo, `secondary` = quoted from the source's own analysis.md. Every row's `identifies` is an [SD §1.2] aggregate kind or the literal `party`, which is not one — and a `party` row therefore carries a blocker naming [A8 §9 item 1], which already owes the party entity and already names SCAC and DOT/MC among its fields.",
+  "$comment": "A9 §3.3 — the witnessed-scheme table. NOT a closed vocabulary: [A9 §3.2] refuses to close `identityScheme`, and this table is the catalogue of the schemes the external corpus actually witnesses, not the list of the schemes that exist. `documentAccountable` is the one bit [A6 §3.2(a)] asks A9 for, and rule I-ACCOUNT ([A9 §3.4]) is the partial function over it that D-ID takes as an input. Grades follow [A6 §2] and [A7 §2]: `primary` = quoted from captured material in this repo, `secondary` = quoted from the source's own analysis.md. Every row's `identifies` is an [SD §1.2] aggregate kind, `party` included since [A8 §9 item 1] minted it at catalog 0.6.4. Before that release `party` was a literal this table carried and the enum did not, and the five `party`-grain rows each named [A8 §9 item 1] as a blocker because their assertions had no `subject`; those blockers are off and `loadIdentitySchemes` now refuses the blocker on ANY row.",
   "schemes": [
     {
       "scheme": "bolCarrier",
@@ -245,7 +245,7 @@
       "issuerIsTheAuthority": true,
       "documentAccountable": false,
       "definedNotMerelyNamed": false,
-      "blocker": "[A8 §9 item 1] — no party entity, so a SCAC assertion has no `subject`",
+      "blocker": null,
       "rubricCovers": "SCAC",
       "witnesses": [
         {
@@ -279,7 +279,7 @@
           "cite": "`CARRIER_SCAC` in the LogisticsIdentifierTypeEnum — analysis.md:394"
         }
       ],
-      "note": "The best-witnessed scheme in the table — six witness rows, which [A9 §3.6]'s gate counts as four publishing bodies and not six, because dtr-part-iv and dp3-400ng are both DoD and stedi-x12-reference and x12-212-trailer-manifest are two readings of X12 — and the model cannot express an assertion of it, because what it identifies is a PARTY and [SD §1.2] has no party aggregate. The blocker is not A9's to mint: [A8 §9 item 1] already owes the party entity and already names \"DOT/MC number, SCAC (`src:dtr-part-iv` #665), agent code\" among the fields it would carry, and `ids.ts` already says `PartyId` \"is an identifier with no aggregate behind it\". `definedNotMerelyNamed` is FALSE and that is the round's sharpest gap: six sources USE the code and none defines the issuing authority's own rules, because the source that would — `src:nmfta-scac`, the only registry entry whose `areas:` is `[A9]` and nothing else — was never fetched and is now `status: skipped` on the 2026-10-04 C1 decision, which records that we are not closing this gap that way rather than that it is closed."
+      "note": "The best-witnessed scheme in the table — six witness rows, which [A9 §3.6]'s gate counts as four publishing bodies and not six, because dtr-part-iv and dp3-400ng are both DoD and stedi-x12-reference and x12-212-trailer-manifest are two readings of X12 — and until catalog 0.6.4 the model could not express an assertion of it, because what it identifies is a PARTY and [SD §1.2] had no party aggregate. [A8 §9 item 1] minted one and the blocker came off; A9 was right not to mint an owed item of its own, since the gap was already owed by name. `definedNotMerelyNamed` is FALSE and that is the round's sharpest gap: six sources USE the code and none defines the issuing authority's own rules, because the source that would — `src:nmfta-scac`, the only registry entry whose `areas:` is `[A9]` and nothing else — was never fetched and is now `status: skipped` on the 2026-10-04 C1 decision, which records that we are not closing this gap that way rather than that it is closed."
     },
     {
       "scheme": "usDotNumber",
@@ -289,7 +289,7 @@
       "issuerIsTheAuthority": true,
       "documentAccountable": false,
       "definedNotMerelyNamed": false,
-      "blocker": "[A8 §9 item 1] — no party entity, so a USDOT assertion has no `subject`",
+      "blocker": null,
       "rubricCovers": null,
       "witnesses": [
         {
@@ -313,7 +313,7 @@
       "issuerIsTheAuthority": true,
       "documentAccountable": false,
       "definedNotMerelyNamed": false,
-      "blocker": "[A8 §9 item 1] — no party entity, so an MC assertion has no `subject`",
+      "blocker": null,
       "rubricCovers": null,
       "witnesses": [
         {
@@ -332,7 +332,7 @@
       "issuerIsTheAuthority": true,
       "documentAccountable": false,
       "definedNotMerelyNamed": true,
-      "blocker": "[A8 §9 item 1] — no party entity, so a GBLOC assertion has no `subject`",
+      "blocker": null,
       "rubricCovers": null,
       "witnesses": [
         {
@@ -346,7 +346,7 @@
           "cite": "\"BLOC — Bill of Lading Office Code; the identity of the OFFICE, and the scope unit for suspensions and blackouts\" — analysis.md:335-336"
         }
       ],
-      "note": "The row that costs the model something already spent. [SD §7.2] sources the identifier's EFFECTIVE INTERVAL twice, and the second of the two is this scheme's mid-life reassignment — so the shared layer leans on a scheme whose subject it cannot express. Nothing here reopens [SD §7.2]: the interval is right and the evidence for it stands. What A9 records is that the worked example behind it is one of the six party-grain rows, and the blocker is [A8 §9 item 1]'s."
+      "note": "The row that costs the model something already spent. [SD §7.2] sources the identifier's EFFECTIVE INTERVAL twice, and the second of the two is this scheme's mid-life reassignment — so the shared layer leans on a scheme whose subject it cannot express. Nothing here reopens [SD §7.2]: the interval is right and the evidence for it stands. What A9 recorded is that the worked example behind it is one of the FIVE party-grain rows — `scac`, `usDotNumber`, `mcNumber`, `gbloc`, `agentCode`, enumerated by name in `identity-schemes.test.ts`. This note said \"six\" from publication until catalog 0.6.4, contradicting that gate; [A8 §9 item 1] then took the blocker off and the example is writable."
     },
     {
       "scheme": "agentCode",
@@ -356,7 +356,7 @@
       "issuerIsTheAuthority": true,
       "documentAccountable": false,
       "definedNotMerelyNamed": true,
-      "blocker": "[A8 §9 item 1] — no party entity, so an agent-code assertion has no `subject`",
+      "blocker": null,
       "rubricCovers": null,
       "witnesses": [
         {

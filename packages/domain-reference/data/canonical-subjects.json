@@ -79,10 +79,11 @@
           "charge",
           "resource",
           "document",
-          "externallyPerformedLeg"
+          "externallyPerformedLeg",
+          "party"
         ],
         "singleton": false,
-        "citation": "[SD §7.1] — 'subject may be ANY aggregate kind'"
+        "citation": "[SD §7.1] — 'subject may be ANY aggregate kind'. `party` added at [A8 §9 item 1] (catalog 0.6.4): the family tracks the enum itself, so minting the aggregate kind is what makes an `identity` assertion ABOUT a party expressible and gives [A9 §3.6]'s five party-grain schemes a `subject`. This list is a hand-written copy of AGGREGATE_KINDS and `loadCanonicalSubjects` compares the two as a SET, which is why it is here and not derived."
       }
     }
   },

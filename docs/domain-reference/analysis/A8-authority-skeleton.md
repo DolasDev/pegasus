@@ -806,6 +806,71 @@ file may be read as deciding them.
    `TODO(A8 §9 item 1)` — whether the party becomes a fifteenth aggregate kind or stays outside the
    subject enum — is the question that decides it, and [A9 §3.6] item 2 records why `partyRole` is
    not the answer: a SCAC belongs to the company whatever it is doing on this shipment.
+
+   > **PARTIALLY CLOSED 2026-10-08 — the subject is minted; the name, the branch grain and the
+   > hierarchy are NOT, and the residue is enumerated so nobody has to re-derive it.**
+   >
+   > `party` is an [SD §1.2] `aggregate` kind at catalog **0.6.4** (`newAggregateKind`, additive).
+   > **What that discharges, exactly two things:** `assertedBy.partyRef` has a target schema, and
+   > [A9 §3.6]'s five party-grain schemes have a `subject` — their blockers are off and
+   > `loadIdentitySchemes` now refuses this item's name on **any** row. No record type, no fact class
+   > and no subject family were added, because `identity`'s canonical family **is** the enum
+   > ([SD §7.1] "`subject` may be **any** aggregate kind"), so the member alone is the mechanism.
+   >
+   > **Correction to this item's own list, and it was wrong in both directions.** The schemes blocked
+   > on it are **five** — `scac`, `usDotNumber`, `mcNumber`, `gbloc`, `agentCode`, enumerated by name
+   > in `identity-schemes.test.ts`. This item's prose names **four**: it writes "DOT/MC number" as
+   > one phrase where the table carries two schemes, and **it never names `gbloc` at all**. So
+   > [A9 §3.6]'s sentence that this item "already names these very identifiers" held for four of the
+   > five. There was no single cardinality to count, which is why the round enumerated instead.
+   >
+   > **The residue, with each blocker named** — this item stays open on all three:
+   >
+   > - **legal name** — blocked on **item 3**, not on a missing subject. The citation this item never
+   >   had now exists and is primary: `src:cfr-49-375` **§ 375.505 _"Must I write up a bill of
+   >   lading?"_ (b)(1)**, _"Your legal or trade name (i.e., doing business as name) **as it is
+   >   registered with FMCSA**, to include your physical address"_, restated at **Appendix A →
+   >   _"Bill of Lading"_ item 1** (the same requirement, not a second witness) and coupled to the
+   >   registration at **§ 375.207 _"What items must be in my advertisements?"_ (b)(1)**, _"as it
+   >   appears on our document assigning you a U.S. DOT number"_. **Appendix A item 2** is a distinct
+   >   requirement: the names **and** USDOT numbers of participating carriers.
+   >   `src:dp3-tender-of-service` §B.3.f p.19 corroborates at `secondary` grade — that source has no
+   >   `captured/`. **Three reasons it is not modellable yet:** the regulation publishes a
+   >   **disjunction** (legal **or** trade/DBA), which under **I-KEY** is two vocabularies and not one
+   >   field — the test this corpus already applied to split `mcNumber` from `usDotNumber`; it arrives
+   >   **bundled with a physical address** and [SD §1.2] has no `place` aggregate; and decisively,
+   >   `src:sirva-ade`'s `Resource` is `{Id, Name, Type, Owner}` whose `Id` _"can contain agent,
+   >   vendor, driver **or equipment** code based on the resource `Type`"_, so its `Name` names a
+   >   company, a person or a **tractor**. The one grade-A contract with a name field is the one that
+   >   fuses the grains: **a party must be defined before it can be named.**
+   > - **the branch grain** — **item 3**'s as well, and the identifier already carries it:
+   >   `agentCode`'s trailing three digits **are** the branch, so what is owed is the grain question
+   >   (is a branch its own party?) and not a field. `SvcProvDataRecipient` is a push-routing field,
+   >   which is item 6's territory.
+   > - **the hierarchy** — owed with a blocker of a **different kind**: `parentAgentCode` and
+   >   `/Agents/{agentCode}/Family` are a party-to-party **relation**, and **no `AssertionType` holds
+   >   one**. It is not waiting on item 3; it is waiting on a fact class that does not exist.
+   >
+   > **One tempting reading recorded and REJECTED**, because the next round will reach for it:
+   > _"as it is registered with FMCSA"_ makes FMCSA an `authority` in [SD §7.1]'s exact sense, and the
+   > alternatives test above is this corpus's own — together they suggest filing the name as an
+   > `identity` assertion under a minted `legalName` scheme. **A name does not identify.** [SD §7.1]
+   > defines a scheme as _"the naming system, which **DEFINES** who assigns and what it identifies"_;
+   > `scac`'s six witnesses cite the code **because** it identifies a carrier uniquely, and nothing in
+   > `src:cfr-49-375` says a name is unique. FMCSA registering a name makes FMCSA an authority without
+   > making the name an `id`.
+   >
+   > **And one thing this item now owes that it did not before.** Two brands for one concept reach the
+   > wire: `PartyId` (`x-brand: "party"`) for every reference and `AggregateId.party`
+   > (`x-brand: "id:party"`) for the subject. The successor shape is `SubjectRef<'party'>`, because
+   > every other aggregate is referenced that way and never by a bare id (`LegEndpoint.stop`,
+   > `CustodyHolder.partyRole`) — the brand is the fossil of there having been no party aggregate.
+   > **It was measured and deliberately not done:** no published rule compares a party-as-subject with
+   > a party-as-reference, A8-SELF (`corroborationIsIndependent`) takes two **references**, and
+   > unifying would remove the published `$defs/PartyId` that six defs reference, `AssertedBy` among
+   > them. Closing it is `changedValueShape` — breaking — and it wants a rule that needs the
+   > comparison first.
+
 2. **The full role vocabulary as a versioned enum**, including the roles §2 names but does not
    define: `accountParty`, `goodsOwner`, `weighMaster`, the government offices
    (PPSO/PPPO/TO/ITO/JPPSO/SB/SPM, `src:dp3-400ng`, `src:dtr-part-iv`), the NTS

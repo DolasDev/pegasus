@@ -152,8 +152,36 @@ void _catalogIsTheVocabulary
  * Nothing is removed and nothing narrowed in either face. The owed **vocabulary** count does not
  * move — `roleClass` is still owed, and what changed is the reason — which is the `0.5.0` row's rule
  * again from the other side.
+ *
+ * `0.6.4` at the party round: **one additive class, and the first round since A5 that mints none.**
+ *
+ * - `newAggregateKind` — `party` joins [SD §1.2]'s enum ([A8 §9 item 1]). The enum states the
+ *   permission outright, so this is the one row of [catalog §2.3] that needed no argument.
+ *
+ * **The whole emitted change is three defs and one line**, and the one line is the deliverable:
+ * `$defs/AggregateId.party` and `$defs/SubjectRef.party` appear, `SubjectRef`'s `anyOf` and
+ * `SubjectRef.family.anyAggregate` gain a branch each, and in `index.json` `identity`'s subject
+ * list gains `party` — which is [A9 §3.6]'s five party-grain schemes becoming assertable. The new
+ * branch **discriminates** (`"aggregate": {"const": "party"}`), checked rather than assumed after
+ * `0.6.3`'s did not.
+ *
+ * **No record type, no fact class and no subject family were added, and that is the finding rather
+ * than the scope.** `identity`'s canonical family is the enum itself ([SD §7.1] "`subject` may be
+ * **any** aggregate kind"), so the member alone is the mechanism. Every attribute [A8 §9 item 1]
+ * named is either an `identity` assertion or still owed to [A8 §9 item 3] — the name and the branch
+ * grain, because `src:sirva-ade`'s `Resource.Name` names a company, a person or a tractor.
+ *
+ * **What this round deliberately did NOT do, measured rather than deferred by preference.**
+ * {@link PartyId} stays branded `party` while the subject form is branded `id:party`, so two brands
+ * for one concept reach the wire. Unifying them would **remove** the published `$defs/PartyId` that
+ * six defs reference — `AssertedBy` among them, which is on every envelope — and no published rule
+ * compares a party-as-subject with a party-as-reference: A8-SELF takes two references,
+ * `FactResolved` contests run per `(subject, scheme, vocabularyScope)`, `authorityToDeclare`
+ * compares role names. So the successor shape (`SubjectRef<'party'>`, the way every other aggregate
+ * is referenced) is recorded as owed to [A8] and **no class was minted for it**, because a stranded
+ * change class is worse than none. Closing it is breaking.
  */
-export const CATALOG_VERSION = '0.6.3'
+export const CATALOG_VERSION = '0.6.4'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces
