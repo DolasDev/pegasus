@@ -57,7 +57,7 @@ is `plans/completed/domain-reference-roleclass.md`, and its transferable lessons
       ships a capability it cannot prove. **`PartyId = AggregateId<'party'>` was measured and does NOT
       work** — it emits two byte-identical `$defs` under two names. The alias must be **deleted**,
       which removes the published `$defs/PartyId` that six defs reference, `AssertedBy` among them.
-- [ ] **mint `removedPublishedDefinition` in `[catalog §2.3]`'s Breaking table** — no existing row
+- [ ] **mint `removedPublishedDef` in `[catalog §2.3]`'s Breaking table** — no existing row
       fits, so this round mints a change class after all
 - [ ] **version: `0.7.0`, not `0.6.4`** — breaking takes the minor slot pre-1.0 (`[catalog §2.3.1]`),
       and one `specVersion` carries both decisions
@@ -82,18 +82,21 @@ Then, in order:
    alone.
 2. **Mint `'party'` in `AGGREGATE_KINDS`** with a JSDoc carrying a citation (§3 item 1 — no leading
    bold marker, `_x_` never `*x*`).
-3. **Delete the `PartyId` alias**, repointing `AssertedBy`, `Attribution`, `CustodyHolder`,
+3. **`data/canonical-subjects.json`'s `families.anyAggregate.members`** — the home §1.2 and §1.3.1
+   both missed, and the loader fails by name with the set difference. Measured, not predicted.
+4. **Delete the `PartyId` alias**, repointing `AssertedBy`, `Attribution`, `CustodyHolder`,
    `IdentityValue`, `PartyRoleValue` and `VocabularyScope` to `AggregateId<'party'>`, and replace
-   `partyId()` with the `aggregateId('party', …)` path. **`tsc` is the checklist here.**
-4. **Take the five blockers off** `data/identity-schemes.json`, and **invert all three enforcement
+   `partyId()`. **`tsc`'s 29 `TS2305`s are the checklist for this step** — they are import lines and
+   nothing else; the whole semantic fan-out is one `TS2578` (§1.2.1).
+5. **Take the five blockers off** `data/identity-schemes.json`, and **invert all three enforcement
    sites plus the `$comment`** — §1.3.1's "THREE things invert" list. `loadIdentitySchemes`'s two
    refusals are the ones most easily missed, because they are in `src/` and not in a test.
-5. **Fix the two `six party-grain rows` docstrings** (§1.3.1 defects 1 and 2) — they contradict a
+6. **Fix the two `six party-grain rows` docstrings** (§1.3.1 defects 1 and 2) — they contradict a
    live gate.
-6. **Mint `removedPublishedDefinition`** in `[catalog §2.3]`'s Breaking table, bump
+7. **Mint `removedPublishedDef`** in `[catalog §2.3]`'s Breaking table, bump
    `CATALOG_VERSION` to **`0.7.0`**, then `npm run glossary`, `npm run catalog`,
    `npm run context-map`, then the suite.
-7. **Cross-area edits**: a marked `> **AMENDED 2026-10-08**` on `[A8 §9 item 1]` naming the **five**
+8. **Cross-area edits**: a marked `> **AMENDED 2026-10-08**` on `[A8 §9 item 1]` naming the **five**
    party-grain schemes (it omits `gbloc`) and recording the legal-name citation and its item-3
    blocker; re-point `custody.ts`'s `TODO` to items 2-3 rather than deleting it; `[catalog]`'s new
    row. **Then re-read the §Cross-area list in BOTH directions** (§3 item 14).
@@ -345,18 +348,30 @@ alone — and it **removes the published `$defs/PartyId`**, which six published 
 the catalog publishes.
 
 **Class: `[catalog §2.3]` has no row for this, in either table — so the round mints one after all.**
-Neither `newAnnotation` (nothing is added; a published `$def` is removed) nor any Breaking row fits:
-`removedOrRenamedRecordType` is about a `type`, and the others are about families, qualifiers,
-obligations, meanings and role spellings. The honest reading is **breaking** and the reason is
-mechanical rather than aesthetic, which is the test `[catalog §2.3]` itself uses: a consumer that
-dereferences `#/$defs/PartyId` **stops working**, where every §2.3 additive row turns on _"no record
-that validated stops validating"_. Proposed name: **`removedPublishedDefinition`**, and
-`[catalog §2.3]`'s Breaking table is edited to carry it (§3 item 14 — if your decision narrows a
-sentence in `[catalog]`, edit `[catalog]`).
+Neither `newAnnotation` (nothing is added; a published `$def` is **removed**) nor any Breaking row
+fits: `removedOrRenamedRecordType` is about a `type` and its "why" is _"it is a fact key component"_,
+which a `$def` name is not; the rest are about families, qualifiers, obligations, meanings and role
+spellings.
+
+**Name it for what it does, and say WHICH READER breaks — because the two answers differ.** The
+change is a published `$def` removed and six `$ref`s repointed: `AssertedBy`, `Attribution`,
+`CustodyHolder`, `IdentityValue`, `PartyRoleValue` and `VocabularyScope` stop pointing at
+`#/$defs/PartyId` and point at `#/$defs/AggregateId.party`.
+
+- **A validator does not break.** Both targets are `{"type": "string"}`, so **every record that
+  validated still validates** — which is the exact test every §2.3 **additive** row turns on.
+- **A `$ref`-following schema reader does break.** `#/$defs/PartyId` ceases to exist, so anything
+  that dereferences it by name — codegen, a doc tool, a pinned fragment — dangles.
+
+**So it is breaking, and the reader it breaks is the schema reader rather than the record.** The row
+must say so, because reading `[catalog §2.3]`'s mechanical test alone would classify this additive
+and be wrong. Proposed name: **`removedPublishedDef`**, _why breaking_: _"a `$ref`-following reader
+dangles; records are unaffected"_. `[catalog §2.3]`'s Breaking table is edited to carry it (§3 item
+14 — if your decision narrows a sentence in `[catalog]`, edit `[catalog]`).
 
 **Breaking takes the MINOR slot pre-1.0 — so the round publishes `0.7.0`, not `0.6.4`.** One
 `specVersion` names a published state rather than a piece of work (§3 item 5), so `0.7.0` carries
-**both** decisions: `newAggregateKind` and `removedPublishedDefinition`.
+**both** decisions: `newAggregateKind` and `removedPublishedDef`.
 
 > **And the cost argument for doing it now is NOT that later is dearer — that would be wrong.**
 > `[catalog §2.3.1]` makes breaking cost the minor slot for as long as the major is `0`, and
@@ -376,8 +391,75 @@ sentence in `[catalog]`, edit `[catalog]`).
 - **It is not a `place` aggregate.** `custody.ts`'s `TODO([SD §1.2] / A3)` wants one, §1.3.1 found
   the legal name arrives bundled with a physical address that would need one, and **this round mints
   exactly one member.** A second would make Decision 1's ordinal wrong twice over.
-- **It does not discharge `[A8 §9 item 1]`.** The name stays owed, blocked on `[A8 §9 item 3]`
-  (§1.3.1), and `[A8 §9 item 1]` gets a marked annotation rather than a closure.
+- **It does not discharge `[A8 §9 item 1]`.** The item gets a marked annotation, not a closure, and
+  **the annotation must state the residue rather than the word "partially"** — otherwise the next
+  session re-derives what §1.3.1 already measured. **After this round `[A8 §9 item 1]` owes exactly
+  three things, and each with its blocker:**
+  - **`legal name`** — blocked on `[A8 §9 item 3]`: `src:sirva-ade`'s `Resource.Name` names a
+    company, a person or a tractor, so the party must be defined before it can be named. Published
+    as a **disjunction** and bundled with an address besides.
+  - **the branch grain** — `[A8 §9 item 3]`'s too, and the identifier already carries it
+    (`agentCode`'s trailing three digits), so what is owed is the **grain question**, not a field.
+  - **the hierarchy** — owed with **no blocker of the same kind**: `parentAgentCode` is a party→party
+    relation and **no `AssertionType` holds one**. It is not waiting on item 3; it is waiting on a
+    fact class that does not exist.
+
+  **And what it no longer owes:** the `subject` for the five `party`-grain schemes, and
+  `assertedBy`'s target schema. Those are this round's, and the annotation says so.
+
+#### The cost, MEASURED rather than asserted — and the suite found a home §1.3.1 missed
+
+The first write-up of this decision said _"`tsc` is the checklist here"_ **without having run it**.
+Run now, in two variants, because the variants separate mechanical repair from real fan-out.
+
+**Variant A — delete the `PartyId` alias (the shipping shape): `tsc` reports 30 errors**, and the
+breakdown is the point rather than the total: **29 are `TS2305`** _"module has no exported member"_ —
+one import line per file across `src/assertions.ts`, `src/custody.ts`, `src/envelope.ts`,
+`src/identity.ts`, `src/outcomes.ts`, `src/rules/authority.ts`, `src/rules/corrections.ts`,
+`src/rules/e-canon.ts` and twenty-one test files. **Mechanical, and they mask whatever is behind
+them.**
+
+**Variant B — retype the alias in place (`PartyId = AggregateId<'party'>`), so every import still
+resolves: `tsc` reports EXACTLY ONE error.**
+
+```
+tests/conformance/identity-scheme-refuses.ts(65,1): error TS2578: Unused '@ts-expect-error' directive.
+```
+
+**That is `partyIsNotAnAggregate`, and it is the whole compile-time fan-out.** So the two decisions
+together break **no `Exact<>`, no `satisfies` clause and no other `@ts-expect-error`** — the thing
+worth knowing, and the thing variant A's 29 import errors would have hidden. §1.3.1's
+"THREE things invert" list is confirmed complete **at the type level**.
+
+**At RUNTIME it is not complete, and this is the finding.** The suite in variant B reports **16
+failures**, and they have one root cause plus three consequences:
+
+> **`data/canonical-subjects.json` carries `families.anyAggregate.members` as a hand-written literal
+> copy of the whole enum, written out member by member, and the loader cross-checks it against
+> `SUBJECT_FAMILIES.anyAggregate` as a set.** `loadCanonicalSubjects` throws `DataDefect` by name —
+> _"`canonical-subjects.families.members.anyAggregate.members`: is [order, …, externallyPerformedLeg]
+> where `SUBJECT_FAMILIES.anyAggregate` is [order, …, externallyPerformedLeg, party]"_ — which takes
+> `vocabulary.test.ts` down at **file load** and fails eleven `data-tables.test.ts` cases behind it.
+
+**So the aggregate-kind enumeration has a home in `data/` that neither §1.2 nor §1.3.1 named.** That
+is §3 item 2 (_"fill the per-member table in `data/` and extend the loader"_) and §3 item 9 (_"a data
+table may have more than two homes"_) arriving together, and the gate is **enumerated and names the
+set difference**, which is why it took one read rather than a debugging session.
+
+The other three failures are expected and are not defects: the **three generated artefacts** stop
+being fixed points (`catalog`, `context-map`, `glossary` — _"is committed in the state the generator
+produces"_), and the **disclosure gate** fails because the experiment's member carried
+`/** EXPERIMENT */` rather than a JSDoc with a citation (§3 item 1).
+
+**The implementation checklist that follows from the measurement**, in the order the gates force:
+
+1. the ordinal sweep (below — it goes first);
+2. `'party'` into `AGGREGATE_KINDS` **with a JSDoc carrying a citation**;
+3. **`data/canonical-subjects.json`'s `anyAggregate.members`** — the home the plan missed;
+4. delete the `PartyId` alias and repoint the six declaring sites plus `partyId()`; **variant A's 29
+   `TS2305`s are the checklist for this step and nothing more**;
+5. the five blockers, the three enforcement sites and the `$comment` (§1.3.1);
+6. regenerate all three artefacts, bump to `0.7.0`, re-run.
 
 #### The first implementation step is the ordinal sweep, not the enum member
 
