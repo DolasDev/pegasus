@@ -37,49 +37,69 @@ is `plans/completed/domain-reference-roleclass.md`, and its transferable lessons
       class, no new subject family.** What is left of item 2 is only `legal name`'s home.
 - [x] **§1.3 item 4 — measured: `custody.ts`'s TODO does NOT come off**, it re-points. See §1.3.1's
       closing paragraph.
-- [ ] **§1.3 item 2, residue — does this round carry `legal name`, or mint a bare subject?** The one
-      open design question, and the next action.
+- [x] **§1.3 item 2, residue — ANSWERED: the round does NOT carry `legal name`.** `§1.3.1`'s
+      `AMENDED 2026-10-08` block is the measurement. The name is blocked on `[A8 §9 item 3]`, is
+      published as a **disjunction** ("legal **or** trade name"), and arrives bundled with an address
+      the model has no aggregate for. It stays owed, now with the primary citation `[A8 §9 item 1]`
+      never had.
 - [ ] §1.3 item 3 — take or explicitly decline `[A8 §9 item 3]` (person vs organisation vs crew grain)
 - [ ] §1.3 item 5 — is `[A8 §9 item 5]` (role cardinality) reachable once a party exists?
-- [ ] §1.2 — **the decision**: fifteenth `aggregate` kind, or stays outside the subject enum?
+- [x] **§1.2 — DECIDED. `§1.2.1` is the record, written from the measured emitted diff.**
+      `party` becomes the **fifteenth `aggregate` kind** (`newAggregateKind`, additive). **And the
+      measurement refuted the planned fix for the brand collision**, which turns the round
+      **breaking**: see below.
 - [ ] implementation, gates, tamper pass, cross-area edits, round record
 - [ ] **the ordinal sweep §1.3.1 found and enumerates** — `fourteen` / `fifteenth`, where half the
       hits for the word are a different claim wearing the same number; one of the real ones
       **renders into `glossary.md`**
-- [ ] **the `PartyId` brand collision** (§1.3.1) — `Brand<string, 'party'>` against
-      `AggregateId<'party'>`'s `Brand<string, 'id:party'>`, two brands for one concept on one record.
-      A §1.2 cost input, not yet decided
+- [x] **the `PartyId` brand collision — DECIDED, and it is REQUIRED rather than polish.** A8-SELF
+      compares two parties, so the subject brand and the reference brand must be one or the round
+      ships a capability it cannot prove. **`PartyId = AggregateId<'party'>` was measured and does NOT
+      work** — it emits two byte-identical `$defs` under two names. The alias must be **deleted**,
+      which removes the published `$defs/PartyId` that six defs reference, `AssertedBy` among them.
+- [ ] **mint `removedPublishedDefinition` in `[catalog §2.3]`'s Breaking table** — no existing row
+      fits, so this round mints a change class after all
+- [ ] **version: `0.7.0`, not `0.6.4`** — breaking takes the minor slot pre-1.0 (`[catalog §2.3.1]`),
+      and one `specVersion` carries both decisions
 - [ ] **four defects found in passing** (§1.3.1's own list) — three counts and two colliding ordinals
 
 **The previous round (`roleClass`) is fully landed and is NOT this round.** `plans/completed/domain-reference-roleclass.md`.
 
 ### Next action
 
-**§1.3 item 1 is done — read `§1.3.1` first, because it narrowed §1.2 rather than merely feeding it.**
-The assertion half needs nothing but the enum member, so **the only design question left before §1.2
-is `legal name`'s home**, and it is a two-branch decision with a live precedent on each side:
+**The planning pass is COMPLETE. Read `§1.3.1` then `§1.2.1`, in that order, and start
+implementing — beginning with the ordinal sweep, NOT with the enum member.**
 
-> Does this round **carry `legal name` as a field on a minted party record type**, or **mint a bare
-> subject** and leave the name owed?
+`§1.2.1`'s last subsection says why the sweep goes first: `custody.ts`'s `TODO` claims the ordinal
+_"fifteenth aggregate kind"_ for a **place**, and the context map publishes that sentence verbatim,
+so minting `party` as the fifteenth makes both wrong. Sweep first and the tree is never in a state
+where two things claim one ordinal. **Prefer deleting each ordinal to incrementing it** (§3 item 10).
 
-- **Bare subject** keeps the round's diff to one `AggregateKind` member, five blockers coming off, the
-  inverted `identity-scheme-refuses.ts` gate, the loader invariant, the cross-area annotations and the
-  ordinal sweep — and nothing published gains a field. A6's precedent is that a decision **not** to
-  widen a published union can be the central deliverable.
-- **Carrying the name** mints the round's first new record type and needs an evidence grade for a
-  field the corpus witnesses only as _"denormalised name+id string pairs on a flat row"_ — i.e. a
-  shape `[SD §0]` would read as `[ORIGINAL]` unless the grade is stated.
+Then, in order:
 
-**One measurement is already taken and must not be re-run:** no member of `ASSERTION_TYPES` carries a
-name of anything, and neither `src/vocabulary.ts` nor `src/assertions.ts` has a name field — checked
-2026-10-07. **What is left to measure is the evidence question only:** what `[SD §0]`'s rules make of
-a field the corpus witnesses solely as a denormalised string pair, and therefore what grade a
-`legalName` field could be published at. **Then** §1.2 — which now carries one more cost than §1.2
-itself states, the `PartyId` brand collision in §1.3.1.
+1. **The ordinal sweep**, enumerated in `§1.3.1`'s defect 4 — and read each hit, because **half the
+   hits for the word `fourteen` are a different claim wearing the same number** and must be left
+   alone.
+2. **Mint `'party'` in `AGGREGATE_KINDS`** with a JSDoc carrying a citation (§3 item 1 — no leading
+   bold marker, `_x_` never `*x*`).
+3. **Delete the `PartyId` alias**, repointing `AssertedBy`, `Attribution`, `CustodyHolder`,
+   `IdentityValue`, `PartyRoleValue` and `VocabularyScope` to `AggregateId<'party'>`, and replace
+   `partyId()` with the `aggregateId('party', …)` path. **`tsc` is the checklist here.**
+4. **Take the five blockers off** `data/identity-schemes.json`, and **invert all three enforcement
+   sites plus the `$comment`** — §1.3.1's "THREE things invert" list. `loadIdentitySchemes`'s two
+   refusals are the ones most easily missed, because they are in `src/` and not in a test.
+5. **Fix the two `six party-grain rows` docstrings** (§1.3.1 defects 1 and 2) — they contradict a
+   live gate.
+6. **Mint `removedPublishedDefinition`** in `[catalog §2.3]`'s Breaking table, bump
+   `CATALOG_VERSION` to **`0.7.0`**, then `npm run glossary`, `npm run catalog`,
+   `npm run context-map`, then the suite.
+7. **Cross-area edits**: a marked `> **AMENDED 2026-10-08**` on `[A8 §9 item 1]` naming the **five**
+   party-grain schemes (it omits `gbloc`) and recording the legal-name citation and its item-3
+   blocker; re-point `custody.ts`'s `TODO` to items 2-3 rather than deleting it; `[catalog]`'s new
+   row. **Then re-read the §Cross-area list in BOTH directions** (§3 item 14).
 
-**Do not start the implementation before that decision**, and when it is made, re-read §1.3.1's "what
-it deliberately does not decide" — items 2 and 3 there are the two things a round is most likely to
-over-claim.
+**Then** the tamper pass (§3 item 6 — commit first), the prose re-read after the LAST prose (§4), and
+the round record.
 
 ### Uncommitted work
 
@@ -257,6 +277,117 @@ compile failure**, deliberately — its `@ts-expect-error` on `const partyIsNotA
 AggregateKind = thePartyFiveSchemesIdentify` goes unused and the file stops compiling. **That gate is
 written to be inverted, which is the house move** (`§6`'s "a gate's own comment can tell you it is due
 to be inverted"). Inverting it is part of the deliverable, not an obstacle to it.
+
+### 1.2.1 THE DECISION — taken 2026-10-08, from the measured emitted diff
+
+**Both halves below were measured by patching `src/ids.ts`, running `npm run catalog`, reading
+`git diff` over `docs/domain-reference/catalog/`, and reverting.** §3 item 8 says read the diff
+before classifying, and it has now located something the decision did not predict **four rounds
+running** — this time it refuted the fix, not the deliverable.
+
+#### Decision 1 — `party` becomes the fifteenth `aggregate` kind. `newAggregateKind`, additive.
+
+The question `ids.ts` asks is answered **"a fifteenth aggregate kind"**, and nothing in the round
+rests on judgement:
+
+- `[SD §1.2]` states the permission outright — the enum is _"open to **addition** in a later
+  `specVersion`, never to reinterpretation"_.
+- `identity`'s canonical subject family is `anyAggregate`, whose membership **is** `AGGREGATE_KINDS`,
+  so the five `party`-grain schemes become assertable **by construction** (§1.3.1).
+- `[A9 §3.6]` item 2 rules out the one alternative a reader reaches for: `partyRole` _"would key it
+  on a tuple it does not vary with"_, because a SCAC belongs to the company whatever it is doing.
+- **Staying outside the subject enum** is the state `[A9 §3.6]` already records **as a defect rather
+  than a design**, so it is not a live branch.
+
+**The emitted diff, measured and purely additive** — nothing removed, nothing repointed, on **both**
+faces:
+
+- a new `$defs/AggregateId.party` — `{"type":"string","x-brand":"id:party","x-aggregate":"party"}`
+- a new `$defs/SubjectRef.party`, and **it discriminates**: `"aggregate": {"const": "party"}`. §3
+  item 8's warning that _"a new `anyOf` branch is not necessarily a discriminating one"_ was checked
+  rather than assumed.
+- one new branch in `SubjectRef`'s `anyOf`, and one new `$ref` from
+  `$defs/SubjectRef.family.anyAggregate`
+- in `index.json`, exactly one line: `identity`'s subject list gains `party`. **That single line is
+  the deliverable** — five schemes becoming assertable, visible on the wire.
+
+**Class: `newAggregateKind`.** It already exists, so this is the first round since A5 that mints no
+change class — provided Decision 2 does not need one, which is the next subsection. Under
+`[catalog §2.3.1]` additive takes the **patch** slot: `0.6.3` → **`0.6.4`**.
+
+#### Decision 2 — the `PartyId` brand, and the measurement REFUTED the planned fix
+
+**This is required, not polish, and the round's own deliverable is what requires it.** §3 item 22
+says publishing a value makes old claims testable, and names this round's instance: **A8-SELF** — _"a
+party holding two roles does not corroborate itself"_ — becomes testable for the first time. A8-SELF
+is a **comparison of two parties**. If the party-as-subject and the party-as-reference are different
+branded types, that comparison does not typecheck, and the round would ship the capability it claims
+while making the claim unprovable. So the brands must be one.
+
+**The planned fix was `PartyId = AggregateId<'party'>`. Measured, it does not work** — and this is
+the round's plan-was-wrong finding:
+
+> `generate-catalog.ts`'s `refineName` names a branded `$def` `<alias>.<brand-suffix>`, and the
+> generator emits **one `$def` per exported type alias**. So aliasing `PartyId` to
+> `AggregateId<'party'>` publishes **two `$defs` with byte-identical bodies under two names** —
+> `AggregateId.party` **and** `PartyId.party`, both
+> `{"type":"string","x-brand":"id:party","x-aggregate":"party"}` — while `#/$defs/PartyId` **ceases
+> to exist** and the six defs that referenced it repoint to `PartyId.party`. **It trades two brands
+> for one concept for two `$defs` for one concept, and dangles a published `$ref` as well.**
+> Re-measured with `export type { PartyId }` instead of an inline export: **identical result**, so
+> it is the alias that is emitted and not the export syntax.
+
+**So the only arrangement that publishes one party id is to DELETE the `PartyId` alias** and have its
+referencing sites name `AggregateId<'party'>` directly. On the wire that leaves `AggregateId.party`
+alone — and it **removes the published `$defs/PartyId`**, which six published defs reference:
+`AssertedBy`, `Attribution`, `CustodyHolder`, `IdentityValue`, `PartyRoleValue` and
+`VocabularyScope`. **`AssertedBy` is on every envelope**, so `PartyId` is reachable from every record
+the catalog publishes.
+
+**Class: `[catalog §2.3]` has no row for this, in either table — so the round mints one after all.**
+Neither `newAnnotation` (nothing is added; a published `$def` is removed) nor any Breaking row fits:
+`removedOrRenamedRecordType` is about a `type`, and the others are about families, qualifiers,
+obligations, meanings and role spellings. The honest reading is **breaking** and the reason is
+mechanical rather than aesthetic, which is the test `[catalog §2.3]` itself uses: a consumer that
+dereferences `#/$defs/PartyId` **stops working**, where every §2.3 additive row turns on _"no record
+that validated stops validating"_. Proposed name: **`removedPublishedDefinition`**, and
+`[catalog §2.3]`'s Breaking table is edited to carry it (§3 item 14 — if your decision narrows a
+sentence in `[catalog]`, edit `[catalog]`).
+
+**Breaking takes the MINOR slot pre-1.0 — so the round publishes `0.7.0`, not `0.6.4`.** One
+`specVersion` names a published state rather than a piece of work (§3 item 5), so `0.7.0` carries
+**both** decisions: `newAggregateKind` and `removedPublishedDefinition`.
+
+> **And the cost argument for doing it now is NOT that later is dearer — that would be wrong.**
+> `[catalog §2.3.1]` makes breaking cost the minor slot for as long as the major is `0`, and
+> `[catalog §2.4]` forbids `1.0.0` until §5's inventory is discharged, which is far off. **This round
+> and a later round pay the same slot.** The argument for now is that the alternative **publishes a
+> defect**: two branded types for one real-world identifier, which is the crosscheck's own finding
+> one level up — _"all carry denormalised name+id string pairs on a flat row"_ — committed by the
+> document that exists to catch it. And `PartyId`'s docstring justification evaporates the moment
+> Decision 1 lands: it reads _"an identifier with no aggregate behind it"_, and after Decision 1
+> there is one.
+
+#### What Decision 2 does NOT license
+
+- **It is not a rename of `assertedBy.party`.** `[SD §1.1]` quotes the shape as `{partyRef, role}`
+  while the code declares `party` (§1.3.1's recorded drift). **Leave it.** Renaming a field on every
+  envelope is `changedFieldObligation`-adjacent and belongs to whichever round repairs the citation.
+- **It is not a `place` aggregate.** `custody.ts`'s `TODO([SD §1.2] / A3)` wants one, §1.3.1 found
+  the legal name arrives bundled with a physical address that would need one, and **this round mints
+  exactly one member.** A second would make Decision 1's ordinal wrong twice over.
+- **It does not discharge `[A8 §9 item 1]`.** The name stays owed, blocked on `[A8 §9 item 3]`
+  (§1.3.1), and `[A8 §9 item 1]` gets a marked annotation rather than a closure.
+
+#### The first implementation step is the ordinal sweep, not the enum member
+
+§1.3.1 enumerated it; Decision 1 is what makes it due. **`custody.ts`'s own `TODO` says a place _"is
+either a fifteenth aggregate kind or an attribute of a Stop"_, and the context map publishes that
+sentence verbatim** — so the moment `party` is the fifteenth, that TODO and the context map are both
+wrong. Sweep first, then mint, so the tree is never in a state where two things claim one ordinal.
+**And prefer deleting each ordinal to incrementing it** (§3 item 10): `generate-glossary.ts`'s
+`aggregate` blurb renders its count into `glossary.md`, and the glossary enumerates the members
+immediately below it.
 
 ### 1.3 What to MEASURE before designing — this is the planning pass
 
