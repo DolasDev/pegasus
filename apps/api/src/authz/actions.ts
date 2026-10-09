@@ -192,6 +192,10 @@ export const Actions = {
   // ── Orders (legacy on-prem orders integration; M2M-only surface) ────────
   ReadOrder: { id: 'ReadOrder', resourceType: 'Order', permission: 'order:read' },
   CreateOrder: { id: 'CreateOrder', resourceType: 'Order', permission: 'order:create' },
+  // Write allowlisted fields back onto a pegII order (PATCH /pegii/orders/:id,
+  // sdk-feedback 0044). The pegII site owns the allowlist (Survey.SerivceStatus,
+  // Survey.APIShipmentStatus today); this action only gates who may call it.
+  WriteOrder: { id: 'WriteOrder', resourceType: 'Order', permission: 'order:write' },
   // ── Salesmen (legacy pegII sales users/employees; workflow-runtime surface) ─
   // Read a salesman (a.k.a. employee / sales user) from the pegII serialized
   // endpoint. Backed by a by-id read over the tunnel (list is a stub today),

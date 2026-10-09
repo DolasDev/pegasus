@@ -3,6 +3,36 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.49.0
+
+### Added — write back onto a pegII order (sdk-feedback 0044 A/B)
+
+- `PegasusClient.update_order(order_id, patch)`, gated by the new `WriteOrder`
+  action and billable. `patch` is a **native-shape** fragment, the vocabulary
+  `get_order(order_id, shape="native")` reads, for example
+  `{"Survey": {"SerivceStatus": "In Progress", "APIShipmentStatus": "Loaded"}}`.
+  It returns the order in native shape after the write.
+- **Writable paths**, enforced by the pegII site:
+  - `Survey.SerivceStatus` (pegII's own spelling), at most 80 characters.
+  - `Survey.APIShipmentStatus`, at most 50 characters.
+- **Anything else is a 400 naming the path**, and nothing is written. That
+  includes `Survey.ShipmentStatus`, which does not exist in the native order:
+  the field is `Survey.APIShipmentStatus`.
+- **Values** are strings, stored verbatim. `null` is rejected and `""` blanks a
+  field. Omitted fields are unchanged.
+- **Idempotent**: re-sending the current values succeeds with `meta.applied:
+false` and isn't billed.
+- **Errors:**
+  - 404 `ORDER_NOT_FOUND`.
+  - 404 `ORDER_SNAPSHOT_MISSING`: the order was never saved by a current
+    MoveManager desktop.
+  - 503 `PEGII_CAPABILITY_MISSING`: the site's API predates the write.
+- **Mutation contract:** it is a mutation in the benign-test split, so it is
+  captured, not sent, under `run --dry-run` and in `pegasus_workflows.testing`
+  (`"update_order": "WriteOrder"`).
+- **Requires** pegII API `pegii.orders.write.v1` on the site (movemanager
+  `79b3a355`).
+
 ## 0.48.1
 
 ### Fixed — the pegII task stub is honest about what it is

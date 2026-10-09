@@ -15,7 +15,7 @@
 - [x] **Phase 3** — [pegasus → pegII] `send_email` through the pegII API's SMTP endpoint — MERGED #754 (`21d7886f`), SDK 0.42.0 PUBLISHED; authoring `CLAUDE.md` updated (`0d86b9f`)
 - [x] **Phase 4** — pegII API foundations: DONE 2026-09-29 (movemanager `dev` @ `b793b17e`, pegasus #749)
 - [~] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.43.0.
-  - movemanager is **built and committed but not pushed**: `149c4c82` on `feat/order-read-normalization-and-search` (plan `order-read-normalization-and-search.md`).
+  - movemanager side **landed on `dev`**: `149c4c82` (plan `order-read-normalization-and-search.md`, archived at `69e6c050`; corrected 2026-10-09, the earlier "not pushed" note was stale).
   - **Blocked on cloud identity phases I1 + I2** (`plans/todo/cloud-identity-and-companies.md`). The approved "provision a hub service user + a cloud secret per site" rollout was replaced by cloud-issued tokens, so NW's rollout becomes "set site id + issuer".
 - [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK 0.44.0 (+ one-line desktop guard fix)
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0

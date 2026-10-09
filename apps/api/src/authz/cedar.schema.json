@@ -304,6 +304,9 @@
       "ReadSalesman": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Salesman"] }
       },
+      "WriteOrder": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Order"] }
+      },
       "ReadTask": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Task"] }
       },

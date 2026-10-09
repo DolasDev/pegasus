@@ -1013,6 +1013,7 @@ world, performed by an Automation or API client.** One each:
 | Email sent (`SendEmail`)                       | `send_email`                                                   |
 | Inbound text marked read (`UpdateTextMessage`) | `mark_text_message_read`                                       |
 | Task closed (`CloseTask`)                      | `close_task`                                                   |
+| Order written back (`WriteOrder`)              | `update_order` (only when a value changed)                     |
 | Delivery to a partner (`DeliverToExternal`)    | `deliver_to_external` (only when the partner accepted it)      |
 | Mutating partner call (`CallExternal`)         | `call_external` with POST/PUT/PATCH/DELETE, or `mutating=True` |
 
@@ -1024,7 +1025,8 @@ world, performed by an Automation or API client.** One each:
 - Automation runs, schedules and triggers; `emit_event` (internal)
 - dry runs, and any non-2xx response (a failed send, a 409, a partner error)
 - **idempotent replays** — a response with `alreadySent` / `alreadyRead` /
-  `alreadyClosed`, so a retry with the same `dedup_key` costs nothing
+  `alreadyClosed`, so a retry with the same `dedup_key` costs nothing; and an
+  `update_order` that changes nothing (`meta.applied: false`)
 - opt-out records, and anything a **person** does in the web app
 
 Designing cheaply:
@@ -1084,6 +1086,7 @@ The pegII operational surface (legacy orders + tasks + salesmen) has its own rea
 ```python
 client.list_orders()                 # ReadOrder
 client.get_order("SO-12345")         # ReadOrder — projected row {id, orderNumber, status, …}
+client.update_order("490317", {"Survey": {"SerivceStatus": "In Progress"}})  # WriteOrder — native fragment
 client.list_tasks(order_id="SO-12345")   # ReadTask
 client.get_task("task-1")            # ReadTask
 client.close_task(order_id="SO-12345", task_type="date_confirmation", reason="done")  # CloseTask
@@ -1102,6 +1105,42 @@ client.get_salesman("213056")        # ReadSalesman — {id, name, email, branch
 >
 > There is no `create_task` and no close-by-id yet. Both arrive with the real
 > pegII task bridge.
+
+#### Writing back onto an order (`update_order`, 0.49.0+)
+
+`update_order(order_id, patch)` writes fields back onto the pegII order in the
+same **native** vocabulary `get_order(order_id, shape="native")` reads, and returns
+the order in that shape after the write:
+
+```python
+updated = client.update_order(
+    "490317", {"Survey": {"SerivceStatus": "In Progress", "APIShipmentStatus": "Loaded"}}
+)
+assert updated["Survey"]["SerivceStatus"] == "In Progress"
+```
+
+- **Writable paths** (the pegII site enforces them; values are strings, stored
+  verbatim):
+  - `Survey.SerivceStatus`: pegII's own spelling; the desktop's "API Service
+    Status"; at most 80 characters.
+  - `Survey.APIShipmentStatus`: the desktop's "API Shipment Status"; at most 50
+    characters.
+- **Anything else is a 400 naming the path, and nothing is written.**
+  - `Survey.ShipmentStatus` doesn't exist. Use `Survey.APIShipmentStatus`.
+  - Top-level `ShipmentStatus` is the order's open/closed flag, and is never
+    writable.
+- **Omitted fields are unchanged.** Re-sending the current values succeeds,
+  writes nothing and isn't billed.
+- **No order-saved event fires**, so a write can't re-trigger the workflow that
+  made it.
+- **404 `ORDER_SNAPSHOT_MISSING`** means the order was never saved by a current
+  MoveManager desktop. Save it once there, then retry.
+- **Check the site doesn't already own these fields.** NW's database runs its own
+  Weichert integration, which sets both fields on delivery and on Weichert's
+  replies, and sends them to Weichert. Don't write them from a workflow until that
+  integration is moved to the platform.
+- Requires `WriteOrder` in the manifest. Under `--dry-run` the write is captured,
+  not sent.
 
 To dry-run a **published integration** against a real order id — "does this
 production order pass the mapping?" — fetch the order's **native** pegII payload

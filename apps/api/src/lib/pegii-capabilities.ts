@@ -27,6 +27,8 @@ export const PegiiCapabilities = {
   CloudAuth: 'pegii.cloud-auth.v1',
   /** `GET /api/v1/pegii/salesmen` — the paged salesman directory (cloud identity I3). */
   SalesmenList: 'pegii.salesmen.list.v1',
+  /** `PATCH /api/v1/pegii/orders/{n}` — allowlisted order write-back (sdk-feedback 0044). */
+  OrdersWrite: 'pegii.orders.write.v1',
 } as const
 
 export interface PegiiVersionInfo {

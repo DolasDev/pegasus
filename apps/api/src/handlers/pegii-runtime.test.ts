@@ -29,16 +29,20 @@ vi.mock('../middleware/dual-auth', () => ({
   }),
 }))
 
-const { findOrderById, findOrderNativeById, checkReachable } = vi.hoisted(() => ({
-  findOrderById: vi.fn(),
-  findOrderNativeById: vi.fn(),
-  checkReachable: vi.fn(),
-}))
+const { findOrderById, findOrderNativeById, checkReachable, updateOrderNative } = vi.hoisted(
+  () => ({
+    updateOrderNative: vi.fn(),
+    findOrderById: vi.fn(),
+    findOrderNativeById: vi.fn(),
+    checkReachable: vi.fn(),
+  }),
+)
 vi.mock('../gateways/order-gateway.factory', () => ({
   resolveOrderGateway: vi.fn(async () => ({
     findOrderById,
     findOrderNativeById,
     checkReachable,
+    updateOrderNative,
   })),
 }))
 
@@ -406,6 +410,109 @@ describe('GET /pegii/tasks/:taskId', () => {
     const app = buildApp(['workflow_runtime'])
     const res = await app.request('/pegii/tasks/task_does_not_exist')
     expect(res.status).toBe(404)
+  })
+})
+
+describe('PATCH /pegii/orders/:orderId', () => {
+  const patch = (body: unknown): RequestInit => ({
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  })
+  const fragment = { Survey: { SerivceStatus: 'In Progress', APIShipmentStatus: 'Loaded' } }
+  const written = {
+    Id: 490317,
+    Survey: { SerivceStatus: 'In Progress', APIShipmentStatus: 'Loaded' },
+  }
+
+  it('passes the native fragment through and returns the native order with meta.applied', async () => {
+    updateOrderNative.mockResolvedValue({ found: true, order: written, applied: true })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317', patch(fragment))
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-pegasus-applied')).toBe('true')
+    expect(await json(res)).toEqual({ data: written, meta: { applied: true } })
+    expect(updateOrderNative).toHaveBeenCalledWith('490317', fragment)
+  })
+
+  it('reports an unchanged replay as applied: false', async () => {
+    updateOrderNative.mockResolvedValue({ found: true, order: written, applied: false })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317', patch(fragment))
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-pegasus-applied')).toBe('false')
+    expect((await json(res))['meta']).toEqual({ applied: false })
+  })
+
+  it.each([['[]'], ['"x"'], ['null'], ['not json']])(
+    'rejects a non-object body %s with 400 before reaching pegII',
+    async (body) => {
+      const app = buildApp(['workflow_runtime'])
+
+      const res = await app.request('/pegii/orders/490317', patch(body))
+
+      expect(res.status).toBe(400)
+      expect((await json(res))['code']).toBe('VALIDATION_ERROR')
+      expect(updateOrderNative).not.toHaveBeenCalled()
+    },
+  )
+
+  it("keeps pegII's 404 code (ORDER_NOT_FOUND / ORDER_SNAPSHOT_MISSING)", async () => {
+    updateOrderNative.mockResolvedValue({
+      found: false,
+      code: 'ORDER_SNAPSHOT_MISSING',
+      message: 'pegII API 404: ORDER_SNAPSHOT_MISSING — never saved',
+    })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317', patch(fragment))
+
+    expect(res.status).toBe(404)
+    expect((await json(res))['code']).toBe('ORDER_SNAPSHOT_MISSING')
+  })
+
+  it("passes pegII's 400 (a path outside the allowlist) through, naming the path", async () => {
+    updateOrderNative.mockRejectedValue(
+      new PegiiApiError(
+        'PEGII_API_HTTP_ERROR',
+        "pegII API 400: VALIDATION_ERROR — 'Id' is not writable",
+        400,
+        'VALIDATION_ERROR',
+      ),
+    )
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317', patch({ Id: '999' }))
+
+    expect(res.status).toBe(400)
+    const body = await json(res)
+    expect(body['code']).toBe('VALIDATION_ERROR')
+    expect(body['error']).toContain("'Id' is not writable")
+  })
+
+  it('answers 503 PEGII_CAPABILITY_MISSING on a site whose API predates the write', async () => {
+    updateOrderNative.mockRejectedValue(
+      new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'does not support: pegii.orders.write.v1'),
+    )
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317', patch(fragment))
+
+    expect(res.status).toBe(503)
+    expect((await json(res))['code']).toBe('PEGII_CAPABILITY_MISSING')
+  })
+
+  it('rejects a role without WriteOrder (workflow_developer) with 403', async () => {
+    const app = buildApp(['workflow_developer'])
+
+    const res = await app.request('/pegii/orders/490317', patch(fragment))
+
+    expect(res.status).toBe(403)
+    expect(updateOrderNative).not.toHaveBeenCalled()
   })
 })
 

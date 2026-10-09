@@ -234,12 +234,25 @@ at a tenant-admin-allowed domain (else 400 ``RECIPIENT_NOT_ALLOWED``; none
 configured → 409 ``EMAIL_RECIPIENTS_NOT_CONFIGURED``). Always pass a
 ``dedup_key`` for escalations/reminders so a retried activity doesn't mail twice.
 
+## Writing back onto a pegII order
+
+``client.update_order(order_id, patch)`` (``WriteOrder``) takes a NATIVE-shape
+fragment, the vocabulary ``get_order(id, shape="native")`` reads, and returns the
+order in that shape after the write. Writable paths are ONLY
+``Survey.SerivceStatus`` (pegII's spelling, at most 80 chars) and
+``Survey.APIShipmentStatus`` (at most 50 chars). Any other path is a 400 naming it,
+and nothing is written. ``Survey.ShipmentStatus`` does not exist. Re-sending the
+current values is free. No order-saved event fires. NW's database already sets
+these two fields itself, from its own Weichert integration, so don't write them
+there until that integration has moved to the platform.
+
 ## Billable actions (usage) — design Automations to be cheap
 
 Plans buy an ANNUAL pool of billable actions (Starter 6,000 / Growth 15,000 /
 Scale 50,000 per year). One action each: ``send_sms``, ``send_email``,
-``mark_text_message_read``, ``close_task``, ``deliver_to_external`` (partner
-accepted), and ``call_external`` with POST/PUT/PATCH/DELETE or
+``mark_text_message_read``, ``close_task``, ``update_order`` (only when a value
+changed), ``deliver_to_external`` (partner accepted), and ``call_external`` with
+POST/PUT/PATCH/DELETE or
 ``mutating=True``. Free: every read (including ``call_external`` GET /
 ``mutating=False`` and ``api_get``), workflow state, runs/schedules/triggers,
 ``emit_event``, dry runs, any non-2xx response, idempotent replays

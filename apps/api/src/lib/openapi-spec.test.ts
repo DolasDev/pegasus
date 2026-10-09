@@ -21,6 +21,12 @@ describe('getOpenApiSpec', () => {
     expect(paths).toContain('/api/v1/integrations/{integrationId}/config')
   })
 
+  it('documents the pegII order write beside the read (sdk-feedback 0044 AC1)', () => {
+    const order = spec.paths['/api/v1/pegii/orders/{orderId}']
+    expect(Object.keys(order ?? {}).sort()).toEqual(['get', 'patch'])
+    expect(order?.['patch']?.security).toEqual([{ ApiKeyAuth: [] }])
+  })
+
   it('documents factDocs on the floor contract, so the spec matches what the route serves', () => {
     const props = (
       spec.paths['/api/v1/integrations/floors/{floorId}'] as unknown as {

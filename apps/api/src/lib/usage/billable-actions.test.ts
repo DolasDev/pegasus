@@ -18,12 +18,38 @@ describe('BILLABLE_ACTIONS', () => {
       'SendEmail',
       'SendSms',
       'UpdateTextMessage',
+      'WriteOrder',
     ])
   })
 
   it('does not treat inherited properties as registry entries', () => {
     expect(isBillableActionId('toString')).toBe(false)
     expect(isBillableActionId('EmitTenantEvent')).toBe(false)
+  })
+
+  describe('WriteOrder', () => {
+    // `data` is the native order, so the outcome is read off the header the route sets.
+    const ctx = (applied: string | null) =>
+      ({
+        res: new Response('{}', {
+          headers: applied === null ? {} : { 'x-pegasus-applied': applied },
+        }),
+      }) as unknown as Parameters<(typeof BILLABLE_ACTIONS)['WriteOrder']['billable']>[1]
+
+    it('bills an applied write, once per write', async () => {
+      expect(await BILLABLE_ACTIONS.WriteOrder.billable({ Id: 1 }, ctx('true'))).toBe(true)
+      const a = BILLABLE_ACTIONS.WriteOrder.subjectKey()
+      const b = BILLABLE_ACTIONS.WriteOrder.subjectKey()
+      expect(a).toMatch(/^order-write:/)
+      expect(a).not.toBe(b)
+    })
+
+    it.each([['false'], [null]])(
+      'does not bill when applied is %j (an unchanged replay)',
+      async (h) => {
+        expect(await BILLABLE_ACTIONS.WriteOrder.billable({ Id: 1 }, ctx(h))).toBe(false)
+      },
+    )
   })
 })
 

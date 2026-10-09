@@ -267,6 +267,7 @@ app.route('/api/vpn', vpnAgentHandler)
 //   POST   /api/v1/orders              ← POST /orders/create[/{customer_app_id}]
 //   GET    /api/v1/orders/:orderId     ← (new — single order lookup)
 //   GET    /api/v1/pegii/orders        ← workflow-runtime pegII order reads (ReadOrder)
+//   PATCH  /api/v1/pegii/orders/:id    ← workflow-runtime pegII order write-back (WriteOrder)
 //   GET    /api/v1/pegii/tasks         ← workflow-runtime pegII task reads (ReadTask)
 //   POST   /api/v1/pegii/tasks/close   ← workflow-runtime pegII task close (CloseTask)
 //
@@ -296,7 +297,7 @@ m2mV1.route('/events', eventsHandler)
 m2mV1.route('/event-types', eventTypesHandler)
 m2mV1.route('/orders', ordersHandler)
 // Workflow-runtime reads of legacy pegII operational records (orders + tasks):
-// ReadOrder / ReadTask / CloseTask on the workflow_runtime `vnd_` key. A
+// ReadOrder / WriteOrder / ReadTask / CloseTask on the workflow_runtime `vnd_` key. A
 // namespaced legacy-bridge surface like the retired `/onprem/longhaul/*`;
 // dual-auth applied inside the handler; pegII bridge stubbed today — see
 // handlers/pegii-runtime.ts. Distinct from the M2M `/orders` above.

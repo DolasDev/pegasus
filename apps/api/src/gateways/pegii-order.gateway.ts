@@ -11,7 +11,13 @@
 
 import type { OrderGateway } from './order.gateway'
 import type { PegiiCaller } from '../lib/pegii-request-context'
-import { createPegiiApiClient, isPegiiNotFound, type PegiiApiClient } from '../lib/pegii-api-client'
+import {
+  createPegiiApiClient,
+  isPegiiNotFound,
+  PegiiApiError,
+  type PegiiApiClient,
+} from '../lib/pegii-api-client'
+import { requirePegiiCapabilities, PegiiCapabilities } from '../lib/pegii-capabilities'
 import { mapPegiiOrderToRecord } from './pegii/pegii-order.mapper'
 import type { PegiiOrderDto } from './pegii/pegii-order.dto'
 
@@ -26,6 +32,8 @@ export interface PegiiOrderGatewayOptions {
   client?: PegiiApiClient
   /** Who is calling (cloud-issued token + x-correlation-id); see lib/pegii-request-context.ts. */
   caller?: PegiiCaller
+  /** Test seam: the /version capability gate. */
+  requireCapabilities?: typeof requirePegiiCapabilities
 }
 
 export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGateway {
@@ -37,6 +45,8 @@ export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGa
       ...(opts.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
       ...(opts.caller ? { caller: opts.caller } : {}),
     })
+
+  const requireCaps = opts.requireCapabilities ?? requirePegiiCapabilities
 
   return {
     async findOrderById(id) {
@@ -69,6 +79,28 @@ export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGa
       // proves connectivity. A tunnel/HTTP failure throws PegiiApiError, which
       // the router maps to 502/503 — the same surface a by-id read produces.
       await client.getHealth()
+    },
+
+    async updateOrderNative(id, patch) {
+      await requireCaps(opts.baseUrl, [PegiiCapabilities.OrdersWrite], {
+        ...(opts.caller ? { correlationId: opts.caller.correlationId } : {}),
+      })
+      try {
+        const res = await client.patch<unknown>(
+          `/api/v1/pegii/orders/${encodeURIComponent(id)}`,
+          patch,
+        )
+        return {
+          found: true,
+          order: res.data,
+          applied: res.headers['x-pegasus-applied'] === 'true',
+        }
+      } catch (err) {
+        if (isPegiiNotFound(err) && err instanceof PegiiApiError) {
+          return { found: false, code: err.upstreamCode ?? 'NOT_FOUND', message: err.message }
+        }
+        throw err
+      }
     },
   }
 }

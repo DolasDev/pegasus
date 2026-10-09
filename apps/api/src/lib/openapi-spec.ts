@@ -1705,6 +1705,52 @@ export function getOpenApiSpec() {
           responses: { '201': { description: 'New execution started ({data: execution})' } },
         },
       },
+      // Re-declared here (after the OPERATIONAL_READ_PATHS spread) to add the
+      // write beside the read: keep `get` from the read table.
+      '/api/v1/pegii/orders/{orderId}': {
+        ...OPERATIONAL_READ_PATHS['/api/v1/pegii/orders/{orderId}'],
+        patch: {
+          operationId: 'updatePegiiOrder',
+          summary: 'Write allowlisted fields back onto a pegII order (WriteOrder, billable)',
+          description:
+            'Body: a native-shape fragment, the vocabulary GET ?shape=native returns, e.g. {"Survey": {"SerivceStatus": "In Progress", "APIShipmentStatus": "Loaded"}}. ' +
+            "Writable paths (enforced by the pegII site): Survey.SerivceStatus (pegII's own spelling; sales.whse_remarks5, up to 80 chars) and Survey.APIShipmentStatus (sales.special2, up to 50 chars). " +
+            'Values are strings, stored verbatim; omitted fields are unchanged. Any other path (including Survey.ShipmentStatus, which does not exist) is a 400 naming it, and nothing is written. ' +
+            'Re-sending the values already on the order is a 200 with meta.applied: false, and is not billed. The order and its stored native snapshot change together, and the 200 returns the order exactly as GET ?shape=native does afterwards. ' +
+            "No order-saved event is emitted. 503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.orders.write.v1.",
+          tags: ['pegII'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'orderId', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  example: {
+                    Survey: { SerivceStatus: 'In Progress', APIShipmentStatus: 'Loaded' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: '{data: <native order after the write>, meta: {applied: boolean}}',
+            },
+            '400': {
+              description:
+                'VALIDATION_ERROR naming the path (not writable, not a string, too long) or EMPTY_PATCH; nothing written',
+            },
+            '403': { description: 'Missing WriteOrder' },
+            '404': {
+              description:
+                'ORDER_NOT_FOUND, or ORDER_SNAPSHOT_MISSING (never saved by a current MoveManager desktop; nothing written)',
+            },
+            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
+          },
+        },
+      },
       '/api/v1/pegii/tasks/close': {
         post: {
           operationId: 'closePegiiTask',
