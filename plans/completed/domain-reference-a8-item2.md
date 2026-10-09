@@ -1,109 +1,373 @@
-# Domain reference — the full role vocabulary (`[A8 §9 item 2]`): plan
+# Domain reference — the full role vocabulary (`[A8 §9 item 2]`): the round record
 
-**Written 2026-10-09**, to be read by a session with **no prior context**. Everything needed to
-start is here or is named by path. Read this whole file before starting.
+**Landed 2026-10-09 at catalog `0.7.0` — the catalog's FIRST BREAKING release.**
 
-It follows `plans/completed/domain-reference-a8-item3.md`, whose round landed at catalog `0.6.4`
-with a **byte-identical** emitted diff. **This round will not be like that one**: item 2's debt is
-**emitted** (§0), so it ends in a version bump and a change class.
+**What the bump is for, in one line: the role `customer` is renamed `goodsOwner`.** Everything else
+in this record is subordinate to that. `[A8 §9 item 2]` is **partially closed**, with its residue
+enumerated and most of its cited debt dissolved rather than filled.
 
----
-
-## Resume here
-
-**THIS ROUND HAS NOT STARTED.** No design decision has been taken.
-
-### Where
-
-- **Branch:** `chore/dr-role-vocabulary`, cut from `main` at `118110b2` in
-  `/home/steve/repos/pegasus-deps-advisory-flip` (Postgres `pegasus-pg-deps-advisory-flip`, port
-  **5459** — **not needed**; nothing in `packages/domain-reference` touches it).
-- **Last domain-reference commit:** `118110b2`, the item-3 round (#823).
-
-### Status
-
-- [x] §1.3 — the measurements → **§1.3b**, 2026-10-09. §1.3a's preliminary readings were
-      re-verified there; one was **refuted**.
-- [ ] §1.2 — the decision: what does item 2 actually owe, and is any of it closable?
-      **One sub-decision is the USER'S** — §5's `customer`/`goodsOwner` question, which is breaking.
-- [ ] implementation, gates, tamper pass, cross-area edits, round record
-
-### Next action
-
-**§1.3b is written and committed. Write §1.2's decision against it** — and note that it reframes
-the item: the prose list and the cited debt overlap in **one** entry of thirteen-and-ten, **seven**
-of the ten owed entries want something no enum can supply, and §375.205's material belongs to
-`[A8 §9 item 4]`. One sub-decision is **the user's** and is asked in §5.
+This replaces `plans/in-progress/domain-reference-a8-item2.md`. Its planning pass is preserved as
+§8-§10 below, because **the round's central decision was reversed by the user's challenge** and that
+exchange is the most transferable thing in it.
 
 ---
 
-## 0. Why this item is the blocking one, measured rather than asserted
+## 1. What shipped
 
-**Item 2 is now the sole blocker on two markers the item-3 round re-pointed to it**, and it is the
-only `[A8 §9]` item whose debt reaches the **wire**:
+### The breaking change, and why a rename is breaking at all
 
-1. **`src/custody.ts`'s `CustodyHolder`** — `TODO([A8 §9 item 2])`. The union's two arms are a
-   `partyRole` ref and a `party` ref; collapsing it means resolving a role-holding to a party, which
-   needs the role vocabulary. Item 3 took its own name off this marker on 2026-10-09.
-2. **`src/rules/authority.ts`'s `authorityToDeclare`** — `TODO([A8 §9 items 2, 5])`.
-3. **`data/authority-table.json` carries TEN `owedTo` entries naming this item, across EIGHT rows**
-   (`arrival`, `departure`, `storeOut`, `condition`, `identity`, `charge` ×3, `documentIssuance`).
-   **`owedTo` is a published `const`** — it is emitted into the catalog — so **any** of these
-   resolving changes emitted bytes. Contrast item 3, which emitted nothing.
+`ROLE_NAMES`: **`customer` → `goodsOwner`**. `changedRoleNameSpelling` (`[catalog §2.3]`), and it is
+breaking because **F5** established that a role name is a fact-key component after F1 — a role name
+rides inside `handover`'s qualifier, `[SD §1.3]` derives the fact key from the qualifier, so two
+spellings of one role are **two fact keys** that never pair and never contest, with no integrity
+query that would notice.
 
-**And one thing it is NOT blocked by, which a reader will assume it is.** `roleClass` is
-`refusedOnEvidence` (`[A8 §9 item 2]`, 2026-10-06) with a live gate, `RoleClassStaysOwed`. That
-refusal is of **the class-of-party vocabulary a reason is attributed to**, which is a _different
-vocabulary_ from the role enum this item owes. **Closing some of the role enum does not touch the
-refusal, and must not be written as if it did.** See §1.4.
+**Pre-1.0 that takes the MINOR slot, not the major** — `[catalog §2.3.1]`, so `^0.6.0` refuses this
+release unaided, which is that assignment's entire purpose.
+
+**Two reasons for the rename, and the second was the user's.**
+
+1. **A8-NAME-2 fixed this name and the enum never carried it.** The rule says of itself that its
+   `[ORIGINAL]` part is _"making it a hard rule and **fixing the two names**"_, and the two it fixes
+   are `accountParty` and **`goodsOwner`**. The enum spelled the second `customer` from publication
+   until `0.7.0`. **F5's defect with a different word instead of a different case.**
+2. **`customer` is the one word in this area `src:cfr-49-375` never uses for a party with a duty.**
+   Counted in the captured bytes: **6** occurrences — a bank's customer inside the `Cashier's check`
+   definition, a subpart heading, a complaint-procedure description, and three in Appendix A's
+   plain-English pamphlet — against **189** of the § 375.103 **defined term** `individual shipper`,
+   which carries every signature obligation in the part. That definition's axis is **ownership plus
+   payment**: an `Individual shipper` is named on the bill of lading **and** owns the goods **and**
+   pays his or her own charges; a `Commercial shipper` is named as consignor or consignee, **is not
+   the owner**, and pays for the beneficial owner's account. `consignor` and `consignee` appear six
+   times each, only inside those two definitions, as **positions on the bill of lading**. So
+   `customer` invited a reader to file the **payer** here — the ambiguity A8-NAME-2 exists to
+   abolish, with `accountParty` sitting beside it for exactly that party.
+
+### The additive half
+
+**`visibilityProvider`** (`newClosedEnumMember`), resolving `[A8 §5]` rows 1-2's advisory
+`unresolved` entries. `src:dcsa`'s **`tntPublisherRole`** is a closed four-member enum described as
+_"the **party function code of the publisher**"_ — `CA`, `AG Carrier local agent`,
+`VSP Visibility Service Provider`, `SVP Any other service provider` — carried on the same schema as
+`transportEventTypeCode`'s `ARRI`/`DEPA`. So a publisher that is neither the carrier nor its agent
+**asserts arrival and departure**, and ADE has no slot for it: both conjuncts of `[A8 §2]`'s addition
+test, on the item's only **primary captured** member evidence.
+
+**Three honest limits, all recorded rather than smoothed:** it rests on **one publisher**
+(`weighMaster` is the precedent that one is enough under §2's test); that publisher is in an
+**adjacent domain** (DCSA is ocean container shipping; rows 1-2 are stops on an HHG van's trip); and
+it was **already proposed in the corpus** — `[fork-time §7]` lists `visibility provider` as an
+`[ORIGINAL]` role with _"a near-cite (DCSA's `VSP`)"_ — so this round carried a name rather than
+invented one. `[A8 §10]` gains a row for the exposure.
+
+### The emitted diff, read before classifying
+
+Both faces, plus `index.json` and the README: `customer` → `goodsOwner` and `visibilityProvider`
+added wherever the role enum is inlined, and `x-spec-version` `0.6.4` → `0.7.0`. Nothing else
+removed, nothing else narrowed.
+
+### What item 2 was actually owed, which is the round's main finding
+
+**Its prose list and the debt it is cited for overlap in ONE entry.** The list names thirteen things;
+`data/authority-table.json` carries ten `owedTo` entries naming the item across eight rows; the
+intersection is **the warehouseman** (row 8, `storeOut`).
+
+**Of the ten: two resolved, six were never this item's debt, two stay owed.**
+
+| what the entry named                                           | outcome                                                                                                      |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| rows 1-2 advisory — "visibility providers (`src:dcsa`)"        | **RESOLVED** — `visibilityProvider`                                                                          |
+| row 8 corroborating — "the non-inspecting parties"             | **never debt** — a COMPLEMENT; `[A8 §4.1]` note 1 already licenses it                                        |
+| row 9 advisory — "everyone else"                               | **never debt** — a COMPLEMENT                                                                                |
+| row 9 corroborating — "the counterparty echoing back"          | **re-pointed** to the new `[A8 §9 item 11]` — a RELATION                                                     |
+| row 16 corroborating — "the party the instrument is issued TO" | **re-pointed** to item 11 — a RELATION                                                                       |
+| row 11 PROPOSED + competing — "the performing role" ×2         | **re-pointed** to item 11 — a RELATION, and its own `owedTo` already said _"Not fixed… it varies by charge"_ |
+| row 8 authoritative — "the warehouseman holding the goods"     | **stays owed** to item 2, `secondary` grade                                                                  |
+| row 11 RATED — "the tariff owner"                              | **stays owed** to item 2, `secondary` grade                                                                  |
+
+**The two kinds that are not vocabulary problems, and the distinction is the deliverable:**
+
+- **Complements** — "the non-inspecting parties", "everyone else" — are defined by _who is not the
+  authoritative asserter on this fact_, so their extension changes per fact and a member spelled
+  `nonInspectingParty` would be a role nobody holds. **`[A8 §4.1]` note 1 already settles it**: an
+  unlisted role is _"unplaced, not demoted"_, so the columns were never exhaustive and these entries
+  were **describing that rather than owing it**.
+- **Relations to the fact** need the treatment `authoritative` already has. `AuthoritativeHolder` is
+  a union of holder **kinds** (`custodyHolder`, `legAuthoritativeAsserter`, `keySideRole`,
+  `awardedRole`) precisely so `authoritative` can name a party the table cannot enumerate, while
+  `corroborating` / `competing` / `advisory` take `RoleName[]` and nothing else. **That asymmetry is
+  the newly minted `[A8 §9 item 11]`**, and no role vocabulary closes it however complete it gets.
+
+### `[A8 §2]`'s addition test, applied per name — five outcomes where the item assumed one
+
+- **Already members; a DEFINITION was owed, not a member:** `accountParty`, `weighMaster`.
+- **A name this document fixed and the enum did not carry:** `goodsOwner`. **Closed** (breaking).
+- **Fails the test — a refusal, not a backlog item:** **`Trusted Agent`** (_"readily accessible to
+  DoW PPA"_ — an escalation contact) and **`Claims Manager`** (_"a named role the TSP must declare in
+  the DPS Qualifications module"_ — a disclosure requirement). Neither asserts a fact. A role named
+  by a regulation as a party to a transaction is not thereby an asserter.
+- **A SECOND AXIS, re-pointed to `[A8 §9 item 4]`:** `src:cfr-49-375` **§ 375.205** defines a _prime
+  agent_ and an _emergency or temporary agent_ by **on whose behalf** and **under what agreement**,
+  never by function — so a prime agent may be a `booker`, an `originAgent` or a `hauler`, and
+  `primeAgent` in `ROLE_NAMES` would be **two axes in one enum**, which `[SD §1.1]`'s "no second
+  classification axis" and A8-NAME-1 exist to prevent. `Designated Agent` (_"in place of the
+  customer"_, by power of attorney) and the **Move Management Company** (_"on behalf of a SCAC"_) are
+  the same shape from two other sources. Item 4 already named § 375.205 as unused material; this
+  round handed it the rest.
+- **Defined only by EXCLUSION:** **`broker`**. § 375.205(a)(1) says a prime agent _"does **not
+  include** a household goods broker or freight forwarder"_; `src:dtr-part-iv` has _"carrier's agent
+  **explicitly distinguished from** a broker"_. A member minted from a negative would be ours —
+  `[SD §0]`.
+
+**And the government offices are not a missing name at all.** §2's addition table folded
+PPSO/PPPO/TO into **`accountParty`** and marked the fold _"**[ORIGINAL]** that it is one role rather
+than three"_, so the sub-list asks whether to **unfold a published member** — `reinterpretedMember`,
+not additive. There is evidence for unfolding (`src:dtr-part-iv` A-406 §B.8's **Maintaining vs
+Responsible PPSO** split), and it is **left owed deliberately**: two breaking changes in one release
+with one argument between them is one argument too few.
+
+### The miscitation, which is older than this round and which I had propagated
+
+`[A8 §2]`, `[A8 §5]` row 5, `[A8 §7.3]`, `data/authority-table.json` and `envelope.ts` all cited
+**§ 375.505(a)** and **§ 375.701** for the goods owner's signature. Neither contains one:
+
+- **§ 375.505(a)** — _"Before you receive a shipment… **you must prepare and issue** a bill of
+  lading"_. The obligation is the **carrier's**; this party appears in the 17 required items as
+  **item (3), a name and address**. Being named on a document is not signing it.
+- **§ 375.701** — heading _"May I provide for a release of liability on my delivery receipt?"_. It
+  forbids release-of-liability language and permits an "apparent good condition" note. **No
+  signature appears in the section.**
+
+**The two strongest real instances were cited nowhere in the corpus:** **§ 375.503(c)** (the
+inventory, _"signed by **both** you and the individual shipper"_) and **§ 375.401(h)** (_"**You and
+the individual shipper must sign the estimate of charges**"_ — a **mutual** signature on a **money**
+document, so it reaches `[A8 §5]` row 11 as well as row 5), plus § 375.213(f)(1)'s signed dated
+receipt and a dozen writings (§ 375.201(c), § 375.203, § 375.217(a), § 375.401(a)(2), § 375.403,
+§ 375.405, § 375.407(a), § 375.503(d), § 375.505's FVP waiver, § 375.515(b)).
+
+**`[A8 §5]` row 5's `competing` standing survives on better citations than it had** — its
+`[ORIGINAL]` reason was that the signature is constitutive, and it is; what changed is which sections
+say so. **And the "four times" phrasing had been propagated into the item-3 round** — its gate
+docstring, `party-grain-refuses.ts`, `[A8 §9 item 3]`'s annotation and that round's record — all of
+which now carry marked corrections.
+
+### `[catalog §2.3.1]` rewritten, and its gate replaced rather than weakened
+
+§2.3.1 rested on _"no bump already published was breaking"_, held by a test whose failure message
+said that if a row ever was, _"that ground is gone and §2.3.1 needs rewriting, not this test"_. This
+release spends that ground — **once, and as designed**. The paragraph now rests on the mechanical
+property that does not age (`^0.6.0` admits `0.6.1` and excludes `0.7.0`), and the gate is replaced
+by **the claim the rule actually makes**: a breaking row bumps the MINOR and resets the patch, an
+additive row bumps the PATCH. That catches a breaking change put in a patch slot — an error the old
+gate could never have caught, because it could only ever catch the _existence_ of a breaking release.
+
+**Bounded at the rule's ADOPTION, which running it is what found.** The first draft checked every row
+and failed on `0.1.0` → `0.2.0`: every bump before `0.6.0` → `0.6.1` spent the minor slot on an
+additive change **because the rule did not exist yet**, which is exactly what the retrofit paragraph
+said mislabelled nothing.
+
+### Everything else the round touched
+
+| What                                                           | Why                                                                                               |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `data/authority-table.json` — 14 role values, 10 `owedTo`      | the rename, two resolutions, two complements, four re-points                                      |
+| `src/rules/authority.ts` — 14 role literals, 2 advisory arrays | the rename, and `visibilityProvider` on rows 1-2                                                  |
+| `data/canonical-subjects.json` — 6 prose mentions              | its `summary` strings mirror `[A8 §5]`'s standings                                                |
+| `00-shared-decisions.md` §4.7.1 — three rows                   | the same table one document up; found by grepping for the role **outside A8**                     |
+| `fork-time-provenance-corrections.md` §7, §5.3                 | annotated, not rewritten — and §7 is where **both** uncarried names were visible all along        |
+| `data/owed-vocabularies.json`'s `note`                         | why a per-MEMBER refusal gets no row, because the plan's §6 told the next session to look for one |
+| `tests/conformance/catalog.test.ts`                            | the replacement gate, its four-cell shape check, and three tampers                                |
+| `[catalog §2.4]`'s `0.6.3` → `0.6.4` row                       | **its Class cell had been missing since the party round wrote it** — see §3                       |
+| `[A8 §9 item 11]` minted; items 2, 3, 4 and §10 annotated      | marked annotations in both directions                                                             |
+
+### What it deliberately did not do
+
+- **No `owed-vocabularies.json` row**, and the reasoning is written into that table's own `note`:
+  it is per-**vocabulary**, item 2's refusals are per-**member**, and `ROLE_NAMES` itself is not
+  refused (§2 calls it "provisional").
+- **No government-office unfold**, no NTS-warehouseman split, no `tariffOwner` — all three on
+  `secondary` grade, each needing its own argument.
+- **No reopening of `roleClass`.** It is `refusedOnEvidence` with a live gate, it is a **different
+  vocabulary** from the role enum owed by the same item, and **this round's rename deliberately left
+  `roleClass('customer')` alone** — in `data/reasons.json`, `reason-attribution.test.ts`,
+  `role-class-refuses.ts` and `delivery-attempted-twice-absent-then-refused.test.ts`. A blind
+  rename would have corrupted a refused vocabulary; the rename was classified per occurrence
+  instead. **A side benefit: one word no longer serves both vocabularies.**
 
 ---
 
-## 1. THE DELIVERABLE
+## 2. The three things the plan got wrong, and who caught each
 
-### 1.1 What `[A8 §9 item 2]` says, and the material it already names
+### (a) `customer` is the better-sourced name — REFUTED BY THE USER, then measured
 
-Read the item itself first: `docs/domain-reference/analysis/A8-authority-skeleton.md` **§9 item 2**,
-**including its two annotations** — (a) the `roleClass` refusal and (b) the non-party value — and the
-**three pieces of evidence element 98 hands this item** that are recorded there and are not
-decisions.
+The plan's §5 recommended **keeping** `customer` and annotating the rule, on the ground that
+`customer` was "the better-sourced name for who signs at the residence". The user pushed back from
+practice: _customer_ is whoever **pays**, _shipper_ is responsible at **origin**, _consignee_ at
+**destination**.
 
-Then read **§2** (heading _"Naming the roles — the two traps, and which vocabulary this document
-takes"_), which is where the vocabulary comes from and where **the addition test** lives:
+**Checking it in the captured bytes refuted the plan's sentence** — the counts above — and the user's
+reading of "customer" as the payer is exactly why the word was wrong: this model has a separate role
+for paying. **The decision reversed.**
 
-> Four roles are **added** here because **they assert facts and ADE has no slot for them**.
+**And the origin/destination half of the challenge was answered without a third role**, which is its
+own finding: `src:cfr-49-375` runs **both ends of the same document** through the one term
+(§ 375.503(c) at loading, § 375.503(d) at delivery); `[A8 §7.3]` and `HandoverQualifier` carry
+releasing/receiving as a qualifier **`side`**; `src:milmove-mymove`'s `RELEASING_AGENT` /
+`RECEIVING_AGENT` is a **permission**, which item 3 had already measured. A
+`goodsOwnerOrigin`/`goodsOwnerDestination` split would put the handover's side into the role enum —
+the same two-axes-in-one-enum defect § 375.205 produces from the other direction.
 
-**That test is the whole of this round's method.** Element 98's capture says so in terms about
-`tariffOwner`: _"What still blocks the member is A8 §2's addition test… and that is A8's to apply, so
-the row stays owed."_ Applying it is this item's job.
+**Lesson: a recommendation resting on "better-sourced" is a claim about a count, and a count is
+cheap to run.** The plan asserted it without counting. One `grep -c` over a captured file reversed
+the round's central decision.
 
-The names item 2 enumerates: `accountParty`, `goodsOwner`, `weighMaster`, the **government offices**
-(PPSO/PPPO/TO/ITO/JPPSO/SB/SPM — `src:dp3-400ng`, `src:dtr-part-iv`), the **NTS warehouseman** and
-whether it is ADE's `SITAgent`, the **`TSP for Carriage`** (`src:dp3-tender-of-service` NTS §1.6.10,
-§5.8 — _"a named third party in the custody chain"_), `Move Management Company`, `Trusted Agent`,
-`Claims Manager`, `Designated Agent` (`src:dp3-400ng` Definitions p.11 — appointed by power of
-attorney to act **in place of the customer**), **broker**, and the **prime / emergency-or-temporary
-agent** split (`src:cfr-49-375` §375.205).
+### (b) This item's refusals belong in `owed-vocabularies.json` — WRONG, caught by a reviewer
 
-Already read and in the repo, so **nothing may be scheduled against fetching it**:
-`docs/domain-reference/sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md`
-carries a full `ROLE_NAMES` ↔ element 98 cross-walk. **Read it before measuring anything**, because
-it has already done the "is there an industry counterpart?" pass for every existing member.
+Plan §6 told the next session that because the model has a field for the vocabulary, "this item's
+refusals, if any, **do** belong in that table". They do not: the table is per-vocabulary, and
+`Trusted Agent` / `Claims Manager` are per-member refusals from a vocabulary that stays open.
+**Corrected in the plan and in the table's own `note`, because the next session would have gone
+looking for a row.**
 
-### 1.2 The candidate shapes — none costed, and the decision is NOT pre-committed
+**Lesson: an instruction a plan gives its successor is a claim like any other, and leaving it
+silently unfollowed is worse than having never written it.**
 
-- **Add the well-sourced roles to `ROLE_NAMES` and resolve the rows that name them.** Additive on the
-  enum; **but every resolved `owedTo` is an emitted change**, so this has a version cost item 3 did
-  not. The addition test is what licenses each member, one at a time.
-- **Split the item.** §1.3a's preliminary reading is that the table asks for two different kinds of
-  thing and only one of them can be an enum member. If that holds, the item closes **in part** and
-  re-points the rest, which is the shape `[A8 §9 item 1]` used.
-- **Refuse, in whole or in part**, like `roleClass` and `identityScheme`. A role named by a
-  regulation but **asserting nothing** fails §2's addition test, and failing the test is a reason to
-  record a refusal rather than a backlog item. **This is a live outcome, not a failure mode.**
-- **Partially close and leave the government offices owed**, since they are the largest sub-list and
-  the one most likely to need `accountParty`'s "one role rather than three" decision reopened —
-  which §2 marks **[ORIGINAL]**.
+### (c) The replacement gate was sound — UNTESTED, and the tamper found a defect behind it
+
+The new §2.3.1 gate passed on the first run, which proved only that it ran. Tampering it three ways
+made it bite — and the second tamper's error message echoed the party round's entire **prose** as a
+change class, which exposed that **§2.4's `0.6.3` → `0.6.4` row had been missing its Class cell since
+the party round wrote it.** The gate reads the last cell; that row's last cell was prose; the prose
+matched no breaking class, so the slot check **passed by luck**.
+
+Both halves fixed: the row carries its classes, and the gate requires four cells per row.
+
+**Lesson: a gate that indexes by position needs a SHAPE check, or reading the wrong cell looks
+exactly like a pass.** And the round's inherited lesson held again — run the tamper before naming the
+gate's shape.
+
+---
+
+## 3. Landing a change — what the recipe caught this round
+
+Read §3 of `plans/completed/domain-reference-party-entity.md` and of
+`plans/completed/domain-reference-a8-item3.md`. What earned its place here:
+
+- **§3 item 8 — read the emitted diff.** This round emits, unlike item 3's. The diff confirmed two
+  changes on both faces and nothing else, which is what licensed the change classes.
+- **Run the tamper before naming its shape.** Three tampers, one defect found behind the gate.
+- **Sweep the ITEM, not the phrase — and then sweep the ROLE outside the document that owns it.**
+  `grep 'A8 §9 item 2'` found the markers. What found the stale role names was a second sweep for
+  the role itself **outside A8**: three rows in `00-shared-decisions.md` §4.7.1 and two arguments in
+  `fork-time`. The second sweep is the one that found `visibility provider` sitting in `fork-time`
+  §7, uncarried, for the whole life of the enum.
+- **The type system is the rename's gate.** Renaming the enum member broke exactly the role-position
+  sites and no others, which is what made it safe to leave `roleClass('customer')` alone — the
+  compiler could not have told them apart if the two vocabularies shared a type, and it did because
+  they do not.
+
+---
+
+## 4. The procedural lessons, with this round's four added
+
+Read §4 of both previous records. This round adds four:
+
+> **A recommendation that rests on "better-sourced" rests on a count, and a count is cheap.** The
+> plan recommended keeping a name on an unmeasured claim about which word the corpus favours. One
+> `grep -c` over a captured file reversed it — six occurrences against a hundred and eighty-nine.
+>
+> **A gate that indexes by position needs a shape check.** Reading "the last cell" of a table row is
+> only safe if the row's shape is asserted. A missing cell made a positional read return prose, and
+> prose matched nothing, and matching nothing looked like passing.
+>
+> **An instruction a plan leaves its successor is a claim, and it can be wrong.** Plan §6 told the
+> next session to add a row to a table where the row did not belong. Correct it where the successor
+> will look — in the table itself — not only in the plan.
+>
+> **When one word serves two vocabularies, a rename is a per-occurrence classification, never a
+> `sed`.** `customer` was a `ROLE_NAMES` member **and** a `roleClass` value in the same repo, and
+> `roleClass` is `refusedOnEvidence`. Fourteen occurrences moved and five stayed. The thing that made
+> it safe is that the two have different types.
+
+---
+
+## 5. What is blocked, and on what — ask-the-user items, do not schedule them
+
+### Still the user's, and still only one
+
+1. **C2 — what a signature asserts.** **ANSWERED IN PRINCIPLE 2026-10-04: the user will supply the
+   wording, and it has not arrived.** `[A6 §6]` owes it to the user explicitly, no corpus source
+   publishes it, and **it must not be inferred from the four published procedures** — the
+   `[ORIGINAL]` guess `[SD §0]` forbids. Record it as **`[USER]`** with the user's own words quoted.
+   **This round went past it twice and did not touch it**: item 3 settled that the individual who
+   signs asserts **under a role**, and this round corrected **which sections require the signature**
+   (§ 375.503(c) and § 375.401(h), both mutual) and **what the role is called**. All three are facts
+   about the act's surroundings. What the act _asserts_ is still the user's wording.
+
+### Recorded modelling questions — none is a user ask
+
+- **`[A8 §9 item 2]`'s own residue:** the **NTS warehouseman** (row 8's authoritative — the one
+  overlap between the item's list and its debt; the duty is sourced at `src:dp3-400ng` Item 17.12,
+  element 98 keeps three codes apart as _"evidence toward a split"_, and `authority-table.json`
+  already writes them separately) and the **tariff owner** (row 11's `RATED`; element 98 names the
+  function as `TI Tariff Issuer`, but **X12 naming a function is not X12 asserting a fact**). Both
+  `secondary` grade.
+- **`[A8 §9 item 11]`, minted here:** the standing columns take role **names** while `authoritative`
+  takes holder **kinds**. Four owed entries need the second. **Not closable by a vocabulary.**
+- **The government-office unfold:** `reinterpretedMember` over `accountParty`, with evidence
+  (`src:dtr-part-iv` A-406 §B.8's Maintaining vs Responsible PPSO).
+- **`[A8 §9 item 4]`** now owns the corpus's clearest delegation material — § 375.205's signed
+  written agreement with 24-month retention, `Designated Agent`'s power of attorney, the MMC's
+  on-behalf-of — and **cannot be discharged by adding role names.**
+- **`[A8 §9 item 5]`** gained a published exclusivity rule it can use: the MMC _"may not be named as
+  the origin servicing agent"_.
+- **`[A8 §9 item 3]`'s residue — A8-SELF is under-determined.** Needs a person→organisation relation
+  no source publishes as a reference. Adjacent to `[A8 §9 item 1]`'s hierarchy, **not identical**.
+- **`[A8 §9 item 1]`'s residue:** the party's **name** (two blockers), the **hierarchy**, the
+  **`PartyId` brand** (breaking).
+- **`[SD §1.2]`'s `resource` row is uncited for half of what it admits** — "driver or crew member"
+  carries no citation. Recorded by item 3; `[SD §1.2]`'s and `[A3]`'s to repair.
+- **`[A8 §10]`'s new row — §2's cast rests on ONE publisher** — is written now, and it is not
+  closable by effort: `src:x12-transportation` is licensed and `src:nmfta-scac` is `status: skipped`.
+- **A bare `§n` cited ACROSS documents** (`[A2]` → `[A3]`): still `[A2]`'s and `[A3]`'s.
+
+---
+
+## 6. How to work here
+
+Read §6 of both previous records; nothing is superseded. Added by this round:
+
+- **A rename across two vocabularies that share a word is classified per occurrence.** Grep the
+  value, then decide per hit which vocabulary it belongs to. The compiler finds the typed half; the
+  untyped half (JSON data, prose, test fixtures) is yours.
+- **After sweeping the item, sweep the THING outside the document that owns it.** `[A8 §9 item 2]`'s
+  markers were in A8. The stale role names were in `00-shared-decisions.md` and `fork-time`.
+- **`data/owed-vocabularies.json` is per-VOCABULARY.** A refused **member** of an open vocabulary and
+  a refused **field** both get no row; the table's own `note` now says so with the worked examples.
+
+---
+
+## 7. Where the round landed
+
+- **Branch:** `chore/dr-role-vocabulary`, cut from `main` at `118110b2`.
+- **Five commits:** the plan (`72d08c64`), the measurements (`82481d31`), the citation finding
+  (`3c6daceb`), the implementation (`189e752f`), the tamper pass and its defect (`890becea`).
+- **Gates, all seven:** `test` 543 in 26 files · `lint` · `typecheck` · `alloy` · `glossary` ·
+  `catalog` · `context-map`.
+- **Catalog `0.6.4` → `0.7.0`**, classes `changedRoleNameSpelling` + `newClosedEnumMember`. **The
+  first breaking release**, in the minor slot, under a rule this round had to rewrite to keep honest.
+
+---
+
+> **Preserved verbatim from `plans/in-progress/domain-reference-a8-item2.md`, committed before
+> anything was designed (`82481d31`, `3c6daceb`).** §2 above says which of these readings held and
+> which were refuted; this is the evidence they are claims about. §1.3a's preliminary readings are
+> left marked as preliminary, because one of them was refuted by going to the bytes and that is the
+> transferable part.
+
+---
+
+## 8. The planning pass, preserved — the questions of §1.3
 
 ### 1.3 What to MEASURE before designing — this is the planning pass
 
@@ -144,6 +408,10 @@ first**, so each item is a question whose answer changes the design.
    the catalog and read the diff before classifying** — §3 item 8, which has now located something
    the decision did not predict four rounds running and **confirmed** one on the fifth. Expect a
    bump; find out which slot.
+
+---
+
+## 9. The measurements, preserved verbatim — §1.3a and §1.3b
 
 ### 1.3a Readings already taken while writing this plan — EACH MUST BE RE-VERIFIED
 
@@ -391,6 +659,10 @@ decides which slot.
 
 ---
 
+---
+
+## 10. The citation finding, preserved verbatim — §1.3c
+
 ### 1.3c The `customer` name, measured in the primary bytes — and a MISCITATION older than this round
 
 **Opened by the user on 2026-10-09, challenging this plan's own claim** that `customer` is "the
@@ -502,210 +774,3 @@ valuation statement"_; § 375.515(b) the re-weighing waiver.
 > because `customer` is a role and this is the role round.
 
 ---
-
-### 1.4 What this round must not do
-
-- **It must not reopen either refused vocabulary, and must not let the role enum's progress read as
-  progress on `roleClass`.** `identityScheme` (`[A9 §3.2]`) and `roleClass` (`[A8 §9 item 2]`) are
-  `refusedOnEvidence` with live gates (`IdentitySchemeStaysOwed`, `RoleClassStaysOwed`). **The
-  likeliest mistake this round can make is writing "item 2 is partially closed" in a way that implies
-  the refusal softened** — they are two vocabularies owed by one item, and `data/owed-vocabularies.json`
-  keys on the vocabulary, not the item.
-- **It must not add a role that asserts nothing.** §2's addition test is two conjuncts. A role named
-  by a regulation as a party to a transaction is not thereby an asserter — that is the distinction
-  `weighMaster`'s near-miss and `[A8 §5]` row 6's note (_"the weigh master supplies the **evidence**,
-  not the assertion"_) both turn on.
-- **It must not change an existing role's spelling** without taking `[catalog §2.3]`'s
-  **`changedRoleNameSpelling`** class and the **breaking** consequence deliberately, with the user
-  told. F5 settled the lower-camel rule; §1.3 item 4 is about a different question (which _word_),
-  and the answer may still be "annotate the rule, not the enum".
-- **It must not schedule anything against fetching Atlas**, `src:x12-transportation`, or
-  `src:nmfta-scac`. `[SD §0]` forbids the first in terms; the second is licensed (_"Reference code
-  lists, never copy them into the repo"_); the third is `status: skipped` on the 2026-10-04 C1
-  decision.
-- **It must not re-point `custody.ts`'s or `authorityToDeclare`'s markers unless what they are owed
-  FOR has changed.** That is the test `[A8 §9 item 1]` applied to itself and item 3 applied twice.
-
----
-
-## 2. Current state and the gate commands
-
-Catalog at `specVersion` **0.6.4**. `ROLE_NAMES` has 18 members. `party` is an `aggregate` kind.
-`[A8 §9 item 1]` is partially closed, **item 3 is DECIDED**, `[A9 §3.6]` and `[A9 §3.2]` are closed.
-
-```
-npm run test        -w @pegasus/domain-reference
-npm run lint        -w @pegasus/domain-reference
-npm run typecheck   -w @pegasus/domain-reference
-npm run alloy       -w @pegasus/domain-reference
-npm run glossary    -w @pegasus/domain-reference
-npm run catalog     -w @pegasus/domain-reference
-npm run context-map -w @pegasus/domain-reference
-```
-
-**No count of the suite is written here on purpose** (§3 item 10). The commands produce it in about
-a few seconds.
-
----
-
-## 3. Landing a change — the recipe
-
-Read §3 of `plans/completed/domain-reference-party-entity.md`, which carries the accumulated list,
-then §3 of `plans/completed/domain-reference-a8-item3.md`, which records which items earned their
-place most recently. The three most likely to matter here:
-
-- **§3 item 2 — the per-member table in `data/`.** `ROLE_NAMES` is referenced by
-  `data/authority-table.json`'s role names, which the loader validates. **A new member is not just an
-  enum edit**, and the loader is what will tell you where else it has to appear — run the suite early
-  rather than reasoning about it.
-- **§3 item 8 — read the emitted diff.** Unlike item 3, this round **will** emit. Find out what, and
-  pick the change class from what the diff shows rather than from the intent.
-- **Sweep the ITEM, not the phrase.** `grep -rn 'A8 §9 item 2'` across `src/`, `data/`, `tests/`,
-  `tools/` and `docs/domain-reference/`, and **triage by tense**. Item 3's sweep found a stale
-  sentence older than its own round, and so did item 1's. Note that this item's name appears in
-  **two** meanings — the role enum and the refused `roleClass` — so the sweep has to read each hit
-  for _which_ debt it names.
-
----
-
-## 4. The procedural lessons
-
-Read §4 of both records. The ones most likely to bite here:
-
-> **A plan that asks you to sort a set into two buckets may be wrong about the buckets AND the set.
-> Count the set before you sort it.** (item 1) — §1.3 items 1-2 are this, applied to item 2's list.
->
-> **"Nothing in our model can hold it, therefore it is X" is a claim about us, not about the
-> source.** (item 1) — the trap when a regulation names a party our enum has no member for.
->
-> **A citation is two claims — that the text says this, and that the text is right.** (item 1, and
-> item 3 hit it again on `gbloc`) — **and the second claim's counter-evidence can be a witness you
-> have already read and set aside.** Item 2's sources are heavy on prose definitions; expect this.
->
-> **An `Exact<>` over an object shape does not refuse an OPTIONAL member; gate the key set.**
-> (item 3) — in `dolas/agents/project/GOTCHAS.md` now, with the worked fix.
->
-> **The source you have already read for ANOTHER item is the one a list omits invisibly.** (item 3) —
-> element 98 was read _for this item_ and its evidence is listed in this item's own annotation, so
-> here the trap runs the other way: **do not re-derive what the capture already settled.**
-
----
-
-## 5. What is blocked, and on what — ask-the-user items, do not schedule them
-
-### Still the user's, and still only one
-
-1. **C2 — what a signature asserts.** **ANSWERED IN PRINCIPLE 2026-10-04: the user will supply the
-   wording, and it has not arrived.** `[A6 §6]` owes it to the user explicitly, no corpus source
-   publishes it, and **it must not be inferred from the four published procedures** — the
-   `[ORIGINAL]` guess `[SD §0]` forbids. Record it as **`[USER]`** with the user's own words quoted.
-   **Item 3 settled the half of it that was answerable**: the individual who signs asserts **under a
-   role**, so what C2 still owes is what the _act_ asserts. **This round is where the roles that sign
-   get named** (`Designated Agent` acts _in place of the customer_ under power of attorney), so the
-   temptation to answer C2 in passing is higher here than it was in either previous round. **Do not.**
-
-2. **`customer` or `goodsOwner`? — RAISED 2026-10-09, and it is the user's because it is BREAKING.**
-   **A8-NAME-2** says of itself that the **[ORIGINAL]** part is _"making it a hard rule and **fixing
-   the two names**"_, and the two names it fixes are `accountParty` and **`goodsOwner`**.
-   `ROLE_NAMES` carries **`customer`**. Verified: 18 members, and `goodsOwner` occurs exactly once in
-   all of `src/` — inside `customer`'s own docstring. **This is F5's defect with a different word
-   instead of a different case**, and F5 recorded why it is not cosmetic: a role name rides inside
-   `handover`'s qualifier, `[SD §1.3]` derives the fact key from it, so two spellings of one role are
-   **two fact keys** — facts that never pair and never contest.
-
-   **Three ways to settle it, and they do not cost the same:**
-
-   - **Annotate the RULE** — A8-NAME-2 fixed a name the model then improved on, and `customer` stays.
-     **Free**, emits nothing. `customer` is the better-sourced word for who signs at the residence
-     (`src:cfr-49-375` four times; element 98's `LW Customer`), and `[fork-time §5.3]` minted it.
-   - **Rename the MEMBER** to `goodsOwner`. `[catalog §2.3]`'s **`changedRoleNameSpelling`** —
-     **breaking, a new major** — for consistency with the rule, against a word the corpus itself uses
-     less.
-   - **Keep both as two roles.** Only if the corpus distinguishes the goods' owner from the person at
-     the residence; `src:cfr-49-375` § 375.103's `Individual shipper` conjoins _owns the goods_ with
-     _pays his or her own charges_, and `src:dp3-400ng` splits payer from owner — so **this is not
-     obviously empty** and it is item 2's to measure before it is anyone's to choose.
-
-   **Nothing in this round depends on the answer except the write-up**, so the measurement and the
-   rest of §1.2 can proceed while it is open — but **no member may be added on top of an unresolved
-   name defect** (§1.4), so it gates the implementation.
-
-### Recorded modelling questions — none is a user ask
-
-- **`[A8 §9 item 3]`'s residue — Rule A8-SELF is under-determined.** Its independence test is at
-  legal-entity grain while `assertedBy.party` may be a person, an office or a branch. **Not closable
-  by effort**: it needs the person→organisation link as a _reference_ and no source publishes one. It
-  wants a party-to-party relation, **adjacent to** `[A8 §9 item 1]`'s hierarchy and not identical
-  (that is organisation→organisation, this is person→organisation). Whether one fact class covers
-  both is **undecided** — do not assume it does.
-- **`[A8 §9 item 1]`'s residue:** the party's **name** (two blockers — the legal-or-DBA disjunction,
-  and the bundled address with no `place` aggregate), the **hierarchy**, and the **`PartyId` brand**
-  (`SubjectRef<'party'>` is the successor shape at six sites; closing it is **breaking**).
-- **`[A8 §9 item 5]`** (role cardinality and exclusivity) — now one of two owners of
-  `authorityToDeclare`'s marker, and **it may become decidable as a side effect of this round**,
-  since it asks how many `Hauler`s a shipment may carry. **Measure; do not promise** — item 1's §3
-  item 22 is the worked example of a claim that rested on a false premise.
-- **`[SD §1.2]`'s `resource` row is uncited for half of what it admits.** Its citation covers
-  equipment; the words _"driver or crew member"_ carry none. Recorded by item 3, **not repaired** —
-  it is `[SD §1.2]`'s and `[A3]`'s.
-- **A new `[A8 §10]` confidence row is owed BY THIS ROUND.** Element 98's capture records it and says
-  so: _"the cast §2 takes from `src:sirva-ade` is, as far as any read source goes, the only
-  household-goods role vocabulary there is"_, and §10 _"has no row for that exposure"_. It
-  _"belongs in §10 when this item is written"_. **This round is that round.** It is a judgement about
-  the vocabulary, which is why the capture declined to write it.
-- **`[A9 §3.3(b)]`'s SCAC gap** stays open with the fetch ruled out; `definedNotMerelyNamed: false`.
-- **`[SD §10.4]`** still carries items open, and **`custody.ts` still wants a `place`** — the
-  standing candidate for the next aggregate kind.
-- **A bare `§n` cited ACROSS documents**: `[A2]`'s §Cross-area note to `[A3]` cites line offsets as
-  if they were headings. Repairing it is `[A2]`'s and `[A3]`'s; recorded so a round that opens either
-  document fixes it in passing. **Cite the heading, and verify by reading the target.**
-
----
-
-## 6. How to work here
-
-Read §6 of both records. Nothing in either is superseded. The three entries most likely to matter:
-
-- **A gate must read the thing that DECLARES**, and **a gate whose subject is what a generator EMITS
-  must read what the generator emits.**
-- **Read the existing tests for the records you are writing about.** `vocabulary.test.ts` already
-  builds `const roleNames = new Set<string>(ROLE_NAMES)` and checks **every role-position value in
-  `data/canonical-subjects.json` and `data/authority-table.json` against it** — `authorityRoles()`
-  reads the provisional rows, `tableRoles()` walks the standings. So a new member is admitted by the
-  enum _and_ every table cell is already held to it. **Read that file before adding anything**: it
-  tells you where a member has to appear and it is the gate that will fail if it does not.
-- **Two role names contain DIGITS** — `r19Agent` and `rr19Agent`. A `grep`/regex of
-  `'[a-zA-Z]+'` over the enum silently drops both and returns 16 where the answer is 18. **This
-  happened while writing this plan**, to a check meant to verify the plan's own count; the count was
-  right and the check was wrong. Use `[A-Za-z0-9]+`, and prefer the suite's own enumeration over any
-  pattern you write.
-- **Before adding a row to `data/owed-vocabularies.json`, ask whether the model has a FIELD for the
-  vocabulary.** (item 3's addition.) ~~Here it does — `assertedBy.role` — so unlike item 3 this
-  item's refusals, if any, **do** belong in that table.~~ **WRONG, corrected 2026-10-09:** that table
-  is **per-vocabulary**, and this item's refusals are **per-member** — `Trusted Agent` and
-  `Claims Manager` fail §2's addition test, but `ROLE_NAMES` itself is not refused (§2 calls it
-  "provisional" and this item stays open), so no owed vocabulary's state changed and there is nothing
-  to put in a `state` field. **Three things to tell apart**: a vocabulary refused (`identityScheme`,
-  `roleClass` — rows here), a **member** refused from an open vocabulary (these two — no row; the
-  refusal lives in `[A8 §9 item 2]`'s annotation), and a **field** refused outright (item 3's party
-  class — no row, because a row needs a live `Exact<…, OwedCode<'v'>>` gate). That distinction is now
-  written into the table's own `note`, which is where a reader following this instruction will look.
-
----
-
-## 7. Starting the next session
-
-Work on `chore/dr-role-vocabulary` in this worktree; nothing in `packages/domain-reference` needs
-Postgres.
-
-**Read before writing anything:**
-
-1. **§1.3 and §1.3a of this file** — the measurements, and the preliminary readings that must be
-   re-verified. §1.1 and §1.2 are a seed and say so.
-2. `docs/domain-reference/analysis/A8-authority-skeleton.md` **§9 item 2 and both its annotations**,
-   then **§2** (the addition test), then **§5**'s table and **§10**.
-3. `docs/domain-reference/sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md`
-   — **in full.** It has already done the industry cross-walk for every existing member.
-4. `plans/completed/domain-reference-a8-item3.md` — §2, §3 and §4.
-5. `plans/todo/ci-blockers-after-security-backlog.md` — **"Five diagnosis traps"** and **"Do not
-   commit these"**, before touching anything.
