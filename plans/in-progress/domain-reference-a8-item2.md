@@ -22,16 +22,18 @@ with a **byte-identical** emitted diff. **This round will not be like that one**
 
 ### Status
 
-- [ ] §1.3 — the measurements, **before** designing anything. §1.3a holds the readings already taken
-      while writing this plan; **each is marked and each must be re-verified.**
+- [x] §1.3 — the measurements → **§1.3b**, 2026-10-09. §1.3a's preliminary readings were
+      re-verified there; one was **refuted**.
 - [ ] §1.2 — the decision: what does item 2 actually owe, and is any of it closable?
+      **One sub-decision is the USER'S** — §5's `customer`/`goodsOwner` question, which is breaking.
 - [ ] implementation, gates, tamper pass, cross-area edits, round record
 
 ### Next action
 
-**Run §1.3 item 1 — compare what item 2's own prose list names against what the authority table's
-`owedTo` entries actually ask for.** They are not the same set, and §1.3a's preliminary reading is
-that they are not even the same _kind_ of thing. Do not start with §1.2.
+**§1.3b is written and committed. Write §1.2's decision against it** — and note that it reframes
+the item: the prose list and the cited debt overlap in **one** entry of thirteen-and-ten, **seven**
+of the ten owed entries want something no enum can supply, and §375.205's material belongs to
+`[A8 §9 item 4]`. One sub-decision is **the user's** and is asked in §5.
 
 ---
 
@@ -104,6 +106,10 @@ it has already done the "is there an industry counterpart?" pass for every exist
   which §2 marks **[ORIGINAL]**.
 
 ### 1.3 What to MEASURE before designing — this is the planning pass
+
+> **ANSWERED 2026-10-09 — the answers are §1.3b below.** The questions and §1.3a's preliminary
+> readings are left as written: two of those readings survived re-verification, one was **refuted**
+> by going to the bytes (§1.3b item 6), and which is which is the transferable part.
 
 Nothing below is a step to execute. **Both previous rounds found the plan's own framing broke
 first**, so each item is a question whose answer changes the design.
@@ -182,6 +188,206 @@ first**, so each item is a question whose answer changes the design.
    _author_), the `booker`/`OE Booking Office` false friend, and **"nothing in 1312 codes names a
    household-goods role"** — zero results for `household`, `van line`, `mover`, `relocat`,
    `moving company`.
+
+### 1.3b The measurements, ANSWERED — 2026-10-09, before anything was designed
+
+**The headline, and it is the third round running that an `[A8 §9]` item's own framing broke first:
+item 2's prose list and the debt item 2 is CITED FOR overlap in ONE entry.** The prose list names
+thirteen things; `data/authority-table.json` asks for ten; the intersection is the **warehouseman**
+(`storeOut`). And of the ten the table asks for, **seven want something no role enum can supply.**
+
+#### item 1 — does item 2's prose list name the same things the authority table asks for? NO
+
+| the table asks for (10, across 8 rows)                                                              | is it in item 2's prose list? |
+| --------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `arrival` advisory — "visibility providers (`src:dcsa` VSP / SVP)"                                  | **no**                        |
+| `departure` advisory — same                                                                         | **no**                        |
+| `storeOut` **authoritative** — "the warehouseman holding the goods"                                 | **YES** — the one overlap     |
+| `condition` corroborating — "the non-inspecting parties"                                            | **no**                        |
+| `identity` corroborating — "the counterparty echoing the value back"                                | **no**                        |
+| `identity` advisory — "everyone else"                                                               | **no**                        |
+| `charge` PROPOSED — "the performing role", `owedTo` says **"Not fixed"**                            | **no**                        |
+| `charge` RATED — "the tariff owner — the van line, or the party whose tariff prices it"             | **no**                        |
+| `charge` competing — "the performing role, on quantum"                                              | **no**                        |
+| `documentIssuance` corroborating — "the party the instrument is issued TO, echoing its number back" | **no**                        |
+
+And in the other direction, **none** of `goodsOwner`, the government offices, `TSP for Carriage`,
+`Move Management Company`, `Trusted Agent`, `Claims Manager`, `Designated Agent`, `broker` or the
+prime / emergency-or-temporary split appears in any `owedTo`. **The item's list is not an inventory
+of its debt; it is a list of names the corpus uses.** Those are different things, and this is the
+third `[A8 §9]` item in a row whose own list had to be corrected before the item could be answered
+(item 1's was wrong about cardinality, item 3's about membership, item 2's about **what the list is
+for**).
+
+#### item 2 — for each owed entry, is what it wants a ROLE at all? THREE of TEN
+
+- **Wants an enum member (3):** `storeOut`'s warehouseman; `charge` RATED's **tariff owner** (which
+  element 98 already cross-walked to `TI Tariff Issuer`, also `CO Ocean Tariff Conference`); and
+  `arrival`/`departure`'s **visibility providers**, one designation used twice — and **the
+  best-graded candidate in the whole item**, see item 6.
+- **Cannot be an enum member (7), in two distinct ways:**
+  - **Complements** — "the non-inspecting parties", "everyone else". These are defined by
+    _who is not the authoritative asserter on this fact_, so their extension changes per fact. A
+    member spelled `nonInspectingParty` would be a role nobody holds.
+  - **Relations to the fact or the instrument** — "the counterparty echoing the value back", "the
+    party the instrument is issued TO", and **"the performing role" twice, whose own `owedTo` says
+    _"Not fixed — it is whichever role performed the act the charge is for, so it varies by
+    charge"_.** The table has already written down that this one is a _function of the charge_, not
+    a member — so one of the ten entries **says in its own text that item 2 cannot close it**.
+
+**Consequence to decide in §1.2, not here: seven of the ten rows are owed to the wrong item.** What
+they want is a rule that computes a standing from the fact (`[A8 §4]`'s shape — authority as a
+function), which is `[A8 §9 item 5]`'s territory (cardinality and exclusivity) or a new item, not a
+vocabulary.
+
+#### item 3 — §2's addition test, applied per candidate. FIVE outcomes, not one
+
+> The test, quoted from §2: a role is added "because **they assert facts** and **ADE has no slot for
+> them**". Two conjuncts. Applied per name:
+
+| candidate                                       | asserts facts?                                                                                                                                                                       | verdict                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `accountParty`, `weighMaster`                   | yes — and they are **already members**                                                                                                                                               | **the item owes a DEFINITION, not a member**      |
+| `goodsOwner`                                    | yes — but the enum spells it **`customer`**                                                                                                                                          | **a NAME defect, see item 4 below**               |
+| NTS **warehouseman**                            | **yes, sourced**: `src:dp3-400ng` Item 17.12 requires **both** TSP and warehouseman to hold the condition of each article "when received at and forwarded from the storage location" | **candidate member**                              |
+| **`TSP for Carriage`**                          | yes — "the line-haul carrier that collects a lot **from** an NTS warehouse, a named third party in the custody chain", i.e. a party to a **handover**                                | **candidate member, but check against `hauler`**  |
+| **tariff owner** (from the table, not the list) | `[A8 §5]` row 11 makes it the rating authority                                                                                                                                       | **candidate member**                              |
+| `Trusted Agent`                                 | **no** — "a named individual _expected to be very familiar with DoW processes and readily accessible to DoW PPA_". An escalation contact, disclosed in DPS                           | **fails the test**                                |
+| `Claims Manager`                                | **no** — "a named role the TSP must **declare in the DPS Qualifications module**". A disclosure requirement                                                                          | **fails the test** (and claims are A11's)         |
+| `prime agent` / `emergency or temporary agent`  | see below — they are a **second axis**                                                                                                                                               | **`[A8 §9 item 4]`'s, not this item's**           |
+| `Designated Agent`                              | yes, but **"in place of the customer"** by power of attorney                                                                                                                         | **`[A8 §9 item 4]`'s**                            |
+| `Move Management Company`                       | yes, but **"on behalf of a SCAC"** — and "**may not be named as the origin servicing agent**"                                                                                        | **item 4's, plus an item 5 exclusivity rule**     |
+| `broker`                                        | the corpus defines it by **exclusion**                                                                                                                                               | **not definable from what is read**               |
+| the **government offices**                      | yes — "approve, pre-approve, dispute and pay"                                                                                                                                        | **already folded into `accountParty`; see below** |
+
+**The sharpest result, and it is one of this item's two primary captured witnesses** (the other is
+`src:dcsa`, item 6). `src:cfr-49-375`
+**§ 375.205 _"May I have agents?"_** defines both agent types by **on whose behalf** and **under
+what agreement**, not by function:
+
+> _"(1) A **prime agent** provides a transportation service **for you or on your behalf**, including
+> the selling of, or arranging for, a transportation service. You permit or require the agent to
+> provide services under the terms of an **agreement or arrangement** with you. A prime agent does
+> not provide services on an emergency or temporary basis. A prime agent does not include a
+> household goods **broker** or freight forwarder. (2) An **emergency or temporary agent** provides
+> origin or destination services on your behalf, **excluding** the selling of, or arranging for, a
+> transportation service…"_ — plus (b) a **signed written agreement** and (c) **24-month retention**.
+
+**That is not a pair of role names; it is a second axis over the names we already have.** A prime
+agent may be a `booker` ("the selling of, or arranging for"), an `originAgent` or a `hauler`; the
+emergency-or-temporary agent is the same functions minus the selling. Putting `primeAgent` in
+`ROLE_NAMES` would put **two axes in one enum** — which is the defect `[A8 §3(a)]` and `[SD §1.1]`'s
+"no second classification axis" both exist to prevent, and which **A8-NAME-1 already half-saw**
+("the bare word `agent` is not a role in this model"). And `[A8 §9 item 4]` already names this exact
+material as its own: _"Delegation and on-behalf-of… it does not model the chain that holds it.
+Material exists and is unused: `src:cfr-49-375` §375.205's written prime-agent [agreement]"_.
+`Designated Agent` ("in place of the customer") and the MMC ("on behalf of a SCAC") are the same
+shape from two other sources.
+
+**`broker` is defined in this corpus only by exclusion.** §375.205(a)(1): _"A prime agent does not
+include a household goods broker or freight forwarder"_; `src:dtr-part-iv` has _"carrier's agent
+**explicitly distinguished from a broker**"_. Both say what a broker is **not**. A member minted
+from a negative would be ours — `[SD §0]`.
+
+**The government offices are not a missing name; they are a question about an existing `[ORIGINAL]`
+decision.** §2's own addition table folded PPSO/PPPO/TO into **`accountParty`** and marked the fold
+authored: _"Sourced that the party exists and decides things; **[ORIGINAL]** that it is **one role
+rather than three**."_ So this sub-list asks whether to **unfold** it — and there is evidence:
+`src:dtr-part-iv` A-406 §B.8's **Maintaining vs Responsible PPSO** split, which its analysis calls
+_"a genuinely good idea: account ownership and geographic ownership are different roles over the
+same lot, with a mandatory copy-everyone protocol"_. **Unfolding is a change to a published member's
+meaning, which is not additive.** Decide deliberately or leave it owed.
+
+#### item 4 — does `ROLE_NAMES` already disagree with a RULE about a name? YES
+
+**A8-NAME-2 fixes the names `accountParty` and `goodsOwner`** — and says so about itself:
+_"**[ORIGINAL]:** making it a hard rule and **fixing the two names**"_. **`ROLE_NAMES` carries
+`customer`, not `goodsOwner`.** Verified: 18 members, and `goodsOwner` occurs exactly once in all of
+`src/` — inside `customer`'s own docstring (`src/envelope.ts:222`), as a gloss: _"The party whose
+goods move — `goodsOwner` at the residence, per **A8-NAME-2**'s two-way split"_.
+
+**This is F5's defect one level up.** F5 closed a _case_ mismatch between a rule and the enum and
+recorded why it was not cosmetic: a role name rides inside `handover`'s **qualifier**, `[SD §1.3]`
+derives the fact key from the qualifier, so **two spellings of one role are two fact keys** — facts
+that never pair and never contest. F5's mismatch was `OriginAgent`/`originAgent`; this one is a
+different **word**.
+
+**It is NOT obvious which side is wrong, and that is why it is a decision rather than a fix.**
+`customer` is the better-sourced name for _who signs at the residence_ (`src:cfr-49-375` makes the
+customer's signature constitutive four times; `[fork-time §5.3]` mints `customer` and element 98
+cross-walks it to `LW Customer`), while `goodsOwner` is the name the **rule** fixed and the one that
+does not collide with `src:dp3-400ng`'s inversion of "customer". **Changing the enum is
+`changedRoleNameSpelling` — breaking, a new major (`[catalog §2.3]`)**; annotating the rule is free.
+**→ ASK THE USER** (§5).
+
+#### item 5 — what does the NTS question turn on?
+
+Three readings, and they do not agree:
+
+- **`[A8 §9 item 2]`** asks outright whether the NTS warehouseman "is the same role as ADE's
+  `SITAgent`".
+- **`data/authority-table.json`** row `storeOut` already writes them _"separately rather than fused
+  by assumption"_ — so the table has taken the conservative branch and is waiting to be told.
+- **element 98 keeps three apart** — `WH Warehouse`, `8F Bailment Warehouse`
+  (_"owned by an organization, but the inventory … belongs to the supplier until the organization
+  owning the warehouse legally purchases the goods"_) and `NS Non-Temporary Storage Facility` — which
+  its capture calls _"evidence toward a split; not a decision, which is A8's"_.
+
+**And the duty that makes the warehouseman an asserter is sourced**: `src:dp3-400ng` Item 17.12
+requires **both** TSP and warehouseman to hold the condition of each article at receipt and at
+forwarding — _"two independent records of the same thing, by design"_, which is also what
+`[A8 §7.3]` quotes it for.
+
+#### item 6 — the GRADE, which splits the list along a line the item does not draw
+
+| source                      | `captured/`? | which of item 2's candidates it is the witness for                                                                |
+| --------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `src:cfr-49-375`            | **yes** (1)  | the prime / emergency-or-temporary split, and `broker`-by-exclusion — i.e. **the material that is item 4's**      |
+| `src:dcsa`                  | **yes**      | the **visibility providers** — and this one was checked in the captured bytes rather than the analysis, see below |
+| `src:milmove-mymove`        | **yes** (4)  | nothing on this list directly                                                                                     |
+| `src:dp3-400ng`             | **no**       | the government offices, the NTS warehouseman, `Designated Agent`                                                  |
+| `src:dtr-part-iv`           | **no**       | the government offices, `TSP for Carriage`, broker-by-distinction, the Maintaining/Responsible PPSO split         |
+| `src:dp3-tender-of-service` | **no**       | `TSP for Carriage`, `Move Management Company`, `Trusted Agent`, `Claims Manager`                                  |
+| `src:sirva-ade`             | **no**       | the whole existing cast                                                                                           |
+
+**The first draft of this table said "every candidate MEMBER rests on `secondary` grade, and the
+item's only primary captured evidence is for the material that belongs to item 4". Going to the
+DCSA bytes refuted it, and the refutation is the best news in the measurement.**
+`captured/DCSA-OpenAPI/domain/event/event_domain_v3.2.0.yaml:2609-2628` publishes
+**`tntPublisherRole`**, described as:
+
+> _"The **party function code of the publisher**. The values are divided into 2 categories:
+> **Carrier** — `CA (Carrier)`, `AG (Carrier local agent)`; **Service Provider** —
+> `VSP (Visibility Service Provider)`, `SVP (Any other service provider)`"_
+
+— a **closed four-member enum**, primary and captured, and it is explicitly the role of **the party
+that PUBLISHES the event**, i.e. an **asserter**. It sits on the same schema as
+`transportEventTypeCode` (`ARRI (Arrived)` / `DEPA (Departed)`), which is exactly the two rows
+(`arrival`, `departure`) whose advisory standing is owed to this item.
+
+**So the visibility provider passes §2's addition test on primary captured evidence** — it asserts
+(it publishes the event) and ADE has no slot for it — and it is the only candidate in the item that
+does. The warehouseman, the `TSP for Carriage` and the tariff owner rest on `secondary` grade, which
+is legitimate here and is what most of the existing cast rests on, but **this round must not describe
+those three as well-sourced**. That exposure is the shape of the **new `[A8 §10]` confidence row**
+this item already owes (§5).
+
+**And `tntPublisherRole` hands this item two more things it did not ask for.** `AG (Carrier local
+agent)` distinguishes a carrier from its own local agent, which is A8-NAME-1's concern from a second
+publisher; and `SVP (Any other service provider)` is an **explicit open slot beside a closed list**,
+which is precisely the shape `[A9 §3.2]` refused `identityScheme` on. **Whether that makes the role
+enum unclosable too is a question this round must answer rather than inherit** — `[A8 §2]` already
+calls `ROLE_NAMES` "provisional" and says an authority module "may refine this; it may not quietly
+widen it".
+
+#### item 7 — does it reach the wire? NOT MEASURED YET
+
+`owedTo` is a published `const`, so resolving any entry emits. **Regenerate and read the diff before
+classifying** — do not pick the change class from the intent. Item 3's expectation was "probably
+nothing" and the generator confirmed it; this round's expectation is "a bump", and the generator
+decides which slot.
+
+---
 
 ### 1.4 What this round must not do
 
@@ -283,6 +489,32 @@ Read §4 of both records. The ones most likely to bite here:
    role**, so what C2 still owes is what the _act_ asserts. **This round is where the roles that sign
    get named** (`Designated Agent` acts _in place of the customer_ under power of attorney), so the
    temptation to answer C2 in passing is higher here than it was in either previous round. **Do not.**
+
+2. **`customer` or `goodsOwner`? — RAISED 2026-10-09, and it is the user's because it is BREAKING.**
+   **A8-NAME-2** says of itself that the **[ORIGINAL]** part is _"making it a hard rule and **fixing
+   the two names**"_, and the two names it fixes are `accountParty` and **`goodsOwner`**.
+   `ROLE_NAMES` carries **`customer`**. Verified: 18 members, and `goodsOwner` occurs exactly once in
+   all of `src/` — inside `customer`'s own docstring. **This is F5's defect with a different word
+   instead of a different case**, and F5 recorded why it is not cosmetic: a role name rides inside
+   `handover`'s qualifier, `[SD §1.3]` derives the fact key from it, so two spellings of one role are
+   **two fact keys** — facts that never pair and never contest.
+
+   **Three ways to settle it, and they do not cost the same:**
+
+   - **Annotate the RULE** — A8-NAME-2 fixed a name the model then improved on, and `customer` stays.
+     **Free**, emits nothing. `customer` is the better-sourced word for who signs at the residence
+     (`src:cfr-49-375` four times; element 98's `LW Customer`), and `[fork-time §5.3]` minted it.
+   - **Rename the MEMBER** to `goodsOwner`. `[catalog §2.3]`'s **`changedRoleNameSpelling`** —
+     **breaking, a new major** — for consistency with the rule, against a word the corpus itself uses
+     less.
+   - **Keep both as two roles.** Only if the corpus distinguishes the goods' owner from the person at
+     the residence; `src:cfr-49-375` § 375.103's `Individual shipper` conjoins _owns the goods_ with
+     _pays his or her own charges_, and `src:dp3-400ng` splits payer from owner — so **this is not
+     obviously empty** and it is item 2's to measure before it is anyone's to choose.
+
+   **Nothing in this round depends on the answer except the write-up**, so the measurement and the
+   rest of §1.2 can proceed while it is open — but **no member may be added on top of an unresolved
+   name defect** (§1.4), so it gates the implementation.
 
 ### Recorded modelling questions — none is a user ask
 
