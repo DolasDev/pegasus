@@ -2968,3 +2968,57 @@ half-tamper never reaches the count at all. The count was never what held that c
 a claim about _which_ gate holds a property, and in a suite with layered loaders the answer is often
 a gate you were not looking at. Fix the dating count anyway — just do not credit it with catching
 something.
+
+## `GITHUB_TOKEN` enqueues a PR the merge queue will never build
+
+**The rule:** actions taken with `GITHUB_TOKEN` do not trigger workflows. Under a merge queue that
+is not a nuisance, it is a **silent stall**: the enqueue succeeds, the entry appears at position 1,
+and **no `merge_group` run is ever created**. The entry then holds the head of an `ALLGREEN` queue
+until `check_response_timeout_minutes: 60` drops it — blocking every other stream for an hour, for
+nothing.
+
+Eight reproductions before the cause was pinned: #645, #656, #387, #657, #709, #710, #762, #799.
+The two that were measured are the whole argument:
+
+| PR   | bot-enqueued, no run for | after dequeue + non-`GITHUB_TOKEN` re-enqueue |
+| ---- | ------------------------ | --------------------------------------------- |
+| #762 | 18 min                   | **~28 s**                                     |
+| #799 | 21 min                   | **~5 s**                                      |
+
+#799 rules out the alternatives: `pr-798`'s group run had succeeded minutes earlier and Actions was
+`operational`, so neither queue contention nor an outage explains it.
+
+**Fix (#826): mint a GitHub App installation token.** An App installation token is _not_
+`GITHUB_TOKEN` and does trigger workflows. `dependabot-auto-merge.yml`'s `enqueue` job now resolves
+`steps.app-token.outputs.token || secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN`.
+
+**Four things that are easy to get wrong here, in descending order of how silently they fail:**
+
+1. **The secret store.** `enqueue` is triggered by `workflow_run` / `workflow_dispatch` — neither is
+   a Dependabot event — so it reads **Actions** secrets. GitHub's separate **Dependabot** secret
+   store is visible only to `pull_request`-from-dependabot runs. A credential named for Dependabot
+   invites being filed there, and if it is, the `||` chain falls through with **no error at all**.
+2. **The `||` chain hides its own degradation.** That is why the step now _names the identity it is
+   acting as_ and emits a `::warning::` when it lands on `GITHUB_TOKEN`. Without that line, "the
+   stall is back" has no visible cause. The warning (rather than a failure) covers only the
+   never-configured case — the long-standing status quo. A **configured-but-broken** App fails the
+   mint step hard, with no `continue-on-error`, because falling back there would enqueue a PR the
+   queue never builds and block the head of an ALLGREEN queue for 60 minutes: strictly worse than
+   not enqueuing. Gracefully degrading is not automatically the safe choice — ask what the degraded
+   path _does_ to everyone else.
+3. **`app-id` is DEPRECATED in `actions/create-github-app-token@v3`** — use `client-id`. The App
+   settings page shows both, adjacent, and the deprecated one is the one that reads as obvious.
+4. **Identity cannot be probed with `gh api user`.** An installation token gets "Resource not
+   accessible by integration" there, and `GITHUB_TOKEN` _is_ an installation token — so the probe
+   fails for exactly the two cases it would need to distinguish. Derive it from the mint step's own
+   `app-slug` output instead, with the `vars`/`secrets`-set booleans passed in as env.
+
+**Gating a step on configuration that may not exist yet:** gate on a `vars.*` value, not a
+`secrets.*` one — `vars` is available in a step-level `if:` and a bare `secrets` reference there is
+not reliable. A skipped step's outputs are empty strings, which is what lets the `||` chain fall
+through and makes the whole thing safe to merge _before_ the credential exists.
+
+**Bookkeeping lesson that outlives this fix:** "auto-merge was enabled" and "the queue will actually
+build it" are independent claims. Confirm the second with a `merge_group` run **for that PR number**
+before recording a PR as healthy — see the merge-queue runbook for why the first claim's usual
+signature lies.
