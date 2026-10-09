@@ -313,10 +313,12 @@ that never pair and never contest. F5's mismatch was `OriginAgent`/`originAgent`
 different **word**.
 
 **It is NOT obvious which side is wrong, and that is why it is a decision rather than a fix.**
-`customer` is the better-sourced name for _who signs at the residence_ (`src:cfr-49-375` makes the
-customer's signature constitutive four times; `[fork-time §5.3]` mints `customer` and element 98
-cross-walks it to `LW Customer`), while `goodsOwner` is the name the **rule** fixed and the one that
-does not collide with `src:dp3-400ng`'s inversion of "customer". **Changing the enum is
+~~`customer` is the better-sourced name for who signs at the residence~~ — **REFUTED 2026-10-09 by
+the user's challenge, see §1.3c.** `src:cfr-49-375` uses the word `customer` **six** times and
+**never for a party with a duty**; its defined term is `individual shipper`, **189** occurrences, and
+**two of the four signature citations behind that sentence contain no signature at all**.
+`goodsOwner` is the name the **rule** fixed, it matches the axis the regulation turns on
+(ownership-plus-payment), and it does not collide with `src:dp3-400ng`'s inversion of "customer". **Changing the enum is
 `changedRoleNameSpelling` — breaking, a new major (`[catalog §2.3]`)**; annotating the rule is free.
 **→ ASK THE USER** (§5).
 
@@ -386,6 +388,118 @@ widen it".
 classifying** — do not pick the change class from the intent. Item 3's expectation was "probably
 nothing" and the generator confirmed it; this round's expectation is "a bump", and the generator
 decides which slot.
+
+---
+
+### 1.3c The `customer` name, measured in the primary bytes — and a MISCITATION older than this round
+
+**Opened by the user on 2026-10-09, challenging this plan's own claim** that `customer` is "the
+better-sourced word for who signs at the residence". The user's reading: in practice _customer_ is
+whoever **pays**, _shipper_ is whoever is responsible for the goods **at origin**, and _consignee_ is
+whoever is responsible **at destination** — effectively a goods-owner at each end. **The challenge
+was right to be made, and checking it in the captured bytes refuted two of this corpus's citations
+and the plan's own sentence.**
+
+#### (a) `customer` is not a term `src:cfr-49-375` uses for anybody with a duty
+
+Counted over the captured XML:
+
+| word                      | occurrences | what they are                                                                                                                                                                       |
+| ------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`individual shipper`**  | **189**     | a **§ 375.103 defined term**, and the subject of every signature and every writing obligation in the part                                                                           |
+| `consignor` / `consignee` | 6 / 6       | **only** inside the two shipper definitions, as **positions on the bill of lading** — "is identified as the shipper, consignor, or consignee **on the face of the bill of lading**" |
+| `customer`                | **6**       | **not a defined term, and never carries a duty**                                                                                                                                    |
+
+All six `customer` occurrences, enumerated rather than counted: a **bank's** customer (inside the
+`Cashier's check` definition), the **subpart heading** _"Before Offering Services to My Customers"_,
+a complaint-procedure description, the consumer pamphlet's heading _"Customer's Responsibilities"_,
+that pamphlet's plain-English address to the reader (_"As a customer, you have responsibilities both
+to your mover and to yourself"_), and _"another customer's move"_. **Four of the six are a heading or
+Appendix A's plain-English pamphlet, not the regulation's operative text.**
+
+**So the regulation's own axis is ownership-plus-payment, not customer-hood**: `Individual shipper`
+is named on the BOL **and** owns the goods **and** pays his or her own charges; `Commercial shipper`
+is named as consignor or consignee, **is not the owner**, and pays for the beneficial owner's
+account. Consignor and consignee are **where you are named**, not what you are.
+
+**The user's three-way decomposition is real practice and the corpus cuts it differently.** It is not
+that the model is wrong to have one role; it is that **`customer` is the one word in the area that
+`src:cfr-49-375` never uses for the party with the duties**, while the model keeps a _separate_ role
+for whoever pays (`accountParty`). Naming the residence party `customer` therefore invites a reader
+to file the payer there — **which is the exact ambiguity A8-NAME-2 was created to abolish**,
+reintroduced by the enum's choice of word rather than by the rule's.
+
+#### (b) The origin / destination half is separable, and the model already answers it elsewhere
+
+Three independent readings agree that "responsible at origin" vs "responsible at destination" is
+**not** two roles in this model:
+
+- `src:cfr-49-375` makes consignor/consignee **BOL positions** and runs every duty through the one
+  term `individual shipper` — **including both ends of the same document**: § 375.503(c) has the
+  inventory _"signed by both you and the individual shipper"_ at loading, and § 375.503(d) gives
+  _"the individual shipper"_ the opportunity to note missing or damaged articles **at delivery**. One
+  term, both ends.
+- `[A8 §7.3]` and `HandoverQualifier` already carry **releasing / receiving as a qualifier `side`**,
+  which is where F5 found the fact key is derived from.
+- `src:milmove-mymove` publishes the split at **person** grain — `MTOAgent`
+  `RELEASING_AGENT` / `RECEIVING_AGENT` — and item 3 measured that record as a **permission**, not an
+  assertion.
+
+**And `[A8 §9 item 3]` just settled the pattern this follows**: a distinction the corpus draws per
+act belongs on the assertion, not on the party. So a `goodsOwnerOrigin` / `goodsOwnerDestination`
+split would be putting the handover's `side` into the role enum — two axes in one enum again, the
+same defect § 375.205 produces from the other direction (§1.3b item 3).
+
+#### (c) The MISCITATION, which is this item's and is older than this round
+
+`[A8 §2]`'s addition table and `envelope.ts`'s `customer` docstring both say:
+
+> _"`src:cfr-49-375` requires the customer's signature on the BOL (**§375.505(a)**), the inventory
+> (§375.503), the delivery receipt (**§375.701**) and any waiver of a weighing observation
+> (§375.515(b))… The obligation to sign is sourced **four times**."_
+
+**Two of the four do not say that.** Read in the capture:
+
+- **§ 375.505(a)** — _"Before you receive a shipment… **you must prepare and issue** a bill of
+  lading"_. The obligation is the **carrier's**, and the individual shipper appears in the 17 required
+  items as **item (3), a name and address**. Being named on a document is not signing it.
+- **§ 375.701** — heading _"May I provide for a release of liability on my delivery receipt?"_. It
+  says the receipt _"must not contain any language purporting to release or discharge you or your
+  agents from liability"_ and **may** state apparent good condition. **There is no signature in the
+  section at all.**
+
+**And the two strongest real instances are cited NOWHERE in the corpus.** Enumerated from the bytes,
+the individual shipper signs or writes in at least a dozen places, and these two are the sharpest:
+
+- **§ 375.401(h)** — _"**You and the individual shipper must sign the estimate of charges.**"_ A
+  **mutual** signature, and on a **money** document — so it bears on `[A8 §5]` row 11 (`charge`) and
+  on `[A7]`, not only on `delivery`.
+- **§ 375.213(f)(1)** — _"you must obtain a **signed, dated receipt** showing the individual shipper
+  has received…"_ the consumer-protection publications, retained one year.
+
+Others, for the record: § 375.201(c) waiving full-value liability in writing; § 375.203(b)-(c)
+notifying in writing of articles over $100/lb; § 375.217(a) and § 375.407(a) agreeing in writing to a
+change in the form of payment; § 375.401(a)(2) the physical-survey waiver _"signed by the shipper
+before the shipment is loaded"_; § 375.403 and § 375.405 the new estimates and their written
+attachments _"signed by the individual shipper"_; § 375.503(c) the inventory; § 375.503(d) noting
+missing articles at delivery; § 375.505's Full Value Protection waiver _"in writing on the STB's
+valuation statement"_; § 375.515(b) the re-weighing waiver.
+
+> **This is not a miscount; it is two citations that do not contain what they are cited for, in a
+> corpus whose `[SD §0]` exists to stop exactly that — and it is load-bearing.** `[A8 §5]` row 5's
+> evidence column opens **"Sourced, heavily:"** and its first clause is _"`src:cfr-49-375`
+> § 375.701 — **the delivery receipt is signed by the shipper**"_, which § 375.701 does not say; the
+> same sentence is in `data/authority-table.json` row `delivery`. Row 5's **[ORIGINAL]** places
+> `customer` in **competing** rather than corroborating _because_ "three sources make the customer's
+> signature constitutive". **The standing survives on the real citations** — § 375.503(c)'s mutual
+> signature, § 375.401(h)'s mutual signature, `src:dp3-tender-of-service` § C.17.a's jointly-signed
+> notice — **but the row must be re-cited, not left as it stands.**
+>
+> **And I propagated it.** "Constitutive four times (§375.505(a), §375.503, §375.701, §375.515(b))"
+> is in the item-3 round's `AsserterGrainIsNotOnTheEnvelope` docstring, in
+> `party-grain-refuses.ts`, in `[A8 §9 item 3]`'s annotation, in that round's record, and in this
+> plan — **repeated from `[A8 §2]` without reading the sections.** Correcting it is this round's,
+> because `customer` is a role and this is the role round.
 
 ---
 
