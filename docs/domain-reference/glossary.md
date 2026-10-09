@@ -111,8 +111,8 @@ A party — a company or a person that asserts facts, holds roles and is identif
 whose authority is somebody else. Minted at [A8 §9 item 1], whose first sentence is the reason:
 _"Until it lands, `assertedBy.partyRef` has no target schema."_
 
-- **Cited:** [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref) · [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
-- **Corpus:** `src:atlas-world-group-api` · `src:cfr-49-375` · `src:sirva-ade`
+- **Cited:** [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref) · [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape) · [[SD §7.2]](analysis/00-shared-decisions.md#72-the-effective-interval--sourced-twice)
+- **Corpus:** `src:atlas-world-group-api` · `src:cfr-49-375` · `src:dp3-400ng` · `src:dtr-part-iv` · `src:sirva-ade`
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `partyRole` (aggregate)

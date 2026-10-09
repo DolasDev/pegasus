@@ -279,28 +279,20 @@ describe('[A9 §3.6] the party-grain schemes have no subject, and the blocker is
 
 describe('[A8 §9 item 3] what grain a party may be is declared by what identifies it', () => {
   // The branch grain was [A8 §9 item 1]'s third residue, and item 3 closed it on 2026-10-09 WITHOUT
-  // a field, by reading two rows this table already carried. These assertions are the evidence, not
-  // a restatement: if a later round mints an `office` or `branch` aggregate kind and re-points
-  // either row, or edits the witness out, they fail and send it to `AsserterGrainIsNotOnTheEnvelope`
-  // and the two reasons there.
+  // a field, by reading `agentCode` — and corroborating on `gbloc`, whose own row carries a caveat
+  // the first draft of this block ignored (see below). These assertions are the evidence, not a
+  // restatement: if a later round mints an `office` or `branch` aggregate kind and re-points either
+  // row, or edits a witness out, they fail and send it to `AsserterGrainIsNotOnTheEnvelope` and the
+  // two reasons there.
   const defined = () => partyGrainSchemes(table).filter((row) => row.definedNotMerelyNamed)
 
   it('the two party-grain rows the corpus DEFINES are the office and the branch', () => {
     expect(names(defined())).toEqual(['agentCode', 'gbloc'])
   })
 
-  it('`gbloc` identifies an OFFICE, which is why a branch is a party', () => {
-    const gbloc = table.rows.get('gbloc')
-    expect(gbloc?.identifies).toBe('party')
-    // `src:dtr-part-iv`, quoted in the row: "BLOC — Bill of Lading Office Code; the identity of the
-    // OFFICE, and the scope unit for suspensions and blackouts". The party grain reaches below the
-    // legal entity, and the identifier is what says so.
-    expect(gbloc?.witnesses.some((w) => w.citation.includes('the identity of the OFFICE'))).toBe(
-      true,
-    )
-  })
-
-  it('`agentCode` CARRIES the branch in the identifier, so no field has to', () => {
+  it('`agentCode` CARRIES the branch in the identifier, so no field has to — THE witness', () => {
+    // This row alone closes the branch grain, and it is the one the closure rests on: the code is
+    // the branch, `definedNotMerelyNamed`, with no transfer semantics anywhere on the row.
     const agentCode = table.rows.get('agentCode')
     expect(agentCode?.identifies).toBe('party')
     expect(
@@ -308,6 +300,28 @@ describe('[A8 §9 item 3] what grain a party may be is declared by what identifi
         w.citation.includes(
           '7-digit hierarchical agent id whose trailing three digits are the branch',
         ),
+      ),
+    ).toBe(true)
+  })
+
+  it('`gbloc` CORROBORATES, and its own row carries the caveat that keeps it corroboration', () => {
+    // **The first draft of this block made `gbloc` the headline witness and that was wrong.**
+    // `src:dtr-part-iv` glosses it "BLOC — Bill of Lading Office Code; the identity of the OFFICE,
+    // and the scope unit for suspensions and blackouts" — but `src:dp3-400ng`, on the SAME row,
+    // says responsibility for a GBLOC "can be transferred between offices with an effective date",
+    // which is why [SD §7.2] sources the identifier's effective interval from it. An identifier
+    // that migrates does not identify an office the way a SCAC identifies a carrier; it identifies
+    // something an office HOLDS for an interval. Both witnesses are asserted here so that nobody
+    // can quote the office gloss without the row also carrying the transfer — [A8 §9 item 1]'s own
+    // lesson that a citation is two claims, the second being that the text is right.
+    const gbloc = table.rows.get('gbloc')
+    expect(gbloc?.identifies).toBe('party')
+    expect(gbloc?.witnesses.some((w) => w.citation.includes('the identity of the OFFICE'))).toBe(
+      true,
+    )
+    expect(
+      gbloc?.witnesses.some((w) =>
+        w.citation.includes('can be transferred between offices with an effective date'),
       ),
     ).toBe(true)
   })

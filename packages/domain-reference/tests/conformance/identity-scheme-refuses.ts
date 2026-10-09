@@ -86,8 +86,11 @@ void thePartyIsAnAggregate
  * and after [A8 §9 item 3] that is the **name**, on two of its three blockers, plus the
  * **hierarchy**, which is a party-to-party relation no fact class holds. So `party` is an
  * `aggregate` kind and **not** an `AssertionType`, and a round that mints a party fact class
- * inverts this. **Note which direction the pressure now comes from**: the hierarchy and A8-SELF's
- * residue both want one relation, so the next attempt at a party fact class will have a reason.
+ * inverts this. **And note what does NOT weaken it.** The hierarchy and A8-SELF's residue each want
+ * a party-to-party **relation** fact class (not necessarily the same one — one is
+ * organisation→organisation, the other person→organisation). A relation fact class would be a fact
+ * class **about** parties, which is not what this directive refuses: `party` as an `AssertionType`
+ * stays refused either way, because the party is the subject of such a relation and never the fact.
  */
 // @ts-expect-error [A8 §9 item 1] — `party` is a subject, not a fact class; no record type was minted.
 const partyIsNotAFactClass: AssertionType = thePartyFiveSchemesIdentify

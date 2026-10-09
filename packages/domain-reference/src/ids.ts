@@ -149,11 +149,15 @@ export const AGGREGATE_KINDS = [
    *
    * **What it does NOT settle, as amended by [A8 §9 item 3] (2026-10-09).** The **name** and the
    * **hierarchy** stay owed; the **branch grain does not**. Item 3 closed that one without a field,
-   * on rows `data/identity-schemes.json` already carries: `gbloc` is "the identity of the **OFFICE**"
-   * and `agentCode` is a 7-digit code "whose **trailing three digits are the branch**", both
-   * `definedNotMerelyNamed`, both `identifies: party`. **So a branch is a party** — and a party's
-   * grain is declared by what identifies it and by the role it asserts under, never by anything on
-   * the party ({@link AsserterGrainIsNotOnTheEnvelope}).
+   * on a row `data/identity-schemes.json` already carried: **`agentCode`** is a 7-digit code "whose
+   * **trailing three digits are the branch**", `definedNotMerelyNamed`, `identifies: party`. **So a
+   * branch is a party** — and a party's grain is declared by what identifies it and by the role it
+   * asserts under, never by anything on the party
+   * ({@link AsserterGrainIsNotOnTheEnvelope}). `gbloc` **corroborates rather than carries it**: its
+   * `src:dtr-part-iv` witness glosses it "the identity of the OFFICE", but its `src:dp3-400ng`
+   * witness says responsibility for a GBLOC "can be transferred between offices with an effective
+   * date" — which is what [SD §7.2] sources the effective interval from, and what stops the row
+   * identifying an office the way `scac` identifies a carrier.
    *
    * The **name** keeps two of its three blockers, and the third fell for a reason rather than by
    * being dropped. Standing: `src:cfr-49-375` § 375.505(b)(1) publishes a **disjunction** (legal

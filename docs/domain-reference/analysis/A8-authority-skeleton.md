@@ -227,8 +227,10 @@ should make role an attribute of the _assignment_, never of the party." Grade A,
 > as two independent parties — **this rule's own defect, one level up**. Closing it needs the
 > person→organisation link as a reference, and §9 item 3's measurement is that no source publishes
 > one: `src:dp3-tender-of-service` has a noun phrase, `src:milmove-mymove` its own schema's FK,
-> `src:sirva-ade` a three-valued affiliation class. It is owed to §9 item 3's residue, alongside
-> §9 item 1's hierarchy, and **one party-to-party fact class would be the input to both**.
+> `src:sirva-ade` a three-valued affiliation class. It is owed to §9 item 3's residue, and it is
+> **adjacent to** §9 item 1's hierarchy rather than identical: both want a party-to-party relation,
+> but `parentAgentCode` is organisation→organisation and this is person→organisation. Whether one
+> fact class covers both is not decided here.
 
 > **And §9 item 3 extended this bullet's rule rather than contradicting it** (2026-10-09): role is an
 > attribute of the assignment, and a party's **grain** is likewise a property of what identifies the
@@ -874,15 +876,18 @@ file may be read as deciding them.
    >   fuses the grains: **a party must be defined before it can be named.**
    > - **the branch grain** — **CLOSED 2026-10-09 by item 3, with nothing added.** The prediction
    >   here was right: the identifier already carried it, and the grain question was all that was
-   >   owed. The answer is **yes, a branch is its own party**, because `agentCode` (7 digits, the
-   >   trailing three being the branch) and `gbloc` (_"the identity of the **OFFICE**"_) both
-   >   `identifies: party` and are the table's two `definedNotMerelyNamed` party rows.
+   >   owed. The answer is **yes, a branch is its own party**, on `agentCode` alone — 7 digits, the
+   >   trailing three being the branch, `identifies: party`, `definedNotMerelyNamed`. `gbloc`
+   >   corroborates with a caveat its own row states (its GBLOC transfers between offices), which
+   >   item 3's annotation records because the first draft leaned on it.
    >   `SvcProvDataRecipient` is a push-routing field, which is item 6's territory.
    > - **the hierarchy** — owed with a blocker of a **different kind**: `parentAgentCode` and
    >   `/Agents/{agentCode}/Family` are a party-to-party **relation**, and **no `AssertionType` holds
    >   one**. It is not waiting on item 3; it is waiting on a fact class that does not exist. **Item 3
-   >   left it a second claimant** (2026-10-09): A8-SELF's grain residue wants the same relation, so
-   >   the next round to mint one closes two things rather than one.
+   >   left it an adjacent claimant** (2026-10-09): A8-SELF's grain residue also wants a
+   >   party-to-party relation. **Whether it is the SAME relation is not decided** —
+   >   `parentAgentCode` is organisation→organisation and A8-SELF's gap is person→organisation — so a
+   >   round that mints one should ask whether one fact class covers both before assuming it does.
    >
    > **One tempting reading recorded and REJECTED**, because the next round will reach for it:
    > _"as it is registered with FMCSA"_ makes FMCSA an `authority` in [SD §7.1]'s exact sense, and the
@@ -1045,13 +1050,24 @@ Corporate | Agent | Vendor` is an **affiliation** class whose three values are a
    >
    > **Two things that close with this item, and one that does not.**
    >
-   > - **The branch grain (§9 item 1's second residue) CLOSES, on rows the scheme table already
-   >   carried.** `gbloc` is _"the identity of the **OFFICE**, and the scope unit for suspensions and
-   >   blackouts"_ and `agentCode` is _"a 7-digit hierarchical agent id whose **trailing three digits
-   >   are the branch**"_ — both `definedNotMerelyNamed`, both `identifies: party`. So **a branch is
-   >   a party**, because the identifier that identifies it identifies a party. Gated in
-   >   `identity-schemes.test.ts`'s item-3 block, which reads the witnesses rather than restating
-   >   them.
+   > - **The branch grain (§9 item 1's second residue) CLOSES, on a row the scheme table already
+   >   carried.** `agentCode` is _"a 7-digit hierarchical agent id whose **trailing three digits are
+   >   the branch**"_, `definedNotMerelyNamed`, `identifies: party`. So **a branch is a party**,
+   >   because the identifier that identifies it identifies a party.
+   >
+   >   **`gbloc` corroborates and does not carry it, and the first draft of this annotation had that
+   >   wrong.** Its `src:dtr-part-iv` witness glosses it _"the identity of the **OFFICE**, and the
+   >   scope unit for suspensions and blackouts"_, which reads like the closure outright — but its
+   >   `src:dp3-400ng` witness, **on the same row**, says responsibility for a GBLOC _"can be
+   >   transferred between offices with an effective date"_, and that is precisely what
+   >   [shared §7.2](00-shared-decisions.md) sources the identifier's effective interval from. An
+   >   identifier that migrates between offices does not identify an office the way a SCAC identifies
+   >   a carrier; it identifies something an office **holds** for an interval. **This is the party
+   >   round's §4 lesson landing on this round** — a citation is two claims, that the text says this
+   >   and that the text is right, and the counter-evidence was on the same JSON row the whole time.
+   >   Both witnesses are now asserted in `identity-schemes.test.ts`'s item-3 block, so the office
+   >   gloss cannot be quoted without the transfer.
+   >
    > - **`legal name`'s third blocker FALLS; its first two stand.** The third was "`Resource.Name`
    >   names a company, a person or a tractor — a party must be defined before it can be named". It
    >   is explained: SIRVA's one `Resource` kind **spans our `party` and our `resource`**
