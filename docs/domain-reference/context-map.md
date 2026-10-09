@@ -48,6 +48,17 @@ A declaration carrying **type parameters** is machinery rather than a concept an
   - `rules/charges.ts:COLLECTION_PRECONDITION_SUBJECTS` — [[A7 §3.7]](analysis/A7-charges-billing.md#37-collection-preconditions-d-cite-generalised-past-documents--owed-item-6) [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
 - **Also referenced from**, where the docstring in force names no area — shared-kernel use, listed because a reference a map does not name is a reference a reader cannot find: `data.ts:CanonicalSubjectRow.context` · `data.ts:FamilyDeclaration.members` · `data.ts:admissibleSubjectKinds` · `data.ts:inCode` · `data.ts:readAggregateKind` · `envelope.ts:CapturedEnvelope` · `envelope.ts:Envelope` · `envelope.ts:EnvelopeCore` · `envelope.ts:QueriedEnvelope` · `envelope.ts:SubjectRef` · `envelope.ts:isAbout` · `envelope.ts:isAbout.(envelope)` · `envelope.ts:mentions` · `envelope.ts:mentions.(envelope)` · `envelope.ts:recordOnQuery` · `envelope.ts:subjectRef` · `identity.ts:IdentityFactKey` · `ids.ts:AggregateId` · `ids.ts:aggregateId` · `ids.ts:isAggregateKind` · `ids.ts:makeId` · `rules/e-canon.ts:NotificationObligation.members` · `rules/e-canon.ts:SubjectAdmission.members` · `rules/e-canon.ts:SubjectAdmission.named` · `vocabulary.ts:Admission.members` · `vocabulary.ts:Admission.named` · `vocabulary.ts:SUBJECT_FAMILIES` · `vocabulary.ts:members`
 
+### `AssertedBy`
+
+- **Declared in:** `packages/domain-reference/src/envelope.ts`
+- **Aggregate behind it:** _none_
+- **Areas that cite a reference site:** [**A2**](analysis/A2-shipment-structure.md) · [**A8**](analysis/A8-authority-skeleton.md) · [**A9**](analysis/A9-identity-cross-references.md)
+- **Modules that reference it:** `envelope.ts` · `rules/authority.ts` · `rules/e-canon.ts`
+- **Sites whose docstring names an area** — the edges this map is about:
+  - `rules/authority.ts:AsserterGrainIsNotOnTheEnvelope` — [[A2 §9]](analysis/A2-shipment-structure.md) [[A8 §3(a)]](analysis/A8-authority-skeleton.md) [[A8 §3(b)]](analysis/A8-authority-skeleton.md) [[A8 §5]](analysis/A8-authority-skeleton.md) [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) [[SD §0]](analysis/00-shared-decisions.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+  - `rules/authority.ts:AsserterIsExactlyAPartyAndARole` — [[A8 §9 item 3]](analysis/A8-authority-skeleton.md)
+- **Also referenced from**, where the docstring in force names no area — shared-kernel use, listed because a reference a map does not name is a reference a reader cannot find: `envelope.ts:EnvelopeCore.assertedBy` · `rules/e-canon.ts:HARD_CASE_SHIPMENT_PHRASED_ARRIVAL.destinationAgent` · `rules/e-canon.ts:NotificationObligation.owedTo` · `rules/e-canon.ts:RephrasedSubmission.assertedBy` · `rules/e-canon.ts:Submission.assertedBy` · `rules/e-canon.ts:symmetricCaseSubmission.(driver)`
+
 ### `AssertionType`
 
 - **Declared in:** `packages/domain-reference/src/vocabulary.ts`
@@ -180,14 +191,15 @@ A declaration carrying **type parameters** is machinery rather than a concept an
 - **Sites whose docstring names an area** — the edges this map is about:
   - `assertions.ts:FactResolved.assertedBy.party` — [[A8 §4.4]](analysis/A8-authority-skeleton.md#44-no-silent-recency) [[SD §4.3]](analysis/00-shared-decisions.md#43-resolution--factresolved)
   - `assertions.ts:PartyRoleValue.party` — [[A8 §3(b)]](analysis/A8-authority-skeleton.md) [[A8 §3(c)]](analysis/A8-authority-skeleton.md) [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them) [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
-  - `custody.ts:CustodyHolder.party` — [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) [[A8 §9 items 2-3]](analysis/A8-authority-skeleton.md) [[SD §4.8.3]](analysis/00-shared-decisions.md#483-the-fold-stated-so-it-is-testable) [[SD §8.2]](analysis/00-shared-decisions.md#82-b-externallyperformedleg)
+  - `custody.ts:CustodyHolder.party` — [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) [[SD §4.8.3]](analysis/00-shared-decisions.md#483-the-fold-stated-so-it-is-testable) [[SD §8.2]](analysis/00-shared-decisions.md#82-b-externallyperformedleg)
   - `custody.ts:ExternallyPerformedLeg.authoritativeAsserter` — [[A8 §5]](analysis/A8-authority-skeleton.md) [[SD §8.2]](analysis/00-shared-decisions.md#82-b-externallyperformedleg)
-  - `envelope.ts:AssertedBy.party` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+  - `envelope.ts:AssertedBy.party` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md) [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
   - `identity.ts:IdentityValue.issuer` — [[A8 §4.3]](analysis/A8-authority-skeleton.md#43-what-authority-is-bound-to--boundby) [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
+  - `rules/authority.ts:AsserterIsExactlyAPartyAndARole.party` — [[A8 §9 item 3]](analysis/A8-authority-skeleton.md)
   - `rules/authority.ts:PrincipalChange.from` — [[A8 §7.5]](analysis/A8-authority-skeleton.md#75-one-case-that-looks-like-a-custody-handoff-and-is-not-the-principal-changes)
   - `rules/authority.ts:PrincipalChange.to` — [[A8 §7.5]](analysis/A8-authority-skeleton.md#75-one-case-that-looks-like-a-custody-handoff-and-is-not-the-principal-changes)
-  - `rules/authority.ts:corroborationIsIndependent.(authoritative)` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md)
-  - `rules/authority.ts:corroborationIsIndependent.(corroborating)` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md)
+  - `rules/authority.ts:corroborationIsIndependent.(authoritative)` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md) [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) [[SD §0]](analysis/00-shared-decisions.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+  - `rules/authority.ts:corroborationIsIndependent.(corroborating)` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md) [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) [[SD §0]](analysis/00-shared-decisions.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
   - `rules/corrections.ts:CorrectionAttempt.declaredBy` — [**A8**](analysis/A8-authority-skeleton.md) — _named, with no section cited_
 - **Also referenced from**, where the docstring in force names no area — shared-kernel use, listed because a reference a map does not name is a reference a reader cannot find: `assertions.ts:earlierEnvelope.assertedBy.party` · `assertions.ts:laterEnvelope.assertedBy.party` · `custody.ts:ExternallyPerformedLeg.performedBy` · `identity.ts:VocabularyScope.authority` · `ids.ts:partyId` · `outcomes.ts:Attribution.party`
 
@@ -231,7 +243,8 @@ A declaration carrying **type parameters** is machinery rather than a concept an
   - `assertions.ts:PartyRoleValue.role` — [[A8 §3(b)]](analysis/A8-authority-skeleton.md) [[A8 §3(c)]](analysis/A8-authority-skeleton.md) [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them) [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
   - `data.ts:InputAuthority.roles` — [[A8 §5 r7]](analysis/A8-authority-skeleton.md)
   - `data.ts:readRoleName` — [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) [[A8 §9 item 8]](analysis/A8-authority-skeleton.md)
-  - `envelope.ts:AssertedBy.role` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+  - `envelope.ts:AssertedBy.role` — [[A8 §3(a)]](analysis/A8-authority-skeleton.md) [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+  - `rules/authority.ts:AsserterIsExactlyAPartyAndARole.role` — [[A8 §9 item 3]](analysis/A8-authority-skeleton.md)
   - `rules/authority.ts:AuthoritativeHolder.role` — [[A8 §2]](analysis/A8-authority-skeleton.md)
   - `rules/authority.ts:AuthorityClaim.role` — [[A8 §5]](analysis/A8-authority-skeleton.md) [[A8 §6]](analysis/A8-authority-skeleton.md) [[A8 §8]](analysis/A8-authority-skeleton.md)
   - `rules/authority.ts:listedStandingOf.(role)` — [[A8 §4.1]](analysis/A8-authority-skeleton.md#41-the-four-standings)
@@ -434,13 +447,13 @@ The glossary's **Owed** section groups the inventory by what is undecided. This 
 
 A second ledger of the same kind as the owed inventory, and the one no generated artefact has published. `collectOwedInventory` reads the `owed(…)` constructor, the `Owed<…>` type and `OwedCode<…>`, and those three reach the glossary and `catalog/index.json`; the `TODO(…)` markers reach neither. Each names the document or the module that has to act. Read from the raw source text, because several are `//` comments inside a function body and attach to no declaration.
 
-- `packages/domain-reference/src/assertions.ts:558` → **corrections area** (_names no area_) — [SD §6]'s semantics — the amendment window, Correction.authority…
+- `packages/domain-reference/src/assertions.ts:561` → **corrections area** (_names no area_) — [SD §6]'s semantics — the amendment window, Correction.authority…
 - `packages/domain-reference/src/custody.ts:123` → **[SD §1.2] / A3** ([**A3**](analysis/A3-trip-stop-assignment.md)) — a place is either an aggregate kind of its own or an attribute of a…
-- `packages/domain-reference/src/custody.ts:148` → **[A8 §9 items 2-3]** ([**A8**](analysis/A8-authority-skeleton.md)) — decide whether a leg's performedBy is resolvable to a partyRole on…
-- `packages/domain-reference/src/custody.ts:296` → **[SD §3] / A5** ([**A5**](analysis/A5-storage-in-transit.md)) — whether a shipment-subject handover also moves custody of a Portion of that…
+- `packages/domain-reference/src/custody.ts:153` → **[A8 §9 item 2]** ([**A8**](analysis/A8-authority-skeleton.md)) — decide whether a leg's performedBy is resolvable to a partyRole on the…
+- `packages/domain-reference/src/custody.ts:301` → **[SD §3] / A5** ([**A5**](analysis/A5-storage-in-transit.md)) — whether a shipment-subject handover also moves custody of a Portion of that…
 - `packages/domain-reference/src/envelope.ts:63` → **capture rules** (_names no area_) — M1-M7 are predicates over (type, basis, capturedBy, outcome) and belong to…
 - `packages/domain-reference/src/identity.ts:21` → **A9** ([**A9**](analysis/A9-identity-cross-references.md)) — the scheme list is A9's. Until it lands, a scheme is an owed code.
-- `packages/domain-reference/src/ids.ts:201` → **[A8 §9 item 1]** ([**A8**](analysis/A8-authority-skeleton.md)) — the successor shape is SubjectRef<'party'>, because every other aggregate…
+- `packages/domain-reference/src/ids.ts:215` → **[A8 §9 item 1]** ([**A8**](analysis/A8-authority-skeleton.md)) — the successor shape is SubjectRef<'party'>, because every other aggregate…
 - `packages/domain-reference/src/portion.ts:56` → **measures** (_names no area_) — this is the same owed unit vocabulary as MeasureValue in assertions.ts. If…
 - `packages/domain-reference/src/portion.ts:220` → **[SD §4.7.1]** (_names no area_) — no declared type carries a Portion's membership. [SD §1.3] makes…
 - `packages/domain-reference/src/rules/authority.ts:163` → **[A8 §10] §4.2 row** ([**A8**](analysis/A8-authority-skeleton.md)) — "src:sirva-ade only has a recording clock, so implementing this…
@@ -449,7 +462,8 @@ A second ledger of the same kind as the owed inventory, and the one no generated
 - `packages/domain-reference/src/rules/authority.ts:815` → **[A8 §9 item 7]** ([**A8**](analysis/A8-authority-skeleton.md) · **A13**) — revenue allocation is A13's and this row must not be read as settling it.
 - `packages/domain-reference/src/rules/authority.ts:844` → **[SD §4.2]** (_names no area_) — src:dcsa forces eventClassifierCode = ACT on ISSU, so the corpus…
 - `packages/domain-reference/src/rules/authority.ts:1141` → **[A1 §3.5]** ([**A1**](analysis/A1-order-service-lifecycle.md)) — the deadline-lapse edge is an orderResponse at NOT_COMPLETED with…
-- `packages/domain-reference/src/rules/authority.ts:1823` → **[A8 §9 items 2-3, 5]** ([**A8**](analysis/A8-authority-skeleton.md)) — authorityToDeclare compares ROLE NAMES, and the releasing/receiving…
+- `packages/domain-reference/src/rules/authority.ts:1471` → **[A8 §9 item 3]** ([**A8**](analysis/A8-authority-skeleton.md)) — A8-SELF's independence test is at legal-entity grain while assertedBy.party…
+- `packages/domain-reference/src/rules/authority.ts:1865` → **[A8 §9 items 2, 5]** ([**A8**](analysis/A8-authority-skeleton.md)) — authorityToDeclare compares ROLE NAMES, and the releasing/receiving…
 - `packages/domain-reference/src/rules/capture.ts:264` → **[SD §4.7.3]** (_names no area_) — record position as absent and owed, or mint it — either is [SD §4.7]'s to do.
 - `packages/domain-reference/src/rules/corrections.ts:106` → **[SD §4.7.3] / A4** ([**A4**](analysis/A4-execution-events.md)) — mint estimate (and survey) as fact classes, then carry §375.401(i) as…
 - `packages/domain-reference/src/rules/corrections.ts:199` → **[SD §4.7.2b] / A7 / A12** ([**A7**](analysis/A7-charges-billing.md) · **A12**) — when the charge value lands, this should take the two assertions…
@@ -527,7 +541,7 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
 
 - **`v1 detail`:** yes — [`analysis/A2-shipment-structure.md`](analysis/A2-shipment-structure.md)
 - **`Covers`:** shipment vs order, shipment types (HHG, storage, vehicle, PPM/self-move…), weights, services ordered
-- **Concepts on the join surface that cite it:** `AssertionType` · `BoundBy` · `CaptureMethod` · `IdentitySchemeTable` · `QualifierByType` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
+- **Concepts on the join surface that cite it:** `AssertedBy` · `AssertionType` · `BoundBy` · `CaptureMethod` · `IdentitySchemeTable` · `QualifierByType` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
 - **Shares with:**
   - [**A1**](analysis/A1-order-service-lifecycle.md) via `AssertionType` · `BoundBy`
   - [**A3**](analysis/A3-trip-stop-assignment.md) via `AssertionType`
@@ -535,8 +549,8 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
   - [**A5**](analysis/A5-storage-in-transit.md) via `CaptureMethod` · `QualifierByType` · `RoleClass` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
   - [**A6**](analysis/A6-documents-evidence.md) via `AssertionType` · `BoundBy` · `CaptureMethod` · `IdentitySchemeTable` · `QualifierByType` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
   - [**A7**](analysis/A7-charges-billing.md) via `IdentitySchemeTable` · `QualifierByType` · `RoleClass` · `SchemeName`
-  - [**A8**](analysis/A8-authority-skeleton.md) via `AssertionType` · `BoundBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
-  - [**A9**](analysis/A9-identity-cross-references.md) via `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
+  - [**A8**](analysis/A8-authority-skeleton.md) via `AssertedBy` · `AssertionType` · `BoundBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
+  - [**A9**](analysis/A9-identity-cross-references.md) via `AssertedBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
   - **A10** via `AssertionType` · `BoundBy`
   - **A11** via `AssertionType` · `BoundBy`
 - **Aggregates whose record rows cite it:** _none_
@@ -595,7 +609,7 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
   - [**A9**](analysis/A9-identity-cross-references.md) via `RoleClass` · `SchemeAccountability` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
 - **Aggregates whose record rows cite it:** _none_
 - **Owed to it:**
-  - `packages/domain-reference/src/custody.ts:296` → **[SD §3] / A5**
+  - `packages/domain-reference/src/custody.ts:301` → **[SD §3] / A5**
 
 ### A6 — Documents & evidence
 
@@ -637,27 +651,28 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
 
 - **`v1 detail`:** yes — [`analysis/A8-authority-skeleton.md`](analysis/A8-authority-skeleton.md)
 - **`Covers`:** shipper/transferee, account/RMC, van line, booking/origin/hauling/destination agent, carrier, driver, crew, warehouse
-- **Concepts on the join surface that cite it:** `AggregateKind` · `AssertionType` · `BoundBy` · `EventId` · `EvidenceRef` · `IdentitySchemeTable` · `Instant` · `PartyId` · `RoleClass` · `RoleName` · `RuleRef` · `SchemeAccountabilityVerdict` · `SchemeName` · `StayLocation`
+- **Concepts on the join surface that cite it:** `AggregateKind` · `AssertedBy` · `AssertionType` · `BoundBy` · `EventId` · `EvidenceRef` · `IdentitySchemeTable` · `Instant` · `PartyId` · `RoleClass` · `RoleName` · `RuleRef` · `SchemeAccountabilityVerdict` · `SchemeName` · `StayLocation`
 - **Shares with:**
   - [**A1**](analysis/A1-order-service-lifecycle.md) via `AssertionType` · `BoundBy` · `Instant` · `RuleRef`
-  - [**A2**](analysis/A2-shipment-structure.md) via `AssertionType` · `BoundBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
+  - [**A2**](analysis/A2-shipment-structure.md) via `AssertedBy` · `AssertionType` · `BoundBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
   - [**A3**](analysis/A3-trip-stop-assignment.md) via `AssertionType` · `EventId`
   - [**A4**](analysis/A4-execution-events.md) via `AssertionType` · `BoundBy` · `Instant` · `StayLocation`
   - [**A5**](analysis/A5-storage-in-transit.md) via `RoleClass` · `SchemeName` · `StayLocation`
   - [**A6**](analysis/A6-documents-evidence.md) via `AggregateKind` · `AssertionType` · `BoundBy` · `EventId` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
   - [**A7**](analysis/A7-charges-billing.md) via `AggregateKind` · `IdentitySchemeTable` · `RoleClass` · `SchemeName` · `StayLocation`
-  - [**A9**](analysis/A9-identity-cross-references.md) via `AggregateKind` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
+  - [**A9**](analysis/A9-identity-cross-references.md) via `AggregateKind` · `AssertedBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
   - **A10** via `AssertionType` · `BoundBy`
   - **A11** via `AssertionType` · `BoundBy`
 - **Aggregates whose record rows cite it:** `order` · `shipment` · `portion` · `stay` · `trip` · `stop` · `stopAction` · `assignment` · `partyRole` · `item` · `charge` · `resource` · `document` · `externallyPerformedLeg` · `party`
 - **Owed to it:**
-  - `packages/domain-reference/src/custody.ts:148` → **[A8 §9 items 2-3]**
-  - `packages/domain-reference/src/ids.ts:201` → **[A8 §9 item 1]**
+  - `packages/domain-reference/src/custody.ts:153` → **[A8 §9 item 2]**
+  - `packages/domain-reference/src/ids.ts:215` → **[A8 §9 item 1]**
   - `packages/domain-reference/src/rules/authority.ts:163` → **[A8 §10] §4.2 row**
   - `packages/domain-reference/src/rules/authority.ts:562` → **reconcile with `data/authority-table.json`**
   - `packages/domain-reference/src/rules/authority.ts:751` → **[A8 §9 item 2]**
   - `packages/domain-reference/src/rules/authority.ts:815` → **[A8 §9 item 7]**
-  - `packages/domain-reference/src/rules/authority.ts:1823` → **[A8 §9 items 2-3, 5]**
+  - `packages/domain-reference/src/rules/authority.ts:1471` → **[A8 §9 item 3]**
+  - `packages/domain-reference/src/rules/authority.ts:1865` → **[A8 §9 items 2, 5]**
   - `packages/domain-reference/src/rules/corrections.ts:292` → **[A8 §9 item 6]**
   - `packages/domain-reference/src/vocabulary.ts:406` → **authority module**
   - `authorityRow` — [A8 §9 item 8] — the fact class has no row in A8 §5
@@ -683,13 +698,13 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
 
 - **`v1 detail`:** yes — [`analysis/A9-identity-cross-references.md`](analysis/A9-identity-cross-references.md)
 - **`Covers`:** each party's identifiers (order no., registration no., SCAC, BOL/PRO, service order no.), correlation between them
-- **Concepts on the join surface that cite it:** `AggregateKind` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountability` · `SchemeAccountabilityVerdict` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
+- **Concepts on the join surface that cite it:** `AggregateKind` · `AssertedBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountability` · `SchemeAccountabilityVerdict` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
 - **Shares with:**
-  - [**A2**](analysis/A2-shipment-structure.md) via `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
+  - [**A2**](analysis/A2-shipment-structure.md) via `AssertedBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
   - [**A5**](analysis/A5-storage-in-transit.md) via `RoleClass` · `SchemeAccountability` · `SchemeName` · `ShipmentContinuityUndeterminedReason` · `ShipmentContinuityVerdict`
   - [**A6**](analysis/A6-documents-evidence.md) via `AggregateKind` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountability` · `SchemeAccountabilityVerdict` · `SchemeName`
   - [**A7**](analysis/A7-charges-billing.md) via `AggregateKind` · `IdentitySchemeTable` · `RoleClass` · `SchemeName`
-  - [**A8**](analysis/A8-authority-skeleton.md) via `AggregateKind` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
+  - [**A8**](analysis/A8-authority-skeleton.md) via `AggregateKind` · `AssertedBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
 - **Aggregates whose record rows cite it:** _none_
 - **Owed to it:**
   - `packages/domain-reference/src/identity.ts:21` → **A9**

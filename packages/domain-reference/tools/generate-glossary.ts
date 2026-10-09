@@ -1217,6 +1217,21 @@ const RULES: readonly {
     what: '[A8 §9 item 2] refuses to close `roleClass` on the evidence of X12 element 98',
     export: 'RoleClassStaysOwed',
   },
+  // [A8 §9 item 3]'s decision, the third gate of this kind and the first that refuses a FIELD
+  // rather than a vocabulary's value list — so it has no `owed-vocabularies.json` row, and this
+  // register is the only place a consumer can find it. Two entries because the tamper for the
+  // obvious single gate PASSED: `Exact<>` over the shape admits an added OPTIONAL member, and only
+  // the key-set comparison catches it.
+  {
+    term: 'AsserterGrainIsNotOnTheEnvelope',
+    what: '[A8 §9 item 3] refuses a person/organisation field on the party: the grain rides on the role and on the scheme',
+    export: 'AsserterGrainIsNotOnTheEnvelope',
+  },
+  {
+    term: 'AsserterIsExactlyAPartyAndARole',
+    what: 'the same refusal from the shape side, which is what catches `party` being widened off its brand',
+    export: 'AsserterIsExactlyAPartyAndARole',
+  },
   // A8-NO-PARTY's two halves: the enumeration that says which codes forbid a no-party attribution,
   // and the predicate over it. A `RULES` entry may point at a **type** or a **constant**, not only a
   // function ([A8 §9]'s lesson from the cleanup round).

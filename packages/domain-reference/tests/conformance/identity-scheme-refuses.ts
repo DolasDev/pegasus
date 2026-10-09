@@ -19,9 +19,10 @@
  * 2. **A new refusal takes its place, and it is the one the round's own decision creates:** the
  *    party is a **bare subject**, so it is not a fact class. [A9 §3.6] needed only a `subject`, and
  *    minting a record type was measured to be unnecessary — every attribute [A8 §9 item 1] named is
- *    either an `identity` assertion or still owed to [A8 §9 item 3]. A round that mints a party
- *    record type inverts the directive below, and should answer that measurement rather than merely
- *    do the work.
+ *    either an `identity` assertion or owed, and after [A8 §9 item 3] (2026-10-09) what is owed is
+ *    the **name** and the **hierarchy**: the branch grain closed on rows the scheme table already
+ *    carries. A round that mints a party record type inverts the directive below, and should answer
+ *    that measurement rather than merely do the work.
  *
  * **What is NOT held here, and why.** [A9 §3.6] item 2's rule — that a SCAC must not be filed
  * against `partyRole`, because it "belongs to the company whatever it is doing on this shipment" —
@@ -81,10 +82,15 @@ void thePartyIsAnAggregate
 
 /**
  * **The new refusal: the party is a BARE subject.** [A8 §9 item 1] minted a subject and no fact
- * class, because every attribute it named is either an `identity` assertion ([SD §7.1]) or still
- * owed to [A8 §9 item 3] — the name and the branch grain, since `src:sirva-ade`'s `Resource.Name`
- * names a company, a person or a tractor. So `party` is an `aggregate` kind and **not** an
- * `AssertionType`, and a round that mints a party fact class inverts this.
+ * class, because every attribute it named is either an `identity` assertion ([SD §7.1]) or owed —
+ * and after [A8 §9 item 3] that is the **name**, on two of its three blockers, plus the
+ * **hierarchy**, which is a party-to-party relation no fact class holds. So `party` is an
+ * `aggregate` kind and **not** an `AssertionType`, and a round that mints a party fact class
+ * inverts this. **And note what does NOT weaken it.** The hierarchy and A8-SELF's residue each want
+ * a party-to-party **relation** fact class (not necessarily the same one — one is
+ * organisation→organisation, the other person→organisation). A relation fact class would be a fact
+ * class **about** parties, which is not what this directive refuses: `party` as an `AssertionType`
+ * stays refused either way, because the party is the subject of such a relation and never the fact.
  */
 // @ts-expect-error [A8 §9 item 1] — `party` is a subject, not a fact class; no record type was minted.
 const partyIsNotAFactClass: AssertionType = thePartyFiveSchemesIdentify

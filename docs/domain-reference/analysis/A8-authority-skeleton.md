@@ -220,6 +220,23 @@ should make role an attribute of the _assignment_, never of the party." Grade A,
 > direct consequence of the GSD p.17 sample: a model that counts role-instances rather than parties
 > will read one company agreeing with itself as two-party agreement.
 
+> **UNDER-DETERMINED, found by §9 item 3's measurement on 2026-10-09 and recorded rather than
+> fixed.** The rule says "one **company**"; the predicate is `!==` over two `PartyId`s; and
+> [shared §1.1](00-shared-decisions.md)'s `assertedBy` carries one `PartyId` for all eighteen roles,
+> of which `driver` is "the person driving". So a hauler's driver and that same hauler's office pass
+> as two independent parties — **this rule's own defect, one level up**. Closing it needs the
+> person→organisation link as a reference, and §9 item 3's measurement is that no source publishes
+> one: `src:dp3-tender-of-service` has a noun phrase, `src:milmove-mymove` its own schema's FK,
+> `src:sirva-ade` a three-valued affiliation class. It is owed to §9 item 3's residue, and it is
+> **adjacent to** §9 item 1's hierarchy rather than identical: both want a party-to-party relation,
+> but `parentAgentCode` is organisation→organisation and this is person→organisation. Whether one
+> fact class covers both is not decided here.
+
+> **And §9 item 3 extended this bullet's rule rather than contradicting it** (2026-10-09): role is an
+> attribute of the assignment, and a party's **grain** is likewise a property of what identifies the
+> party and of the role it asserts under — never of the party. `AsserterGrainIsNotOnTheEnvelope` is
+> the gate. The step past the sourced finding is **[ORIGINAL]**.
+
 **(b) A role assignment is itself an assertion, with its own asserter and its own clock.**
 `src:atlas-world-group-api` carries `Agent {code, type, type_name, authority, personnel,
 assigned_date, assigned_by, status}` — a role assignment on the order with its own actor and
@@ -550,6 +567,19 @@ assertion in the contest.
 A consumer that needs one number for an operational display gets it from a **downstream** named rule
 over the published disagreement — not from the resolution silently resolving it.
 
+> **The grain question §9 item 3 asked of this section is answered, and the answer needed nothing
+> here to change** (2026-10-09). This rule is written in **roles** — "both the releasing role and the
+> receiving role" — while every source quoted above names **individuals**: NTS §1.6.10's _"the
+> opinion of the TSP's **driver** and the NTS TSP's **representative**"_, §C.17.a's _"jointly signed
+> by my **representative** and the customer"_, A-413 §F.1.b's _"the initiating **official** and the
+> TSP **representative**"_. That is not a mismatch to repair: the role is the surface the grain rides
+> on, `ROLE_NAMES` already carries `driver` as "the person driving", and element 98 cross-walks that
+> member **exactly** to its one individual-kind code, `D1 Driver`. So the phrase "releasing and
+> receiving parties" is at company grain in this prose and at whatever grain the role names in the
+> model — which is why §9 item 3 minted no field. **What it did leave this section is A8-SELF's
+> residue**, since a boundary is exactly where a driver and an office can agree on `condition`
+> while being one company.
+
 ### 7.4 What happens to the previous holder's assertions
 
 Three answers, in order of how badly each would break things if got wrong.
@@ -826,8 +856,9 @@ file may be read as deciding them.
    >
    > **The residue, with each blocker named** — this item stays open on all three:
    >
-   > - **legal name** — blocked on **item 3**, not on a missing subject. The citation this item never
-   >   had now exists and is primary: `src:cfr-49-375` **§ 375.505 _"Must I write up a bill of
+   > - **legal name** — blocked on **item 3** for one of its three reasons, and **that one fell on
+   >   2026-10-09** while the other two stand; see item 3's own annotation. The citation this item
+   >   never had now exists and is primary: `src:cfr-49-375` **§ 375.505 _"Must I write up a bill of
    >   lading?"_ (b)(1)**, _"Your legal or trade name (i.e., doing business as name) **as it is
    >   registered with FMCSA**, to include your physical address"_, restated at **Appendix A →
    >   _"Bill of Lading"_ item 1** (the same requirement, not a second witness) and coupled to the
@@ -843,13 +874,20 @@ file may be read as deciding them.
    >   vendor, driver **or equipment** code based on the resource `Type`"_, so its `Name` names a
    >   company, a person or a **tractor**. The one grade-A contract with a name field is the one that
    >   fuses the grains: **a party must be defined before it can be named.**
-   > - **the branch grain** — **item 3**'s as well, and the identifier already carries it:
-   >   `agentCode`'s trailing three digits **are** the branch, so what is owed is the grain question
-   >   (is a branch its own party?) and not a field. `SvcProvDataRecipient` is a push-routing field,
-   >   which is item 6's territory.
+   > - **the branch grain** — **CLOSED 2026-10-09 by item 3, with nothing added.** The prediction
+   >   here was right: the identifier already carried it, and the grain question was all that was
+   >   owed. The answer is **yes, a branch is its own party**, on `agentCode` alone — 7 digits, the
+   >   trailing three being the branch, `identifies: party`, `definedNotMerelyNamed`. `gbloc`
+   >   corroborates with a caveat its own row states (its GBLOC transfers between offices), which
+   >   item 3's annotation records because the first draft leaned on it.
+   >   `SvcProvDataRecipient` is a push-routing field, which is item 6's territory.
    > - **the hierarchy** — owed with a blocker of a **different kind**: `parentAgentCode` and
    >   `/Agents/{agentCode}/Family` are a party-to-party **relation**, and **no `AssertionType` holds
-   >   one**. It is not waiting on item 3; it is waiting on a fact class that does not exist.
+   >   one**. It is not waiting on item 3; it is waiting on a fact class that does not exist. **Item 3
+   >   left it an adjacent claimant** (2026-10-09): A8-SELF's grain residue also wants a
+   >   party-to-party relation. **Whether it is the SAME relation is not decided** —
+   >   `parentAgentCode` is organisation→organisation and A8-SELF's gap is person→organisation — so a
+   >   round that mints one should ask whether one fact class covers both before assuming it does.
    >
    > **One tempting reading recorded and REJECTED**, because the next round will reach for it:
    > _"as it is registered with FMCSA"_ makes FMCSA an `authority` in [SD §7.1]'s exact sense, and the
@@ -944,6 +982,119 @@ file may be read as deciding them.
    individual, not the company — to sight-verify firearms within 72 hours. §7.3's "releasing and
    receiving parties" is written at company grain and A8 must decide whether the _individual_ who
    signs is a distinct asserter.
+
+   > **DECIDED 2026-10-09. The individual who signs is NOT a distinct asserter, the branch grain
+   > closes with it, and one residue is left that this item did not predict.** Catalog stays
+   > **0.6.4**: the decision emits nothing, which is itself the finding.
+   >
+   > **The answer.** A party's grain — person, company, office, branch — is a property of **what
+   > identifies it** and of **the role it asserts under**, never of the party. No
+   > person/organisation field, no second aggregate kind. The gate is
+   > `AsserterGrainIsNotOnTheEnvelope` in `src/rules/authority.ts`, with a second half
+   > (`AsserterIsExactlyAPartyAndARole`) because the obvious single gate's tamper **passed** — an
+   > added **optional** member keeps `Exact<>` true in both directions, and only the key-set
+   > comparison catches it. `tests/conformance/party-grain-refuses.ts` holds the second candidate
+   > shape, a `person` aggregate kind, which no type over `AssertedBy` can see.
+   >
+   > **[ORIGINAL]**, as one step past §3(a). §3(a) makes role "an attribute of the _assignment_,
+   > never of the party"; the step is that the **grain** is likewise a property of the identifier
+   > and the role. No source states it.
+   >
+   > **Correction to this item's own list, and it is the same defect §9 item 1 had: it omits the two
+   > sources that decide the question.**
+   >
+   > 1. **`src:stedi-x12-reference` element 98 — which this corpus had already read, for item 2.**
+   >    Its own definition is this item's question in one sentence: _"Code identifying an
+   >    organizational entity, a physical location, property or an individual"_ — the four grains,
+   >    named by the publisher — over **one flat table with no class column** (`D1 Driver` beside
+   >    `CA Carrier` beside `BA Battery` beside `SF Ship From`). The four-way sort in
+   >    `captured/stedi-element-98-party-roles-notes.md` is **ours**, and
+   >    [shared §0](00-shared-decisions.md) forbids publishing it. **So the one industry list that
+   >    enumerates party slots is the list that publishes no axis to tell the grains apart.** Item 2's
+   >    annotation handed element 98's evidence to three other questions and not to this one.
+   > 2. **`src:cfr-49-375` § 375.103 — the corpus's only source that _defines_ party classes, and
+   >    the only primary captured one. It classifies by FUNCTION.** _"**Individual shipper** means
+   >    any person who— … (3) **Owns the goods** being transported; and (4) **Pays his or her own**
+   >    tariff transportation charges"_; _"**Commercial shipper** means any person … **who is not the
+   >    owner** of the goods … but who assumes the responsibility for payment … for the account of
+   >    the beneficial owner"_; _"**Government bill of lading shipper** means any person whose
+   >    property is transported under … a government bill of lading"_. The axis is who owns and who
+   >    pays. All three definienda are _"any **person**"_, a word that same section uses for
+   >    companies — _"any **person** considered to be a household goods motor carrier"_ — and the
+   >    only natural-person marker in it is the pronoun in _"his or her own"_.
+   >
+   > And **this item's one captured witness is the wrong witness for its own question**: `MTOAgent`'s
+   > swagger reads _"the shipment this agent is **permitted** to release/receive"_, a permission named
+   > in a value. Milmove's records that put an individual in an **asserting** position —
+   > `SignedCertification {SubmittingUserID, Signature, Date}` and `EvaluationReport {OfficeUserID,
+ObservedDeliveryDate, ViolationsObserved, SeriousIncident}` — go unnamed here.
+   >
+   > **The three remaining sources split nothing a party carries.** `src:sirva-ade`'s `Owner ∈
+Corporate | Agent | Vendor` is an **affiliation** class whose three values are all
+   > organisations, so the grain in the one grade-A contract is carried by `Type` alone (`Driver` a
+   > person, `Tractor`/`Trailer` equipment, the nine agent roles companies) — which is §3(a)'s
+   > finding from a second direction. `src:atlas-world-group-api`'s `CompanyModel`/`ContactModel`
+   > (`openapi/agents-v1.json`) is a **directory** with `role_ID` an unlisted integer — §3(b)'s
+   > "structural evidence only", C2=1 — and `OnSiteStaffMember`'s `personnelName` is a string, not a
+   > reference. `src:dp3-tender-of-service` is a noun phrase.
+   >
+   > **What the measurement found behind the question, which is the transferable part: wherever a
+   > source puts an individual in an asserting position it attaches them to an organisation in the
+   > same breath, and NEVER by a reference the model could read** — dp3 in a noun phrase, milmove in
+   > its own schema's mandatory FK (`OfficeUser.TransportationOfficeID`), SIRVA as a three-valued
+   > class. The one asserting individual with no organisation behind them is the **customer**, and
+   > that is not an omission: `src:cfr-49-375` makes the customer's signature constitutive four times
+   > (§375.505(a), §375.503, §375.701, §375.515(b)), which is why §2 already carries the role and §5
+   > row 5 lists it **competing**. **A natural person is a party here.** What is refused is a field
+   > saying so.
+   >
+   > **Two things that close with this item, and one that does not.**
+   >
+   > - **The branch grain (§9 item 1's second residue) CLOSES, on a row the scheme table already
+   >   carried.** `agentCode` is _"a 7-digit hierarchical agent id whose **trailing three digits are
+   >   the branch**"_, `definedNotMerelyNamed`, `identifies: party`. So **a branch is a party**,
+   >   because the identifier that identifies it identifies a party.
+   >
+   >   **`gbloc` corroborates and does not carry it, and the first draft of this annotation had that
+   >   wrong.** Its `src:dtr-part-iv` witness glosses it _"the identity of the **OFFICE**, and the
+   >   scope unit for suspensions and blackouts"_, which reads like the closure outright — but its
+   >   `src:dp3-400ng` witness, **on the same row**, says responsibility for a GBLOC _"can be
+   >   transferred between offices with an effective date"_, and that is precisely what
+   >   [shared §7.2](00-shared-decisions.md) sources the identifier's effective interval from. An
+   >   identifier that migrates between offices does not identify an office the way a SCAC identifies
+   >   a carrier; it identifies something an office **holds** for an interval. **This is the party
+   >   round's §4 lesson landing on this round** — a citation is two claims, that the text says this
+   >   and that the text is right, and the counter-evidence was on the same JSON row the whole time.
+   >   Both witnesses are now asserted in `identity-schemes.test.ts`'s item-3 block, so the office
+   >   gloss cannot be quoted without the transfer.
+   >
+   > - **`legal name`'s third blocker FALLS; its first two stand.** The third was "`Resource.Name`
+   >   names a company, a person or a tractor — a party must be defined before it can be named". It
+   >   is explained: SIRVA's one `Resource` kind **spans our `party` and our `resource`**
+   >   ([shared §1.2] has driver and crew member in `resource` already), with the grain on its
+   >   `Type`. Standing: the **disjunction** (legal **or** trade/DBA, two vocabularies under I-KEY)
+   >   and the **bundled physical address** with no `place` aggregate. **Nothing was minted.**
+   > - **The hierarchy does NOT close**, and now has a second claimant. It is a party-to-party
+   >   relation no `AssertionType` holds — and A8-SELF's residue below wants the same relation.
+   >
+   > **The residue this item leaves, which it did not predict: Rule A8-SELF is under-determined.**
+   > §3(a) states its purpose at **legal-entity** grain — _"one **company** agreeing with itself"_ —
+   > and `corroborationIsIndependent` is `!==` over two `PartyId`s. But `assertedBy` carries one
+   > `PartyId` for all eighteen roles, and under `role: 'driver'` that party is _"the person
+   > driving"_. **So a hauler's driver and that same hauler's office, both asserting `condition` at a
+   > boundary, pass as two independent parties** — §3(a)'s own defect, one level up. It is recorded
+   > and not fixed, because the fix needs the person→organisation link as a reference and the
+   > measurement above is that no source publishes one. It is **not** an argument for unifying the
+   > `PartyId` brand: this compares two references, which is the shape §9 item 1 already measured.
+   > `TODO([A8 §9 item 3])` in `src/rules/authority.ts` is where it lives.
+   >
+   > **And two markers moved rather than being deleted.** `authorityToDeclare`'s read
+   > `[A8 §9 items 2-3, 5]` and now reads `[A8 §9 items 2, 5]` — comparing ROLE NAMES is not a
+   > deficiency this item was going to fix, it is reading the surface the grain is on. `custody.ts`'s
+   > `CustodyHolder` read `[A8 §9 items 2-3]` and now reads `[A8 §9 item 2]` alone: the union's two
+   > arms differ in what they REFER TO, a role-holding versus a party, not in what grain of party
+   > they mean. The item does not leave either module — it moves to the marker it actually blocks.
+
 4. **Delegation and on-behalf-of.** §7.2 states that liability does not move; it does not model the
    chain that holds it. Material exists and is unused: `src:cfr-49-375` §375.205's written prime-agent
    agreement retained 24 months; `src:dp3-tender-of-service` §B.3.f-g and the MMC bar;

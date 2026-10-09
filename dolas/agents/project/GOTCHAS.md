@@ -2105,6 +2105,43 @@ bites is **worse than nothing**: it tells the next reader the coverage is checke
 **Both halves of this were found only by tampering.** A passing build proves neither. Tamper every
 new compile-time gate and watch it fail before leaving it green.
 
+**[A8 §9 item 3] (2026-10-09) found the third trap, and it is the one that bites when the thing being
+refused is a FIELD rather than a vocabulary member.** `Exact<>` over an **object shape** does not
+refuse an added **optional** property:
+
+```ts
+interface AssertedBy {
+  readonly party: PartyId
+  readonly role: RoleName
+}
+export type ShapeIsExact = Exact<AssertedBy, { readonly party: PartyId; readonly role: RoleName }>
+const _s: ShapeIsExact = true // still compiles after adding `partyClass?: 'person' | 'organisation'`
+```
+
+Both assignability directions survive: the wider type is assignable to the narrower (extra
+properties are fine between object types), and the narrower is assignable to the wider because the
+new member is **optional**. `exactOptionalPropertyTypes` does not help — it constrains the value a
+present optional may take, not whether the key exists. The tamper passed, and only running it said
+so.
+
+**The fix is to gate the key set, and to keep the shape comparison beside it:**
+
+```ts
+export type GrainIsNotOnTheEnvelope = Exact<keyof AssertedBy, 'party' | 'role'>   // catches additions
+export type IsExactlyAPartyAndARole = Exact<AssertedBy, { … }>                     // catches widening `party` off its brand
+```
+
+`keyof` **does** see optional keys, so the first fires on `partyClass?`; the second is what fires
+when `party: PartyId` becomes `party: string`, which the first cannot see. Two gates, each with its
+own tamper run. Live at `packages/domain-reference/src/rules/authority.ts`
+(`AsserterGrainIsNotOnTheEnvelope`, `AsserterIsExactlyAPartyAndARole`).
+
+**And the companion edge usually needs a different file.** A refusal of a **field** cannot see a new
+**enum member** — adding `'person'` to `AGGREGATE_KINDS` leaves `AssertedBy` untouched — so that half
+lives in a `tests/conformance/*-refuses.ts` file as `@ts-expect-error` directives that go unused
+(`TS2578`) the day the member lands. `packages/domain-reference/tests/conformance/party-grain-refuses.ts`
+is the worked example.
+
 ## …and the other half: gate a recorded gap only when the gap has an edge the types can see
 
 The entry above says when an `Exact` is worthless. A6 (`docs/domain-reference/analysis/A6-documents-evidence.md` §9)

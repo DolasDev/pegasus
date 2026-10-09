@@ -147,13 +147,27 @@ export const AGGREGATE_KINDS = [
    * be **any** aggregate kind" — so this member is the entire mechanism and no record type is
    * needed.
    *
-   * **What it does NOT settle**, because the measurement said so rather than the scope:
-   * the party's **name** and the **branch grain** stay owed to [A8 §9 item 3] — `src:sirva-ade`'s
-   * `Resource` is `{Id, Name, Type, Owner}` whose `Id` "can contain agent, vendor, driver or
-   * equipment code based on the resource `Type`", so its `Name` names a company, a person or a
-   * tractor, and a party must be defined before it can be named. The **hierarchy**
+   * **What it does NOT settle, as amended by [A8 §9 item 3] (2026-10-09).** The **name** and the
+   * **hierarchy** stay owed; the **branch grain does not**. Item 3 closed that one without a field,
+   * on a row `data/identity-schemes.json` already carried: **`agentCode`** is a 7-digit code "whose
+   * **trailing three digits are the branch**", `definedNotMerelyNamed`, `identifies: party`. **So a
+   * branch is a party** — and a party's grain is declared by what identifies it and by the role it
+   * asserts under, never by anything on the party
+   * ({@link AsserterGrainIsNotOnTheEnvelope}). `gbloc` **corroborates rather than carries it**: its
+   * `src:dtr-part-iv` witness glosses it "the identity of the OFFICE", but its `src:dp3-400ng`
+   * witness says responsibility for a GBLOC "can be transferred between offices with an effective
+   * date" — which is what [SD §7.2] sources the effective interval from, and what stops the row
+   * identifying an office the way `scac` identifies a carrier.
+   *
+   * The **name** keeps two of its three blockers, and the third fell for a reason rather than by
+   * being dropped. Standing: `src:cfr-49-375` § 375.505(b)(1) publishes a **disjunction** (legal
+   * **or** trade/DBA), which under **I-KEY** is two vocabularies and not one field, and it arrives
+   * **bundled with a physical address** [SD §1.2] has no `place` aggregate for. Fallen:
+   * `src:sirva-ade`'s `Resource` "can contain agent, vendor, driver or equipment code based on the
+   * resource `Type`" because **it spans our `party` and our `resource`**, with the grain carried by
+   * its `Type` — SIRVA's fusion is explained rather than outstanding. The **hierarchy**
    * (`src:atlas-world-group-api`'s `parentAgentCode`) is a party-to-party relation no fact class
-   * holds.
+   * holds, and A8-SELF now wants the same relation ({@link corroborationIsIndependent}).
    *
    * **Not `partyRole`, and that was decided elsewhere.** [A9 §3.6] item 2: a SCAC "belongs to the
    * company whatever it is doing on this shipment", so filing it against the role-holding "would
