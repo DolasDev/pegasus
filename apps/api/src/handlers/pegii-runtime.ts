@@ -5,11 +5,12 @@
 // The pegII (MoveManager) system is the source of truth for orders and the
 // operational tasks hung off them (date confirmation, survey scheduling, …). A
 // lifecycle workflow re-fetches authoritative order state and closes tasks here
-// via the SDK (PegasusClient.get_order / list_orders / list_tasks / get_task /
-// close_task).
+// via the SDK (PegasusClient.get_order / update_order / list_orders / list_tasks /
+// get_task / close_task).
 //
 //   GET  /orders                 ReadOrder     list orders (?status=…)
 //   GET  /orders/:orderId        ReadOrder     fetch one order
+//   PATCH /orders/:orderId       WriteOrder    write allowlisted fields back (native fragment)
 //   GET  /salesmen               ReadSalesman  list salesmen (?active=…)
 //   GET  /salesmen/:salesmanId   ReadSalesman  fetch one salesman
 //   GET  /tasks                  ReadTask    list tasks (?orderId=… ?status=…)
@@ -202,6 +203,53 @@ pegiiRuntimeHandler.get('/orders/:orderId', requirePermission(Actions.ReadOrder)
   logger.info('pegII order fetched', { orderId, tenantId })
   return c.json({ data: toOrderResponse(order) })
 })
+
+// PATCH /orders/:orderId — write allowlisted fields back onto the pegII order
+// (sdk-feedback 0044). The body is a native-shape fragment, the same vocabulary
+// `?shape=native` reads, e.g. `{"Survey": {"SerivceStatus": "In Progress"}}`.
+// The SITE owns the allowlist and the validation: any other path is its 400
+// naming the path, passed through by pegiiApiErrorToHttp. `ORDER_NOT_FOUND` and
+// `ORDER_SNAPSHOT_MISSING` keep pegII's code on the 404. The response is the
+// order exactly as `?shape=native` returns it after the write, plus
+// `meta.applied` (false when the values were already there, which is not billed;
+// mirrored in the `x-pegasus-applied` header the meter reads). A site whose API
+// predates the write → 503 PEGII_CAPABILITY_MISSING.
+pegiiRuntimeHandler.patch(
+  '/orders/:orderId',
+  requirePermission(Actions.WriteOrder),
+  meterUsage(Actions.WriteOrder),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const orderId = c.req.param('orderId') ?? ''
+
+    let patch: unknown
+    try {
+      patch = await c.req.json()
+    } catch {
+      return c.json({ error: 'The body must be JSON', code: 'VALIDATION_ERROR' }, 400)
+    }
+    if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+      return c.json(
+        {
+          error:
+            'The body must be a JSON object, e.g. {"Survey": {"SerivceStatus": "In Progress"}}',
+          code: 'VALIDATION_ERROR',
+        },
+        400,
+      )
+    }
+
+    const gateway = await resolveOrderGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+    const result = await gateway.updateOrderNative(orderId, patch as Record<string, unknown>)
+    if (!result.found) {
+      return c.json({ error: result.message, code: result.code }, 404)
+    }
+
+    logger.info('pegII order written', { orderId, tenantId, applied: result.applied })
+    c.header('x-pegasus-applied', result.applied ? 'true' : 'false')
+    return c.json({ data: result.order, meta: { applied: result.applied } })
+  },
+)
 
 // ── Salesmen ────────────────────────────────────────────────────────────────
 

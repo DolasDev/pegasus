@@ -2047,6 +2047,97 @@ class PegasusClient:
         params = {"shape": shape} if shape is not None else {}
         return self._get_json(f"/api/v1/pegii/orders/{order_id}", **params)["data"]
 
+    def update_order(self, order_id: str, patch: dict[str, Any]) -> Any:
+        """Write fields back onto a pegII order. Requires ``WriteOrder``. Billable.
+
+        ``patch`` is a **native-shape fragment**, the same vocabulary
+        ``get_order(order_id, shape="native")`` returns, so a workflow reads,
+        decides and writes in one vocabulary. Only the fields present are written.
+        Omitted fields are left unchanged, never blanked::
+
+            client.update_order(
+                "490317",
+                {"Survey": {"SerivceStatus": "In Progress", "APIShipmentStatus": "Loaded"}},
+            )
+
+        **Writable paths.** The pegII site enforces this allowlist. Values must be
+        strings, and are stored verbatim (no trimming, no case change):
+
+        - ``Survey.SerivceStatus``: pegII's own spelling. The desktop's "API
+          Service Status", up to 80 characters.
+        - ``Survey.APIShipmentStatus``: the desktop's "API Shipment Status", up
+          to 50 characters.
+
+        Any other path rejects the **whole** patch with a 400 naming it, and
+        nothing is written. That includes ``Survey.ShipmentStatus``, which does
+        not exist (the error suggests ``Survey.APIShipmentStatus``), and
+        top-level ``ShipmentStatus``, the order's open/closed flag. ``null``, a
+        non-string and an over-length value are also 400s. ``""`` blanks a
+        field.
+
+        **Idempotent.** Re-sending the values already on the order succeeds,
+        changes nothing and is not billed. The HTTP response's
+        ``meta.applied`` is then ``false``.
+
+        **Side effects on the order.**
+
+        - The order and its stored native snapshot change together, so a
+          following ``get_order(..., shape="native")`` shows the write.
+        - The write is recorded in the order's change log, attributed to
+          "PEGASUS GENERATED" where the site has that employee.
+        - No order-saved event fires, so the write can't re-trigger the
+          workflow that made it.
+
+        **Some sites already write these fields.** Check before writing:
+
+        - The site's own database may set the same two fields, e.g. NW's
+          built-in Weichert integration updates them on delivery and on
+          Weichert's replies.
+        - Its next change overwrites yours, and its next partner message
+          carries yours.
+        - Don't write a field the site already owns unless the tenant has
+          switched that integration over to the platform.
+
+        Args:
+            order_id: The pegII order number.
+            patch: A non-empty native-shape fragment (a dict of dicts of strings).
+
+        Returns:
+            The order in **native** shape after the write, exactly as
+            ``get_order(order_id, shape="native")`` would return it. Under
+            ``--dry-run`` and ``pegasus_workflows.testing``, the call is captured
+            and not sent. The result is then a copy of ``patch`` with
+            ``"dryRun": True``, so the patched paths still read back.
+
+        Raises:
+            ValueError: ``patch`` is not a non-empty dict (raised before any
+                request is made).
+            PegasusApiError:
+                - 400 ``VALIDATION_ERROR`` naming the path, or ``EMPTY_PATCH``.
+                - 403 when the manifest lacks ``WriteOrder``.
+                - 404 ``ORDER_NOT_FOUND``.
+                - 404 ``ORDER_SNAPSHOT_MISSING``: the order was never saved by
+                  a current MoveManager desktop. Save it once there, then
+                  retry. Nothing was written.
+                - 503 ``PEGII_CAPABILITY_MISSING``: the site's pegII API
+                  predates the write.
+                - 502/503 ``PEGII_SOURCE_*`` when the site is unreachable.
+        """
+        if not isinstance(patch, dict) or not patch:
+            raise ValueError("patch must be a non-empty dict (a native-shape fragment)")
+        captured = self._capture_mutation(
+            "WriteOrder",
+            "update_order",
+            {"order_id": order_id, "patch": patch},
+            {**patch, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.patch(f"/api/v1/pegii/orders/{order_id}", json=patch)
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def dry_run_integration(self, integration_id: str, order_id: str) -> dict[str, Any]:
         """Dry-run a published integration against a REAL pegII order id.
 

@@ -29,6 +29,7 @@ const ACTION_LABELS: Record<string, string> = {
   SendEmail: 'Emails sent',
   UpdateTextMessage: 'Texts marked read',
   CloseTask: 'Tasks closed',
+  WriteOrder: 'Orders written back',
   DeliverToExternal: 'Integration deliveries',
   CallExternal: 'Integration calls (writes)',
 }

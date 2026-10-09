@@ -1465,6 +1465,58 @@ def test_get_task_returns_data() -> None:
     assert client.get_task("task-7") == {"id": "task-7", "status": "open"}
 
 
+def test_update_order_patches_the_native_fragment_and_returns_the_native_order() -> None:
+    captured: dict = {}
+    fragment = {"Survey": {"SerivceStatus": "In Progress", "APIShipmentStatus": "Loaded"}}
+    native = {
+        "Id": 490317,
+        "Survey": {"SerivceStatus": "In Progress", "APIShipmentStatus": "Loaded"},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": native, "meta": {"applied": True}})
+
+    client = _client_with(handler)
+    result = client.update_order("490317", fragment)
+
+    assert result == native
+    assert result["Survey"]["SerivceStatus"] == "In Progress"
+    assert captured == {"method": "PATCH", "path": "/api/v1/pegii/orders/490317", "body": fragment}
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (400, "VALIDATION_ERROR"),
+        (403, "FORBIDDEN"),
+        (404, "ORDER_NOT_FOUND"),
+        (503, "PEGII_CAPABILITY_MISSING"),
+    ],
+)
+def test_update_order_raises_the_api_error(status: int, code: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": "nope", "code": code})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.update_order("490317", {"Id": "999"})
+    assert exc_info.value.status_code == status
+    assert exc_info.value.code == code
+
+
+@pytest.mark.parametrize("patch", [{}, None, [("Survey", "x")], "Survey"])
+def test_update_order_rejects_a_non_dict_patch_before_any_request(patch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
+        raise AssertionError("no request expected")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError):
+        client.update_order("490317", patch)
+
+
 def test_close_task_posts_order_and_type() -> None:
     captured: dict = {}
 
@@ -1616,6 +1668,24 @@ def _dry_client(handler) -> PegasusClient:
 
 def _raising_handler(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"unexpected HTTP call in dry-run: {request.method} {request.url.path}")
+
+
+def test_dry_run_update_order_is_captured_and_reads_back_at_the_patched_paths() -> None:
+    reset_dry_run_captures()
+    client = _dry_client(_raising_handler)
+    fragment = {"Survey": {"SerivceStatus": "In Progress"}}
+
+    result = client.update_order("490317", fragment)
+
+    assert result == {"Survey": {"SerivceStatus": "In Progress"}, "dryRun": True}
+    assert client.captured[-1] == {
+        "method": "update_order",
+        "capability": "WriteOrder",
+        "args": {"order_id": "490317", "patch": fragment},
+        "wouldReturn": result,
+    }
+    # The caller's dict is not mutated.
+    assert fragment == {"Survey": {"SerivceStatus": "In Progress"}}
 
 
 def test_from_runtime_reads_dry_run_env(monkeypatch) -> None:

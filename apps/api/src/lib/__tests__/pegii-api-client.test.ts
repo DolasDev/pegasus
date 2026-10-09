@@ -269,6 +269,25 @@ describe('createPegiiApiClient.post / put', () => {
     expect(sentPayload(send, 0).method).toBe('PUT')
   })
 
+  it('PATCHes and returns { data } with the response headers, names lower-cased', async () => {
+    const send = stubUpstream({
+      status: 200,
+      headers: { 'X-Pegasus-Applied': 'true', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: { Id: 490317 } }),
+    })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x' })
+
+    const res = await client.patch('/api/v1/pegii/orders/490317', {
+      Survey: { SerivceStatus: 'x' },
+    })
+
+    expect(res).toEqual({
+      data: { Id: 490317 },
+      headers: { 'x-pegasus-applied': 'true', 'content-type': 'application/json' },
+    })
+    expect(sentPayload(send, 0).method).toBe('PATCH')
+  })
+
   it('carries pegII’s own error code on a 409', async () => {
     stubSequence([
       { status: 409, body: JSON.stringify({ error: 'dup', code: 'IDEMPOTENCY_KEY_REUSED' }) },

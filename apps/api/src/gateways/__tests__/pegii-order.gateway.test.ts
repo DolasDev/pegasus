@@ -8,7 +8,7 @@ function stubClient(
   getHealth: PegiiApiClient['getHealth'] = vi.fn(),
 ): PegiiApiClient {
   // findOrderById only uses get(); checkReachable() only uses getHealth().
-  return { get, getHealth, post: vi.fn(), put: vi.fn() }
+  return { get, getHealth, post: vi.fn(), put: vi.fn(), patch: vi.fn() }
 }
 
 describe('createPegiiOrderGateway.findOrderById', () => {
@@ -164,5 +164,102 @@ describe('createPegiiOrderGateway.checkReachable', () => {
     })
 
     await expect(gateway.checkReachable()).rejects.toBe(boom)
+  })
+})
+
+describe('createPegiiOrderGateway.updateOrderNative', () => {
+  const fragment = { Survey: { SerivceStatus: 'In Progress' } }
+
+  function gatewayWith(
+    patch: PegiiApiClient['patch'],
+    requireCapabilities = vi.fn().mockResolvedValue(undefined),
+  ) {
+    const client = { ...stubClient(vi.fn()), patch }
+    return {
+      requireCapabilities,
+      gateway: createPegiiOrderGateway({
+        tenantId: 't1',
+        baseUrl: 'https://pegii.test:8443',
+        client,
+        requireCapabilities,
+      }),
+    }
+  }
+
+  it('PATCHes the fragment to the site and reads x-pegasus-applied', async () => {
+    const order = { Id: 490317, Survey: { SerivceStatus: 'In Progress' } }
+    const patch = vi
+      .fn()
+      .mockResolvedValue({ data: order, headers: { 'x-pegasus-applied': 'true' } })
+    const { gateway, requireCapabilities } = gatewayWith(patch)
+
+    const result = await gateway.updateOrderNative('490317', fragment)
+
+    expect(requireCapabilities).toHaveBeenCalledWith(
+      'https://pegii.test:8443',
+      ['pegii.orders.write.v1'],
+      {},
+    )
+    expect(patch).toHaveBeenCalledWith('/api/v1/pegii/orders/490317', fragment)
+    expect(result).toEqual({ found: true, order, applied: true })
+  })
+
+  it('reports applied: false when the site says nothing changed (or omits the header)', async () => {
+    const order = { Id: 490317 }
+    const unchanged = gatewayWith(
+      vi.fn().mockResolvedValue({ data: order, headers: { 'x-pegasus-applied': 'false' } }),
+    )
+    const noHeader = gatewayWith(vi.fn().mockResolvedValue({ data: order, headers: {} }))
+
+    expect(await unchanged.gateway.updateOrderNative('490317', fragment)).toMatchObject({
+      applied: false,
+    })
+    expect(await noHeader.gateway.updateOrderNative('490317', fragment)).toMatchObject({
+      applied: false,
+    })
+  })
+
+  it("maps the site's 404 to found: false, keeping pegII's code", async () => {
+    const patch = vi
+      .fn()
+      .mockRejectedValue(
+        new PegiiApiError(
+          'PEGII_API_HTTP_ERROR',
+          'pegII API 404: ORDER_SNAPSHOT_MISSING — x',
+          404,
+          'ORDER_SNAPSHOT_MISSING',
+        ),
+      )
+    const { gateway } = gatewayWith(patch)
+
+    expect(await gateway.updateOrderNative('5', fragment)).toEqual({
+      found: false,
+      code: 'ORDER_SNAPSHOT_MISSING',
+      message: 'pegII API 404: ORDER_SNAPSHOT_MISSING — x',
+    })
+  })
+
+  it("rethrows the site's 400 so the route can pass it through", async () => {
+    const err = new PegiiApiError(
+      'PEGII_API_HTTP_ERROR',
+      "pegII API 400: VALIDATION_ERROR — 'Id'",
+      400,
+      'VALIDATION_ERROR',
+    )
+    const { gateway } = gatewayWith(vi.fn().mockRejectedValue(err))
+
+    await expect(gateway.updateOrderNative('490317', { Id: '9' })).rejects.toBe(err)
+  })
+
+  it('refuses before writing when the site lacks pegii.orders.write.v1', async () => {
+    const missing = new PegiiApiError(
+      'PEGII_API_CAPABILITY_MISSING',
+      'does not support: pegii.orders.write.v1',
+    )
+    const patch = vi.fn()
+    const { gateway } = gatewayWith(patch, vi.fn().mockRejectedValue(missing))
+
+    await expect(gateway.updateOrderNative('490317', fragment)).rejects.toBe(missing)
+    expect(patch).not.toHaveBeenCalled()
   })
 })

@@ -1,11 +1,43 @@
 # SDK feedback — close the open set (0032, 0033, 0043, 0044, 0045, 0046)
 
-**Branch:** Phase 1 → `feat/sdk-feedback-open-set` (this plan file rides with Phase 1's PR; later phases update it in their own PRs). One worktree, branch and PR per phase, via `scripts/new-worktree.sh <type> <slug>`. The movemanager phases follow movemanager's own flow (a plan in `movemanager/plans/in-progress/`, approved first, then pushed to `dev`).
+**Branch:** Phases 1–5 merged (#812, #813, #814, #817, #818). Phase 6 → `feat/order-status-write` (pegasus, worktree `~/repos/pegasus-order-status-write`), after a movemanager plan on `dev`. One worktree, branch and PR per phase, via `scripts/new-worktree.sh <type> <slug>`. The movemanager phases follow movemanager's own flow (a plan in `movemanager/plans/in-progress/`, approved first, then pushed to `dev`).
 **Goal:** Resolve every sdk-feedback spec in `~/repos/pegasus-workflows/sdk-feedback/` that is still `Proposed` and has no active work behind it, so the authoring repo can mark each one `Validated`.
-**Status:** APPROVED 2026-10-06 — all recommendations (D1–D8) accepted as written. **SDK today:** 0.45.1. **Authoring repo pin:** 0.38.0.
+**Status:** APPROVED 2026-10-06 — all recommendations (D1–D8) accepted as written. Phases 1–5 MERGED and deployed to prod. **Phase 6 DONE 2026-10-09**: movemanager on `dev` (`79b3a355`), pegasus in this PR (SDK 0.49.0). **Authoring repo pin:** 0.38.0.
 **Inputs:** the spec files named in each phase. Each phase lists the spec's acceptance criteria as its definition of done.
 
 ---
+
+## Resume here (checkpoint 2026-10-08)
+
+- **Where:** pegasus worktree `/home/steve/repos/pegasus-order-status-write`, branch `feat/order-status-write`. It was created off `origin/main` at `8995f296` (#818) for Phase 6 and has no commits yet.
+  - The only change is this plan file. It is uncommitted on purpose: it is the checkpoint, and it lands with Phase 6's pegasus PR.
+  - The primary checkout `~/repos/pegasus` stays on `main`. A hook blocks edits there.
+- **Status:**
+  - [x] Phase 1: #812, `97d24ae3`, SDK 0.46.0.
+  - [x] Phase 2: #813, `c26b2b03`.
+  - [x] Phase 3: #814, `b64f7400`, SDK 0.47.0. D6 prod check clean.
+  - [x] Phase 4: #817, `be16d7d2`, SDK 0.48.0. Prod migration deployed.
+  - [x] Phase 5: #818, `8995f296`, SDK 0.48.1.
+  - Every tag (`sdk-python-v0.46.0` … `v0.48.1`) is published, every Deploy is green, and the authoring repo's `~/repos/pegasus-workflows/CLAUDE.md` is updated through 0.48.1 (its `main` is at `7d3822c`).
+  - [x] Phase 6 (0044 A/B, order write-back): DONE 2026-10-09. movemanager `2d5714c9` (+ archive `79b3a355`) on `dev`; pegasus route + `WriteOrder` + SDK 0.49.0 in this PR. History: movemanager plan written 2026-10-08 — movemanager `plans/completed/2d5714c9-order-status-write.md` (branch `feat/order-status-write` off `origin/dev` @ `8ab2e341`, tracks `origin/dev` — push `HEAD:<branch>` explicitly). Its D9 corrects this plan: the field is `Survey.APIShipmentStatus` (`sales.special2`); `Survey.ShipmentStatus` does not exist. D8–D14 approved 2026-10-08. Trigger gate ran 2026-10-09 (NW+QMM; RVS tunnel down): mechanically safe, BUT NW runs a live in-DB Weichert pipeline owning both columns — D15 (a) and D16 approved 2026-10-09.
+- **Next action (after this PR merges):** tag `sdk-python-v0.49.0` and publish; update the authoring repo's `CLAUDE.md` (`update_order`, the `APIShipmentStatus` correction, the NW in-DB Weichert warning); confirm the alpha pegII API manifest carries `79b3a355`.
+- **In flight:** nothing. No open PR from this plan. Open PRs on the repo are #819 (another session, `chore/drop-pw-mcp-dep`) and draft #145. Re-check with `gh pr list --state open`.
+- **Decisions & dead ends (this session):**
+  - 0045 D: the spec claimed `prior` is unimplemented. It IS implemented: the validate endpoint loads the projection as `prior` via the input mapping, but no floor's facts read it. The docs now say that.
+  - 0033 A: the spec's "display dropped on publish/pull" was not real. Nothing strips keys.
+  - 0044 C: the 404 catch-all lives in `pegiiRuntimeHandler`, not in `tenant.ts` and not on `m2mV1`. Other m2m sub-routers still 401 on an unmatched route (noted in GOTCHAS).
+  - 0032: the guards use the ROOT Prisma client, because other tenants trigger and run GLOBAL workflows. `workflows.ts` was added to the db-access-guard allowlist with that justification.
+- **Gotchas:**
+  - Worktree-isolated sessions refuse heredocs, `$(...)` and loops. Write commit messages to a scratchpad file and use `git commit -F`; run loops as `bash script.sh`.
+  - After any local api test run or `git push`, `git restore apps/api/vitest.config.ts`. The coverage ratchet rewrites the floors, and committing them gets the PR ejected from the queue.
+  - A new worktree comes up with `apps/e2e/.env.test` and `package-lock.json` modified. `git restore` both.
+  - Merge-queue E2E can hang in `playwright install-deps` (`apt-get update` on the Ubuntu mirror). It ejected #818 twice. Diagnose with `gh run view <merge_group run> --json jobs`, then re-enqueue with `gh pr merge <N> --auto`. Do NOT watch with `gh pr checks`; watch the merge queue (memory `project_merge_queue_runbook`).
+  - Before a tag push from `~/repos/pegasus`, if pre-push fails with `unknown key agentGuidance`, run `npm install` and revert `package-lock.json`.
+  - Prod read-only SQL: `DATABASE_URL` from the prod API Lambda env via a scratchpad script. `aws sso login --profile dolas-pegasus-prod --use-device-code`.
+- **Verification still owed (not this repo's CI):**
+  - The authoring repo must bump its pin from 0.38.0 to 0.49.0 and re-run the ACs for 0032, 0033, 0043, 0044, 0045 and 0046 (interim) to mark them `Validated`.
+  - **0044 A/B, live round-trip AC:** it needs an order on a site running `pegii.orders.write.v1`, and it must not be an NW Weichert order (D15 (a)). Spec 0044's AC paths must be amended from `Survey.ShipmentStatus` to `Survey.APIShipmentStatus`. The `weichert-milestone-update` AC (un-stub `write_statuses_to_pegii`) is BLOCKED by D15 (a) until a Weichert cutover plan retires NW's in-DB pipeline. Separately, the authoring repo's `weichert/mapping.json` reads `Survey.ShipmentStatus`, which doesn't exist, so it has always sent `null`.
+  - 0032's e2e AC (the platform retires `send_order_to_partner` plus the leftover test versions) is the author's call and not done.
 
 ## Scope
 
@@ -189,16 +221,24 @@ Applies only if D7 is approved. This changes `services/pegii-tasks.ts`, which pu
 
 There is no home for this today: pulse Phase 7 is memos, not an order patch. It follows the pulse rule of real pegII API endpoints, with no stubs and no direct cloud→MSSQL access. It ships through the same rollout as pulse Phase 5.
 
-- [ ] **movemanager plan** (`plans/in-progress/order-status-write.md`, approved before code): `PATCH /api/v1/pegii/orders/{orderNumber}` per D8.
-  - An allowlist that starts as `Survey.SerivceStatus` and `Survey.ShipmentStatus`, mapped to their `sales` columns.
+**Done 2026-10-09.** movemanager `2d5714c9` is on `dev` (plan archived at `79b3a355` as `plans/completed/2d5714c9-order-status-write.md`), and the pegasus side ships in this PR. What happened differently from the plan:
+
+- **The second field is `Survey.APIShipmentStatus` (`sales.special2`).** `Survey.ShipmentStatus`, as named by the spec and the first draft of this plan, does not exist in the native order. A write to it is a 400 that suggests the real name.
+- **Snapshot risk: patched on write.** `sales` and `SaleSerializedSnapshot` change in one transaction. The JSON is edited in C#, because pegNW/pegQMM run at compat 100/120, below `JSON_MODIFY`'s 130. The response comes from the serialized GET's own handler.
+- **The trigger gate found a live in-DB Weichert pipeline on NW** (GOTCHAS "NW's own database already runs a Weichert integration…"). D15 (a): the endpoint ships, but NW's Weichert workflow must not use it until a cutover. D16: writes stamp `labor_names = '1001'` where that employee exists.
+- **Outcome flag and billing:** the site reports applied/unchanged in an `X-Pegasus-Applied` header. The pegasus route re-emits it as `meta.applied` plus the same header, and `BILLABLE_ACTIONS.WriteOrder` bills only `applied` writes, minting one key per write.
+- **`role-options` needed nothing:** it lists roles, not actions. The tenant Usage page got a `WriteOrder` label instead.
+
+- [x] **movemanager plan** (`plans/in-progress/order-status-write.md`, approved before code): `PATCH /api/v1/pegii/orders/{orderNumber}` per D8.
+  - An allowlist that starts as `Survey.SerivceStatus` and `Survey.APIShipmentStatus` (corrected from `Survey.ShipmentStatus`), mapped to their `sales` columns.
   - `400` naming any path outside the allowlist. `404` for an unknown order. Idempotent. Returns the updated order in native shape.
-  - Before shipping, re-read the triggers on `sales` (`sys.triggers`), using the #668 GOTCHAS recipe.
-- [ ] **Risk to settle in that plan:** the pulse plan found the serialized order snapshot goes stale against DB triggers. The spec's round-trip AC (`get_order(shape="native")` shows the written value) holds only if the response and later reads come from live columns, not the snapshot. Either regenerate the snapshot on write, or read the patched fields live.
-- [ ] **pegasus:** add the `PATCH /api/v1/pegii/orders/:orderId` route through the pegII gateway. Map upstream 400/404 so they aren't disguised as a 502 (the pulse Phase 5 change to `pegiiApiErrorToHttp`).
-  - Add a new Cedar action, `WriteOrder`, to the schema, the persona grants and `role-options`.
+  - Before shipping, re-read the triggers on `sales` (`sys.triggers`), using the #668 GOTCHAS recipe. Done for NW and QMM; RVS was unreachable and is still owed.
+- [x] **Risk to settle in that plan:** the pulse plan found the serialized order snapshot goes stale against DB triggers. The spec's round-trip AC (`get_order(shape="native")` shows the written value) holds only if the response and later reads come from live columns, not the snapshot. Either regenerate the snapshot on write, or read the patched fields live. Settled by patching the snapshot in the same transaction.
+- [x] **pegasus:** add the `PATCH /api/v1/pegii/orders/:orderId` route through the pegII gateway (`OrderGateway.updateOrderNative`, gated on `pegii.orders.write.v1`). Upstream 400 and 404 pass through with pegII's code.
+  - Add a new Cedar action, `WriteOrder`, to the schema and the `workflow_runtime` persona grant.
   - Meter it: `billable-actions.ts`, `meterUsage(Actions.WriteOrder)`, and the README's billable list.
-- [ ] SDK: `update_order(order_id, patch)`, listed in `testing._MUTATIONS` as `"update_order": "WriteOrder"`, and captured under `--dry-run`. Also update the docs surfaces and the authoring repo's `CLAUDE.md`.
-- [ ] Authoring side (not this repo): `weichert-milestone-update`'s `write_statuses_to_pegii` stops being a stub.
+- [x] SDK 0.49.0: `update_order(order_id, patch)`, listed in `testing._MUTATIONS` as `"update_order": "WriteOrder"`, and captured under `--dry-run`. README, CHANGELOG, MCP guidance and OpenAPI are updated. The authoring repo's `CLAUDE.md` follows the tag.
+- [ ] Authoring side (not this repo): `weichert-milestone-update`'s `write_statuses_to_pegii` stops being a stub. **Blocked by D15 (a) on NW** until a Weichert cutover plan exists.
 
 ---
 

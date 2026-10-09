@@ -42,7 +42,8 @@ const valid = { Authorization: 'Bearer vnd_valid' }
 describe('unmatched /api/v1/pegii/* routes', () => {
   it.each([
     ['POST', '/api/v1/pegii/orders/zzz/close'],
-    ['PATCH', '/api/v1/pegii/orders/490317'],
+    // PATCH /orders/:id is real since 0044 A/B (SDK 0.49.0); PUT stays unmatched.
+    ['PUT', '/api/v1/pegii/orders/490317'],
     ['POST', '/api/v1/pegii/tasks/create'],
     ['GET', '/api/v1/pegii/no-such-thing'],
   ])('answers 404 NOT_FOUND to an authenticated key: %s %s', async (method, path) => {

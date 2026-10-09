@@ -7,6 +7,7 @@ function client(): PegiiApiClient & { post: ReturnType<typeof vi.fn> } {
   return {
     get: vi.fn(),
     getHealth: vi.fn(),
+    patch: vi.fn(),
     put: vi.fn(),
     post: vi.fn().mockResolvedValue({ sent: true }),
   }

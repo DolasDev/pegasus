@@ -39,4 +39,20 @@ export interface OrderGateway {
    * source is down.
    */
   checkReachable(): Promise<void>
+
+  /**
+   * Write allowlisted fields back onto an order (`PATCH /api/v1/pegii/orders/{n}`
+   * on the site; sdk-feedback 0044). `patch` is a native-shape fragment, e.g.
+   * `{Survey: {SerivceStatus: 'In Progress'}}`; the SITE owns the allowlist and
+   * answers 400 naming any other path (surfaced as a PegiiApiError). A 404 —
+   * `ORDER_NOT_FOUND`, or `ORDER_SNAPSHOT_MISSING` for an order never saved by a
+   * current desktop — resolves `{found: false}` with pegII's code. A site whose
+   * API predates the write throws PEGII_API_CAPABILITY_MISSING (→ 503).
+   */
+  updateOrderNative(id: string, patch: Record<string, unknown>): Promise<OrderNativeUpdate>
 }
+
+export type OrderNativeUpdate =
+  /** `order` is the native order after the write; `applied` is false when nothing changed. */
+  | { found: true; order: unknown; applied: boolean }
+  | { found: false; code: string; message: string }

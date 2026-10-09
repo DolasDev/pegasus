@@ -145,6 +145,7 @@ _MUTATIONS: dict[str, str] = {
     "record_sms_opt_out": "ManageSmsOptOut",
     "mark_text_message_read": "UpdateTextMessage",
     "close_task": "CloseTask",
+    "update_order": "WriteOrder",
     "put_projection": "WriteIntegrationProjection",
     "delete_projection": "WriteIntegrationProjection",
     "put_workflow_state": "WriteWorkflowState",

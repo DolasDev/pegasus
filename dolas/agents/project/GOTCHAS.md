@@ -2884,6 +2884,37 @@ the local `audit-ci` run before enqueuing is.
 **version-update** run failed. If only `for <pkg>` security runs are red, the cause is the advisory,
 not the service — triage the alert (fix, or dismiss with a reason).
 
+## NW's own database already runs a Weichert integration over the fields `update_order` writes
+
+`update_order` (`PATCH /api/v1/pegii/orders/:id`, SDK 0.49.0) writes `Survey.SerivceStatus` →
+`sales.whse_remarks5` and `Survey.APIShipmentStatus` → `sales.special2`. On **pegNW**, those two
+columns are not idle: a database-resident Weichert integration owns them. It was found by reading
+`sys.triggers` on prod (read-only, 2026-10-09) before the endpoint was written:
+
+- **`TriggerSalesUpdate` derives both columns:**
+  - On `del_actual`: `Delivered`/`Completed`, or `In Progress`/`In Process`/`In Storage`.
+  - On `sit_in_actual`.
+  - On `doc3`/`total_estimate`: `Submitted`.
+  - On `shipment_status = 'C'`: `Cancelled`.
+- **It sends them to Weichert.** It enqueues `weichert-milestone2` rows in
+  `pegasus_broadcast_events`, copying both columns. Something on-prem drains that table: 1,108
+  Weichert events in the 30 days to 2026-10-09, none left `NEW`.
+- **Weichert's replies write them back:** `TriggerPegasusWeichertResponsesInsert`.
+
+So a cloud write to those columns on NW is overwritten by the next date change, and it changes
+what the **legacy** pipeline sends to Weichert next. The endpoint itself is safe: the only trigger
+effect of a status-only UPDATE is one `dispatch_log` audit row per changed column, stamped
+`labor_names = '1001'` (PEGASUS GENERATED) where that employee exists. pegQMM has no references to
+either column, and pegQMM has no employee 1001.
+
+**How to apply:** don't let a workflow declare `WriteOrder` to write these fields for NW (e.g.
+un-stubbing `weichert-milestone-update`'s `write_statuses_to_pegii`) until a cutover plan retires
+the in-DB pipeline. For any new writable field, or any new site, read that site's triggers first:
+the movemanager plan `plans/completed/2d5714c9-order-status-write.md` has the queries and the
+read-only executor recipe. Reliable (pegRVS) was unreachable on 2026-10-09 and is still unread.
+Also, `Survey.ShipmentStatus` does not exist in the native order. Mappings that read it (Weichert's
+`shipmentStatus`) have always resolved to `null`.
+
 ---
 
 ## An enumeration can have a home a `grep` for the member name will not find

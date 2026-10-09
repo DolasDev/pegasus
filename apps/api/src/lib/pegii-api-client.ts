@@ -67,6 +67,12 @@ export interface PegiiApiClientConfig {
 
 export type PegiiQuery = Record<string, string | number | undefined>
 
+/** An unwrapped `data` plus the response headers, keyed by lower-cased name. */
+export interface PegiiResponse<T> {
+  data: T
+  headers: Record<string, string>
+}
+
 /**
  * Body shape of the pegII team's `GET /health` probe. It is a bare status
  * object (e.g. `{"status":"healthy"}`) — deliberately NOT the platform
@@ -92,6 +98,13 @@ export interface PegiiApiClient {
 
   /** PUT a JSON body and return the unwrapped `data`. Same error contract as `get`. */
   put<T>(path: string, body: unknown): Promise<T>
+
+  /**
+   * PATCH a JSON body and return the unwrapped `data` together with the response
+   * headers (lower-cased names), for endpoints that report an outcome in a header
+   * (the order write-back's `x-pegasus-applied`). Same error contract as `get`.
+   */
+  patch<T>(path: string, body: unknown): Promise<PegiiResponse<T>>
 
   /**
    * GET `/health` and return the parsed status body as-is. Unlike `get()`,
@@ -201,6 +214,15 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
     query?: PegiiQuery,
     payload?: unknown,
   ): Promise<T> {
+    return (await requestWithHeaders<T>(method, path, query, payload)).data
+  }
+
+  async function requestWithHeaders<T>(
+    method: string,
+    path: string,
+    query?: PegiiQuery,
+    payload?: unknown,
+  ): Promise<PegiiResponse<T>> {
     if (!config.baseUrl) {
       throw new PegiiApiError(
         'PEGII_API_NOT_CONFIGURED',
@@ -259,7 +281,10 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
       )
     }
 
-    return (json as { data: T }).data
+    const headers: Record<string, string> = {}
+    for (const [name, value] of Object.entries(res.headers ?? {}))
+      headers[name.toLowerCase()] = value
+    return { data: (json as { data: T }).data, headers }
   }
 
   return {
@@ -273,6 +298,10 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
 
     put<T>(path: string, body: unknown): Promise<T> {
       return request<T>('PUT', path, undefined, body)
+    },
+
+    patch<T>(path: string, body: unknown): Promise<PegiiResponse<T>> {
+      return requestWithHeaders<T>('PATCH', path, undefined, body)
     },
 
     async getHealth(): Promise<PegiiHealth> {

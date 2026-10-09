@@ -7,7 +7,7 @@ function stubClient(
   get: PegiiApiClient['get'],
   getHealth: PegiiApiClient['getHealth'] = vi.fn(),
 ): PegiiApiClient {
-  return { get, getHealth, post: vi.fn(), put: vi.fn() }
+  return { get, getHealth, post: vi.fn(), put: vi.fn(), patch: vi.fn() }
 }
 
 describe('createPegiiSalesmanGateway.findSalesmanById', () => {

@@ -73,6 +73,14 @@ export const BILLABLE_ACTIONS = {
   UpdateTextMessage: { billable: always, subjectKey: idKey('read') },
   // POST /pegii/tasks/close — `alreadyClosed` replay. Keyed on the task.
   CloseTask: { billable: always, subjectKey: idKey('close') },
+  // PATCH /pegii/orders/:orderId — the order write-back. `data` is the native
+  // order, so the outcome rides in the `x-pegasus-applied` header the route sets
+  // from pegII's: re-sending the values already on the order changes nothing and
+  // is not billed. Every applied write counts once (no stable result id).
+  WriteOrder: {
+    billable: (_data, c) => c.res.headers.get('x-pegasus-applied') === 'true',
+    subjectKey: () => `order-write:${randomUUID()}`,
+  },
   // POST /integrations/:id/deliver-to-external. The handler answers 200 even
   // when the PARTNER failed (`delivered: response.ok`), so read that, not the
   // HTTP status. No dedup key or stable result id exists, so every successful
