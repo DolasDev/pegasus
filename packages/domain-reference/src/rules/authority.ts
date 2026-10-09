@@ -1454,8 +1454,8 @@ export function listedStandingOf(type: AssertionType, role: RoleName): Standing 
  * found it.
  *
  * **It is recorded and NOT fixed, because the fix needs an input no source publishes.** Closing it
- * means resolving an asserting individual to the organisation they act for, and item 3's §1.3a
- * measurement is that every source which puts an individual in an asserting position attaches them
+ * means resolving an asserting individual to the organisation they act for, and item 3's measurement
+ * (`plans/completed/domain-reference-a8-item3.md` §8) is that every source which puts an individual in an asserting position attaches them
  * to an organisation **in the same breath and never by a reference the model could read**:
  * `src:dp3-tender-of-service` has a noun phrase (_"NTS TSP **company** official"_, NTS §1.4.13.1),
  * `src:milmove-mymove` has its own schema's mandatory FK (`OfficeUser.TransportationOfficeID`),
