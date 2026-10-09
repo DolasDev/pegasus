@@ -219,14 +219,53 @@ export const ROLE_NAMES = [
   'setoffAgent',
   // Added by [A8 §2] because each asserts facts:
   /**
-   * The party whose goods move — `goodsOwner` at the residence, per **A8-NAME-2**'s two-way split
-   * of "shipper" ([A8 §2]). Added because it asserts facts and ADE has no slot for it:
-   * `src:cfr-49-375` requires the customer's signature on the BOL (§375.505(a)), the inventory
-   * (§375.503), the delivery receipt (§375.701) and any waiver of a weighing observation
-   * (§375.515(b)). That is why [A8 §5] row 5 places it **competing** rather than corroborating —
-   * three sources make the signature constitutive, not decorative.
+   * The party whose goods move — **A8-NAME-2**'s two-way split of "shipper" ([A8 §2]), whose other
+   * half is `accountParty` below. Added because it asserts facts and ADE has no slot for it.
+   *
+   * **RENAMED from `customer` at [A8 §9 item 2] (catalog 0.7.0), and the rename is BREAKING** —
+   * `changedRoleNameSpelling` ([catalog §2.3]), because a role name is a fact-key component after
+   * F1. Two reasons, and the second is a correction rather than a preference:
+   *
+   * 1. **A8-NAME-2 fixed this name and the enum did not carry it.** That rule's own **[ORIGINAL]**
+   *    is "making it a hard rule and **fixing the two names**", and the two it fixes are
+   *    `accountParty` and `goodsOwner`. The enum spelled it `customer` from publication until
+   *    `0.7.0` — **F5's defect with a different word instead of a different case.**
+   * 2. **`customer` is the one word in this area `src:cfr-49-375` never uses for a party with a
+   *    duty.** Counted in the captured bytes: `customer` **6** times — a bank's customer inside the
+   *    `Cashier's check` definition, a subpart heading, a complaint-procedure description and three
+   *    in Appendix A's plain-English pamphlet — against `individual shipper` **189** times, which is
+   *    the § 375.103 **defined term** carrying every signature obligation in the part. The
+   *    regulation's axis is **ownership plus payment**: an `Individual shipper` is named on the bill
+   *    of lading **and** owns the goods **and** pays his or her own charges, while a `Commercial
+   *    shipper` is named as consignor or consignee, **is not the owner**, and pays for the
+   *    beneficial owner's account. `consignor` and `consignee` are **positions on the bill of
+   *    lading** — six occurrences each, only inside those two definitions — not roles with duties.
+   *    So the word that matches the axis is the owner's, and `customer` invited a reader to file the
+   *    **payer** here, which is the ambiguity A8-NAME-2 exists to abolish with `accountParty`
+   *    sitting beside it for exactly that party.
+   *
+   * **The signature citations are corrected here too, and two of the four were wrong.** §375.505(a)
+   * makes the **carrier** "prepare and issue" the bill of lading and lists this party as item (3), a
+   * name and address — being named on a document is not signing it; and §375.701 forbids
+   * release-of-liability language on a delivery receipt and requires **no signature at all**. What
+   * the part does require of this party, the first two being mutual signatures:
+   * **§375.503(c)** the inventory "signed by **both** you and the individual shipper";
+   * **§375.401(h)** "**You and the individual shipper must sign the estimate of charges**", which is
+   * a **money** document and so reaches [A8 §5] row 11 as well as row 5; **§375.213(f)(1)** a
+   * "signed, dated receipt" for the consumer-protection publications; and in writing,
+   * **§375.503(d)** noting missing or damaged articles **at delivery**, **§375.515(b)** the
+   * re-weighing waiver, **§375.401(a)(2)** the physical-survey waiver "signed by the shipper before
+   * the shipment is loaded", **§375.201(c)** and §375.505's Full Value Protection waiver, and
+   * **§375.403** / **§375.405**'s new estimates and their written attachments. **[A8 §5] row 5's
+   * `competing` standing stands and is better sourced than it was** — what changed is which sections
+   * say so.
+   *
+   * **Not to be confused with `roleClass`'s `customer`**, a member of a **different** vocabulary —
+   * the one [A8 §9 item 2] **refuses** ([SD §2.4], `RoleClassStaysOwed`) — which this rename
+   * deliberately leaves alone. Until `0.7.0` one word served both; it no longer does, and that is a
+   * side benefit rather than the reason.
    */
-  'customer',
+  'goodsOwner',
   /**
    * The party that contracts and pays — the RMC, the corporate account, the Government. The other
    * half of **A8-NAME-2** ([A8 §2]), added because `src:dp3-400ng` makes the Government the DPS
@@ -241,6 +280,39 @@ export const ROLE_NAMES = [
    * matters — the weigh master supplies the **evidence**, not the assertion.
    */
   'weighMaster',
+  /**
+   * A third party that publishes movement facts it observed without holding the goods — a
+   * visibility or telematics platform. **Added at [A8 §9 item 2] (catalog 0.7.0)**, and it is the
+   * one candidate in that item's whole list which passes [A8 §2]'s addition test on **primary
+   * captured** evidence.
+   *
+   * **Sourced.** `src:dcsa`'s `tntPublisherRole`
+   * (`captured/DCSA-OpenAPI/domain/event/event_domain_v3.2.0.yaml`) is a closed four-member enum
+   * described as _"the **party function code of the publisher**"_ — `CA (Carrier)`,
+   * `AG (Carrier local agent)`, `VSP (Visibility Service Provider)`,
+   * `SVP (Any other service provider)` — carried on the same schema as `transportEventTypeCode`'s
+   * `ARRI (Arrived)` / `DEPA (Departed)`. So a publisher that is neither the carrier nor its agent
+   * **asserts arrival and departure**, which is exactly [A8 §5] rows 1-2, and ADE's cast has no slot
+   * for it. Both conjuncts of the test are met.
+   *
+   * **Spelled with its function per A8-NAME-1**, and NOT taken from X12: element 98's nearest codes
+   * are the generic `SJ Service Provider` / `13 Contracted Service Provider`, which the cross-walk
+   * records as "none is the system of record asserting a derived fact".
+   *
+   * **It rests on ONE publisher, and that is disclosed rather than smoothed over.** `src:dcsa` is
+   * the only source in the corpus that publishes a role code for it; `src:samsara`'s analysis calls
+   * third-party visibility platforms "almost certainly the hook" and names no role. **`weighMaster`
+   * is the precedent that one publisher is enough under §2's test** — it rests on
+   * `src:cfr-49-375` §375.519 alone — and [A8 §10] carries the standing exposure as its own row
+   * (added by this round).
+   *
+   * **Advisory everywhere, and that is where the table already had it.** [A8 §5] rows 1-2 listed
+   * "visibility providers (`src:dcsa` VSP / SVP)" in `advisory.unresolved` before this member
+   * existed; this round resolves those two entries and adds no standing the table had not already
+   * written down. A platform that does not hold the goods has no custody and therefore no
+   * `boundBy = CUSTODY` authority ([A8 §4.3]).
+   */
+  'visibilityProvider',
   /**
    * Us. Added by [A8 §2] because [SD §4.3] makes `FactResolved` an assertion **by the platform**
    * with `capturedBy = DERIVED_BY_RULE`, and [SD §6.6] holds that the platform "asserts what it

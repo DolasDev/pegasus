@@ -424,17 +424,41 @@ listed in §(b) rule 3 below.
    **[ORIGINAL]:** `customer`, `account/RMC`, `visibility provider` and `platform` as roles.
    `visibility provider` has a near-cite (DCSA's `VSP`); the other three are ours — and
    `customer` is argued separately in §5.3.
-   The role is carried **on the assertion**, not looked up from the party, because
-   `src:sirva-ade` is explicit that role and ownership are **orthogonal axes** (`Type` × `Owner`
-   ∈ Corporate/Agent/Vendor, GSD p.9) and its own worked sample proves one company holds two
-   roles at once — `TIER ONE RELOCATION` is both `Booker` and `DestinationAgent` (GSD p.17).
-   `src:open-trip-model` independently confirms the placement by putting `roles` on the
-   _association_, not the actor.
-   **Still unread, and it matters:** `src:stedi-x12-reference` element 98, the party-role code
-   list. The stedi analysis scores A8 C2=1 / C4=0 on exactly this ground — "the role vocabulary
-   itself is element 98's code list, **which we did not read**" — and flags it as an open
-   question blocking A8. Until it is read, this vocabulary is one partner's cast plus four
-   authored members, not an industry list.
+
+   > **ANNOTATED 2026-10-09 by [`A8` §9 item 2](A8-authority-skeleton.md), which found that TWO of
+   > these four names were proposed here and never carried into the enum.**
+   >
+   > - **`visibility provider` LANDED at catalog `0.7.0`** as `visibilityProvider`, spelled per
+   >   A8-NAME-1. The "near-cite" is better than near: `src:dcsa`'s `tntPublisherRole` is a closed
+   >   four-member enum described as _"the **party function code of the publisher**"_ —
+   >   `CA`, `AG Carrier local agent`, `VSP Visibility Service Provider`, `SVP Any other service
+provider` — carried on the same schema as `transportEventTypeCode`'s `ARRI`/`DEPA`, so the
+   >   publisher that is neither carrier nor carrier's agent **asserts arrival and departure**. It is
+   >   **primary and captured**, and it is the one candidate in item 2's whole list that passes
+   >   [`A8` §2](A8-authority-skeleton.md)'s addition test on primary evidence. **It is a
+   >   cross-domain read** — DCSA is ocean container shipping and our rows 1-2 are stops on an HHG
+   >   van's trip — which [`A8` §10] now carries as its own confidence row.
+   > - **`customer` was RENAMED `goodsOwner`** at the same release, breaking
+   >   (`changedRoleNameSpelling`), because **A8-NAME-2 fixed the name `goodsOwner`** and the enum
+   >   never carried it, and because `customer` appears six times in `src:cfr-49-375` and never for
+   >   a party with a duty against 189 of the defined term `individual shipper`. See §5.3's own
+   >   annotation.
+   >
+   > **Both are the same defect, and this bullet is where both were visible all along: a document
+   > names a role and the enum does not carry the name.** F5 closed the case-mismatch version of it
+   > inside `[A8 §2]`; item 2 found two more, in two different documents, and neither was findable by
+   > reading either document alone.
+   > The role is carried **on the assertion**, not looked up from the party, because
+   > `src:sirva-ade` is explicit that role and ownership are **orthogonal axes** (`Type` × `Owner`
+   > ∈ Corporate/Agent/Vendor, GSD p.9) and its own worked sample proves one company holds two
+   > roles at once — `TIER ONE RELOCATION` is both `Booker` and `DestinationAgent` (GSD p.17).
+   > `src:open-trip-model` independently confirms the placement by putting `roles` on the
+   > _association_, not the actor.
+   > **Still unread, and it matters:** `src:stedi-x12-reference` element 98, the party-role code
+   > list. The stedi analysis scores A8 C2=1 / C4=0 on exactly this ground — "the role vocabulary
+   > itself is element 98's code list, **which we did not read**" — and flags it as an open
+   > question blocking A8. Until it is read, this vocabulary is one partner's cast plus four
+   > authored members, not an industry list.
 
 2. **`capturedBy` — how the value was obtained — required and separate from who.** Omnitracs'
    `DataSource` generalised. Seven members, each traceable to a source:
@@ -935,7 +959,9 @@ item, "not home", the C.O.D. payment, the notation of damage at delivery
 (`src:cfr-49-375` §375.605(b)). `src:shippeo` has `DAF` "consignee closed or absent" as a
 _justification the carrier supplies_ — the customer is never the asserter, only the subject.
 
-**ORIGINAL DESIGN:** `customer` is a first-class value of `assertedBy.role`, and certain facts
+**ORIGINAL DESIGN** (the role is spelled **`goodsOwner`** since catalog `0.7.0` —
+[`A8` §9 item 2](A8-authority-skeleton.md); the design below is unaffected and the name is argued
+there)**:** `customer` is a first-class value of `assertedBy.role`, and certain facts
 (inventory acceptance, item refusal, damage notation at delivery, delivery receipt) may be
 asserted _only_ by the customer or co-asserted. This changes the authority model, not just the
 enum. It is also the member of the role vocabulary that element 98 is least likely to supply,

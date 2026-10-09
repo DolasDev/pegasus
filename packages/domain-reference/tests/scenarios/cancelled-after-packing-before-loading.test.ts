@@ -393,7 +393,7 @@ describe('OWED — the charge exists, is anchored, and has no value', () => {
     expect(proposedCharge.value.provisional).toBeDefined()
   })
 
-  it('[A8 §5] row 15 — `packing` now has an authority row, and the customer competes on scope', () => {
+  it('[A8 §5] row 15 — `packing` now has an authority row, and the goods owner competes on scope', () => {
     // This block used to record the gap: "the origin agent packed and says so" was not backed by a
     // table, so a dispute about the SCOPE of what was packed had nothing published to decide it.
     // Row 15 decides it, as the mirror of row 3 (loading) — which is the authored step.
@@ -407,7 +407,7 @@ describe('OWED — the charge exists, is anchored, and has no value', () => {
     })
     // `src:cfr-49-375` §375.503(a) and (d) give the shipper the opportunity to observe, verify and
     // note in writing at both ends — a published right to contest the scope.
-    expect(packing.competing).toContain('customer')
+    expect(packing.competing).toContain('goodsOwner')
   })
 
   it('[SD §10.2 item 9] what a shipment boundary that never got its BOL *is*, answered', () => {

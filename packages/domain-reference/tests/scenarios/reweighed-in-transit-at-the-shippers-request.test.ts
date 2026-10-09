@@ -56,7 +56,7 @@ const spec = specVersion('1')
 const shipment = subjectRef('shipment', shipmentId('S-5150'))
 
 const hauler = { party: partyId('P-VANLINE'), role: 'hauler' } as const
-const customer = { party: partyId('P-SHIPPER'), role: 'customer' } as const
+const goodsOwner = { party: partyId('P-SHIPPER'), role: 'goodsOwner' } as const
 const platform = partyId('P-PLATFORM')
 
 /**
@@ -69,7 +69,7 @@ function netWeight(
   id: string,
   amount: number,
   ticket: string,
-  asserter: typeof hauler | typeof customer,
+  asserter: typeof hauler | typeof goodsOwner,
   unit = 'lb',
 ): CapturedAssertion<'weight.net'> {
   return {
@@ -119,7 +119,7 @@ describe('[SD §4.4] R-WEIGHT-LOWER bites', () => {
 
   it('refuses one weighing keyed twice — the lower of a value and itself is not a finding', () => {
     // Same ticket on both sides: this is the original, re-keyed by the second party.
-    const rekeyed = netWeight('W-REKEYED', 8240, 'TICKET-ORIGIN-3391', customer)
+    const rekeyed = netWeight('W-REKEYED', 8240, 'TICKET-ORIGIN-3391', goodsOwner)
     expect(areDistinctWeighings(original, rekeyed)).toBe('SAME_WEIGHING')
     expect(resolveNetWeight(original, rekeyed)).toMatchObject({
       applied: false,
@@ -171,7 +171,7 @@ describe('[SD §4.4] note 2 — a reweigh is NOT a correction', () => {
     // supersession must name the earlier record; these two are a contest, which is a different
     // mechanism and produces a different published record.
     const claimingSupersession = { ...reweigh, supersedes: eventId('W-ORIGINAL') } as const
-    const bySomebodyElse = { ...claimingSupersession, assertedBy: customer } as const
+    const bySomebodyElse = { ...claimingSupersession, assertedBy: goodsOwner } as const
     expect(supersedesIsWellFormed(original, bySomebodyElse)).toBe(false)
     // By the same party, with the same fact key, it would be well formed — which is the point of
     // keeping the two mechanisms apart rather than reading every second weight as a revision.
@@ -224,7 +224,7 @@ describe('[A8 §5 r6] nobody is authoritative, and that is the finding', () => {
   it('places the shipper as COMPETING and the weigh master as evidence', () => {
     // §375.517 gives the shipper the reweigh demand and makes the freight bill follow the reweigh
     // weight, so the reweigh-demanding side competes rather than corroborates.
-    expect(listedStandingOf('weight.net', 'customer')).toBe('competing')
+    expect(listedStandingOf('weight.net', 'goodsOwner')).toBe('competing')
     expect(listedStandingOf('weight.net', 'accountParty')).toBe('competing')
     expect(listedStandingOf('weight.net', 'hauler')).toBe('competing')
     // "The weigh master SUPPLIES THE EVIDENCE, NOT THE ASSERTION" (§375.519 puts the signature on
@@ -289,7 +289,7 @@ describe('[SD §4.3] the resolution is published, append-only, and names its rul
     // `weighMaster` supplies the evidence and never the assertion — `src:cfr-49-375` §375.519.
     expect(gross.corroborating).toEqual(['weighMaster'])
     // The reweigh right is the shipper's (§375.517), and it is settled on the net by row 6.
-    expect(gross.competing).toContain('customer')
+    expect(gross.competing).toContain('goodsOwner')
     expect(AUTHORITY_TABLE['weight.net'].boundBy).toBe('NONE')
   })
 
