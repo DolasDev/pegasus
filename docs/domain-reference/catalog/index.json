@@ -3,7 +3,7 @@
   "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
   "x-command": "npm run catalog -w @pegasus/domain-reference",
   "catalog": {
-    "specVersion": "0.6.3",
+    "specVersion": "0.6.4",
     "decidedBy": "docs/domain-reference/analysis/published-event-catalog.md",
     "note": "The published catalog is the record vocabulary, exactly — [catalog §1]. There is no coarser published layer over these members, because a second classification axis is permanently forbidden by [SD §1.1].",
     "memberCount": 34,
@@ -120,7 +120,8 @@
         "charge",
         "resource",
         "document",
-        "externallyPerformedLeg"
+        "externallyPerformedLeg",
+        "party"
       ],
       "factClassFamily": "identity",
       "qualifier": ["scheme", "vocabularyScope"]
@@ -772,7 +773,7 @@
       {
         "type": "partyRole",
         "status": "owed",
-        "owedTo": "[A8 §9 items 1-2] — both the party entity and the role enum are undefined",
+        "owedTo": "[A8 §9 item 2] — the role enum, refused on evidence",
         "boundBy": "owed"
       },
       {

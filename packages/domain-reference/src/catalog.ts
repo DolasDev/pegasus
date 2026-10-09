@@ -152,8 +152,55 @@ void _catalogIsTheVocabulary
  * Nothing is removed and nothing narrowed in either face. The owed **vocabulary** count does not
  * move — `roleClass` is still owed, and what changed is the reason — which is the `0.5.0` row's rule
  * again from the other side.
+ *
+ * `0.6.4` at the party round: **two additive classes, one bump, and the first round since A5 that
+ * mints neither of them.**
+ *
+ * - `newAggregateKind` — `party` joins [SD §1.2]'s enum ([A8 §9 item 1]). The enum states the
+ *   permission outright, so this is the one row of [catalog §2.3] that needed no argument.
+ * - `repointedOwedOwner` — A7's class, on its second use. `partyRole`'s authority row read
+ *   _"[A8 §9 items 1-2] — both the party entity and the role enum are undefined"_; **one of those
+ *   two blockers is discharged by this very round**, so the row is re-pointed to item 2 alone and
+ *   the surviving blocker is a **refusal** rather than a pending list. One line in `index.json`.
+ *   **It passes §3 item 16's test rather than being tidiness:** what the item is owed FOR changed.
+ *
+ * **And it was nearly missed, which is the part worth keeping.** The round swept the *phrase*
+ * "an identifier with no aggregate behind it" and fixed every site. It had not swept the *item* —
+ * `grep "A8 §9 item 1"` — and that turned up present-tense "until it lands" prose in
+ * `vocabulary.ts` (the `partyRole` member, whose docstring **renders**), `rules/authority.ts`'s
+ * third `TODO`, `data/authority-table.json`'s four `owedTo` reasons and this row. **Sweeping the
+ * phrase you changed is not the same as sweeping the item you closed.**
+ *
+ * **The whole emitted change is three defs and one line**, and the one line is the deliverable:
+ * `$defs/AggregateId.party` and `$defs/SubjectRef.party` appear, `SubjectRef`'s `anyOf` and
+ * `SubjectRef.family.anyAggregate` gain a branch each, and in `index.json` `identity`'s subject
+ * list gains `party` — which is [A9 §3.6]'s five party-grain schemes becoming assertable. The new
+ * branch **discriminates** (`"aggregate": {"const": "party"}`), checked rather than assumed after
+ * `0.6.3`'s did not.
+ *
+ * **No record type, no fact class and no subject family were added, and that is the finding rather
+ * than the scope.** `identity`'s canonical family is the enum itself ([SD §7.1] "`subject` may be
+ * **any** aggregate kind"), so the member alone is the mechanism. Every attribute [A8 §9 item 1]
+ * named is either an `identity` assertion or was still owed to [A8 §9 item 3] — the name and the
+ * branch grain, because `src:sirva-ade`'s `Resource.Name` names a company, a person or a tractor.
+ *
+ * > **Amended 2026-10-09 and the release is not re-cut.** [A8 §9 item 3] closed the **branch
+ * > grain** with no emitted change at all — `gbloc` identifies an office and `agentCode` carries the
+ * > branch, both already `identifies: party` in this release — so what that sentence leaves owed is
+ * > the **name** alone, on two of its three blockers. The decision emits nothing, which is why
+ * > `0.6.4` is still the version: see `AsserterGrainIsNotOnTheEnvelope`.
+ *
+ * **What this round deliberately did NOT do, measured rather than deferred by preference.**
+ * {@link PartyId} stays branded `party` while the subject form is branded `id:party`, so two brands
+ * for one concept reach the wire. Unifying them would **remove** the published `$defs/PartyId` that
+ * six defs reference — `AssertedBy` among them, which is on every envelope — and no published rule
+ * compares a party-as-subject with a party-as-reference: A8-SELF takes two references,
+ * `FactResolved` contests run per `(subject, scheme, vocabularyScope)`, `authorityToDeclare`
+ * compares role names. So the successor shape (`SubjectRef<'party'>`, the way every other aggregate
+ * is referenced) is recorded as owed to [A8] and **no class was minted for it**, because a stranded
+ * change class is worse than none. Closing it is breaking.
  */
-export const CATALOG_VERSION = '0.6.3'
+export const CATALOG_VERSION = '0.6.4'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces

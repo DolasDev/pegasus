@@ -85,8 +85,9 @@ export const AGGREGATE_KINDS = [
    * [SD §1.1] puts the role on the assertion rather than on the party, and [A8 §3(a)] makes role
    * "an attribute of the _assignment_, never of the party".
    *
-   * Note what is **not** here: a `party`. [A8 §9 item 1] owes the party entity, which is why
-   * {@link PartyId} is an identifier with no aggregate behind it.
+   * Note that `party` is a **separate** member below, and the two are not interchangeable:
+   * [A9 §3.6] item 2 rules out filing an identifier against the role-holding, because a SCAC
+   * "belongs to the company whatever it is doing on this shipment".
    */
   'partyRole',
   /**
@@ -133,6 +134,46 @@ export const AGGREGATE_KINDS = [
    * origin and destination derive over legs as well as stops.
    */
   'externallyPerformedLeg',
+  /**
+   * A party — a company or a person that asserts facts, holds roles and is identified by schemes
+   * whose authority is somebody else. Minted at [A8 §9 item 1], whose first sentence is the reason:
+   * _"Until it lands, `assertedBy.partyRef` has no target schema."_
+   *
+   * **A bare subject, deliberately: no fact class of its own and no fields.** [A9 §3.6] is the
+   * second and independent reason to mint it — five of its twenty witnessed schemes identify a
+   * party, so "an assertion under any of them has no `subject`", and `scac` is the best-witnessed
+   * row in the whole table. Those identifiers are **not** fields a party record would carry; each
+   * is an `identity` assertion _about_ the party, and [SD §7.1] already admits one — "`subject` may
+   * be **any** aggregate kind" — so this member is the entire mechanism and no record type is
+   * needed.
+   *
+   * **What it does NOT settle, as amended by [A8 §9 item 3] (2026-10-09).** The **name** and the
+   * **hierarchy** stay owed; the **branch grain does not**. Item 3 closed that one without a field,
+   * on a row `data/identity-schemes.json` already carried: **`agentCode`** is a 7-digit code "whose
+   * **trailing three digits are the branch**", `definedNotMerelyNamed`, `identifies: party`. **So a
+   * branch is a party** — and a party's grain is declared by what identifies it and by the role it
+   * asserts under, never by anything on the party
+   * ({@link AsserterGrainIsNotOnTheEnvelope}). `gbloc` **corroborates rather than carries it**: its
+   * `src:dtr-part-iv` witness glosses it "the identity of the OFFICE", but its `src:dp3-400ng`
+   * witness says responsibility for a GBLOC "can be transferred between offices with an effective
+   * date" — which is what [SD §7.2] sources the effective interval from, and what stops the row
+   * identifying an office the way `scac` identifies a carrier.
+   *
+   * The **name** keeps two of its three blockers, and the third fell for a reason rather than by
+   * being dropped. Standing: `src:cfr-49-375` § 375.505(b)(1) publishes a **disjunction** (legal
+   * **or** trade/DBA), which under **I-KEY** is two vocabularies and not one field, and it arrives
+   * **bundled with a physical address** [SD §1.2] has no `place` aggregate for. Fallen:
+   * `src:sirva-ade`'s `Resource` "can contain agent, vendor, driver or equipment code based on the
+   * resource `Type`" because **it spans our `party` and our `resource`**, with the grain carried by
+   * its `Type` — SIRVA's fusion is explained rather than outstanding. The **hierarchy**
+   * (`src:atlas-world-group-api`'s `parentAgentCode`) is a party-to-party relation no fact class
+   * holds, and A8-SELF now wants the same relation ({@link corroborationIsIndependent}).
+   *
+   * **Not `partyRole`, and that was decided elsewhere.** [A9 §3.6] item 2: a SCAC "belongs to the
+   * company whatever it is doing on this shipment", so filing it against the role-holding "would
+   * key it on a tuple it does not vary with".
+   */
+  'party',
 ] as const
 
 export type AggregateKind = (typeof AGGREGATE_KINDS)[number]
@@ -156,16 +197,26 @@ export type DocumentId = AggregateId<'document'>
 export type ExternallyPerformedLegId = AggregateId<'externallyPerformedLeg'>
 
 /**
- * A party.
+ * A reference to a party, as it appears inside a record — [SD §1.1] `assertedBy`, [SD §2.4]
+ * `attribution.party`, [SD §7.1] `issuer` and `vocabularyScope.authority`.
  *
- * **Deliberately not an aggregate kind.** [SD §1.2]'s enum has `partyRole` (the role-holding) and
- * no `party`, while [SD §1.1] `assertedBy`, [SD §2.4] `attribution.party` and [SD §7.1] `issuer`
- * all reference a party. [A8 §9 items 1-2] leave the party entity and the role enum undefined, so
- * the party is represented here as an identifier with no aggregate behind it rather than by
- * silently widening [SD §1.2]'s closed enum.
+ * **`party` IS an aggregate kind now** ([A8 §9 item 1], this release), so the sentence this
+ * docstring used to carry — that the party is "an identifier with no aggregate behind it" — is
+ * discharged. The subject form is {@link AggregateId}`<'party'>`.
  *
- * TODO(A8 §9 item 1): when the party entity lands, decide whether it becomes a fifteenth
- * aggregate kind (an addition the enum permits) or stays outside the subject enum.
+ * **Two brands for one concept, and that is an owed item rather than an oversight.** This type is
+ * branded `party` and the subject form is branded `id:party`, so both reach the wire. The decision
+ * not to unify them in this release is recorded rather than assumed: **no published rule compares a
+ * party-as-subject with a party-as-reference.** A8-SELF ({@link corroborationIsIndependent}) takes
+ * two **references**; `FactResolved` contests run per `(subject, scheme, vocabularyScope)` and never
+ * cross the two; `authorityToDeclare` compares role names. So unifying would be a change made for a
+ * comparison [SD §7.1]'s issuer/authority split _invites_ and nothing _asks_ for.
+ *
+ * TODO([A8 §9 item 1]): the successor shape is `SubjectRef<'party'>`, because every other aggregate
+ * is referenced that way and never by a bare id — `LegEndpoint.stop`, `CustodyHolder.partyRole`.
+ * This brand is the fossil of there having been no party aggregate. Closing it is
+ * `changedValueShape` (breaking) at six declaring sites, and it wants a rule that needs the
+ * comparison first.
  */
 export type PartyId = Brand<string, 'party'>
 

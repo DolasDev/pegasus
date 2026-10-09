@@ -99,6 +99,8 @@
      - `SpokeIdentityResolution` takes `bootstrapAllowed`.
      - Copy `apps/api/src/__fixtures__/pegii-token-desktop/` verbatim to `Pegasus.Api.Tests/Fixtures/cloud-token-desktop/`.
      - Before building, check that the post-sign-in API clients (Warehouse, Projects, Outbox) aren't `HubOnly`.
+   - **Desktop password sign-in is in-app** (Steve, 2026-10-08). The first QMM live test sent "Email and password" through the Hosted UI and was refused: a HostedAuth sign-in by a linked user resolves to `identities[0]`'s tenant (GOTCHAS, "Password sign-in through the Hosted UI resolves a linked user to the WRONG tenant"). The desktop client now allows `USER_PASSWORD_AUTH` + `PreventUserExistenceErrors`, and the desktop calls `InitiateAuth` as tenant-web does; SSO providers keep the browser path. It calls `select-tenant` before each refresh, so multi-tenant users refresh silently. Forgot password links to the tenant-web sign-in page. The desktop half lands in movemanager.
+     - **After the pegasus deploy:** `describe-user-pool-client` on the desktop client shows both flows and `PreventUserExistenceErrors=ENABLED`. The edit resets its IdPs once (#518); they return after the next `resolve-tenants`.
 
 **Operational notes (learned 2026-10-05/06):**
 
@@ -224,13 +226,13 @@ Two repos implement opposite ends of one token, so the contract lives here, plus
 
 ## Desktop sign-in through the cloud
 
-1. MoveManager opens the Cognito Hosted UI in the system browser (PKCE, loopback redirect), on a **new** public app client.
+1. MoveManager signs in on a **new** public app client: SSO through the Cognito Hosted UI in the system browser (PKCE, loopback redirect); password in-app through `InitiateAuth USER_PASSWORD_AUTH`, never the Hosted UI's password page.
 2. With the Cognito tokens, the desktop calls `POST /api/v1/desktop/session {companyId?}`.
    - The cloud lists the user's memberships (the company picker).
    - For the chosen company, it returns a pegII token (`aud` = that company's site, `cid`, `wun`/`emp`) plus the site URL.
 3. The desktop calls the site with that token for the connection, then loads identity by `wun`, as `LoadApiIdentity` does today.
    - A tenant admin without an employee row gets the synthesized Wizard path, gated by a cloud role instead of `CanAccessAllCompanies`.
-4. Token refresh rides the Cognito refresh token.
+4. Token refresh rides the Cognito refresh token, with a `select-tenant` call first so pre-token resolves the refresh to the signed-in tenant.
 5. SSO tenants get desktop SSO, **because** the desktop client's IdPs are wired at runtime exactly like the tenant client's: create, delete, and the reconcile on `resolve-tenants` and `GET /providers` (I4).
 
 ---
@@ -242,7 +244,7 @@ Two repos implement opposite ends of one token, so the contract lives here, plus
 | **I1 ✅** | pegasus     | `Site` / `Company` models + backfill (`CompanyMembership` moved to I3); KMS signing key + JWKS endpoint; `lib/pegii-token.ts` minting; `pegii-api-client` sends the cloud token (plus `x-correlation-id`) when the site advertises `pegii.cloud-auth.v1`, else falls back to today's path                                                                                | I2                                    |
 | **I2 ✅** | movemanager | the cloud JWT scheme (JWKS + pinned-key fallback); hub routes `HubOnly` (D-I7), cloud-facing routes hub-or-cloud; `pegii.cloud-auth.v1`; per-request company routing by `cid`; multi-database migration runner. **Built on top of** the NW Phase 5 branch (`feat/order-read-normalization-and-search`, after `149c4c82`; no rebase), so the branch pushes once with both | NW Phase 5 push; QMM's second company |
 | **I3 ✅** | both        | the `salesmen` list endpoint (`pegii.salesmen.list.v1`); `CompanyMembership` + the on-demand membership sync (email, then Windows username; ambiguity links nobody) in Settings → Companies; `emp`/`wun` on user tokens from a LINKED membership; service accounts keep the company's `systemEmployeeCode` (per-account override deferred). No cron.                     | NW Phases 6–7 attribution             |
-| **I4** ⏳ | both        | the new Cognito app client (desktop); `POST /desktop/session`; MoveManager Hosted-UI sign-in + cloud company picker; site connection lookup by `cid`                                                                                                                                                                                                                     | I5                                    |
+| **I4** ⏳ | both        | the new Cognito app client (desktop); `POST /desktop/session`; MoveManager sign-in (SSO via Hosted UI, password in-app) + cloud company picker; site connection lookup by `cid`                                                                                                                                                                                          | I5                                    |
 | **I5**    | movemanager | retire the on-prem hub (`hub_user`, `hub_company`, `/auth/login`, hub admin endpoints) once every API-mode site is on I4; the cloud company registry is authoritative                                                                                                                                                                                                    | I6                                    |
 | **I6**    | movemanager | retire `salesman` password logins in the desktop's direct-database mode; cloud identity becomes the only user store                                                                                                                                                                                                                                                      | —                                     |
 

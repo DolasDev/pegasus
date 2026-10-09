@@ -2,8 +2,10 @@
 // /api/v1/desktop — MoveManager desktop sign-in through the cloud (cloud
 // identity I4; plans/todo/cloud-identity-and-companies.md, D-I8).
 //
-// The desktop signs in with the Cognito Hosted UI (its own public app client,
-// PKCE, loopback redirect) and sends the resulting ID token here.
+// The desktop signs in on its own public app client — SSO through the Cognito
+// Hosted UI (PKCE, loopback redirect), password in-app through InitiateAuth
+// USER_PASSWORD_AUTH, never the Hosted UI's password page (see pre-token.ts) —
+// and sends the resulting ID token here.
 //
 //   POST /session {}              → the company picker
 //   POST /session { companyId }   → the picker + a pegII token for that company

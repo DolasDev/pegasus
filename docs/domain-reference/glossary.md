@@ -14,7 +14,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 
 ## Contents
 
-- [Aggregates](#aggregates-14) — 14
+- [Aggregates](#aggregates-15) — 15
 - [Record types](#record-types-32) — 32
 - [Fact-class families](#fact-class-families-8) — 8
 - [Bases](#bases-5) — 5
@@ -34,13 +34,13 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
 - [Compatibility change classes](#compatibility-change-classes-17) — 17
-- [Key functions and rules](#key-functions-and-rules-34) — 34
+- [Key functions and rules](#key-functions-and-rules-36) — 36
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
-## Aggregates (14)
+## Aggregates (15)
 
-The fourteen members of [SD §1.2]'s versioned closed enum — "open to _addition_ in a later `specVersion`, never to reinterpretation". One record names exactly one of these as its `subject`, never a path and never two. `custody` is deliberately absent: it is a projection ([SD §4.8]), not an aggregate.
+The members of [SD §1.2]'s versioned closed enum, enumerated below — "open to _addition_ in a later `specVersion`, never to reinterpretation". One record names exactly one of these as its `subject`, never a path and never two. `custody` is deliberately absent: it is a projection ([SD §4.8]), not an aggregate.
 
 ### `assignment` (aggregate)
 
@@ -105,13 +105,23 @@ N may be 1, and may be 0.
 - **Cited:** [[SD §4.7.2e]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision) · [[fork-order §3.1]](analysis/fork-order-shipment-cardinality.md#31-recommended-shape--one-shape-stated-in-full)
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
+### `party` (aggregate)
+
+A party — a company or a person that asserts facts, holds roles and is identified by schemes
+whose authority is somebody else. Minted at [A8 §9 item 1], whose first sentence is the reason:
+_"Until it lands, `assertedBy.partyRef` has no target schema."_
+
+- **Cited:** [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref) · [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape) · [[SD §7.2]](analysis/00-shared-decisions.md#72-the-effective-interval--sourced-twice)
+- **Corpus:** `src:atlas-world-group-api` · `src:cfr-49-375` · `src:dp3-400ng` · `src:dtr-part-iv` · `src:sirva-ade`
+- **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
+
 ### `partyRole` (aggregate)
 
 The **role-holding** itself — [SD §4.7.3], "the role-holding itself is an aggregate (§1.2)".
 [SD §1.1] puts the role on the assertion rather than on the party, and [A8 §3(a)] makes role
 "an attribute of the _assignment_, never of the party".
 
-- **Cited:** [[A8 §3(a)]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
+- **Cited:** [[A8 §3(a)]](analysis/A8-authority-skeleton.md) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `portion` (aggregate)
@@ -341,7 +351,7 @@ its qualifier is `{scheme, vocabularyScope}`, which is **I-KEY**. `primary` is n
 flag but the output of `FactResolved` over that key ([SD §7.5]). [A8 §5] row 10 binds authority
 to the scheme's **issuer**, where it never moves.
 
-- **Canonical subject family:** `anyAggregate` = {`order`, `shipment`, `portion`, `stay`, `trip`, `stop`, `stopAction`, `assignment`, `partyRole`, `item`, `charge`, `resource`, `document`, `externallyPerformedLeg`}
+- **Canonical subject family:** `anyAggregate` = {`order`, `shipment`, `portion`, `stay`, `trip`, `stop`, `stopAction`, `assignment`, `partyRole`, `item`, `charge`, `resource`, `document`, `externallyPerformedLeg`, `party`}
 - **Qualifier:** `{scheme, vocabularyScope}` — [SD §7.1] — the I-KEY tuple. Neither field enumerates: scheme is an owed code list and vocabularyScope is a structure, so 'values' is null rather than an invented enum.
 - **Authority:** **assigned**, `boundBy = SCHEME`. [A8 §5] row 10. The ISSUER of the scheme, and nobody else, for the value under that scheme. Authority NEVER moves.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
@@ -475,9 +485,9 @@ that has since been rewritten."
 
 - **Canonical subject family:** `partyRole` = {`partyRole`}
 - **Qualifier:** none — the fact key is `(subject, type)`
-- **Authority:** **owed** — [A8 §9 items 1-2] — both the party entity and the role enum are undefined. `boundBy = owed`. Provisional reading [SYNTHESIS], **do not score**: [SYNTHESIS] of [SD §1.2] (the aggregate exists) and [A3 §3.2]'s stopAction row ('a fact about the RELATION, not about either end'). Carries effectiveFrom/effectiveTo per [SD §7.1] and is never overwritten (A8-HISTORY).
+- **Authority:** **owed** — [A8 §9 item 2] — the role enum, refused on evidence. `boundBy = owed`. Provisional reading [SYNTHESIS], **do not score**: [SYNTHESIS] of [SD §1.2] (the aggregate exists) and [A3 §3.2]'s stopAction row ('a fact about the RELATION, not about either end'). Carries effectiveFrom/effectiveTo per [SD §7.1] and is never overwritten (A8-HISTORY).
 - **Scoring:** `do-not-score` ([SD §4.7] note 3)
-- **Cited:** [[A8 §3(b)]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
+- **Cited:** [[A8 §3(b)]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §4.7.3]](analysis/00-shared-decisions.md#473-named-in-the-corpus-in-the-table-only-as-far-as-the-shared-layer-already-fixes-them)
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `pieceCount` (record type)
@@ -1131,7 +1141,7 @@ The scheme is not known to be document-accountable, or is not known at all.
 
 ## Whitelist residue reasons (4)
 
-Why a row of `src:dtr-part-iv` Table A-402-4's published mutability whitelist has nowhere to land in the vocabulary ([A6 §3.6]). Four reasons, and the distinction between them is the finding: two of the four fields are owed elsewhere (`placeRef` to [SD §1.2], `partyRole`'s row to [A8 §9 items 1-2]), one needs a vocabulary a landed area **refused on evidence** ([A2 §3.3]'s `shipmentType`), and one is not a domain fact at all — so the sub-fact grain `authority.ts` used to ask for would move none of them.
+Why a row of `src:dtr-part-iv` Table A-402-4's published mutability whitelist has nowhere to land in the vocabulary ([A6 §3.6]). Four reasons, and the distinction between them is the finding: two of the four fields are owed elsewhere (`placeRef` to [SD §1.2], `partyRole`'s row to [A8 §9 item 2]), one needs a vocabulary a landed area **refused on evidence** ([A2 §3.3]'s `shipmentType`), and one is not a domain fact at all — so the sub-fact grain `authority.ts` used to ask for would move none of them.
 
 ### `AGGREGATE_OWED` (whitelist residue reason)
 
@@ -2018,7 +2028,7 @@ re-pointed from A11 (a claims area) to `A7 / A12` ([A7 §6]).
 - **Cited:** [[A7 §6]](analysis/A7-charges-billing.md) · [[catalog §2.3.1]](analysis/published-event-catalog.md#231-what-a-breaking-change-costs-while-the-catalog-is-pre-10) · [[catalog §2.3]](analysis/published-event-catalog.md#23-additive-breaking-and-what-a-consumer-may-rely-on) · [[catalog §2.4]](analysis/published-event-catalog.md#24-the-version-this-catalog-is-published-at)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (34)
+## Key functions and rules (36)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
 
@@ -2109,6 +2119,30 @@ it because no source publishes a no-party attribution to state it about.
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A4 §5]](analysis/A4-execution-events.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
 - **Declared by:** `attributionIsLegalFor` in `packages/domain-reference/src/rules/authority.ts`
+
+### `AsserterGrainIsNotOnTheEnvelope` (rule)
+
+The gate behind [A8 §9 item 3]'s decision that **the individual who signs is not a distinct
+asserter** — and the third refusal of this kind after [A9 §3.2]'s `identityScheme` and
+[A8 §9 item 2]'s `roleClass`, with one difference that decides where it lives.
+
+- **Kind:** [A8 §9 item 3] refuses a person/organisation field on the party: the grain rides on the role and on the scheme
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A2 §9]](analysis/A2-shipment-structure.md) · [[A8 §3(a)]](analysis/A8-authority-skeleton.md) · [[A8 §3(b)]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[SD §0]](analysis/00-shared-decisions.md) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Corpus:** `src:atlas-world-group-api` · `src:cfr-49-375` · `src:dp3-tender-of-service` · `src:sirva-ade` · `src:stedi-x12-reference`
+- **Declared by:** `AsserterGrainIsNotOnTheEnvelope` in `packages/domain-reference/src/rules/authority.ts`
+
+### `AsserterIsExactlyAPartyAndARole` (rule)
+
+The second half of [A8 §9 item 3]'s refusal, and it is NOT redundant:
+`AsserterGrainIsNotOnTheEnvelope` compares the
+**key set**, which is what catches an addition, and this compares the **shape**, which is what
+catches `party` being widened from a `PartyId` to a bare string — a different way to lose
+the same decision, since an unbranded asserter is one a caller can fill with a person's name.
+
+- **Kind:** the same refusal from the shape side, which is what catches `party` being widened off its brand
+- **Cited:** [[A8 §9 item 3]](analysis/A8-authority-skeleton.md)
+- **Declared by:** `AsserterIsExactlyAPartyAndARole` in `packages/domain-reference/src/rules/authority.ts`
 
 ### `B-ONWARD` (rule)
 
@@ -2425,7 +2459,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 **Blocked on the corpus, not on effort** — the `trip`, `membership` and `assignment` families: no external source binds a plan change, a membership offer or an assignment to an asserting role, so a row for one would be [ORIGINAL], and [SD §4.7] note 3 bars a provisional reading from scoring anyway.
 
-**Owed to A8 itself** — `partyRole` (the party entity and the role enum, [A8 §9 items 1-2]) and `notification` (a role resolved to a contactable address, item 6).
+**Owed to A8 itself** — `partyRole` (the role enum, [A8 §9 item 2]; the party entity was item 1 and landed at `0.6.4`) and `notification` (a role resolved to a contactable address, item 6).
 
 **The order lifecycle, and its three rows are three different cases.** [A1 §Cross-area] showed the corpus names a party on every order transition, so none of them was ever corpus-blocked: what blocked them was that [A8 §4.3] had no member for a role resolved by the order's own award. That member is **`AWARD`**, and it did not close all three. `orderResponse` is **closed** at [A8 §5] row 18, because [A1 §3.5] puts acceptance and refusal on "the offeree, and only the offeree" — one holder, resolved from the award. `orderCancellation` keeps `boundBy = AWARD` and an **owed holder**: [A1 §3.5] makes a cancellation after acceptance "either party", so `authoritative` would be plural and [A8 §4.4] A8-NAMED has no published tie-break for it. `orderAward` is blocked by A8's own **mint principle** — it mints the award, so it can be bound neither to `PRINCIPAL` nor to `AWARD` — which `MintingActsAreNotBoundToWhatTheyMint` now holds over the table.
 
@@ -2440,7 +2474,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - `notification` — **owed**, owed to [A8 §9 item 6] — the party as a notification target; the row is provisional throughout ([SD §4.7.3]) (`boundBy = owed`)
 - `orderAward` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no order row (`boundBy = owed`)
 - `orderCancellation` — **owed**, owed to [A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one. (`boundBy = AWARD`)
-- `partyRole` — **owed**, owed to [A8 §9 items 1-2] — both the party entity and the role enum are undefined (`boundBy = owed`)
+- `partyRole` — **owed**, owed to [A8 §9 item 2] — the role enum, refused on evidence (`boundBy = owed`)
 - `tripCancellation` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row (`boundBy = owed`)
 - `tripDelay` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row, and no source in the corpus binds a plan change to an asserting role (`boundBy = owed`)
 - `tripResequence` — **owed**, owed to [A8 §9 item 8] — [A8 §5] has no trip row (`boundBy = owed`)
@@ -2491,6 +2525,8 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`ASSUMED_FROM_PLAN`](#assumedfromplan-capture-method) — capture method
 - [`AUTHORISATION_MISSING`](#authorisationmissing-reason-code) — reason code
 - [`AUTHORITY_OWED`](#authorityowed-whitelist-residue-reason) — whitelist residue reason
+- [`AsserterGrainIsNotOnTheEnvelope`](#assertergrainisnotontheenvelope-rule) — rule
+- [`AsserterIsExactlyAPartyAndARole`](#asserterisexactlyapartyandarole-rule) — rule
 - [`B-ONWARD`](#b-onward-rule) — rule
 - [`BOTH`](#both-membership-form) — membership form
 - [`C5`](#c5-rule) — rule
@@ -2640,6 +2676,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`outcome`](#outcome-filter-axis) — filter axis
 - [`packer`](#packer-role-name) — role name
 - [`packing`](#packing-record-type) — record type
+- [`party`](#party-aggregate) — aggregate
 - [`partyRole`](#partyrole-aggregate) — aggregate
 - [`partyRole`](#partyrole-fact-class-family) — fact-class family
 - [`partyRole`](#partyrole-record-type) — record type

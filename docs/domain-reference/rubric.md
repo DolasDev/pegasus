@@ -117,7 +117,7 @@ but our configs and code that implement them do not.
 > reading the second is how the strongest source in an area gets left off a list. (The plan itself is
 > **gone** — this effort rewrites a finished round's plan as the next round's, so the record is
 > `plans/completed/domain-reference-a6-documents.md` and the live plan is
-> [`../../plans/in-progress/domain-reference-party-entity.md`](../../plans/in-progress/domain-reference-party-entity.md).)
+> [`../../plans/in-progress/domain-reference-a8-item3.md`](../../plans/in-progress/domain-reference-a8-item3.md).)
 
 > **One observation about per-area scoring itself, from [A2 §3.7].** `src:dtr-part-iv` scores
 > `C3 = 1` **on A2** and decided the whole of [A2 §3.2] — because its A2 row scores the shipment

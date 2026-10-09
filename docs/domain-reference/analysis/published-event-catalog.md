@@ -342,6 +342,7 @@ The bumps, and what each was classified as under §2.3:
 | `0.6.0` → `0.6.1` | the cleanup round       | **The first patch-slot bump**, under §2.3.1. `repointedOwedOwner` declared at last; `x-owed` extended to the `Owed` value branches; the owed vocabularies given `x-owed-state` and `x-owed-why`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `newClosedEnumMember` + `newAnnotation` ×2                         |
 | `0.6.1` → `0.6.2` | the owed-closures round | **Two additive changes, one bump.** `documentIssuance` minted ([A8 §5] row 17) — one new `record.documentIssuance` `$def` with its top-level `anyOf` branch, one `AssertionType` enum member, and new `anyOf` branches on `record.Correction` and `record.FactResolved`. And `orderResponse` closed at [A8 §5] row 18 on the new `AWARD` binding, which reaches the wire **only** through the holder: `boundBy` is on no record, so `AWARD` itself never emits, while `AuthoritativeHolder` gains an `awardedRole` branch that `ObligationRecipient` references — **exactly `keySideRole`'s shape at `0.3.0`, and the second time the diff rather than the decision located the change.** Nothing removed and nothing narrowed in either face, so every record that validated still validates. The owed inventory moved three ways (`authorityRows` 14 → 13, `absentFactClasses` 16 → 15, `declaredRecordTypes` 31 → 32) and carries **no** class, on the rule §5 and A5's row already settle: §2.3 classifies changes to what is **published**, and an owed count is a change to what is admitted to be **missing**. | `newRecordType` + `newClosedEnumMember`                            |
 | `0.6.2` → `0.6.3` | the `roleClass` round   | **Three additive classes, one bump, and two of them had to be minted.** `roleClass` moves from `pending` to `refusedOnEvidence` on the evidence of X12 **element 98** — the one list `round-1-crosscheck.md`, [`fork-time` §7]'s `(b)(1)` row and `src:stedi-x12-reference`'s own open question 1 all named as the blocker. It is read, and it closes nothing: `Entity Identifier Code` is a flat identifier qualifier whose own definition spans "an organizational entity, a physical location, property or an individual", with no class axis and no member meaning no party at all. `Attribution` gains the `ATTRIBUTION_NO_PARTY` branch instead, which the two published reason codes that attribute to nobody (`FORCE_MAJEURE`, `DEADLINE_LAPSED`) need and which the refused vocabulary must **not** contain — no-party is not a class of party, and [§2.6](00-shared-decisions.md)'s own note draws that line by sending a shortfall to `unknown` "rather than to nobody". Nothing removed, nothing narrowed, and the owed **vocabulary** count does not move: what changed is the reason.                   | `refusedOwedVocabulary` + `newShapeBranch` + `newClosedEnumMember` |
+| `0.6.3` → `0.6.4` | the party round         | **Two additive classes, one bump, and the first round since A5 to mint neither.** `newAggregateKind` — `party` joins [SD §1.2]'s enum ([A8 §9 item 1]), the one row of §2.3 that needed no argument because the enum states the permission outright. The whole emitted change is two new `$defs` (`AggregateId.party`, `SubjectRef.party`), a branch each on `SubjectRef`'s `anyOf` and on `SubjectRef.family.anyAggregate`, and **one line in `index.json`** where `identity`'s subject list gains `party` — which is [A9 §3.6]'s five party-grain schemes becoming assertable. Nothing removed, nothing narrowed. **Plus `repointedOwedOwner`** — `partyRole`'s authority row read "[A8 §9 items 1-2] — both the party entity and the role enum are undefined", and **one of those two blockers is discharged by this very round**, so it re-points to item 2 alone and the survivor is a refusal rather than a pending list. A7's class on its second use, one more line in `index.json`                                                                                                                           |
 
 **A2 is the first area to change nothing on the wire, and the rule that says so is already here.**
 [§5](#5-what-the-catalog-does-not-yet-publish) records of A8's round that a moving owed inventory
@@ -386,6 +387,49 @@ catalog's own bookkeeping — a reader checking that `^0.6.1` still admits it is
 saying because the alternative was two bumps: `documentIssuance` and `orderResponse` are independent
 decisions in different areas, and they share a version because a `specVersion` names a published
 state and not a piece of work.
+
+**`0.6.4` nearly shipped its second class unnoticed, and how it was caught is the transferable
+part.** The round swept the **phrase** it had falsified — `PartyId` as _"an identifier with no
+aggregate behind it"_ — and fixed every site. It had not swept the **item**: `grep "A8 §9 item 1"`
+turned up present-tense "until it lands" prose in `vocabulary.ts`'s `partyRole` member (whose
+docstring **renders** into the glossary), `rules/authority.ts`'s third `TODO`,
+`data/authority-table.json`'s four `owedTo` reasons, and `partyRole`'s authority row — **which is
+emitted**, and so was a published change the round had not classified. **Sweeping the phrase you
+changed is not the same as sweeping the item you closed**, and only one of the two is discoverable
+from the diff you have just written.
+
+**Three of those sites also carried a misattribution older than this round.** `stayAuthorisation`'s
+and `chargeCollection`'s absence notes, and `OpensStay`'s, each said their asserting role is _"a
+party class [A8 §9 item 1] has not defined"_. An asserting role needs a `ROLE_NAMES` member, which
+is **item 2**'s — §9 item 2 owes the government offices (PPSO/PPPO/TO/ITO/JPPSO/SB/SPM) **by name**.
+So minting the party moved those not at all, and the surviving blocker is a **refusal** rather than a
+pending list: **stronger than the old citation implied, not weaker.** The same correction applies to
+`authority-table.json`'s four `owedTo` reasons, which gave the party entity's absence as the reason
+an issuer "cannot be an enum member" — the entity exists now and the issuer is **still not a role**,
+which is what the old reason obscured.
+
+**`0.6.4`'s headline deliverable is still ONE enum member, and the reason is worth keeping.** [A9 §3.6]'s finding — five witnessed identity schemes with no `subject` — looked like it
+needed a party entity, and the round that closed it measured first and found that `identity`'s
+canonical family **is** the aggregate enum ([SD §7.1] "`subject` may be **any** aggregate kind"), so
+the member alone was the mechanism: no record type, no fact class, no subject family. **Read beside
+A6's row, it is the same lesson from the other side.** A6 changed no byte because reaching the wire
+was the cost it declined to pay; `0.6.4` changed four places because reaching the wire was almost
+free — and in both cases what settled it was reading the emitted `$defs` rather than reasoning about
+which fields feel published. That is now the **fourth** time that sentence has been operative, after
+A8's `keySideRole`, A2's and A6's empty diffs, and `0.6.3`'s non-discriminating `anyOf` branch. This
+round's branch **does** discriminate (`"aggregate": {"const": "party"}`), checked for that reason.
+
+**The round also declined a breaking change it had costed, and the decline is a §2.3 finding.**
+`PartyId` stays branded `party` while the subject form is branded `id:party`, so two brands for one
+concept reach the wire. Unifying them removes the published `$defs/PartyId` that six `$defs`
+reference — `AssertedBy` among them, which is on every envelope — and **§2.3 has no row for that in
+either table**: a validator does not break, since both targets are `{"type": "string"}` and every
+record that validated still validates, which is the exact test every additive row turns on, while a
+`$ref`-following reader dangles. **No class was minted**, because the round found no published rule
+that needs the comparison a unified brand would enable, and a change class with nothing classified
+under it is worse than none. The successor shape is owed to [A8 §9 item 1]; whoever closes it mints
+the class then, and should state **which reader** breaks rather than leaning on the mechanical test
+alone.
 
 What caps the version is the authority rows, and no amount of vocabulary work moves that.
 

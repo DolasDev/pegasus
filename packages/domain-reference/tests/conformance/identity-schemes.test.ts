@@ -1,9 +1,11 @@
 /**
  * Conformance — A9's decisions, held against the witnessed-scheme table and the vocabulary.
  *
- * The type-level half is `identity-scheme-refuses.ts`, whose one `@ts-expect-error` keeps `party`
- * out of `AggregateKind`, and `IdentitySchemeStaysOwed` in `src/rules/identity-schemes.ts`, which
- * makes narrowing `SchemeName` a compile failure.
+ * The type-level half is `identity-scheme-refuses.ts` — whose directive used to keep `party` out of
+ * `AggregateKind` and, since catalog 0.6.4 inverted it, keeps `party` out of `AssertionType`
+ * instead; **this sentence said the old thing until [A8 §9 item 3]'s sweep caught it**, which is the
+ * `[A8 §9 item 1]` round's own lesson arriving one file further out. Plus `IdentitySchemeStaysOwed`
+ * in `src/rules/identity-schemes.ts`, which makes narrowing `SchemeName` a compile failure.
  *
  * Everything here **enumerates rather than counts** ([A1 §9]; [A6 §9]'s reason for it, and
  * [A7 §9]'s, which is the one worth re-reading: A7's draft wrote "four independent publishers"
@@ -16,6 +18,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CORRELATION_IS_AN_OBLIGATION_NOT_A_LINK,
   documentIdentitySubject,
+  isAggregateKind,
   loadIdentitySchemes,
   partyGrainSchemes,
   schemeAccountability,
@@ -206,17 +209,24 @@ describe('[A9 §3.6] the party-grain schemes have no subject, and the blocker is
     ])
   })
 
-  it('every one of them carries [A8 §9 item 1] and no aggregate-grain row does', () => {
-    // The finding stated as an invariant rather than as a sentence: A9 mints no owed item, because
-    // [A8 §9 item 1] already owes the party entity and already names SCAC and DOT/MC among its
-    // fields. If a later round mints the party, these blockers come off and this fails by name.
+  it('carries NO blocker on any row, because [A8 §9 item 1] minted the party', () => {
+    // INVERTED at [A8 §9 item 1] (catalog 0.6.4), and the old assertion is kept in the comment
+    // because the inversion is the deliverable. It used to read: a `party` row must carry
+    // '[A8 §9 item 1]' and every other row must carry null. The party is a subject now, so all
+    // five blockers came off and the invariant is one-sided. Changed deliberately, not loosened —
+    // `loadIdentitySchemes` fails if the blocker is written back onto ANY row, which the tamper
+    // test below exercises.
     for (const row of table.rows.values()) {
-      const blocker = schemeBlocker(table, schemeName(row.scheme))
-      if (row.identifies.kind === 'party') {
-        expect(blocker).toContain('A8 §9 item 1')
-      } else {
-        expect(blocker).toBeNull()
-      }
+      expect(schemeBlocker(table, schemeName(row.scheme)), row.scheme).toBeNull()
+    }
+  })
+
+  it('still identifies a party on exactly the five rows, which is what got a subject', () => {
+    // The five are unchanged by the mint; what changed is that `party` is now an aggregate kind
+    // like `document`, so these rows are ordinary rather than blocked.
+    for (const row of partyGrainSchemes(table)) {
+      expect(row.identifies, row.scheme).toBe('party')
+      expect(isAggregateKind(row.identifies), row.scheme).toBe(true)
     }
   })
 
@@ -238,11 +248,13 @@ describe('[A9 §3.6] the party-grain schemes have no subject, and the blocker is
     expect(scac?.witnesses.length).toBe(widest)
   })
 
-  it('the loader refuses a party row whose blocker was taken off', () => {
+  it('the loader refuses [A8 §9 item 1] written back onto a PARTY-grain row', () => {
+    // The direction this inverted to. Before catalog 0.6.4 the tamper was taking the blocker OFF
+    // `scac`; now it is putting it back, and `party` is the grain that used to be exempt.
     const tampered = broken(identitySchemes)
     const row = rawSchemes(tampered).find((entry) => entry['scheme'] === 'scac')
     expect(row).toBeDefined()
-    if (row) row['blocker'] = null
+    if (row) row['blocker'] = '[A8 §9 item 1] — no party entity'
     expect(() => loadIdentitySchemes(tampered)).toThrow(/scac identifies a party/)
   })
 
@@ -262,6 +274,75 @@ describe('[A9 §3.6] the party-grain schemes have no subject, and the blocker is
     expect(row).toBeDefined()
     if (row) row['documentAccountable'] = true
     expect(() => loadIdentitySchemes(tampered)).toThrow(/does not identify a document/)
+  })
+})
+
+describe('[A8 §9 item 3] what grain a party may be is declared by what identifies it', () => {
+  // The branch grain was [A8 §9 item 1]'s third residue, and item 3 closed it on 2026-10-09 WITHOUT
+  // a field, by reading `agentCode` — and corroborating on `gbloc`, whose own row carries a caveat
+  // the first draft of this block ignored (see below). These assertions are the evidence, not a
+  // restatement: if a later round mints an `office` or `branch` aggregate kind and re-points either
+  // row, or edits a witness out, they fail and send it to `AsserterGrainIsNotOnTheEnvelope` and the
+  // two reasons there.
+  const defined = () => partyGrainSchemes(table).filter((row) => row.definedNotMerelyNamed)
+
+  it('the two party-grain rows the corpus DEFINES are the office and the branch', () => {
+    expect(names(defined())).toEqual(['agentCode', 'gbloc'])
+  })
+
+  it('`agentCode` CARRIES the branch in the identifier, so no field has to — THE witness', () => {
+    // This row alone closes the branch grain, and it is the one the closure rests on: the code is
+    // the branch, `definedNotMerelyNamed`, with no transfer semantics anywhere on the row.
+    const agentCode = table.rows.get('agentCode')
+    expect(agentCode?.identifies).toBe('party')
+    expect(
+      agentCode?.witnesses.some((w) =>
+        w.citation.includes(
+          '7-digit hierarchical agent id whose trailing three digits are the branch',
+        ),
+      ),
+    ).toBe(true)
+  })
+
+  it('`gbloc` CORROBORATES, and its own row carries the caveat that keeps it corroboration', () => {
+    // **The first draft of this block made `gbloc` the headline witness and that was wrong.**
+    // `src:dtr-part-iv` glosses it "BLOC — Bill of Lading Office Code; the identity of the OFFICE,
+    // and the scope unit for suspensions and blackouts" — but `src:dp3-400ng`, on the SAME row,
+    // says responsibility for a GBLOC "can be transferred between offices with an effective date",
+    // which is why [SD §7.2] sources the identifier's effective interval from it. An identifier
+    // that migrates does not identify an office the way a SCAC identifies a carrier; it identifies
+    // something an office HOLDS for an interval. Both witnesses are asserted here so that nobody
+    // can quote the office gloss without the row also carrying the transfer — [A8 §9 item 1]'s own
+    // lesson that a citation is two claims, the second being that the text is right.
+    const gbloc = table.rows.get('gbloc')
+    expect(gbloc?.identifies).toBe('party')
+    expect(gbloc?.witnesses.some((w) => w.citation.includes('the identity of the OFFICE'))).toBe(
+      true,
+    )
+    expect(
+      gbloc?.witnesses.some((w) =>
+        w.citation.includes('can be transferred between offices with an effective date'),
+      ),
+    ).toBe(true)
+  })
+
+  it('and NOT ONE of the twenty witnessed schemes identifies a natural person', () => {
+    // The other half of the decision, and the half that could silently stop being true. Every row's
+    // `identifies` is an [SD §1.2] aggregate kind, and the enum has no person member — so a
+    // person-grain identifier would have to arrive as a new kind, which
+    // `tests/conformance/party-grain-refuses.ts` refuses at compile time. Enumerated rather than
+    // counted ([A1 §9]): the five party rows are named above, and these are the grains the rest sit
+    // at.
+    expect([...new Set([...table.rows.values()].map((row) => row.identifies))].sort()).toEqual([
+      'document',
+      'item',
+      'order',
+      'party',
+      'resource',
+      'shipment',
+      'stay',
+      'trip',
+    ])
   })
 })
 

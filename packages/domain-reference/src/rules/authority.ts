@@ -23,7 +23,7 @@
 
 import type { Assertion, FactResolved } from '../assertions'
 import { ruleRef, type RuleRef } from '../assertions'
-import type { RoleName } from '../envelope'
+import type { AssertedBy, RoleName } from '../envelope'
 import type {
   CustodyAt,
   CustodyAuthority,
@@ -1435,6 +1435,44 @@ export function listedStandingOf(type: AssertionType, role: RoleName): Standing 
  * **[ORIGINAL]**, and a direct consequence of the GSD p.17 sample, where `TIER ONE RELOCATION` is
  * both `Booker` and `DestinationAgent` on one shipment: "a model that counts role-instances rather
  * than parties will read one company agreeing with itself as two-party agreement."
+ *
+ * ---
+ *
+ * **UNDER-DETERMINED, and this is [A8 §9 item 3]'s residue rather than a defect it introduced.**
+ * The sentence above states the rule's purpose at **legal-entity** grain — "one **company**
+ * agreeing with itself" — and the comparison below is `!==` over two `PartyId`s. But [SD §1.1]'s
+ * `assertedBy` carries one `PartyId` for all eighteen roles, and item 3's decision
+ * ({@link AsserterGrainIsNotOnTheEnvelope}) is that a party's grain rides on the role: under
+ * `role: 'booker'` that party is a company, under `role: 'driver'` the member's own docstring says
+ * it is _"the person driving"_, and `gbloc` and `agentCode` make it an **office** and a **branch**.
+ *
+ * So a hauler's driver and that same hauler's office, both asserting `condition` at a boundary,
+ * pass this predicate as two independent parties — **which is the defect §3(a) names, one level
+ * up**: counting persons rather than legal entities reads one company agreeing with itself, through
+ * its employee, as two-party agreement. `tests/conformance/core-vocabulary-refuses.ts`'s own fixture
+ * is written that way (`{ party: partyId('p1'), role: 'driver' }`), which is how the measurement
+ * found it.
+ *
+ * **It is recorded and NOT fixed, because the fix needs an input no source publishes.** Closing it
+ * means resolving an asserting individual to the organisation they act for, and item 3's measurement
+ * (`plans/completed/domain-reference-a8-item3.md` §8) is that every source which puts an individual in an asserting position attaches them
+ * to an organisation **in the same breath and never by a reference the model could read**:
+ * `src:dp3-tender-of-service` has a noun phrase (_"NTS TSP **company** official"_, NTS §1.4.13.1),
+ * `src:milmove-mymove` has its own schema's mandatory FK (`OfficeUser.TransportationOfficeID`),
+ * `src:sirva-ade` has a three-valued **affiliation class** (`Resource.Owner`). A link cut from any
+ * of those would be ours — [SD §0].
+ *
+ * **Two things it does not license.** It is not an argument for unifying the {@link PartyId} brand:
+ * this is a comparison between two **references**, which is exactly the shape [A8 §9 item 1]
+ * measured when it recorded that no published rule compares a party-as-subject with a
+ * party-as-reference. And it is not an argument for a person/organisation field — that is the
+ * refusal above, and the residue is a missing **relation**, not a missing class.
+ *
+ * TODO([A8 §9 item 3]): A8-SELF's independence test is at legal-entity grain while `assertedBy.party`
+ * may be a person, an office or a branch. The rule needs a party-to-party relation, which is also
+ * the shape of [A8 §9 item 1]'s **hierarchy** residue — `parentAgentCode` and
+ * `/Agents/{agentCode}/Family`, a party-to-party relation no `AssertionType` holds. Whether one
+ * fact class covers both relations, parent-of and acts-for, is not decided here.
  */
 export function corroborationIsIndependent(
   authoritative: PartyId,
@@ -1812,9 +1850,20 @@ export function authorityToDeclare(
   }
 }
 
-// TODO([A8 §9 items 1-3, 5]): `authorityToDeclare` compares ROLE NAMES, because `assertedBy.partyRef`
-// has no target schema until the party entity lands, and because the releasing/receiving roles at a
-// custody boundary are a property of the boundary rather than of the fact class. Two consequences
+// RE-POINTED TWICE. At [A8 §9 item 1] (catalog 0.6.4) the marker named items 1-3 and 5 and said
+// `assertedBy.partyRef` "has no target schema until the party entity lands"; the party entity
+// landed and that clause went. At [A8 §9 item 3] (2026-10-09) **item 3 comes off too, and for the
+// opposite reason**: comparing ROLE NAMES is not a deficiency this item was going to fix. Item 3
+// decided that a party's grain rides on the role it asserts under and on the scheme that identifies
+// it, never on the party ({@link AsserterGrainIsNotOnTheEnvelope}) — so a rule that reads the role
+// is reading the surface the grain is on. What is left is the role **vocabulary** (item 2,
+// `refusedOnEvidence`) and role cardinality (item 5).
+//
+// The item does not leave this module, and that is the honest half: it moves from the marker it was
+// not blocking to the one it is, {@link corroborationIsIndependent}'s.
+//
+// TODO([A8 §9 items 2, 5]): `authorityToDeclare` compares ROLE NAMES, and the releasing/receiving
+// roles at a custody boundary are a property of the boundary rather than of the fact class. Two consequences
 // are visible above and neither is papered over: a `custodyHolder` row can only be matched once a
 // caller resolves the fold's holder to a role (A8-HISTORY's effective-dated role assignments), and
 // an A8-JOINT row returns UNAUTHORISED for every role rather than authorising both sides blind.
@@ -1878,6 +1927,109 @@ export type RoleClassStaysOwed = Exact<RoleClass, OwedCode<'roleClass'>>
  */
 const _roleClassStaysOwed: RoleClassStaysOwed = true
 void _roleClassStaysOwed
+
+/* -------------------------------------------------------------------------------------------- */
+/* §9 item 3 — the decision: a party's GRAIN is not a field on the party                        */
+/* -------------------------------------------------------------------------------------------- */
+
+/**
+ * The gate behind [A8 §9 item 3]'s decision that **the individual who signs is not a distinct
+ * asserter** — and the third refusal of this kind after [A9 §3.2]'s `identityScheme` and
+ * [A8 §9 item 2]'s `roleClass`, with one difference that decides where it lives.
+ *
+ * **Those two refuse to close a vocabulary the model has a FIELD for. This one refuses the field.**
+ * An `identity` assertion must name a scheme and an `Attribution` must name a role class, so each
+ * has a slot whose value list is owed; nothing in the model needs to say what KIND of party a party
+ * is. So there is deliberately no `OwedCode<'partyClass'>` and no `data/owed-vocabularies.json`
+ * row: that table derives a vocabulary's state from a live `Exact<…, OwedCode<'v'>>` gate, and
+ * minting one here would invent the slot the decision declines. **What is gated is the shape of
+ * {@link AssertedBy}**, which [SD §1.1] puts on every envelope — so a person/organisation
+ * discriminator would be a change to every record in the catalog.
+ *
+ * **Two reasons, and neither depends on the other.**
+ *
+ * 1. **No source publishes the axis.** The one industry list that enumerates party slots is
+ *    `src:stedi-x12-reference` **element 98**, read for item 2 on 2026-10-06
+ *    (`captured/stedi-element-98-party-roles-notes.md`), and its own definition is item 3's question
+ *    in one sentence — _"Code identifying an organizational entity, a physical location, property
+ *    or an individual"_ — over a flat table with **no class column**: `D1 Driver` beside
+ *    `CA Carrier` beside `BA Battery` beside `SF Ship From`. The four-way sort in that capture file
+ *    is **ours**, and [SD §0] is what forbids publishing it. The only source that *defines* party
+ *    classes, and the only primary captured one, classifies by **function**: `src:cfr-49-375`
+ *    § 375.103's `Individual shipper` is _"any person who… (3) **Owns the goods** being
+ *    transported; and (4) **Pays his or her own** tariff transportation charges"_, `Commercial
+ *    shipper` is the one _"**who is not the owner**… but who assumes the responsibility for
+ *    payment"_, and all three definienda read _"any **person**"_ — a word that section also uses for
+ *    companies (_"any **person** considered to be a household goods motor carrier"_). The remaining
+ *    three sources split nothing a party carries: `src:sirva-ade`'s `Resource.Owner ∈
+ *    Corporate | Agent | Vendor` is an **affiliation** class whose three values are all
+ *    organisations, `src:atlas-world-group-api`'s `CompanyModel`/`ContactModel` is a **directory**
+ *    with `role_ID` an unlisted integer (C2=1, [A8 §3(b)] "structural evidence only"), and
+ *    `src:dp3-tender-of-service`'s _"NTS TSP **company official**"_ (NTS §1.4.13.1) is a noun phrase.
+ * 2. **The model already carries the grain, twice, on the two surfaces the corpus puts it on.**
+ *    An `identity` assertion says what grain a party may be **by what its scheme identifies** —
+ *    `gbloc` is _"the identity of the **OFFICE**"_ and `agentCode` _"a 7-digit hierarchical agent id
+ *    whose **trailing three digits are the branch**"_, both `definedNotMerelyNamed`, beside `scac`,
+ *    `usDotNumber` and `mcNumber` for the carrier company; and {@link AssertedBy}`.role` says it per
+ *    assertion, with glosses running from `booker`, _"the party that books the move"_, to `driver`,
+ *    _"**the person** driving"_ — which element 98 cross-walks **exactly** to its one
+ *    individual-kind code, `D1 Driver`. A field here would be a **third** place to say it.
+ *
+ * **[ORIGINAL]**, as one step past [A8 §3(a)]'s own rule. §3(a) holds that "our A8 model should make
+ * role an attribute of the _assignment_, never of the party"; the extension is that **a party's
+ * grain is likewise a property of what identifies it and of the role it asserts under, never of the
+ * party**. No source states that, and the step is ours.
+ *
+ * **What it does NOT hold, and it is the thing a reader will get backwards.** This is not a claim
+ * that every party is an organisation. The corpus's clearest asserting individual is the
+ * **customer**, whose signature `src:cfr-49-375` makes constitutive four times (§375.505(a) the
+ * bill of lading, §375.503 the inventory, §375.701 the delivery receipt, §375.515(b) the waiver of a
+ * weighing observation) — which is why `ROLE_NAMES` already carries `customer` and [A8 §5] row 5
+ * lists it **competing**. A natural person is a party here; what is refused is a field saying so.
+ *
+ * **The residue it leaves is {@link corroborationIsIndependent}'s**, and that is this round's own
+ * finding rather than something the item predicted. Read it there.
+ *
+ * **The edge the type system can see.** The day a round adds a class, kind or `isIndividual` field
+ * to `AssertedBy` — or removes either member — this evaluates to `never`, the assignment below
+ * stops compiling, and whoever did it is sent here to answer the two reasons above. The companion
+ * edge, a second aggregate **kind** for the person, is held from the other side by
+ * `tests/conformance/party-grain-refuses.ts`, because a kind is not a field and this type cannot
+ * see it.
+ *
+ * **It clears [A2 §9]'s tautology bar.** `AssertedBy` is declared in `envelope.ts`, from [SD §1.1];
+ * the right-hand side is written out **here**, in A8's own module, from [A8 §9 item 3]'s reading.
+ * Neither is generated from the other, and nothing in `data/` is in the comparison.
+ */
+export type AsserterGrainIsNotOnTheEnvelope = Exact<keyof AssertedBy, 'party' | 'role'>
+
+/**
+ * The second half of [A8 §9 item 3]'s refusal, and it is NOT redundant:
+ * {@link AsserterGrainIsNotOnTheEnvelope} compares the
+ * **key set**, which is what catches an addition, and this compares the **shape**, which is what
+ * catches `party` being widened from a {@link PartyId} to a bare string — a different way to lose
+ * the same decision, since an unbranded asserter is one a caller can fill with a person's name.
+ *
+ * **Written in this order because the obvious single gate does not hold.** The first draft of this
+ * refusal was the shape comparison alone, and **the tamper passed**: adding
+ * `partyClass?: 'person' | 'organisation'` to `AssertedBy` left `Exact<>` evaluating to `true`,
+ * because an **optional** member keeps assignability in both directions. `keyof` sees optional keys;
+ * the shape does not. Both are here because each one's tamper was run.
+ */
+export type AsserterIsExactlyAPartyAndARole = Exact<
+  AssertedBy,
+  { readonly party: PartyId; readonly role: RoleName }
+>
+
+/**
+ * The assignment that makes {@link AsserterGrainIsNotOnTheEnvelope} a gate rather than an alias —
+ * [A5 §9]'s finding. Registered in `RULES` in `tools/generate-glossary.ts` the day it was written,
+ * which is [A8 §9]'s own note about that register.
+ */
+const _asserterGrainIsNotOnTheEnvelope: AsserterGrainIsNotOnTheEnvelope = true
+void _asserterGrainIsNotOnTheEnvelope
+const _asserterIsExactlyAPartyAndARole: AsserterIsExactlyAPartyAndARole = true
+void _asserterIsExactlyAPartyAndARole
 
 /**
  * **A8-NO-PARTY.** The published reason codes whose `attribution` may **not** be

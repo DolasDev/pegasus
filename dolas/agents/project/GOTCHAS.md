@@ -331,12 +331,39 @@ that caused an intermittent "account has not been granted access" failure:
   "not granted access"). There is no email-domain fallback — the `email_domains`
   column was removed. A user belonging to multiple tenants cannot be auto-resolved
   on a bare token refresh and is told to sign in again rather than guessed at.
+  The MoveManager desktop (from its in-app password sign-in release) refreshes
+  silently anyway by calling `select-tenant`
+  immediately before each refresh: the fresh `AuthSession` wins, exactly as at
+  sign-in. Any other client that wants silent multi-tenant refresh must do the same.
 
 Cognito wraps any pre-token `throw` as `UserLambdaValidationException` with the
 message `PreTokenGeneration failed with error <msg>.`. `unwrapPreTokenMessage`
 in `packages/auth/src/cognito-client.ts` strips that wrapper (and Cognito's
 appended period) so only the Lambda's own sentence reaches the login UI — keep
 pre-token error strings user-ready.
+
+## Password sign-in through the Hosted UI resolves a linked user to the WRONG tenant
+
+Password login must call Cognito `InitiateAuth USER_PASSWORD_AUTH` directly (tenant-web:
+`apps/tenant-web/src/auth/cognito.ts` via `packages/auth/src/cognito-client.ts`; the
+MoveManager desktop: its in-app password form). **Never** route it through the Hosted UI's
+own password page, even though that page works and looks the same.
+
+Why: pre-token's `isFederatedSignIn` (`apps/api/src/cognito/pre-token.ts`) classifies a
+sign-in by `triggerSource`. `InitiateAuth` yields `TokenGeneration_Authentication` →
+native → the `select-tenant` pick wins. The Hosted UI yields `TokenGeneration_HostedAuth`
+→ treated as federated whenever the account carries a linked identity
+(`cognito/pre-sign-up.ts` links them) → the tenant comes from `identities[0]`'s provider.
+For a user linked to another tenant's IdP, that is the wrong tenant, and the
+AuthSession-disagreement check refuses it:
+`PreTokenGeneration failed … session does not match the identity provider`.
+
+Hit 2026-10-08 on the desktop's first QMM live sign-in: "Email and password" opened the
+Hosted UI, the user's `identities[0]` was another tenant's Microsoft provider, and the
+QMM pick was refused. Fix: the desktop app client allows `USER_PASSWORD_AUTH`
+(`cognito-stack.ts`, pinned in `cognito-stack.test.ts`) and the desktop signs in in-app.
+Unlinked users don't hit it, so a test account without a linked identity will not
+reproduce it — test with a linked one.
 
 ## Ported longhaul CSS relies on browser-default headings that Tailwind Preflight strips
 
@@ -2078,6 +2105,43 @@ bites is **worse than nothing**: it tells the next reader the coverage is checke
 **Both halves of this were found only by tampering.** A passing build proves neither. Tamper every
 new compile-time gate and watch it fail before leaving it green.
 
+**[A8 §9 item 3] (2026-10-09) found the third trap, and it is the one that bites when the thing being
+refused is a FIELD rather than a vocabulary member.** `Exact<>` over an **object shape** does not
+refuse an added **optional** property:
+
+```ts
+interface AssertedBy {
+  readonly party: PartyId
+  readonly role: RoleName
+}
+export type ShapeIsExact = Exact<AssertedBy, { readonly party: PartyId; readonly role: RoleName }>
+const _s: ShapeIsExact = true // still compiles after adding `partyClass?: 'person' | 'organisation'`
+```
+
+Both assignability directions survive: the wider type is assignable to the narrower (extra
+properties are fine between object types), and the narrower is assignable to the wider because the
+new member is **optional**. `exactOptionalPropertyTypes` does not help — it constrains the value a
+present optional may take, not whether the key exists. The tamper passed, and only running it said
+so.
+
+**The fix is to gate the key set, and to keep the shape comparison beside it:**
+
+```ts
+export type GrainIsNotOnTheEnvelope = Exact<keyof AssertedBy, 'party' | 'role'>   // catches additions
+export type IsExactlyAPartyAndARole = Exact<AssertedBy, { … }>                     // catches widening `party` off its brand
+```
+
+`keyof` **does** see optional keys, so the first fires on `partyClass?`; the second is what fires
+when `party: PartyId` becomes `party: string`, which the first cannot see. Two gates, each with its
+own tamper run. Live at `packages/domain-reference/src/rules/authority.ts`
+(`AsserterGrainIsNotOnTheEnvelope`, `AsserterIsExactlyAPartyAndARole`).
+
+**And the companion edge usually needs a different file.** A refusal of a **field** cannot see a new
+**enum member** — adding `'person'` to `AGGREGATE_KINDS` leaves `AssertedBy` untouched — so that half
+lives in a `tests/conformance/*-refuses.ts` file as `@ts-expect-error` directives that go unused
+(`TS2578`) the day the member lands. `packages/domain-reference/tests/conformance/party-grain-refuses.ts`
+is the worked example.
+
 ## …and the other half: gate a recorded gap only when the gap has an edge the types can see
 
 The entry above says when an `Exact` is worthless. A6 (`docs/domain-reference/analysis/A6-documents-evidence.md` §9)
@@ -2648,12 +2712,14 @@ Found building the 3b.1 provisioner (`apps/api/src/lib/temporal-cloud-ops.ts`,
   deploy on a NotFound. Never write an example ARN in a comment there, and add
   an ARN only once its secret exists.
 
-## `@playwright/mcp` shadows the Playwright runner — never `npx playwright` in `apps/e2e`
+## A nested `playwright` shadows the runner — never `npx playwright` in `apps/e2e`
 
-`apps/e2e` declares `@playwright/mcp`, which depends on a **prerelease** `playwright`. npm
-installs that at `apps/e2e/node_modules/playwright`, so **anything resolving the binary from that
-directory gets the prerelease runner** while the specs still `import from '@playwright/test'` at
-the root's stable version. The mismatch does not announce itself as a version problem:
+A dependency of `apps/e2e` that brings its own `playwright` gets it installed at
+`apps/e2e/node_modules/playwright`, so **anything resolving the binary from that directory gets
+that copy as the runner** while the specs still `import from '@playwright/test'` at the root's
+stable version. `@playwright/mcp` and its **prerelease** `playwright` were the instance that bit
+us — see the resolution at the end of this entry — but the hazard belongs to the directory, not to
+that package. The mismatch does not announce itself as a version problem:
 
 ```
 Error: Playwright Test did not expect test.describe() to be called here.
@@ -2690,10 +2756,19 @@ takes `chromium` from `@playwright/test` rather than bare `playwright` — and h
 applied the same rule to the **commands**. Rules written for one call-site shape do not transfer
 themselves.
 
-Open question, recorded in `plans/todo/ci-blockers-after-security-backlog.md`: `.claude/settings.json`
-launches the MCP server as `npx @playwright/mcp@latest`, so the declared `apps/e2e` dependency's
-only observable effect in CI is this shadowing. Removing it would delete the hazard rather than
-route around it.
+**Resolved in #819 — the dependency is gone.** `.claude/settings.json` launches the MCP server as
+`npx @playwright/mcp@latest`, so declaring it in `apps/e2e/package.json` bought nothing and its only
+observable effect was this shadowing; every bump re-dragged a prerelease runner into the tree.
+Dropping it is a 48-line lockfile deletion with no behaviour change, and the proof is positional
+rather than a passing suite: `apps/e2e/node_modules/.bin/` **no longer exists at all**, and
+`cd apps/e2e && npx --no-install playwright --version` now prints `1.63.0` instead of the alpha.
+
+**But keep invoking it by path anyway.** That is what makes the next such dependency a non-event,
+and the next one will arrive without announcing itself — `@playwright/mcp` was a devDependency
+nobody thought of as a `playwright` provider either. Note also what the lockfile shows after the
+removal: there is **no root `node_modules/playwright`**. The runner comes from
+`node_modules/@playwright/test/node_modules/playwright` via the root `.bin` link, so
+`require('playwright/...')` does not resolve from `apps/e2e` and is not supposed to.
 
 ## Watching a fresh PR's CI: three ways `gh` reports "nothing" when something is wrong
 
@@ -2839,3 +2914,57 @@ the movemanager plan `plans/completed/2d5714c9-order-status-write.md` has the qu
 read-only executor recipe. Reliable (pegRVS) was unreachable on 2026-10-09 and is still unread.
 Also, `Survey.ShipmentStatus` does not exist in the native order. Mappings that read it (Weichert's
 `shipmentStatus`) have always resolved to `null`.
+
+---
+
+## An enumeration can have a home a `grep` for the member name will not find
+
+**Discovered 2026-10-08**, minting the `party` aggregate kind (`packages/domain-reference`,
+catalog `0.6.4`).
+
+Adding one member to a closed `as const` enum in `src/` looked like a one-line change, and the
+planning pass enumerated every place the enum's _ordinal_ was written down. It missed the place the
+enum's _membership_ is written down a second time: **`data/canonical-subjects.json` carries
+`families.anyAggregate.members` as a hand-written copy of `AGGREGATE_KINDS`**, and
+`loadCanonicalSubjects` compares the two as a **set**.
+
+A `grep` for the new member's name cannot find that file, because the member is not in it yet — that
+is the whole failure mode. What found it was the suite:
+
+```
+DataDefect: canonical-subjects.families.members.anyAggregate.members:
+  is [order, …, externallyPerformedLeg]
+  where SUBJECT_FAMILIES.anyAggregate is [order, …, externallyPerformedLeg, party]
+```
+
+**Why that message mattered more than the failure.** It names the **set difference**, so the fix was
+one read rather than a debugging session. It also took `vocabulary.test.ts` down at _file load_ and
+failed eleven cases in `data-tables.test.ts` behind it — sixteen failures, one cause. A gate that
+printed only "expected 14, got 15" would have cost an hour.
+
+**How to apply:** before adding a member to any closed vocabulary in `packages/domain-reference/src`,
+grep `packages/domain-reference/data/` for a sibling member's name, not the new one. If a data file
+lists the members, it is a second home and the loader is comparing them. The same rule generalises
+past this repo: **a hand-written copy of a closed set is invisible to a search for what is missing
+from it** — search for what is already there.
+
+---
+
+## Replacing a count with a comparison: right fix, and verify the reason before writing it down
+
+**Same round.** `data-tables.test.ts` asserted
+`expect(admissibleSubjectKinds(table, 'identity')).toHaveLength(14)`. The new member made it 15 and
+the gate went red — a count standing in for "the whole enum", which dates on contact. Replacing it
+with `toEqual([...AGGREGATE_KINDS])` is correct and is the house rule (prefer a gate that enumerates
+or compares over one that counts).
+
+**What is worth recording is the claim that did not survive.** The write-up was about to say the
+count _also_ "passes a half-tamper" — drop one member while adding another and 15 − 1 = 14, so the
+length assertion would pass a silently broken family. Running the tamper refuted it: the data-table
+loader's set comparison (above) throws **upstream of every assertion in that file**, so the
+half-tamper never reaches the count at all. The count was never what held that claim.
+
+**How to apply:** tamper first, then name the tamper's shape. "This gate would pass a half-tamper" is
+a claim about _which_ gate holds a property, and in a suite with layered loaders the answer is often
+a gate you were not looking at. Fix the dating count anyway — just do not credit it with catching
+something.

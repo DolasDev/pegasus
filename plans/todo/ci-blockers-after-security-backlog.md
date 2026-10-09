@@ -1,8 +1,11 @@
 # CI blockers + merge-queue maintenance left after the security backlog
 
-> **Resume point — refreshed 2026-10-06 (late) against `main` @ `c60c00db`.** Every fact below was
-> re-verified that day against the working tree, not carried over. Read "State of play", then
-> pick from "Live work"; each item says what it is, what it would cost, and what I'd do.
+> **Resume point — refreshed 2026-10-09 against `main` @ `65a11dfd`, in the PR that closes the last
+> agent-doable item (#822).** Read **"Resume here"** immediately below, then "State of play", then
+> pick from "Live work". The body was last fully re-verified 2026-10-06 (late) against `c60c00db`;
+> the 10-07 pass closed the `@playwright/mcp` decision (#819) and the 10-09 pass closed the
+> `nodeModules` hardening (#822). **Everything still open is either owner-only or a judgement call —
+> see "Resume here".**
 >
 > ⚠️ **This file said "nothing is blocking" at `892f0c53` and was falsified two hours later.** A
 > newly-published **critical** advisory flipped `audit-ci` red on `main` with no code change, and the
@@ -23,10 +26,93 @@
 
 ---
 
+## Resume here
+
+**Where:** primary checkout `/home/steve/repos/pegasus`, branch `main`, last commit
+`65a11dfd feat(domain-reference): mint the party aggregate — [A8 §9 item 1], catalog 0.6.4 (#821)`.
+No worktree is needed to read this.
+
+**Status:** nothing is in flight from the previous sessions. #819 (drop `@playwright/mcp`) and
+#822 (root `nodeModules` edges) both merged with CI green and `main`'s Deploy green through prod.
+`main` is green (see State of play). The `Live work` checkboxes are accurate as of 2026-10-09.
+
+**Next action — there is no obvious one left, and that is the honest state of this file.** Read this
+before reaching for the loose end below; the remaining items are not a queue to work down.
+
+- **`DEPENDABOT_AUTOMERGE_PAT` is still the highest-leverage thing on the list and is OWNER-ONLY.**
+  No code change — the workflow already reads `secrets.DEPENDABOT_AUTOMERGE_PAT ||
+secrets.GITHUB_TOKEN`. Eight reproductions. An agent cannot do it; **ask rather than work around
+  it.**
+- **Both decisions are settled** — `@playwright/mcp` by removing it (#819), TENANT-03 by
+  deliberately leaving it (and the "leave it" there is load-bearing: the candidate rewrite is
+  _unverifiable locally_, so doing it would be churn chasing a flake that may no longer fire).
+- **The only agent-doable item left is the `check-overrides.mjs` loose end, and it is deliberately
+  open-ended, not shovel-ready.** Do not treat it as a mechanical task. The open _question_ is
+  narrow and worth answering (is npm's `overridden` flag now marking only the node that directly
+  satisfies an override, which would make the "43 inert" an over-count?); the _action_ it implies —
+  deleting override entries — is where the risk is, because removing an entry lets the resolver run
+  unconstrained and can pull a lower version a parent range still permits. The 4 dead ones are the
+  cheapest start, but **`handlebars` is there for CVE-2019-19919**, so read the `//overrides` note
+  before removing any security entry even when the package is gone from the tree. One entry at a
+  time, each with `rm -rf node_modules package-lock.json && npm install` and the affected suite.
+
+So: if you arrived here looking for work, the useful answers are "ask the owner about the PAT" or
+"answer the `overridden`-flag question without deleting anything yet". Inventing a task from the
+`(no action)` item at the bottom would be a mistake — that one is explicitly _expected output_, not
+a finding.
+
+**What #822 did** (the item it closes has the full record, including the range correction):
+
+- Three root `devDependencies` edges — `@cedar-policy/cedar-wasm` `^4.13.0`, `@napi-rs/canvas`
+  `^0.1.99`, `expo-server-sdk` `^6.1.0` — each matching `apps/api` **exactly**, plus a
+  `//devDependencies` note apiece. Lockfile effect: **3 insertions, nothing else.**
+- **The plan's own step 2 was wrong and is corrected in the item below:** it said to pin to the
+  installed versions, but `^0.1.99` ≠ `^0.1.100` for a 0.x caret, and a root range that diverges
+  from the workspace's is exactly what makes npm nest instead of hoist — the #762 mechanism this
+  edge exists to prevent.
+- Verified with a real `cdk synth` (exit 0, all three in the bundled assets at the expected
+  versions), not just the `turbo` floor, because bundling is invisible to typecheck/lint/test.
+
+**A trap this file should have warned about, and now does:** the `//devDependencies` notes are the
+only thing standing between these edges and a future "unused dependency" cleanup. Three root
+devDependencies that no root file imports look exactly like cruft. Each note starts `NOT unused —
+do not remove` and names the stack and Lambda construct that bundles the package. **If you ever
+find yourself pruning root devDependencies, read those notes first.**
+
+**In flight (not mine):** at #822's creation the only other open PR was `#145` (Cognito/SES, on
+explicit hold). Four worktrees belong to other streams — note that
+`pegasus-deps-advisory-flip` is parked on a branch whose name keeps changing (`chore/parked-dr` →
+`chore/dr-party` → `chore/dr-person-grain`) and is what owns Postgres port 5459. Re-check with
+`gh pr list --state open` and `git worktree list`; neither of those is a reason to wait.
+
+**One dead end still worth not re-walking** (the rest are in State of play's three lessons and in
+`Five diagnosis traps`): **enqueuing was deliberately deferred during a GitHub Actions
+`major_outage`** rather than pushed through. A starved entry holds the head of an `ALLGREEN` queue
+and is dropped at `check_response_timeout_minutes: 60`, blocking every other stream for no benefit —
+and nothing merges during the outage anyway. Check
+`curl -s https://www.githubstatus.com/api/v2/components.json` before diagnosing a broad, uniform CI
+failure as yours.
+
+**Do not commit from the primary checkout.** It stays parked on `main` (see
+`dolas/agents/team/workflow.md`), and a session hook enforces it. This file is edited in the
+worktree and lands with the code, one PR — if a copy of it is dirty in the primary, discard that
+with `git checkout -- plans/todo/ci-blockers-after-security-backlog.md` once the PR carries the
+content.
+
+**Verification still owed:** none from #819 — `turbo typecheck lint test` green, `npm ci` clean on
+npm 11.13.0, the three positional playwright proofs above, and `--list` at 10 tests in 4 files. The
+one thing that cannot be done before merge is **watching `main`'s Deploy to completion**, since this
+touches `apps/e2e`'s tree and that is exactly what the staging E2E gate (#784) exercises.
+
+---
+
 ## State of play
 
-**`main` is green again, through prod, at `c60c00db`** — `CI`, `CodeQL` and `Deploy` all success on
-that commit and on `1fd5f284` before it. Working tree clean.
+**`main` is green through prod at `be16d7d2`** (re-verified 2026-10-07 from the commit's own
+check-runs, **not** `gh run list` — see the traps): **41 success, 1 skipped, 0 failures**, with
+`Lint` (the `audit-ci` gate), `Test`, `Deploy to staging` and `Deploy to prod` all success. One
+`E2E Tests` run was still `in_progress` at checkpoint time. Working tree clean apart from this
+file — see "Resume here".
 
 **But it was RED from ~15:51Z to 16:18Z, and the cause is still live.**
 
@@ -46,7 +132,7 @@ that commit and on `1fd5f284` before it. Working tree clean.
 **The lesson worth more than the fix: this file already contained the answers to two of the three
 traps I hit, and I hit them because I had not read it.** The `gh run list --branch main` staleness and
 the `apps/api/vitest.config.ts` coverage-floor drift are both documented below, and both cost time
-anyway. **Read "Do not commit these" and "Three diagnosis traps" before starting, not after.**
+anyway. **Read "Do not commit these" and "Five diagnosis traps" before starting, not after.**
 
 **Everything from the previous round is still closed.** Nine fixes landed 2026-10-02 → 10-05; detail
 is in GOTCHAS and the PRs, so one line each:
@@ -86,8 +172,10 @@ is in GOTCHAS and the PRs, so one line each:
 ## Live work
 
 **One item now blocks nothing today but guarantees a repeat**, and it is first because it is the
-reason this file's previous revision was wrong. The rest: two decisions, two optional hardening, one
-loose end, one explicitly no-action.
+reason this file's previous revision was wrong. The rest, **all now closed or settled except two**:
+one owner-only item (the PAT), two decisions (settled — one removed in #819, one deliberately left),
+one optional hardening (done in #822), one loose end (the only agent-doable thing remaining, and
+open-ended), one explicitly no-action.
 
 ### [x] `Dependabot Updates` "erroring" — NOT broken; the premise was wrong (closed 2026-10-07)
 
@@ -148,21 +236,21 @@ independent claims. Confirm the second with a `merge_group` run **for that PR nu
 recording a PR as healthy — see the ⚠️ box in the runbook for why the first claim's usual
 signature lies.
 
-### [ ] Decision: should `@playwright/mcp` stay an `apps/e2e` dependency?
+### [x] Decision: should `@playwright/mcp` stay an `apps/e2e` dependency? — NO, removed (#819)
 
-It pulls a **prerelease** `playwright` into `apps/e2e/node_modules`, which shadows the stable
+It pulled a **prerelease** `playwright` into `apps/e2e/node_modules`, which shadows the stable
 runner for anything resolved from that directory. #784 routed around it by spelling out
 `node ../../node_modules/.bin/playwright` at every call site (root `.bin/playwright` is linked
-from `@playwright/test` itself, so runner and library always agree).
+from `@playwright/test` itself, so runner and library always agree) — but `.claude/settings.json`
+launches the MCP server as `npx @playwright/mcp@latest`, so **the declared dependency's only
+observable effect in CI was the shadowing**, and every Dependabot bump re-dragged a prerelease
+runner into the tree for a server fetched by `npx` anyway.
 
-But `.claude/settings.json` launches the MCP server as `npx @playwright/mcp@latest`, so **the
-declared dependency's only observable effect in CI is the shadowing.** Removing it would delete
-the hazard rather than route around it. Still declared as `^0.0.83` (verified 2026-10-06), and
-Dependabot will keep bumping it.
-
-**What I'd do:** remove it. The routing-around is in place and documented, so this is cleanup
-rather than a fix — but every future bump re-drags a prerelease runner into the tree for a server
-that is fetched by `npx` anyway.
+**Removed in #819** — 48 lockfile deletions, zero additions, no behaviour change. The decision was
+"delete the hazard rather than route around it", and the routing-around **stays**: the explicit
+`.bin` path is what makes the next such dependency a non-event, and it is now documented in terms of
+the directory rather than this one package. Full outcome and the three positional proofs are under
+"Resume here".
 
 ### [ ] Decision: the TENANT-03 **timeout** (the leak half is already fixed)
 
@@ -184,24 +272,39 @@ longer fire. Revisit only if TENANT-03 actually exceeds 45 s in a real run — a
 that run's log **while it is live**, because it is the evidence this item has never had. (An
 expired log is exactly what cost #746 its cause.)
 
-### [ ] Optional hardening: three `nodeModules` entries are root-resolvable _by luck_
+### [x] Optional hardening: three `nodeModules` entries were root-resolvable _by luck_ — declared (#822)
 
 #783 added `packages/infra/lib/stacks/__tests__/cdk-node-modules-root-resolvable.test.ts`, which
 asserts every CDK `bundling.nodeModules` package has a root `node_modules/<pkg>` lockfile entry
-(static, ~130 ms, proven red against #762's actual lockfile).
+(static, ~130 ms, proven red against #762's actual lockfile). `sharp` was declared at the root by
+#783; these three were not, and sat there only because nothing had displaced them yet:
 
-Re-verified 2026-10-06 — `sharp` is now declared at the root; these three are **not**, and sit
-there only because nothing has displaced them yet:
+| package                    | root entry                                            | bundled by                       | now declared     |
+| -------------------------- | ----------------------------------------------------- | -------------------------------- | ---------------- |
+| `@napi-rs/canvas`          | 0.1.100 (plus a 1.0.3 copy nested under `pdfjs-dist`) | DocumentsStack ConverterFunction | `^0.1.99` (#822) |
+| `@cedar-policy/cedar-wasm` | 4.13.0                                                | api-stack ApiFunction            | `^4.13.0` (#822) |
+| `expo-server-sdk`          | 6.1.0                                                 | api-stack PushForwardFunction    | `^6.1.0` (#822)  |
 
-| package                    | root entry                                            | declared at root? |
-| -------------------------- | ----------------------------------------------------- | ----------------- |
-| `@napi-rs/canvas`          | 0.1.100 (plus a 1.0.3 copy nested under `pdfjs-dist`) | no                |
-| `@cedar-policy/cedar-wasm` | 4.13.0                                                | no                |
-| `expo-server-sdk`          | 6.1.0                                                 | no                |
+**Done in #822** — three root `devDependencies` edges plus a `//devDependencies` note each, the
+same shape #783 used for `sharp`. Lockfile effect: **3 insertions, nothing else** — the root entries
+already existed, so the edges only record the intent and no package moved. The `@napi-rs/canvas`
+0.1.100 / `pdfjs-dist` 1.0.3 split is preserved and is correct: the root stays on 0.1.x for the
+bundler while `pdfjs-dist` keeps the major it needs.
 
-**Not a blocker** — the guard turns each into a red PR check the day it denests, which is the
-whole point of it. Declaring them at the root is cheap insurance; doing nothing is also
-defensible now that the gate exists.
+> ⚠️ **This item's own step 2 told the next agent to pin to "the versions already in the lockfile"
+> (0.1.100 / 4.13.0 / 6.1.0). That was wrong for `@napi-rs/canvas` and is corrected here.** The rule
+> — stated in `sharp`'s and `tsx`'s own `//devDependencies` notes — is **keep the root range EQUAL to
+> the workspace's**, because a divergent range is precisely what makes npm nest instead of hoist,
+> which is the entire #762 mechanism. For a 0.x caret `^0.1.99` and `^0.1.100` are _different_
+> ranges, so pinning to the installed version would have introduced the very divergence the edge
+> exists to prevent. All three now match `apps/api` exactly.
+
+Verified beyond the `turbo` floor, since this is the #762 class of change and `turbo` cannot see
+bundling: real `cdk synth` exit 0 with all three present in the bundled assets at the expected
+versions — `@napi-rs/canvas` 0.1.100 (next to `sharp` 0.35.5), `expo-server-sdk` 6.1.0,
+`@cedar-policy/cedar-wasm` 4.13.0 — plus `npm ci` clean on npm 11.13.0, the #783 guard green before
+and after (its value here is that it keeps passing while "by luck" becomes "by declaration"), and
+`turbo typecheck lint test` 41/41.
 
 ### [ ] Loose end: `check-overrides.mjs` reports 47 of 49 overrides as removal candidates
 
@@ -339,9 +442,16 @@ got swept into a CI hotfix on 2026-10-04 and had to be amended out.
 2. **`apps/e2e/.env.test`** — the worktree's Postgres port.
 3. **`package-lock.json`** — `scripts/new-worktree.sh` runs `npm install`, and local **npm 11**
    prunes a nested `apps/mobile/node_modules/babel-preset-expo` (116 lines) that the committed
-   lockfile keeps. Showed up unrelated in three worktrees. `git checkout package-lock.json`
+   lockfile keeps. Showed up unrelated in three worktrees. `git checkout -- package-lock.json`
    unless you deliberately changed a dependency — this prune is also why #779's lockfile edit was
-   made by hand rather than by `npm install --package-lock-only`.
+   made by hand rather than by `npm install --package-lock-only`. Note the `--`: without it a session
+   hook rejects the command as a branch switch on the primary worktree.
+
+   > A second, _smaller_ lockfile churn to expect and **keep**: `npm install --package-lock-only`
+   > drops a stale `"peer": true` from `apps/api/node_modules/hono` (1 line). That node is forced by
+   > the root `overrides` entry `"hono": ">=4.13.3 <5"`, not by a peer edge, so npm 11 is correcting
+   > the metadata. Observed on #819. Unlike the `babel-preset-expo` prune this is not a structural
+   > change, and hand-reverting it only re-churns on the next install.
 
    > ✅ A fourth, `AGENTS.md`, is **resolved** — see #791 above. It is no longer expected to go
    > dirty on its own.

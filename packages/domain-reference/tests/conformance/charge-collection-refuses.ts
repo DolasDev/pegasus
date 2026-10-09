@@ -7,7 +7,7 @@
  *
  * **What it holds is [A7 §3.2]'s central claim**, which is not a claim about a vocabulary member
  * but about the layer above it: _no act on a charge has a record, and the blocker is that the
- * **subject** does not exist._ [SD §1.2]'s fourteen aggregate kinds contain no `invoice` and no
+ * **subject** does not exist._ [SD §1.2]'s aggregate kinds contain no `invoice` and no
  * `payment`, and `chargeCollection` is recorded absent rather than minted. Each of those three is an
  * edge the type system can see, which is [A6 §9]'s test for whether a recorded gap earns a gate.
  *

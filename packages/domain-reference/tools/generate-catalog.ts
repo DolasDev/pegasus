@@ -404,9 +404,9 @@ function nameOf(type: ts.Type, context: Context): string | undefined {
  * A `$defs` name that says which instantiation it is.
  *
  * One generic reaches this function once per instantiation, and the numeric fallback below would
- * spell fourteen aggregate id types `AggregateId`…`AggregateId14` — names that identify nothing. So
- * two shapes carry a better discriminator in the body itself and it is used: a brand carries its
- * tag, and an `Owed<Name, Owner>` carries the name of what is owed.
+ * spell every aggregate id type `AggregateId`, `AggregateId2`, `AggregateId3`… — names that
+ * identify nothing. So two shapes carry a better discriminator in the body itself and it is used:
+ * a brand carries its tag, and an `Owed<Name, Owner>` carries the name of what is owed.
  */
 /**
  * The sentence an `Owed<Name, Owner>` branch carries on the wire — A3 of the cleanup round.
@@ -502,7 +502,7 @@ function subjectRefKind(value: Json): string | undefined {
  *
  * `SubjectRef<K>` is a **distributive conditional** ([SD §1.2]), and instantiating it loses the
  * alias: `subject` and `context[]` both resolve to a bare union of `{aggregate, id}` objects with
- * no `aliasSymbol` to hoist on. Left alone that inlines the fourteen-member envelope union into
+ * no `aliasSymbol` to hoist on. Left alone that inlines the whole envelope union into
  * every variant of every record, which is most of the document.
  *
  * So it is recognised by shape and named by the **canonical subject family** it matches

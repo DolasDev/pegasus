@@ -141,6 +141,15 @@ the three aggregates the other documents need have no slot in the envelope the t
 | `context[]`   | `SubjectRef[]`                                              | OPTIONAL                                                      | Other aggregates this record is also about. **Non-authoritative.** See 1.4.                                                                      |
 | _payload_     | typed per `type`                                            | per type                                                      | Carries `basis`, `value`, `qualifier`, `outcome`, `reasons[]`, `supersedes` etc. as the record class requires.                                   |
 
+> **`assertedBy`'s two members are a decision as of 2026-10-09, not just a shape.**
+> [`A8` §9 item 3](A8-authority-skeleton.md) asked whether the individual who signs is a distinct
+> asserter and answered **no**: a party's grain — person, company, office, branch — is a property of
+> what identifies it and of the `role` it asserts under, never of a class field here. Nothing is
+> added, which matters precisely because this table is on **every** record. The gate is
+> `AsserterGrainIsNotOnTheEnvelope` (plus `AsserterIsExactlyAPartyAndARole`, because the shape
+> comparison alone admitted an added **optional** member and the tamper proved it), and
+> `tests/conformance/party-grain-refuses.ts` holds the second candidate, a `person` aggregate kind.
+
 **Forbidden on the envelope, permanently:**
 
 - **A second `subject`.** One record, one subject — and on an Assertion the envelope `subject` _is_
@@ -186,6 +195,15 @@ Eleven of these are the set the critique requires (must-fix #1). Three are added
   (`src:x12-212-trailer-manifest` `MS2`: owner SCAC + **owner-assigned** equipment number + check
   digit, "equipment identity is owner-scoped"). Without it, §7's equipment grain has nothing to
   attach to.
+
+  > **Recorded by [`A8` §9 item 3](A8-authority-skeleton.md) on 2026-10-09, not repaired, because the
+  > repair is this document's and A3's.** The citation above covers the **equipment** half only; the
+  > words "driver or crew member" in this row carry none. The consequence is live and benign so far:
+  > one human can be a `resource` (what an `Assignment` binds to a trip) and a **party** (who
+  > asserts, under `role: 'driver'`) — and `src:sirva-ade`'s `Resource` fuses the same two, which is
+  > why item 3 could explain its `Name` field rather than leave it a blocker. Whether the uncited
+  > phrase is a decision or a fossil is open; **item 3 did not need it to be either.**
+
 - **`document`** — weight tickets, the BOL and the inventory are asserted about and evidenced
   against, and 400NG Item 4.10 makes a weight ticket a six-field record with its own retention rules.
   **[ORIGINAL]** as an envelope decision; A6 may narrow it, never remove it. **Narrowed, and the
@@ -1660,7 +1678,7 @@ A5's missing party class, nor A2's and A1's missing `boundBy` member, nor A6's m
   conditional on a **tender of payment** of the lawful maximum; §375.801 makes the _"balance due
   invoice"_ the trigger of the Subpart H collection regime. `src:milmove-mymove`'s `PaymentRequest`
   runs six states with a timestamp each; `src:dtr-part-iv` chooses between **DD 139 and DD 1131 by
-  pay status**. **What blocks it is one level above this table**: §1.2's fourteen aggregate kinds
+  pay status**. **What blocks it is one level above this table**: §1.2's aggregate kinds
   contain no `invoice` and no `payment`, so the question never reaches
   [`A8` §9 item 8](A8-authority-skeleton.md)'s ledger at all. The model's other instance of that
   shape is `placeRef`, owed to §1.2 because there is no `place` aggregate. **The aggregate is not
@@ -2235,6 +2253,15 @@ coincide explicitly rather than by a reader's inference.
 > — neither field is a `subject` — but it means an identity assertion **about** a party (a SCAC, a
 > USDOT number, a GBLOC) has nowhere to go. [A9 §3.6] is the finding and it mints nothing, because
 > [A8 §9 item 1] already owes the entity and already names those identifiers among its fields.
+>
+> > **AMENDED 2026-10-08. [A8 §9 item 1] landed and §7.1 needs none of this undone.** `party` is an
+> > `aggregate` kind at catalog **0.6.4**, so an identity assertion **about** a party now has
+> > somewhere to go and §7.1's own sentence — "`subject` may be **any** aggregate kind" — is what
+> > made the mint sufficient on its own. **Two things this does NOT change.** `PartyId` is still the
+> > type of both fields above and still branded `party`, deliberately: neither is a `subject`, and no
+> > published rule compares a party-as-subject with a party-as-reference, so unifying the brand with
+> > the subject form is owed to [A8] rather than done. And **§7.2's GBLOC witness becomes writable** —
+> > the worked example a reader reaches for is no longer the one A9 could not write down.
 
 ### 7.2 The effective interval — sourced twice
 

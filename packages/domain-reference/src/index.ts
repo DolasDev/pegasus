@@ -56,9 +56,10 @@ export * from './rules/charges'
 // I-ACCOUNT is a **partial function** rather than a lookup, because [A9 §3.2] refuses to close
 // `identityScheme` at all: five sources publish a closed identifier list and every one of them
 // publishes an open slot beside it, two of them with a warning attached. Its neighbour here is the
-// gate that holds that refusal, and the five party-grain rows of [A9 §3.3]'s table are the round's
-// structural finding — the best-witnessed scheme in the corpus identifies the one thing [SD §1.2]
-// has no aggregate for, and [A8 §9 item 1] already owes it.
+// gate that holds that refusal, and the five party-grain rows of [A9 §3.3]'s table were the round's
+// structural finding — the best-witnessed scheme in the corpus identified the one thing [SD §1.2]
+// had no aggregate for. [A8 §9 item 1] owed it and minted it at catalog 0.6.4, so those five rows
+// now assert against a `party` subject and `schemeBlocker` answers `null` for every row.
 export * from './rules/identity-schemes'
 
 // The rules the boundary runs — subject admission ([SD §4.6]) and capture ([SD §5]). They are

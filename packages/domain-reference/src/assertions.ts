@@ -283,9 +283,13 @@ void _valueTableIsComplete
  * `from`/`to` actor refs). What is not preserved is the claim that one publisher's record settles
  * both sides.
  *
- * Grain is **owed** and is carried as the union rather than invented: [SD §4.8.3] returns `holder`
- * as a `partyRole` while [SD §8.2]'s `performedBy` is a party, and [A8 §9 items 1-3] owe the party
- * entity and the person-vs-organisation grain ({@link CustodyHolder}).
+ * The holder is carried as a **union** rather than resolved, because two published inputs disagree
+ * about what they refer to: [SD §4.8.3] returns `holder` as a `partyRole` while [SD §8.2]'s
+ * `performedBy` is a party ({@link CustodyHolder}). **It is no longer the grain that keeps it.**
+ * [A8 §9 item 1] minted the party at catalog 0.6.4 and [A8 §9 item 3] decided the grain on
+ * 2026-10-09 — a party may be a person, a company, an office or a branch, declared by the role and
+ * by the scheme — and what is left is resolving a role-holding to a party, which needs the role
+ * vocabulary ([A8 §9 item 2], `refusedOnEvidence`).
  *
  * All three are optional-`never` on every other act, so they cannot drift onto `loading` or
  * `delivery` — which matters because **A8-MOVE** is defined on `custodyBasis`, and a second place
