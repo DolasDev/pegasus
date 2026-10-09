@@ -26,7 +26,7 @@
           "cardinality": "alternatives"
         },
         "corroborating": {
-          "roles": ["originAgent", "destinationAgent", "customer"],
+          "roles": ["originAgent", "destinationAgent", "goodsOwner"],
           "unresolved": [],
           "note": "originAgent/destinationAgent at their own end. Absence of corroboration is NOT evidence ([A8 §4.1] note 1) — most of these roles have no obligation to speak."
         },
@@ -36,14 +36,9 @@
           "note": "At destination. The deliberate entry: the critique's own example is the destination agent's shipment-level claim against the driver's stop-level claim; both are real, and E-CANON is what makes them pair ([SD §4.6.3])."
         },
         "advisory": {
-          "roles": ["booker", "platform"],
-          "unresolved": [
-            {
-              "designation": "visibility providers (src:dcsa VSP / SVP)",
-              "owedTo": "[A8 §9 item 2] — the role enum does not carry them"
-            }
-          ],
-          "note": "Advisory = recorded, never selected ([A8 §4.1])."
+          "roles": ["booker", "visibilityProvider", "platform"],
+          "unresolved": [],
+          "note": "Advisory = recorded, never selected ([A8 §4.1]). RESOLVED at [A8 §9 item 2] (catalog 0.7.0): the designation was \"visibility providers (src:dcsa VSP / SVP)\" and the role enum now carries visibilityProvider, on src:dcsa tntPublisherRole — \"the party function code of the publisher\", a closed four-member enum on the same schema as ARRI/DEPA. Primary and captured, and one publisher, which [A8 §10] now carries a row for."
         }
       },
       "settlement": null,
@@ -74,7 +69,7 @@
           "cardinality": "alternatives"
         },
         "corroborating": {
-          "roles": ["originAgent", "destinationAgent", "customer"],
+          "roles": ["originAgent", "destinationAgent", "goodsOwner"],
           "unresolved": [],
           "note": "as row 1."
         },
@@ -84,14 +79,9 @@
           "note": "as row 1."
         },
         "advisory": {
-          "roles": ["booker", "platform"],
-          "unresolved": [
-            {
-              "designation": "visibility providers (src:dcsa VSP / SVP)",
-              "owedTo": "[A8 §9 item 2]"
-            }
-          ],
-          "note": "as row 1."
+          "roles": ["booker", "visibilityProvider", "platform"],
+          "unresolved": [],
+          "note": "as row 1. RESOLVED at [A8 §9 item 2] (catalog 0.7.0): the designation was \"visibility providers (src:dcsa VSP / SVP)\" and the role enum now carries visibilityProvider, on src:dcsa tntPublisherRole — \"the party function code of the publisher\", a closed four-member enum on the same schema as ARRI/DEPA. Primary and captured, and one publisher, which [A8 §10] now carries a row for."
         }
       },
       "settlement": null,
@@ -117,12 +107,12 @@
           "cardinality": "alternatives"
         },
         "corroborating": {
-          "roles": ["driver", "customer"],
+          "roles": ["driver", "goodsOwner"],
           "unresolved": [],
           "note": null
         },
         "competing": {
-          "roles": ["customer"],
+          "roles": ["goodsOwner"],
           "unresolved": [],
           "note": "For the SCOPE of what was loaded (short/refused) — not for the fact that loading happened."
         },
@@ -155,12 +145,12 @@
           "cardinality": "alternatives"
         },
         "corroborating": {
-          "roles": ["driver", "customer"],
+          "roles": ["driver", "goodsOwner"],
           "unresolved": [],
           "note": null
         },
         "competing": {
-          "roles": ["customer"],
+          "roles": ["goodsOwner"],
           "unresolved": [],
           "note": null
         },
@@ -203,7 +193,7 @@
           "note": null
         },
         "competing": {
-          "roles": ["customer"],
+          "roles": ["goodsOwner"],
           "unresolved": [],
           "note": "The joint-signature case, [A8 §7.3]."
         },
@@ -241,7 +231,7 @@
           "note": "weighMaster supplies the EVIDENCE, not the assertion (src:cfr-49-375 §375.519 puts the signature on the weigh master)."
         },
         "competing": {
-          "roles": ["hauler", "originAgent", "customer", "accountParty"],
+          "roles": ["hauler", "originAgent", "goodsOwner", "accountParty"],
           "unresolved": [],
           "note": "hauler/originAgent assert the weighing; customer/accountParty assert the reweigh. Both sides are eligible to win under the named value rule, which is what makes 'competing' the most important of the four standings ([A8 §4.1] note 3)."
         },
@@ -383,7 +373,7 @@
           "unresolved": [
             {
               "designation": "the non-inspecting parties",
-              "owedTo": "[A8 §9 item 2]"
+              "owedTo": "[A8 §4.1] note 1 — NOT DEBT, resolved 2026-10-09 by [A8 §9 item 2]. This designation is a COMPLEMENT: it means whichever roles are not the authoritative asserter on this fact, so its extension changes per fact and no enum member can name it. §4.1 note 1 already licenses the gap — \"a role the table has not placed is unplaced, not demoted\" — so this column was never exhaustive and this entry was describing that rather than owing it."
             }
           ],
           "note": null
@@ -441,7 +431,7 @@
           "unresolved": [
             {
               "designation": "the counterparty echoing the value back",
-              "owedTo": "[A8 §9 item 2]"
+              "owedTo": "[A8 §9 item 11] — RE-POINTED 2026-10-09 from item 2. This designation names a party by its RELATION TO THE FACT, not by a role, so the role vocabulary cannot close it however complete it gets. §4 solved the same problem one column over: AuthoritativeHolder is a union of holder KINDS (custodyHolder, legAuthoritativeAsserter, keySideRole, awardedRole) precisely so authoritative can name a party the table cannot enumerate, while corroborating/competing/advisory take RoleName[] and nothing else. Item 11 is that asymmetry."
             }
           ],
           "note": "src:dcsa states the echo-back obligation; src:sirva-ade performs it (ExternalReference = 'Agent's internal lead reference', LEP p.3)."
@@ -456,7 +446,7 @@
           "unresolved": [
             {
               "designation": "everyone else",
-              "owedTo": "[A8 §9 item 2]"
+              "owedTo": "[A8 §4.1] note 1 — NOT DEBT, resolved 2026-10-09 by [A8 §9 item 2]. This designation is a COMPLEMENT: it means whichever roles are not the authoritative asserter on this fact, so its extension changes per fact and no enum member can name it. §4.1 note 1 already licenses the gap — \"a role the table has not placed is unplaced, not demoted\" — so this column was never exhaustive and this entry was describing that rather than owing it."
             }
           ],
           "note": null
@@ -486,7 +476,7 @@
             "unresolved": [
               {
                 "designation": "the performing role",
-                "owedTo": "Not fixed — it is whichever role performed the act the charge is for, so it varies by charge. [A8 §9 item 2] owes the enum it would be drawn from."
+                "owedTo": "[A8 §9 item 11] — RE-POINTED 2026-10-09 from item 2. This designation names a party by its RELATION TO THE FACT, not by a role, so the role vocabulary cannot close it however complete it gets. §4 solved the same problem one column over: AuthoritativeHolder is a union of holder KINDS (custodyHolder, legAuthoritativeAsserter, keySideRole, awardedRole) precisely so authoritative can name a party the table cannot enumerate, while corroborating/competing/advisory take RoleName[] and nothing else. Item 11 is that asymmetry."
               }
             ],
             "note": "Proposal authority.",
@@ -520,7 +510,7 @@
           "unresolved": [
             {
               "designation": "the performing role, on quantum",
-              "owedTo": "[A8 §9 item 2]"
+              "owedTo": "[A8 §9 item 11] — RE-POINTED 2026-10-09 from item 2. This designation names a party by its RELATION TO THE FACT, not by a role, so the role vocabulary cannot close it however complete it gets. §4 solved the same problem one column over: AuthoritativeHolder is a union of holder KINDS (custodyHolder, legAuthoritativeAsserter, keySideRole, awardedRole) precisely so authoritative can name a party the table cannot enumerate, while corroborating/competing/advisory take RoleName[] and nothing else. Item 11 is that asymmetry."
             }
           ],
           "note": null
@@ -616,7 +606,7 @@
           "note": "weighMaster supplies the EVIDENCE, not the assertion — src:cfr-49-375 §375.519(a)(1)-(6) puts the signature, the scale name and the scale location on the weigh master. Exactly as row 6."
         },
         "competing": {
-          "roles": ["customer", "accountParty"],
+          "roles": ["goodsOwner", "accountParty"],
           "unresolved": [],
           "note": "The reweigh right, and it is the shipper's: src:cfr-49-375 §375.517 gives the shipper the reweigh demand before unloading begins and requires the freight bill to be based on the reweigh weight. A competing assertion here wins only through row 6's R-WEIGHT-LOWER on the NET, which is the mechanism this row hands the contest to."
         },
@@ -659,7 +649,7 @@
           "note": "weighMaster supplies the EVIDENCE, not the assertion — src:cfr-49-375 §375.519(a)(1)-(6) puts the signature, the scale name and the scale location on the weigh master. Exactly as row 6."
         },
         "competing": {
-          "roles": ["customer", "accountParty"],
+          "roles": ["goodsOwner", "accountParty"],
           "unresolved": [],
           "note": "The reweigh right, and it is the shipper's: src:cfr-49-375 §375.517 gives the shipper the reweigh demand before unloading begins and requires the freight bill to be based on the reweigh weight. A competing assertion here wins only through row 6's R-WEIGHT-LOWER on the NET, which is the mechanism this row hands the contest to."
         },
@@ -697,12 +687,12 @@
           "cardinality": "alternatives"
         },
         "corroborating": {
-          "roles": ["customer", "destinationAgent"],
+          "roles": ["goodsOwner", "destinationAgent"],
           "unresolved": [],
           "note": "The customer observes the pack; the destination agent sees the result at delivery. Neither has an obligation to speak, so silence is not evidence ([A8 §4.1] note 1)."
         },
         "competing": {
-          "roles": ["customer"],
+          "roles": ["goodsOwner"],
           "unresolved": [],
           "note": "On SCOPE, not on performance — 'what did you actually pack'. src:cfr-49-375 §375.503(a) requires an itemized inventory identifying every carton and every uncartoned item with a number placed physically on each article, prepared before or at loading with the shipper given the opportunity to observe and verify; §375.503(d) gives the same opportunity at delivery. That is a published right to contest the scope of what was packed."
         },
@@ -740,12 +730,12 @@
           "cardinality": "one"
         },
         "corroborating": {
-          "roles": ["customer", "originAgent", "destinationAgent"],
+          "roles": ["goodsOwner", "originAgent", "destinationAgent"],
           "unresolved": [],
           "note": "Whoever else was present. src:cfr-49-375 §375.503 gives the shipper the opportunity to verify at both ends."
         },
         "competing": {
-          "roles": ["customer", "accountParty"],
+          "roles": ["goodsOwner", "accountParty"],
           "unresolved": [],
           "note": "A count is the thing a shortage claim is built on, so the right to contest it is the same right row 9 publishes: §375.503(d)'s opportunity to note missing articles IN WRITING and receive a copy of the notations. [A4 §3]'s GOODS_MISSING is the reason code that records the disagreement. `accountParty` competes here and NOT on row 15, and the difference is deliberate: a count is a billing and claims input — the same reason row 6 has both `customer` and `accountParty` competing over weight — whereas packing performance is neither. Row 15 mirrors row 3, which has `customer` alone."
         },
@@ -787,7 +777,7 @@
           "unresolved": [
             {
               "designation": "the party the instrument is issued TO, echoing its number back",
-              "owedTo": "[A8 §9 item 2]"
+              "owedTo": "[A8 §9 item 11] — RE-POINTED 2026-10-09 from item 2. This designation names a party by its RELATION TO THE FACT, not by a role, so the role vocabulary cannot close it however complete it gets. §4 solved the same problem one column over: AuthoritativeHolder is a union of holder KINDS (custodyHolder, legAuthoritativeAsserter, keySideRole, awardedRole) precisely so authoritative can name a party the table cannot enumerate, while corroborating/competing/advisory take RoleName[] and nothing else. Item 11 is that asymmetry."
             }
           ],
           "note": "src:nmfta-ebol's response carries an acceptance identifier distinct from the document identifier, which is an echo-back of exactly row 10's shape one aggregate over."

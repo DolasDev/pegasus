@@ -200,7 +200,44 @@ void _catalogIsTheVocabulary
  * is referenced) is recorded as owed to [A8] and **no class was minted for it**, because a stranded
  * change class is worse than none. Closing it is breaking.
  */
-export const CATALOG_VERSION = '0.6.4'
+/**
+ * **`0.7.0` — the catalog's FIRST BREAKING release, at [A8 §9 item 2].** The minor slot, not the
+ * major: [catalog §2.3.1] assigns breaking to the minor while the major is `0`, so a consumer's
+ * `^0.6.0` refuses this release unaided, which is the whole point of that assignment.
+ *
+ * **The breaking change is one role name.** `customer` → **`goodsOwner`**
+ * (`changedRoleNameSpelling`), because a role name is a fact-key component after F1 — two spellings
+ * of one role are two fact keys that never pair and never contest. Two reasons, both written out on
+ * the member itself in `envelope.ts`: **A8-NAME-2 fixed the name `goodsOwner`** and the enum never
+ * carried it, which is F5's defect with a different word instead of a different case; and
+ * **`customer` is the one word in this area `src:cfr-49-375` never uses for a party with a duty** —
+ * six occurrences, four of them a heading or Appendix A's pamphlet, against 189 of the § 375.103
+ * defined term `individual shipper`, whose axis is ownership **plus** payment.
+ *
+ * **Plus one additive member.** `visibilityProvider` (`newClosedEnumMember`), which resolves
+ * [A8 §5] rows 1-2's advisory `unresolved` entries on `src:dcsa`'s `tntPublisherRole` — "the party
+ * function code of the publisher", primary and captured. It is the only candidate in item 2's list
+ * that passes [A8 §2]'s addition test on primary evidence.
+ *
+ * **What this release does NOT do, and the measurement is why.** Item 2 is **partially** closed.
+ * Its prose list and the debt it is cited for overlap in **one** entry, and **seven of the ten**
+ * `owedTo` entries naming it want a **complement** ("the non-inspecting parties", "everyone else")
+ * or a **relation to the fact** ("the counterparty echoing the value back", "whichever role
+ * performed the act the charge is for") — things no role enum can supply. Those are re-pointed, not
+ * filled. `src:cfr-49-375` § 375.205's prime / emergency-or-temporary agent split is re-pointed to
+ * [A8 §9 item 4], because it classifies by **on whose behalf** rather than by function and would
+ * put two axes in one enum. `Trusted Agent` and `Claims Manager` **fail** §2's addition test and are
+ * recorded as refusals rather than as backlog. The NTS warehouseman, the tariff owner and the
+ * government-office unfold stay owed, each on `secondary` grade.
+ *
+ * **And a miscitation older than this round is corrected here.** [A8 §2] and the `customer`
+ * docstring cited § 375.505(a) and § 375.701 for signatures neither requires — § 375.505(a) makes
+ * the **carrier** issue the bill of lading and names this party as item (3); § 375.701 forbids
+ * release-of-liability language and requires no signature at all. The real mutual signatures are
+ * § 375.503(c) and **§ 375.401(h)**, the latter on a **money** document and cited nowhere in the
+ * corpus before now. [A8 §5] row 5's `competing` standing survives on better citations than it had.
+ */
+export const CATALOG_VERSION = '0.7.0'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces

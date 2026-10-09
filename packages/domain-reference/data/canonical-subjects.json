@@ -145,7 +145,7 @@
           "sameType": true,
           "why": null
         },
-        "summary": "packer; originAgent where no separate packer is resourced. customer, destinationAgent corroborating; customer competing on SCOPE (§375.503's opportunity to observe, verify and note in writing). The mirror of row 3, and the mirror is the authored step.",
+        "summary": "packer; originAgent where no separate packer is resourced. goodsOwner, destinationAgent corroborating; goodsOwner competing on SCOPE (§375.503's opportunity to observe, verify and note in writing). The mirror of row 3, and the mirror is the authored step.",
         "scoring": "capped-medium",
         "citations": ["[SD §4.7.1]", "[A8 §5 r15]", "[A8 §5 r3]"]
       },
@@ -166,7 +166,7 @@
           "sameType": true,
           "why": null
         },
-        "summary": "loadAgent; originAgent where no separate load agent is assigned. driver, customer corroborating; customer competing on SCOPE (short/refused).",
+        "summary": "loadAgent; originAgent where no separate load agent is assigned. driver, goodsOwner corroborating; goodsOwner competing on SCOPE (short/refused).",
         "scoring": "capped-medium",
         "citations": ["[SD §4.7.1]", "[A8 §5 r3]"]
       },
@@ -208,7 +208,7 @@
           "sameType": true,
           "why": null
         },
-        "summary": "destinationAgent; the leg's authoritativeAsserter where externally performed; rr19Agent under a Reverse Rule 19. customer COMPETING — three sources make the signature constitutive.",
+        "summary": "destinationAgent; the leg's authoritativeAsserter where externally performed; rr19Agent under a Reverse Rule 19. goodsOwner COMPETING — three sources make the signature constitutive.",
         "scoring": "capped-medium",
         "citations": ["[SD §4.7.1]", "[A8 §5 r5]"]
       },
@@ -288,7 +288,7 @@
           "sameType": true,
           "why": null
         },
-        "summary": "the party holding the goods at the weighing (custodyAt at that instant). weighMaster corroborating — it supplies the evidence, not the assertion. customer/accountParty competing on the reweigh right, settled on the NET by row 6's R-WEIGHT-LOWER.",
+        "summary": "the party holding the goods at the weighing (custodyAt at that instant). weighMaster corroborating — it supplies the evidence, not the assertion. goodsOwner/accountParty competing on the reweigh right, settled on the NET by row 6's R-WEIGHT-LOWER.",
         "scoring": "capped-medium",
         "citations": ["[SD §4.7.1]", "[A8 §5 r13]", "[A8 §5 r6]"]
       },

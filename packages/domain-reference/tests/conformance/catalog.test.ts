@@ -776,17 +776,35 @@ describe('the decision document and the code agree on the counts', () => {
   })
 
   /**
-   * [catalog §2.3.1] is adopted on the strength of a comparison, not a count: **every bump already
-   * published spent the minor slot on an ADDITIVE change**, so reassigning the minor slot to
-   * breaking changes mislabels no released version. That sentence is the whole argument for
-   * adopting the rule now rather than at `1.0.0`, and nothing but this test holds it — the day
-   * somebody reclassifies a historical bump, §2.3.1's paragraph becomes misleading and should fail
-   * here instead.
+   * **[catalog §2.3.1]'s rule, gated on the claim it actually makes: a BREAKING row bumps the MINOR
+   * and resets the patch; an ADDITIVE row bumps the PATCH.**
+   *
+   * **REPLACED at [A8 §9 item 2] (catalog 0.7.0), and the replacement is the point.** This test used
+   * to assert that **no** row of §2.4's table carried a `BREAKING_CHANGES` member — §2.3.1's
+   * retrofit-safety argument, that reassigning the minor slot mislabelled no released version — and
+   * its failure message said that if a row ever did, "that ground is gone and §2.3.1 needs
+   * rewriting, not this test".
+   *
+   * `0.6.4` → `0.7.0` is `changedRoleNameSpelling`, the catalog's first breaking release, so the
+   * ground **is** spent — once, as designed. §2.3.1 is rewritten to rest on the mechanical property
+   * instead (`^0.6.0` admits `0.6.1` and excludes `0.7.0`), which does not age. **And the gate had
+   * to be replaced rather than deleted**: a test that says "no row is breaking" cannot survive the
+   * first breaking release, and deleting it would leave the rule ungated. What is gated now is the
+   * slot assignment itself, which is checkable for every row past and future and **fails if a later
+   * round puts a breaking change in a patch slot** — the error the old gate could never have caught,
+   * because it could only ever have caught the existence of a breaking release at all.
    *
    * Gated as a comparison over the table rather than as a total ([A1 §9], [A9]'s C6-density gate):
    * it survives a bump being added, and it names the offending row rather than counting rows.
+   *
+   * **The class list is deliberately read as "breaking or not", not as "an `ADDITIVE_CHANGES`
+   * member".** `repointedOwedOwner` is documented as additive in §2.3 and used by §2.4's `0.6.0`
+   * row, but A7 never added it to `ADDITIVE_CHANGES`, so the catalog publishes seven additive
+   * classes where the document documents eight. That is a real defect, recorded in the cleanup plan,
+   * and it is a defect about the published class LIST — conflating it with the slot rule would make
+   * this gate fail for a reason §2.3.1 does not depend on.
    */
-  it('has spent every published minor bump on an additive change — [catalog §2.3.1]', () => {
+  it('spends the minor slot on breaking and the patch slot on additive — [catalog §2.3.1]', () => {
     const rows = readFileSync(DECISION_FILE, 'utf8')
       .split('\n')
       .filter((line) => /^\|\s*`\d+\.\d+\.\d+`\s*→/.test(line))
@@ -795,14 +813,8 @@ describe('the decision document and the code agree on the counts', () => {
       "[catalog §2.4]'s bump table has moved or been reshaped — §2.3.1 leans on it",
     ).toBeGreaterThan(0)
 
-    // The claim is that no published bump was BREAKING. It is deliberately not "every class is an
-    // ADDITIVE_CHANGES member": `repointedOwedOwner` is documented as an additive class in §2.3 and
-    // used by §2.4's `0.6.0` row, but A7 never added it to `ADDITIVE_CHANGES`, so the catalog
-    // publishes seven additive classes where the document documents eight. That is a real defect
-    // and it is recorded in the cleanup plan — but it is a defect about the published class LIST,
-    // not evidence that any bump was breaking, and conflating the two would make this gate fail for
-    // a reason §2.3.1 does not depend on.
     const breaking = new Set<string>(BREAKING_CHANGES)
+    let sawBreaking = false
     for (const row of rows) {
       const cells = row
         .split('|')
@@ -811,13 +823,54 @@ describe('the decision document and the code agree on the counts', () => {
       const versions = cells[0] ?? ''
       const klass = (cells[cells.length - 1] ?? '').replace(/`/g, '')
       expect(klass, `[catalog §2.4]'s bump ${versions} records no change class`).not.toBe('')
+
+      const pair = versions.match(/`(\d+)\.(\d+)\.(\d+)`\s*→\s*`(\d+)\.(\d+)\.(\d+)`/)
+      expect(pair, `[catalog §2.4]'s bump ${versions} is not a version pair`).not.toBeNull()
+      if (pair === null) continue
+      const parts = pair.slice(1).map((part) => Number(part))
+      const [fromMajor = 0, fromMinor = 0, fromPatch = 0] = parts
+      const [, , , toMajor = 0, toMinor = 0, toPatch = 0] = parts
+
+      // A row with no bump at all (`0.5.0` → `0.5.0`, A2 and A6) carries no slot to check: §2.4
+      // records it precisely because nothing moved, and its class cell says "none — see below".
+      if (fromMajor === toMajor && fromMinor === toMinor && fromPatch === toPatch) continue
+
+      // **The rule applies from its ADOPTION onward, and that bound is the thing this gate got
+      // wrong on its first run.** §2.4's `0.6.0` → `0.6.1` row is "the first patch-slot bump, under
+      // §2.3.1", so every earlier bump spent the minor slot on an additive change *because the rule
+      // did not exist yet* — which is exactly what §2.3.1's retrofit paragraph said mislabelled
+      // nothing. Checking them would fail the rule against the history it was written to excuse.
+      if (fromMajor === 0 && fromMinor < 6) continue
+
+      // The rule is stated for the pre-1.0 window, which is the only one the catalog has been in.
       expect(
-        breaking.has(klass),
-        `[catalog §2.4]'s bump ${versions} is classified "${klass}", a BREAKING change. ` +
-          '[catalog §2.3.1] reassigns the minor slot to breaking changes on the ground that every ' +
-          'bump already published was additive — so that ground is gone and §2.3.1 needs ' +
-          'rewriting, not this test.',
-      ).toBe(false)
+        fromMajor,
+        `[catalog §2.4]'s bump ${versions} is post-1.0; §2.3.1 does not cover it`,
+      ).toBe(0)
+
+      const isBreaking = klass.split('+').some((part) => breaking.has(part.trim()))
+      if (isBreaking) {
+        sawBreaking = true
+        expect(
+          [toMinor, toPatch],
+          `[catalog §2.4]'s bump ${versions} is classified "${klass}", a BREAKING change, so ` +
+            '[catalog §2.3.1] requires the MINOR slot and a reset patch.',
+        ).toEqual([fromMinor + 1, 0])
+      } else {
+        expect(
+          [toMinor, toPatch],
+          `[catalog §2.4]'s bump ${versions} is classified "${klass}", which is not breaking, so ` +
+            '[catalog §2.3.1] requires the PATCH slot — the minor is reserved for breaking changes.',
+        ).toEqual([fromMinor, fromPatch + 1])
+      }
     }
+
+    // Not a count of breaking rows — one is named, and the claim is only that §2.3.1's rewritten
+    // ground is live rather than hypothetical. If this ever fails, §2.4 has lost the `0.7.0` row and
+    // §2.3.1's rewrite is describing a release that is no longer recorded.
+    expect(
+      sawBreaking,
+      '[catalog §2.3.1] was rewritten because a breaking release exists; §2.4 records none',
+    ).toBe(true)
   })
 })

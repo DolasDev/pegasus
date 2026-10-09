@@ -55,8 +55,16 @@ role. No source states it.
 
 **And it is NOT a claim that every party is an organisation** — the thing a reader will get
 backwards. The corpus's clearest asserting individual is the **customer**, whose signature
-`src:cfr-49-375` makes constitutive four times (§375.505(a), §375.503, §375.701, §375.515(b)). A
-natural person is a party here; what is refused is a field saying so.
+`src:cfr-49-375` makes constitutive. A natural person is a party here; what is refused is a field
+saying so.
+
+> **CORRECTED by the item-2 round, 2026-10-09.** This sentence read "constitutive **four times**
+> (§375.505(a), §375.503, §375.701, §375.515(b))", repeating `[A8 §2]`'s addition table without
+> reading the sections. **Two of the four require no signature** — §375.505(a) makes the carrier
+> issue the bill of lading and names this party as item (3); §375.701 forbids release-of-liability
+> language on a delivery receipt. The real mutual signatures are **§375.503(c)** and
+> **§375.401(h)**. The round's point is unaffected; the count was borrowed and wrong, and the role
+> is now spelled `goodsOwner`.
 
 ### Two gates, because the obvious single one PASSED ITS TAMPER
 
@@ -387,8 +395,9 @@ and `[A3]`'s, not this round's.
 attaches them to an organisation in the same breath — and never by a reference the model could
 read.** dp3 does it in a noun phrase, milmove in its own schema's FK, SIRVA as a three-valued class.
 The one asserting individual with **no** organisation behind them is the **customer**, and that is
-not an omission: `src:cfr-49-375` makes the customer's signature constitutive four times
-(§375.505(a) BOL, §375.503 inventory, §375.701 delivery receipt, §375.515(b) the weighing waiver),
+not an omission: `src:cfr-49-375` makes the goods owner's signature constitutive — §375.503(c) and
+§375.401(h), both **mutual** (**corrected by the item-2 round**; this read "four times" and named two
+sections that require no signature),
 which is why `ROLE_NAMES` already carries `customer` and `[A8 §5]` row 5 lists it **competing**.
 
 **`src:sirva-ade`'s `Owner` is not the axis the plan's §1.2 took it for.** Its three values are all

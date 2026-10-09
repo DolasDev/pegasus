@@ -584,12 +584,12 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'legAuthoritativeAsserter' }, when: 'EXTERNALLY_PERFORMED_LEG' },
       ],
     },
-    corroborating: ['originAgent', 'destinationAgent', 'customer'],
+    corroborating: ['originAgent', 'destinationAgent', 'goodsOwner'],
     // The deliberate `competing` entry: [round-2-critique]'s own example is the destination agent's
     // shipment-level claim against the driver's stop-level claim — "both are real and E-CANON is
     // what makes them pair" ([SD §4.6.3] is where the pairing is worked).
     competing: ['destinationAgent'],
-    advisory: ['booker', 'platform'],
+    advisory: ['booker', 'visibilityProvider', 'platform'],
     note:
       '`src:dp3-tender-of-service` #14/#20 place the arrival-recording DUTY on the performing party ' +
       '(§C.3.a-b p.34). [ORIGINAL]: converting a recording duty into assertional authority. ' +
@@ -610,9 +610,9 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'legAuthoritativeAsserter' }, when: 'EXTERNALLY_PERFORMED_LEG' },
       ],
     },
-    corroborating: ['originAgent', 'destinationAgent', 'customer'],
+    corroborating: ['originAgent', 'destinationAgent', 'goodsOwner'],
     competing: ['destinationAgent'],
-    advisory: ['booker', 'platform'],
+    advisory: ['booker', 'visibilityProvider', 'platform'],
     note:
       '`src:dp3-tender-of-service` #10 additionally requires the legal name and US DOT number of the ' +
       'provider ACTUALLY HAULING in DPS within 2 GBD of origin departure (§B.3.f p.19) — so at ' +
@@ -633,10 +633,10 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'role', role: 'originAgent' }, when: 'NO_SEPARATE_LOAD_AGENT_ASSIGNED' },
       ],
     },
-    corroborating: ['driver', 'customer'],
+    corroborating: ['driver', 'goodsOwner'],
     // Sourced, not authored: `src:cfr-49-375` §375.503 + §375.605(b) (customer notations on the
     // inventory) and DP3 ToS §C.9.a(4)-(11) (per-line-item exception annotation BEFORE signing).
-    competing: ['customer'],
+    competing: ['goodsOwner'],
     advisory: ['booker', 'destinationAgent', 'platform'],
     note: 'The customer competes on the SCOPE of what was loaded (short / refused), which is a Portion question ([SD §3.4]).',
   },
@@ -657,8 +657,8 @@ export const AUTHORITY_TABLE = {
         },
       ],
     },
-    corroborating: ['driver', 'customer'],
-    competing: ['customer'],
+    corroborating: ['driver', 'goodsOwner'],
+    competing: ['goodsOwner'],
     advisory: ['booker', 'originAgent', 'platform'],
     note: 'ADE supplies `LoadAgent` and `UnloadAgent` as distinct types (GSD p.9) but states no authority — [A8 §5] row 4 marks the mirroring [ORIGINAL].',
   },
@@ -679,11 +679,13 @@ export const AUTHORITY_TABLE = {
     },
     corroborating: ['driver', 'hauler'],
     // [ORIGINAL]: placing `customer` in `competing` rather than `corroborating`. "Three sources make
-    // the customer's signature CONSTITUTIVE, not decorative" — `src:cfr-49-375` §375.701 (the
+    // the goods owner's signature CONSTITUTIVE, not decorative". RE-CITED at [A8 §9 item 2]
+    // (2026-10-09): this comment cited §375.701, which requires no signature at all — see the
+    // `goodsOwner` member in `envelope.ts`. The real mutual signatures are §375.503(c) (the
     // delivery receipt is signed by the shipper and may carry no release-of-liability language);
     // DP3 ToS §C.17.a (the AT DELIVERY notice is "jointly signed"); §C.9.a(24) (a signed check-off
     // sheet is NOT proof of delivery).
-    competing: ['customer'],
+    competing: ['goodsOwner'],
     advisory: ['booker', 'originAgent', 'platform'],
   },
 
@@ -701,7 +703,7 @@ export const AUTHORITY_TABLE = {
     // The weighing side and the reweigh-demanding side are BOTH competing: §375.517 gives the
     // shipper the reweigh demand before unloading begins, and the freight bill must then be based
     // on the reweigh weight.
-    competing: ['hauler', 'originAgent', 'customer', 'accountParty'],
+    competing: ['hauler', 'originAgent', 'goodsOwner', 'accountParty'],
     advisory: ['platform', 'booker'],
     tieBreak: { kind: 'rule', rule: R_WEIGHT_LOWER },
     note: 'This row proves authority and value rules are two mechanisms. [A8 §5]: "**Authored: nothing.** This row is a citation."',
@@ -860,11 +862,11 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'role', role: 'originAgent' }, when: 'NO_SEPARATE_PACKER_ASSIGNED' },
       ],
     },
-    corroborating: ['customer', 'destinationAgent'],
+    corroborating: ['goodsOwner', 'destinationAgent'],
     // Sourced: `src:cfr-49-375` §375.503(a) requires an itemized inventory identifying "every
     // carton and every uncartoned item" with the shipper given the opportunity to observe and
     // verify, and §375.503(d) the same at delivery, in writing.
-    competing: ['customer'],
+    competing: ['goodsOwner'],
     advisory: ['booker', 'hauler', 'platform'],
     note:
       'The mirror of row 3, and the mirror is the authored step (**[SYNTHESIS]**). The customer ' +
@@ -904,7 +906,7 @@ export const AUTHORITY_TABLE = {
     // `weighMaster` supplies the EVIDENCE, not the assertion — `src:cfr-49-375` §375.519(a)(1)-(6)
     // puts the signature, the scale name and the scale location on the weigh master. As row 6.
     corroborating: ['weighMaster'],
-    competing: ['customer', 'accountParty'],
+    competing: ['goodsOwner', 'accountParty'],
     advisory: ['booker', 'platform'],
     note:
       'Row 6 is `boundBy = NONE` because `R-WEIGHT-LOWER` picks the NET regardless of who ' +
@@ -923,7 +925,7 @@ export const AUTHORITY_TABLE = {
     // `weighMaster` supplies the EVIDENCE, not the assertion — `src:cfr-49-375` §375.519(a)(1)-(6)
     // puts the signature, the scale name and the scale location on the weigh master. As row 6.
     corroborating: ['weighMaster'],
-    competing: ['customer', 'accountParty'],
+    competing: ['goodsOwner', 'accountParty'],
     advisory: ['booker', 'platform'],
     note:
       'As row 13: the same weighing, the same scale, the same ticket — [SD §4.7.1] states this ' +
@@ -945,8 +947,8 @@ export const AUTHORITY_TABLE = {
       awayFromBoundary: { kind: 'custodyHolder' },
     },
     tieBreak: { kind: 'rule', rule: JOINT_AT_CUSTODY_BOUNDARY },
-    corroborating: ['customer', 'originAgent', 'destinationAgent'],
-    competing: ['customer', 'accountParty'],
+    corroborating: ['goodsOwner', 'originAgent', 'destinationAgent'],
+    competing: ['goodsOwner', 'accountParty'],
     advisory: ['booker', 'platform'],
     note:
       'Every published counting duty falls on the party holding the goods: `src:cfr-49-375` ' +
@@ -1982,10 +1984,18 @@ void _roleClassStaysOwed
  *
  * **What it does NOT hold, and it is the thing a reader will get backwards.** This is not a claim
  * that every party is an organisation. The corpus's clearest asserting individual is the
- * **customer**, whose signature `src:cfr-49-375` makes constitutive four times (§375.505(a) the
- * bill of lading, §375.503 the inventory, §375.701 the delivery receipt, §375.515(b) the waiver of a
- * weighing observation) — which is why `ROLE_NAMES` already carries `customer` and [A8 §5] row 5
- * lists it **competing**. A natural person is a party here; what is refused is a field saying so.
+ * **goods owner**, whose signature `src:cfr-49-375` makes constitutive — which is why `ROLE_NAMES`
+ * carries `goodsOwner` and [A8 §5] row 5 lists it **competing**. A natural person is a party here;
+ * what is refused is a field saying so.
+ *
+ * > **CORRECTED at [A8 §9 item 2] (2026-10-09), twice over.** This sentence said "`customer`" and
+ * > "constitutive **four times** (§375.505(a), §375.503, §375.701, §375.515(b))", repeating
+ * > [A8 §2]'s addition table without reading the sections. **Two of those four require no
+ * > signature**: §375.505(a) makes the **carrier** "prepare and issue" the bill of lading and lists
+ * > this party as item (3), a name and address; §375.701 forbids release-of-liability language on a
+ * > delivery receipt. The real mutual signatures are **§375.503(c)** and **§375.401(h)**, the latter
+ * > on a **money** document and cited nowhere in the corpus until item 2's round. The point this
+ * > docstring makes is unaffected and better sourced; the count and the role name were wrong.
  *
  * **The residue it leaves is {@link corroborationIsIndependent}'s**, and that is this round's own
  * finding rather than something the item predicted. Read it there.
