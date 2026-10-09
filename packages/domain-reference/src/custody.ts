@@ -136,18 +136,23 @@ export type LegEndpoint =
  * finding rather than something to smooth over: [SD §4.8.3] returns `holder` as a **`partyRole`**,
  * while [SD §8.2]'s `performedBy` — the fold's other input — is a **party**.
  *
- * **RE-POINTED at [A8 §9 item 1] (catalog 0.6.4), and the union does NOT collapse.** The marker
- * used to name items 1-3 and to say "when the party model lands". The party aggregate has landed,
- * and it **does not resolve one input to the other**: minting a subject gives `performedBy` a
- * subject it never lacked as a reference, while the question — whether a leg's `performedBy` is
- * resolvable to a `partyRole` on the leg — is the person-vs-organisation grain, which is
- * [A8 §9 item 3]'s, plus the role vocabulary, which is item 2's. **Re-pointing rather than deleting
- * is the test [A8 §9 item 1]'s own round applied to itself**: a blocker moves only when what the
- * item is owed FOR has changed, and here one of its three blockers is discharged and two are not.
+ * **RE-POINTED TWICE, and the union does NOT collapse either time.** At [A8 §9 item 1] (catalog
+ * 0.6.4) the marker named items 1-3 and said "when the party model lands"; the party aggregate
+ * landed and **did not resolve one input to the other**, since minting a subject gives `performedBy`
+ * a subject it never lacked as a reference. At [A8 §9 item 3] (2026-10-09) the grain was decided —
+ * a party may be a person, a company, an office or a branch, and which one is declared by the role
+ * and by the scheme, never by a field ({@link AsserterGrainIsNotOnTheEnvelope}) — and **that does
+ * not collapse the union either**, because the two arms differ in what they REFER TO (a
+ * role-holding versus a party) and not in what grain of party they mean. Resolving one to the other
+ * needs the role vocabulary, which is item 2 and is `refusedOnEvidence`.
  *
- * TODO([A8 §9 items 2-3]): decide whether a leg's `performedBy` is resolvable to a `partyRole` on
- * the leg, and collapse this union if it is. Needs the role vocabulary (item 2, `refusedOnEvidence`)
- * and the person-vs-organisation grain (item 3).
+ * **Re-pointing rather than deleting is the test [A8 §9 item 1]'s own round applied to itself**: a
+ * blocker moves only when what the item is owed FOR has changed. Here two of three are now
+ * discharged and one is not.
+ *
+ * TODO([A8 §9 item 2]): decide whether a leg's `performedBy` is resolvable to a `partyRole` on the
+ * leg, and collapse this union if it is. Needs the role vocabulary, which is `refusedOnEvidence` —
+ * so this union does not close by effort either.
  */
 export type CustodyHolder =
   | { readonly kind: 'partyRole'; readonly partyRole: SubjectRef<'partyRole'> }
@@ -344,9 +349,11 @@ function sideOf(handover: HandoverAssertion): HandoverSide {
  *
  * Structural rather than referential because two records published by two parties carry two
  * objects, and C5 and C6 both turn on whether they name the same holder. The union's two arms are
- * compared on their own terms; there is no cross-arm equality, and inventing one would be deciding
- * [A8 §9 item 3]'s owed party grain by side effect. (Items 1-3 before catalog 0.6.4; item 1 minted
- * the party aggregate and the grain is item 3's alone.)
+ * compared on their own terms; there is no cross-arm equality, and inventing one would **resolve a
+ * `partyRole` to a party**, which needs the role vocabulary — [A8 §9 item 2], `refusedOnEvidence`.
+ * (The marker read items 1-3 before catalog 0.6.4, then item 3 alone; item 1 minted the party
+ * aggregate and item 3 decided the grain, which left the arms referring to two different things
+ * rather than to two grains of one thing.)
  */
 function sameHolder(left: CustodyHolder, right: CustodyHolder): boolean {
   if (left.kind === 'partyRole' && right.kind === 'partyRole') {

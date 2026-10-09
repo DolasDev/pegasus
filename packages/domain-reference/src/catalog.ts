@@ -181,8 +181,14 @@ void _catalogIsTheVocabulary
  * **No record type, no fact class and no subject family were added, and that is the finding rather
  * than the scope.** `identity`'s canonical family is the enum itself ([SD §7.1] "`subject` may be
  * **any** aggregate kind"), so the member alone is the mechanism. Every attribute [A8 §9 item 1]
- * named is either an `identity` assertion or still owed to [A8 §9 item 3] — the name and the branch
- * grain, because `src:sirva-ade`'s `Resource.Name` names a company, a person or a tractor.
+ * named is either an `identity` assertion or was still owed to [A8 §9 item 3] — the name and the
+ * branch grain, because `src:sirva-ade`'s `Resource.Name` names a company, a person or a tractor.
+ *
+ * > **Amended 2026-10-09 and the release is not re-cut.** [A8 §9 item 3] closed the **branch
+ * > grain** with no emitted change at all — `gbloc` identifies an office and `agentCode` carries the
+ * > branch, both already `identifies: party` in this release — so what that sentence leaves owed is
+ * > the **name** alone, on two of its three blockers. The decision emits nothing, which is why
+ * > `0.6.4` is still the version: see `AsserterGrainIsNotOnTheEnvelope`.
  *
  * **What this round deliberately did NOT do, measured rather than deferred by preference.**
  * {@link PartyId} stays branded `party` while the subject form is branded `id:party`, so two brands

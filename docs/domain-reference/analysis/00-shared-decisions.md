@@ -141,6 +141,15 @@ the three aggregates the other documents need have no slot in the envelope the t
 | `context[]`   | `SubjectRef[]`                                              | OPTIONAL                                                      | Other aggregates this record is also about. **Non-authoritative.** See 1.4.                                                                      |
 | _payload_     | typed per `type`                                            | per type                                                      | Carries `basis`, `value`, `qualifier`, `outcome`, `reasons[]`, `supersedes` etc. as the record class requires.                                   |
 
+> **`assertedBy`'s two members are a decision as of 2026-10-09, not just a shape.**
+> [`A8` §9 item 3](A8-authority-skeleton.md) asked whether the individual who signs is a distinct
+> asserter and answered **no**: a party's grain — person, company, office, branch — is a property of
+> what identifies it and of the `role` it asserts under, never of a class field here. Nothing is
+> added, which matters precisely because this table is on **every** record. The gate is
+> `AsserterGrainIsNotOnTheEnvelope` (plus `AsserterIsExactlyAPartyAndARole`, because the shape
+> comparison alone admitted an added **optional** member and the tamper proved it), and
+> `tests/conformance/party-grain-refuses.ts` holds the second candidate, a `person` aggregate kind.
+
 **Forbidden on the envelope, permanently:**
 
 - **A second `subject`.** One record, one subject — and on an Assertion the envelope `subject` _is_
@@ -186,6 +195,15 @@ Eleven of these are the set the critique requires (must-fix #1). Three are added
   (`src:x12-212-trailer-manifest` `MS2`: owner SCAC + **owner-assigned** equipment number + check
   digit, "equipment identity is owner-scoped"). Without it, §7's equipment grain has nothing to
   attach to.
+
+  > **Recorded by [`A8` §9 item 3](A8-authority-skeleton.md) on 2026-10-09, not repaired, because the
+  > repair is this document's and A3's.** The citation above covers the **equipment** half only; the
+  > words "driver or crew member" in this row carry none. The consequence is live and benign so far:
+  > one human can be a `resource` (what an `Assignment` binds to a trip) and a **party** (who
+  > asserts, under `role: 'driver'`) — and `src:sirva-ade`'s `Resource` fuses the same two, which is
+  > why item 3 could explain its `Name` field rather than leave it a blocker. Whether the uncited
+  > phrase is a decision or a fossil is open; **item 3 did not need it to be either.**
+
 - **`document`** — weight tickets, the BOL and the inventory are asserted about and evidenced
   against, and 400NG Item 4.10 makes a weight ticket a six-field record with its own retention rules.
   **[ORIGINAL]** as an envelope decision; A6 may narrow it, never remove it. **Narrowed, and the

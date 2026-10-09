@@ -175,6 +175,12 @@ describe('the join surface, enumerated rather than counted', () => {
       // concept really does cross, then say so here.
       expect(collectContextMap().hubs.map((hub) => hub.name)).toEqual([
         'AggregateKind',
+        // Promoted by [A8 §9 item 3], and the promotion is the deliverable rather than a side
+        // effect — the same shape `RoleClass`'s was. `AssertedBy` is declared in `envelope.ts` from
+        // [SD §1.1] and is now referenced in `rules/authority.ts`, where item 3 refuses a
+        // person/organisation field on it. The concept crosses because the refusal had to be
+        // written in A8's own module to clear [A2 §9]'s tautology bar.
+        'AssertedBy',
         'AssertionType',
         'BoundBy',
         'CaptureMethod',
@@ -281,7 +287,10 @@ describe('the TODO ledger — the register no other artefact reads', () => {
       expect(seen).toEqual([
         'assertions.ts → corrections area',
         'custody.ts → [SD §1.2] / A3',
-        'custody.ts → [A8 §9 items 2-3]',
+        // RE-POINTED by [A8 §9 item 3]: the union's two arms differ in what they REFER TO, a
+        // role-holding versus a party, not in what grain of party they mean — so what is left is
+        // the role vocabulary, item 2 alone.
+        'custody.ts → [A8 §9 item 2]',
         'custody.ts → [SD §3] / A5',
         'envelope.ts → capture rules',
         'identity.ts → A9',
@@ -294,7 +303,11 @@ describe('the TODO ledger — the register no other artefact reads', () => {
         'rules/authority.ts → [A8 §9 item 7]',
         'rules/authority.ts → [SD §4.2]',
         'rules/authority.ts → [A1 §3.5]',
-        'rules/authority.ts → [A8 §9 items 2-3, 5]',
+        // ADDED by [A8 §9 item 3]: A8-SELF's independence test is at legal-entity grain while
+        // `assertedBy.party` may be a person, an office or a branch. The item does not leave this
+        // module — it moved OFF `authorityToDeclare`'s marker below and ONTO this one.
+        'rules/authority.ts → [A8 §9 item 3]',
+        'rules/authority.ts → [A8 §9 items 2, 5]',
         'rules/capture.ts → [SD §4.7.3]',
         'rules/corrections.ts → [SD §4.7.3] / A4',
         'rules/corrections.ts → [SD §4.7.2b] / A7 / A12',

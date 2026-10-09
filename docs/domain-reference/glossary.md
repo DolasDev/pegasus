@@ -34,7 +34,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Filter axes](#filter-axes-12) — 12
 - [Refused filter axes](#refused-filter-axes-5) — 5
 - [Compatibility change classes](#compatibility-change-classes-17) — 17
-- [Key functions and rules](#key-functions-and-rules-34) — 34
+- [Key functions and rules](#key-functions-and-rules-36) — 36
 - [Owed — what the model declares undecided, and who owes it](#owed--what-the-model-declares-undecided-and-who-owes-it)
 - [Alphabetical index](#alphabetical-index)
 
@@ -111,8 +111,8 @@ A party — a company or a person that asserts facts, holds roles and is identif
 whose authority is somebody else. Minted at [A8 §9 item 1], whose first sentence is the reason:
 _"Until it lands, `assertedBy.partyRef` has no target schema."_
 
-- **Cited:** [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
-- **Corpus:** `src:atlas-world-group-api` · `src:sirva-ade`
+- **Cited:** [[A8 §9 item 1]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.6]](analysis/A9-identity-cross-references.md#36-the-best-witnessed-scheme-in-the-corpus-has-no-subject--the-structural-finding) · [[SD §1.2]](analysis/00-shared-decisions.md#12-subjectref) · [[SD §7.1]](analysis/00-shared-decisions.md#71-the-shape)
+- **Corpus:** `src:atlas-world-group-api` · `src:cfr-49-375` · `src:sirva-ade`
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
 ### `partyRole` (aggregate)
@@ -2028,7 +2028,7 @@ re-pointed from A11 (a claims area) to `A7 / A12` ([A7 §6]).
 - **Cited:** [[A7 §6]](analysis/A7-charges-billing.md) · [[catalog §2.3.1]](analysis/published-event-catalog.md#231-what-a-breaking-change-costs-while-the-catalog-is-pre-10) · [[catalog §2.3]](analysis/published-event-catalog.md#23-additive-breaking-and-what-a-consumer-may-rely-on) · [[catalog §2.4]](analysis/published-event-catalog.md#24-the-version-this-catalog-is-published-at)
 - **Declared by:** `ADDITIVE_CHANGES` in `packages/domain-reference/src/catalog.ts`
 
-## Key functions and rules (34)
+## Key functions and rules (36)
 
 The named, versioned rules the model computes with. Each entry is the docstring on the declaration that **states** the rule, not a paraphrase of it — M1-M7 are private predicates in `rules/capture.ts`, C5 and C6 are members of `CUSTODY_UNKNOWN_REASONS`, and P-IDENTITY is stated on a Portion's `shipment` field, because that is where each one actually lives.
 
@@ -2119,6 +2119,30 @@ it because no source publishes a no-party attribution to state it about.
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A4 §5]](analysis/A4-execution-events.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job)
 - **Declared by:** `attributionIsLegalFor` in `packages/domain-reference/src/rules/authority.ts`
+
+### `AsserterGrainIsNotOnTheEnvelope` (rule)
+
+The gate behind [A8 §9 item 3]'s decision that **the individual who signs is not a distinct
+asserter** — and the third refusal of this kind after [A9 §3.2]'s `identityScheme` and
+[A8 §9 item 2]'s `roleClass`, with one difference that decides where it lives.
+
+- **Kind:** [A8 §9 item 3] refuses a person/organisation field on the party: the grain rides on the role and on the scheme
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A2 §9]](analysis/A2-shipment-structure.md) · [[A8 §3(a)]](analysis/A8-authority-skeleton.md) · [[A8 §3(b)]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[SD §0]](analysis/00-shared-decisions.md) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Corpus:** `src:atlas-world-group-api` · `src:cfr-49-375` · `src:dp3-tender-of-service` · `src:sirva-ade` · `src:stedi-x12-reference`
+- **Declared by:** `AsserterGrainIsNotOnTheEnvelope` in `packages/domain-reference/src/rules/authority.ts`
+
+### `AsserterIsExactlyAPartyAndARole` (rule)
+
+The second half of [A8 §9 item 3]'s refusal, and it is NOT redundant:
+`AsserterGrainIsNotOnTheEnvelope` compares the
+**key set**, which is what catches an addition, and this compares the **shape**, which is what
+catches `party` being widened from a `PartyId` to a bare string — a different way to lose
+the same decision, since an unbranded asserter is one a caller can fill with a person's name.
+
+- **Kind:** the same refusal from the shape side, which is what catches `party` being widened off its brand
+- **Cited:** [[A8 §9 item 3]](analysis/A8-authority-skeleton.md)
+- **Declared by:** `AsserterIsExactlyAPartyAndARole` in `packages/domain-reference/src/rules/authority.ts`
 
 ### `B-ONWARD` (rule)
 
@@ -2501,6 +2525,8 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`ASSUMED_FROM_PLAN`](#assumedfromplan-capture-method) — capture method
 - [`AUTHORISATION_MISSING`](#authorisationmissing-reason-code) — reason code
 - [`AUTHORITY_OWED`](#authorityowed-whitelist-residue-reason) — whitelist residue reason
+- [`AsserterGrainIsNotOnTheEnvelope`](#assertergrainisnotontheenvelope-rule) — rule
+- [`AsserterIsExactlyAPartyAndARole`](#asserterisexactlyapartyandarole-rule) — rule
 - [`B-ONWARD`](#b-onward-rule) — rule
 - [`BOTH`](#both-membership-form) — membership form
 - [`C5`](#c5-rule) — rule

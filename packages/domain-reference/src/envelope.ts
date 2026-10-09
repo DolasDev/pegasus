@@ -257,6 +257,15 @@ export type RoleName = (typeof ROLE_NAMES)[number]
  *
  * Corroborated by [A8 §3(a)]: "our A8 model should make role an attribute of the _assignment_,
  * never of the party", and by the GSD p.17 sample where one company holds two roles at once.
+ *
+ * **Two members, and that is now a decision rather than a shape.** [A8 §9 item 3] asked whether the
+ * individual who signs is a distinct asserter and answered no: a party's grain rides on this
+ * `role` — whose glosses run from `booker`, "the party that books the move", to `driver`, "the
+ * person driving" — and on what the `identity` scheme identifies, never on a class field here.
+ * `AsserterGrainIsNotOnTheEnvelope` in `src/rules/authority.ts` is the gate, with the two reasons a
+ * round that adds one has to answer, and `tests/conformance/party-grain-refuses.ts` holds the
+ * spellings it would arrive under. **This type is on every envelope**, which is why a field here is
+ * a change to every record in the catalog.
  */
 export interface AssertedBy {
   readonly party: PartyId

@@ -1,9 +1,11 @@
 /**
  * Conformance — A9's decisions, held against the witnessed-scheme table and the vocabulary.
  *
- * The type-level half is `identity-scheme-refuses.ts`, whose one `@ts-expect-error` keeps `party`
- * out of `AggregateKind`, and `IdentitySchemeStaysOwed` in `src/rules/identity-schemes.ts`, which
- * makes narrowing `SchemeName` a compile failure.
+ * The type-level half is `identity-scheme-refuses.ts` — whose directive used to keep `party` out of
+ * `AggregateKind` and, since catalog 0.6.4 inverted it, keeps `party` out of `AssertionType`
+ * instead; **this sentence said the old thing until [A8 §9 item 3]'s sweep caught it**, which is the
+ * `[A8 §9 item 1]` round's own lesson arriving one file further out. Plus `IdentitySchemeStaysOwed`
+ * in `src/rules/identity-schemes.ts`, which makes narrowing `SchemeName` a compile failure.
  *
  * Everything here **enumerates rather than counts** ([A1 §9]; [A6 §9]'s reason for it, and
  * [A7 §9]'s, which is the one worth re-reading: A7's draft wrote "four independent publishers"
@@ -272,6 +274,61 @@ describe('[A9 §3.6] the party-grain schemes have no subject, and the blocker is
     expect(row).toBeDefined()
     if (row) row['documentAccountable'] = true
     expect(() => loadIdentitySchemes(tampered)).toThrow(/does not identify a document/)
+  })
+})
+
+describe('[A8 §9 item 3] what grain a party may be is declared by what identifies it', () => {
+  // The branch grain was [A8 §9 item 1]'s third residue, and item 3 closed it on 2026-10-09 WITHOUT
+  // a field, by reading two rows this table already carried. These assertions are the evidence, not
+  // a restatement: if a later round mints an `office` or `branch` aggregate kind and re-points
+  // either row, or edits the witness out, they fail and send it to `AsserterGrainIsNotOnTheEnvelope`
+  // and the two reasons there.
+  const defined = () => partyGrainSchemes(table).filter((row) => row.definedNotMerelyNamed)
+
+  it('the two party-grain rows the corpus DEFINES are the office and the branch', () => {
+    expect(names(defined())).toEqual(['agentCode', 'gbloc'])
+  })
+
+  it('`gbloc` identifies an OFFICE, which is why a branch is a party', () => {
+    const gbloc = table.rows.get('gbloc')
+    expect(gbloc?.identifies).toBe('party')
+    // `src:dtr-part-iv`, quoted in the row: "BLOC — Bill of Lading Office Code; the identity of the
+    // OFFICE, and the scope unit for suspensions and blackouts". The party grain reaches below the
+    // legal entity, and the identifier is what says so.
+    expect(gbloc?.witnesses.some((w) => w.citation.includes('the identity of the OFFICE'))).toBe(
+      true,
+    )
+  })
+
+  it('`agentCode` CARRIES the branch in the identifier, so no field has to', () => {
+    const agentCode = table.rows.get('agentCode')
+    expect(agentCode?.identifies).toBe('party')
+    expect(
+      agentCode?.witnesses.some((w) =>
+        w.citation.includes(
+          '7-digit hierarchical agent id whose trailing three digits are the branch',
+        ),
+      ),
+    ).toBe(true)
+  })
+
+  it('and NOT ONE of the twenty witnessed schemes identifies a natural person', () => {
+    // The other half of the decision, and the half that could silently stop being true. Every row's
+    // `identifies` is an [SD §1.2] aggregate kind, and the enum has no person member — so a
+    // person-grain identifier would have to arrive as a new kind, which
+    // `tests/conformance/party-grain-refuses.ts` refuses at compile time. Enumerated rather than
+    // counted ([A1 §9]): the five party rows are named above, and these are the grains the rest sit
+    // at.
+    expect([...new Set([...table.rows.values()].map((row) => row.identifies))].sort()).toEqual([
+      'document',
+      'item',
+      'order',
+      'party',
+      'resource',
+      'shipment',
+      'stay',
+      'trip',
+    ])
   })
 })
 
