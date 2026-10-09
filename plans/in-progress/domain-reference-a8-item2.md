@@ -680,8 +680,16 @@ Read §6 of both records. Nothing in either is superseded. The three entries mos
   right and the check was wrong. Use `[A-Za-z0-9]+`, and prefer the suite's own enumeration over any
   pattern you write.
 - **Before adding a row to `data/owed-vocabularies.json`, ask whether the model has a FIELD for the
-  vocabulary.** (item 3's addition.) Here it does — `assertedBy.role` — so unlike item 3 this
-  item's refusals, if any, **do** belong in that table.
+  vocabulary.** (item 3's addition.) ~~Here it does — `assertedBy.role` — so unlike item 3 this
+  item's refusals, if any, **do** belong in that table.~~ **WRONG, corrected 2026-10-09:** that table
+  is **per-vocabulary**, and this item's refusals are **per-member** — `Trusted Agent` and
+  `Claims Manager` fail §2's addition test, but `ROLE_NAMES` itself is not refused (§2 calls it
+  "provisional" and this item stays open), so no owed vocabulary's state changed and there is nothing
+  to put in a `state` field. **Three things to tell apart**: a vocabulary refused (`identityScheme`,
+  `roleClass` — rows here), a **member** refused from an open vocabulary (these two — no row; the
+  refusal lives in `[A8 §9 item 2]`'s annotation), and a **field** refused outright (item 3's party
+  class — no row, because a row needs a live `Exact<…, OwedCode<'v'>>` gate). That distinction is now
+  written into the table's own `note`, which is where a reader following this instruction will look.
 
 ---
 

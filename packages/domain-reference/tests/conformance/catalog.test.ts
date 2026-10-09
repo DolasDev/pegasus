@@ -821,6 +821,17 @@ describe('the decision document and the code agree on the counts', () => {
         .map((cell) => cell.trim())
         .filter((cell) => cell !== '')
       const versions = cells[0] ?? ''
+      // **Four cells, checked rather than assumed, and this is what the tamper found.** §2.4's
+      // columns are From→To, At, Change and Class. The `0.6.3` → `0.6.4` row carried only three
+      // until 2026-10-09 — the party round wrote the prose and omitted the Class cell — and because
+      // this gate reads the LAST cell, it read that row's prose as its change class. The garbage
+      // matched no `BREAKING_CHANGES` member, so the slot check passed by luck. A shape check is
+      // what stops reading the wrong cell from looking like a pass.
+      expect(
+        cells.length,
+        `[catalog §2.4]'s bump ${versions} has ${String(cells.length)} cells, not four — the Class ` +
+          'column is missing or the table has been reshaped, and this gate reads the last cell.',
+      ).toBe(4)
       const klass = (cells[cells.length - 1] ?? '').replace(/`/g, '')
       expect(klass, `[catalog §2.4]'s bump ${versions} records no change class`).not.toBe('')
 
