@@ -407,7 +407,8 @@ describe('OWED — the charge exists, is anchored, and has no value', () => {
     })
     // `src:cfr-49-375` §375.503(a) and (d) give the shipper the opportunity to observe, verify and
     // note in writing at both ends — a published right to contest the scope.
-    expect(packing.competing).toContain('goodsOwner')
+    // `{kind: 'role'}` since [A8 §9 item 11] widened the column to holder kinds.
+    expect(packing.competing).toContainEqual({ kind: 'role', role: 'goodsOwner' })
   })
 
   it('[SD §10.2 item 9] what a shipment boundary that never got its BOL *is*, answered', () => {

@@ -2968,3 +2968,79 @@ half-tamper never reaches the count at all. The count was never what held that c
 a claim about _which_ gate holds a property, and in a suite with layered loaders the answer is often
 a gate you were not looking at. Fix the dating count anyway — just do not credit it with catching
 something.
+
+## A closure gate that greps the item's name fires on its own fix — triage by TENSE
+
+Closing an owed item means sweeping every site that cites it, and the obvious gate is
+`grep "item N"` → expect nothing. It does not work, because **the fix itself cites the item**: a
+closed entry should say which round closed it, and a round that deletes that citation to get its
+gate green has thrown away the only breadcrumb back to the argument.
+
+`[A8 §9 item 11]` hit this on the first run of its own gate. Four `owedTo` strings in
+`packages/domain-reference/data/authority-table.json` cited the item; all four were rewritten to say
+it was closed; the gate still failed, naming all four.
+
+The working gate reads the **tense**, not the phrase. That file's own convention already encoded it
+— every resolved-but-not-a-role designation opens `"Not owed — …"` — so the defect is "cites the
+item **and** does not open with `Not owed`":
+
+```ts
+owedTo.includes('item 11') && !owedTo.startsWith('Not owed')
+```
+
+**How to apply:** when closing an owed item, find the project's existing marker for _settled_ and
+gate on `cites-the-item AND NOT settled`. If there is no such marker, mint one before the sweep, not
+during it. Related: the party round's lesson that sweeping the _phrase_ you rewrote is not sweeping
+the _item_ you closed — these are the two halves of the same mistake, and this one is the half that
+bites after you have done the sweep correctly.
+
+## Prose listing a type's members rots, and it rots by being copied
+
+`AuthoritativeHolder` in `packages/domain-reference/src/rules/authority.ts` has **nine** members. Its
+own docstring described it as a union of four, naming `custodyHolder`, `legAuthoritativeAsserter`,
+`keySideRole` and `awardedRole`. That four-name list had been copied into
+`docs/domain-reference/analysis/A8-authority-skeleton.md` twice, into a completed plan record, and
+into **all four** `owedTo` strings in `data/authority-table.json` — six live sites asserting a
+four-member union against a nine-member type, and two of the omitted members (`schemeIssuer`,
+`performingRole`) were load-bearing in the very argument the list was being used to make.
+
+The same docstring also mis-grouped `performingRole` with `owedRole` as "members that record a gap
+in the role vocabulary". The module already distinguished them and the distinction was the point:
+`owedRole` carries an `Owed<>` payload because a _name_ is missing, while `performingRole` is bare
+because _no name would do_. Reading the first as the second is what filed a relation as a vocabulary
+debt for five releases.
+
+**How to apply:** do not enumerate a type's members in prose that a reader might rely on. Where the
+list has to exist, make it a gate — `Exact<T['kind'], 'a' | 'b' | …>` with its assignment beside it,
+left side derived from the type and right side written by hand so it is not a tautology. Deleting the
+prose list is usually better than extending it. And when a docstring _groups_ two members, check the
+grouping against the values actually in use before trusting it.
+
+## `src:nmfta-ebol` and `src:weichert-supplier-api` have no `captured/` either
+
+The domain-reference evidence grade turns on whether a source has a `captured/` directory —
+`docs/domain-reference/sources/<id>/captured/`. The previously recorded list of sources _without_ one
+(`src:dp3-400ng`, `src:dtr-part-iv`, `src:dp3-tender-of-service`, `src:sirva-ade`) is incomplete.
+Also secondary: **`src:nmfta-ebol`** and **`src:weichert-supplier-api`**.
+
+`nmfta-ebol` is the one to watch, because `sources/registry.yaml` lists `files:` for it with sha256
+hashes and `retrieved: 2026-09-17`, so it _reads_ as captured — but `local/` is not in the repo, and
+its `analysis.md` cites line numbers (`:1308`) into bytes nothing here can re-read. A registry entry
+with hashes is a record that bytes were once retrieved, **not** evidence they are available now.
+
+And `src:stedi-x12-reference`'s `captured/` holds a single **notes** file, not the raw bytes — so
+"has a `captured/` directory" and "the bytes are there to parse" are two different questions.
+
+**How to apply:** `ls docs/domain-reference/sources/<id>/` before grading a citation, and when the
+grade is load-bearing, grep the bytes. Two of this round's four witnesses turned out secondary, which
+changed how a new member had to be disclosed in `[A8 §10]` — but the one primary witness was
+verifiable in-bytes, and checking that is what let the member be minted at all rather than refused.
+
+## A Markdown file the pre-commit hook reformats will not match a scripted edit afterwards
+
+Already recorded for prettier generally; the domain-reference instance is worth naming because its
+analysis documents are both long and heavily scripted. Prettier rewrites `*x*` → `_x_` among others,
+so an exact-match Python replace composed before a prettier run stops matching after it. In this
+round the safe pattern was: address table rows by **anchor text** rather than line number, insert
+with Python, then let the hook reformat — and never compose a second scripted edit against a file
+state you have not re-read.

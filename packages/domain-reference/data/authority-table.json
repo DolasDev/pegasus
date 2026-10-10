@@ -431,7 +431,7 @@
           "unresolved": [
             {
               "designation": "the counterparty echoing the value back",
-              "owedTo": "[A8 §9 item 11] — RE-POINTED 2026-10-09 from item 2. This designation names a party by its RELATION TO THE FACT, not by a role, so the role vocabulary cannot close it however complete it gets. §4 solved the same problem one column over: AuthoritativeHolder is a union of holder KINDS (custodyHolder, legAuthoritativeAsserter, keySideRole, awardedRole) precisely so authoritative can name a party the table cannot enumerate, while corroborating/competing/advisory take RoleName[] and nothing else. Item 11 is that asymmetry."
+              "owedTo": "Not owed — LISTED. [A8 §9 item 11], CLOSED 2026-10-10: the standing is carried as the `schemeCounterparty` member of `StandingHolder` in `src/rules/authority.ts`. This column takes holder KINDS since that round; before it, the column took role names only and the designation had to sit in prose. It is the party the value was issued TO, echoing it back — determinate from the scheme, not \"whoever agrees\", which is what would have made it a complement under [A8 §4.1] note 1. Primary captured: `src:dcsa` `references`, \"provided by the shipper or freight forwarder … Carriers share it back when providing track and trace event updates\" (event_domain_v3.2.0.yaml:2082). Carried here as an unresolved DESIGNATION because this file has no holder-kind representation at all — every resolved non-role holder in it is carried the same way (rows 9, 12, 16, 17, 18). The model holds no record of the exchange, so a consumer resolves the party from outside it."
             }
           ],
           "note": "src:dcsa states the echo-back obligation; src:sirva-ade performs it (ExternalReference = 'Agent's internal lead reference', LEP p.3)."
@@ -476,7 +476,7 @@
             "unresolved": [
               {
                 "designation": "the performing role",
-                "owedTo": "[A8 §9 item 11] — RE-POINTED 2026-10-09 from item 2. This designation names a party by its RELATION TO THE FACT, not by a role, so the role vocabulary cannot close it however complete it gets. §4 solved the same problem one column over: AuthoritativeHolder is a union of holder KINDS (custodyHolder, legAuthoritativeAsserter, keySideRole, awardedRole) precisely so authoritative can name a party the table cannot enumerate, while corroborating/competing/advisory take RoleName[] and nothing else. Item 11 is that asymmetry."
+                "owedTo": "Not owed — COMPUTED, and it was never debt. It is whichever role performed the act the charge is for, so it varies by charge; `src/rules/authority.ts` has carried it as `{kind: \"performingRole\"}` on this aspect since the authoritative column was written. [A8 §9 item 2] re-pointed this entry to [A8 §9 item 11] on 2026-10-09 with the boilerplate it gave the other three — but that boilerplate argues \"corroborating/competing/advisory take RoleName[]\", and PROPOSED is on the AUTHORITATIVE column, which has taken holder kinds since §4. The entry was mis-pointed: it was already closed in the typed module, and this owedTo already said \"Not fixed\" before either round touched it. Item 11 was minted at four entries and owned three."
               }
             ],
             "note": "Proposal authority.",
@@ -510,7 +510,7 @@
           "unresolved": [
             {
               "designation": "the performing role, on quantum",
-              "owedTo": "[A8 §9 item 11] — RE-POINTED 2026-10-09 from item 2. This designation names a party by its RELATION TO THE FACT, not by a role, so the role vocabulary cannot close it however complete it gets. §4 solved the same problem one column over: AuthoritativeHolder is a union of holder KINDS (custodyHolder, legAuthoritativeAsserter, keySideRole, awardedRole) precisely so authoritative can name a party the table cannot enumerate, while corroborating/competing/advisory take RoleName[] and nothing else. Item 11 is that asymmetry."
+              "owedTo": "Not owed — LISTED. [A8 §9 item 11], CLOSED 2026-10-10: carried as `{kind: \"performingRole\"}` in this row's `competing` column in `src/rules/authority.ts`. The KIND already existed — this row's own PROPOSED aspect has held it since the authoritative column was written — and what was missing was a standing column that could hold it. Not fixed to a role name, and no role enum closes it: it is whichever role performed the act the charge is for, so it varies by charge."
             }
           ],
           "note": null
@@ -777,7 +777,7 @@
           "unresolved": [
             {
               "designation": "the party the instrument is issued TO, echoing its number back",
-              "owedTo": "[A8 §9 item 11] — RE-POINTED 2026-10-09 from item 2. This designation names a party by its RELATION TO THE FACT, not by a role, so the role vocabulary cannot close it however complete it gets. §4 solved the same problem one column over: AuthoritativeHolder is a union of holder KINDS (custodyHolder, legAuthoritativeAsserter, keySideRole, awardedRole) precisely so authoritative can name a party the table cannot enumerate, while corroborating/competing/advisory take RoleName[] and nothing else. Item 11 is that asymmetry."
+              "owedTo": "Not owed — LISTED. [A8 §9 item 11], CLOSED 2026-10-10: the standing is carried as the `schemeCounterparty` member of `StandingHolder` in `src/rules/authority.ts`. This column takes holder KINDS since that round; before it, the column took role names only and the designation had to sit in prose. It is the party the value was issued TO, echoing it back — determinate from the scheme, not \"whoever agrees\", which is what would have made it a complement under [A8 §4.1] note 1. Primary captured: `src:dcsa` `references`, \"provided by the shipper or freight forwarder … Carriers share it back when providing track and trace event updates\" (event_domain_v3.2.0.yaml:2082). Carried here as an unresolved DESIGNATION because this file has no holder-kind representation at all — every resolved non-role holder in it is carried the same way (rows 9, 12, 16, 17, 18). The model holds no record of the exchange, so a consumer resolves the party from outside it."
             }
           ],
           "note": "src:nmfta-ebol's response carries an acceptance identifier distinct from the document identifier, which is an echo-back of exactly row 10's shape one aggregate over."

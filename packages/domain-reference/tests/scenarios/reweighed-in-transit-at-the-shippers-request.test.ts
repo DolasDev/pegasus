@@ -287,9 +287,12 @@ describe('[SD §4.3] the resolution is published, append-only, and names its rul
     expect(gross.boundBy).toBe('CUSTODY')
     expect(gross.authoritative).toMatchObject({ kind: 'held', primary: { kind: 'custodyHolder' } })
     // `weighMaster` supplies the evidence and never the assertion — `src:cfr-49-375` §375.519.
-    expect(gross.corroborating).toEqual(['weighMaster'])
+    // [A8 §9 item 11] widened the standing columns to holder KINDS, so a role cell is now
+    // `{kind: 'role', role}`. Asserted as the whole column rather than through `listedStandingOf`,
+    // because what this line is for is that the column holds `weighMaster` AND NOTHING ELSE.
+    expect(gross.corroborating).toEqual([{ kind: 'role', role: 'weighMaster' }])
     // The reweigh right is the shipper's (§375.517), and it is settled on the net by row 6.
-    expect(gross.competing).toContain('goodsOwner')
+    expect(gross.competing).toContainEqual({ kind: 'role', role: 'goodsOwner' })
     expect(AUTHORITY_TABLE['weight.net'].boundBy).toBe('NONE')
   })
 
