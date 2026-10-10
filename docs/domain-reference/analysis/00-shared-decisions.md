@@ -324,10 +324,19 @@ because the product had exactly one non-degenerate factor.
 
 Precedent for the _shape_ of a per-type envelope constraint: `src:dcsa` constrains
 `eventClassifierCode` per event type — "For `ShipmentEvents` the `eventClassifierCode` **must** be
-`ACT`" (`event_domain` L776-781, L866-876, L956-966) — and JIT constrains the classifier by
-**party role** as well (`jit/v2`, L3554-3568). **[ORIGINAL]:** applying that constraint mechanism to
+`ACT`" (`event_domain` L776-781, L866-876, L956-966; the same string is at
+`event_domain_v3.2.0.yaml` L778, L1231, L1328). **[ORIGINAL]:** applying that constraint mechanism to
 the _subject_ field is our step, and so is the collapse to a single axis. DCSA constrains a
 classifier, not a subject, and DCSA does carry event type and classifier as two axes — we do not.
+
+> **Amended 2026-10-10 and nothing here is weakened.** This paragraph also read "and JIT constrains
+> the classifier by **party role** as well (`jit/v2`, L3554-3568)". That clause is **struck**: the
+> cited bundled JIT spec is unrecoverable (`dcsaorg/DCSA-OpenAPI` is 404, the standard was renamed
+> to DCSA Port Call, and the surviving unbundled specs do not contain the constraint —
+> `sources/dcsa/captured/swaggerhub-jit-successor/README.md`). **The precedent this paragraph needs
+> is unaffected**, because it was never the JIT clause: it is the per-**event-type** constraint, on
+> `event_domain` bytes that are captured and re-verified. The struck clause was an additional
+> example, not the support. `[A8 §4]` was not so lucky — see `[A8 §10]`.
 
 ### 1.4 `context[]` — the field that makes the conflict disappear
 
