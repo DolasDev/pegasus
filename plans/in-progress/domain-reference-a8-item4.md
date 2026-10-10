@@ -21,7 +21,7 @@ generators were verified to reproduce `HEAD` byte-identically before anything wa
 > measured against that consumer, item 4's question (where a second delegation axis lives) is one a
 > migrator never asks, while three absent fact classes it _will_ hit on day one are unwritten.
 >
-> §8 names the three things to do instead, in order.
+> §8 names the four things to do instead, in order.
 
 ---
 
@@ -527,12 +527,47 @@ form-clusters it will hit immediately have no fact class at all.
    finding silence. Generate it from `data/` + the vocabulary so it cannot rot.
    **Wiring the MVVM skill to the model before this exists would hand sessions 3.9k lines of good
    reference they cannot find their way into.**
-2. **Write `survey`, `estimate` and `claim`** — the three absent classes with real mass (99 files).
+2. **SURFACE THE EVIDENCE GRADE AT THE POINT OF USE.** Generated, cheap, and it belongs with (1) —
+   the symptom index is the surface that needs it most.
+
+   **The measurement that makes this the second priority, not a nicety.** Counting `src:` citations
+   across the analysis documents: **2,210 citations, and 65% of them come from the top 10 sources.**
+   The top five:
+
+   | source                  | citations | grade                         |
+   | ----------------------- | --------- | ----------------------------- |
+   | `sirva-ade`             | 228       | **secondary** (gated-partner) |
+   | `dp3-400ng`             | 223       | **secondary**                 |
+   | `dtr-part-iv`           | 204       | **secondary**                 |
+   | `cfr-49-375`            | 179       | **captured**                  |
+   | `dp3-tender-of-service` | 115       | **secondary**                 |
+
+   **Three of the top five have no retained bytes — including the single most-cited source in the
+   model, which is also the origin of the entire `ROLE_NAMES` vocabulary.** This is the same disease
+   as the JIT incident (M5/M6a), untriggered: a load-bearing body of claims resting on bytes nobody
+   kept. JIT was ~5 citations and cost a day. `sirva-ade` is **228**.
+
+   **The grade IS already recorded — in `registry.yaml`, which a migrator will never open.** So a
+   migration session gets uniformly confident-sounding domain readings and no signal about which
+   ones it may lean on. Wanted: every entry in the symptom index (and ideally the glossary) carries
+   whether its reading rests on **captured bytes**, on an **analysis nobody can re-check**, or on
+   something **`[ORIGINAL]`/`[SYNTHESIS]`** that this model authored rather than found.
+
+   Derive it, do not hand-maintain it: `registry.yaml` has `openness`/`status`, the filesystem has
+   `<id>/captured/`, and the disclosure marks are already in the prose. **A per-citation check is
+   the right grain, not per-source** — DCSA has 105 captured files and still lost the JIT sub-spec,
+   which is exactly how five citations came to rest on nothing.
+
+   **This is the difference between a migrator trusting the model appropriately and trusting it
+   uniformly**, and uniform trust is the failure mode that matters: the model's confident readings
+   and its unverifiable ones currently look identical.
+
+3. **Write `survey`, `estimate` and `claim`** — the three absent classes with real mass (99 files).
    `estimate` already has **primary captured** evidence sitting unused: `src:cfr-49-375` §375.401
    (written estimate signed and dated by both parties before the BOL), §375.403 (silence after
    loading is reaffirmation; the propose/decide pair at (a)(8)), §375.409 (the broker-adopted
    estimate — see M3). All three were read this session for other reasons.
-3. **Then stop and let usage drive it.** Real migration sessions will report what is missing far
+4. **Then stop and let usage drive it.** Real migration sessions will report what is missing far
    better than another audit round will.
 
 **One thing worth rescuing from item 4, as a fix and not a round:** **M2** — `authorityToDeclare`
@@ -559,3 +594,42 @@ written. **Do not inherit the old reading.**
   and has now been deferred three times.
 - **`authority.ts:562`'s two-homes `TODO`** — `[A8 §5]` is carried twice and nothing checks the two
   agree. It has a documented drift instance from the item-11 round.
+
+### 8.6 Source coverage — measured, because "only 9 of 87 captured" is the wrong number
+
+Asked why so few of the registered sources are covered. Three different numbers, and the
+pessimistic one is the least meaningful:
+
+| measure                                      | count  | of 87   |
+| -------------------------------------------- | ------ | ------- |
+| have **captured bytes**                      | 9      | 10%     |
+| status **`analyzed`**                        | 32     | 37%     |
+| **actually cited** in the analysis documents | **52** | **60%** |
+
+**Every `analyzed` source is cited — 32 of 32, zero analyzed-but-unused.** No analysis effort has
+been wasted. And the **20 cited-but-not-analyzed** are not a gap: `iso-17451`,
+`x12-transportation`, `sap-tm`, `oracle-otm`, `nmfta-scac` and the rest appear in "what we could
+not see" / "what would overturn this" passages. That is the model **disclosing its own blind
+spots**, which is `[SD §0]` working as designed.
+
+**Most of what is left is behind a locked door, not behind effort.** Openness across all 87:
+**53 public, 18 gated-partner, 8 internal, 3 paid, 3 free-registration, 2 licensed.** Cross-tabbed:
+
+| status       | n   | behind an access gate |
+| ------------ | --- | --------------------- |
+| `needs-user` | 14  | **11** (79%)          |
+| `skipped`    | 20  | 11                    |
+
+And it bites hardest where it would matter most: **`iso-17451` is P1 and paid**,
+`x12-transportation` is licensed, `nmfta-scac` and `en-12522-2024` are paid. Those are the
+industry standards that would most constrain the model, and they cost **money**, not rounds.
+
+**The remaining tail is 35 P3 sources and skipping them is correct.** They are overwhelmingly
+telematics / visibility vendors — `geotab`, `motive`, `orbcomm`, `platform-science`,
+`trimble-peoplenet`, `fourkites`, `transflo`, `trucker-tools` — describing **trucking telemetry**,
+not household-goods moving.
+
+**So concentration is the appropriate shape for this domain**: very few published sources actually
+describe household-goods moving, the model found them early and mined them hard. **Breadth is not
+the problem.** The problem is in §8.3 item 2: that concentrated core is mostly `secondary`, and the
+model does not say so where anybody reads it.
