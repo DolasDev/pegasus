@@ -17,9 +17,32 @@ material: |
     bookingCancellationStatus, ShipmentLocation, Transport leg, Charge,
     OtherDocumentParty, notification model)
   - jit/v2/JIT_v2.0.0.yaml (Timestamp, TerminalCall, PortCallService - the ERP-A model)
-  - jit/v2/README.md
+    ** UNRECOVERABLE as of 2026-10-10 - see the note below before citing anything from it **
+  - jit/v2/README.md ** likewise unrecoverable **
   - README.md (repo scope)
   Not read - see "What we could not see".
+
+> **EVERY `jit/…` CITATION IN THIS FILE POINTS AT BYTES THAT NO LONGER EXIST. Read this before
+> relying on one.** The JIT spec was dropped from `captured/` by the 2026-09-18 _capture only what
+> is cited_ trim; `sources/README.md`'s promised gitignored full clone did not survive; the recorded
+> upstream `github.com/dcsaorg/DCSA-OpenAPI` returns **404**; the standard was renamed to **DCSA
+> Port Call** (`DCSA_JIT` 2.0.0 now opens _"Do NOT use this version"_); the only GitHub copy is from
+> **2020** and predates JIT v2; and every surviving SwaggerHub spec is **unbundled**, so none has
+> the line numbering these citations use. Full probe list:
+> `captured/swaggerhub-jit-successor/README.md`.
+>
+> **What has been done, and what has not.** The claims **A8 and A1** rested on were withdrawn or
+> re-sourced on 2026-10-10 (`[A8 §4]`, `[A8 §9]`, `[SD §1.3]`, `[A1]` ×2, and `[A8 §10]` carries the
+> exposure), and **`isFYI` was re-sourced** to the captured successor spec, where it is confirmed.
+> **The remaining `jit/…` citations in this file have NOT been triaged** — the `Timestamp` / `ERP-A`
+> model, `TerminalCall`, `PortCallService`, `replyToTimestampID`, the
+> _"timestamps as a conversation, not a feed"_ reading, and the A3/A4 rubric scores that rest on
+> them. Those are **A3's and A4's evidence, not A8's**, and re-grading another area's claims was out
+> of scope for the round that found this. **Treat every one of them as `secondary` until its own
+> area triages it.** The successor spec (`DCSA_JIT` 2.0.0, captured) still carries the ERP pattern
+> and `PortCall`/`TerminalCall`/`PortCallService` schemas, so most are probably re-sourceable there
+> — but at different wording and with no line correspondence, so each needs checking rather than
+> assuming.
 ---
 
 # DCSA (Digital Container Shipping Association) OpenAPI standards - analysis
@@ -230,7 +253,7 @@ call; they never contain the journey.
 | `reason` | "used to explain why a specific `ShipmentEvent` has been sent". 250 chars. | A1, A6 | event_domain L2476-2481 |
 | `Timestamp` (JIT) | "Date and time for an `ERP-A` **Timestamp** when a **Port Call Service** should be provided (for `ERP`) or **has been** provided (for `A`)." | A4 | jit L3526-3530 |
 | `replyToTimestampID` | "The identifier of the **Timestamp** being replied to... Can only reply to a **Timestamp** with the same `portCallServiceID`." | A4 | jit L3539-3550 |
-| `isFYI` | "If set to `true` it indicates that this message is primarily meant for another party - but is sent as a FYI." | A8 | jit L3604-3611, L3265-3272 |
+| `isFYI` | "Flag indicating that this event is primarily meant for another party - but is sent as a FYI (for your information)." | A8 | `captured/swaggerhub-jit-successor/DCSA_JIT-2.0.0.json` (re-sourced 2026-10-10; was `jit L3604-3611, L3265-3272`, now unrecoverable) |
 | `bookingStatus` | Status of the booking; 9 values, see lifecycle below. | A1 | bkg L2461-2477 |
 | `amendedBookingStatus` | "The status of latest amendment added to the `Booking`. If no amendment has been requested - then this property is empty." | A1 | bkg L2477-2487 |
 | `bookingCancellationStatus` | "The status of the latest booking cancellation." | A1 | bkg L2488-2496 |
@@ -450,9 +473,14 @@ i.e. they loosened it to accommodate implementers' existing ids.
   L1506-1528, L2603-2622). The role vocabulary distinguishes the carrier itself from the
   carrier's local agent from a visibility service provider reselling the data. This is the
   right answer to "who asserted this fact" and it is the thing EPCIS lacks.
-- **`isFYI`** (JIT) - "this message is primarily meant for another party but is sent as a
-  FYI" (jit L3604-3611). An explicit addressee-vs-observer flag on a broadcast message.
-  Useful when the same event goes to several subscribers with different standing.
+- **`isFYI`** (JIT) - **re-sourced 2026-10-10** to
+  `captured/swaggerhub-jit-successor/DCSA_JIT-2.0.0.json`, which reads: _"Flag indicating that this
+  **event** is primarily meant for another party - but is sent as a FYI (for your information)."_
+  An explicit addressee-vs-observer flag on a broadcast message, useful when the same event goes to
+  several subscribers with different standing. **The field is confirmed; the old quotation was
+  not.** This bullet previously quoted _"this **message** is primarily meant for another party but
+  is sent as a FYI"_ at `jit L3604-3611` — a bundled spec that no longer exists anywhere (see that
+  directory's README). Quote the captured wording, not the line reference.
 - **`Notification-Signature` header** computed from a subscriber-supplied Base64 `secret`
   ("A Base64 encoded secret shared between the Publisher and the Subscriber. It is used to
   compute the contents of the Notification-Signature header", event_domain L2516-2522),

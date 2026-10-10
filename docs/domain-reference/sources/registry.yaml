@@ -795,6 +795,19 @@ sources:
     - https://github.com/dcsaorg/DCSA-OpenAPI
     - https://github.com/dcsaorg/DCSA-TNT
   notes: Clearest PLN/EST/ACT time classifier and equipment/transport/shipment event split.
+  files:
+    - {path: sources/dcsa/captured/swaggerhub-jit-successor/DCSA_JIT-2.0.0.json, sha256: e69b9ae8fb64e7a3, retrieved: 2026-10-10, from: api.swaggerhub.com/apis/dcsaorg/DCSA_JIT/2.0.0}
+    - {path: sources/dcsa/captured/swaggerhub-jit-successor/JIT_EVENT_HUB-1.2.0-Beta-1.json, sha256: 936f7297d12ac7ad, retrieved: 2026-10-10, from: api.swaggerhub.com/apis/dcsaorg/JIT_EVENT_HUB/1.2.0-Beta-1}
+  upstream_note: |
+    THE RECORDED UPSTREAM IS GONE. github.com/dcsaorg/DCSA-OpenAPI returns 404 as of 2026-10-10;
+    the standard was renamed to DCSA Port Call (DCSA_JIT 2.0.0 says "Do NOT use this version").
+    captured/DCSA-OpenAPI/ is the 2026-09-17 clone, trimmed 2026-09-18 to domain/tnt/bkg/cs — which
+    removed the JIT spec that 00-shared-decisions.md, A1 and A8 cite. The cited bundled
+    jit/v2/JIT_v2.0.0.yaml (~3600 lines, L3554-3568) exists nowhere: not here, not upstream, and not
+    on SwaggerHub, which serves only unbundled specs. The 2026-10-10 files above are SUCCESSOR
+    artifacts and are NOT the cited ones — see their README. They confirm `isFYI`; they do NOT
+    contain the per-publisher-role basis constraint, which has been re-sourced (narrower) onto
+    captured/DCSA-OpenAPI/domain/event/event_domain_v3.2.0.yaml:778,1231,1328. [A8 §10] discloses it.
 
 - id: open-trip-model
   name: Open Trip Model 5 (OTM5)
