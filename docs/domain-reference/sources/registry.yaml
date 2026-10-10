@@ -218,6 +218,36 @@ sources:
     - pegasus-workflows:platform/allied-vanlines/integrations/   # sirva_ade_{lead,shipment,compensation,document} configs
     - pegasus-workflows:platform/allied-vanlines/README.md
   notes: Van-line ↔ agent view — agent roles, operational events, compensation splits. Committed in pegasus-workflows, referenced not copied.
+  retention: retained-elsewhere
+  retention_note: |
+    NOT secondary, and NOT captured here. The bytes ARE retained and version-controlled — as 13
+    PDFs in the PRIVATE repo pegasus-workflows, at platform/allied-vanlines/docs/. They are
+    deliberately NOT copied into this repo: license is partner-confidential and DolasDev/pegasus is
+    PUBLIC, so mirroring them here would publish a partner's confidential API specifications
+    irreversibly into git history.
+    This is a THIRD state, distinct from both "captured" and "secondary": a citation to src:sirva-ade
+    is to primary material that a reader with repo access CAN check, page by page — unlike
+    src:dp3-400ng or src:dtr-part-iv (analysis prose only) and unlike the DCSA JIT spec, whose bytes
+    are gone from the world entirely ([A8 §10], 2026-10-10).
+    The manifest below pairs every citation tag used in analysis.md with its file, size and sha256,
+    so a citation like "GSD p.9" resolves to an exact artifact and drift is detectable. Tags are
+    defined in analysis.md's own legend table; this records what each one WAS when read.
+    Verified 2026-10-10: all 13 tags resolve, 0 missing.
+  retained_at: {repo: pegasus-workflows, visibility: private, dir: platform/allied-vanlines/docs/}
+  retained_files:
+    - {tag: ABS, bytes: 170353, sha256: 5d22cfd58a560fc7, path: ADE API Specification - Abstract & Statement Communication.pdf}
+    - {tag: ADOC, bytes: 219290, sha256: fc8d9756856a61ab, path: ADE API Specification - Add Shipment Document into MS Imaging System.pdf}
+    - {tag: ASC, bytes: 158253, sha256: 74123e3f945a5d51, path: ADE Abstract - Service Description Examples.pdf}
+    - {tag: AVAIL, bytes: 201740, sha256: ec400eb8ad7b3b30, path: Agent Data Exchange Available API Communication.pdf}
+    - {tag: GAC, bytes: 184144, sha256: 45c88cb448ed10e3, path: ADE API Specification - Get Shipment Agent Compensation.pdf}
+    - {tag: GDOC, bytes: 354250, sha256: 66df1006b23f06f0, path: ADE API Specification - Get Shipment Document from MS Imaging System.pdf}
+    - {tag: GS, bytes: 229649, sha256: b18209c6ca226588, path: Getting Started.pdf}
+    - {tag: GSD, bytes: 741815, sha256: 270278be1541a3c1, path: ADE API Specification - Get Shipment Operational Details.pdf}
+    - {tag: LEP, bytes: 476592, sha256: 3d0b8d5a61deae7f, path: ADE API Specification - Lead Opportunity Event Pull Communication.pdf}
+    - {tag: LEU, bytes: 290033, sha256: 50ab1fd995f1537f, path: ADE API Specification - Lead Opportunity Event Push Communication.pdf}
+    - {tag: LOD, bytes: 263614, sha256: 9677af709e549fd0, path: ADE API Specification - Lead Opportunity Detail Communication.pdf}
+    - {tag: OAUTH, bytes: 335924, sha256: af5d7e5d2f63e609, path: ADE API Specification - Agent System API Access Client OAuth.pdf}
+    - {tag: SOE, bytes: 960572, sha256: 50614861c1d736e4, path: ADE API Specification - Shipment Operational Event Communication Process.pdf}
 
 - id: atlas-world-group-api
   name: Atlas World Group APIM (AtlasNet)

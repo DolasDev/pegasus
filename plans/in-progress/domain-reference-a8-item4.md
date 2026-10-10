@@ -534,29 +534,48 @@ form-clusters it will hit immediately have no fact class at all.
    across the analysis documents: **2,210 citations, and 65% of them come from the top 10 sources.**
    The top five:
 
-   | source                  | citations | grade                         |
-   | ----------------------- | --------- | ----------------------------- |
-   | `sirva-ade`             | 228       | **secondary** (gated-partner) |
-   | `dp3-400ng`             | 223       | **secondary**                 |
-   | `dtr-part-iv`           | 204       | **secondary**                 |
-   | `cfr-49-375`            | 179       | **captured**                  |
-   | `dp3-tender-of-service` | 115       | **secondary**                 |
+   | source                  | citations | retention                                         |
+   | ----------------------- | --------- | ------------------------------------------------- |
+   | `sirva-ade`             | 228       | **retained-elsewhere** — private repo, 13 PDFs ✅ |
+   | `dp3-400ng`             | 223       | **analysis-only** — no bytes anywhere             |
+   | `dtr-part-iv`           | 204       | **analysis-only** — no bytes anywhere             |
+   | `cfr-49-375`            | 179       | **captured here**                                 |
+   | `dp3-tender-of-service` | 115       | **analysis-only** — no bytes anywhere             |
 
-   **Three of the top five have no retained bytes — including the single most-cited source in the
-   model, which is also the origin of the entire `ROLE_NAMES` vocabulary.** This is the same disease
-   as the JIT incident (M5/M6a), untriggered: a load-bearing body of claims resting on bytes nobody
-   kept. JIT was ~5 citations and cost a day. `sirva-ade` is **228**.
+   > **CORRECTED 2026-10-10, same day, and the error is instructive.** This table first read
+   > `sirva-ade` as **secondary** and claimed _"three of the top five have no retained bytes."_
+   > **That was wrong about the most-cited source in the model.** `src:sirva-ade`'s bytes **are**
+   > retained and version-controlled — 13 ADE PDFs in the **private** repo `pegasus-workflows` at
+   > `platform/allied-vanlines/docs/` — and the registry said so all along ("Committed in
+   > pegasus-workflows, **referenced not copied**"). The mistake was conflating **"no `captured/`
+   > directory in this repo"** with **"bytes not retained"**, which is exactly the conflation the
+   > grade work exists to stop. `registry.yaml` now carries a per-tag manifest (file, bytes,
+   > sha256); all 13 tags resolve. The remaining two of the top five really are analysis-only.
+
+   **So the grade is not binary — there are FOUR states, and a migrator needs to tell them apart:**
+
+   | state                  | meaning                                                                                                                           | example                        |
+   | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+   | **captured here**      | bytes in `<id>/captured/`, greppable now                                                                                          | `cfr-49-375`                   |
+   | **retained-elsewhere** | primary bytes exist and are version-controlled, but not in this repo (licence/visibility) — **checkable by a reader with access** | `sirva-ade` (228 citations)    |
+   | **analysis-only**      | `analysis.md` prose; nobody can re-check the claim                                                                                | `dp3-400ng`, `dtr-part-iv`     |
+   | **unrecoverable**      | the bytes are gone from the world                                                                                                 | the DCSA JIT spec (`[A8 §10]`) |
+
+   **The second and third look identical today and warrant very different confidence.** That, not
+   thin evidence, is the actual defect: **542 citations are analysis-only** — `dp3-400ng` **223** +
+   `dtr-part-iv` **204** + `dp3-tender-of-service` **115** — and nothing a migrator reads says so.
+   That exceeds the top five's captured-plus-retained total (**179 + 228 = 407**).
 
    **The grade IS already recorded — in `registry.yaml`, which a migrator will never open.** So a
    migration session gets uniformly confident-sounding domain readings and no signal about which
    ones it may lean on. Wanted: every entry in the symptom index (and ideally the glossary) carries
-   whether its reading rests on **captured bytes**, on an **analysis nobody can re-check**, or on
-   something **`[ORIGINAL]`/`[SYNTHESIS]`** that this model authored rather than found.
+   its state from the four above, plus whether the reading is **`[ORIGINAL]`/`[SYNTHESIS]`** —
+   authored by this model rather than found in a source.
 
-   Derive it, do not hand-maintain it: `registry.yaml` has `openness`/`status`, the filesystem has
-   `<id>/captured/`, and the disclosure marks are already in the prose. **A per-citation check is
-   the right grain, not per-source** — DCSA has 105 captured files and still lost the JIT sub-spec,
-   which is exactly how five citations came to rest on nothing.
+   Derive it, do not hand-maintain it: `registry.yaml` now has `retention` / `retained_files`, the
+   filesystem has `<id>/captured/`, and the disclosure marks are already in the prose. **A
+   per-citation check is the right grain, not per-source** — DCSA has 105 captured files and still
+   lost the JIT sub-spec, which is exactly how five citations came to rest on nothing.
 
    **This is the difference between a migrator trusting the model appropriately and trusting it
    uniformly**, and uniform trust is the failure mode that matters: the model's confident readings
@@ -631,5 +650,20 @@ not household-goods moving.
 
 **So concentration is the appropriate shape for this domain**: very few published sources actually
 describe household-goods moving, the model found them early and mined them hard. **Breadth is not
-the problem.** The problem is in §8.3 item 2: that concentrated core is mostly `secondary`, and the
-model does not say so where anybody reads it.
+the problem.** The problem is in §8.3 item 2: the concentrated core sits in **four different
+retention states that currently look identical to a reader**, and the two that matter most are the
+ones nobody can tell apart —
+
+- `sirva-ade`, **228 citations**, is **retained-elsewhere**: primary bytes, version-controlled in a
+  private repo, checkable by anyone with access. Its lack of a `captured/` directory here is a
+  **licence and repo-visibility decision**, not an evidence weakness. (`registry.yaml` now carries
+  the per-tag manifest. **This plan asserted the opposite earlier the same day — see the correction
+  in §8.3 item 2**, which is itself the clearest argument for doing the grade work.)
+- **542 citations are genuinely analysis-only** — `dp3-400ng` **223** + `dtr-part-iv` **204** +
+  `dp3-tender-of-service` **115** — prose nobody can re-check, and **nothing a migrator reads says
+  so.** That is **more than the captured and retained-elsewhere top-five entries combined** (179 +
+  228 = 407).
+
+**That is the defect: not thin evidence, but indistinguishable states.** Fixing it is generated and
+cheap; leaving it means a migration session trusts a re-checkable 228 and an unverifiable 223
+exactly alike.
