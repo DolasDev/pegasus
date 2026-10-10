@@ -236,6 +236,32 @@ void _catalogIsTheVocabulary
  * release-of-liability language and requires no signature at all. The real mutual signatures are
  * § 375.503(c) and **§ 375.401(h)**, the latter on a **money** document and cited nowhere in the
  * corpus before now. [A8 §5] row 5's `competing` standing survives on better citations than it had.
+ *
+ * > **Amended 2026-10-10 and the release is NOT re-cut**, on the `0.6.4` precedent and for the same
+ * > reason: [A8 §9 item 11] closed with **no emitted change at all**. All four `catalog/*` files
+ * > are byte-identical against the pre-round build and `$defs/AuthoritativeHolder` is still its
+ * > nine members, so `0.7.0` is still the version and §2.4 gains no row. **The measurement is the
+ * > deliverable, not the version:** the three standing columns were widened from `RoleName[]` to
+ * > `StandingHolder` and a member (`schemeCounterparty`) was minted, and **none of it reaches a
+ * > wire face** — `corroborating`, `competing` and `advisory` have no `$def` and never did, which
+ * > is also why a round that looked like it might be the second breaking release in a row was
+ * > additive and then not even that.
+ * >
+ * > **The member is held OFF the emitted union deliberately**, by
+ * > `TheEchoIsNotAnAuthoritativeHolder` in `rules/authority.ts`. `AuthoritativeHolder` is published
+ * > because a `competing` holder can be `selected` under a named value rule and so reaches
+ * > `FactResolved`; a corroboration on two rows whose authority never moves ([A8 §5] rows 10 and
+ * > 17) cannot be. `keySideRole` at `0.3.0` and `awardedRole` at `0.6.4` each cost a
+ * > `newClosedEnumMember` row, and the gate exists so that the day this one is meant to be
+ * > published, somebody argues for it rather than acquiring it as a side effect.
+ * >
+ * > **One entry the item was minted holding was never debt**, and it is recorded here because the
+ * > mis-pointing happened in *this* release: item 2 re-pointed `charge`/`PROPOSED` to item 11 with
+ * > the boilerplate it gave three genuine relations, and that boilerplate argues
+ * > "corroborating/competing/advisory take `RoleName[]`" — but `PROPOSED` is on the
+ * > **authoritative** column, which has taken holder kinds since [A8 §4]. It was already
+ * > `{kind: 'performingRole'}` in the typed table, and its own `owedTo` said "Not fixed" before
+ * > either round touched it. **Item 11 was minted at four entries and owned three.**
  */
 export const CATALOG_VERSION = '0.7.0'
 

@@ -194,10 +194,16 @@ export function instantTheFactIsAbout(assertion: Assertion): FactInstantResoluti
  * Who holds a row's authority. More than "a role", because four of the eleven rows are held by
  * something that is not a fixed role name.
  *
- * Two members record a **gap in the role vocabulary** rather than filling it: `performingRole` (row
- * 11's proposal authority is "the performing role", which is a function of the act being charged
- * for) and `owedRole` (row 11's rating authority is "the tariff owner", and [A8 §9 item 2] owes the
- * role enum that would contain it — `ROLE_NAMES` has no van-line member).
+ * **One member records a gap in the role vocabulary** rather than filling it: `owedRole` (row 11's
+ * rating authority is "the tariff owner", and [A8 §9 item 2] owes the role enum that would contain
+ * it — `ROLE_NAMES` has no van-line member).
+ *
+ * **`performingRole` is NOT one of them, and this paragraph used to say it was.** It carries no
+ * {@link Owed} payload, and the row it sits on already keeps the two apart: `charge`'s `RATED`
+ * aspect is `owedRole` because a name is missing, while its `PROPOSED` aspect is `performingRole`
+ * because **no name would do** — the holder is whichever role performed the act being charged for,
+ * so the role enum cannot close it however complete it gets. Lumping them read a *relation* as a
+ * vocabulary debt, which is the confusion [A8 §9 item 11] was minted to end.
  */
 export type AuthoritativeHolder =
   /** A named member of [A8 §2]'s cast. */
@@ -248,6 +254,87 @@ export type AuthoritativeHolder =
   | { readonly kind: 'awardedRole' }
   /** A holder the role vocabulary cannot yet name — carried as owed, never as "nobody". */
   | { readonly kind: 'owedRole'; readonly owedRole: Owed<string, string> }
+
+/**
+ * Who holds one of the three **non-authoritative** standings — **[A8 §9 item 11], closed here.**
+ *
+ * The asymmetry the item names: `authoritative` took holder **kinds** ({@link AuthoritativeHolder})
+ * precisely so it could name a party [A8 §2]'s cast cannot enumerate, while `corroborating`,
+ * `competing` and `advisory` took `RoleName[]` **and nothing else** — so a standing that depends on
+ * the fact had nowhere to go and was written into the row's `note` as prose instead. Three of the
+ * item's four owed entries were sitting in exactly that prose.
+ *
+ * **The union is `AuthoritativeHolder` EXTENDED, not a second union beside it.** [SD §1.1]'s "two
+ * homes for one fact" is the defect this package keeps finding in its own tables, and two
+ * independent spellings of "how a party is designated" would be it again. Extending also makes the
+ * one asymmetry that SURVIVES explicit: every authoritative holder is a legal standing holder, and
+ * not the reverse.
+ *
+ * **Why the one added member is not in `AuthoritativeHolder` itself.** `AuthoritativeHolder` is
+ * **emitted** — `$defs/AuthoritativeHolder` is in both faces of the catalog, because a `competing`
+ * holder can be `selected` under a named value rule and so reaches `FactResolved` through
+ * {@link AuthorityVerdict}'s `holder` arm. The echo below can never be selected: it is a
+ * corroborating standing on two rows whose authority **never moves** ([A8 §5] rows 10 and 17,
+ * `boundBy = SCHEME`). A member on the wire that no wire position can hold would be a published
+ * promise with nothing behind it.
+ */
+export type StandingHolder =
+  | AuthoritativeHolder
+  /**
+   * [A8 §5] rows 10 and 17: **the party the value was issued TO, echoing it back.** Row 10's _"the
+   * counterparty echoing the value back"_ and row 17's _"the party the instrument is issued **to**,
+   * echoing its number back"_ are **one relation at two grains** — row 17's own cell says so
+   * (_"which is row 10's echo one aggregate over"_).
+   *
+   * **Primary, captured, and the DIRECTION is the finding.** `src:dcsa`'s `references` field
+   * (`captured/DCSA-OpenAPI/domain/event/event_domain_v3.2.0.yaml:2082`, and the same string in
+   * nine further captured files): _"**References** provided by the shipper or freight forwarder at
+   * the time of booking or at the time of providing shipping instruction. **Carriers share it
+   * back** when providing track and trace event updates, some are also printed on the B/L."_ The
+   * provider issues the value; **the party it was provided to** is the one that shares it back. So
+   * the designation picks out one determinate party from the scheme, exactly as
+   * `schemeIssuer` does from the other end — which is why it is named for the same thing it reads.
+   *
+   * **Not a complement, and that is the whole of why it is a kind.** [A8 §4.1]'s note 1 makes an
+   * unlisted role _"unplaced, not demoted"_, so a standing defined as _whoever agrees_ needs
+   * nothing — that is what row 8's _"the non-inspecting parties"_ and row 9's _"everyone else"_
+   * were, and [A8 §9 item 2] turned both into notes. This one is narrower than "whoever agrees":
+   * the echoer is the counterparty **to the scheme**, and a third party that happened to assert the
+   * same value would not be it.
+   *
+   * **The resolution path is NOT in this model, and saying so is the honest half.** `awardedRole`
+   * can name one (`subject = order:X` → that order's `orderAward`); this cannot. `record.identity`
+   * carries `{scheme, vocabularyScope}` and no counterparty, `record.documentIssuance` has
+   * `secondSubject: false` and no issuee, and `Instrument` carries no issuee either — so **no
+   * record of the exchange exists here** and a consumer resolves the party from outside the model.
+   * It is carried as a designation rather than as a resolver for that reason, and reading it off
+   * `context[]` is forbidden by [SD §1.4] rule 1, the same objection [A8 §9 item 8(b)] raised
+   * against `KEY`.
+   *
+   * **[A8 §10] carries the exposure**: the only *primary* witness is `src:dcsa`, one publisher in
+   * an adjacent domain — the same disclosure `visibilityProvider` got at `0.7.0`. Its three
+   * corroborating witnesses (`src:nmfta-ebol`'s acceptance identifier, `src:sirva-ade`'s
+   * `ExternalReference`, `src:weichert-supplier-api`'s peer `serviceOrderNumber`) are all
+   * `secondary` and do not lift that.
+   */
+  | { readonly kind: 'schemeCounterparty' }
+
+/**
+ * The common standing-column cell: role names and nothing else, which is **45 of the table's 48**.
+ *
+ * A constructor rather than object literals per cell, on the precedent of {@link owed} and
+ * `ruleRef` in this same module: the element type stays single ([A8 §9 item 11] closed the
+ * asymmetry, and a `RoleName | StandingHolder` cell would reopen it one column over), while a row
+ * a reader scans for its cast still reads as its cast.
+ */
+function standingRoles(...names: readonly RoleName[]): readonly StandingHolder[] {
+  return names.map((role) => ({ kind: 'role', role }) as const)
+}
+
+/** Whether a standing column places this role — the `{kind: 'role'}` members, and only those. */
+function standingPlaces(holders: readonly StandingHolder[] | undefined, role: RoleName): boolean {
+  return (holders ?? []).some((holder) => holder.kind === 'role' && holder.role === role)
+}
 
 /**
  * The circumstances under which a row's authority sits with an alternate holder. These are
@@ -358,9 +445,13 @@ interface AuthorityRuleCommon<T extends AssertionType> {
   readonly rule: RuleRef
   readonly boundBy: BoundBy
   readonly authoritative: AuthoritativeSpec
-  readonly corroborating?: readonly RoleName[]
-  readonly competing?: readonly RoleName[]
-  readonly advisory?: readonly RoleName[]
+  /**
+   * [A8 §9 item 11]: {@link StandingHolder}, not `RoleName[]`. A standing that depends on the fact
+   * rather than naming a role has somewhere to go, so it is no longer written into `note` as prose.
+   */
+  readonly corroborating?: readonly StandingHolder[]
+  readonly competing?: readonly StandingHolder[]
+  readonly advisory?: readonly StandingHolder[]
   /** Prose the columns cannot hold — always a quotation or a citation, never a new rule. */
   readonly note?: string
 }
@@ -584,12 +675,12 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'legAuthoritativeAsserter' }, when: 'EXTERNALLY_PERFORMED_LEG' },
       ],
     },
-    corroborating: ['originAgent', 'destinationAgent', 'goodsOwner'],
+    corroborating: standingRoles('originAgent', 'destinationAgent', 'goodsOwner'),
     // The deliberate `competing` entry: [round-2-critique]'s own example is the destination agent's
     // shipment-level claim against the driver's stop-level claim — "both are real and E-CANON is
     // what makes them pair" ([SD §4.6.3] is where the pairing is worked).
-    competing: ['destinationAgent'],
-    advisory: ['booker', 'visibilityProvider', 'platform'],
+    competing: standingRoles('destinationAgent'),
+    advisory: standingRoles('booker', 'visibilityProvider', 'platform'),
     note:
       '`src:dp3-tender-of-service` #14/#20 place the arrival-recording DUTY on the performing party ' +
       '(§C.3.a-b p.34). [ORIGINAL]: converting a recording duty into assertional authority. ' +
@@ -610,9 +701,9 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'legAuthoritativeAsserter' }, when: 'EXTERNALLY_PERFORMED_LEG' },
       ],
     },
-    corroborating: ['originAgent', 'destinationAgent', 'goodsOwner'],
-    competing: ['destinationAgent'],
-    advisory: ['booker', 'visibilityProvider', 'platform'],
+    corroborating: standingRoles('originAgent', 'destinationAgent', 'goodsOwner'),
+    competing: standingRoles('destinationAgent'),
+    advisory: standingRoles('booker', 'visibilityProvider', 'platform'),
     note:
       '`src:dp3-tender-of-service` #10 additionally requires the legal name and US DOT number of the ' +
       'provider ACTUALLY HAULING in DPS within 2 GBD of origin departure (§B.3.f p.19) — so at ' +
@@ -633,11 +724,11 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'role', role: 'originAgent' }, when: 'NO_SEPARATE_LOAD_AGENT_ASSIGNED' },
       ],
     },
-    corroborating: ['driver', 'goodsOwner'],
+    corroborating: standingRoles('driver', 'goodsOwner'),
     // Sourced, not authored: `src:cfr-49-375` §375.503 + §375.605(b) (customer notations on the
     // inventory) and DP3 ToS §C.9.a(4)-(11) (per-line-item exception annotation BEFORE signing).
-    competing: ['goodsOwner'],
-    advisory: ['booker', 'destinationAgent', 'platform'],
+    competing: standingRoles('goodsOwner'),
+    advisory: standingRoles('booker', 'destinationAgent', 'platform'),
     note: 'The customer competes on the SCOPE of what was loaded (short / refused), which is a Portion question ([SD §3.4]).',
   },
 
@@ -657,9 +748,9 @@ export const AUTHORITY_TABLE = {
         },
       ],
     },
-    corroborating: ['driver', 'goodsOwner'],
-    competing: ['goodsOwner'],
-    advisory: ['booker', 'originAgent', 'platform'],
+    corroborating: standingRoles('driver', 'goodsOwner'),
+    competing: standingRoles('goodsOwner'),
+    advisory: standingRoles('booker', 'originAgent', 'platform'),
     note: 'ADE supplies `LoadAgent` and `UnloadAgent` as distinct types (GSD p.9) but states no authority — [A8 §5] row 4 marks the mirroring [ORIGINAL].',
   },
 
@@ -677,7 +768,7 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'role', role: 'rr19Agent' }, when: 'REVERSE_RULE_19' },
       ],
     },
-    corroborating: ['driver', 'hauler'],
+    corroborating: standingRoles('driver', 'hauler'),
     // [ORIGINAL]: placing `customer` in `competing` rather than `corroborating`. "Three sources make
     // the goods owner's signature CONSTITUTIVE, not decorative". RE-CITED at [A8 §9 item 2]
     // (2026-10-09): this comment cited §375.701, which requires no signature at all — see the
@@ -685,8 +776,8 @@ export const AUTHORITY_TABLE = {
     // delivery receipt is signed by the shipper and may carry no release-of-liability language);
     // DP3 ToS §C.17.a (the AT DELIVERY notice is "jointly signed"); §C.9.a(24) (a signed check-off
     // sheet is NOT proof of delivery).
-    competing: ['goodsOwner'],
-    advisory: ['booker', 'originAgent', 'platform'],
+    competing: standingRoles('goodsOwner'),
+    advisory: standingRoles('booker', 'originAgent', 'platform'),
   },
 
   /* ---- Row 6 — weight.net. "The most strongly-sourced row… **Authored: nothing.** ------------ */
@@ -699,12 +790,12 @@ export const AUTHORITY_TABLE = {
     // The weigh master SUPPLIES THE EVIDENCE, NOT THE ASSERTION (`src:cfr-49-375` §375.519 puts the
     // signature on the weigh master). Listed as corroborating because the row must place the role
     // somewhere; the distinction is the note, and `capturedBy` + `evidence[]` is where it lives.
-    corroborating: ['weighMaster'],
+    corroborating: standingRoles('weighMaster'),
     // The weighing side and the reweigh-demanding side are BOTH competing: §375.517 gives the
     // shipper the reweigh demand before unloading begins, and the freight bill must then be based
     // on the reweigh weight.
-    competing: ['hauler', 'originAgent', 'goodsOwner', 'accountParty'],
-    advisory: ['platform', 'booker'],
+    competing: standingRoles('hauler', 'originAgent', 'goodsOwner', 'accountParty'),
+    advisory: standingRoles('platform', 'booker'),
     tieBreak: { kind: 'rule', rule: R_WEIGHT_LOWER },
     note: 'This row proves authority and value rules are two mechanisms. [A8 §5]: "**Authored: nothing.** This row is a citation."',
   },
@@ -724,8 +815,8 @@ export const AUTHORITY_TABLE = {
       // the note keeps the disjunction visible.
       inputAuthority: { kind: 'role', role: 'hauler' },
     },
-    corroborating: ['sitAgent', 'accountParty'],
-    advisory: ['platform'],
+    corroborating: standingRoles('sitAgent', 'accountParty'),
+    advisory: standingRoles('platform'),
     tieBreak: { kind: 'perRecordDerivation' },
     note:
       'Sourced twice from opposite directions: 400NG Items 29.4/29.6/17.20 ("SIT in date will be equal ' +
@@ -742,10 +833,10 @@ export const AUTHORITY_TABLE = {
     rule: AUTHORITATIVE_ROLE_AT_INSTANT,
     boundBy: 'CUSTODY',
     authoritative: { kind: 'held', primary: { kind: 'role', role: 'sitAgent' } },
-    corroborating: ['hauler', 'destinationAgent'],
+    corroborating: standingRoles('hauler', 'destinationAgent'),
     // "`Hauler` collecting — this is a handoff, so the exception-sheet rule applies" (§7.3).
-    competing: ['hauler'],
-    advisory: ['booker', 'platform'],
+    competing: standingRoles('hauler'),
+    advisory: standingRoles('booker', 'platform'),
     note:
       'DP3 ToS #28 puts handling-in on the warehouseman; NTS §5.8.2 is decisive on the collecting ' +
       "carrier — the NTS TSP notifies the TO and the DD 1164 documents the carrier's failure. DTR " +
@@ -763,7 +854,7 @@ export const AUTHORITY_TABLE = {
     // "The non-inspecting parties" — not enumerable as roles, because which roles are inspecting is
     // a property of the boundary, not of the fact class. Left empty rather than guessed.
     competing: [],
-    advisory: ['platform', 'booker'],
+    advisory: standingRoles('platform', 'booker'),
     tieBreak: { kind: 'rule', rule: JOINT_AT_CUSTODY_BOUNDARY },
     note:
       '400NG Item 17.12.c requires BOTH TSP and warehouseman to hold "the condition of EACH ARTICLE ' +
@@ -779,13 +870,20 @@ export const AUTHORITY_TABLE = {
     rule: ISSUER_OF_SCHEME,
     boundBy: 'SCHEME',
     authoritative: { kind: 'held', primary: { kind: 'schemeIssuer' } },
+    // [A8 §9 item 11], CLOSED: "the counterparty echoing the value back" is now a listed standing
+    // rather than a sentence in the note below. It is the issuer's own counterparty under the
+    // scheme — `src:dcsa`'s `references` are "provided by the shipper or freight forwarder" and
+    // "carriers share it back" — so it reads the scheme, as `schemeIssuer` does from the other end.
+    corroborating: [{ kind: 'schemeCounterparty' }],
     note:
       "The practical consequence [A8 §5] row 10 names: SIRVA's `Brand+RegNumber+RegYear` and " +
       "Weichert's `serviceOrderNumber` are PEER references, neither authoritative over the other, " +
-      'because they are values under two schemes with two issuers. Corroboration is "the counterparty ' +
-      'echoing the value back" — a relation, not a role, so it is not listed as one. An issuer\'s ' +
+      "because they are values under two schemes with two issuers. An issuer's " +
       'RESPONSIBILITY can be reassigned with an effective date (400NG GBLOC regionalization p.17), ' +
-      "which is why [SD §7.2]'s interval carries it and a static field would not.",
+      "which is why [SD §7.2]'s interval carries it and a static field would not. " +
+      'This note used to carry the corroborating standing as prose ("a relation, not a role, so it ' +
+      'is not listed as one") because the column could not hold one; [A8 §9 item 11] widened the ' +
+      'column and the standing is listed above. **The prose was the defect, not the standing.**',
   },
 
   /* ---- Row 11 — charge. Corrected by [SD §4.7.2b] into three fact keys. --------------------- */
@@ -807,12 +905,16 @@ export const AUTHORITY_TABLE = {
         },
       },
     },
-    corroborating: ['settlingAgent', 'setoffAgent'],
-    competing: [],
-    advisory: ['platform'],
+    corroborating: standingRoles('settlingAgent', 'setoffAgent'),
+    // [A8 §9 item 11], CLOSED: "the performing role, on quantum" was EMPTY here with the standing
+    // stated in the note, because the column took names and `performingRole` is not one. The kind
+    // already existed on `authoritative` for this row's own PROPOSED aspect; what was missing was a
+    // column that could hold it.
+    competing: [{ kind: 'performingRole' }],
+    advisory: standingRoles('platform'),
     note:
       '[ORIGINAL]: naming the three-way split (propose / decide / rate) as three authorities; no ' +
-      'source names all three. The performing role competes ON QUANTUM. [SD §6.3] already settles the ' +
+      'source names all three. [SD §6.3] already settles the ' +
       'correction regime against role: financial facts are corrected ONLY by an offsetting record. ' +
       "TODO([A8 §9 item 7]): revenue allocation is A13's and this row must not be read as settling it.",
   },
@@ -828,10 +930,13 @@ export const AUTHORITY_TABLE = {
     rule: ISSUER_OF_SCHEME,
     boundBy: 'SCHEME',
     authoritative: { kind: 'held', primary: { kind: 'schemeIssuer' } },
-    // The counterparty receives the instrument and may echo its number back; echoing is a relation,
-    // not a role, so it is not listed — row 10's own note makes the same point about corroboration.
+    // [A8 §9 item 11], CLOSED: this comment used to END "echoing is a relation, not a role, so it
+    // is not listed". It is listed now, and it is the SAME member row 10 carries — row 17's own §5
+    // cell says so ("which is row 10's echo one aggregate over"), and `src:nmfta-ebol` returns an
+    // acceptance identifier distinct from the document identifier. One relation at two grains.
+    corroborating: [{ kind: 'schemeCounterparty' }],
     competing: [],
-    advisory: ['booker', 'platform'],
+    advisory: standingRoles('booker', 'platform'),
     note:
       'The first row [A8 §9 item 8] closed on MINTING ALONE: its holder was determined by row 10 ' +
       'before the fact class existed, so nothing was owed underneath it ([A8 §9 item 8(e)], which ' +
@@ -862,12 +967,12 @@ export const AUTHORITY_TABLE = {
         { holder: { kind: 'role', role: 'originAgent' }, when: 'NO_SEPARATE_PACKER_ASSIGNED' },
       ],
     },
-    corroborating: ['goodsOwner', 'destinationAgent'],
+    corroborating: standingRoles('goodsOwner', 'destinationAgent'),
     // Sourced: `src:cfr-49-375` §375.503(a) requires an itemized inventory identifying "every
     // carton and every uncartoned item" with the shipper given the opportunity to observe and
     // verify, and §375.503(d) the same at delivery, in writing.
-    competing: ['goodsOwner'],
-    advisory: ['booker', 'hauler', 'platform'],
+    competing: standingRoles('goodsOwner'),
+    advisory: standingRoles('booker', 'hauler', 'platform'),
     note:
       'The mirror of row 3, and the mirror is the authored step (**[SYNTHESIS]**). The customer ' +
       'competes on the SCOPE of what was packed, not on the performance — which is a Portion ' +
@@ -886,9 +991,9 @@ export const AUTHORITY_TABLE = {
     rule: A8_KEY,
     boundBy: 'KEY',
     authoritative: { kind: 'held', primary: { kind: 'keySideRole' } },
-    corroborating: ['originAgent', 'destinationAgent', 'sitAgent'],
+    corroborating: standingRoles('originAgent', 'destinationAgent', 'sitAgent'),
     competing: [],
-    advisory: ['booker', 'platform'],
+    advisory: standingRoles('booker', 'platform'),
     note:
       'EXACTLY ONE authoritative role, computed from the record — so A8-NAMED never fires and no ' +
       'tie-break is named. The other side of the same transfer may assert the same key and is ' +
@@ -905,9 +1010,9 @@ export const AUTHORITY_TABLE = {
     authoritative: { kind: 'held', primary: { kind: 'custodyHolder' } },
     // `weighMaster` supplies the EVIDENCE, not the assertion — `src:cfr-49-375` §375.519(a)(1)-(6)
     // puts the signature, the scale name and the scale location on the weigh master. As row 6.
-    corroborating: ['weighMaster'],
-    competing: ['goodsOwner', 'accountParty'],
-    advisory: ['booker', 'platform'],
+    corroborating: standingRoles('weighMaster'),
+    competing: standingRoles('goodsOwner', 'accountParty'),
+    advisory: standingRoles('booker', 'platform'),
     note:
       'Row 6 is `boundBy = NONE` because `R-WEIGHT-LOWER` picks the NET regardless of who ' +
       'asserted it. That says nothing about who may assert an INPUT, and reading it as though ' +
@@ -924,9 +1029,9 @@ export const AUTHORITY_TABLE = {
     authoritative: { kind: 'held', primary: { kind: 'custodyHolder' } },
     // `weighMaster` supplies the EVIDENCE, not the assertion — `src:cfr-49-375` §375.519(a)(1)-(6)
     // puts the signature, the scale name and the scale location on the weigh master. As row 6.
-    corroborating: ['weighMaster'],
-    competing: ['goodsOwner', 'accountParty'],
-    advisory: ['booker', 'platform'],
+    corroborating: standingRoles('weighMaster'),
+    competing: standingRoles('goodsOwner', 'accountParty'),
+    advisory: standingRoles('booker', 'platform'),
     note:
       'As row 13: the same weighing, the same scale, the same ticket — [SD §4.7.1] states this ' +
       'row as "as `weight.gross`".',
@@ -947,9 +1052,9 @@ export const AUTHORITY_TABLE = {
       awayFromBoundary: { kind: 'custodyHolder' },
     },
     tieBreak: { kind: 'rule', rule: JOINT_AT_CUSTODY_BOUNDARY },
-    corroborating: ['goodsOwner', 'originAgent', 'destinationAgent'],
-    competing: ['goodsOwner', 'accountParty'],
-    advisory: ['booker', 'platform'],
+    corroborating: standingRoles('goodsOwner', 'originAgent', 'destinationAgent'),
+    competing: standingRoles('goodsOwner', 'accountParty'),
+    advisory: standingRoles('booker', 'platform'),
     note:
       'Every published counting duty falls on the party holding the goods: `src:cfr-49-375` ' +
       '§375.503(a) (an itemized inventory numbering every carton and every uncartoned item) and ' +
@@ -1128,7 +1233,7 @@ export const AUTHORITY_TABLE = {
     // so rather than leaving the reader to infer it from the shape.
     corroborating: [],
     competing: [],
-    advisory: ['platform'],
+    advisory: standingRoles('platform'),
     note:
       '**EXACTLY ONE authoritative role**, resolved from the order’s own award, so A8-NAMED never ' +
       'fires and no tie-break is named. Sourced for the actor on both edges: `src:dtr-part-iv` ' +
@@ -1423,9 +1528,12 @@ export function listedStandingOf(type: AssertionType, role: RoleName): Standing 
       if (holder.kind === 'role' && holder.role === role) return 'authoritative'
     }
   }
-  if ((row.competing ?? []).includes(role)) return 'competing'
-  if ((row.corroborating ?? []).includes(role)) return 'corroborating'
-  if ((row.advisory ?? []).includes(role)) return 'advisory'
+  // [A8 §9 item 11]: the columns hold {@link StandingHolder}s, so the `{kind: 'role'}` members are
+  // what a role question can match. A column holding ONLY kinds answers `undefined` for every role,
+  // which is [A8 §4.1] note 1's "unplaced, not demoted" and not a demotion to `advisory`.
+  if (standingPlaces(row.competing, role)) return 'competing'
+  if (standingPlaces(row.corroborating, role)) return 'corroborating'
+  if (standingPlaces(row.advisory, role)) return 'advisory'
   return undefined
 }
 
@@ -1603,7 +1711,7 @@ export function standingAfterBoundary(
   // "`competing` if a published value rule makes it eligible" — the row's `competing` column is
   // exactly the set of roles a published rule can select ([A8 §4.1]), so eligibility is a lookup
   // rather than a judgement.
-  return (row.competing ?? []).includes(role) ? 'competing' : 'advisory'
+  return standingPlaces(row.competing, role) ? 'competing' : 'advisory'
 }
 
 /**
@@ -2040,6 +2148,77 @@ const _asserterGrainIsNotOnTheEnvelope: AsserterGrainIsNotOnTheEnvelope = true
 void _asserterGrainIsNotOnTheEnvelope
 const _asserterIsExactlyAPartyAndARole: AsserterIsExactlyAPartyAndARole = true
 void _asserterIsExactlyAPartyAndARole
+
+/**
+ * **[A8 §9 item 11]'s shape, gated: {@link StandingHolder} is {@link AuthoritativeHolder}
+ * EXTENDED, in that direction and not the other.**
+ *
+ * The item's whole content is that `authoritative` could name a party the standing columns could
+ * not. Closing it by widening the standing columns leaves one asymmetry standing on purpose — the
+ * authoritative column may hold anything a standing may, and not the reverse — and an asymmetry
+ * nobody gated is the asymmetry item 11 spent five releases being.
+ *
+ * Both directions are written because each catches a different regression: the first catches
+ * `StandingHolder` being **narrowed** (someone re-points the columns at a hand-picked subset and
+ * row 11's `competing` silently empties), the second catches the echo member being **promoted**
+ * into `AuthoritativeHolder`, which would publish it — see below.
+ */
+export type EveryAuthoritativeHolderIsAStandingHolder = AuthoritativeHolder extends StandingHolder
+  ? true
+  : never
+
+/**
+ * **The echo member stays OFF the wire, and this is what holds it there.**
+ *
+ * `$defs/AuthoritativeHolder` is emitted in both faces of the catalog, because a `competing` holder
+ * can be `selected` under a named value rule and so reaches `FactResolved`. A `corroborating`
+ * standing on a row whose authority **never moves** ([A8 §5] rows 10 and 17, `boundBy = SCHEME`)
+ * can never be selected, so publishing a member for it would be a promise with nothing behind it.
+ *
+ * The day a round means to make the echo selectable, this gate evaluates to `never`, the assignment
+ * below stops compiling, and whoever is doing it is sent here to argue for the emitted member
+ * rather than acquiring it as a side effect. **That is the point:** `0.3.0`'s `keySideRole` and
+ * `0.6.4`'s `awardedRole` each cost the catalog a `newClosedEnumMember` row, and a member that
+ * arrives without one is a published change nobody classified.
+ */
+export type TheEchoIsNotAnAuthoritativeHolder = {
+  readonly kind: 'schemeCounterparty'
+} extends AuthoritativeHolder
+  ? never
+  : true
+
+/**
+ * The holder kinds, **enumerated rather than counted** ([A1 §9]) — and the enumeration is the
+ * reason a count is not written anywhere near it.
+ *
+ * **It clears [A2 §9]'s tautology bar the way {@link AsserterGrainIsNotOnTheEnvelope} does:** the
+ * left side is derived from the union above, the right side is written out here by hand, and
+ * neither is generated from the other. The docstring on `AuthoritativeHolder` listed **four** of
+ * these as if they were all of them, and that stale list reached [A8 §9 item 11]'s own text and
+ * four `owedTo` strings in `data/authority-table.json` before anybody noticed — because prose
+ * listing a type's members is prose, and nothing compares it to the type.
+ */
+export type StandingHolderKindsAreExactlyThese = Exact<
+  StandingHolder['kind'],
+  | 'role'
+  | 'custodyHolder'
+  | 'legAuthoritativeAsserter'
+  | 'schemeIssuer'
+  | 'performingRole'
+  | 'releasingRoleAcrossTransferGap'
+  | 'keySideRole'
+  | 'awardedRole'
+  | 'owedRole'
+  | 'schemeCounterparty'
+>
+
+/** [A5 §9] again — the assignments are what make the three gates above gates. */
+const _everyAuthoritativeHolderIsAStandingHolder: EveryAuthoritativeHolderIsAStandingHolder = true
+void _everyAuthoritativeHolderIsAStandingHolder
+const _theEchoIsNotAnAuthoritativeHolder: TheEchoIsNotAnAuthoritativeHolder = true
+void _theEchoIsNotAnAuthoritativeHolder
+const _standingHolderKindsAreExactlyThese: StandingHolderKindsAreExactlyThese = true
+void _standingHolderKindsAreExactlyThese
 
 /**
  * **A8-NO-PARTY.** The published reason codes whose `attribution` may **not** be
