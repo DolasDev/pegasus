@@ -125,11 +125,22 @@ Three further structural moves, each of which A1 uses:
 - **Transitions are stated as preconditions on the endpoint**, not as a table — _"send an update to
   a newly created Booking (precondition: `bookingStatus='RECEIVED'`)"_ (L595-599).
 
-And one DCSA fact from a different API that belongs in A1's evidence rather than A4's, because it is
-the corpus's clearest statement that **an assertion class can be bound to a role**: JIT's
-`classifierCode` is constrained by who is speaking — _"`EST`, `PLN` and `ACT` can **only** be used by
-the **Service Provider** … `REQ` is **only** to be used by the **Service Consumer**"_
-(`jit/v2/JIT_v2.0.0.yaml` L3554-3585). §Cross-area hands that to A8.
+> **WITHDRAWN 2026-10-10.** A paragraph here offered _"one DCSA fact from a different API that
+> belongs in A1's evidence rather than A4's, because it is the corpus's clearest statement that **an
+> assertion class can be bound to a role**: JIT's `classifierCode` is constrained by who is
+> speaking — `EST`, `PLN` and `ACT` can **only** be used by the **Service Provider** … `REQ` is
+> **only** to be used by the **Service Consumer** (`jit/v2/JIT_v2.0.0.yaml` L3554-3585). §Cross-area
+> hands that to A8."_
+>
+> **The bytes are unrecoverable.** `dcsaorg/DCSA-OpenAPI` returns 404, the standard was renamed to
+> DCSA Port Call, the JIT spec was dropped from `captured/` by the 2026-09-18 _capture only what is
+> cited_ trim **while this paragraph cited it**, and no surviving unbundled spec carries the
+> constraint — `sources/dcsa/captured/swaggerhub-jit-successor/README.md` has the full probe list.
+>
+> **What A1 should carry instead:** nothing. The hand-off to A8 is withdrawn with it, A8 §4 has been
+> re-sourced onto the per-**event-type** constraint in captured `event_domain` bytes, and `[A8 §10]`
+> discloses the exposure. See also `[A8 §4]`'s and `[A8 §9]`'s annotations of the same date — this
+> is one claim that was cited in **five** places across three documents.
 
 ### 2.2 "The response is four-valued, and the lifecycle verb is a field" — `src:stedi-x12-reference` (grade A/B)
 
@@ -1132,13 +1143,19 @@ one. A1 does not answer it.
   same role, is authorised or not depending on a property of the thing it is about. [A8 §8] cites
   two worked cases including "one where the same act flips authorisation by elapsed silence" — DTR's
   non-response is that case, and this is its sibling.
-- **`src:dcsa`'s JIT `classifierCode` is a source binding an assertion class to a role.** _"`EST`,
-  `PLN` and `ACT` can **only** be used by the **Service Provider** … `REQ` is **only** to be used by
-  the **Service Consumer**"_ (`jit/v2/JIT_v2.0.0.yaml` L3554-3585). [SD §4.7.1] states that "no
-  source in the corpus binds a **plan change** to an asserting role", which is the stated blocker for
-  `tripDelay` / `tripResequence` / `tripCancellation`. JIT is about a planned **time** rather than a
-  plan change, so it does not overturn that sentence — but it is the nearest published thing to it,
-  it was not cited when the sentence was written, and it is where A8 should look first.
+- **WITHDRAWN 2026-10-10.** This bullet claimed _"`src:dcsa`'s JIT `classifierCode` is a source
+  binding an assertion class to a role"_ and quoted _"`EST`, `PLN` and `ACT` can **only** be used by
+  the **Service Provider** … `REQ` is **only** to be used by the **Service Consumer**"_
+  (`jit/v2/JIT_v2.0.0.yaml` L3554-3585), concluding that although JIT is about a planned **time**
+  rather than a plan change, "it is the nearest published thing to it… and it is where A8 should
+  look first."
+  **The bytes are unrecoverable** — see
+  `sources/dcsa/captured/swaggerhub-jit-successor/README.md`, `[A8 §4]`, `[A8 §10]`.
+  **The effect on the blocker is to strengthen it, not weaken it:** `[SD §4.7.1]`'s _"no source in
+  the corpus binds a plan change to an asserting role"_ now stands with **nothing** adjacent to it,
+  so the blocker for `tripDelay` / `tripResequence` / `tripCancellation` is untouched and **A8 has
+  nowhere to look first.** As captured, the corpus binds a classifier to an **event type**
+  (`event_domain_v3.2.0.yaml` L778, L1231, L1328), never to a role.
 
 **(e) One requirement, reinforced.** [A4 §5] hands A8 §9 item 2 the requirement that the owed
 `roleClass` enum needs an explicit **non-party** member, because `FORCE_MAJEURE` and `CAUSE_UNKNOWN`

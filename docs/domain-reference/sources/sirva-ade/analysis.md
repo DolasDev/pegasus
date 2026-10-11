@@ -20,6 +20,22 @@ material: |
 
 All paths below are relative to `/home/steve/repos/pegasus-workflows/platform/allied-vanlines/docs/`.
 
+> **Where these bytes are, and why they are not in this repo — `retention: retained-elsewhere`.**
+> The 13 PDFs below are **retained and version-controlled**, as primary material, in the **private**
+> repo `pegasus-workflows` at `platform/allied-vanlines/docs/`. They are deliberately **not** copied
+> here: the licence is `partner-confidential` and **`DolasDev/pegasus` is public**, so mirroring
+> them would publish a partner's confidential API specifications irreversibly into git history.
+>
+> **This is a third state, and the distinction matters to anyone weighing a citation.** A
+> `src:sirva-ade` citation is to **primary material a reader with repo access can check page by
+> page** — unlike `src:dp3-400ng` or `src:dtr-part-iv`, which are analysis prose only, and unlike
+> the DCSA JIT spec, whose bytes are **gone from the world** (`[A8 §10]`, 2026-10-10). Do not read
+> the absence of a `captured/` directory here as `secondary`.
+>
+> `registry.yaml` carries the **manifest** — every tag below paired with its file, byte size and
+> sha256 — so `GSD p.9` resolves to an exact artifact and drift is detectable. **Verified
+> 2026-10-10: all 13 tags resolve, 0 missing.**
+
 | Tag | File |
 | --- | --- |
 | **SOE** | `ADE API Specification - Shipment Operational Event Communication Process.pdf` (40 pp) |

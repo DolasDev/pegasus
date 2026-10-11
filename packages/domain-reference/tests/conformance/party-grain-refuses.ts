@@ -17,9 +17,11 @@
  * untouched. So half 1 below watches the kind, from the member rather than from the type.
  *
  * **It is not a claim that a natural person is not a party.** A person is a party here — `driver`
- * is _"the person driving"_ and `customer`'s signature is constitutive four times in
- * `src:cfr-49-375`. What is refused is a **second subject kind** for them and a **field** saying
- * which they are. The day a round means to overturn that, these directives go unused and it is sent
+ * is _"the person driving"_ and `goodsOwner`'s signature is constitutive in `src:cfr-49-375`
+ * (§375.503(c) and §375.401(h), both **mutual**). What is refused is a **second subject kind** for
+ * them and a **field** saying which they are. (Role renamed from `customer` and the citation
+ * corrected at [A8 §9 item 2], catalog `0.7.0`: this file said "four times" and two of the four
+ * sections require no signature.) The day a round means to overturn that, these directives go unused and it is sent
  * to the two reasons in `AsserterGrainIsNotOnTheEnvelope`.
  *
  * A type-level suite: nothing here runs. The behavioural halves are `identity-schemes.test.ts`

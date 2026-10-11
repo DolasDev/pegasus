@@ -27,7 +27,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Identity subjects](#identity-subjects-3) — 3
 - [Whitelist residue reasons](#whitelist-residue-reasons-4) — 4
 - [Reason codes](#reason-codes-24) — 24
-- [Role names](#role-names-18) — 18
+- [Role names](#role-names-19) — 19
 - [Membership forms](#membership-forms-3) — 3
 - [Custody bases](#custody-bases-2) — 2
 - [Catalog faces](#catalog-faces-2) — 2
@@ -300,7 +300,7 @@ Portion in `reasons[].appliesTo` ([SD §3.4]).
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** none — the fact key is `(subject, type)`
 - **Prose aliases (never in a record):** `delivery performance`
-- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 5. destinationAgent; the leg's authoritativeAsserter where externally performed; rr19Agent under a Reverse Rule 19. customer COMPETING — three sources make the signature constitutive.
+- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 5. destinationAgent; the leg's authoritativeAsserter where externally performed; rr19Agent under a Reverse Rule 19. goodsOwner COMPETING — three sources make the signature constitutive.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[A3 §3.2]](analysis/A3-trip-stop-assignment.md#32-definitions) · [[SD §2.5]](analysis/00-shared-decisions.md#25-the-event-type-names-the-act-never-the-outcome) · [[SD §2.6]](analysis/00-shared-decisions.md#26-the-critiques-scenario-expressed) · [[SD §3.4]](analysis/00-shared-decisions.md#34-the-required-form-for-delivered-two-items-short) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table)
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
@@ -367,7 +367,7 @@ authoritative, or the `originAgent` where no separate load agent is assigned.
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** none — the fact key is `(subject, type)`
 - **Prose aliases (never in a record):** `load performance`
-- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 3. loadAgent; originAgent where no separate load agent is assigned. driver, customer corroborating; customer competing on SCOPE (short/refused).
+- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 3. loadAgent; originAgent where no separate load agent is assigned. driver, goodsOwner corroborating; goodsOwner competing on SCOPE (short/refused).
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
@@ -471,7 +471,7 @@ row is **owed** ([A8 §9 item 8] names packing performance among the uncovered c
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** none — the fact key is `(subject, type)`
 - **Prose aliases (never in a record):** `pack performance`
-- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 15. packer; originAgent where no separate packer is resourced. customer, destinationAgent corroborating; customer competing on SCOPE (§375.503's opportunity to observe, verify and note in writing). The mirror of row 3, and the mirror is the authored step.
+- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 15. packer; originAgent where no separate packer is resourced. goodsOwner, destinationAgent corroborating; goodsOwner competing on SCOPE (§375.503's opportunity to observe, verify and note in writing). The mirror of row 3, and the mirror is the authored step.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[A8 §9 item 8]](analysis/A8-authority-skeleton.md) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
@@ -612,7 +612,7 @@ authority row is **owed**, and [SD §4.7.1] marks its `boundBy` _unassigned_ rat
 
 - **Canonical subject family:** `goods` = {`shipment`, `portion`}
 - **Qualifier:** none — the fact key is `(subject, type)`
-- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 13. the party holding the goods at the weighing (custodyAt at that instant). weighMaster corroborating — it supplies the evidence, not the assertion. customer/accountParty competing on the reweigh right, settled on the NET by row 6's R-WEIGHT-LOWER.
+- **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 13. the party holding the goods at the weighing (custodyAt at that instant). weighMaster corroborating — it supplies the evidence, not the assertion. goodsOwner/accountParty competing on the reweigh right, settled on the NET by row 6's R-WEIGHT-LOWER.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape) · [[SD §4.4]](analysis/00-shared-decisions.md#44-the-acceptance-test-duplicate-reweighs) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table)
 - **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
@@ -1461,7 +1461,7 @@ This is the shuttle reason, and it is **sourced**, not authored.
 - **Corpus:** `src:dp3-400ng` · `src:open-trip-model` · `src:shippeo` · `src:stedi-x12-reference`
 - **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
 
-## Role names (18)
+## Role names (19)
 
 [A8 §2]'s cast: `src:sirva-ade`'s `Resource.Type` roles plus the four A8 adds because each asserts facts. Two naming rules bind it — **A8-NAME-1** ("the bare word `agent` is not a role in this model") and **A8-NAME-2** (the bare word `shipper` splits into `accountParty` and the goods owner). **Provisional**: [A8 §9 item 2] leaves the role enum undefined, and [A8 §2] takes the cast as a name list without defining any role individually.
 
@@ -1485,19 +1485,6 @@ The party that books the move. `src:sirva-ade`'s `Resource.Type` cast, GSD p.9, 
 - **Corpus:** `src:sirva-ade`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
-### `customer` (role name)
-
-The party whose goods move — `goodsOwner` at the residence, per **A8-NAME-2**'s two-way split
-of "shipper" ([A8 §2]). Added because it asserts facts and ADE has no slot for it:
-`src:cfr-49-375` requires the customer's signature on the BOL (§375.505(a)), the inventory
-(§375.503), the delivery receipt (§375.701) and any waiver of a weighing observation
-(§375.515(b)). That is why [A8 §5] row 5 places it **competing** rather than corroborating —
-three sources make the signature constitutive, not decorative.
-
-- **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md)
-- **Corpus:** `src:cfr-49-375`
-- **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
-
 ### `destinationAgent` (role name)
 
 The agent at the destination. [A8 §5] row 5 makes it authoritative for `delivery`, and row 4
@@ -1518,6 +1505,16 @@ does not". **[ORIGINAL] as a gloss** — see `booker`.
 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §10]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
+
+### `goodsOwner` (role name)
+
+The party whose goods move — **A8-NAME-2**'s two-way split of "shipper" ([A8 §2]), whose other
+half is `accountParty` below. Added because it asserts facts and ADE has no slot for it.
+
+- **Marker:** [ORIGINAL]
+- **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[SD §2.4]](analysis/00-shared-decisions.md#24-the-reason-vocabularys-shape-the-list-itself-is-a4s-job) · [[catalog §2.3]](analysis/published-event-catalog.md#23-additive-breaking-and-what-a-consumer-may-rely-on)
+- **Corpus:** `src:cfr-49-375`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `hauler` (role name)
@@ -1634,6 +1631,17 @@ The agent performing the unload. [A8 §5] row 4's primary. **[ORIGINAL] as a glo
 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
+
+### `visibilityProvider` (role name)
+
+A third party that publishes movement facts it observed without holding the goods — a
+visibility or telematics platform. **Added at [A8 §9 item 2] (catalog 0.7.0)**, and it is the
+one candidate in that item's whole list which passes [A8 §2]'s addition test on **primary
+captured** evidence.
+
+- **Cited:** [[A8 §10]](analysis/A8-authority-skeleton.md) · [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §4.3]](analysis/A8-authority-skeleton.md#43-what-authority-is-bound-to--boundby) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:cfr-49-375` · `src:dcsa` · `src:samsara`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `weighMaster` (role name)
@@ -2128,7 +2136,7 @@ asserter** — and the third refusal of this kind after [A9 §3.2]'s `identitySc
 
 - **Kind:** [A8 §9 item 3] refuses a person/organisation field on the party: the grain rides on the role and on the scheme
 - **Marker:** [ORIGINAL]
-- **Cited:** [[A2 §9]](analysis/A2-shipment-structure.md) · [[A8 §3(a)]](analysis/A8-authority-skeleton.md) · [[A8 §3(b)]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[SD §0]](analysis/00-shared-decisions.md) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
+- **Cited:** [[A2 §9]](analysis/A2-shipment-structure.md) · [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §3(a)]](analysis/A8-authority-skeleton.md) · [[A8 §3(b)]](analysis/A8-authority-skeleton.md) · [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 3]](analysis/A8-authority-skeleton.md) · [[A9 §3.2]](analysis/A9-identity-cross-references.md#32-identityscheme-is-not-closable-and-the-corpus-refuses-the-dichotomy--the-central-decision) · [[SD §0]](analysis/00-shared-decisions.md) · [[SD §1.1]](analysis/00-shared-decisions.md#11-the-envelope-field-by-field)
 - **Corpus:** `src:atlas-world-group-api` · `src:cfr-49-375` · `src:dp3-tender-of-service` · `src:sirva-ade` · `src:stedi-x12-reference`
 - **Declared by:** `AsserterGrainIsNotOnTheEnvelope` in `packages/domain-reference/src/rules/authority.ts`
 
@@ -2638,7 +2646,6 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`count`](#count-fact-class-family) — fact-class family
 - [`currentState`](#currentstate-refused-filter-axis) — refused filter axis
 - [`custodyAt`](#custodyat-rule) — rule
-- [`customer`](#customer-role-name) — role name
 - [`delivery`](#delivery-record-type) — record type
 - [`departure`](#departure-record-type) — record type
 - [`destinationAgent`](#destinationagent-role-name) — role name
@@ -2648,6 +2655,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`externallyPerformedLeg`](#externallyperformedleg-aggregate) — aggregate
 - [`factClassFamily`](#factclassfamily-filter-axis) — filter axis
 - [`factRef`](#factref-filter-axis) — filter axis
+- [`goodsOwner`](#goodsowner-role-name) — role name
 - [`handover`](#handover-record-type) — record type
 - [`hauler`](#hauler-role-name) — role name
 - [`identity`](#identity-fact-class-family) — fact-class family
@@ -2720,6 +2728,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`undeclaredPayloadField`](#undeclaredpayloadfield-refused-filter-axis) — refused filter axis
 - [`unloadAgent`](#unloadagent-role-name) — role name
 - [`unloading`](#unloading-record-type) — record type
+- [`visibilityProvider`](#visibilityprovider-role-name) — role name
 - [`weighMaster`](#weighmaster-role-name) — role name
 - [`weight.gross`](#weightgross-record-type) — record type
 - [`weight.net`](#weightnet-record-type) — record type

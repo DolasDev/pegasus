@@ -15,3 +15,5 @@ gs1-epcis-cbv	cbv-ontology.jsonld	2922	5bbcf31cd6d4acf7	https://ref.gs1.org/stan
 gs1-epcis-cbv	epcis-ontology.jsonld	2922	5bbcf31cd6d4acf7	https://ref.gs1.org/standards/epcis/artefacts/epcis-ontology.jsonld
 gs1-epcis-cbv	openapi.json	SUSPECT_SMALL(13)	https://ref.gs1.org/standards/epcis/artefacts/openapi.json
 gs1-epcis-cbv	epcglobal-epcis-2_0.xsd	2922	5bbcf31cd6d4acf7	https://ref.gs1.org/standards/epcis/artefacts/epcglobal-epcis-2_0.xsd
+dcsa	DCSA_JIT-2.0.0.json	46331	e69b9ae8fb64e7a3	https://api.swaggerhub.com/apis/dcsaorg/DCSA_JIT/2.0.0
+dcsa	JIT_EVENT_HUB-1.2.0-Beta-1.json	14739	936f7297d12ac7ad	https://api.swaggerhub.com/apis/dcsaorg/JIT_EVENT_HUB/1.2.0-Beta-1

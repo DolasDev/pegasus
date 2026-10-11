@@ -285,8 +285,9 @@ describe('[A8 §4.2] A8-INSTANT, and [A8 §7.6] why the origin agent loses', () 
     // [A8 §7.4] A8-AFTER: recorded, considered, never suppressed — and never authoritative.
     expect(standingAfterBoundary('delivery', 'originAgent')).toBe('advisory')
     expect(listedStandingOf('delivery', 'originAgent')).toBe('advisory')
-    // …while the customer's signature is constitutive, so the customer COMPETES.
-    expect(standingAfterBoundary('delivery', 'customer')).toBe('competing')
+    // …while the goods owner's signature is constitutive, so `goodsOwner` COMPETES. Renamed from
+    // `customer` at [A8 §9 item 2] (catalog 0.7.0); the standing is unchanged and better cited.
+    expect(standingAfterBoundary('delivery', 'goodsOwner')).toBe('competing')
   })
 
   it("…and A's LOAD assertion, made at the same moment, is still authoritative", () => {

@@ -205,6 +205,20 @@ describe('the join surface, enumerated rather than counted', () => {
         'SchemeName',
         'ShipmentContinuityUndeterminedReason',
         'ShipmentContinuityVerdict',
+        // Promoted by [A8 §9 item 11], and **it crosses on REACH, not on spread** — the concept
+        // lives in one module (`rules/authority.ts`) and is referenced nowhere else, so the only
+        // axis carrying it is the three areas its reference sites cite.
+        //
+        // **Said plainly rather than dressed up, because two of those three are methodological.**
+        // A8 is the domain edge. A1 and A2 arrive through ONE site —
+        // `StandingHolderKindsAreExactlyThese`, whose docstring cites [A1 §9] for "enumerate, do
+        // not total" and [A2 §9] for the tautology bar — so this hub is not the cross-area edge
+        // `RoleClass`'s and `AssertedBy`'s promotions were. It is recorded as promoted anyway: the
+        // map is generated, those citations are the reason that gate is written the way it is, and
+        // deleting a true citation to drop a concept below a threshold is gaming the map rather
+        // than reading it. If a later round tightens what counts as reach, this is the entry to
+        // re-examine first.
+        'StandingHolder',
         'StayLocation',
       ])
     },
