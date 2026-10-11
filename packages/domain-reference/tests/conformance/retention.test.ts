@@ -31,7 +31,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 
-import { SYMPTOM_INDEX_FILE } from '../../tools/generate-symptom-index.ts'
+import { rowStrings, SYMPTOM_INDEX_FILE } from '../../tools/generate-symptom-index.ts'
 import {
   analysisEvidenceGrade,
   citedSourceIds,
@@ -47,17 +47,12 @@ import {
 
 import authorityTable from '../../data/authority-table.json'
 
-/** Every string anywhere in the authority table — citations live in 11 different field paths. */
-function allStrings(value: unknown, into: string[] = []): string[] {
-  if (typeof value === 'string') into.push(value)
-  else if (Array.isArray(value)) for (const v of value) allStrings(v, into)
-  else if (value !== null && typeof value === 'object') {
-    for (const v of Object.values(value)) allStrings(v, into)
-  }
-  return into
-}
-
-const citedByAuthorityTable = [...citedSourceIds(allStrings(authorityTable).join('\n'))].sort()
+// `rowStrings` is IMPORTED from the generator rather than re-implemented here. An earlier cut had a
+// local `allStrings` with an identical body, which is precisely what `source-registry.ts`'s opening
+// paragraph forbids: "two parsers of one format would be a gate and a near-copy of a gate, agreeing
+// until the day the table is reshaped". The gate must walk the same tree the generator walks, or it
+// stops gating the generator.
+const citedByAuthorityTable = [...citedSourceIds(rowStrings(authorityTable).join('\n'))].sort()
 
 /**
  * Re-declare one entry's `retention:`, addressing the entry rather than the first match.
@@ -108,6 +103,20 @@ describe('retention — the declaration', () => {
     expect([...RECHECKABLE_FROM_THIS_REPO]).toEqual(['captured-here', 'refs-in-repo'])
   })
 
+  it('tampers the entry it names, and only that entry', () => {
+    // The three gates below perform their own tamper through `withRetention`, so if the helper were
+    // broken they would pass VACUOUSLY — green because nothing changed, which is the shape of
+    // failure this round already hit once (a `sed` tamper that matched nothing and read as a
+    // working gate). This asserts the helper actually edits, and edits the right entry: the first
+    // attempt used a plain `.replace()` and silently hit `src:milmove-mymove`, which is declared
+    // earlier in the file than the entry the test named.
+    const tampered = withRetention('cfr-49-375', 'analysis-only')
+    expect(tampered).not.toBe(registryText())
+    expect(registryRetention('cfr-49-375', tampered)).toBe('analysis-only')
+    expect(registryRetention('milmove-mymove', tampered)).toBe('captured-here')
+    expect(registryRetention('milmove-mymove')).toBe('captured-here')
+  })
+
   it('rejects a value outside the enum rather than reading it as ungraded', () => {
     const tampered = withRetention('cfr-49-375', 'captured-ish')
     expect(() => registryRetention('cfr-49-375', tampered)).toThrow(/not one of/)
@@ -156,7 +165,7 @@ describe('retention — every source the model leans on carries one', () => {
     const row = authorityTable.rows.find((r) => r.type === 'sitEntryDate')
     expect(row).toBeDefined()
     expect(citedSourceIds(row?.evidence ?? '')).toEqual([])
-    expect([...citedSourceIds(allStrings(row).join('\n'))].sort()).toEqual([
+    expect([...citedSourceIds(rowStrings(row).join('\n'))].sort()).toEqual([
       'dp3-400ng',
       'dtr-part-iv',
     ])

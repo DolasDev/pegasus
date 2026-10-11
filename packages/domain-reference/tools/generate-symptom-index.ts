@@ -175,7 +175,7 @@ interface AuthorityTable {
  * A reader asking "can I check this row" means the row, not one of its fields, so recourse is
  * computed over all of it.
  */
-function rowStrings(value: unknown, into: string[] = []): string[] {
+export function rowStrings(value: unknown, into: string[] = []): string[] {
   if (typeof value === 'string') into.push(value)
   else if (Array.isArray(value)) for (const v of value) rowStrings(v, into)
   else if (value !== null && typeof value === 'object') {
