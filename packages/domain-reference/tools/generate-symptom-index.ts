@@ -26,6 +26,17 @@ import { fileURLToPath } from 'node:url'
 
 import * as prettier from 'prettier'
 
+import {
+  analysisEvidenceGrade,
+  citedSourceIds,
+  RECHECKABLE_FROM_THIS_REPO,
+  registryRetention,
+  registryText,
+  RETENTION_GLOSS,
+  RETENTION_STATES,
+  type RetentionState,
+} from './source-registry.ts'
+
 const PACKAGE_DIR = fileURLToPath(new URL('../', import.meta.url))
 
 /**
@@ -116,6 +127,178 @@ interface CatalogIndex {
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf8')) as T
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Evidence recourse — can a reader re-check what the model says?
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * One row of `data/authority-table.json`, reduced to the four provenance facts it carries.
+ *
+ * All four are already in the data and none was surfaced anywhere a migrator reads. They are
+ * **four separate axes** and are rendered as four columns rather than folded into a score:
+ *
+ * | field            | question                            | where it is authored          |
+ * | ---------------- | ----------------------------------- | ----------------------------- |
+ * | `evidence`       | which sources, hence what recourse  | this table, cited as `src:<id>` |
+ * | `authored`       | ours or the source's                | this table, `[ORIGINAL]`/`[SYNTHESIS]` |
+ * | `confidence`     | the row's own stated confidence     | this table                    |
+ * | `evidence_grade` | how thoroughly *we* read the source | each `analysis.md` front matter |
+ *
+ * Folding them would be the error the whole package guards against: a single number cannot say
+ * "read in full, authored by us, and unverifiable by anyone", which is a real and common row.
+ */
+interface AuthorityRow {
+  readonly type: string
+  readonly evidence?: string
+  readonly authored?: string
+  readonly confidence?: string
+}
+
+interface AuthorityTable {
+  readonly rows: readonly AuthorityRow[]
+}
+
+/**
+ * Every string anywhere in one row, so a citation is found wherever the row happens to put it.
+ *
+ * **Measured, because reading `evidence` alone was wrong.** Citations in
+ * `data/authority-table.json` are spread across **11 distinct field paths** — `evidence` (17),
+ * `standings.{corroborating,authoritative,competing,advisory}.note`, `settlement.note`,
+ * `settlement.citation`, `standings.*.unresolved[].owedTo`, `confidenceNote`, and
+ * `standings.authoritativeByValue.RATED.note`. The row that forced this is `sitEntryDate`, whose
+ * `evidence` reads _"SOURCED twice, from opposite directions — **see settlement**"_: parsing
+ * `evidence` only rendered it as **uncited** while its sources sat one field away, which is exactly
+ * the false negative this whole surface exists to prevent.
+ *
+ * A reader asking "can I check this row" means the row, not one of its fields, so recourse is
+ * computed over all of it.
+ */
+export function rowStrings(value: unknown, into: string[] = []): string[] {
+  if (typeof value === 'string') into.push(value)
+  else if (Array.isArray(value)) for (const v of value) rowStrings(v, into)
+  else if (value !== null && typeof value === 'object') {
+    for (const v of Object.values(value)) rowStrings(v, into)
+  }
+  return into
+}
+
+/**
+ * How much recourse a reader has across a set of cited sources. **Worst case wins.**
+ *
+ * **Three tiers, not two, and the middle one is the point.** An earlier cut had only
+ * open-versus-closed and rendered `unloading` — whose single source is `src:sirva-ade` — as "no
+ * recourse". That is the `src:sirva-ade` error the plan corrected, committed again by a generator:
+ * conflating "not in this repo" with "not retained". Its 13 ADE PDFs are version-controlled and a
+ * reader with access can check them page by page, which is a different thing from prose nobody can
+ * open, and the distinction is the entire reason this round exists.
+ */
+type Recourse = 'open' | 'withAccess' | 'mixed' | 'closed' | 'uncited'
+
+const RECOURSE_MARK: Readonly<Record<Recourse, string>> = {
+  open: '● open — clone and grep',
+  withAccess: '◍ with access — another repo',
+  mixed: '◐ mixed',
+  closed: '○ closed — unverifiable',
+  uncited: '—',
+}
+
+function recourseOf(states: readonly (RetentionState | undefined)[]): Recourse {
+  if (states.length === 0) return 'uncited'
+  const open = states.filter((s) => s !== undefined && RECHECKABLE_FROM_THIS_REPO.includes(s))
+  const withAccess = states.filter((s) => s === 'retained-elsewhere')
+  if (open.length === states.length) return 'open'
+  if (open.length + withAccess.length === states.length) {
+    return open.length === 0 ? 'withAccess' : 'mixed'
+  }
+  return open.length + withAccess.length === 0 ? 'closed' : 'mixed'
+}
+
+/** The `[ORIGINAL]` / `[SYNTHESIS]` mark a row carries, or `unmarked`. */
+function authoredMark(row: AuthorityRow): string {
+  const m = /\[(ORIGINAL|SYNTHESIS)\]/.exec(row.authored ?? '')
+  return m?.[0] ?? '_unmarked_'
+}
+
+interface RowProvenance {
+  readonly type: string
+  readonly sources: readonly string[]
+  readonly states: readonly (RetentionState | undefined)[]
+  readonly recourse: Recourse
+  readonly authored: string
+  readonly confidence: string
+}
+
+/**
+ * Every source the authority table cites, with its declared retention — and **a refusal when one
+ * is undeclared.**
+ *
+ * This is the gate that makes the whole surface honest rather than decorative. If a cited source
+ * carries no `retention:`, the generator stops instead of rendering a blank cell: a blank reads as
+ * "nothing to worry about", which is the precise failure the field exists to end. The same applies
+ * to a typo'd value, which {@link registryRetention} throws on.
+ *
+ * It also means the declaration set widens on its own. The next round that cites a new source in
+ * `evidence` cannot emit until that source is graded, so the registry cannot fall behind the table.
+ */
+function citedSourceStates(
+  table: AuthorityTable,
+  registry: string,
+): ReadonlyMap<string, RetentionState> {
+  const cited = new Set<string>()
+  for (const row of table.rows) {
+    for (const id of citedSourceIds(rowStrings(row).join('\n'))) cited.add(id)
+  }
+
+  const out = new Map<string, RetentionState>()
+  const ungraded: string[] = []
+  for (const id of [...cited].sort()) {
+    const state = registryRetention(id, registry)
+    if (state === undefined) ungraded.push(id)
+    else out.set(id, state)
+  }
+  if (ungraded.length > 0) {
+    throw new Error(
+      `data/authority-table.json cites ${ungraded.length} source(s) with no retention: in ` +
+        `sources/registry.yaml — ${ungraded.map((id) => `src:${id}`).join(', ')}. ` +
+        'Declare one (see the schema block at the head of registry.yaml); an undeclared source ' +
+        'would render as a blank cell, which a reader reads as "fine".',
+    )
+  }
+  return out
+}
+
+/** The worst recourse across the authority rows a module's concepts actually have. */
+function recourseCell(
+  m: CorrespondenceModule,
+  provenance: ReadonlyMap<string, RowProvenance>,
+): string {
+  const rows = m.concepts.map((concept) => provenance.get(concept)).filter((p) => p !== undefined)
+  if (rows.length === 0) return RECOURSE_MARK.uncited
+  const states = rows.flatMap((p) => [...p.states])
+  const mark = RECOURSE_MARK[recourseOf(states)]
+  const worst = [...new Set(states)]
+    .filter((s): s is RetentionState => s !== undefined)
+    .sort((a, b) => RETENTION_STATES.indexOf(a) - RETENTION_STATES.indexOf(b))
+  return worst.length === 0 ? mark : `${mark}<br>_${worst.join(' · ')}_`
+}
+
+function provenanceByType(table: AuthorityTable, registry: string): Map<string, RowProvenance> {
+  const out = new Map<string, RowProvenance>()
+  for (const row of table.rows) {
+    const sources = [...citedSourceIds(rowStrings(row).join('\n'))].sort()
+    const states = sources.map((id) => registryRetention(id, registry))
+    out.set(row.type, {
+      type: row.type,
+      sources,
+      states,
+      recourse: recourseOf(states),
+      authored: authoredMark(row),
+      confidence: row.confidence ?? 'unstated',
+    })
+  }
+  return out
 }
 
 /** The 32 published fact classes — `index.json`'s members, less the two `meta` records. */
@@ -269,6 +452,10 @@ function renderSymptomIndex(): string {
 
   const owedRows = owedAuthorityFor(catalog)
   const families = new Set(catalog.owed.factClassFamilies)
+  const registry = registryText()
+  const authority = readJson<AuthorityTable>(`${PACKAGE_DIR}data/authority-table.json`)
+  const provenance = provenanceByType(authority, registry)
+  const citedStates = citedSourceStates(authority, registry)
   const l: string[] = []
 
   l.push('# Symptom index — from legacy MoveManager code into the domain reference')
@@ -286,6 +473,15 @@ function renderSymptomIndex(): string {
       'authority row, whether that row is **owed** and to whom, and whether the concept is an ' +
       '**absent fact class** — which means the reference has nothing for you yet, and silence ' +
       'would have been the alternative. Then read the note, then the area documents.',
+  )
+  l.push('')
+  l.push(
+    '**Then check what the reading is worth.** The **can you re-check it?** column says whether ' +
+      "the sources behind that module's authority rows are bytes you can open or prose nobody can " +
+      'verify — `● re-checkable`, `◐ mixed`, `○ no recourse`. It is derived per row from ' +
+      '`data/authority-table.json` and `sources/registry.yaml`, and the two recourse sections ' +
+      'below give the detail. **Where the model and your legacy code disagree, this is what tells ' +
+      'you which of the two can be checked.**',
   )
   l.push('')
   l.push(
@@ -324,9 +520,9 @@ function renderSymptomIndex(): string {
   l.push('## The index')
   l.push('')
   l.push(
-    '| legacy module | legacy vocabulary | reference concepts | what the model can say | read? |',
+    '| legacy module | legacy vocabulary | reference concepts | what the model can say | can you re-check it? | read? |',
   )
-  l.push('| --- | --- | --- | --- | --- |')
+  l.push('| --- | --- | --- | --- | --- | --- |')
   for (const m of [...c.modules].sort((a, b) => a.module.localeCompare(b.module))) {
     const concepts = m.concepts.length === 0 ? '—' : m.concepts.map((x) => `\`${x}\``).join(' · ')
     const aggs =
@@ -336,7 +532,8 @@ function renderSymptomIndex(): string {
     const areas = m.areas.length === 0 ? '' : `<br>_areas:_ ${m.areas.join(', ')}`
     l.push(
       `| **\`${m.module}/\`** | ${m.legacyVocabulary.join(', ')} | ${concepts}${aggs}${areas} | ` +
-        `${statusCell(m, owedRows, families)} | ${CONFIDENCE_MARK[m.confidence] ?? m.confidence} |`,
+        `${statusCell(m, owedRows, families)} | ${recourseCell(m, provenance)} | ` +
+        `${CONFIDENCE_MARK[m.confidence] ?? m.confidence} |`,
     )
   }
   l.push('')
@@ -415,6 +612,9 @@ function renderSymptomIndex(): string {
   )
   l.push('')
 
+  /* -- recourse -------------------------------------------------------------------------------- */
+  pushRecourseSections(l, provenance, citedStates)
+
   /* -- where to go next ------------------------------------------------------------------------ */
   l.push('## Where to go after this file')
   l.push('')
@@ -427,17 +627,126 @@ function renderSymptomIndex(): string {
   )
   l.push('- `analysis/` — the areas. The index names which one applies per module.')
   l.push('')
-  l.push(
-    "**And one warning about confidence.** The reference's own evidence is not uniform. Its most " +
-      'cited source is `src:sirva-ade` (**retained-elsewhere** — real bytes, in a private repo), ' +
-      'while `src:dp3-400ng`, `src:dtr-part-iv` and `src:dp3-tender-of-service` total **542** ' +
-      'citations of **analysis-only** prose that nobody can re-check, and one claim has already ' +
-      'been found **unrecoverable** ([A8 §10]). `sources/registry.yaml` carries the per-source ' +
-      'state. Weight a reading by it.',
-  )
-  l.push('')
 
   return l.join('\n')
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Evidence recourse — rendered twice, by row and by source
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * Renders the two recourse sections and appends them to `l`.
+ *
+ * Split out because the index's own sections are already long, and because these two are the only
+ * part of the file derived from `data/authority-table.json` rather than from the catalog.
+ */
+function pushRecourseSections(
+  l: string[],
+  provenance: ReadonlyMap<string, RowProvenance>,
+  citedStates: ReadonlyMap<string, RetentionState>,
+): void {
+  /* -- per authority row ----------------------------------------------------------------------- */
+  l.push('## Can you re-check it? — recourse per authority row')
+  l.push('')
+  l.push(
+    '**Why this is here and not folded into one score.** Four independent things decide how far to ' +
+      'trust a row, and no single number can state them: **which sources** it rests on and ' +
+      "therefore **what recourse you have**, whether the reading is the source's or **ours**, the " +
+      "row's **own stated confidence**, and how thoroughly we read each source " +
+      '(`evidence_grade`, rubric S4 — the next table). The combination that misleads is a row read ' +
+      'in full, authored by us, and verifiable by nobody; it looks identical to a row quoting a ' +
+      'statute you can open.',
+  )
+  l.push('')
+  l.push('| fact class | recourse | cited sources, with retention | reading | row confidence |')
+  l.push('| --- | --- | --- | --- | --- |')
+  for (const p of [...provenance.values()].sort((a, b) => a.type.localeCompare(b.type))) {
+    const cites =
+      p.sources.length === 0
+        ? '_none cited_'
+        : p.sources.map((id, i) => `\`src:${id}\` (${p.states[i] ?? '**UNGRADED**'})`).join('<br>')
+    l.push(
+      `| \`${p.type}\` | ${RECOURSE_MARK[p.recourse]} | ${cites} | ${p.authored} | ${p.confidence} |`,
+    )
+  }
+  l.push('')
+
+  const closedRows = [...provenance.values()].filter((p) => p.recourse === 'closed')
+  const uncitedRows = [...provenance.values()].filter((p) => p.recourse === 'uncited')
+  l.push(
+    `**${closedRows.length} of ${provenance.size} authority rows rest entirely on sources nobody ` +
+      'can open** — ' +
+      closedRows
+        .map((p) => `\`${p.type}\``)
+        .sort()
+        .join(', ') +
+      '. That is not an accusation of error; every one is sourced and the sourcing is recorded. It ' +
+      'means a disagreement between the model and your legacy code **cannot be settled by reading ' +
+      'the source** — so treat the model as the weaker party in that argument and write down what ' +
+      'the code says.',
+  )
+  l.push('')
+  if (uncitedRows.length > 0) {
+    l.push(
+      `**${uncitedRows.length} row(s) cite no source at all** — ` +
+        uncitedRows
+          .map((p) => `\`${p.type}\``)
+          .sort()
+          .join(', ') +
+        '. Read the row in `data/authority-table.json` before relying on it; a row can be sourced ' +
+        'through a rule it defers to rather than through a citation of its own.',
+    )
+    l.push('')
+  }
+
+  /* -- per source ------------------------------------------------------------------------------ */
+  l.push('## Where the evidence is — the cited corpus')
+  l.push('')
+  l.push(
+    'Every source the authority table cites, with the two axes a reader needs kept apart: ' +
+      '**retention** (can anyone re-check the bytes) and **`evidence_grade`** (how thoroughly ' +
+      '*we* read them, rubric S4). They are independent, and `A` / `analysis-only` — a full read ' +
+      'of a document nobody can now open — is the pairing that manufactures false confidence.',
+  )
+  l.push('')
+  l.push('| source | retention | what that means | our reading (S4) | rows citing it |')
+  l.push('| --- | --- | --- | --- | --- |')
+  const byState = [...citedStates.entries()].sort(
+    (a, b) =>
+      RETENTION_STATES.indexOf(a[1]) - RETENTION_STATES.indexOf(b[1]) || a[0].localeCompare(b[0]),
+  )
+  for (const [id, state] of byState) {
+    const citing = [...provenance.values()].filter((p) => p.sources.includes(id)).length
+    const s4 = analysisEvidenceGrade(id)
+    l.push(
+      `| \`src:${id}\` | **${state}** | ${RETENTION_GLOSS[state]} | ` +
+        `${s4 === undefined ? '_none_' : `\`${s4}\``} | ${citing} |`,
+    )
+  }
+  l.push('')
+
+  const openStates = new Set<string>(RECHECKABLE_FROM_THIS_REPO)
+  const closed = byState.filter(([, state]) => !openStates.has(state))
+  const falseConfidence = byState.filter(
+    ([id, state]) => !openStates.has(state) && analysisEvidenceGrade(id) === 'A',
+  )
+  l.push(
+    `**${closed.length} of the ${byState.length} cited sources cannot be re-checked from a clone ` +
+      `of this repo**, and **${falseConfidence.length}** of those carry \`evidence_grade: A\` — ` +
+      falseConfidence.map(([id]) => `\`src:${id}\``).join(', ') +
+      ' — meaning the model read them in full and no second reader can. `registry.yaml` carries ' +
+      "each state and a `retention_note` explaining it where the state isn't obvious.",
+  )
+  l.push('')
+  l.push(
+    '> **A per-source state is a floor, not a guarantee, and `src:dcsa` is why.** Its 125 captured ' +
+      'files are real and the cited JIT sub-spec was never among them — five citations rested on ' +
+      'bytes that exist nowhere ([A8 §10]). Measured 2026-10-11, **neither** `src:dcsa` citation ' +
+      'in the authority table reaches JIT, so nothing in the table above is overstated. The ' +
+      '**per-citation** grain is owed and is not done.',
+  )
+  l.push('')
 }
 
 /* ------------------------------------------------------------------------------------------------
