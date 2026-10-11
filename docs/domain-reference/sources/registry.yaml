@@ -44,6 +44,57 @@
 #   files       stored copies: {path, sha256, retrieved, from}; local/ paths are gitignored
 #   obtain      what a human must do to get gated/licensed/bot-blocked material
 #   notes       anything that changes how the source should be read
+#   retention   CAN A READER RE-CHECK THIS SOURCE'S BYTES? Declared here, never inferred.
+#
+#               This is NOT `evidence_grade` and must never be rendered as it. `evidence_grade`
+#               (rubric S4, `analysis.md` front matter) grades OUR READING — A full spec read, B
+#               partial, C secondhand. `retention` grades the READER'S RECOURSE. They are
+#               independent, and the pair that produces false confidence is a high S4 on an
+#               unrecoverable retention: src:dp3-tender-of-service is `evidence_grade: A` and
+#               `analysis-only`, so the model read the whole document and nobody can open it.
+#
+#               captured-here       the source's OWN bytes under sources/<id>/captured/, in git.
+#                                   Greppable by anyone who clones. (src:cfr-49-375)
+#               refs-in-repo        the source's own bytes ARE in this repo but outside sources/,
+#                                   named by `refs`. (src:atlas-world-group-api → docs/
+#                                   atlas-world-group-api/openapi/, whose sources/<id>/captured/
+#                                   holds an explicit "EMPTY" marker README plus one DERIVED
+#                                   vocabulary file — so the directory's existence proves nothing.)
+#               retained-elsewhere  primary bytes exist and are VERSION-CONTROLLED, just not here
+#                                   (licence/visibility). Checkable by a reader with access, page
+#                                   by page. (src:sirva-ade — 13 ADE PDFs in the private repo
+#                                   pegasus-workflows; see its retention_note)
+#               notes-only          sources/<id>/captured/ holds OUR notes and short quoted
+#                                   excerpts — explicitly "not a mirror" — and the raw bytes are
+#                                   gitignored under local/. A reader can check only the excerpts
+#                                   we chose to quote. (src:stedi-x12-reference,
+#                                   src:x12-212-trailer-manifest)
+#               local-only          `files`/`refs` name GITIGNORED paths: the bytes sit on one
+#                                   machine and are in no git anywhere. Indistinguishable from
+#                                   captured if you read only the registry, because the sha256 is
+#                                   right there. (src:nmfta-ebol, src:dp3-400ng — and dp3-400ng's
+#                                   own ref says "PRIMARY CHECKOUT ONLY (gitignored); absent from
+#                                   this worktree", which is the honest version of the claim)
+#               analysis-only       analysis.md prose only; nobody can re-check the claim.
+#                                   (src:dtr-part-iv, src:dp3-tender-of-service)
+#               unrecoverable       the bytes are gone from the world — not merely uncaptured.
+#                                   (the DCSA JIT sub-spec; see [A8 §10])
+#
+#               WHY DECLARED AND NOT DERIVED. The first design read the filesystem: `captured/`
+#               exists ⇒ captured-here. Measured, that is WRONG for 3 of the 9 directories that
+#               have one, in three different directions (notes-only ×2, refs-in-repo ×1 whose
+#               captured/ README says "EMPTY", and src:dcsa, which has 125 real files and still
+#               lost a cited sub-spec). Any filesystem heuristic rebuilds that false positive, so
+#               the state is authored — it is a claim about where bytes are IN THE WORLD, which no
+#               `stat` can answer — and a conformance gate holds the declaration to what the
+#               filesystem CAN prove. Same split as the symptom index: one authored input,
+#               everything else derived, generator refuses on disagreement.
+#
+#               `retention` is owed on every source CITED by data/authority-table.json, and both a
+#               gate and the symptom-index generator refuse when one is missing. It is deliberately
+#               NOT filled in for the whole 87 — scope is what the symptom index surfaces.
+#   retention_note / retained_at / retained_files
+#               optional elaboration; src:sirva-ade carries all three and is the shape to copy.
 #
 # Discovery performed 2026-09-11 (four research passes: internal, HHG/relocation,
 # logistics standards, visibility/telematics).
@@ -258,6 +309,15 @@ sources:
   areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
+  retention: refs-in-repo
+  retention_note: |
+    The source's own bytes are in THIS repo — 24 OpenAPI documents at
+    docs/atlas-world-group-api/openapi/ — but NOT under sources/<id>/captured/, which holds
+    only reference-data/README.md (whose first line is "# Atlas reference-data captures —
+    EMPTY") and one spec-derived-vocabulary/*.json that says of itself "NOT a capture ...
+    Derived entirely from the committed OpenAPI documents". So this entry is simultaneously
+    the best-retained van-line source we hold AND a directory whose existence proves nothing.
+    It is why retention is declared rather than stat()-ed.
   refs:
     - docs/atlas-world-group-api/README.md       # gap analysis
     - docs/atlas-world-group-api/INVENTORY.md
@@ -289,6 +349,7 @@ sources:
   areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
+  retention: captured-here
   urls:
     - https://proxy.golang.org/github.com/transcom/mymove/@v/v0.0.0-20241018165427-c4868770c676.zip
     - https://archive.softwareheritage.org/browse/origin/?origin_url=https://github.com/transcom/mymove
@@ -328,6 +389,15 @@ sources:
   areas: [A2, A3, A4, A5, A7, A8, A9, A12]
   priority: P1
   status: analyzed
+  retention: local-only
+  retention_note: |
+    The most-cited source in the model (223 citations) and NOT analysis-only: the bytes exist,
+    on one disk. This entry's own ref says it — "PRIMARY CHECKOUT ONLY (gitignored); absent
+    from this worktree" — and the two XLSX refs are gitignored as well. So the material is
+    real and was genuinely read, and no second reader, worktree or CI job can open it.
+    Calling this analysis-only would repeat the src:sirva-ade error in reverse: that one was
+    under-graded by conflating "no captured/ here" with "bytes not retained", and this one
+    would be under-graded by conflating "not in git" with "never existed".
   urls:
     - "https://business.ustranscom.mil/dp3/docs/otherpdfs/0840+2026_Business_Rules/2026%20400NG%20(5%20Dec%2025)%20Final.pdf"
     - https://business.ustranscom.mil/dp3/pdfs.cfm
@@ -345,6 +415,12 @@ sources:
   areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13]
   priority: P2
   status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
+  retention: analysis-only
+  retention_note: |
+    status says "material downloaded 2026-09-17 by the interrupted gap-fill run" and the
+    download did not survive: no captured/, no local/, no `files`. Pair this with the
+    analysis's own `evidence_grade: A` — a full read of a document nobody can now open. That
+    combination, not thin evidence, is what [plan §8.3(2)] means by indistinguishable states.
   urls: [https://business.ustranscom.mil/dp3/pdfs.cfm]
 
 - id: dp3-claims-liability
@@ -385,6 +461,10 @@ sources:
   areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12]
   priority: P2
   status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
+  retention: analysis-only
+  retention_note: |
+    As src:dp3-tender-of-service: "material downloaded 2026-09-17" with nothing retained.
+    204 citations rest on this analysis prose.
   urls:
     - https://business.ustranscom.mil/dtr/dtrp4.cfm
   notes: Some mirrors block automated fetches; business.ustranscom.mil resolved.
@@ -440,6 +520,7 @@ sources:
   areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12]
   priority: P1
   status: analyzed
+  retention: captured-here
   urls: [https://www.ecfr.gov/current/title-49/subtitle-B/chapter-III/subchapter-B/part-375]
   notes: The legal vocabulary — order for service, bill of lading, estimates, weighing, SIT, delivery, charge collection. Appendix A reproduces the Rights & Responsibilities booklet.
 
@@ -685,6 +766,14 @@ sources:
   areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P2
   status: analyzed
+  retention: notes-only
+  retention_note: |
+    captured/ holds ONE file and it is OURS: stedi-element-98-party-roles-notes.md, which
+    says of itself "These are **notes** of one element plus short quoted excerpts ... not a
+    mirror, and the code list is **not** reproduced whole." The rendered page is at
+    local/element-98.html, GITIGNORED. A reader can therefore check exactly the excerpts we
+    chose to quote and nothing else. src:x12-212-trailer-manifest has the identical shape.
+    The normative X12 publication is licensed (src:x12-transportation) and must stay out.
   urls: ["https://www.stedi.com/edi/x12-004010/214"]
   files:
     - {path: sources/stedi-x12-reference/captured/stedi-element-98-party-roles-notes.md, sha256: 78f4f2c1c3afbe790b6a671a8368c6ca486fb452bafd9eff950995ac3dbdca38, retrieved: 2026-10-06, from: "notes + short excerpts of https://www.stedi.com/edi/x12-004010/element/98, per sources/README.md"}
@@ -821,6 +910,16 @@ sources:
   areas: [A1, A2, A3, A4, A5, A6, A7, A8, A9]
   priority: P1
   status: analyzed
+  retention: captured-here
+  retention_note: |
+    captured-here is true of the DIRECTORY and was still not enough. 125 files are in git
+    under captured/, and the cited JIT sub-spec was never among them — five citations rested
+    on bytes that exist nowhere ([A8 §10], 2026-10-10). So a per-SOURCE retention state is a
+    floor, not a guarantee: it says what the directory holds, never that a given citation
+    lands inside it. Measured 2026-10-11: neither src:dcsa citation in
+    data/authority-table.json reaches JIT — row 10 cites carrierCode +
+    carrierCodeListProvider, row 17 cites ISSU with eventClassifierCode forced to ACT, and
+    both are in captured/DCSA-OpenAPI/. The per-citation grain is owed, not done.
   urls:
     - https://github.com/dcsaorg/DCSA-OpenAPI
     - https://github.com/dcsaorg/DCSA-TNT
@@ -902,6 +1001,14 @@ sources:
   areas: [A1, A2, A3, A6, A7, A8, A9]
   priority: P2
   status: analyzed
+  retention: local-only
+  retention_note: |
+    THE TRAP THIS STATE EXISTS FOR. The `files` block above carries two full sha256 digests
+    and retrieval dates, so reading the registry alone this is indistinguishable from
+    captured-here — but both paths are under sources/nmfta-ebol/local/, which is gitignored
+    and not in the repo. NMFTA copyright forbids commercial copying, so that is correct
+    behaviour, not an oversight. The sha256 proves what was read; it does not let anyone else
+    read it.
   urls: [https://dsdc.nmfta.org/apis/ebol-api-standard]
   files:
     - {path: sources/nmfta-ebol/local/ebol-apiv2.1.0.yaml, sha256: 39715755793a2f39ee290e17f3997cb1bd7cadf001e5531f4a61093df1094e8c, retrieved: 2026-09-17, from: user}
@@ -1021,6 +1128,7 @@ sources:
   areas: [A1, A2, A3, A4, A6, A8, A9, A13]
   priority: P2
   status: analyzed   # material downloaded 2026-09-17 by the interrupted gap-fill run
+  retention: analysis-only
   urls:
     - https://docs.macropoint.com/
     - https://carrierdocs.macropoint.com/
@@ -1340,6 +1448,7 @@ sources:
   areas: [A1, A2, A3, A4, A5, A6, A7, A8]
   priority: P1
   status: analyzed
+  retention: analysis-only
   urls: ["https://unece.org/trade/uncefact/unece-recommendations"]
   obtain: >
     Re-download Rec 24 (rev1 2000, rev3 2004 code list, rev5 2009) from unece.org, and RE-EXTRACT the
