@@ -1,11 +1,11 @@
 # CI blockers + merge-queue maintenance left after the security backlog
 
-> **Resume point — refreshed 2026-10-09 against `main` @ `65a11dfd`, in the PR that closes the last
-> agent-doable item (#822).** Read **"Resume here"** immediately below, then "State of play", then
-> pick from "Live work". The body was last fully re-verified 2026-10-06 (late) against `c60c00db`;
-> the 10-07 pass closed the `@playwright/mcp` decision (#819) and the 10-09 pass closed the
-> `nodeModules` hardening (#822). **Everything still open is either owner-only or a judgement call —
-> see "Resume here".**
+> **Resume point — refreshed 2026-10-09 against `main` @ `feae16a5`, in the PR that wires the
+> merge-queue App token (#826).** Read **"Resume here"** immediately below, then "State of play",
+> then pick from "Live work". The body was last fully re-verified 2026-10-06 (late) against
+> `c60c00db`; the 10-07 pass closed the `@playwright/mcp` decision (#819), and the 10-09 passes
+> closed the `nodeModules` hardening (#822) and wired the App token (#826). **Everything still open
+> is owner setup, a judgement call, or a dated Monday verification — see "Resume here".**
 >
 > ⚠️ **This file said "nothing is blocking" at `892f0c53` and was falsified two hours later.** A
 > newly-published **critical** advisory flipped `audit-ci` red on `main` with no code change, and the
@@ -29,20 +29,30 @@
 ## Resume here
 
 **Where:** primary checkout `/home/steve/repos/pegasus`, branch `main`, last commit
-`65a11dfd feat(domain-reference): mint the party aggregate — [A8 §9 item 1], catalog 0.6.4 (#821)`.
+`feae16a5 feat(pegii): write order statuses back — update_order + WriteOrder (SDK 0.49.0) (#824)`.
 No worktree is needed to read this.
 
-**Status:** nothing is in flight from the previous sessions. #819 (drop `@playwright/mcp`) and
-#822 (root `nodeModules` edges) both merged with CI green and `main`'s Deploy green through prod.
-`main` is green (see State of play). The `Live work` checkboxes are accurate as of 2026-10-09.
+**Status:** #819 (drop `@playwright/mcp`) and #822 (root `nodeModules` edges) merged with CI green
+and `main`'s Deploy green through prod. #826 (merge-queue App token) is this PR. `main` is green
+(see State of play). The `Live work` checkboxes are accurate as of 2026-10-09.
 
-**Next action — there is no obvious one left, and that is the honest state of this file.** Read this
-before reaching for the loose end below; the remaining items are not a queue to work down.
+**Next action — the only dated one is Monday's stage-2 check (below); otherwise there is no obvious
+agent-doable item left, and that is the honest state of this file.** Read this before reaching for
+the loose end below; the remaining items are not a queue to work down.
 
-- **`DEPENDABOT_AUTOMERGE_PAT` is still the highest-leverage thing on the list and is OWNER-ONLY.**
-  No code change — the workflow already reads `secrets.DEPENDABOT_AUTOMERGE_PAT ||
-secrets.GITHUB_TOKEN`. Eight reproductions. An agent cannot do it; **ask rather than work around
+- **The merge-queue identity fix is now half-done, and the remaining half is OWNER-ONLY.** #826
+  wired `enqueue` to mint a **GitHub App** installation token — re-scoped from a PAT, because a PAT
+  expires and degrades _silently_ back to `GITHUB_TOKEN`. What is left is creating the App,
+  installing it on `pegasus`, and setting one Actions variable + one Actions secret. Steps and the
+  two traps (**Actions** store not Dependabot; **Client ID** not App ID) live in
+  `plans/todo/dependabot-automerge-pat.md`. An agent cannot do it; **ask rather than work around
   it.**
+- **There is a DATED verification owed — do it first on Monday 2026-10-12.** When the weekly
+  Dependabot batch lands, confirm a real PR produces a `gh-readonly-queue/main/pr-<N>-*` run within
+  ~a minute. That is **stage 2**, and it is the only thing that proves the fix: stage 1 shows the
+  token mints and reads, but does not exercise `enablePullRequestAutoMerge` under an _installation_
+  token, which is the one unverified link. If the App is not configured by then, the run carries a
+  `::warning::` naming `GITHUB_TOKEN` as the identity — which answers "why did it stall" on sight.
 - **Both decisions are settled** — `@playwright/mcp` by removing it (#819), TENANT-03 by
   deliberately leaving it (and the "leave it" there is load-bearing: the candidate rewrite is
   _unverifiable locally_, so doing it would be churn chasing a flake that may no longer fire).
@@ -56,8 +66,9 @@ secrets.GITHUB_TOKEN`. Eight reproductions. An agent cannot do it; **ask rather 
   before removing any security entry even when the package is gone from the tree. One entry at a
   time, each with `rm -rf node_modules package-lock.json && npm install` and the affected suite.
 
-So: if you arrived here looking for work, the useful answers are "ask the owner about the PAT" or
-"answer the `overridden`-flag question without deleting anything yet". Inventing a task from the
+So: if you arrived here looking for work, the useful answers are "run Monday's stage-2 check", "ask
+the owner whether the App is set up yet", or "answer the `overridden`-flag question without deleting
+anything yet". Inventing a task from the
 `(no action)` item at the bottom would be a mistake — that one is explicitly _expected output_, not
 a finding.
 
@@ -213,11 +224,34 @@ on 2026-10-07 with reasons (see "Don't redo these"). Unverified at the time of w
 job share `scripts/audit-ci.sh`, so the gate (and its npm-endpoint-error pass-through) cannot drift.
 **When that issue is open, fix `main` before enqueuing anything** — every queued PR will be ejected.
 
-### [ ] `DEPENDABOT_AUTOMERGE_PAT` — owner-only, and the highest-leverage item left
+### [ ] `enqueue` needs a non-`GITHUB_TOKEN` identity — **wiring MERGED (#826), owner setup pending**
 
-See `plans/todo/dependabot-automerge-pat.md`. **No code change** — the workflow already reads
-`secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN`. It needs the secret set, which only
-you can do.
+See `plans/todo/dependabot-automerge-pat.md` (filename kept; the workflow's warning message points
+at that path). **Re-scoped 2026-10-09 from a PAT to a GitHub App**, because a fine-grained PAT
+expires and degrades _silently_ back to `GITHUB_TOKEN`, while an App does not expire and is not
+tied to a person's account.
+
+**The code half is done (#826)** — `enqueue` mints an App installation token via
+`actions/create-github-app-token@v3`, gated on a `vars.DEPENDABOT_AUTOMERGE_APP_CLIENT_ID` that is
+unset today, so the step is skipped and the `||` chain falls through. Safe to have merged before the
+App exists.
+
+**What is left is owner-only:** create the App under the `DolasDev` org, install it on `pegasus`,
+then set one **Actions** variable + one **Actions** secret. Full steps, both verification stages and
+the traps are in the dedicated plan. Three things worth carrying here:
+
+- **Actions store, not the Dependabot store.** `enqueue` is triggered by `workflow_run` /
+  `workflow_dispatch`, neither of which is a Dependabot event. A secret filed under _Dependabot_
+  would be invisible and the `||` chain would fall through with **no error**.
+- **Client ID, not App ID** — `app-id` is deprecated in `create-github-app-token@v3`, and the App
+  settings page shows both adjacent.
+- **The silent fallback is no longer silent.** #826 makes `enqueue` print which identity it is
+  acting as, and emit a `::warning::` when it lands on `GITHUB_TOKEN` (or when the var is set but
+  the mint failed). That annotation is the thing that will tell you the App broke.
+
+**Unticked on purpose.** It stays `[ ]` until **stage 2** passes — a real Dependabot PR producing a
+`merge_group` run — because stage 1 only proves the token mints and reads. Next window: Dependabot
+is `interval: weekly` with no `day`, so **Monday 2026-10-12**.
 
 **Eight reproductions:** #645, #656, #387, #657, #709, #710, **#762**, **#799**. A
 `GITHUB_TOKEN`-initiated enqueue gets a queue entry but **no `merge_group` checks**, so the PR

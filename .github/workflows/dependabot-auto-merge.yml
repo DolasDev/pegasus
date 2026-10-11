@@ -21,6 +21,13 @@ name: Dependabot Auto-Merge
 # is then evaluated immediately and enters the queue. That pair is what `enqueue`
 # runs, once CI is actually green.
 #
+# A THIRD structural fact, independent of the two halves above: WHICH IDENTITY
+# the `enqueue` job acts as decides whether the queue entry it creates ever gets
+# built. GITHUB_TOKEN does not trigger workflows, so an enqueue made with it
+# yields an entry and no `merge_group` run — the PR holds the head of the queue
+# until the 60-minute timeout drops it. `enqueue` therefore prefers a GitHub App
+# installation token, and says in its log which identity it ended up with.
+#
 # NOTE: `autoMergeRequest.mergeMethod` reads `MERGE` here even though the queue
 # requires SQUASH. That is cosmetic — the queue's method wins — and is NOT a bug
 # worth chasing.
@@ -87,17 +94,97 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'pull_request')
     steps:
+      # -----------------------------------------------------------------------
+      # Mint a GitHub App installation token.
+      #
+      # WHY AT ALL: actions taken with GITHUB_TOKEN do not trigger workflows, so
+      # an enqueue made with it produces a queue entry and NO `merge_group` run.
+      # The entry then holds the head of an ALLGREEN queue until it is dropped at
+      # `check_response_timeout_minutes: 60`, blocking every other stream.
+      # Reproduced eight times (#645, #656, #387, #657, #709, #710, #762, #799);
+      # the two measured ones sat 18 and 21 minutes, then produced a group run in
+      # ~28s and ~5s once re-enqueued under a non-GITHUB_TOKEN identity.
+      # A GitHub App installation token is NOT GITHUB_TOKEN and does trigger
+      # workflows, which is the entire point of this step.
+      #
+      # WHY A VAR GATES IT: `vars` is available in a step-level `if:`; a bare
+      # `secrets` reference there is not reliable. The Client ID is not sensitive,
+      # so it is the natural gate. When the var is unset the step is SKIPPED, a
+      # skipped step's outputs are empty strings, and the `||` chain below falls
+      # through — which is what makes this safe to merge BEFORE the App exists.
+      #
+      # `app-id` is DEPRECATED in v3 in favour of `client-id`. The App settings
+      # page shows both, adjacent, and the deprecated one is the one that reads as
+      # obvious — so the var is named for the Client ID on purpose.
+      #
+      # The two `permission-*` inputs scope the minted token BELOW the App's own
+      # grant, so this job cannot use any extra permission the App is later given.
+      # The App must be granted at least these two or the mint fails.
+      #
+      # DELIBERATELY NO `continue-on-error`. If the var is set but the mint fails
+      # (bad or rotated private key, App uninstalled, permission revoked) this job
+      # FAILS rather than falling back. That is the safer outcome, not the lazier
+      # one: falling back to GITHUB_TOKEN would enqueue a PR that the queue never
+      # builds, and that entry then blocks the head of an ALLGREEN queue for the
+      # full 60-minute timeout — actively worse for every other stream than not
+      # enqueuing at all. A red run on a configured-and-broken App is the signal
+      # you want. The graceful path below exists only for the NOT-YET-CONFIGURED
+      # case, where GITHUB_TOKEN is the long-standing status quo.
+      # -----------------------------------------------------------------------
+      - name: Mint a GitHub App token
+        id: app-token
+        if: vars.DEPENDABOT_AUTOMERGE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.DEPENDABOT_AUTOMERGE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Re-assert auto-merge so the PR enters the merge queue
         env:
-          # Swapping to a PAT is a secrets change, not a code change. Needed if
-          # bot-initiated enqueues turn out not to trigger merge_group checks
-          # (GITHUB_TOKEN actions do not trigger workflows) — see the plan.
-          GH_TOKEN: ${{ secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN }}
+          # Preference order, and why each link exists:
+          #   1. App installation token — the intended path. Triggers workflows,
+          #      no expiry to manage, not tied to a person's account.
+          #   2. DEPENDABOT_AUTOMERGE_PAT — the owner's escape hatch if the App is
+          #      ever uninstalled or its key rotated badly. Kept deliberately; it
+          #      is not a migration leftover.
+          #   3. GITHUB_TOKEN — works for every API call this job makes, but the
+          #      resulting enqueue will NOT trigger merge_group checks. That is a
+          #      SILENT degradation, which is why the step below names the
+          #      identity it is running as and warns when it lands here. Only
+          #      reachable when NOTHING is configured: a configured-but-broken App
+          #      fails the mint step above instead of arriving here.
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN }}
+          # Identity is derived from the mint step's own output rather than probed
+          # via the API: an installation token cannot call `GET /user` (it answers
+          # "Resource not accessible by integration"), and GITHUB_TOKEN is itself
+          # an installation token, so a `gh api user` probe would fail for exactly
+          # the two cases it is meant to distinguish.
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          HAS_PAT: ${{ secrets.DEPENDABOT_AUTOMERGE_PAT != '' }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           DISPATCH_PR: ${{ inputs.pr }}
         run: |
           set -euo pipefail
+
+          # --- Report which identity we are acting as -------------------------
+          # The `||` chain above degrades silently by design, so say out loud
+          # which link it landed on. This is the difference between "the stall is
+          # back and nobody knows why" and a yellow annotation on the run that
+          # names the cause. A warning rather than a failure because the only way
+          # to reach the GITHUB_TOKEN link is that nothing is configured yet —
+          # the months-long status quo — and failing here would turn every
+          # Dependabot CI completion red over a gap only the owner can close.
+          # A configured-but-broken App never reaches this line: see the mint step.
+          if [[ -n "${APP_SLUG:-}" ]]; then
+            echo "Acting as ${APP_SLUG}[bot] (GitHub App installation token) — enqueues WILL trigger merge_group checks."
+          elif [[ "${HAS_PAT:-false}" == "true" ]]; then
+            echo "Acting as DEPENDABOT_AUTOMERGE_PAT (fallback) — enqueues will trigger merge_group checks."
+          else
+            echo "::warning::Acting as GITHUB_TOKEN — this enqueue will NOT trigger merge_group checks, so the PR will enter the queue and stall at its head until dropped at the 60-minute timeout. Configure the GitHub App: see plans/todo/dependabot-automerge-pat.md."
+          fi
 
           # --- Resolve the PR -------------------------------------------------
           # For workflow_run, resolve from the head SHA rather than
