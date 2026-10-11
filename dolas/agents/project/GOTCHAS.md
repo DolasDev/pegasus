@@ -3036,6 +3036,42 @@ grade is load-bearing, grep the bytes. Two of this round's four witnesses turned
 changed how a new member had to be disclosed in `[A8 §10]` — but the one primary witness was
 verifiable in-bytes, and checking that is what let the member be minted at all rather than refused.
 
+### SUPERSEDED 2026-10-11 by a declared field — and two things above are now known to be wrong
+
+`registry.yaml` now carries **`retention:`**, declared per source and gated, with the schema and the
+reasoning in its header block. Read that, not this. Two corrections, both of which this section's own
+framing caused:
+
+1. **"The evidence grade turns on whether a source has a `captured/` directory" conflates two
+   axes.** `evidence_grade` is already a defined term in this corpus — rubric **S4**
+   (`rubric.md:152`), the grade of **our reading**: `A` full spec read, `B` partial, `C` secondhand.
+   It is recorded in each `analysis.md`'s front matter and has nothing to do with `captured/`. What
+   `captured/` bears on is **retention** — the _reader's_ recourse. They are independent, and the
+   pairing that manufactures false confidence is a high S4 on a poor retention:
+   `src:dp3-tender-of-service` is `evidence_grade: A` **and** `analysis-only`, so the model read the
+   whole document and nobody can open it. Four of the twelve sources the authority table cites are
+   that shape.
+2. **`src:dp3-400ng` is not secondary and not analysis-only.** It is `local-only`: its bytes are
+   real and its own registry ref says where — _"PRIMARY CHECKOUT ONLY (gitignored); absent from this
+   worktree"_. Grading the model's **most-cited source** (223 citations) as having no bytes is the
+   `src:sirva-ade` error in reverse — that one was under-graded by reading "no `captured/` here" as
+   "bytes not retained", and this one by reading "not in git" as "never existed".
+
+**And `captured/` is a worse signal than this section says — it is wrong in _three_ directions, for
+3 of the 9 directories that have one.** Measured 2026-10-11: two hold **our own notes** with the raw
+page gitignored (`src:stedi-x12-reference` — already noted above — and `src:x12-212-trailer-manifest`,
+which was **not**, and has the identical shape); and `src:atlas-world-group-api`'s holds a README
+whose first line is `# Atlas reference-data captures — EMPTY` plus one file that says of itself _"NOT
+a capture … Derived entirely from the committed OpenAPI documents"_, while its real bytes are 24
+OpenAPI documents elsewhere **in this repo**. So the directory's existence proves nothing in either
+direction, which is why the state is now **declared rather than inferred** and a conformance gate
+holds the declaration to what the filesystem can actually prove.
+
+**The lasting lesson, which is not about this field:** a per-**source** state is a floor, never a
+guarantee. `src:dcsa` has 125 captured files and still lost a cited sub-spec, which is how five
+citations came to rest on bytes that exist nowhere. **Grade the citation, not the source** — the
+per-citation grain is owed and is not done.
+
 ## A Markdown file the pre-commit hook reformats will not match a scripted edit afterwards
 
 Already recorded for prettier generally; the domain-reference instance is worth naming because its
@@ -3098,3 +3134,40 @@ through and makes the whole thing safe to merge _before_ the credential exists.
 build it" are independent claims. Confirm the second with a `merge_group` run **for that PR number**
 before recording a PR as healthy — see the merge-queue runbook for why the first claim's usual
 signature lies.
+
+## A resume plan that says "the working tree is clean" may BE the uncommitted change
+
+A handoff checkpoint in `plans/in-progress/domain-reference-a8-item4.md` opened with **"Uncommitted
+work: None — the working tree is clean"** and prescribed, as its next action:
+
+```bash
+git checkout chore/parked-dr
+git reset --hard origin/main      # "safe ONLY after the line above printed"
+```
+
+**The sentence asserting the clean tree was itself the only unstaged change in the repo** — 176 lines
+of checkpoint written into that plan file and never committed. `git status` showed it before anything
+was touched; following the plan literally would have destroyed it.
+
+This is structural rather than careless, so expect it in **every** handoff plan: a session writes its
+checkpoint into a plan file as its last act, so "the tree is clean" is true of the moment _before_
+the sentence was written and false by the time anyone reads it. **A sentence cannot describe its own
+file.**
+
+Note the safety check did not help. It verified the _commit_ was reachable from a new branch, which
+was true and irrelevant — the commit was never what was at risk. **A safety check must gate the
+thing the destructive step can actually eat.**
+
+**How to apply:**
+
+- `git status` before believing any plan about the working tree. A plan records intent and
+  measurement; it is not a witness to current state.
+- **To re-point a branch you are not on, use `git branch -f <branch> <ref>`.** No checkout, so
+  nothing in the tree is at risk. `reset --hard` is almost never the right tool for re-parking a
+  branch, and it is the only step in a re-park sequence that can destroy work.
+- **`git checkout -b <new>` carries a dirty tree across** to the new branch. Branch the dirty work
+  off first, then re-point the branch it was sitting on. That is what saved the checkpoint.
+- **Commit before running a destructive experiment.** A later tamper in the same session was
+  reverted with `git checkout <file>`, which restores from the _index_ — and because the work was
+  unstaged, it reverted to `HEAD` and discarded an hour of edits. Recoverable only because the
+  edits had been scripted. Stage or commit first; `git checkout` is not an undo for unstaged work.

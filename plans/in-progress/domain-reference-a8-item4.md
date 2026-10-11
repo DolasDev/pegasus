@@ -25,69 +25,110 @@ generators were verified to reproduce `HEAD` byte-identically before anything wa
 
 ---
 
-## Resume here — checkpoint 2026-10-11
+## Resume here — checkpoint 2026-10-11 (second, after §8.3(2))
 
 ### Where
 
-- **Branch: `feat/dr-symptom-index`**, rebased onto `0cfad2db` (= `origin/main`, PR #826's merge).
+- **Branch: `feat/dr-retention-at-point-of-use`**, off `87b53057` (= `origin/main`, PR #832's merge).
 - **Worktree:** `/home/steve/repos/pegasus-deps-advisory-flip` (the long-lived domain-reference
   worktree). Postgres not needed.
-- **Commits:** `935bc47d` — _feat(domain-reference): the symptom index — a path in from legacy code,
-  not from the vocabulary_ — plus the plan checkpoint you are reading.
-- **`chore/parked-dr` is re-parked at `origin/main` and clean again.** The symptom-index commit had
-  been made on it by mistake. It was moved off with `git checkout -b` (which carries a dirty working
-  tree across) and the parked branch re-pointed with `git branch -f` — **not** `reset --hard`. See
-  gotcha 9: this plan's own earlier resume sequence prescribed `reset --hard` while asserting the
-  tree was clean, and would have destroyed this checkpoint.
+- **Commits:** `13bd3b81` — _feat(domain-reference): surface the evidence grade at the point of use —
+  retention, per authority row_ — plus the plan/GOTCHAS checkpoint you are reading.
+- **`chore/parked-dr` is parked at `origin/main` and clean.** Keep it that way; `CLAUDE.md`'s
+  parallel-work rule requires it and §8.3(1) was committed onto it by mistake once already.
 
 ### Status
 
 - [x] **M1-M5** — item 4's measurements. Done, bytes checked rather than prose trusted.
 - [x] **M6a — the `(1b)` evidence repair.** **MERGED, PR #828 → `e9b2808e`.** Main + Deploy green.
       Verified post-merge: the published catalog is byte-identical and `0.7.0` stands.
-- [x] **§8.3(1) — THE SYMPTOM INDEX. Built, gated, committed (`935bc47d`), pushed, PR open.**
-      `docs/domain-reference/symptom-index.md` (281 lines, generated) +
-      `tools/generate-symptom-index.ts` + `tests/conformance/symptom-index.test.ts` (9 assertions) +
-      `data/legacy-correspondence.json` (the one authored input) + a `symptom-index` npm script.
-      **Eight gates green.** Five tampers run, all red on the intended assertion.
-- [ ] **§8.3(2) — grade surfacing at point of use.** Not started.
-- [ ] **§8.3(3) — write `survey`, `estimate`, `claim`.** Not started.
+- [x] **§8.3(1) — THE SYMPTOM INDEX. MERGED, PR #832 → `87b53057`.** Main + Deploy green (Deploy a
+      verified path-filter no-op: 45 files since the `last-deploy` base, zero deployable).
+      `docs/domain-reference/symptom-index.md` (generated) + `tools/generate-symptom-index.ts` +
+      `tests/conformance/symptom-index.test.ts` + `data/legacy-correspondence.json` (the one
+      authored input) + a `symptom-index` npm script.
+- [x] **§8.3(2) — RETENTION AT THE POINT OF USE. Committed (`13bd3b81`), gates green.**
+      `retention:` declared on the 12 sources `data/authority-table.json` cites, with the schema and
+      the reasoning in `registry.yaml`'s header; `RETENTION_STATES` / `registryRetention` /
+      `retentionDisagreements` / `analysisEvidenceGrade` / `citedSourceIds` in
+      `tools/source-registry.ts`; two derived sections and a **can you re-check it?** column in the
+      symptom index; `tests/conformance/retention.test.ts` (19 assertions). **Six tampers run, red
+      on the intended assertion.** Catalog **unchanged at `0.7.0`** — glossary, context map and all
+      four `catalog/*` files byte-identical.
+- [ ] **§8.3(3) — write `survey`, `estimate`, `claim`.** Not started. **This is the next round.**
 - [ ] **§8.3(4) — stop, let usage drive it.**
 - [ ] **Item 4's own design round — PAUSED, do not resume.** See the banner and §8.2.
 
 ### Next action
 
-**First, land the symptom-index PR.** Find its number with
-`gh pr list --head feat/dr-symptom-index`; watch branch CI, then `gh pr merge <N> --auto` (**no
-`--squash`** — silence on a healthy enqueue is normal) and watch the merge-queue group run through
-to main's Deploy. One thing to watch rather than block on: 453 new lines in `tools/` plus 162 in
-`tests/` can move the coverage ratchet — if it trips, **restore the floors from `main` and add
-branch tests; never lower them.**
+**First, land the retention PR** (`feat/dr-retention-at-point-of-use` → find it with
+`gh pr list --head feat/dr-retention-at-point-of-use`): watch branch CI, `gh pr merge <N> --auto`
+(**no `--squash`** — silence on a healthy enqueue is normal), then the merge-queue group run through
+to main's Deploy. Deploy will be a **no-op** again, and that is correct — nothing here is under a
+deployable component path. Verify it rather than assume it: read `Detect changes`' job conclusions,
+because a 10-second green and a gate that never ran look identical.
 
-**Then §8.3(2) — surface the evidence grade at the point of use.** §8.3 item 2 below is its
-specification and the measurement behind it; the short version is that every symptom-index entry
-(and ideally every glossary entry) should carry its retention state from the four — **captured
-here** / **retained-elsewhere** / **analysis-only** / **unrecoverable** — plus whether the reading
-is `[ORIGINAL]`/`[SYNTHESIS]`. Derive it from `registry.yaml`'s `retention` / `retained_files` and
-the filesystem; **per-citation, not per-source** — DCSA has 105 captured files and still lost the
-JIT sub-spec, which is exactly how five citations came to rest on nothing. The symptom index is the
-surface that needs this most, because it is the one a migrator actually reads.
+**Then §8.3(3) — write `survey`, `estimate` and `claim`**, the three absent fact classes with real
+mass (99 of the 103 absent-surface files: `survey` 57 · `estimate` 25 · `claim` 17). `estimate` has
+**primary captured** evidence sitting unused — `src:cfr-49-375` §375.401 (written estimate signed and
+dated by both parties before the BOL), §375.403 (silence after loading is reaffirmation; the
+propose/decide pair at (a)(8)), §375.409 (the broker-adopted estimate, see M3). All three were read
+in an earlier session for other reasons. **This is the first of these rounds that will emit a real
+catalog diff**, so expect a version bump and a `[catalog §2.4]` row — unlike §8.3(1) and §8.3(2),
+which both left the catalog byte-identical.
+
+**Owed from §8.3(2), small and real:** the **per-citation** grain. A per-source retention state is a
+floor — `src:dcsa` is `captured-here` with 125 files and still lost the cited JIT sub-spec. Measured
+2026-10-11, **neither** `src:dcsa` citation in `authority-table.json` reaches JIT, so nothing
+currently rendered is overstated, and that is why the per-citation override was **not** built: there
+was no instance to gate. Build it when one appears.
 
 ### Uncommitted work
 
-**None.** The plan checkpoint you are reading is committed alongside the symptom index on
-`feat/dr-symptom-index`. The placement problem is fixed: `chore/parked-dr` is back at `origin/main`,
-clean, as this plan and `CLAUDE.md`'s parallel-work rule require.
+**None.** The plan and `GOTCHAS.md` checkpoint you are reading is committed alongside the retention
+work on `feat/dr-retention-at-point-of-use`.
 
 ### In flight
 
-**The symptom-index PR** on `feat/dr-symptom-index` — the only thing of this stream's. PRs **#827**
-and **#828** are both **MERGED**, and so is **#826** (`ci(merge-queue)`, now `origin/main`); all
-their remote branches auto-deleted, local branches removed, monitors ended.
+**The retention PR** on `feat/dr-retention-at-point-of-use` — the only thing of this stream's. PRs
+**#827**, **#828**, **#826** and **#832** are all **MERGED**; remote branches auto-deleted, local
+branches removed, monitors ended.
 
 Open PRs at checkpoint, none of the rest this stream's: **#829**, **#830**, **#831** (Dependabot —
 hono, aws-cdk, minor-and-patch) and **#145** (Cognito/SES, DRAFT, on HOLD for the SES sandbox).
 Re-check with `gh pr list --state open --limit 10`.
+
+### What §8.3(2) found, because the plan's premise did not survive contact
+
+- **The spec said "derive retention from the filesystem". That is wrong**, for **3 of the 9**
+  directories that have a `captured/`, in three different directions: two hold **our own notes**
+  with the raw bytes gitignored (`src:stedi-x12-reference`, and `src:x12-212-trailer-manifest`,
+  which no gotcha had named); and `src:atlas-world-group-api`'s holds a README reading `EMPTY` plus
+  a **derived** file, while its real bytes are 24 OpenAPI documents elsewhere **in this repo**. So
+  retention is **declared** in `registry.yaml` and a gate holds it to what the filesystem can prove.
+- **The four states measured out as SEVEN**, and three of the extras are indistinguishable today
+  from one of the four: `refs-in-repo`, `notes-only`, `local-only`. That is the plan's own thesis
+  turning out larger than the plan measured.
+- **"Evidence grade" was already taken, and the plan used it loosely for retention.** `evidence_grade`
+  is rubric **S4** (`rubric.md:152`) — how thoroughly _we read_ a source, `A`/`B`/`C`, in each
+  `analysis.md`'s front matter. Retention is the **reader's recourse**. Four axes are rendered as
+  four columns and none is folded: the pairing that manufactures false confidence is a high S4 on a
+  poor retention, and **4 of the 12 cited sources are `evidence_grade: A` and unverifiable**.
+- **`src:dp3-400ng` is `local-only`, NOT `analysis-only`** — #832's own hand-written paragraph got
+  this wrong about the **most-cited source in the model** (223 citations). Its bytes are real and its
+  registry ref says where: _"PRIMARY CHECKOUT ONLY (gitignored); absent from this worktree"_. Calling
+  it analysis-only is the `src:sirva-ade` error in reverse. A gate now refuses it.
+- **Two bugs this round caught in itself**, both the kind it exists to prevent: an earlier cut had
+  two recourse tiers and rendered `unloading` (sole source `src:sirva-ade`) as "no recourse" —
+  re-committing the sirva-ade conflation inside a generator; and reading citations from `evidence`
+  alone rendered `sitEntryDate` as **uncited** when its evidence literally says _"SOURCED twice …
+  see settlement"_. **Citations live in 11 distinct field paths**; recourse is computed over the
+  whole row.
+- **A tamper that silently matched nothing passed.** `sed 's/| can you re-check it? |/…/'` found no
+  match because Prettier pads table columns, so the "tamper" was a no-op and the gates stayed green —
+  which reads exactly like a gate that works. Gotcha 1 again, now in the tamper rather than the
+  assertion: **verify a tamper changed the file** (`git diff --stat`) before believing the red or the
+  green.
 
 ### Decisions & dead ends
 
@@ -701,7 +742,16 @@ form-clusters it will hit immediately have no fact class at all.
    **Wiring the MVVM skill to the model before this exists would hand sessions 3.9k lines of good
    reference they cannot find their way into.**
 
-2. **SURFACE THE EVIDENCE GRADE AT THE POINT OF USE.** Generated, cheap, and it belongs with (1) —
+2. **SURFACE THE EVIDENCE GRADE AT THE POINT OF USE — ✅ DONE 2026-10-11, commit `13bd3b81`.**
+   Shipped as `retention:` in `registry.yaml` + the recourse surface in the symptom index; see
+   "What §8.3(2) found" in the checkpoint at the top, because **this specification was wrong in
+   three places** and the corrections matter more than the text below. In short: retention cannot be
+   derived from the filesystem, there are **seven** states rather than four, and "evidence grade"
+   already means rubric **S4** (how well _we_ read it) so retention must not borrow the name. The
+   description below is kept as written, because it is the specification the artifact was built
+   against and argued with.
+
+   **~~SURFACE THE EVIDENCE GRADE AT THE POINT OF USE.~~** Generated, cheap, and it belongs with (1) —
    the symptom index is the surface that needs it most.
 
    **The measurement that makes this the second priority, not a nicety.** Counting `src:` citations
