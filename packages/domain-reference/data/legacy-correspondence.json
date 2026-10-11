@@ -1,0 +1,324 @@
+{
+  "table": "legacy-correspondence",
+  "declaredBy": "[A8 §9 item 4]'s plan §8.3(1) — the symptom index's authored half",
+  "note": "The ONE hand-written input to tools/generate-symptom-index.ts. Everything else in the generated symptom index — the reference concepts' existence, their retention state, their owed state — is derived from src/, data/ and catalog/index.json. This file holds only what cannot be derived: which legacy MoveManager module corresponds to which reference concept. The reference model is built from external sources only ([SD §0]) and knows nothing about MoveManager, so EVERY correspondence here is [ORIGINAL] — our judgment, not a source's. That is why each row carries its own `basis`: what in the legacy code the reading was taken from.",
+  "purpose": "A session refactoring legacy WinForms logic arrives holding a MODULE FOLDER or a FORM NAME, never a fact class. glossary.md is indexed by vocabulary (Aggregates, Record types, Bases) and offers no path in from a symptom. This table is that path.",
+  "legacySource": {
+    "repo": "movemanager",
+    "visibility": "private",
+    "commit": "f0abdf16",
+    "branch": "master",
+    "commitDate": "2026-09-03",
+    "measuredAt": "2026-10-10",
+    "root": "Pegasus/MoveManager",
+    "note": "Counts below were MEASURED at that commit, not estimated: .vb files excluding .Designer.vb, walked per module folder. They are captured here because the generator runs in CI, where movemanager does not exist. They WILL drift — they are context for ranking, not a contract, and `measuredAt` is how a reader knows how stale they are.",
+    "totals": {
+      "moduleFolders": 28,
+      "forms": 242,
+      "vbLines": 75724
+    },
+    "elsewhere": {
+      "note": "Not in the module folders, and relevant to how much migration is left.",
+      "viewModelsProject": 52,
+      "pureDomainCore": 128,
+      "legacyDataTypes": 303
+    }
+  },
+  "confidenceLegend": {
+    "read": "The correspondence was taken from form names AND at least one form or folder listing was opened this session.",
+    "fromNames": "Taken from form names alone. The names in this domain are unusually literal, but a form named for a noun can still hold logic about three others.",
+    "unknown": "Could not be named without reading the code. Recorded as unknown rather than guessed — [SD §0]'s disclosure rule applies to this table too."
+  },
+  "modules": [
+    {
+      "module": "_Sale",
+      "legacyVocabulary": ["sale", "sale memo", "service authorization"],
+      "concepts": ["orderResponse", "orderAward", "orderCancellation"],
+      "aggregates": ["order", "shipment"],
+      "areas": ["A1", "A2"],
+      "confidence": "read",
+      "basis": "SaleMaintenanceForm, SaleMemosMaintenanceForm; the only module folder carrying a ViewModel already.",
+      "note": "\"Sale\" is the legacy word for the booked job, which the reference splits into an `order` (the commitment) and a `shipment` (the goods). [A1] and the order↔shipment cardinality fork are the reading; do not assume one legacy Sale row is one of either."
+    },
+    {
+      "module": "_Billing",
+      "legacyVocabulary": ["invoice", "budget", "billing"],
+      "concepts": ["charge", "documentIssuance"],
+      "aggregates": ["charge", "document"],
+      "areas": ["A7", "A6"],
+      "confidence": "read",
+      "basis": "InvoiceMasterMaintenanceForm, BudgetMasterMaintenanceForm — the second-largest module at 8,872 lines.",
+      "note": "`charge` exists but its VALUE is owed (A7/A12 — the corpus publishes gross/net/discount as field names and defines them nowhere), and `chargeCollection` is an ABSENT fact class. So this module's biggest concepts are the ones the reference is thinnest on. Read [A7] before trusting a mapping here."
+    },
+    {
+      "module": "_Driver",
+      "legacyVocabulary": ["driver", "settlement", "driver debit", "pay group"],
+      "concepts": ["partyRole", "charge", "assignmentOffer", "assignmentResponse"],
+      "aggregates": ["partyRole", "charge", "assignment"],
+      "areas": ["A3", "A7", "A8"],
+      "confidence": "read",
+      "basis": "DriverSettlementNewMaintenanceForm, DriverDebitMaintenanceForm (7,540 lines).",
+      "note": "`driver` IS a published role name. Settlement is compensation — A13's revenue allocation, which [A8 §5 row 11] explicitly must not be read as settling ([A8 §9 item 7]). Driver settlement logic is therefore OUT of the reference's scope, not merely owed."
+    },
+    {
+      "module": "_Employee",
+      "legacyVocabulary": ["employee", "salesman", "commission"],
+      "concepts": ["partyRole"],
+      "aggregates": ["partyRole", "party"],
+      "areas": ["A8"],
+      "confidence": "read",
+      "basis": "SalesmanCommissionMasterMaintenanceForm, SalesmanCommissionNWMaintenanceForm (7,129 lines).",
+      "note": "Employees and commissions are an INTERNAL HR/payroll axis. The reference models parties as ASSERTERS of facts, not as employees, and has no commission concept. Mostly out of scope — but `partyRole` and [A8 §3]'s role⟂ownership separation are the right reading for who-may-do-what."
+    },
+    {
+      "module": "_PremiumServiceDetail",
+      "legacyVocabulary": ["premium service", "third party service order", "crate", "crating"],
+      "concepts": ["charge", "packing"],
+      "aggregates": ["charge", "shipment"],
+      "areas": ["A7"],
+      "confidence": "read",
+      "basis": "PremiumServiceDetailMaintenanceForm, ThirdPartyServiceOrderMaintenanceForm, CrateMaintenanceForm.",
+      "note": "Accessorials. Crating is a packing service, so `packing` is the act; the money is `charge` at `aspect = PROPOSED/DECIDED/RATED`. The THIRD-PARTY half is delegation-shaped and lands on [A8 §9 item 4], which is OPEN — so who may assert a third party's service is undecided."
+    },
+    {
+      "module": "_SurveyResults",
+      "legacyVocabulary": ["survey", "survey results", "service authorization"],
+      "concepts": [],
+      "absentConcepts": ["survey", "estimate", "cube"],
+      "aggregates": ["shipment"],
+      "areas": ["A10"],
+      "confidence": "read",
+      "basis": "SurveyResultsMaintenanceForm, SaleServiceAuthorizationMaintenanceForm (1,774 lines).",
+      "note": "THE CLEAREST GAP IN THE REFERENCE, and the most useful row in this table. `survey`, `estimate` and `cube` are all ABSENT fact classes — [A8 §9 item 8] names survey/estimate facts among the classes [A8 §5] does not reach, and A10 is out of scope for v1. A migrator here gets NO domain reading, and should know that rather than infer one. Plan §8.3(3) is the fix."
+    },
+    {
+      "module": "_WarehouseHouseholdGoods",
+      "legacyVocabulary": ["in storage", "storage detail", "SIT", "warehouse"],
+      "concepts": ["storeIn", "storeOut", "sitEntryDate", "pieceCount", "condition"],
+      "aggregates": ["stay", "item"],
+      "areas": ["A5"],
+      "confidence": "read",
+      "basis": "HouseholdGoodsInStorageMaintenanceForm, HouseholdGoodsInStorageDetailMaintenanceForm.",
+      "note": "One of the best-covered modules: A5 is written, `stay` is an aggregate, and the storeIn/storeOut acts are distinguished from the `sitEntryDate` VALUE ([SD §5.3] — a date is not an instant, and the two must not be substituted). But `stayAuthorisation`, `stayTermination` and `stayAllowance` are ABSENT fact classes, so the lifecycle edges are owed."
+    },
+    {
+      "module": "_WarehouseCommercial",
+      "legacyVocabulary": ["project", "warehouse shipment", "commercial"],
+      "concepts": ["storeIn", "storeOut"],
+      "aggregates": ["stay", "shipment"],
+      "areas": ["A5"],
+      "confidence": "fromNames",
+      "basis": "ProjectMaintenanceForm, WarehouseShipmentMaintenanceForm (1,083 lines).",
+      "note": "COMMERCIAL warehousing, and the reference's corpus is household-goods. \"Project\" has no reference concept at all. Treat A5's readings as analogies here, not as mappings — and note `Pegasus.Domain` already has its own `CommercialWarehouse` context, which may be the better target."
+    },
+    {
+      "module": "_Lead",
+      "legacyVocabulary": ["lead", "lead demo", "opportunity"],
+      "concepts": ["identity"],
+      "absentConcepts": ["estimate", "survey"],
+      "aggregates": ["party", "order"],
+      "areas": ["A1"],
+      "confidence": "read",
+      "basis": "LeadMaintenanceForm, LeadDemoMaintenanceForm.",
+      "note": "Pre-commitment. [A7 §3.6] and [A1] establish that both roles ARE named before any commitment exists — §375.401's estimate signed by both parties before the BOL, and §375.409's broker-adopted estimate — so a lead is not nothing to the reference. But there is no `lead` or `opportunity` concept, and `estimate` is absent. `src:sirva-ade`'s LEP/LEU/LOD specs are the closest published material."
+    },
+    {
+      "module": "_Account",
+      "legacyVocabulary": ["account", "account memo", "contract information"],
+      "concepts": ["partyRole", "identity"],
+      "aggregates": ["party", "partyRole"],
+      "areas": ["A8", "A9"],
+      "confidence": "read",
+      "basis": "AccountMaintenanceForm, AcctMemosMaintenanceForm.",
+      "note": "\"Account\" is the commercial counterparty. The reference's nearest role is `accountParty` — A8-NAME-2's half of the word \"shipper\": the party that contracts and pays, as distinct from `goodsOwner`, the party whose goods move. That distinction is load-bearing and was the catalog's first BREAKING change (`customer` → `goodsOwner`, 0.7.0); do not collapse the two."
+    },
+    {
+      "module": "_Crew",
+      "legacyVocabulary": ["crew", "crew history"],
+      "concepts": ["partyRole", "assignmentOffer", "assignmentResponse", "assignmentRelease"],
+      "aggregates": ["partyRole", "assignment", "resource"],
+      "areas": ["A3"],
+      "confidence": "fromNames",
+      "basis": "CrewMaintenanceForm, NewCrewHistoryMaintenanceForm.",
+      "note": "[A8 §9 item 3] decided that crew-member grain rides on the ROLE and the identifying scheme, never on a class field on the party. \"Crew history\" is the effective-dated role assignment A8-HISTORY needs, so this module is probably the best legacy evidence for it."
+    },
+    {
+      "module": "_LocalDispatch",
+      "legacyVocabulary": ["local dispatch", "job", "dispatch date"],
+      "concepts": ["arrival", "departure", "loading", "unloading"],
+      "aggregates": ["trip", "stop", "stopAction"],
+      "areas": ["A3", "A4"],
+      "confidence": "fromNames",
+      "basis": "LocalDispatchJobOldMaintenanceForm, LocalDispatchDateSelectForm.",
+      "note": "[SD §8.4] is the directly relevant decision: a day of service performed at one place with no linehaul IS a Trip with one Stop. That is what makes a local job expressible at all, and it was added because the model could not previously hold one."
+    },
+    {
+      "module": "_Vehicle",
+      "legacyVocabulary": ["vehicle", "vehicle repair"],
+      "concepts": ["identity"],
+      "absentConcepts": ["resourceTareWeight"],
+      "aggregates": ["resource"],
+      "areas": ["A3"],
+      "confidence": "fromNames",
+      "basis": "VehicleMaintenanceForm, VehicleRepairMaintenanceForm.",
+      "note": "`resource` is the aggregate. [SD §1.2]'s `resource` row is UNCITED for half of what it admits — \"driver or crew member\" carries no citation (recorded by [A8 §9 item 3]) — so the vehicle/driver split inside `resource` is weaker than it looks. Repair/maintenance has no reference concept."
+    },
+    {
+      "module": "_Flash",
+      "legacyVocabulary": [
+        "flash",
+        "flash recap",
+        "flash accounting",
+        "flash billing",
+        "flash claim"
+      ],
+      "concepts": [],
+      "absentConcepts": ["claim"],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "read",
+      "basis": "FlashRecapMaintenanceForm, FlashAccountingMaintenanceForm, FlashBillingMaintenanceForm, FlashClaimMaintenanceForm (2,439 lines).",
+      "note": "A REPORTING shape — \"flash\" is a period recap across accounting, billing, claims and customer service. The reference publishes ASSERTIONS and holds that state is a projection ([SD §1.1] forbids a mutable current-state field), so a flash report is downstream of the model and has no fact class by construction. Its `claim` form is the exception and points at an ABSENT class. Do not look for a `flash` concept; there will never be one."
+    },
+    {
+      "module": "_FlatRateAuto",
+      "legacyVocabulary": ["flat rate auto", "contract number", "auto transport"],
+      "concepts": ["charge"],
+      "aggregates": ["charge"],
+      "areas": ["A7"],
+      "confidence": "read",
+      "basis": "FlatRateAutoMasterMaintenanceForm, NewFlatrateAutoContractNumberEntryForm.",
+      "note": "Rate tables for automobile transport. Lands on `charge` at `aspect = RATED`, whose authority is \"the tariff owner — the van line, or the party whose tariff prices it\" — and that holder is STILL OWED to [A8 §9 item 2], blocked on `secondary` grade, carried as `{kind: 'owedRole'}`. So the reference can say this is a rating fact but cannot say who owns the rate."
+    },
+    {
+      "module": "_Task",
+      "legacyVocabulary": ["task", "master task"],
+      "concepts": ["notification"],
+      "aggregates": [],
+      "areas": ["A4"],
+      "confidence": "fromNames",
+      "basis": "TaskMaintenanceFormNew, MasterTaskMaintenanceForm.",
+      "note": "Internal workflow. The nearest reference concept is `notification`, whose fact-class FAMILY is itself owed, and [A8 §9 item 6] — the party as a notification target — is open. An internal task list is probably not a domain fact at all."
+    },
+    {
+      "module": "_TextMessaging",
+      "legacyVocabulary": ["texting", "SMS", "unread notifier"],
+      "concepts": ["notification"],
+      "aggregates": [],
+      "areas": ["A4"],
+      "confidence": "read",
+      "basis": "TextingApplicationHost, ToastUnreadTextNotifier — only 89 lines here; the real SMS code is in Pegasus.SMS_Library.",
+      "note": "Channel mechanics, not domain. [SD §6.5]/[A8 §9 item 6]: an obligation knows WHOM it is owed to but cannot say HOW they are reached — so the reference deliberately stops short of channels. Nearly all of this module is out of scope."
+    },
+    {
+      "module": "_Person",
+      "legacyVocabulary": ["person", "user login"],
+      "concepts": ["partyRole", "identity"],
+      "aggregates": ["party", "partyRole"],
+      "areas": ["A8", "A9"],
+      "confidence": "read",
+      "basis": "PersonMaintenanceForm, UserLoginMaintenanceForm.",
+      "note": "READ [A8 §9 item 3] BEFORE TOUCHING THIS. It decided there is NO `person` aggregate kind and no person/organisation field on the asserter: a party's grain rides on the role and on the identifying scheme. `tests/conformance/party-grain-refuses.ts` refuses the `person` spelling outright. A legacy Person table is not evidence against that; it is the thing the decision was taken about."
+    },
+    {
+      "module": "_Portal",
+      "legacyVocabulary": ["portal user", "portal documents"],
+      "concepts": ["documentIssuance", "identity"],
+      "aggregates": ["document", "party"],
+      "areas": ["A6"],
+      "confidence": "fromNames",
+      "basis": "PortalUserMaintenanceForm, PortalDocumentsMaintenanceForm.",
+      "note": "Customer-facing document access. [A6] and [A8 §5 row 17] cover document ISSUANCE — the issuer of the document's own number scheme, and nobody else. Portal access control is not a domain fact."
+    },
+    {
+      "module": "_Masters",
+      "legacyVocabulary": ["master data", "pay group", "driver settlement detail"],
+      "concepts": [],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "fromNames",
+      "basis": "DriverPayGroupMaintenanceForm, MasterDriverSettlementDetailMaintenanceForm (4,072 lines across 13 forms).",
+      "note": "Reference/master data maintenance across several domains. It has no single correspondence — map FORM BY FORM, using the other rows. Its settlement forms are A13's, like `_Driver`'s."
+    },
+    {
+      "module": "_Ops",
+      "legacyVocabulary": ["service monitor"],
+      "concepts": [],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "read",
+      "basis": "ServiceMonitorForm, 198 lines.",
+      "note": "Operational monitoring of the application itself. Not domain."
+    },
+    {
+      "module": "_Shared",
+      "legacyVocabulary": ["form support", "postal address"],
+      "concepts": [],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "read",
+      "basis": "FormSupport, PostalAddressMaintenanceForm — the LARGEST module at 10,014 lines across 38 forms.",
+      "note": "Shared UI plumbing, and the largest module by line count, so expect to meet it constantly. Mostly not domain — BUT its address handling touches the one thing [SD §1.2] admits it lacks: there is NO `place` aggregate, and `placeRef` is owed (carried as `{owed: 'placeRef'}` in `custody.ts`'s `LegEndpoint`). An address is the clearest example of a legacy concept the reference deliberately does not model yet."
+    },
+    {
+      "module": "_Configuration",
+      "legacyVocabulary": ["configuration"],
+      "concepts": [],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "read",
+      "basis": "ConfigurationForm, 77 lines.",
+      "note": "Application configuration. Not domain."
+    },
+    {
+      "module": "_Database",
+      "legacyVocabulary": ["database maintenance", "copy table"],
+      "concepts": [],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "read",
+      "basis": "DatabaseMaintenanceForm, DatabaseCopyTableForm.",
+      "note": "Infrastructure. Not domain."
+    },
+    {
+      "module": "_StoredProcedures",
+      "legacyVocabulary": ["stored procedure"],
+      "concepts": [],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "read",
+      "basis": "StoredProcedureParameterForm, StoredProcedureSelectionForm.",
+      "note": "Infrastructure. Not domain."
+    },
+    {
+      "module": "_MenuSpecifications",
+      "legacyVocabulary": ["report menu"],
+      "concepts": [],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "read",
+      "basis": "ReportMenuItemsMaintenanceForm, ReportMenuSelectionForm.",
+      "note": "Menu/report wiring. Not domain."
+    },
+    {
+      "module": "_TestForms",
+      "legacyVocabulary": ["test forms"],
+      "concepts": [],
+      "aggregates": [],
+      "areas": [],
+      "confidence": "read",
+      "basis": "34 forms, 3,074 lines — TestEmployeeBenefitHoursForm, MainSwitchboardForm.",
+      "note": "Test and scratch forms. Not domain, and note some are not obviously test-only despite the folder name."
+    },
+    {
+      "module": "_zUnsorted",
+      "legacyVocabulary": ["dispatch sheet", "dispatch log", "unsorted"],
+      "concepts": ["arrival", "departure"],
+      "aggregates": ["trip", "stop"],
+      "areas": ["A3", "A4"],
+      "confidence": "fromNames",
+      "basis": "DispatchSheetGenerationForm, DispatchLogMaintenanceForm — 25 forms, 4,675 lines.",
+      "note": "The name says unsorted and it is: 25 forms with no single theme. Its two largest ARE dispatch, so [A3]/[A4] apply there, but map this folder FORM BY FORM. The highest-value module to triage, because it is large and nobody has classified it."
+    }
+  ]
+}

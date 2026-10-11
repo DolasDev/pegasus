@@ -25,6 +25,171 @@ generators were verified to reproduce `HEAD` byte-identically before anything wa
 
 ---
 
+## Resume here — checkpoint 2026-10-11
+
+### Where
+
+- **Branch: `feat/dr-symptom-index`**, rebased onto `0cfad2db` (= `origin/main`, PR #826's merge).
+- **Worktree:** `/home/steve/repos/pegasus-deps-advisory-flip` (the long-lived domain-reference
+  worktree). Postgres not needed.
+- **Commits:** `935bc47d` — _feat(domain-reference): the symptom index — a path in from legacy code,
+  not from the vocabulary_ — plus the plan checkpoint you are reading.
+- **`chore/parked-dr` is re-parked at `origin/main` and clean again.** The symptom-index commit had
+  been made on it by mistake. It was moved off with `git checkout -b` (which carries a dirty working
+  tree across) and the parked branch re-pointed with `git branch -f` — **not** `reset --hard`. See
+  gotcha 9: this plan's own earlier resume sequence prescribed `reset --hard` while asserting the
+  tree was clean, and would have destroyed this checkpoint.
+
+### Status
+
+- [x] **M1-M5** — item 4's measurements. Done, bytes checked rather than prose trusted.
+- [x] **M6a — the `(1b)` evidence repair.** **MERGED, PR #828 → `e9b2808e`.** Main + Deploy green.
+      Verified post-merge: the published catalog is byte-identical and `0.7.0` stands.
+- [x] **§8.3(1) — THE SYMPTOM INDEX. Built, gated, committed (`935bc47d`), pushed, PR open.**
+      `docs/domain-reference/symptom-index.md` (281 lines, generated) +
+      `tools/generate-symptom-index.ts` + `tests/conformance/symptom-index.test.ts` (9 assertions) +
+      `data/legacy-correspondence.json` (the one authored input) + a `symptom-index` npm script.
+      **Eight gates green.** Five tampers run, all red on the intended assertion.
+- [ ] **§8.3(2) — grade surfacing at point of use.** Not started.
+- [ ] **§8.3(3) — write `survey`, `estimate`, `claim`.** Not started.
+- [ ] **§8.3(4) — stop, let usage drive it.**
+- [ ] **Item 4's own design round — PAUSED, do not resume.** See the banner and §8.2.
+
+### Next action
+
+**First, land the symptom-index PR.** Find its number with
+`gh pr list --head feat/dr-symptom-index`; watch branch CI, then `gh pr merge <N> --auto` (**no
+`--squash`** — silence on a healthy enqueue is normal) and watch the merge-queue group run through
+to main's Deploy. One thing to watch rather than block on: 453 new lines in `tools/` plus 162 in
+`tests/` can move the coverage ratchet — if it trips, **restore the floors from `main` and add
+branch tests; never lower them.**
+
+**Then §8.3(2) — surface the evidence grade at the point of use.** §8.3 item 2 below is its
+specification and the measurement behind it; the short version is that every symptom-index entry
+(and ideally every glossary entry) should carry its retention state from the four — **captured
+here** / **retained-elsewhere** / **analysis-only** / **unrecoverable** — plus whether the reading
+is `[ORIGINAL]`/`[SYNTHESIS]`. Derive it from `registry.yaml`'s `retention` / `retained_files` and
+the filesystem; **per-citation, not per-source** — DCSA has 105 captured files and still lost the
+JIT sub-spec, which is exactly how five citations came to rest on nothing. The symptom index is the
+surface that needs this most, because it is the one a migrator actually reads.
+
+### Uncommitted work
+
+**None.** The plan checkpoint you are reading is committed alongside the symptom index on
+`feat/dr-symptom-index`. The placement problem is fixed: `chore/parked-dr` is back at `origin/main`,
+clean, as this plan and `CLAUDE.md`'s parallel-work rule require.
+
+### In flight
+
+**The symptom-index PR** on `feat/dr-symptom-index` — the only thing of this stream's. PRs **#827**
+and **#828** are both **MERGED**, and so is **#826** (`ci(merge-queue)`, now `origin/main`); all
+their remote branches auto-deleted, local branches removed, monitors ended.
+
+Open PRs at checkpoint, none of the rest this stream's: **#829**, **#830**, **#831** (Dependabot —
+hono, aws-cdk, minor-and-patch) and **#145** (Cognito/SES, DRAFT, on HOLD for the SES sandbox).
+Re-check with `gh pr list --state open --limit 10`.
+
+### Decisions & dead ends
+
+- **The consumer was named this session and it reframed the whole backlog.** The reference model is
+  to be supplied to the **MVVM/domain refactor of the legacy `peg2`/`movemanager` repo**, read by
+  Claude Code sessions. **"Nothing imports `@pegasus/domain-reference`" is NOT a defect** — the
+  prose is the product and the TypeScript is a harness that stops it rotting. An earlier
+  recommendation in this session to "give it a consumer" was **wrong** and was withdrawn.
+- **Item 4's design round was dropped as the next step**, not abandoned. Three of the last four
+  rounds emitted nothing, and a migrator never asks where a second delegation axis lives.
+- **`src:sirva-ade` is `retained-elsewhere`, NOT `secondary`** — corrected mid-session after this
+  plan asserted the opposite. Its bytes are real and version-controlled (13 ADE PDFs, private repo
+  `pegasus-workflows`). **Do not re-derive this; the manifest is in `registry.yaml`.**
+- **Option 1 (recapture the JIT spec) could not be completed as specified** and the reasons are
+  permanent: `dcsaorg/DCSA-OpenAPI` is **404**, the standard was renamed to DCSA Port Call, the only
+  GitHub copy is from 2020, and every surviving SwaggerHub spec is **unbundled** so none carries the
+  cited line numbering. `(1b)` was the fallback and it landed.
+- **Capturing the SIRVA PDFs into this repo was REFUSED** — `license: partner-confidential` and
+  `DolasDev/pegasus` is **public** (user has confirmed public is fine, but that does not extend to
+  partner-confidential material). Making the reference _resolvable_ was the answer instead.
+- **The symptom index's generated/authored split was deliberate**: only the legacy→concept mapping
+  is authored, because the reference knows nothing about MoveManager ([SD §0]). Everything else is
+  derived from the published catalog, and the generator **refuses to build** on disagreement.
+
+### Gotchas
+
+1. **The symptom-index generator is `async` and formats its own output through Prettier.** The
+   pre-commit hook pads markdown table columns, so unformatted tables are rewritten on commit and
+   the reproduce gate fails on **whitespace alone**. Any new assertion against table text must be
+   **whitespace-tolerant** (a regex, not a literal) — one already caught this.
+2. **A generator cannot `import` from `src/` at runtime.** `src/` modules import each other without
+   file extensions and nothing ever runs them; `vocabulary.ts` → `../src/ids` fails on the first
+   hop. The symptom-index generator reads the **published catalog** instead
+   (`index.json` members for fact classes, `captured.schema.json`'s `$defs/AggregateId.*` for
+   aggregate kinds). The other generators use the TypeScript compiler API.
+3. **`charge` and `partyRole` are the ONLY two names that are both a fact class and an aggregate
+   kind** — measured against the wire. Everything else in `AGGREGATE_KINDS` is a subject only.
+   Listing `order`/`trip`/`stop` as a _concept_ is the error the new gate caught on its first run.
+4. **`git` is heavily restricted in this worktree.** Heredocs are refused; so is any `git` the guard
+   cannot verify stays inside the worktree — including `git -C <other worktree>` and
+   `cd <shared checkout> && git …`, **even when the user runs it with `!`**. Write commit messages
+   to a file (`git commit -F`), and split compound commands.
+5. **Never build a commit message with `printf`/`echo` containing backticks** — the shell evaluates
+   them and mangles the message. It happened this session and needed an `--amend`. Use the Write
+   tool.
+6. **The primary checkout `/home/steve/repos/pegasus` is ~4 commits behind `main`** and **cannot be
+   synced from this session** (the guard blocks it, `!` included). It needs a plain shell outside
+   Claude Code, or a session started in that checkout.
+7. **Sources with NO `captured/`** (all `analysis-only`): `dp3-400ng`, `dtr-part-iv`,
+   `dp3-tender-of-service`, `nmfta-ebol`, `weichert-supplier-api`. `nmfta-ebol` is the trap —
+   `registry.yaml` lists sha256 hashes so it _reads_ as captured, but `local/` is not in the repo.
+   `stedi-x12-reference`'s `captured/` holds only a **notes** file.
+8. **`movemanager` is at `/home/steve/repos/movemanager`**, branch `master`, commit `f0abdf16`
+   (2026-09-03) — which is what the correspondence table was measured against. Re-measure with
+   `scratchpad/measure_modules.py` if the counts need refreshing, and bump `measuredAt`.
+9. **A resume checkpoint that says "the working tree is clean" is itself the uncommitted change.**
+   This plan's 2026-10-11 checkpoint asserted a clean tree and prescribed
+   `git checkout chore/parked-dr && git reset --hard origin/main` to re-park the branch — while the
+   checkpoint was an unstaged edit to this very file, which that sequence would have destroyed.
+   **`git status` before believing a plan about the working tree**, and prefer
+   **`git branch -f <branch> <ref>`** to re-point a branch you are not on: it needs no checkout, so
+   nothing in the tree is at risk. `git checkout -b` carries a dirty tree across to the new branch,
+   which is what saved it here.
+
+### Verification still owed
+
+**Nothing for the merged work.** PR #828's gates were green on the branch, on the merge-queue group
+run and on `main`; the published catalog was verified byte-identical post-merge.
+
+**For `935bc47d` (the symptom index), all eight gates passed locally and nothing is owed except CI:**
+
+```
+npm run test          -w @pegasus/domain-reference
+npm run lint          -w @pegasus/domain-reference
+npm run typecheck     -w @pegasus/domain-reference
+npm run alloy         -w @pegasus/domain-reference
+npm run glossary      -w @pegasus/domain-reference
+npm run catalog       -w @pegasus/domain-reference
+npm run context-map   -w @pegasus/domain-reference
+npm run symptom-index -w @pegasus/domain-reference
+```
+
+**One thing NOT verified and worth a look before the PR:** the `symptom-index` script is **not wired
+into any CI workflow or `turbo.json` pipeline.** The other three generators are gated by
+`tests/conformance/*.test.ts`, which `npm run test` runs — and `symptom-index.test.ts` does hold the
+reproduce gate, so CI _will_ catch a stale artifact. But confirm no workflow needs the new script
+added explicitly: `grep -rn "context-map" .github/ turbo.json`.
+
+### Not done, deliberately
+
+- **movemanager was not touched.** Wiring the index into its `CLAUDE.md` and
+  `.claude/commands/extract-domain-rules.md` is the user's step and they have said so. Note that
+  `extract-domain-rules.md` currently has **zero** references to the reference model, so that
+  wiring is entirely still to do.
+- **19 of the 28 correspondence rows are `●● read`; 9 are `●○ from names`.** `_zUnsorted/`
+  (25 forms, 4,675 lines) is the highest-value row to triage properly — large, and nobody has
+  classified it.
+- **`dcsa/analysis.md`'s untriaged `jit/…` citations** (M6b) remain **A3's and A4's**, blanket-
+  disclosed, not re-graded.
+
+---
+
 ## 0. Why this item, of the three candidates
 
 Named by `plans/completed/domain-reference-a8-item11.md` §8. Chosen because:
@@ -419,7 +584,13 @@ npm run context-map -w @pegasus/domain-reference
 Then **diff all six emitted files against `scratchpad/item4/`** and classify only the four
 `catalog/*` ones for the version. `glossary.md` / `context-map.md` moving is not a version concern.
 
-## 7. Resume here — state as of 2026-10-10, end of session
+## 7. SUPERSEDED — the 2026-10-10 mid-session state, kept for its §M6a pointer only
+
+> **This is NOT the resume point. `## Resume here — checkpoint 2026-10-11` at the top of the file
+> is.** Everything below was true when `feat/dr-a8-item4` was still unpushed; that branch has since
+> **merged as PR #828** and the symptom index has been built on top of it. The one paragraph still
+> worth reading is the last — _"The one thing to re-read first"_ — because `[A8 §4]`'s "Our step"
+> genuinely did get larger, and that still bears on §3's three candidate shapes.
 
 **Branch `feat/dr-a8-item4`, committed, NOT pushed and NO PR.** Base `a8e6608b` (= `origin/main`).
 Working tree clean. Seven gates green; all six emitted files byte-identical to the baseline.
@@ -516,7 +687,9 @@ form-clusters it will hit immediately have no fact class at all.
 
 ### 8.3 Do these instead, in this order
 
-1. **A SYMPTOM INDEX — the highest-value thing left, and it is small (~300 lines, generated).**
+1. **A SYMPTOM INDEX — ✅ DONE 2026-10-10, commit `935bc47d` (PR open; see "Resume here").** Landed as `docs/domain-reference/symptom-index.md` (generated, 281 lines) with `tools/generate-symptom-index.ts`, `tests/conformance/symptom-index.test.ts` (9 assertions, 5 tampers) and `data/legacy-correspondence.json` as the single authored input. The description below is kept as written, because it is the specification the artifact was built against.
+
+   **~~A SYMPTOM INDEX — the highest-value thing left, and it is small (~300 lines, generated).~~**
    **The model is indexed by vocabulary, not by symptom, and that is the actual readiness blocker.**
    `glossary.md`'s 246 headings are "Aggregates (15)", "Record types (32)", "Bases (5)". A session
    opening `AcctMemosMaintenanceForm.vb` arrives holding _"accounting memo"_ or _"this form writes
@@ -527,6 +700,7 @@ form-clusters it will hit immediately have no fact class at all.
    finding silence. Generate it from `data/` + the vocabulary so it cannot rot.
    **Wiring the MVVM skill to the model before this exists would hand sessions 3.9k lines of good
    reference they cannot find their way into.**
+
 2. **SURFACE THE EVIDENCE GRADE AT THE POINT OF USE.** Generated, cheap, and it belongs with (1) —
    the symptom index is the surface that needs it most.
 
