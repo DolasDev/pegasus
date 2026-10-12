@@ -143,7 +143,7 @@ command) `saas-api.tmprl.cloud` does not resolve.
     resolves. The check works.
   - **After 3a deploys:** re-run it. Expect `saas-api.tmprl.cloud` FAILS
     (NXDOMAIN) and the control still RESOLVES, in staging and prod. Run it
-    with **`scripts/temporal-dns-probe.sh <staging|prod>`** (committed; the
+    with **`scripts/temporal/dns-probe.sh <staging|prod>`** (committed; the
     repo copy was re-run against staging with identical results).
 - [ ] User: ask Temporal support to raise the namespace cap.
 
