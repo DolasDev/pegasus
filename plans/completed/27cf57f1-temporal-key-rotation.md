@@ -8,8 +8,11 @@
 - **User request (2026-10-12):** _"If the rotation can be reasonably automated
   do that, if not I'll need some sort of reminder to rotate the keys to ensure
   service doesn't go down."_
-- **Status:** approved 2026-10-12; steps 1–7 implemented 2026-10-12 (see
-  **Progress** at the end). Step 8 (staging acceptance) is after deploy.
+- **Status:** approved 2026-10-12; steps 1–7 and 9 done 2026-10-12 (see
+  **Progress** at the end). Archived when the PR opened: step 8 (staging
+  acceptance) runs after deploy and is tracked by the parent plan's **Step 9**
+  in `plans/in-progress/tenant-temporal-namespaces.md`, as is the ⚠️ user
+  `--tag-only` action.
 
 ## Facts this plan rests on (verified 2026-10-12)
 

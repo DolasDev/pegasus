@@ -283,7 +283,7 @@ account work blocks the code.
 - [x] **Key rotation and expiry alarm (user request 2026-10-12):**
       _"if the rotation can be reasonably automated do that, if not I'll need
       some sort of reminder"._ Done in `feat/temporal-key-rotation`
-      (`plans/in-progress/temporal-key-rotation.md`). The daily rule now sends
+      (`plans/completed/27cf57f1-temporal-key-rotation.md`). The daily rule now sends
       `{action: 'daily-maintenance'}`:
   - **Provisioner key: self-rotates** from 45 days out (mint, verify with a
     fresh client, then `PutSecretValue {apiKey, keyId, expiresAt}`; the old
