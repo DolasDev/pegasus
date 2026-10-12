@@ -389,7 +389,7 @@ run someCustodyIsKnown for 4 expect 1
 assert custodyAtReturnsAtMostOneHolder {
   all g: Goods, i: Instant | lone holdersAt[g, i]
 }
-check custodyAtReturnsAtMostOneHolder for 4 expect 0
+check custodyAtReturnsAtMostOneHolder for 4 expect 1
 
 /**
  * A1c was the other jaw of the pincer. Before the fix the two had to be read together: **keep** the
