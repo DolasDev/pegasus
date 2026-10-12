@@ -361,3 +361,52 @@ Postgres. Operations → Availability (`AvailabilityFilter`,
 - Only the owner can delete (Planning's DELETE deletes any id — don't copy it).
 - The page seeds from the default **during render**, behind its loading state,
   so the table never paints the built-in filters and then jumps.
+
+## Gating a hand-maintained restatement of a code list
+
+Some artefacts have to restate a list that lives in code: an Alloy spec transcribing a table of fact
+classes, prose naming a type's members, a fixture enumerating cases. The restatement is not
+redundant — the Alloy spec is what found F1, the defect five rounds of human review missed — but it
+**drifts**, and it drifts invisibly, because the artefact's own checks pass over whatever it contains.
+
+**The pattern:** a conformance test in `tests/conformance/` that reads the artefact as **text** and
+compares it to the code constant, in **both directions**.
+
+```ts
+const SPEC = readFileSync(`${ALLOY_DIR}subject-admission.als`, 'utf8')
+const DECLARED = [...SPEC.matchAll(/^one sig (T_\w+) extends Type \{\} \{ family = (F_\w+) \}/gm)]
+
+// 1. the parse itself is an assertion
+expect(DECLARED.length).toBe((SPEC.match(/^one sig T_/gm) ?? []).length)
+// 2. nothing in the code missing from the artefact …
+// 3. … and nothing in the artefact missing from the code
+// 4. and each row's *relationship* matches, not just its presence
+```
+
+**The rules that make it worth having:**
+
+- **Both directions, always.** One direction catches the stale copy; the other catches the orphan
+  nobody removed.
+- **Assert the parse.** Compare the parsed count to a cruder count of the same lines. Without it, a
+  reformatted line drops out of both directions and the gate goes green on a file it has stopped
+  reading — the failure mode that looks exactly like success.
+- **Check the relationships, not only the membership.** The real drift here was _missing rows_, but
+  a row with the **wrong** family would have been worse and invisible. Assert
+  `family = F_y` against `CANONICAL_SUBJECT_FAMILY[x]` per row.
+- **Transform forwards; never normalise both sides.** Where the artefact must respell a name
+  (`weight.net` → `T_weightNet`, because Alloy has no dotted identifiers), apply that rule to the
+  code's name and compare **case-sensitively**. Lower-casing both sides is easier and it silently
+  accepts `T_Survey`.
+- **Gate the counts the artefact spells out.** If a name or comment says "the eleven families", the
+  gate checks that word against the list length — otherwise the next person renames the list and not
+  the name.
+- **Assert the scope you claim to cover.** This gate reads one `.als`; it also asserts the other two
+  enumerate nothing, so growing a second list is a failure instead of a hole.
+- **It must need no toolchain.** Parsing text keeps the gate in the vitest suite, which CI runs on
+  every PR. The heavyweight check (here, the analyzer: a JVM plus a pinned jar) is a separate
+  decision with a separate cost, and coupling them means neither lands.
+- **Tamper it against the real defect.** Write the gate _before_ the fix and run it red. The red
+  output is both the measurement and a tamper you did not have to invent.
+
+Precedents: `tests/conformance/documents.test.ts` (prose ↔ vocabulary) and
+`tests/conformance/alloy-vocabulary.test.ts` (Alloy spec ↔ vocabulary).
