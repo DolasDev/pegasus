@@ -3,8 +3,8 @@
  *
  * `alloy/subject-admission.als` transcribes [SD §4.7.1]'s table by hand: one `one sig T_x` per fact
  * class, one `fun F_y` per family, and `isADeclaredFamily` enumerating the families a row may
- * declare. Nothing checked the transcription, and `npm run alloy` runs nowhere in CI, so it fell
- * **three fact classes and one whole family** behind the vocabulary without a word:
+ * declare. Nothing checked the transcription, and at the time `npm run alloy` ran nowhere in CI, so
+ * it fell **three fact classes and one whole family** behind the vocabulary without a word:
  * `documentIssuance` went missing at catalog `0.6.2`, and `survey` and `estimate` were added by
  * [A10] at `0.7.1` — the most recent round made it worse and nothing said so.
  *
@@ -25,10 +25,12 @@
  *
  * ## Why it needs no JVM
  *
- * It parses the `.als` as **text**. That is deliberate and it is the whole reason this guard belongs
- * in the vitest suite — which CI runs on every PR — rather than waiting on the separate, larger
- * question of putting the analyzer itself in the `Test` job. The analyzer proves things about the
- * model; this test proves the model is about the right things.
+ * It parses the `.als` as **text**. That is deliberate: it keeps this guard in the vitest suite,
+ * which CI runs on every PR, instead of behind a JVM. The analyzer now runs in CI too, but in its
+ * own `Alloy (domain-reference)` job path-filtered to `packages/domain-reference/alloy/**` — so a
+ * change to the **vocabulary** is covered by this test and never waits on Java. The division of
+ * labour is the point: the analyzer proves things about the model, and this test proves the model is
+ * about the right things.
  *
  * ## The spelling rule
  *
@@ -180,8 +182,10 @@ describe('the Alloy spec transcribes the families', () => {
    *
    * Checked separately from the `fun` list because they fail differently: a family can be declared
    * and left out of the predicate, which is what turns S1's `check … expect 0` SAT, and a family can
-   * be in the predicate with no `fun` to name it, which is a parse error the analyzer would catch —
-   * if the analyzer ran anywhere.
+   * be in the predicate with no `fun` to name it, which is a parse error only the analyzer catches.
+   * Both are checked here because this test is the cheap half: it runs in every `Test` job, while
+   * the analyzer runs in its own path-filtered `Alloy (domain-reference)` job and therefore only
+   * when the specs themselves change.
    */
   const predicate = SPEC.match(/pred isADeclaredFamily\[m: set Kind\] \{([\s\S]*?)\n\}/)
   const predicateMembers = [...(predicate?.[1] ?? '').matchAll(/m = (F_[A-Za-z0-9_]+)/g)].map(

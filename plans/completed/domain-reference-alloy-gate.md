@@ -9,7 +9,7 @@ list so it cannot drift again. Then decide, separately, whether the analyzer its
 
 ---
 
-## Resume here — checkpoint 2026-10-12 (second, after steps 1-2)
+## COMPLETE — all three steps landed 2026-10-12
 
 ### Where
 
@@ -20,7 +20,7 @@ list so it cannot drift again. Then decide, separately, whether the analyzer its
 - **CI green on PR #837, and the gate was confirmed in the log rather than from the badge:**
   `✓ tests/conformance/alloy-vocabulary.test.ts (10 tests)` under `@pegasus/domain-reference:test`.
   `ci.yml:489` runs `turbo run test` **unfiltered**, so the package is always in scope.
-- **Steps 1 and 2 are DONE and verified.** **Step 3 is NOT, deliberately** — see below.
+- **All three steps are DONE.** Steps 1-2 merged as **#837** (`3ec94091`); step 3 as **#839**.
 - `chore/parked-dr` was re-parked at `origin/main` (`e65c5edc`); it had been left behind at
   `9d105a19` while `#835` and `#836` landed.
 
@@ -32,13 +32,29 @@ list so it cannot drift again. Then decide, separately, whether the analyzer its
 - [x] **Step 1 — the four coupled edits** to `subject-admission.als`. Done.
 - [x] **Step 2 — the gate**, `tests/conformance/alloy-vocabulary.test.ts`. Done, tampered three
       ways, runs under `npm run test` and therefore in CI.
-- [ ] **Step 3 — decide whether the analyzer runs in CI.** Argued below, **not decided**. Needs a
-      call from the user on putting a JVM in the `Test` job's critical path.
+- [x] **Step 3 — the analyzer in CI.** Decided and done: its **own** path-filtered job, not a step
+      in `Test`. See "Step 3 — decided and landed" below.
 
 ### Next action
 
-**Step 3, and it is a decision, not a chore.** Everything else here has landed. The argument is
-written out under "Step 3" below; what it needs is a yes or no on the cost, not more measurement.
+**None — this plan is closed.** One thing is owed and it is **not** a code change:
+`Alloy (domain-reference)` is **not a required status check**, so a red run is advisory today.
+Branch protection enumerates required contexts by name, so adding it is a team-wide change to
+everyone's merge path and was left to the user:
+
+```
+gh api -X POST repos/DolasDev/pegasus/branches/main/protection/required_status_checks/contexts -f 'contexts[]=Alloy (domain-reference)'
+```
+
+**Use that endpoint, not `PATCH /required_status_checks`.** The `contexts` sub-resource is
+**additive**; a `PATCH` on the parent replaces the whole object, so passing one context there would
+**remove the other nine** required checks (`Secret Scanning (Betterleaks)`, `Typecheck`, `Lint`,
+`Test`, `E2E Tests`, and the four Python jobs). Verify after with
+`gh api repos/DolasDev/pegasus/branches/main/protection/required_status_checks --jq '.contexts'`
+and expect **ten** names back.
+
+Until that runs, step 3 buys **visibility** rather than a gate — the same shape as
+[[feedback_flag_gated_feature_needs_infra_wiring]]: shipped is not wired.
 
 ---
 
@@ -146,36 +162,42 @@ all re-emit **byte-identical** against a pre-change scratchpad baseline, and `sp
 
 ---
 
-## Step 3 — CI, and it is a genuine decision
+## Step 3 — decided and landed (#839)
 
-**The state of play, measured:** `npm run alloy` runs **nowhere**. No `.github/workflows/*` mentions
-it, `turbo.json` has **no `alloy` task**, and **no vitest test executes the analyzer** — the tests
-only _cite_ command names in comments (e.g. `invariants.test.ts:708` cites "C8 in
-`alloy/custody.als`"). So the model-checking that found the worst defect in this corpus is a manual
-local step.
+**The decision:** the middle option. `alloy` runs in CI in its **own** job,
+`Alloy (domain-reference)`, path-filtered to `packages/domain-reference/alloy/**` (plus `ci.yml`
+itself so the job self-validates). **Not** a step in `Test`, so the path every code PR pays for
+never installs Java.
 
-**What it would take.** `run.mjs` pins `ALLOY_VERSION = '6.2.0'` with
-`ALLOY_SHA256 = 6b8c1cb5bc93bedfc7c61435c4e1ab6e688a242dc702a394628d9a9801edb78d` and downloads to
-`packages/domain-reference/alloy/.tools/`, which is **gitignored** (`.gitignore:120`). It supports
-`--no-fetch` / `ALLOY_NO_FETCH=1` to fail instead of downloading, and `ALLOY_JAR` to point at an
-existing copy — so a CI job would cache `.tools/` and pass `ALLOY_JAR`, or accept one download per
-cache miss. A JVM is also needed; **local is OpenJDK 21** and the analyzer ran fine on it.
+**What made it cheap, measured:** the analyzer solves every command in **4.4s**, and `run.mjs`
+imports only `node:` builtins — so the job needs **no `npm ci`** and skips
+`./.github/actions/setup` entirely (whose node_modules restore is ~463 MB this job never reads).
+`actions/setup-node@v7` + `actions/setup-java@v6` (temurin 21) is the whole toolchain.
 
-**For:** it re-runs the proofs on every PR. The findings register
-(`docs/domain-reference/analysis/findings-from-alloy.md`, F1-F5) is the evidence this pays —
-**F1** alone (`handover` had no qualifier, so **custody could never change hands twice**, which
-"made a normal van-line move unrepresentable") was found on the **first** Alloy run after **five
-rounds of human review missed it**, with the TypeScript tests passing throughout.
+**No jar cache, deliberately.** The jar is sha256-pinned inside `run.mjs`
+(`ALLOY_VERSION 6.2.0`, `.tools/` gitignored at `.gitignore:120`) and is a ~40 MB release asset the
+runner fetches in seconds. Caching it would spend an eviction-pressured Actions budget to save that
+— the exact trade `.github/actions/setup` already rejects for `~/.npm`, with the reasoning written
+out in that file. `ALLOY_JAR` and `--no-fetch` exist if that ever needs revisiting.
 
-**Against:** a JVM plus a ~40MB jar in the critical path of the `Test` job, for a spec that changes
-only when the vocabulary does — and **the gate that just landed is what catches that**. The full run
-takes seconds locally, so the cost is setup, not solve time.
+**The consequence to know:** `|| github.event_name == 'merge_group'` is **mandatory** —
+`scripts/check_ci_merge_group.py` enforces it, because paths-filter cannot diff a merge-group ref
+and a skipped required check passes **vacuously**. So the analyzer runs on **every merge group**,
+not only on alloy-touching PRs. At 4.4s that is the right trade, but "only when the specs change"
+is true of **PRs only**.
 
-**The honest shape of the decision:** step 2 removes the failure mode that actually bit. Step 3 buys
-re-proving the invariants against **edits to the specs' own logic**, which is a different and rarer
-risk. A middle option exists and is probably the right one: run `alloy` in CI **only on changes
-under `packages/domain-reference/alloy/**`**, path-filtered the way `deploy.yml` already filters
-components, so the JVM never touches the common path. **Not decided — needs the user's call.**
+**Tampered, both of the guard's rules, against this very job:**
+
+| tamper                              | result                                                 |
+| ----------------------------------- | ------------------------------------------------------ |
+| drop the `merge_group` clause       | exit 1, naming `alloy ("Alloy (domain-reference)")`    |
+| typo the output name (always falsy) | exit 1, naming the job + listing the declared outputs  |
+| restored                            | `✔ 10 path-filtered job(s) all run in the merge queue` |
+
+**And the `alloy/**` filter arm + red propagation** were tamper-checked on the branch by flipping
+one `expect` in a `.als` and watching the job go red in CI.
+
+**What it does NOT buy yet:** see "Next action" — it is not a required status check.
 
 ---
 
@@ -196,6 +218,23 @@ holds nine members once `survey` and `estimate` land. The count is wrong under e
 predates this round. **Left alone deliberately:** it is a prose count this gate does not check, and
 changing it would be a claim about [SD §4.7.1]'s intent that no measurement here supports. Worth a
 sentence in the next round that touches the table.
+
+## The sweep that step 3 forced
+
+`npm run alloy` running **nowhere** was load-bearing prose in four places, and landing step 3 made
+every one false. Swept by grepping the **item**, not the phrase, and triaging by tense
+([[feedback_sweep_the_item_not_the_phrase]]):
+
+- `alloy-vocabulary.test.ts` header — the statement of the cause. **Kept as history, re-tensed**
+  ("at the time ... ran nowhere"), because the sentence is the argument for the file existing.
+- the same file's separate-checks rationale ("if the analyzer ran anywhere") and its
+  "why it needs no JVM" section — both now state the **division of labour** instead of an absence.
+- `GOTCHAS.md`'s worked-example entry.
+- `PATTERNS.md`'s "the heavyweight check is a separate decision" — now the record that **both**
+  landed and that splitting them is what made it affordable.
+
+The other ~60 `nowhere` hits in the package are unrelated ("nowhere to go", "defines them
+nowhere") and were correctly left alone.
 
 ## Plan housekeeping done this session
 
