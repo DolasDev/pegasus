@@ -555,6 +555,9 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   cronLogGroupNames: apiStack.cronLogGroupNames,
   temporalWorkerLogGroupName:
     envName === 'staging' || envName === 'prod' ? `/pegasus/${envName}/temporal-worker` : undefined,
+  // Temporal key-expiry alarms: exactly where the provisioner runs (its daily
+  // run publishes the gauges; the alarms breach on missing data).
+  temporalKeyExpiryAlarms: apiTemporalProvisionerSecretArn !== undefined,
 })
 
 // ── Asset stacks (deployed last — depend on all upstream stacks) ──────────────

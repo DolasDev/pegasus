@@ -846,10 +846,12 @@ export class ApiStack extends cdk.Stack {
       //
       // Creates, rotates and deletes each tenant's own Temporal Cloud
       // namespace through the Cloud Ops API, invoked asynchronously by the
-      // admin routes (and daily, to retire rotated-out keys). Its own function
-      // so the Cloud Ops key never sits in the API's request path: ONLY this
-      // function can read `pegasus/<env>/temporal-provisioner`, and it reads
-      // it at runtime (no plaintext env var).
+      // admin routes, and daily for key maintenance: retire rotated-out keys,
+      // rotate tenant keys and its own key near expiry, publish the
+      // key-expiry gauges. Its own function so the Cloud Ops key never sits
+      // in the API's request path: ONLY this function can read (or write)
+      // `pegasus/<env>/temporal-provisioner`, and it reads it at runtime (no
+      // plaintext env var).
       //
       // NOT VPC-attached: 3a's DNS Firewall blocks saas-api.tmprl.cloud in
       // the WireGuard VPC. Created only when the secret ARN is configured
@@ -878,6 +880,8 @@ export class ApiStack extends cdk.Stack {
             ENV_NAME: envName,
             WORKFLOW_TOKEN_KMS_KEY_ID: workflowTokenKey.keyId,
             TEMPORAL_PROVISIONER_SECRET_ARN: props.temporalProvisionerSecretArn,
+            // Metadata only (the `expiresAt` tag), for the platform-key gauge.
+            TEMPORAL_PLATFORM_SECRET_ARN: temporalSecret.secretArn,
           },
           bundling: {
             minify: true,
@@ -896,6 +900,35 @@ export class ApiStack extends cdk.Stack {
 
         dbSecret.grantRead(provisionerFunction)
         provisionerSecret.grantRead(provisionerFunction)
+        // Self-rotation writes its own new key. PutSecretValue ONLY, on this
+        // secret only: `grantWrite` would add UpdateSecret and
+        // UpdateSecretVersionStage, which it doesn't need. The secret uses
+        // the AWS-managed key, so no KMS grant is needed.
+        provisionerFunction.addToRolePolicy(
+          new iam.PolicyStatement({
+            actions: ['secretsmanager:PutSecretValue'],
+            resources: [provisionerSecret.secretArn],
+          }),
+        )
+        // The platform key's expiry tag, for the expiry gauge. DescribeSecret
+        // returns metadata only; there is deliberately no GetSecretValue on
+        // this secret, so the provisioner never holds the platform key.
+        provisionerFunction.addToRolePolicy(
+          new iam.PolicyStatement({
+            actions: ['secretsmanager:DescribeSecret'],
+            resources: [temporalSecret.secretArn],
+          }),
+        )
+        // The key-expiry gauges and the rotation-failure count.
+        provisionerFunction.addToRolePolicy(
+          new iam.PolicyStatement({
+            actions: ['cloudwatch:PutMetricData'],
+            resources: ['*'],
+            conditions: {
+              StringEquals: { 'cloudwatch:namespace': PEGASUS_WORKFLOWS_METRIC_NAMESPACE },
+            },
+          }),
+        )
         // Encrypts each tenant key it mints; decrypts it for the readiness check.
         workflowTokenKey.grantEncryptDecrypt(provisionerFunction)
 
@@ -905,13 +938,15 @@ export class ApiStack extends cdk.Stack {
           provisionerFunction.functionName,
         )
 
+        // The construct id predates daily-maintenance; renaming it would
+        // replace the rule.
         new events.Rule(this, 'TemporalProvisionerRetireKeysSchedule', {
           schedule: events.Schedule.rate(cdk.Duration.days(1)),
           description:
-            'Deletes rotated-out tenant Temporal API keys whose grace period has passed.',
+            'Temporal key maintenance: retires rotated-out tenant keys, rotates keys near expiry (tenant and own), publishes the key-expiry gauges.',
           targets: [
             new eventsTargets.LambdaFunction(provisionerFunction, {
-              event: events.RuleTargetInput.fromObject({ action: 'retire-previous-keys' }),
+              event: events.RuleTargetInput.fromObject({ action: 'daily-maintenance' }),
               retryAttempts: 0,
             }),
           ],

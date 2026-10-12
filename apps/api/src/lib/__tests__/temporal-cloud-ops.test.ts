@@ -283,6 +283,32 @@ describe('createTemporalCloudOpsClient — requests', () => {
     expect(calls[1]!.url).toContain('page_token=p2')
   })
 
+  it('listOwnApiKeys lists every key the caller can see, with owner and expiry', async () => {
+    // The live API answers in lowerCamel (probed against staging, 2026-10-12).
+    const { client, calls } = harness([
+      {
+        status: 200,
+        body: {
+          apiKeys: [
+            {
+              id: 'k1',
+              resourceVersion: 'r1',
+              spec: { ownerId: 'sa-p', expiryTime: '2027-10-11T20:27:57Z' },
+            },
+          ],
+          nextPageToken: 'p2',
+        },
+      },
+      { status: 200, body: { apiKeys: [{ id: 'k2', resourceVersion: 'r2', spec: {} }] } },
+    ])
+    expect(await client.listOwnApiKeys()).toEqual([
+      { id: 'k1', ownerId: 'sa-p', expiresAt: new Date('2027-10-11T20:27:57Z') },
+      { id: 'k2', ownerId: '', expiresAt: null },
+    ])
+    expect(calls[0]!.url).toBe('https://saas-api.tmprl.cloud/cloud/api-keys')
+    expect(calls[1]!.url).toBe('https://saas-api.tmprl.cloud/cloud/api-keys?page_token=p2')
+  })
+
   it('findServiceAccountByName pages and matches the exact name', async () => {
     const { client } = harness([
       {

@@ -379,6 +379,37 @@ export function createTemporalCloudOpsClient(opts: CloudOpsClientOptions) {
       return keys
     },
 
+    /**
+     * Every key the CALLER can see, with owner and expiry. A provisioner key
+     * sees only its own service account's keys, so this is how the
+     * provisioner finds its own account id and checks its own expiry. Also
+     * the cheapest authenticated call: a fresh client on a new token uses it
+     * to prove the token works.
+     */
+    async listOwnApiKeys(): Promise<
+      Array<{ id: string; ownerId: string; expiresAt: Date | null }>
+    > {
+      const keys: Array<{ id: string; ownerId: string; expiresAt: Date | null }> = []
+      let pageToken = ''
+      do {
+        const body = await request('GET', '/cloud/api-keys', {
+          ...(pageToken ? { query: { page_token: pageToken } } : {}),
+        })
+        const page = field(body, 'api_keys')
+        for (const k of Array.isArray(page) ? page : []) {
+          const spec = field(k, 'spec')
+          const expiry = Date.parse(str(spec, 'expiry_time'))
+          keys.push({
+            id: str(k, 'id'),
+            ownerId: str(spec, 'owner_id'),
+            expiresAt: Number.isNaN(expiry) ? null : new Date(expiry),
+          })
+        }
+        pageToken = str(body, 'next_page_token')
+      } while (pageToken)
+      return keys
+    },
+
     async deleteApiKey(input: {
       keyId: string
       resourceVersion: string

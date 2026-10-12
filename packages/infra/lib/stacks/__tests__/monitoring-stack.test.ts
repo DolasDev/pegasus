@@ -634,3 +634,78 @@ describe('MonitoringStack — Logs Insights query definitions (Phase 2)', () => 
     template.resourceCountIs('AWS::Logs::QueryDefinition', 0)
   })
 })
+
+describe('MonitoringStack — Temporal key-expiry alarms', () => {
+  function synth(temporalKeyExpiryAlarms?: boolean) {
+    const app = new cdk.App()
+    return Template.fromStack(
+      new MonitoringStack(app, `TestMonitoringKeys${String(temporalKeyExpiryAlarms)}`, {
+        lambdaFunctionName: 'test-api-function',
+        httpApiId: 'abc123def4',
+        httpApiStage: '$default',
+        alarmEmail: 'alerts@example.com',
+        ...(temporalKeyExpiryAlarms === undefined ? {} : { temporalKeyExpiryAlarms }),
+      }),
+    )
+  }
+  const keyAlarmNames = (template: Template) =>
+    Object.values(template.findResources('AWS::CloudWatch::Alarm'))
+      .map((a) => String(a.Properties?.['AlarmName']))
+      .filter((n) => n.startsWith('pegasus-temporal-key-'))
+
+  it.each([undefined, false])(
+    'creates none when temporalKeyExpiryAlarms is %s (dev has no provisioner)',
+    (flag) => {
+      expect(keyAlarmNames(synth(flag))).toEqual([])
+    },
+  )
+
+  it('creates one expiry alarm per key class plus the rotation-failure alarm', () => {
+    expect(keyAlarmNames(synth(true)).sort()).toEqual([
+      'pegasus-temporal-key-expiry-platform',
+      'pegasus-temporal-key-expiry-provisioner',
+      'pegasus-temporal-key-expiry-tenant',
+      'pegasus-temporal-key-rotation-failed',
+    ])
+  })
+
+  it.each(['provisioner', 'tenant', 'platform'])(
+    'pages when the %s key has < 30 days left, BREACHING on missing data',
+    (keyClass) => {
+      synth(true).hasResourceProperties('AWS::CloudWatch::Alarm', {
+        AlarmName: `pegasus-temporal-key-expiry-${keyClass}`,
+        Namespace: 'Pegasus/Workflows',
+        MetricName: 'TemporalKeyDaysToExpiry',
+        Dimensions: [{ Name: 'KeyClass', Value: keyClass }],
+        Statistic: 'Maximum',
+        Period: 86400,
+        Threshold: 30,
+        ComparisonOperator: 'LessThanThreshold',
+        TreatMissingData: 'breaching',
+        AlarmActions: Match.arrayWith([Match.objectLike({})]),
+        OKActions: Match.arrayWith([Match.objectLike({})]),
+      })
+    },
+  )
+
+  it('the platform alarm names the manual runbook', () => {
+    synth(true).hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-temporal-key-expiry-platform',
+      AlarmDescription: Match.stringLikeRegexp('rotate-platform-key\\.sh'),
+    })
+  })
+
+  it('pages on any rotation failure in a day, NOT_BREACHING on missing data', () => {
+    synth(true).hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-temporal-key-rotation-failed',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'TemporalKeyRotationFailed',
+      Statistic: 'Sum',
+      Period: 86400,
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+      AlarmActions: Match.arrayWith([Match.objectLike({})]),
+    })
+  })
+})

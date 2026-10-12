@@ -4,10 +4,12 @@
 // admin routes and the broker credentials route.
 //
 // Key material: the API key token is shown once by Temporal Cloud, so
-// `storeKey` / `rotateKey` KMS-encrypt it (runtime-token-crypto, the same key
-// as the broker credentials) as soon as it is minted. The default projection
-// (`SELECT`) never includes the ciphertext; `getDecryptedKey` is the only
-// read path that returns the key, and its callers must never log it.
+// `storeKey` / `storePendingKey` KMS-encrypt it (runtime-token-crypto, the
+// same key as the broker credentials) as soon as it is minted. The default
+// projection (`SELECT`) never includes either ciphertext; `getDecryptedKey`
+// (the served key) and `getDecryptedPendingKey` (the readiness check only)
+// are the only read paths that return a key, and their callers must never
+// log it.
 //
 // Platform-only: every call takes an explicit tenantId and uses the root db
 // (INTENTIONALLY_UNSCOPED in prisma-tenant-isolation.test.ts).
@@ -26,6 +28,7 @@ export type TenantTemporalNamespaceRow = {
   apiKeyExpiresAt: Date | null
   previousApiKeyId: string | null
   previousKeyRetireAt: Date | null
+  pendingApiKeyId: string | null
   status: TenantTemporalNamespaceStatus
   step: string | null
   leaseExpiresAt: Date | null
@@ -44,6 +47,7 @@ const SELECT = {
   apiKeyExpiresAt: true,
   previousApiKeyId: true,
   previousKeyRetireAt: true,
+  pendingApiKeyId: true,
   status: true,
   step: true,
   leaseExpiresAt: true,
@@ -191,39 +195,120 @@ export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
     },
 
     /**
-     * Replaces the current key, keeping the replaced one as `previousApiKeyId`
-     * until `retireAt` so running runners aren't cut off. Refuses while an
-     * earlier previous key is still recorded: overwriting it would orphan that
-     * key in Temporal Cloud. Delete it there, then `clearPreviousKey`, first.
+     * Parks a key minted by a rotation until it is proven authorized. The
+     * token is encrypted before it is written. Never served: the broker reads
+     * only the current key.
      */
-    async rotateKey(
+    async storePendingKey(
       tenantId: string,
-      key: { apiKeyId: string; token: string; expiresAt: Date; retireAt: Date },
+      key: { apiKeyId: string; token: string },
     ): Promise<void> {
-      const apiKeyCiphertext = await encryptRuntimeToken(key.token)
+      const pendingApiKeyCiphertext = await encryptRuntimeToken(key.token)
+      await db.tenantTemporalNamespace.update({
+        where: { tenantId },
+        data: { pendingApiKeyId: key.apiKeyId, pendingApiKeyCiphertext },
+      })
+    },
+
+    /**
+     * Makes the pending key current, keeping the replaced one as
+     * `previousApiKeyId` until `retireAt` so running runners aren't cut off.
+     * Refuses while an earlier previous key is still recorded (overwriting it
+     * would orphan that key in Temporal Cloud: delete it there, then
+     * `clearPreviousKey`, first) and when the pending key isn't
+     * `expectedPendingApiKeyId` (another run replaced it).
+     */
+    async promotePendingKey(
+      tenantId: string,
+      input: { expectedPendingApiKeyId: string; expiresAt: Date; retireAt: Date },
+    ): Promise<void> {
       await db.$transaction(async (tx) => {
-        const current = await tx.tenantTemporalNamespace.findUnique({
+        const row = await tx.tenantTemporalNamespace.findUnique({
           where: { tenantId },
-          select: { apiKeyId: true, previousApiKeyId: true },
-        })
-        if (!current) throw new Error(`no temporal namespace for tenant ${tenantId}`)
-        if (current.previousApiKeyId !== null) {
-          throw new Error('cannot rotate: a previous key is still pending retirement')
-        }
-        const { count } = await tx.tenantTemporalNamespace.updateMany({
-          where: { tenantId, previousApiKeyId: null },
-          data: {
-            apiKeyId: key.apiKeyId,
-            apiKeyCiphertext,
-            apiKeyExpiresAt: key.expiresAt,
-            previousApiKeyId: current.apiKeyId,
-            previousKeyRetireAt: key.retireAt,
+          select: {
+            apiKeyId: true,
+            previousApiKeyId: true,
+            pendingApiKeyId: true,
+            pendingApiKeyCiphertext: true,
           },
         })
-        if (count !== 1) {
-          throw new Error('cannot rotate: a previous key is still pending retirement')
+        if (!row) throw new Error(`no temporal namespace for tenant ${tenantId}`)
+        if (row.previousApiKeyId !== null) {
+          throw new Error('cannot promote: a previous key is still pending retirement')
         }
+        if (
+          row.pendingApiKeyId !== input.expectedPendingApiKeyId ||
+          row.pendingApiKeyCiphertext === null
+        ) {
+          throw new Error(`cannot promote: pending key is not ${input.expectedPendingApiKeyId}`)
+        }
+        const { count } = await tx.tenantTemporalNamespace.updateMany({
+          where: {
+            tenantId,
+            previousApiKeyId: null,
+            pendingApiKeyId: input.expectedPendingApiKeyId,
+          },
+          data: {
+            apiKeyId: row.pendingApiKeyId,
+            apiKeyCiphertext: row.pendingApiKeyCiphertext,
+            apiKeyExpiresAt: input.expiresAt,
+            previousApiKeyId: row.apiKeyId,
+            previousKeyRetireAt: input.retireAt,
+            pendingApiKeyId: null,
+            pendingApiKeyCiphertext: null,
+            lastError: null,
+          },
+        })
+        if (count !== 1) throw new Error('cannot promote: the row changed concurrently')
       })
+    },
+
+    async clearPendingKey(tenantId: string): Promise<void> {
+      await db.tenantTemporalNamespace.update({
+        where: { tenantId },
+        data: { pendingApiKeyId: null, pendingApiKeyCiphertext: null },
+      })
+    },
+
+    /** Rows holding a pending key (a rotation that never finished, or one in flight). */
+    async findWithPendingKey(): Promise<TenantTemporalNamespaceRow[]> {
+      return db.tenantTemporalNamespace.findMany({
+        where: { pendingApiKeyId: { not: null } },
+        select: SELECT,
+      })
+    },
+
+    /**
+     * READY rows whose current key expires before `cutoff` that can be
+     * rotated now: no previous key still in its grace period and no live
+     * lease. Rows whose last attempt failed (`lastError` set) come last, so a
+     * row that keeps failing can't starve the others of the daily budget;
+     * then soonest expiry first.
+     */
+    async findDueForRotation(
+      { cutoff, now }: { cutoff: Date; now: Date },
+      limit: number,
+    ): Promise<TenantTemporalNamespaceRow[]> {
+      return db.tenantTemporalNamespace.findMany({
+        where: {
+          status: 'READY',
+          apiKeyExpiresAt: { lt: cutoff },
+          previousApiKeyId: null,
+          OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }],
+        },
+        orderBy: [{ lastError: { sort: 'asc', nulls: 'first' } }, { apiKeyExpiresAt: 'asc' }],
+        take: limit,
+        select: SELECT,
+      })
+    },
+
+    /** The soonest current-key expiry across READY rows; null when there are none. */
+    async earliestReadyKeyExpiry(): Promise<Date | null> {
+      const agg = await db.tenantTemporalNamespace.aggregate({
+        where: { status: 'READY', apiKeyExpiresAt: { not: null } },
+        _min: { apiKeyExpiresAt: true },
+      })
+      return agg._min.apiKeyExpiresAt
     },
 
     async clearPreviousKey(tenantId: string): Promise<void> {
@@ -245,6 +330,26 @@ export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
         grpcAddress: row.grpcAddress,
         apiKeyId: row.apiKeyId,
         apiKey: await decryptRuntimeToken(row.apiKeyCiphertext),
+      }
+    },
+
+    /** The pending key's token, for the rotation's readiness check ONLY. Never serve it. */
+    async getDecryptedPendingKey(tenantId: string): Promise<DecryptedTemporalKey | null> {
+      const row = await db.tenantTemporalNamespace.findUnique({
+        where: { tenantId },
+        select: {
+          namespace: true,
+          grpcAddress: true,
+          pendingApiKeyId: true,
+          pendingApiKeyCiphertext: true,
+        },
+      })
+      if (!row || row.pendingApiKeyId === null || row.pendingApiKeyCiphertext === null) return null
+      return {
+        namespace: row.namespace,
+        grpcAddress: row.grpcAddress,
+        apiKeyId: row.pendingApiKeyId,
+        apiKey: await decryptRuntimeToken(row.pendingApiKeyCiphertext),
       }
     },
 

@@ -280,49 +280,36 @@ account work blocks the code.
       `build-tcld.sh` (into `~/.cache/pegasus-tcld`), `create-provisioner.sh`,
       `guardrail-probe.py` (`uv run`, inline deps), and the 3a `dns-probe.sh`
       (moved from `scripts/temporal-dns-probe.sh`).
-- [ ] **Key rotation and expiry alarm (the next PR, user request 2026-10-12):**
+- [x] **Key rotation and expiry alarm (user request 2026-10-12):**
       _"if the rotation can be reasonably automated do that, if not I'll need
-      some sort of reminder"._ Tested 2026-10-12: a provisioner key **can**
-      mint a key for its own service account (Cloud requires expiry ≥ 24 h)
-      and can list its own keys and their expiry, but sees no other key.
-  - **Provisioner key: automate.** Part of a daily maintenance action: if its
-    own key expires within 30 days, mint a 1-year key and verify it with a
-    fresh client (retrying for propagation), then `PutSecretValue`
-    `{apiKey, keyId}` (the handler reads the secret on every invocation). Do
-    **not** delete the old key; it expires on its own. IAM: `grantWrite` on
-    this one secret, pinned by an infra test. Add a `force` flag so Step 9 can
-    exercise it.
-  - **Tenant keys: automate.** The same daily action rotates READY rows whose
-    `apiKeyExpiresAt` is within 30 days and whose `previousApiKeyId` is null.
-    **First, give `rotate` the readiness loop** (`namespaceKeyAuthorized`); it
-    has none today. On a timeout: `setLastError` plus a
-    `TemporalKeyRotationFailed` metric, which is alarmed. The rollback owed
-    above becomes more pressing.
-  - **Platform keys (`pegasus-<env>-service-account`): manual, with a
-    reminder.** The provisioner can't see them, and the API bakes the key in
-    at deploy. Add a `rotate-platform-key.sh` that mints, stores and tags the
-    key, then **prints** the redeploy and worker-restart steps (it doesn't
-    deploy), and a delete-old-key command for afterwards.
-  - **Reminder:** a daily `TemporalKeyDaysToExpiry` gauge per key class (own
-    key from Cloud, the soonest tenant key from the DB, and the platform key
-    from an `expiresAt` **tag** on `pegasus/<env>/temporal-cloud`, read with
-    `DescribeSecret` only; a missing tag emits 0). Alarm below 30 days with
-    `treatMissingData: BREACHING`, modelled on `TariffCoverageDays`. It emails
-    through MonitoringStack's topic, staging and prod only.
-  - Platform keys' expiry, read 2026-10-12 (`tcld apikey list`, admin):
-    `pegasus-staging-api-key` and `pegasus-prod-api-key` both expire
-    **2028-06-04**. Those are the account's only two non-provisioner keys,
-    matched to the platform accounts by name (the list doesn't show owners).
-    Seed the `expiresAt` tags with this date.
+      some sort of reminder"._ Done in `feat/temporal-key-rotation`
+      (`plans/completed/27cf57f1-temporal-key-rotation.md`). The daily rule now sends
+      `{action: 'daily-maintenance'}`:
+  - **Provisioner key: self-rotates** from 45 days out (mint, verify with a
+    fresh client, then `PutSecretValue {apiKey, keyId, expiresAt}`; the old
+    key is never deleted). `{action: 'rotate-own-key', force: true}` exercises
+    it.
+  - **Tenant keys: rotated** from 45 days out, through a pending slot that is
+    promoted only once the readiness check passes (see below).
+  - **Platform keys: manual**, `scripts/temporal/rotate-platform-key.sh`, with
+    `--tag-only` to seed the `expiresAt` tags. Their owners are now confirmed
+    by id (`tcld apikey get` → `.owner.ownerId`), not only by name.
+  - **Reminder:** `TemporalKeyDaysToExpiry` per `KeyClass`, alarmed under 30
+    days (BREACHING on missing data), plus `TemporalKeyRotationFailed`, staging
+    and prod only.
+  - ⚠️ **User:** run `rotate-platform-key.sh staging --tag-only` and
+    `prod --tag-only`. Until the tags exist, the platform alarm fires by
+    design.
 - [ ] Step 9: staging acceptance (add: forced provisioner self-rotation, and
       a tenant rotate that passes readiness, once the rotation PR is in).
 
-**Owed before 3b.2 depends on rotation:** rotate has no rollback to the
-previous key, because its ciphertext is overwritten when the new key is stored.
-If a new key is minted but never authorized, the row keeps serving it. The
-sweep won't delete the old key (see Step 5), but nothing serves it either. Fix
-with a `previousApiKeyCiphertext` column, or a swap-back action, before
-runners rely on rotation.
+**~~Owed before 3b.2 depends on rotation~~ — retired by the rotation PR:**
+rotate used to store the new key as current before checking it, with no way
+back. It now mints into a **pending slot** (`pendingApiKeyId`,
+`pendingApiKeyCiphertext`), promotes it only after the readiness check
+passes, and on a timeout leaves the old key current; the next run deletes the
+stale pending key. An unverified key is never served, so no rollback is
+needed.
 
 **Step 1 ⚠️ (Stage B, after Stage A merges; user, one-time, Cloud account):
 create the provisioner identity, one per environment.** Needs a **Global Admin or
