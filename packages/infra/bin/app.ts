@@ -236,12 +236,20 @@ export const TEMPORAL_SECRET_ARNS: Record<
       'arn:aws:secretsmanager:us-east-1:248812875460:secret:pegasus/staging/temporal-cloud-1xLDVL',
     workflowBroker:
       'arn:aws:secretsmanager:us-east-1:248812875460:secret:pegasus/staging/workflow-broker-secret-s6jQx2',
+    // Phase 3b provisioner (service account pegasus-staging-provisioner,
+    // Developer role), created 2026-10-11; guardrail probe passed 2026-10-12.
+    temporalProvisioner:
+      'arn:aws:secretsmanager:us-east-1:248812875460:secret:pegasus/staging/temporal-provisioner-Knnsgg',
   },
   prod: {
     temporalCloud:
       'arn:aws:secretsmanager:us-east-1:331145994639:secret:pegasus/prod/temporal-cloud-f4IFFF',
     workflowBroker:
       'arn:aws:secretsmanager:us-east-1:331145994639:secret:pegasus/prod/workflow-broker-secret-VJPAmr',
+    // Phase 3b provisioner (service account pegasus-prod-provisioner,
+    // Developer role), created 2026-10-11; guardrail probe passed 2026-10-12.
+    temporalProvisioner:
+      'arn:aws:secretsmanager:us-east-1:331145994639:secret:pegasus/prod/temporal-provisioner-lan7Af',
   },
 }
 

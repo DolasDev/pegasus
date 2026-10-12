@@ -10,10 +10,11 @@
   3a/3b/3c split, decisions DECIDE-1..4) and
   `plans/in-progress/long-running-workflows-and-automations.md` (D1–D5).
   Phase 2 evidence: `plans/completed/2b1e2147-durable-workflow-isolation-spike.md`.
-- **Status:** Stage A (Steps 3–8 and 10) coded 2026-10-05 on this branch and
-  going through `/workstream-finish`. **Next: Stage B**, which starts with
-  Step 1 ⚠️ (the user creates the provisioner identities and secrets) after
-  Stage A merges and deploys.
+- **Status:** Stage A merged and deployed inert (#797, `22cef033`,
+  2026-10-05). Stage B Steps 1 and 2 are done (2026-10-11/12); the guardrail
+  probe **passed**. The **enable PR** (branch `fix/tenant-temporal-namespaces`)
+  adds both ARNs and a stronger readiness check. **Next: Step 9 ⚠️**, staging
+  acceptance, once the enable PR deploys.
 
 ## Detailed plan (written 2026-10-05; execution starts in a new session)
 
@@ -229,6 +230,92 @@ account work blocks the code.
       platform service account), `GOTCHAS.md` (the Cloud Ops traps), and
       `durable-workflow-worker.md` (3a DNS check ticked, 3b in progress).
       Then `/workstream-finish` with `/security-review`.
+
+**Progress (Stage B):**
+
+- [x] Step 1 (user, 2026-10-11): `pegasus-<env>-provisioner` service
+      accounts, account role **Developer**, no namespace access. Each has a
+      1-year key (expires 2027-10-11) stored as `pegasus/<env>/temporal-provisioner`.
+      Created with a scratch script that keeps the key out of argv, the screen
+      and the transcript.
+  - staging: SA `69b2cae2cb2048c3ab5008dd009d7d86`, key
+    `yyDenH2L0rl8UYIpxVy6nD5T7f1XknqW`, ARN suffix `-Knnsgg`.
+  - prod: SA `064171003878499392a7f408338268bd`, key
+    `JxKvv9NxbBxOLRqOvdGLHwNRiLe3G9Tn`, ARN suffix `-lan7Af`.
+  - **tcld gotcha:** for a service-account key, `apikey create` returns the id
+    as **`apiKeyId`**, not `id` (it's a `CreateServiceAccountAPIKeyResponse`).
+- [x] Step 2: guardrail probe **PASSED 2026-10-12** (13 OK, 32 REFUSED,
+      0 FAIL, 0 ERROR). Transcript in Appendix B.
+  - The probe calls the Cloud Ops REST API exactly as the provisioner Lambda
+    does, with both provisioner keys read from Secrets Manager into memory.
+  - Run 1 (2026-10-11) had **0 FAIL but 1 ERROR**: the prod tenant key's
+    own-namespace control was only 4/6 (see finding 3). The prod key's
+    cross-env refusals in run 1 were therefore unproven. Run 2 waits for a 6/6
+    control before trusting any refusal.
+  - **Findings:**
+    1. Each provisioner gets **403 even reading** the other env's namespace and
+       `pegasus-<env>` (the plan expected account-wide read visibility).
+    2. Deleting a namespace **cascades** to its scoped service account and that
+       account's keys (verified by id). Deprovision needs nothing more.
+    3. **A new key's permissions land per API.** In run 1, DescribeNamespace
+       was authorized while DescribeWorkflowExecution and
+       PollWorkflowTaskQueue were still PERMISSION_DENIED; in run 2 all six were
+       authorized immediately. So a DescribeNamespace-only readiness check can
+       mark a namespace READY before a runner can poll. **Fixed in the enable
+       PR:** `lib/temporal-namespace-readiness.ts` requires DescribeNamespace,
+       DescribeWorkflowExecution (NOT_FOUND counts as authorized) and a 5 s
+       PollWorkflowTaskQueue (a deadline counts as authorized) on the
+       provisioner's readiness check.
+    4. **Unverified, check in Step 9:** cleanup found the throwaway scoped
+       service account by name but listed no keys for it. If `GET
+/cloud/api-keys?owner_id=<scoped SA>` returns nothing to a Developer
+       key, the provisioner's `listApiKeys` orphan-delete (the token-once
+       recovery) is a silent no-op. Impact is low, because an orphan's token
+       was never stored, so nobody holds it.
+- [x] Enable PR: both ARNs in `TEMPORAL_SECRET_ARNS`, checked with
+      `describe-secret` in each account (the `_deploy.yml` pre-flight check).
+      The provisioner entry was bundled with esbuild (CDK's settings) and loads
+      in Node 24; the reconcile Lambda is the control.
+- [x] Operator scripts committed in `scripts/temporal/` (with a README):
+      `build-tcld.sh` (into `~/.cache/pegasus-tcld`), `create-provisioner.sh`,
+      `guardrail-probe.py` (`uv run`, inline deps), and the 3a `dns-probe.sh`
+      (moved from `scripts/temporal-dns-probe.sh`).
+- [ ] **Key rotation and expiry alarm (the next PR, user request 2026-10-12):**
+      _"if the rotation can be reasonably automated do that, if not I'll need
+      some sort of reminder"._ Tested 2026-10-12: a provisioner key **can**
+      mint a key for its own service account (Cloud requires expiry ≥ 24 h)
+      and can list its own keys and their expiry, but sees no other key.
+  - **Provisioner key: automate.** Part of a daily maintenance action: if its
+    own key expires within 30 days, mint a 1-year key and verify it with a
+    fresh client (retrying for propagation), then `PutSecretValue`
+    `{apiKey, keyId}` (the handler reads the secret on every invocation). Do
+    **not** delete the old key; it expires on its own. IAM: `grantWrite` on
+    this one secret, pinned by an infra test. Add a `force` flag so Step 9 can
+    exercise it.
+  - **Tenant keys: automate.** The same daily action rotates READY rows whose
+    `apiKeyExpiresAt` is within 30 days and whose `previousApiKeyId` is null.
+    **First, give `rotate` the readiness loop** (`namespaceKeyAuthorized`); it
+    has none today. On a timeout: `setLastError` plus a
+    `TemporalKeyRotationFailed` metric, which is alarmed. The rollback owed
+    above becomes more pressing.
+  - **Platform keys (`pegasus-<env>-service-account`): manual, with a
+    reminder.** The provisioner can't see them, and the API bakes the key in
+    at deploy. Add a `rotate-platform-key.sh` that mints, stores and tags the
+    key, then **prints** the redeploy and worker-restart steps (it doesn't
+    deploy), and a delete-old-key command for afterwards.
+  - **Reminder:** a daily `TemporalKeyDaysToExpiry` gauge per key class (own
+    key from Cloud, the soonest tenant key from the DB, and the platform key
+    from an `expiresAt` **tag** on `pegasus/<env>/temporal-cloud`, read with
+    `DescribeSecret` only; a missing tag emits 0). Alarm below 30 days with
+    `treatMissingData: BREACHING`, modelled on `TariffCoverageDays`. It emails
+    through MonitoringStack's topic, staging and prod only.
+  - Platform keys' expiry, read 2026-10-12 (`tcld apikey list`, admin):
+    `pegasus-staging-api-key` and `pegasus-prod-api-key` both expire
+    **2028-06-04**. Those are the account's only two non-provisioner keys,
+    matched to the platform accounts by name (the list doesn't show owners).
+    Seed the `expiresAt` tags with this date.
+- [ ] Step 9: staging acceptance (add: forced provisioner self-rotation, and
+      a tenant rotate that passes readiness, once the rotation PR is in).
 
 **Owed before 3b.2 depends on rotation:** rotate has no rollback to the
 previous key, because its ciphertext is overwritten when the new key is stored.
@@ -471,6 +558,12 @@ test tenant through admin-web.
   and `saas-api` is unreachable from the runner VPC (3a).
 - Confirm the stored key decrypts and works with the API's own code path
   (`getDecryptedKey`, then DescribeNamespace), which 3b.2 will use.
+- **Check Stage B finding 4:** as the staging provisioner, call
+  `GET /cloud/api-keys?owner_id=<the new tenant SA>&owner_type=OWNER_TYPE_SERVICE_ACCOUNT`.
+  It must list the tenant's key. If it doesn't, the token-once orphan cleanup
+  needs another route (e.g. by key id recorded before the create returns).
+- **Check Stage B finding 3:** the row reached READY only once the runner APIs
+  were authorized; note the provision duration.
 - Deprovision it, and confirm it's gone.
 - Scripts from `plans/completed/2b1e2147-…` Appendix A; adapt them into
   `scripts/temporal/` if they get reused a third time.
@@ -672,3 +765,112 @@ test tenant through admin-web.
 platform account was dropped 2026-10-05; see the design decision), and
 provisioning of one staging tenant. Each is scripted, run by the user or with
 the user's go-ahead, and paired with a deprovision script.
+
+## Appendix B: Stage B Step 2 guardrail probe transcripts
+
+The probe is `guardrail_probe.py` (a scratch script, not in the repo). Run it
+with `uv run --with temporalio==1.33.0 guardrail_probe.py` (`--cleanup` only
+tears down). No key appears below; every id listed has been deleted. The two
+throwaway tenant key ids are replaced with placeholders, because the secret
+scanner's generic rule flags them (`id=<32 chars>`) even though they're ids, not
+secrets.
+
+**Run 1 (2026-10-11): 0 FAIL, 1 ERROR, NOT PASSED.** The only line that didn't
+pass:
+
+```
+[ERROR  ] prod control: 4/6 flagged  — DescribeNamespace: LEAK (succeeded); ListWorkflowExecutions: LEAK (succeeded); DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: LEAK? [NOT_FOUND]; StartWorkflowExecution: LEAK (succeeded); PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+```
+
+**Run 2 (2026-10-12): PASSED.** Verbatim:
+
+```
+== 0. Control: no key
+  [OK     ] no key: list namespaces  — 401 (expect 401)
+
+== 1. staging provisioner creates its own throwaway (authorized control)
+  [OK     ] staging: create namespace pg-staging-000000000000.chgel
+  [OK     ] staging: create scoped Write SA on own namespace  — ae2b219b01df46019bceef690ef8bc9d
+  [OK     ] staging: scoped SA visible by name in GET /cloud/service-accounts  — yes
+  [OK     ] staging: create 1-day key for own scoped SA  — <staging-throwaway-key-id>
+
+== 1. prod provisioner creates its own throwaway (authorized control)
+  [OK     ] prod: create namespace pg-prod-000000000000.chgel
+  [OK     ] prod: create scoped Write SA on own namespace  — 0381cbf4de454f53b731bf7d512de1d5
+  [OK     ] prod: scoped SA visible by name in GET /cloud/service-accounts  — yes
+  [OK     ] prod: create 1-day key for own scoped SA  — <prod-throwaway-key-id>
+
+== 2. staging provisioner vs prod's throwaway pg-prod-000000000000.chgel (must be refused)
+  [REFUSED] staging: get pg-prod-000000000000.chgel  — 403 request unauthorized
+  [REFUSED] staging: create scoped SA on pg-prod-000000000000.chgel  — 403 request unauthorized
+  [REFUSED] staging: grant own SA Admin on pg-prod-000000000000.chgel  — 403 request unauthorized
+  [REFUSED] staging: mint key for prod's scoped SA  — 403 unauthorized to create API key
+  [REFUSED] staging: delete prod's tenant key  — 403 unauthorized to delete apikey with id=<prod-throwaway-key-id>
+  [REFUSED] staging: delete namespace pg-prod-000000000000.chgel  — 403 request unauthorized
+
+== 2. prod provisioner vs staging's throwaway pg-staging-000000000000.chgel (must be refused)
+  [REFUSED] prod: get pg-staging-000000000000.chgel  — 403 request unauthorized
+  [REFUSED] prod: create scoped SA on pg-staging-000000000000.chgel  — 403 request unauthorized
+  [REFUSED] prod: grant own SA Admin on pg-staging-000000000000.chgel  — 403 request unauthorized
+  [REFUSED] prod: mint key for staging's scoped SA  — 403 unauthorized to create API key
+  [REFUSED] prod: delete staging's tenant key  — 403 unauthorized to delete apikey with id=<staging-throwaway-key-id>
+  [REFUSED] prod: delete namespace pg-staging-000000000000.chgel  — 403 request unauthorized
+
+== 3. staging provisioner vs platform namespace pegasus-staging.chgel (must be refused; no deletes sent)
+  [REFUSED] staging: get pegasus-staging.chgel  — 403 request unauthorized
+  [REFUSED] staging: create scoped SA on pegasus-staging.chgel  — 403 request unauthorized
+  [REFUSED] staging: grant own SA Write on pegasus-staging.chgel  — 403 request unauthorized
+
+== 3. staging provisioner vs platform namespace pegasus-prod.chgel (must be refused; no deletes sent)
+  [REFUSED] staging: get pegasus-prod.chgel  — 403 request unauthorized
+  [REFUSED] staging: create scoped SA on pegasus-prod.chgel  — 403 request unauthorized
+  [REFUSED] staging: grant own SA Write on pegasus-prod.chgel  — 403 request unauthorized
+
+== 3. prod provisioner vs platform namespace pegasus-staging.chgel (must be refused; no deletes sent)
+  [REFUSED] prod: get pegasus-staging.chgel  — 403 request unauthorized
+  [REFUSED] prod: create scoped SA on pegasus-staging.chgel  — 403 request unauthorized
+  [REFUSED] prod: grant own SA Write on pegasus-staging.chgel  — 403 request unauthorized
+
+== 3. prod provisioner vs platform namespace pegasus-prod.chgel (must be refused; no deletes sent)
+  [REFUSED] prod: get pegasus-prod.chgel  — 403 request unauthorized
+  [REFUSED] prod: create scoped SA on pegasus-prod.chgel  — 403 request unauthorized
+  [REFUSED] prod: grant own SA Write on pegasus-prod.chgel  — 403 request unauthorized
+
+== 4. staging tenant key: wait until authorized on its own namespace (~90 s seen)
+  [OK     ] staging tenant key: DescribeNamespace on own pg-staging-000000000000.chgel
+
+== 5. Control: staging tenant key, negative suite aimed at its OWN namespace (must flag 6/6)
+  [OK     ] staging control: 6/6 flagged (full authorization 0s after DescribeNamespace)  — DescribeNamespace: LEAK (succeeded); ListWorkflowExecutions: LEAK (succeeded); DescribeWorkflowExecution: LEAK? [NOT_FOUND]; SignalWorkflowExecution: LEAK? [NOT_FOUND]; StartWorkflowExecution: LEAK (succeeded); PollWorkflowTaskQueue: LEAK (succeeded)
+  [REFUSED] staging tenant key -> pg-prod-000000000000.chgel via namespace-endpoint  — DescribeNamespace: refused [PERMISSION_DENIED]; ListWorkflowExecutions: refused [PERMISSION_DENIED]; DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: refused [PERMISSION_DENIED]; StartWorkflowExecution: refused [PERMISSION_DENIED]; PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+  [REFUSED] staging tenant key -> pg-prod-000000000000.chgel via regional-endpoint  — DescribeNamespace: refused [PERMISSION_DENIED]; ListWorkflowExecutions: refused [PERMISSION_DENIED]; DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: refused [PERMISSION_DENIED]; StartWorkflowExecution: refused [PERMISSION_DENIED]; PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+  [REFUSED] staging tenant key -> pegasus-prod.chgel via namespace-endpoint  — DescribeNamespace: refused [PERMISSION_DENIED]; ListWorkflowExecutions: refused [PERMISSION_DENIED]; DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: refused [PERMISSION_DENIED]; StartWorkflowExecution: refused [PERMISSION_DENIED]; PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+  [REFUSED] staging tenant key -> pegasus-prod.chgel via regional-endpoint  — DescribeNamespace: refused [PERMISSION_DENIED]; ListWorkflowExecutions: refused [PERMISSION_DENIED]; DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: refused [PERMISSION_DENIED]; StartWorkflowExecution: refused [PERMISSION_DENIED]; PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+
+== 4. prod tenant key: wait until authorized on its own namespace (~90 s seen)
+  [OK     ] prod tenant key: DescribeNamespace on own pg-prod-000000000000.chgel
+
+== 5. Control: prod tenant key, negative suite aimed at its OWN namespace (must flag 6/6)
+  [OK     ] prod control: 6/6 flagged (full authorization 0s after DescribeNamespace)  — DescribeNamespace: LEAK (succeeded); ListWorkflowExecutions: LEAK (succeeded); DescribeWorkflowExecution: LEAK? [NOT_FOUND]; SignalWorkflowExecution: LEAK? [NOT_FOUND]; StartWorkflowExecution: LEAK (succeeded); PollWorkflowTaskQueue: LEAK (succeeded)
+  [REFUSED] prod tenant key -> pg-staging-000000000000.chgel via namespace-endpoint  — DescribeNamespace: refused [PERMISSION_DENIED]; ListWorkflowExecutions: refused [PERMISSION_DENIED]; DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: refused [PERMISSION_DENIED]; StartWorkflowExecution: refused [PERMISSION_DENIED]; PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+  [REFUSED] prod tenant key -> pg-staging-000000000000.chgel via regional-endpoint  — DescribeNamespace: refused [PERMISSION_DENIED]; ListWorkflowExecutions: refused [PERMISSION_DENIED]; DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: refused [PERMISSION_DENIED]; StartWorkflowExecution: refused [PERMISSION_DENIED]; PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+  [REFUSED] prod tenant key -> pegasus-staging.chgel via namespace-endpoint  — DescribeNamespace: refused [PERMISSION_DENIED]; ListWorkflowExecutions: refused [PERMISSION_DENIED]; DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: refused [PERMISSION_DENIED]; StartWorkflowExecution: refused [PERMISSION_DENIED]; PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+  [REFUSED] prod tenant key -> pegasus-staging.chgel via regional-endpoint  — DescribeNamespace: refused [PERMISSION_DENIED]; ListWorkflowExecutions: refused [PERMISSION_DENIED]; DescribeWorkflowExecution: refused [PERMISSION_DENIED]; SignalWorkflowExecution: refused [PERMISSION_DENIED]; StartWorkflowExecution: refused [PERMISSION_DENIED]; PollWorkflowTaskQueue: refused [PERMISSION_DENIED]
+
+== 6. Cleanup (each env deletes what it created)
+  staging: delete namespace pg-staging-000000000000.chgel -> 200
+  staging: verify namespace gone -> 404 OK
+  staging: verify scoped SA ae2b219b01df46019bceef690ef8bc9d gone -> 404 OK
+  staging: verify tenant key <staging-throwaway-key-id> gone -> 404 OK
+  prod: delete namespace pg-prod-000000000000.chgel -> 200
+  prod: verify namespace gone -> 404 OK
+  prod: verify scoped SA 0381cbf4de454f53b731bf7d512de1d5 gone -> 404 OK
+  prod: verify tenant key <prod-throwaway-key-id> gone -> 404 OK
+
+== SUMMARY
+  OK      13
+  REFUSED 32
+  NOTE    0
+  FAIL    0
+  ERROR   0
+  RESULT: PASSED — every cross-env and platform mutation was refused; controls held.
+```

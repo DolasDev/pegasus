@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# temporal-dns-probe.sh — check, from inside the tenant-runner network, whether the
+# dns-probe.sh — check, from inside the tenant-runner network, whether the
 # Temporal Cloud Ops API (saas-api.tmprl.cloud) resolves.
 #
 # Acceptance check for durable-workflow Phase 3a: wireguard-stack.ts blocks that
@@ -13,7 +13,7 @@
 # cluster, subnets, security group and execution role, runs one lookup, prints
 # the result, and deregisters the task definition on exit.
 #
-# Usage:  scripts/temporal-dns-probe.sh <staging|prod>
+# Usage:  scripts/temporal/dns-probe.sh <staging|prod>
 # Needs:  an AWS SSO session for profile dolas-pegasus-<env>
 #         (aws sso login --sso-session dolas --use-device-code)
 set -uo pipefail

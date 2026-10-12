@@ -20,6 +20,7 @@ import { Connection } from '@temporalio/client'
 import { db } from './db'
 import { createLogger } from './lib/logger'
 import { createTemporalCloudOpsClient } from './lib/temporal-cloud-ops'
+import { namespaceKeyAuthorized } from './lib/temporal-namespace-readiness'
 import {
   runTemporalProvisioner,
   type ProvisionerEvent,
@@ -48,7 +49,10 @@ async function provisionerApiKey(): Promise<string> {
   return apiKey
 }
 
-/** gRPC DescribeNamespace with the tenant's own key: true once it's authorized. */
+/**
+ * True once the tenant's own key is authorized on its namespace for every API
+ * a runner needs (see lib/temporal-namespace-readiness.ts).
+ */
 async function checkReady(target: {
   namespace: string
   grpcAddress: string
@@ -62,8 +66,7 @@ async function checkReady(target: {
     connectTimeout: 10_000,
   })
   try {
-    await connection.workflowService.describeNamespace({ namespace: target.namespace })
-    return true
+    return await namespaceKeyAuthorized(connection, target.namespace)
   } finally {
     await connection.close()
   }

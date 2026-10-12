@@ -2698,6 +2698,15 @@ Found building the 3b.1 provisioner (`apps/api/src/lib/temporal-cloud-ops.ts`,
   (`PROVISIONING`) would wedge the row forever. `TenantTemporalNamespace` has a
   `leaseExpiresAt` instead, and the provisioner's async invoke has
   `retryAttempts: 0` (the lease would make Lambda's retries skip anyway).
+- **A new key's permissions land per API, not all at once.** In the 3b
+  guardrail probe (2026-10-12, run 1), a fresh namespace-scoped key passed
+  DescribeNamespace while DescribeWorkflowExecution and PollWorkflowTaskQueue
+  were still PERMISSION_DENIED. "DescribeNamespace works" is not "ready":
+  `lib/temporal-namespace-readiness.ts` also checks DescribeWorkflowExecution
+  (NOT_FOUND counts as authorized) and a short-deadline poll. Any probe's
+  control must reach 6/6 before its refusals mean anything.
+- **`tcld apikey create --si <service account>` returns `apiKeyId`, not `id`.**
+  It's a `CreateServiceAccountAPIKeyResponse`; a user key's response has `id`.
 - **The provisioner must not be in the WireGuard VPC.** 3a's DNS Firewall makes
   `saas-api.tmprl.cloud` NXDOMAIN there. API-stack Lambdas aren't VPC-attached,
   and an infra test pins that.
