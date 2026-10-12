@@ -5,7 +5,8 @@
 > then pick from "Live work". The body was last fully re-verified 2026-10-06 (late) against
 > `c60c00db`; the 10-07 pass closed the `@playwright/mcp` decision (#819), and the 10-09 passes
 > closed the `nodeModules` hardening (#822) and wired the App token (#826). **Everything still open
-> is owner setup, a judgement call, or a dated Monday verification — see "Resume here".**
+> is owner setup, a judgement call, or the stage-2 verification that is now ACTIONABLE — see
+> "Resume here".**
 >
 > ⚠️ **This file said "nothing is blocking" at `892f0c53` and was falsified two hours later.** A
 > newly-published **critical** advisory flipped `audit-ci` red on `main` with no code change, and the
@@ -36,9 +37,9 @@ No worktree is needed to read this.
 and `main`'s Deploy green through prod. #826 (merge-queue App token) is this PR. `main` is green
 (see State of play). The `Live work` checkboxes are accurate as of 2026-10-09.
 
-**Next action — the only dated one is Monday's stage-2 check (below); otherwise there is no obvious
-agent-doable item left, and that is the honest state of this file.** Read this before reaching for
-the loose end below; the remaining items are not a queue to work down.
+**Next action — the stage-2 check is live NOW (below); otherwise there is no obvious agent-doable
+item left, and that is the honest state of this file.** Read this before reaching for the loose end
+below; the remaining items are not a queue to work down.
 
 - **The merge-queue identity fix is now half-done, and the remaining half is OWNER-ONLY.** #826
   wired `enqueue` to mint a **GitHub App** installation token — re-scoped from a PAT, because a PAT
@@ -47,12 +48,27 @@ the loose end below; the remaining items are not a queue to work down.
   two traps (**Actions** store not Dependabot; **Client ID** not App ID) live in
   `plans/todo/dependabot-automerge-pat.md`. An agent cannot do it; **ask rather than work around
   it.**
-- **There is a DATED verification owed — do it first on Monday 2026-10-12.** When the weekly
-  Dependabot batch lands, confirm a real PR produces a `gh-readonly-queue/main/pr-<N>-*` run within
-  ~a minute. That is **stage 2**, and it is the only thing that proves the fix: stage 1 shows the
-  token mints and reads, but does not exercise `enablePullRequestAutoMerge` under an _installation_
-  token, which is the one unverified link. If the App is not configured by then, the run carries a
-  `::warning::` naming `GITHUB_TOKEN` as the identity — which answers "why did it stall" on sight.
+- **The stage-2 verification is owed and its window is OPEN.** Confirm a real Dependabot PR produces
+  a `gh-readonly-queue/main/pr-<N>-*` run within ~a minute. That is the only thing that proves the
+  fix: stage 1 shows the token mints and reads, but does not exercise `enablePullRequestAutoMerge`
+  under an _installation_ token, which is the one unverified link. If the App is not configured yet,
+  the run carries a `::warning::` naming `GITHUB_TOKEN` as the identity — which answers "why did it
+  stall" on sight.
+
+  > ⚠️ **This file predicted "Monday 2026-10-12" and that was WRONG — the batch landed Sunday
+  > 2026-10-11** (#829 hono, #830 aws-cdk, #831 minor-and-patch). The prediction came from
+  > "`interval: weekly` with no `day`, so Dependabot defaults to Monday". **Do not re-derive a day
+  > from the config.** Measured over the last 25 Dependabot PRs, scheduled grouped batches landed
+  > mostly **Sunday** (10-11, 10-04, 09-27, 09-20, 09-13) but also **Tuesday** (09-29, 09-22, 09-15),
+  > and single-package **security** bumps land on any day, on alert rather than on schedule. The
+  > cadence is not a thing to predict — **ask**:
+  >
+  > ```
+  > gh pr list --state open --author app/dependabot
+  > ```
+  >
+  > Same family as this file's other staleness traps: a confident answer from the wrong source.
+
 - **Both decisions are settled** — `@playwright/mcp` by removing it (#819), TENANT-03 by
   deliberately leaving it (and the "leave it" there is load-bearing: the candidate rewrite is
   _unverifiable locally_, so doing it would be churn chasing a flake that may no longer fire).
@@ -66,9 +82,9 @@ the loose end below; the remaining items are not a queue to work down.
   before removing any security entry even when the package is gone from the tree. One entry at a
   time, each with `rm -rf node_modules package-lock.json && npm install` and the affected suite.
 
-So: if you arrived here looking for work, the useful answers are "run Monday's stage-2 check", "ask
-the owner whether the App is set up yet", or "answer the `overridden`-flag question without deleting
-anything yet". Inventing a task from the
+So: if you arrived here looking for work, the useful answers are "run the stage-2 check against an
+open Dependabot PR", "ask the owner whether the App is set up yet", or "answer the `overridden`-flag
+question without deleting anything yet". Inventing a task from the
 `(no action)` item at the bottom would be a mistake — that one is explicitly _expected output_, not
 a finding.
 
@@ -250,8 +266,9 @@ the traps are in the dedicated plan. Three things worth carrying here:
   the mint failed). That annotation is the thing that will tell you the App broke.
 
 **Unticked on purpose.** It stays `[ ]` until **stage 2** passes — a real Dependabot PR producing a
-`merge_group` run — because stage 1 only proves the token mints and reads. Next window: Dependabot
-is `interval: weekly` with no `day`, so **Monday 2026-10-12**.
+`merge_group` run — because stage 1 only proves the token mints and reads. **The window is open now:**
+#829/#830/#831 opened 2026-10-11. Do not predict the next one from `interval: weekly` — see the
+cadence box under "Resume here"; ask with `gh pr list --state open --author app/dependabot`.
 
 **Eight reproductions:** #645, #656, #387, #657, #709, #710, **#762**, **#799**. A
 `GITHUB_TOKEN`-initiated enqueue gets a queue entry but **no `merge_group` checks**, so the PR

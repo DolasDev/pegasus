@@ -1693,6 +1693,23 @@ npx -y npm@10.8.2 ci --dry-run
 
 Gate on `ci`, not `install` — `ci`'s sync check is the one that fails in CI.
 
+> ⚠️ **CORRECTED 2026-10-12: the npm version in that recipe is WRONG for current CI, and using it
+> produces a FALSE GREEN.** CI does not honour the `packageManager: npm@10.8.2` pin. Verified from
+> source and from a live run: `.github/actions/setup/action.yml` uses `actions/setup-node@v6` with
+> `node-version-file: .nvmrc`, there is **no `corepack` step anywhere in `.github/workflows/`**, and
+> the run log shows `node: v24.16.0` — so CI's npm is whatever Node 24 bundles, **11.13.0**. The pin
+> is declarative and nothing enforces it. On **#799** a lockfile validated with 10.8.2 exited 0 while
+> CI rejected the same file. **Regenerate and validate with the plain `npm` on Node 24:**
+>
+> ```
+> npm install --package-lock-only && npm ci
+> ```
+>
+> Keep gating on `ci` — that part was right. And `@dependabot recreate` does **not** fix this class
+> of failure: it re-runs the same resolution. Regenerate the lockfile and push it to the Dependabot
+> branch instead. Third reproduction: **#831** (2026-10-11, `minor-and-patch` ×32) failed all four
+> heavy jobs from this single cause, 17 packages `Missing: … from lock file`.
+
 **That gate is necessary but not sufficient**, and a second defect hides behind the
 first. With the install fixed, `Test` still failed:
 
