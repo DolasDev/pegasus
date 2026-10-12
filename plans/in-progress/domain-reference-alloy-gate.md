@@ -13,9 +13,13 @@ list so it cannot drift again. Then decide, separately, whether the analyzer its
 
 ### Where
 
-- **Branch `feat/dr-alloy-gate`**, one commit: **`df418920`**
-  _fix(domain-reference): the Alloy spec had fallen three fact classes behind, and nothing could
-  say so_ — `subject-admission.als` + `tests/conformance/alloy-vocabulary.test.ts`.
+- **Branch `feat/dr-alloy-gate`** → **PR #837**, three commits:
+  - `df418920` the spec + the gate (`subject-admission.als`, `tests/conformance/alloy-vocabulary.test.ts`)
+  - `5ace5b09` this plan + archiving the [A10] round
+  - `5f13116c` `GOTCHAS.md` + `PATTERNS.md`
+- **CI green on PR #837, and the gate was confirmed in the log rather than from the badge:**
+  `✓ tests/conformance/alloy-vocabulary.test.ts (10 tests)` under `@pegasus/domain-reference:test`.
+  `ci.yml:489` runs `turbo run test` **unfiltered**, so the package is always in scope.
 - **Steps 1 and 2 are DONE and verified.** **Step 3 is NOT, deliberately** — see below.
 - `chore/parked-dr` was re-parked at `origin/main` (`e65c5edc`); it had been left behind at
   `9d105a19` while `#835` and `#836` landed.
