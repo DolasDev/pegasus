@@ -54,12 +54,17 @@ fun F_assignment : set Kind { K_assignment }
 fun F_order      : set Kind { K_order }
 fun F_partyRole  : set Kind { K_partyRole }
 
-/** The eleven declared families, as a set of sets is not expressible — so as the test that a
+/** [A6 §3.3] / [A8 §5] row 17, added with `documentIssuance`: "the act is about the instrument,
+ *  so the instrument is the subject". A singleton, so [SD §4.7] note 2's three non-singletons are
+ *  unchanged. Declared last because it is the twelfth and newest. */
+fun F_document   : set Kind { K_document }
+
+/** The twelve declared families, as a set of sets is not expressible — so as the test that a
  *  declared member-set is one of them. Used by command S1. */
 pred isADeclaredFamily[m: set Kind] {
   m = F_stop or m = F_goods or m = F_stay or m = F_item or m = F_charge or
   m = F_trip or m = F_stopAction or m = F_assignment or m = F_order or
-  m = F_partyRole or m = F_anyAggregate
+  m = F_partyRole or m = F_anyAggregate or m = F_document
 }
 
 /* --------------------------------------------------------------------------------------------- *
@@ -126,6 +131,18 @@ one sig T_assignmentRelease extends Type {} { family = F_assignment }
 one sig T_orderAward        extends Type {} { family = F_order }
 one sig T_orderResponse     extends Type {} { family = F_order }
 one sig T_orderCancellation extends Type {} { family = F_order }
+
+/* [A6 §3.3]: the act is about the instrument, so the instrument is the subject. [A6 §3.2]'s
+ * D-ID already distinguishes a document that merely CARRIES an identifier from one the identifier
+ * is assigned to as an accountable artefact; this row is the second kind. */
+one sig T_documentIssuance extends Type {} { family = F_document }
+
+/* [A10]. Both are about the consignment, so both take the `goods` family — {shipment, portion}.
+ * `src:cfr-49-375` §375.401(a) surveys "the household goods **to be transported**" and estimates
+ * "the **total** cost of the move", and a `portion` subject is what lets a part-lot survey or a
+ * split estimate be expressed without a second type. */
+one sig T_survey   extends Type {} { family = F_goods }
+one sig T_estimate extends Type {} { family = F_goods }
 
 /* --------------------------------------------------------------------------------------------- *
  * Subjects and submissions
@@ -207,13 +224,13 @@ run somethingIsAdmitted for 4 expect 1
 
 /**
  * [SD §4.7] note 2: "Every family is a singleton except three." A row declaring an ad-hoc member
- * set rather than one of the eleven families would make E-CANON's "exactly one family" arity false
+ * set rather than one of the twelve families would make E-CANON's "exactly one family" arity false
  * without any record being malformed, so the table is checked before it is used.
  */
-assert everyTypeDeclaresOneOfTheElevenFamilies {
+assert everyTypeDeclaresOneOfTheTwelveFamilies {
   all t: Type | isADeclaredFamily[t.family]
 }
-check everyTypeDeclaresOneOfTheElevenFamilies for 4 expect 0
+check everyTypeDeclaresOneOfTheTwelveFamilies for 4 expect 0
 
 /**
  * S1b. Every aggregate kind is reachable as some type's subject — so no kind is declared in

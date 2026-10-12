@@ -3212,3 +3212,61 @@ thing the destructive step can actually eat.**
   reverted with `git checkout <file>`, which restores from the _index_ — and because the work was
   unstaged, it reverted to `HEAD` and discarded an hour of edits. Recoverable only because the
   edits had been scripted. Stage or commit first; `git checkout` is not an undo for unstaged work.
+
+## A checking spec that enumerates by hand is blind to the rows nobody wrote
+
+**Discovered:** the `alloy` round, `packages/domain-reference` (PR #837), 2026-10-12.
+
+`alloy/subject-admission.als` transcribes [SD §4.7.1]'s fact-class table by hand — one
+`one sig T_x extends Type {} { family = F_y }` per class — and had fallen **three classes and one
+whole family** behind `ASSERTION_TYPES` (34 in the vocabulary, 31 in the spec; `documentIssuance`
+absent since catalog 0.6.2, `survey` and `estimate` since [A10] added them at 0.7.1). Every Alloy
+command came back green the whole time.
+
+**Why the model checker could not see it.** Command S1 is
+`assert … { all t: Type | isADeclaredFamily[t.family] }`. A universal quantifier is **silent about
+the atoms nobody declared** — the hole was in the quantifier's _domain_, not in anything it could
+refute. The same shape bites any checker over a hand-written enumeration: a test that iterates a
+list, a schema that validates named fields, a `switch` with no exhaustiveness check. **The tool
+proves things about what you wrote down, and says nothing about what you forgot to.**
+
+A stale spec is therefore worse than no spec, because its green is indistinguishable from a real
+green and three rounds of review read past it.
+
+**How to apply:** when a verification artefact restates a list that lives in code, add a **text
+gate** comparing the two in **both directions** — not another assertion inside the same artefact,
+which inherits the same blind spot. `packages/domain-reference/tests/conformance/alloy-vocabulary.test.ts`
+is the worked example: it parses the `.als` as text under vitest, so it needs no JVM and runs in
+every `Test` job — the analyzer itself now runs in CI too, but only in a path-filtered job that a
+vocabulary change does not trigger. It checks the types, each type's declared family, the
+family-function declarations, `isADeclaredFamily`'s members, and — because the spec spells the count
+into the assertion's own name — that the count word tracks the list. Two details that matter:
+
+- **Assert that the parse succeeded.** The gate compares its parsed row count against the raw
+  `^one sig T_` line count. A line the pattern stops matching would otherwise drop out of _both_
+  directions and leave the gate green on a file it had stopped reading.
+- **Do not normalise lossily.** `weight.net` is spelled `T_weightNet` because Alloy has no dotted
+  identifiers; stripping dots and lower-casing _both_ sides is the obvious move and it makes
+  `T_Survey` and `T_WEIGHTNET` conforming. Apply the rule **forwards** and compare case-sensitively,
+  since the names are the thing being checked.
+- **Check the neighbours too.** The gate also asserts `custody.als` and `cardinality.als` still
+  enumerate **no** types, so a list added to either of them is a failure rather than a silent gap in
+  coverage.
+
+See also "Prose listing a type's members rots, and it rots by being copied" — same family of defect,
+but that one rots in documentation a reader trusts, and this one rots inside the tool you were
+trusting to catch it.
+
+## `node` cannot run `packages/domain-reference/src/*.ts` directly — measure from inside vitest
+
+The package's internal imports are **extensionless** (`from './ids'`), so Node 24's type-stripping
+runs the file and then dies on `ERR_MODULE_NOT_FOUND` — an ad-hoc `node measure.ts` that imports
+`src/vocabulary.ts` to count something cannot work, even though `npm run catalog` and the other
+generators in `tools/` run under plain `node`. (They resolve because they are _inside_ the package's
+own resolution, not because the imports are complete.)
+
+Measure from inside **vitest**, which resolves them. And note that vitest's default reporter
+**swallows `console.log`** from a passing test, so a probe test prints nothing: write the measurement
+as an `expect` and read it out of the failure message. The best version of this is to write the real
+gate first and run it red — the red output _is_ the measurement, and it doubles as a tamper against
+a genuine defect rather than a synthetic one.
