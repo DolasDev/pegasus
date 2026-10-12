@@ -402,9 +402,12 @@ expect(DECLARED.length).toBe((SPEC.match(/^one sig T_/gm) ?? []).length)
   the name.
 - **Assert the scope you claim to cover.** This gate reads one `.als`; it also asserts the other two
   enumerate nothing, so growing a second list is a failure instead of a hole.
-- **It must need no toolchain.** Parsing text keeps the gate in the vitest suite, which CI runs on
-  every PR. The heavyweight check (here, the analyzer: a JVM plus a pinned jar) is a separate
-  decision with a separate cost, and coupling them means neither lands.
+- **It must need no toolchain, and land before the heavyweight check.** Parsing text keeps the gate
+  in the vitest suite, which CI runs on every PR. The heavyweight check (here, the analyzer: a JVM
+  plus a pinned jar) is a separate decision with a separate cost — coupling them means neither
+  lands. Both ended up in CI, and the split is what made that affordable: the text gate runs in
+  `Test` on every code change, the analyzer in its own job path-filtered to the artefact it proves
+  things about, so the common path never installs the toolchain.
 - **Tamper it against the real defect.** Write the gate _before_ the fix and run it red. The red
   output is both the measurement and a tamper you did not have to invent.
 

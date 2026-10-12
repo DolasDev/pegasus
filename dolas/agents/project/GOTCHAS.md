@@ -3219,8 +3219,9 @@ green and three rounds of review read past it.
 **How to apply:** when a verification artefact restates a list that lives in code, add a **text
 gate** comparing the two in **both directions** — not another assertion inside the same artefact,
 which inherits the same blind spot. `packages/domain-reference/tests/conformance/alloy-vocabulary.test.ts`
-is the worked example: it parses the `.als` as text under vitest (so it needs no JVM and runs in CI,
-where `npm run alloy` runs **nowhere**), and it checks the types, each type's declared family, the
+is the worked example: it parses the `.als` as text under vitest, so it needs no JVM and runs in
+every `Test` job — the analyzer itself now runs in CI too, but only in a path-filtered job that a
+vocabulary change does not trigger. It checks the types, each type's declared family, the
 family-function declarations, `isADeclaredFamily`'s members, and — because the spec spells the count
 into the assertion's own name — that the count word tracks the list. Two details that matter:
 

@@ -45,6 +45,7 @@ jobs:
       tenant_runner: ${{ steps.filter.outputs.tenant_runner }}
       workflows_stdlib: ${{ steps.filter.outputs.workflows_stdlib }}
       temporal_worker: ${{ steps.filter.outputs.temporal_worker }}
+      alloy: ${{ steps.filter.outputs.alloy }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -83,6 +84,14 @@ jobs:
               - 'apps/temporal-worker/**'
               - 'packages/workflows-sdk-python/**'
               - 'packages/workflows-stdlib/**'
+              - '.github/workflows/ci.yml'
+            # Alloy specs. Only the specs and their runner: the guard that
+            # catches the vocabulary drifting from the specs is a vitest test
+            # needing no Java (tests/conformance/alloy-vocabulary.test.ts), so a
+            # `src/` change is already covered by Test and does not need the
+            # analyzer. ci.yml itself is included so this job self-validates.
+            alloy:
+              - 'packages/domain-reference/alloy/**'
               - '.github/workflows/ci.yml'
 
   # ---------------------------------------------------------------------------
@@ -419,6 +428,65 @@ jobs:
             base="${{ github.event.merge_group.base_sha }}"
           fi
           scripts/check-migration-safety.sh "$base"
+
+  # ---------------------------------------------------------------------------
+  # Alloy model checking (packages/domain-reference/alloy) — re-run the proofs
+  # the specs carry.
+  #
+  # Why it is worth a job: the specs found the worst defect in this corpus on
+  # their FIRST run, after five rounds of human review missed it — `handover`
+  # had no qualifier, so custody could never change hands twice, which made a
+  # normal van-line move unrepresentable (F1 in
+  # docs/domain-reference/analysis/findings-from-alloy.md). Until now they ran
+  # only on whoever remembered to type `npm run alloy`.
+  #
+  # Why its own job and not a step in Test: the analyzer needs a JVM and
+  # nothing else in this repo does, so Test — which every code PR pays for —
+  # never installs Java. The two halves are deliberately split: the guard
+  # against the vocabulary and the specs drifting apart is a plain vitest test
+  # (tests/conformance/alloy-vocabulary.test.ts, no JVM, runs in Test), and this
+  # job re-proves the invariants when the specs' own logic changes.
+  #
+  # No `./.github/actions/setup` and no jar cache, both deliberate:
+  # alloy/run.mjs imports only `node:` builtins, so there is nothing to install
+  # and the ~463 MB node_modules restore would be pure cost; and the analyzer
+  # jar is sha256-pinned inside run.mjs, a ~40 MB release asset the runner
+  # fetches in seconds. Caching it would spend an eviction-pressured Actions
+  # budget to save that — the same trade .github/actions/setup rejects for
+  # ~/.npm, with the same reasoning.
+  #
+  # An unexpected result here is a FINDING, not a flake. run.mjs fails on any
+  # command whose outcome differs from the `expect` written beside it in the
+  # spec: a `check … expect 0` coming back SAT means a counterexample exists to
+  # something a design document asserts, and a `run … expect 1` coming back
+  # UNSAT means a state a document requires cannot be built. Read the spec and
+  # the document before touching the `expect`.
+  # ---------------------------------------------------------------------------
+  alloy:
+    name: Alloy (domain-reference)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.alloy == 'true' || github.event_name == 'merge_group'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          # Required, not redundant: since setup-node v6 omitting this still
+          # enables npm caching, because package.json declares `packageManager`.
+          # This job installs nothing, so that cache would be pure download.
+          package-manager-cache: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          # run.mjs: "Java 21 is what these specs were run on".
+          java-version: '21'
+
+      - name: Model-check the specs
+        run: node packages/domain-reference/alloy/run.mjs
 
   # ---------------------------------------------------------------------------
   # Unit + integration tests (Vitest across all packages)
