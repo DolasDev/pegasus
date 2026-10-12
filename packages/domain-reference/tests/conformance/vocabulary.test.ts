@@ -194,7 +194,9 @@ describe('[SD §4.7.1] no type exists outside the declaration', () => {
     // make are marked `owed` rather than guessed, and that marking is itself the assertion here:
     // `charge` is a money fact [SD §4.1] never listed, `notification` is provisional throughout.
     const owedJoins = ASSERTION_TYPES.filter((type) => FACT_CLASS_FAMILY[type] === 'owed')
-    expect(owedJoins.sort()).toEqual(['charge', 'notification'])
+    // [A10] added `estimate`: its value shape is owed to A7 / A12 on `chargeValue`'s exact
+    // reasoning, so its fact-class-family join is `owed` too.
+    expect(owedJoins.sort()).toEqual(['charge', 'estimate', 'notification'])
     for (const type of ASSERTION_TYPES) {
       const family = FACT_CLASS_FAMILY[type]
       if (family === 'owed') continue
@@ -417,6 +419,10 @@ describe('the data tables and the types agree in both directions', () => {
       'delivery',
       'departure',
       'documentIssuance',
+      // [A10], 2026-10-12 — rows 19 and 20. The comment above is the reason these are names and
+      // not a count: the round that added them changed this one list, and a reader of the diff can
+      // see WHICH classes arrived.
+      'estimate',
       'handover',
       'identity',
       'loading',
@@ -425,6 +431,7 @@ describe('the data tables and the types agree in both directions', () => {
       'pieceCount',
       'sitEntryDate',
       'storeOut',
+      'survey',
       'unloading',
       'weight.gross',
       'weight.net',

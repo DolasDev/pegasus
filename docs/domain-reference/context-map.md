@@ -258,7 +258,7 @@ A declaration carrying **type parameters** is machinery rather than a concept an
 
 - **Declared in:** `packages/domain-reference/src/assertions.ts`
 - **Aggregate behind it:** _none_
-- **Areas that cite a reference site:** [**A1**](analysis/A1-order-service-lifecycle.md) · [**A8**](analysis/A8-authority-skeleton.md)
+- **Areas that cite a reference site:** [**A1**](analysis/A1-order-service-lifecycle.md) · [**A8**](analysis/A8-authority-skeleton.md) · **A10**
 - **Modules that reference it:** `assertions.ts` · `custody.ts` · `rules/authority.ts` · `rules/capture.ts` · `rules/e-canon.ts` · `rules/order-stage.ts` · `rules/resolution.ts`
 - **Sites whose docstring names an area** — the edges this map is about:
   - `assertions.ts:FactResolved.rule` — [[A8 §4.4]](analysis/A8-authority-skeleton.md#44-no-silent-recency) [[SD §4.3]](analysis/00-shared-decisions.md#43-resolution--factresolved)
@@ -270,6 +270,7 @@ A declaration carrying **type parameters** is machinery rather than a concept an
   - `rules/authority.ts:ISSUER_OF_SCHEME` — [[A8 §5]](analysis/A8-authority-skeleton.md)
   - `rules/authority.ts:JOINT_AT_CUSTODY_BOUNDARY` — [[A8 §7.3]](analysis/A8-authority-skeleton.md#73-there-is-exactly-one-instant-where-two-roles-are-jointly-authoritative-and-the-model-is-forbidden-to-pick) [[A8 §7.6]](analysis/A8-authority-skeleton.md#76-scenario-8-expressed-end-to-end)
   - `rules/authority.ts:PRINCIPAL_AT_ASPECT` — [[A8 §5]](analysis/A8-authority-skeleton.md) [[SD §4.7.2b]](analysis/00-shared-decisions.md#472-where-the-table-itself-forced-a-decision)
+  - `rules/authority.ts:PRINCIPAL_OF_THE_ARRANGEMENT` — [[A8 §5]](analysis/A8-authority-skeleton.md) [[A8 §9 item 4]](analysis/A8-authority-skeleton.md)
   - `rules/authority.ts:PUBLISHED_RECENCY_RULES` — [**A8**](analysis/A8-authority-skeleton.md) — _named, with no section cited_
   - `rules/authority.ts:ROLE_RESOLVED_BY_THE_AWARD` — [[A1 §3.5]](analysis/A1-order-service-lifecycle.md#35-who-may-cause-each-transition--owed-item-4) [[A1 §Cross-area]](analysis/A1-order-service-lifecycle.md) [[A8 §10]](analysis/A8-authority-skeleton.md) [[A8 §4.3]](analysis/A8-authority-skeleton.md#43-what-authority-is-bound-to--boundby) [[A8 §5]](analysis/A8-authority-skeleton.md) [[A8 §9 item 8(b)]](analysis/A8-authority-skeleton.md) [[SD §1.4]](analysis/00-shared-decisions.md#14-context--the-field-that-makes-the-conflict-disappear)
   - `rules/authority.ts:SIT_ENTRY_DERIVED` — [[A8 §5]](analysis/A8-authority-skeleton.md) [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
@@ -372,14 +373,14 @@ The glossary joins each record type to its canonical subject family. This is the
 ### `shipment` (aggregate)
 
 - **Subject families that admit it:** `anyAggregate` · `goods`
-- **Record types that may name it:** `delivery` · `handover` · `identity` · `loading` · `notification` · `packing` · `pieceCount` · `unloading` · `weight.gross` · `weight.net` · `weight.tare`
-- **Areas cited on those rows:** [**A8**](analysis/A8-authority-skeleton.md)
+- **Record types that may name it:** `delivery` · `estimate` · `handover` · `identity` · `loading` · `notification` · `packing` · `pieceCount` · `survey` · `unloading` · `weight.gross` · `weight.net` · `weight.tare`
+- **Areas cited on those rows:** [**A8**](analysis/A8-authority-skeleton.md) · **A10**
 
 ### `portion` (aggregate)
 
 - **Subject families that admit it:** `anyAggregate` · `goods`
-- **Record types that may name it:** `delivery` · `handover` · `identity` · `loading` · `notification` · `packing` · `pieceCount` · `unloading` · `weight.gross` · `weight.net` · `weight.tare`
-- **Areas cited on those rows:** [**A8**](analysis/A8-authority-skeleton.md)
+- **Record types that may name it:** `delivery` · `estimate` · `handover` · `identity` · `loading` · `notification` · `packing` · `pieceCount` · `survey` · `unloading` · `weight.gross` · `weight.net` · `weight.tare`
+- **Areas cited on those rows:** [**A8**](analysis/A8-authority-skeleton.md) · **A10**
 
 ### `stay` (aggregate)
 
@@ -461,7 +462,7 @@ The glossary's **Owed** section groups the inventory by what is undecided. This 
 
 A second ledger of the same kind as the owed inventory, and the one no generated artefact has published. `collectOwedInventory` reads the `owed(…)` constructor, the `Owed<…>` type and `OwedCode<…>`, and those three reach the glossary and `catalog/index.json`; the `TODO(…)` markers reach neither. Each names the document or the module that has to act. Read from the raw source text, because several are `//` comments inside a function body and attach to no declaration.
 
-- `packages/domain-reference/src/assertions.ts:561` → **corrections area** (_names no area_) — [SD §6]'s semantics — the amendment window, Correction.authority…
+- `packages/domain-reference/src/assertions.ts:584` → **corrections area** (_names no area_) — [SD §6]'s semantics — the amendment window, Correction.authority…
 - `packages/domain-reference/src/custody.ts:123` → **[SD §1.2] / A3** ([**A3**](analysis/A3-trip-stop-assignment.md)) — a place is either an aggregate kind of its own or an attribute of a…
 - `packages/domain-reference/src/custody.ts:153` → **[A8 §9 item 2]** ([**A8**](analysis/A8-authority-skeleton.md)) — decide whether a leg's performedBy is resolvable to a partyRole on the…
 - `packages/domain-reference/src/custody.ts:301` → **[SD §3] / A5** ([**A5**](analysis/A5-storage-in-transit.md)) — whether a shipment-subject handover also moves custody of a Portion of that…
@@ -471,22 +472,22 @@ A second ledger of the same kind as the owed inventory, and the one no generated
 - `packages/domain-reference/src/portion.ts:56` → **measures** (_names no area_) — this is the same owed unit vocabulary as MeasureValue in assertions.ts. If…
 - `packages/domain-reference/src/portion.ts:220` → **[SD §4.7.1]** (_names no area_) — no declared type carries a Portion's membership. [SD §1.3] makes…
 - `packages/domain-reference/src/rules/authority.ts:163` → **[A8 §10] §4.2 row** ([**A8**](analysis/A8-authority-skeleton.md)) — "src:sirva-ade only has a recording clock, so implementing this…
-- `packages/domain-reference/src/rules/authority.ts:653` → **reconcile with `data/authority-table.json`** ([**A8**](analysis/A8-authority-skeleton.md)) — [A8 §5] is currently carried twice in this…
-- `packages/domain-reference/src/rules/authority.ts:844` → **[A8 §9 item 2]** ([**A8**](analysis/A8-authority-skeleton.md)) — whether the NTS warehouseman is ADE's SITAgent is owed.
-- `packages/domain-reference/src/rules/authority.ts:919` → **[A8 §9 item 7]** ([**A8**](analysis/A8-authority-skeleton.md) · **A13**) — revenue allocation is A13's and this row must not be read as settling it.
-- `packages/domain-reference/src/rules/authority.ts:951` → **[SD §4.2]** (_names no area_) — src:dcsa forces eventClassifierCode = ACT on ISSU, so the corpus…
-- `packages/domain-reference/src/rules/authority.ts:1248` → **[A1 §3.5]** ([**A1**](analysis/A1-order-service-lifecycle.md)) — the deadline-lapse edge is an orderResponse at NOT_COMPLETED with…
-- `packages/domain-reference/src/rules/authority.ts:1581` → **[A8 §9 item 3]** ([**A8**](analysis/A8-authority-skeleton.md)) — A8-SELF's independence test is at legal-entity grain while assertedBy.party…
-- `packages/domain-reference/src/rules/authority.ts:1975` → **[A8 §9 items 2, 5]** ([**A8**](analysis/A8-authority-skeleton.md)) — authorityToDeclare compares ROLE NAMES, and the releasing/receiving…
+- `packages/domain-reference/src/rules/authority.ts:690` → **reconcile with `data/authority-table.json`** ([**A8**](analysis/A8-authority-skeleton.md)) — [A8 §5] is currently carried twice in this…
+- `packages/domain-reference/src/rules/authority.ts:881` → **[A8 §9 item 2]** ([**A8**](analysis/A8-authority-skeleton.md)) — whether the NTS warehouseman is ADE's SITAgent is owed.
+- `packages/domain-reference/src/rules/authority.ts:956` → **[A8 §9 item 7]** ([**A8**](analysis/A8-authority-skeleton.md) · **A13**) — revenue allocation is A13's and this row must not be read as settling it.
+- `packages/domain-reference/src/rules/authority.ts:988` → **[SD §4.2]** (_names no area_) — src:dcsa forces eventClassifierCode = ACT on ISSU, so the corpus…
+- `packages/domain-reference/src/rules/authority.ts:1285` → **[A1 §3.5]** ([**A1**](analysis/A1-order-service-lifecycle.md)) — the deadline-lapse edge is an orderResponse at NOT_COMPLETED with…
+- `packages/domain-reference/src/rules/authority.ts:1689` → **[A8 §9 item 3]** ([**A8**](analysis/A8-authority-skeleton.md)) — A8-SELF's independence test is at legal-entity grain while assertedBy.party…
+- `packages/domain-reference/src/rules/authority.ts:2083` → **[A8 §9 items 2, 5]** ([**A8**](analysis/A8-authority-skeleton.md)) — authorityToDeclare compares ROLE NAMES, and the releasing/receiving…
 - `packages/domain-reference/src/rules/capture.ts:264` → **[SD §4.7.3]** (_names no area_) — record position as absent and owed, or mint it — either is [SD §4.7]'s to do.
 - `packages/domain-reference/src/rules/corrections.ts:106` → **[SD §4.7.3] / A4** ([**A4**](analysis/A4-execution-events.md)) — mint estimate (and survey) as fact classes, then carry §375.401(i) as…
 - `packages/domain-reference/src/rules/corrections.ts:199` → **[SD §4.7.2b] / A7 / A12** ([**A7**](analysis/A7-charges-billing.md) · **A12**) — when the charge value lands, this should take the two assertions…
 - `packages/domain-reference/src/rules/corrections.ts:292` → **[A8 §9 item 6]** ([**A8**](analysis/A8-authority-skeleton.md)) — note the sourced anti-pattern the resolution must preserve when it…
 - `packages/domain-reference/src/rules/resolution.ts:217` → **[SD §4.4] / A4** ([**A4**](analysis/A4-execution-events.md)) — that named rule is not published. It is not this one — R-WEIGHT-LOWER…
-- `packages/domain-reference/src/vocabulary.ts:406` → **authority module** ([**A8**](analysis/A8-authority-skeleton.md)) — carry [A8 §5]'s role table and boundBy, with the owed rows marked…
-- `packages/domain-reference/src/vocabulary.ts:710` → **[SD §4.7.3] / A1** ([**A1**](analysis/A1-order-service-lifecycle.md)) — either mint a state fact class or record state as absent and owed…
-- `packages/domain-reference/src/vocabulary.ts:809` → **ingest** (_names no area_) — E-CANON-RESOLVE (the named, versioned subject-resolution rule that must return…
-- `packages/domain-reference/src/vocabulary.ts:1037` → **projections** (_names no area_) — custodyAt(goods, instant) ([SD §4.8.3]) is a fold over published records…
+- `packages/domain-reference/src/vocabulary.ts:491` → **authority module** ([**A8**](analysis/A8-authority-skeleton.md)) — carry [A8 §5]'s role table and boundBy, with the owed rows marked…
+- `packages/domain-reference/src/vocabulary.ts:801` → **[SD §4.7.3] / A1** ([**A1**](analysis/A1-order-service-lifecycle.md)) — either mint a state fact class or record state as absent and owed…
+- `packages/domain-reference/src/vocabulary.ts:906` → **ingest** (_names no area_) — E-CANON-RESOLVE (the named, versioned subject-resolution rule that must return…
+- `packages/domain-reference/src/vocabulary.ts:1163` → **projections** (_names no area_) — custodyAt(goods, instant) ([SD §4.8.3]) is a fold over published records…
 
 ### The declared owed values, by owner
 
@@ -494,6 +495,7 @@ Every `owed(name, owedTo)` and `Owed<Name, Owner>` in `src/`, keyed on the owner
 
 - **A4 / A10 — no document fixes the condition vocabulary** — `conditionValue` ([**A4**](analysis/A4-execution-events.md) · **A10**)
 - **A4 / [SD §6.5] — no source states a correction deadline** — `obligationDeadline` ([**A4**](analysis/A4-execution-events.md))
+- **A7 / A12 — as chargeValue: the corpus names gross/net/discount and defines them nowhere** — `estimateValue` ([**A7**](analysis/A7-charges-billing.md) · **A12**)
 - **A7 / A12 — the corpus publishes gross/net/discount as field names and defines them nowhere** — `chargeValue` ([**A7**](analysis/A7-charges-billing.md) · **A12**)
 - **A8 §9 item 6 — the party as a notification target** — `notificationTarget` · `notificationValue` ([**A8**](analysis/A8-authority-skeleton.md))
 - **[A8 §9 item 2] — the role enum has no van-line member** — `tariffOwner` ([**A8**](analysis/A8-authority-skeleton.md))
@@ -543,12 +545,12 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
   - [**A4**](analysis/A4-execution-events.md) via `AssertionType` · `BoundBy` · `Instant`
   - [**A6**](analysis/A6-documents-evidence.md) via `AssertionType` · `BoundBy`
   - [**A8**](analysis/A8-authority-skeleton.md) via `AssertionType` · `BoundBy` · `Instant` · `RuleRef` · `StandingHolder`
-  - **A10** via `AssertionType` · `BoundBy`
+  - **A10** via `AssertionType` · `BoundBy` · `RuleRef`
   - **A11** via `AssertionType` · `BoundBy`
 - **Aggregates whose record rows cite it:** `order`
 - **Owed to it:**
-  - `packages/domain-reference/src/rules/authority.ts:1248` → **[A1 §3.5]**
-  - `packages/domain-reference/src/vocabulary.ts:710` → **[SD §4.7.3] / A1**
+  - `packages/domain-reference/src/rules/authority.ts:1285` → **[A1 §3.5]**
+  - `packages/domain-reference/src/vocabulary.ts:801` → **[SD §4.7.3] / A1**
   - `orderCancellation`'s authority row — [A8 §9 item 8] — owed, and NO LONGER on the boundBy gap: the binding is AWARD. What is owed is the HOLDER. [A1 §3.5] makes a cancellation after acceptance "either party", a refused one the counterparty of the requestor, and its open defect leaves a completed cancellation with no requestor field at all — so authoritative would be plural, A8-NAMED requires a tie-break, and no source publishes one.
 
 ### A2 — Shipment structure
@@ -660,6 +662,7 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
 - **Owed to it:**
   - `packages/domain-reference/src/rules/corrections.ts:199` → **[SD §4.7.2b] / A7 / A12**
   - `chargeValue` — A7 / A12 — the corpus publishes gross/net/discount as field names and defines them nowhere
+  - `estimateValue` — A7 / A12 — as chargeValue: the corpus names gross/net/discount and defines them nowhere
 
 ### A8 — Parties & roles
 
@@ -675,20 +678,20 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
   - [**A6**](analysis/A6-documents-evidence.md) via `AggregateKind` · `AssertionType` · `BoundBy` · `EventId` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
   - [**A7**](analysis/A7-charges-billing.md) via `AggregateKind` · `IdentitySchemeTable` · `RoleClass` · `SchemeName` · `StayLocation`
   - [**A9**](analysis/A9-identity-cross-references.md) via `AggregateKind` · `AssertedBy` · `IdentitySchemeTable` · `RoleClass` · `SchemeAccountabilityVerdict` · `SchemeName`
-  - **A10** via `AssertionType` · `BoundBy`
+  - **A10** via `AssertionType` · `BoundBy` · `RuleRef`
   - **A11** via `AssertionType` · `BoundBy`
 - **Aggregates whose record rows cite it:** `order` · `shipment` · `portion` · `stay` · `trip` · `stop` · `stopAction` · `assignment` · `partyRole` · `item` · `charge` · `resource` · `document` · `externallyPerformedLeg` · `party`
 - **Owed to it:**
   - `packages/domain-reference/src/custody.ts:153` → **[A8 §9 item 2]**
   - `packages/domain-reference/src/ids.ts:215` → **[A8 §9 item 1]**
   - `packages/domain-reference/src/rules/authority.ts:163` → **[A8 §10] §4.2 row**
-  - `packages/domain-reference/src/rules/authority.ts:653` → **reconcile with `data/authority-table.json`**
-  - `packages/domain-reference/src/rules/authority.ts:844` → **[A8 §9 item 2]**
-  - `packages/domain-reference/src/rules/authority.ts:919` → **[A8 §9 item 7]**
-  - `packages/domain-reference/src/rules/authority.ts:1581` → **[A8 §9 item 3]**
-  - `packages/domain-reference/src/rules/authority.ts:1975` → **[A8 §9 items 2, 5]**
+  - `packages/domain-reference/src/rules/authority.ts:690` → **reconcile with `data/authority-table.json`**
+  - `packages/domain-reference/src/rules/authority.ts:881` → **[A8 §9 item 2]**
+  - `packages/domain-reference/src/rules/authority.ts:956` → **[A8 §9 item 7]**
+  - `packages/domain-reference/src/rules/authority.ts:1689` → **[A8 §9 item 3]**
+  - `packages/domain-reference/src/rules/authority.ts:2083` → **[A8 §9 items 2, 5]**
   - `packages/domain-reference/src/rules/corrections.ts:292` → **[A8 §9 item 6]**
-  - `packages/domain-reference/src/vocabulary.ts:406` → **authority module**
+  - `packages/domain-reference/src/vocabulary.ts:491` → **authority module**
   - `authorityRow` — [A8 §9 item 8] — the fact class has no row in A8 §5
   - `notificationTarget` — A8 §9 item 6 — the party as a notification target
   - `notificationValue` — A8 §9 item 6 — the party as a notification target
@@ -727,16 +730,16 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
 
 - **`v1 detail`:** context map — context-map-only by design, and **not a gap**; it has no decision document.
 - **`Covers`:** survey types, estimate types (binding/non-binding/not-to-exceed), inventory items & condition
-- **Concepts on the join surface that cite it:** `AssertionType` · `BoundBy`
+- **Concepts on the join surface that cite it:** `AssertionType` · `BoundBy` · `RuleRef`
 - **Shares with:**
-  - [**A1**](analysis/A1-order-service-lifecycle.md) via `AssertionType` · `BoundBy`
+  - [**A1**](analysis/A1-order-service-lifecycle.md) via `AssertionType` · `BoundBy` · `RuleRef`
   - [**A2**](analysis/A2-shipment-structure.md) via `AssertionType` · `BoundBy`
   - [**A3**](analysis/A3-trip-stop-assignment.md) via `AssertionType`
   - [**A4**](analysis/A4-execution-events.md) via `AssertionType` · `BoundBy`
   - [**A6**](analysis/A6-documents-evidence.md) via `AssertionType` · `BoundBy`
-  - [**A8**](analysis/A8-authority-skeleton.md) via `AssertionType` · `BoundBy`
+  - [**A8**](analysis/A8-authority-skeleton.md) via `AssertionType` · `BoundBy` · `RuleRef`
   - **A11** via `AssertionType` · `BoundBy`
-- **Aggregates whose record rows cite it:** _none_
+- **Aggregates whose record rows cite it:** `shipment` · `portion`
 - **Owed to it:**
   - `conditionValue` — A4 / A10 — no document fixes the condition vocabulary
 
@@ -766,6 +769,7 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
 - **Owed to it:**
   - `packages/domain-reference/src/rules/corrections.ts:199` → **[SD §4.7.2b] / A7 / A12**
   - `chargeValue` — A7 / A12 — the corpus publishes gross/net/discount as field names and defines them nowhere
+  - `estimateValue` — A7 / A12 — as chargeValue: the corpus names gross/net/discount and defines them nowhere
 
 ### A13 — Crew, driver & settlement
 
@@ -775,4 +779,4 @@ One entry per node, with what reaches it. **Shares with** is the undirected edge
 - **Shares with:** _no other area cites a concept this one cites_
 - **Aggregates whose record rows cite it:** _none_
 - **Owed to it:**
-  - `packages/domain-reference/src/rules/authority.ts:919` → **[A8 §9 item 7]**
+  - `packages/domain-reference/src/rules/authority.ts:956` → **[A8 §9 item 7]**

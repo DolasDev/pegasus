@@ -502,6 +502,20 @@ export const M7_ELIGIBILITY = {
   // status push, which READS like `PARTNER_ASSERTED` on both — and reading like it is not a
   // declaration ([SD §0]), so the set stays owed rather than being narrowed by analogy.
   documentIssuance: eligibilityOwed(M7_OWED),
+  // [A10], 2026-10-12. Both OWED, and `survey` is the more interesting refusal of the two.
+  //
+  // `src:cfr-49-375` §375.103 is unusually close to fixing `survey`'s capture method — it defines a
+  // physical survey as one "conducted **on-site or virtually**", and a virtual survey requires the
+  // carrier to "view the household goods through **live or pre-recorded video**". That is a
+  // statement about HOW the act is performed, and it is tempting to read the pair as
+  // `OBSERVED_BY_PERSON` against something device-mediated. It is not a capture declaration: the
+  // regulation constrains the SURVEY, not the ASSERTION about it, and a surveyor who walks the house
+  // may still key the record later from notes. Reading the one as the other is the inference
+  // [SD §0] forbids, so the set stays owed and the distinction is recorded here instead.
+  survey: eligibilityOwed(M7_OWED),
+  // `estimate` is a written document the shipper co-signs (§375.401(h)), which rules nothing in: a
+  // signature constrains the instrument, not the capture of the amount.
+  estimate: eligibilityOwed(M7_OWED),
   // The meta-records. [SD §4.3] fixes `FactResolved`'s capture method as part of the record class,
   // which is a closed declaration by another name. [SD §6] fixes none for `Correction`.
   FactResolved: closedAtEveryBasis(['DERIVED_BY_RULE']),

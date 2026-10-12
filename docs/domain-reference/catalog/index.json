@@ -3,10 +3,10 @@
   "x-generator": "packages/domain-reference/tools/generate-catalog.ts",
   "x-command": "npm run catalog -w @pegasus/domain-reference",
   "catalog": {
-    "specVersion": "0.7.0",
+    "specVersion": "0.7.1",
     "decidedBy": "docs/domain-reference/analysis/published-event-catalog.md",
     "note": "The published catalog is the record vocabulary, exactly — [catalog §1]. There is no coarser published layer over these members, because a second classification axis is permanently forbidden by [SD §1.1].",
-    "memberCount": 34,
+    "memberCount": 36,
     "faces": ["captured", "queried"],
     "schemas": {
       "captured": "captured.schema.json",
@@ -92,6 +92,14 @@
       "canonicalSubjectFamily": "document",
       "subjectKinds": ["document"],
       "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "estimate",
+      "kind": "assertion",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
+      "factClassFamily": "owed",
       "qualifier": null
     },
     {
@@ -235,6 +243,14 @@
       "kind": "act",
       "canonicalSubjectFamily": "stay",
       "subjectKinds": ["stay"],
+      "factClassFamily": "actPerformance",
+      "qualifier": null
+    },
+    {
+      "type": "survey",
+      "kind": "act",
+      "canonicalSubjectFamily": "goods",
+      "subjectKinds": ["shipment", "portion"],
       "factClassFamily": "actPerformance",
       "qualifier": null
     },
@@ -615,12 +631,12 @@
   "owed": {
     "note": "What the model declares undecided — [SD §0] forbids guessing a value to make the types tidy. Published here so a consumer sees the gaps without reading the analysis. The A4 reason vocabulary was the one that most affected this contract and it landed at `0.2.0` ([A4 §3]); what caps this version now is the authority rows, whose owed count is `counts.authorityRows` of `counts.declaredRecordTypes` below.",
     "counts": {
-      "declared": 18,
+      "declared": 19,
       "vocabularies": 3,
       "authorityRows": 13,
-      "declaredRecordTypes": 32,
-      "factClassFamilies": 2,
-      "absentFactClasses": 15
+      "declaredRecordTypes": 34,
+      "factClassFamilies": 3,
+      "absentFactClasses": 13
     },
     "vocabularies": ["identityScheme", "roleClass", "unitOfMeasure"],
     "declared": [
@@ -657,6 +673,11 @@
       {
         "what": "conditionValue",
         "owedTo": "A4 / A10 — no document fixes the condition vocabulary",
+        "where": "packages/domain-reference/src/assertions.ts"
+      },
+      {
+        "what": "estimateValue",
+        "owedTo": "A7 / A12 — as chargeValue: the corpus names gross/net/discount and defines them nowhere",
         "where": "packages/domain-reference/src/assertions.ts"
       },
       {
@@ -795,12 +816,11 @@
         "boundBy": "owed"
       }
     ],
-    "factClassFamilies": ["charge", "notification"],
+    "factClassFamilies": ["charge", "estimate", "notification"],
     "absentFactClasses": [
       "chargeCollection",
       "claim",
       "cube",
-      "estimate",
       "eta",
       "resourceTareWeight",
       "sealIntegrity",
@@ -808,7 +828,6 @@
       "stayAllowance",
       "stayAuthorisation",
       "stayTermination",
-      "survey",
       "tracerResult",
       "unpacking",
       "weighing"

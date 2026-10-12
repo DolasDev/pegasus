@@ -263,7 +263,68 @@ void _catalogIsTheVocabulary
  * > `{kind: 'performingRole'}` in the typed table, and its own `owedTo` said "Not fixed" before
  * > either round touched it. **Item 11 was minted at four entries and owned three.**
  */
-export const CATALOG_VERSION = '0.7.0'
+/**
+ * **`0.7.1` — `[A10]`, 2026-10-12: a role, and the two fact classes it unblocked.** Additive, and
+ * the first release in four rounds to emit anything at all — `[A8 §9 item 3]`, item 11 and §8.3(2)
+ * all closed with a byte-identical catalog.
+ *
+ * **Three members.** `contractingCarrier` on `RoleName` (`newClosedEnumMember`), and `survey` and
+ * `estimate` on `AssertionType` with [A8 §5] rows 19 and 20 (`newRecordType` ×2).
+ *
+ * > **This line read `0.8.0` first, and the conformance gate was right to refuse it.**
+ * > [catalog §2.3.1] assigns **breaking to the MINOR slot and additive to the PATCH slot** while the
+ * > major is `0` — the opposite of the usual reading, and deliberately so: under semver `^0.7.0`
+ * > admits `0.7.1` and excludes `0.8.0`, so a caret range takes the additive releases and refuses
+ * > the breaking ones **without anyone having read this document**. An additive release in the
+ * > minor slot would have made every pinned consumer refuse a release they should have taken. The
+ * > gate that caught it (`spends the minor slot on breaking and the patch slot on additive`) reads
+ * > the change classes out of [catalog §2.4]'s own row and compares them to the slot that moved,
+ * > which is why a wrong version could not ship with a correct classification beside it.
+ *
+ * **The round was proposed as writing three fact classes and became a round about a ROLE**, which
+ * is the finding worth carrying. `survey`, `estimate` and `claim` are all asserted by _"you, the
+ * motor carrier"_ — and the cast had no carrier-side member, so none of the three could be given an
+ * authority row. That is `[A8 §9 item 2]`'s blocker, `refusedOnEvidence`, and `documentIssuance`
+ * had escaped it only because the bill of lading **has a number scheme of its own** and
+ * `boundBy = SCHEME` could name its issuer without a role. A physical survey has neither a scheme
+ * nor an instrument, so the escape did not generalise and the enum had to grow.
+ *
+ * **The evidence is a DEFINITION, not a count, and the count would have misled.**
+ * `src:cfr-49-375` §375.103 defines `Household goods motor carrier` as one that _"offers … (i)
+ * Binding and nonbinding estimates; (ii) Inventorying; (iii) Protective packing and unpacking;
+ * (iv) Loading and unloading"_ — **the regulation defines this party by the fact classes this
+ * release mints**, two of which (`packing`, `loading`/`unloading`) it already carried. Meanwhile
+ * `mover` has 225 occurrences in the part and **222 of them are in Appendix A's consumer pamphlet**
+ * against 3 in the regulatory text, which is precisely how `0.7.0` first picked `customer` over
+ * `individual shipper` and had to be reversed. `van line` has **zero**.
+ *
+ * **`boundBy = PRINCIPAL` on both rows, and no new binding member.** §375.205(a)(1) has a prime
+ * agent act _"for you or on your behalf … under the terms of an agreement or arrangement with you"_,
+ * so when an origin agent surveys, the arrangement is **for** the contracting carrier and authority
+ * does not follow performance. §375.409's broker-adopted estimate is the same shape from the other
+ * end — authorship moves, authority does not. The rule is `PRINCIPAL-OF-THE-ARRANGEMENT` v1, and it
+ * is deliberately **not** a delegation axis: `[A8 §9 item 4]` stays paused.
+ *
+ * **One key for `estimate`, not two, and this is the release's substantive modelling step.**
+ * §375.403(a)(7) makes _"failure to execute a new binding estimate **or a non-binding estimate**"_ a
+ * reaffirmation of the original, so binding and non-binding are **alternatives** resolved by recency
+ * through `supersedes`, and bindingness is a property of the value rather than a `{binding}`
+ * qualifier. `charge`'s `{aspect}` exists because an approval must not compete with an amount; two
+ * estimates of one total **should** compete. Same mechanism, opposite answer.
+ *
+ * **What this release does NOT do.** `claim` stays absent, and its `ABSENT_AND_OWED` entry stops
+ * being a bare name: the carrier **receives** a claim and `contractingCarrier` names that party, but
+ * the one who **decides** it is an adjuster and the cast names no decider — `[A8 §9 item 2]` again.
+ * And the member closes **three** gaps, not the six the round was proposed as closing: row 11's
+ * `RATED` aspect is owed to a **`tariffOwner`**, the van line, and `stayAuthorisation` /
+ * `stayTermination` to a **Government transportation office**. Neither is this party, and a van
+ * line and its agent are both household goods motor carriers.
+ *
+ * **`estimate` ships with an owed value** — `Owed<'estimateValue', 'A7 / A12'>`, on `chargeValue`'s
+ * exact reasoning, which is the established pattern for a fact the documents fix while fixing
+ * nothing about its shape.
+ */
+export const CATALOG_VERSION = '0.7.1'
 
 /* ------------------------------------------------------------------------------------------------
  * The two faces

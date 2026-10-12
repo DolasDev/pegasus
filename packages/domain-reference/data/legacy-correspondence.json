@@ -83,13 +83,13 @@
     {
       "module": "_SurveyResults",
       "legacyVocabulary": ["survey", "survey results", "service authorization"],
-      "concepts": [],
-      "absentConcepts": ["survey", "estimate", "cube"],
+      "concepts": ["survey", "estimate"],
+      "absentConcepts": ["cube"],
       "aggregates": ["shipment"],
       "areas": ["A10"],
       "confidence": "read",
       "basis": "SurveyResultsMaintenanceForm, SaleServiceAuthorizationMaintenanceForm (1,774 lines).",
-      "note": "THE CLEAREST GAP IN THE REFERENCE, and the most useful row in this table. `survey`, `estimate` and `cube` are all ABSENT fact classes — [A8 §9 item 8] names survey/estimate facts among the classes [A8 §5] does not reach, and A10 is out of scope for v1. A migrator here gets NO domain reading, and should know that rather than infer one. Plan §8.3(3) is the fix."
+      "note": "THE ROUND THAT CHANGED THIS ROW IS THE ONE TO READ. Until catalog 0.8.0 this module mapped to NOTHING: survey, estimate and cube were all absent fact classes, and the index said so rather than leaving a migrator with silence. [A10] (2026-10-12) minted survey and estimate, so the two largest concepts here now have authority rows (19 and 20) and a named asserter, the contractingCarrier. What is still missing is cube — the surveyed VOLUME. The survey act is published and one of the values it produces is not, which is a narrower gap than this row used to describe: cube needs a MeasureValue in a volume unit and unitOfMeasure is still owed. Read [A8 §5] rows 19-20 before mapping a save button here, and note that estimate's VALUE shape is owed to A7/A12 even though the fact class exists."
     },
     {
       "module": "_WarehouseHouseholdGoods",
@@ -114,13 +114,13 @@
     {
       "module": "_Lead",
       "legacyVocabulary": ["lead", "lead demo", "opportunity"],
-      "concepts": ["identity"],
-      "absentConcepts": ["estimate", "survey"],
+      "concepts": ["identity", "estimate", "survey"],
+      "absentConcepts": [],
       "aggregates": ["party", "order"],
       "areas": ["A1"],
       "confidence": "read",
       "basis": "LeadMaintenanceForm, LeadDemoMaintenanceForm.",
-      "note": "Pre-commitment. [A7 §3.6] and [A1] establish that both roles ARE named before any commitment exists — §375.401's estimate signed by both parties before the BOL, and §375.409's broker-adopted estimate — so a lead is not nothing to the reference. But there is no `lead` or `opportunity` concept, and `estimate` is absent. `src:sirva-ade`'s LEP/LEU/LOD specs are the closest published material."
+      "note": "Pre-commitment. [A7 §3.6] and [A1] establish that both roles ARE named before any commitment exists — §375.401's estimate signed by both parties before the BOL, and §375.409's broker-adopted estimate — so a lead is not nothing to the reference. But there is no `lead` or `opportunity` concept, and `estimate` is absent. `src:sirva-ade`'s LEP/LEU/LOD specs are the closest published material. UPDATED at catalog 0.8.0: estimate and survey were listed here as ABSENT fact classes until [A10] minted them. A lead that carries an estimate now has somewhere to go — and the asserter is the contractingCarrier, not the booker, because §375.409 makes even a broker-authored estimate the carrier's own."
     },
     {
       "module": "_Account",
