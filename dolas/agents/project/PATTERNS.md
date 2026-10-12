@@ -335,3 +335,29 @@ response contract. Read the **partner's** outcome when the handler proxies one
 inside a 200 (`delivered` / `ok`). Never key on a client-suppliable value
 (`x-correlation-id`): mint a uuid when no stable result id exists. The meter is
 non-fatal by design; `Pegasus/Usage MeterWriteFailed` is the backstop.
+
+## Saved filters on a ported screen — Postgres, not the legacy filter table
+
+Planning's saved shipment filters live in the tenant's SQL Server
+(`longhaul_shipment_filter`, keyed by legacy salesman code). That table has **no
+screen discriminator**: any other screen writing to it would leak its rows into
+Planning's filter modal, and adding a column means lazy DDL on every tenant's
+SQL Server. So when a cloud-native screen needs saved filters, store them in
+Postgres. Operations → Availability (`AvailabilityFilter`,
+`/api/v1/availability-filters`) is the worked example:
+
+- One row per filter, `ownerId` → `TenantUser` (no `LONGHAUL_USER_NOT_MAPPED`
+  failure mode), in `TENANT_SCOPED_MODELS` so "public" can only mean
+  public-within-tenant.
+- The user's **default** is a pointer in `TenantUser.preferences`
+  (`lib/user-preferences.ts`), not a column. A dangling pointer reads as null —
+  same rule as `defaultDashboardSlug`. Any new preferences section **must be
+  declared** in the zod schema: `z.object` strips unknown keys, so an undeclared
+  section is wiped by the next write to any other section.
+- The `query` is a strict, versioned zod shape (`v: 1`), not `z.record(unknown)`.
+  Dates are day offsets from today (Planning's convention) so a saved window
+  doesn't rot; the client converts with `Date.UTC` calendar math so DST can't
+  shift an offset. Zones are stored as codes and relabelled on load.
+- Only the owner can delete (Planning's DELETE deletes any id — don't copy it).
+- The page seeds from the default **during render**, behind its loading state,
+  so the table never paints the built-in filters and then jumps.

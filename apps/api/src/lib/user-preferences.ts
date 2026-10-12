@@ -34,9 +34,28 @@ const ReportingPreferences = z
   .partial()
   .default({})
 
+/**
+ * `defaultAvailabilityFilterId` points at an AvailabilityFilter row. Same
+ * dangling-is-fine rule as the dashboard slug: GET /availability-filters/default
+ * resolves it against filters the caller can still see and returns null
+ * otherwise, so a deleted or un-published filter silently falls back to the
+ * page's built-in filter state.
+ *
+ * No `.default({})` (unlike `reporting`): the section is absent until a user
+ * first sets a default, which keeps existing hydrated shapes unchanged. It must
+ * still be declared here — z.object strips unknown keys, so an undeclared
+ * section would be wiped by the next write to any other section.
+ */
+const OperationsPreferences = z
+  .object({
+    defaultAvailabilityFilterId: z.uuid().nullable().optional(),
+  })
+  .partial()
+
 const UserPreferencesSchema = z
   .object({
     reporting: ReportingPreferences,
+    operations: OperationsPreferences,
   })
   .partial()
   .default({})
@@ -48,6 +67,12 @@ export const UserPreferencesPatch = z.object({
   reporting: z
     .object({
       defaultDashboardSlug: z.string().min(1).max(128).nullable(),
+    })
+    .partial()
+    .optional(),
+  operations: z
+    .object({
+      defaultAvailabilityFilterId: z.uuid().nullable(),
     })
     .partial()
     .optional(),
@@ -83,6 +108,7 @@ export async function updateUserPreferences(
   const next: UserPreferences = {
     ...current,
     ...(patch.reporting ? { reporting: { ...current.reporting, ...patch.reporting } } : {}),
+    ...(patch.operations ? { operations: { ...current.operations, ...patch.operations } } : {}),
   }
 
   const parsed = UserPreferencesSchema.parse(next)

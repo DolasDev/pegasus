@@ -315,6 +315,7 @@ model Tenant {
 
   // Push notifications
   deviceTokens           DeviceToken[]
+  availabilityFilters    AvailabilityFilter[]
   pushNotificationOutbox PushNotificationOutbox[]
 
   // Longhaul — archived (rejected/canceled) trip snapshots
@@ -515,6 +516,7 @@ model TenantUser {
   crewMember        CrewMember?
 
   deviceTokens       DeviceToken[]
+  availabilityFilters AvailabilityFilter[]
   pushNotifications  PushNotificationOutbox[]
   companyMemberships CompanyMembership[]
 
@@ -3358,5 +3360,36 @@ model CompanyMembership {
   @@unique([companyId, tenantUserId])
   @@index([tenantId])
   @@map("company_memberships")
+  @@schema("public")
+}
+
+/// A named, saved filter-bar state for the Operations → Availability screen
+/// (tenant-web View A). The counterpart of Planning's legacy
+/// `longhaul_shipment_filter` rows, but stored cloud-side: that table has no
+/// screen discriminator, so reusing it would leak these rows into Planning's
+/// filter modal. A user's DEFAULT filter is not a column here — it lives in
+/// TenantUser.preferences (operations.defaultAvailabilityFilterId), so a
+/// dangling default degrades silently to the built-in filter state.
+///
+/// `query` is the versioned, zod-validated shape in
+/// lib/availability-filter-query.ts; dates are integer day offsets from today
+/// (Planning's convention) so a saved window doesn't rot.
+model AvailabilityFilter {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  ownerId  String  @map("owner_id")
+  name     String  @db.VarChar(100)
+  query    Json
+  isPublic Boolean @default(false) @map("is_public")
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  owner  TenantUser @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, ownerId])
+  @@index([tenantId, isPublic])
+  @@map("availability_filters")
   @@schema("public")
 }

@@ -72,4 +72,29 @@ describe('updateUserPreferences', () => {
     const next = await updateUserPreferences(db, 'u1', {})
     expect(next.reporting?.defaultDashboardSlug).toBe('ops')
   })
+
+  const FILTER_ID = '6f1c2b8e-3d4a-4b5c-8d9e-0f1a2b3c4d5e'
+
+  it('sets a default availability filter without touching reporting', async () => {
+    findUnique.mockResolvedValue({ preferences: { reporting: { defaultDashboardSlug: 'ops' } } })
+    const next = await updateUserPreferences(db, 'u1', {
+      operations: { defaultAvailabilityFilterId: FILTER_ID },
+    })
+    expect(next).toEqual({
+      reporting: { defaultDashboardSlug: 'ops' },
+      operations: { defaultAvailabilityFilterId: FILTER_ID },
+    })
+  })
+
+  it('keeps the operations section when only reporting is patched', async () => {
+    // z.object strips undeclared keys — this pins that `operations` is declared,
+    // so a dashboard-default write cannot wipe the availability default.
+    findUnique.mockResolvedValue({
+      preferences: { operations: { defaultAvailabilityFilterId: FILTER_ID } },
+    })
+    const next = await updateUserPreferences(db, 'u1', {
+      reporting: { defaultDashboardSlug: 'ops' },
+    })
+    expect(next.operations?.defaultAvailabilityFilterId).toBe(FILTER_ID)
+  })
 })
