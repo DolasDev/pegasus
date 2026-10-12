@@ -119,10 +119,8 @@ Read the identity line that #826 added — it is the first thing the step prints
 Then `PR #145 author is 'steve-dolo', not Dependabot — refusing.` and exit 0. It never reaches
 `--disable-auto`/`--auto`, so this is safe to run repeatedly.
 
-**Stage 2, the real proof — next Dependabot batch.** `.github/dependabot.yml` is `interval: weekly`
-with no `day`, so Dependabot defaults to **Monday**; the next window is **2026-10-12**. When one of
-its minor/patch PRs goes green and `enqueue` fires, a `merge_group` run should appear within ~a
-minute:
+**Stage 2, the real proof — an open Dependabot PR. The window is open now.** When one of its
+minor/patch PRs goes green and `enqueue` fires, a `merge_group` run should appear within ~a minute:
 
 ```
 gh run list --limit 40 --json createdAt,event,status,conclusion,headBranch \
@@ -132,6 +130,25 @@ gh run list --limit 40 --json createdAt,event,status,conclusion,headBranch \
 Look for `gh-readonly-queue/main/pr-<N>-*`. Client-side filter deliberately —
 `gh run list --event merge_group` returns stale data in this repo. You are looking for **~20 s**
 instead of 18–21 minutes.
+
+> ⚠️ **Do NOT predict the batch day from `.github/dependabot.yml`.** An earlier revision of this
+> file reasoned "`interval: weekly` with no `day`, so Dependabot defaults to Monday" and named
+> 2026-10-12. The batch landed **Sunday 2026-10-11**. Measured over the last 25 Dependabot PRs:
+> scheduled grouped batches mostly land **Sunday** (10-11, 10-04, 09-27, 09-20, 09-13) but also
+> **Tuesday** (09-29, 09-22, 09-15), and single-package **security** bumps arrive any day because
+> they are filed on alert, not on schedule. Ask instead of deriving:
+>
+> ```
+> gh pr list --state open --author app/dependabot
+> ```
+
+**As of 2026-10-12 the subjects are #829 (hono) and #830 (aws-cdk)** — both green. **#831**
+(`minor-and-patch`, 32 updates) is **not** a usable subject: all four of its heavy jobs are red from
+a single cause, Dependabot shipping a `package.json`/`package-lock.json` pair that `npm ci` rejects
+(`Missing: … from lock file`, 17 packages). That is the known defect recorded in GOTCHAS and in
+State of play's lesson 3 — `@dependabot recreate` does **not** fix it; the lockfile has to be
+regenerated with **npm 11** and pushed to the branch. Until that lands, #831 can never reach the
+queue, so it proves nothing about the App token either way.
 
 **The one unverified link, stated plainly.** Stage 1 proves the App token is minted and can _read_
 PR metadata. It does **not** prove that `enablePullRequestAutoMerge` /
