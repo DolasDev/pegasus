@@ -182,27 +182,56 @@ describe.skipIf(!hasDb)('TenantTemporalNamespace repository (integration)', () =
     expect(await repo.getDecryptedKey(otherTenantId)).toBeNull()
   })
 
-  it('rotateKey keeps the replaced key as previous until it is cleared', async () => {
+  async function readyWithKey(key = { apiKeyId: 'key-1', token: 'secret-token-1' }) {
     await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
-    await repo.storeKey(tenantId, {
-      apiKeyId: 'key-1',
-      token: 'secret-token-1',
-      expiresAt: new Date('2027-10-05T00:00:00.000Z'),
+    await repo.storeKey(tenantId, { ...key, expiresAt: new Date('2027-10-05T00:00:00.000Z') })
+  }
+
+  it('storePendingKey parks an encrypted key that is never served', async () => {
+    await readyWithKey()
+    await repo.storePendingKey(tenantId, { apiKeyId: 'key-2', token: 'secret-token-2' })
+
+    const raw = await db.tenantTemporalNamespace.findUnique({ where: { tenantId } })
+    expect(raw!.pendingApiKeyId).toBe('key-2')
+    expect(raw!.pendingApiKeyCiphertext).not.toBe('secret-token-2')
+    // The served key is still the current one.
+    expect((await repo.getDecryptedKey(tenantId))!.apiKey).toBe('secret-token-1')
+    expect(await repo.getDecryptedPendingKey(tenantId)).toEqual({
+      namespace: NAMESPACE,
+      grpcAddress: GRPC,
+      apiKeyId: 'key-2',
+      apiKey: 'secret-token-2',
     })
+    const row = await repo.findByTenant(tenantId)
+    expect(row!.pendingApiKeyId).toBe('key-2')
+    expect(row).not.toHaveProperty('pendingApiKeyCiphertext')
+    expect(await repo.getDecryptedPendingKey(otherTenantId)).toBeNull()
+  })
+
+  it('promotePendingKey makes the pending key current and keeps the old one as previous', async () => {
+    await readyWithKey()
+    await repo.setLastError(tenantId, 'an earlier rotation failed')
+    await repo.storePendingKey(tenantId, { apiKeyId: 'key-2', token: 'secret-token-2' })
+    const expiresAt = new Date('2027-10-06T00:00:00.000Z')
     const retireAt = new Date('2026-10-06T00:00:00.000Z')
 
-    await repo.rotateKey(tenantId, {
-      apiKeyId: 'key-2',
-      token: 'secret-token-2',
-      expiresAt: new Date('2027-10-06T00:00:00.000Z'),
+    await repo.promotePendingKey(tenantId, {
+      expectedPendingApiKeyId: 'key-2',
+      expiresAt,
       retireAt,
     })
 
     let row = await repo.findByTenant(tenantId)
-    expect(row!.apiKeyId).toBe('key-2')
-    expect(row!.previousApiKeyId).toBe('key-1')
-    expect(row!.previousKeyRetireAt).toEqual(retireAt)
+    expect(row).toMatchObject({
+      apiKeyId: 'key-2',
+      apiKeyExpiresAt: expiresAt,
+      previousApiKeyId: 'key-1',
+      previousKeyRetireAt: retireAt,
+      pendingApiKeyId: null,
+      lastError: null,
+    })
     expect((await repo.getDecryptedKey(tenantId))!.apiKey).toBe('secret-token-2')
+    expect(await repo.getDecryptedPendingKey(tenantId)).toBeNull()
 
     await repo.clearPreviousKey(tenantId)
     row = await repo.findByTenant(tenantId)
@@ -210,23 +239,112 @@ describe.skipIf(!hasDb)('TenantTemporalNamespace repository (integration)', () =
     expect(row!.previousKeyRetireAt).toBeNull()
   })
 
-  it('rotateKey refuses while a previous key is still pending retirement', async () => {
-    await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
-    await repo.storeKey(tenantId, {
-      apiKeyId: 'key-1',
-      token: 't1',
-      expiresAt: new Date('2027-10-05T00:00:00.000Z'),
-    })
-    const input = {
+  it('promotePendingKey refuses while a previous key is still pending retirement', async () => {
+    await readyWithKey()
+    const times = {
       expiresAt: new Date('2027-10-06T00:00:00.000Z'),
       retireAt: new Date('2026-10-06T00:00:00.000Z'),
     }
-    await repo.rotateKey(tenantId, { ...input, apiKeyId: 'key-2', token: 't2' })
+    await repo.storePendingKey(tenantId, { apiKeyId: 'key-2', token: 't2' })
+    await repo.promotePendingKey(tenantId, { ...times, expectedPendingApiKeyId: 'key-2' })
+    await repo.storePendingKey(tenantId, { apiKeyId: 'key-3', token: 't3' })
     // Overwriting previousApiKeyId would orphan key-1 in Temporal Cloud.
     await expect(
-      repo.rotateKey(tenantId, { ...input, apiKeyId: 'key-3', token: 't3' }),
+      repo.promotePendingKey(tenantId, { ...times, expectedPendingApiKeyId: 'key-3' }),
     ).rejects.toThrow(/previous key/)
-    expect((await repo.findByTenant(tenantId))!.apiKeyId).toBe('key-2')
+    const row = await repo.findByTenant(tenantId)
+    expect(row!.apiKeyId).toBe('key-2')
+    expect(row!.pendingApiKeyId).toBe('key-3')
+  })
+
+  it('promotePendingKey refuses a pending key other than the one expected', async () => {
+    await readyWithKey()
+    await repo.storePendingKey(tenantId, { apiKeyId: 'key-2', token: 't2' })
+    await expect(
+      repo.promotePendingKey(tenantId, {
+        expectedPendingApiKeyId: 'key-9',
+        expiresAt: new Date('2027-10-06T00:00:00.000Z'),
+        retireAt: new Date('2026-10-06T00:00:00.000Z'),
+      }),
+    ).rejects.toThrow(/not key-9/)
+    expect((await repo.findByTenant(tenantId))!.apiKeyId).toBe('key-1')
+  })
+
+  it('clearPendingKey drops the pending key; findWithPendingKey lists rows holding one', async () => {
+    await readyWithKey()
+    await repo.storePendingKey(tenantId, { apiKeyId: 'key-2', token: 't2' })
+    expect((await repo.findWithPendingKey()).map((r) => r.tenantId)).toContain(tenantId)
+
+    await repo.clearPendingKey(tenantId)
+    expect((await repo.findByTenant(tenantId))!.pendingApiKeyId).toBeNull()
+    expect(await repo.getDecryptedPendingKey(tenantId)).toBeNull()
+    expect((await repo.findWithPendingKey()).map((r) => r.tenantId)).not.toContain(tenantId)
+  })
+
+  // The sweep queries below are global, and other test files run against the
+  // same database in parallel (the provisioner suite's clock is 2026). The
+  // rows here are dated far from that clock and carry a lease that is live
+  // in 2026, so neither suite's sweep picks up the other's rows.
+  it('findDueForRotation lists READY rows expiring before the cutoff, soonest first', async () => {
+    await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
+    await repo.createProvisioning({
+      tenantId: otherTenantId,
+      namespace: 'pg-test-000000000002.chgel',
+      grpcAddress: GRPC,
+    })
+    const lease = new Date('2029-12-31T00:00:00.000Z')
+    for (const [id, expiry] of [
+      [tenantId, '2030-01-20T00:00:00.000Z'],
+      [otherTenantId, '2030-01-10T00:00:00.000Z'],
+    ] as const) {
+      await repo.storeKey(id, { apiKeyId: `k-${id}`, token: 't', expiresAt: new Date(expiry) })
+      await repo.markReady(id)
+      await db.tenantTemporalNamespace.update({
+        where: { tenantId: id },
+        data: { leaseExpiresAt: lease },
+      })
+    }
+    const now = new Date('2030-01-01T00:00:00.000Z')
+    const due = async (cutoff: string, at = now) =>
+      (await repo.findDueForRotation({ cutoff: new Date(cutoff), now: at }, 50))
+        .map((r) => r.tenantId)
+        .filter((id) => id === tenantId || id === otherTenantId)
+
+    // Soonest first.
+    expect(await due('2030-02-01')).toEqual([otherTenantId, tenantId])
+    // ...except that a row whose last attempt failed goes last.
+    await repo.setLastError(otherTenantId, 'rotate failed')
+    expect(await due('2030-02-01')).toEqual([tenantId, otherTenantId])
+    // The cutoff excludes the later one.
+    expect(await due('2030-01-15')).toEqual([otherTenantId])
+    // A live lease excludes a row.
+    expect(await due('2030-02-01', new Date('2029-12-30T00:00:00.000Z'))).toEqual([])
+    // A previous key still recorded excludes a row (it can't be promoted over).
+    await db.tenantTemporalNamespace.update({
+      where: { tenantId: otherTenantId },
+      data: { previousApiKeyId: 'old' },
+    })
+    expect(await due('2030-02-01')).toEqual([tenantId])
+    // Not READY excludes a row.
+    await repo.markFailed(tenantId, 'boom')
+    expect(await due('2030-02-01')).toEqual([])
+  })
+
+  it('earliestReadyKeyExpiry is the soonest expiry across READY rows', async () => {
+    await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
+    // Earlier than any other suite's row; leased, so no sweep acts on it.
+    const expiresAt = new Date('2000-01-01T00:00:00.000Z')
+    await repo.storeKey(tenantId, { apiKeyId: 'key-1', token: 't', expiresAt })
+    await db.tenantTemporalNamespace.update({
+      where: { tenantId },
+      data: { leaseExpiresAt: new Date('2100-01-01T00:00:00.000Z') },
+    })
+    // Not READY yet: not counted.
+    const before = await repo.earliestReadyKeyExpiry()
+    expect(before === null || before > expiresAt).toBe(true)
+
+    await repo.markReady(tenantId)
+    expect(await repo.earliestReadyKeyExpiry()).toEqual(expiresAt)
   })
 
   it('claimLease holds the row for one action at a time, gated on status', async () => {
@@ -276,9 +394,9 @@ describe.skipIf(!hasDb)('TenantTemporalNamespace repository (integration)', () =
       token: 't1',
       expiresAt: new Date('2027-10-05T00:00:00.000Z'),
     })
-    await repo.rotateKey(tenantId, {
-      apiKeyId: 'key-2',
-      token: 't2',
+    await repo.storePendingKey(tenantId, { apiKeyId: 'key-2', token: 't2' })
+    await repo.promotePendingKey(tenantId, {
+      expectedPendingApiKeyId: 'key-2',
       expiresAt: new Date('2027-10-06T00:00:00.000Z'),
       retireAt: new Date('2026-10-06T00:00:00.000Z'),
     })

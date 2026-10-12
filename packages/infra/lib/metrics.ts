@@ -61,6 +61,33 @@ export const RC_SYNC_LAG_SECONDS_METRIC_NAME = 'SyncLagSeconds'
 export const PEGASUS_WORKFLOWS_METRIC_NAMESPACE = 'Pegasus/Workflows'
 
 // ---------------------------------------------------------------------------
+// Temporal key expiry (namespace Pegasus/Workflows).
+//
+// Emitted by the temporal-provisioner Lambda's daily-maintenance run
+// (apps/api/src/lib/temporal-provisioner.ts), which repeats these strings
+// literally for the same apps/api-can't-import-@pegasus/infra reason. Keep
+// both sides in sync.
+// ---------------------------------------------------------------------------
+
+/**
+ * Gauge (Maximum), dimension `KeyClass`: whole days until a Temporal key
+ * expires. `provisioner` = the provisioner's own Cloud Ops key (self-rotates
+ * at 45 days); `tenant` = the soonest across READY tenant namespaces
+ * (rotated at 45 days; 365 when there are none); `platform` = the
+ * `pegasus/<env>/temporal-cloud` key, from the secret's `expiresAt` tag
+ * (rotated by hand; 0 when the tag is missing, so the alarm fires).
+ */
+export const TEMPORAL_KEY_DAYS_TO_EXPIRY_METRIC_NAME = 'TemporalKeyDaysToExpiry'
+export const TEMPORAL_KEY_CLASS_DIMENSION = 'KeyClass'
+export const TEMPORAL_KEY_CLASSES = ['provisioner', 'tenant', 'platform'] as const
+
+/**
+ * Count: failed key rotations (tenant or own) and failed maintenance steps.
+ * The daily run always publishes it (0 when healthy).
+ */
+export const TEMPORAL_KEY_ROTATION_FAILED_METRIC_NAME = 'TemporalKeyRotationFailed'
+
+// ---------------------------------------------------------------------------
 // Usage meter (billable automated actions).
 //
 // Emitted by the API Lambda (apps/api/src/lib/usage/meter-metrics.ts), which

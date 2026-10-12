@@ -10,6 +10,10 @@ import {
   PEGASUS_AUTHZ_METRIC_NAMESPACE,
   PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
   PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
+  TEMPORAL_KEY_CLASS_DIMENSION,
+  TEMPORAL_KEY_CLASSES,
+  TEMPORAL_KEY_DAYS_TO_EXPIRY_METRIC_NAME,
+  TEMPORAL_KEY_ROTATION_FAILED_METRIC_NAME,
   PEGASUS_USAGE_METRIC_NAMESPACE,
   USAGE_METER_WRITE_FAILED_METRIC_NAME,
   RC_OUTBOX_PENDING_METRIC_NAME,
@@ -118,6 +122,15 @@ export interface MonitoringStackProps extends cdk.StackProps {
    * When absent (dev / no worker stack), the query is omitted.
    */
   readonly temporalWorkerLogGroupName?: string
+
+  /**
+   * Creates the Temporal key-expiry alarms (one per key class) and the
+   * rotation-failure alarm. Set only where the temporal-provisioner runs
+   * (staging, prod): its daily run is what publishes the gauges, and the
+   * expiry alarms treat missing data as breaching, so anywhere else they
+   * would alarm forever.
+   */
+  readonly temporalKeyExpiryAlarms?: boolean
 }
 
 /**
@@ -352,6 +365,73 @@ export class MonitoringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.BREACHING,
     })
     wire(tariffCoverageDaysAlarm)
+
+    // ── Temporal key-expiry alarms ─────────────────────────────────────────────
+    // The temporal-provisioner's daily-maintenance run publishes
+    // TemporalKeyDaysToExpiry per KeyClass (and rotates the provisioner and
+    // tenant keys itself from 45 days out). Each alarm pages under 30 days.
+    // Missing data is BREACHING, as for tariff coverage: the run always
+    // publishes, so a gap means it stopped (or, for `provisioner`, couldn't
+    // read its own key). Staging/prod only: dev has no provisioner.
+    if (props.temporalKeyExpiryAlarms) {
+      const keyExpiryRunbook: Record<(typeof TEMPORAL_KEY_CLASSES)[number], string> = {
+        provisioner:
+          'The temporal-provisioner’s own Cloud Ops key expires in under 30 days: its ' +
+          'self-rotation is failing (see the provisioner’s logs, `own_key`). Manual ' +
+          'fallback: mint a key for the pegasus-<env>-provisioner service account as ' +
+          'scripts/temporal/create-provisioner.sh does, then PutSecretValue ' +
+          '{"apiKey","keyId","expiresAt"} on pegasus/<env>/temporal-provisioner.',
+        tenant:
+          'A tenant namespace’s Temporal API key expires in under 30 days: the daily ' +
+          'rotation sweep is failing for it. See `lastError` on the tenant_temporal_namespaces ' +
+          'rows, and the temporal-provisioner’s logs.',
+        platform:
+          'The platform Temporal key (pegasus/<env>/temporal-cloud) expires in under 30 ' +
+          'days, or its `expiresAt` tag is missing. It is rotated BY HAND: run ' +
+          'scripts/temporal/rotate-platform-key.sh <env> (see scripts/temporal/README.md).',
+      }
+      for (const keyClass of TEMPORAL_KEY_CLASSES) {
+        const alarm = new cloudwatch.Alarm(this, `TemporalKeyExpiry-${keyClass}`, {
+          alarmName: `pegasus-temporal-key-expiry-${keyClass}`,
+          alarmDescription:
+            keyExpiryRunbook[keyClass] +
+            ' A missing datapoint means the daily temporal-provisioner run is down.',
+          metric: new cloudwatch.Metric({
+            namespace: PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
+            metricName: TEMPORAL_KEY_DAYS_TO_EXPIRY_METRIC_NAME,
+            dimensionsMap: { [TEMPORAL_KEY_CLASS_DIMENSION]: keyClass },
+            statistic: 'Maximum',
+            period: cdk.Duration.days(1),
+          }),
+          threshold: 30,
+          evaluationPeriods: 1,
+          comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+        })
+        wire(alarm)
+      }
+
+      const rotationFailedAlarm = new cloudwatch.Alarm(this, 'TemporalKeyRotationFailedAlarm', {
+        alarmName: 'pegasus-temporal-key-rotation-failed',
+        alarmDescription:
+          'A Temporal key rotation (a tenant key, or the provisioner’s own key) or a ' +
+          'key-maintenance step failed today. The old keys still work, and the daily run ' +
+          'retries; this is the early warning before an expiry alarm. See the ' +
+          'temporal-provisioner’s logs (`maintenance_step_failed`, `failed`) and ' +
+          '`lastError` on the tenant_temporal_namespaces rows.',
+        metric: new cloudwatch.Metric({
+          namespace: PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
+          metricName: TEMPORAL_KEY_ROTATION_FAILED_METRIC_NAME,
+          statistic: 'Sum',
+          period: cdk.Duration.days(1),
+        }),
+        threshold: 0,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      })
+      wire(rotationFailedAlarm)
+    }
 
     // ── RingCentral capture-health alarms ──────────────────────────────────────
     // Gauges published every 15 min by the ringcentral-metrics emitter

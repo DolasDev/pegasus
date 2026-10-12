@@ -2707,6 +2707,21 @@ Found building the 3b.1 provisioner (`apps/api/src/lib/temporal-cloud-ops.ts`,
   control must reach 6/6 before its refusals mean anything.
 - **`tcld apikey create --si <service account>` returns `apiKeyId`, not `id`.**
   It's a `CreateServiceAccountAPIKeyResponse`; a user key's response has `id`.
+- **Cloud refuses an API key that expires in under 24 h**
+  (`400 expiry must be after <now+24h>`), so a throwaway test key lives a day.
+- **A service-account key can mint a key for its own service account** (and
+  delete it), and `GET /cloud/api-keys` with it lists **only** that account's
+  keys, each with `spec.ownerId` and `spec.expiryTime` (verified 2026-10-12).
+  That's what lets the provisioner rotate itself and find its own account id.
+  The REST bodies come back lowerCamel (`apiKeys`, `nextPageToken`); the
+  client's `field()` reads both cases. `tcld apikey list` shows **no owner**,
+  but `tcld apikey get -i <id>` has `.owner.ownerId`.
+- **The platform key is baked in at deploy time.** CloudFormation resolves
+  `pegasus/<env>/temporal-cloud`'s `apiKey` into a plaintext env var on the API,
+  reconcile and dispatcher Lambdas, and ECS injects it at task start. A
+  `PutSecretValue` alone changes nothing until a redeploy and new tasks. The
+  provisioner's own key is different: it's read on every invocation, so a
+  write takes effect on the next run.
 - **The provisioner must not be in the WireGuard VPC.** 3a's DNS Firewall makes
   `saas-api.tmprl.cloud` NXDOMAIN there. API-stack Lambdas aren't VPC-attached,
   and an infra test pins that.

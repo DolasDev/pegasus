@@ -1472,7 +1472,7 @@ describe('ApiStack — Temporal namespace provisioner (Phase 3b)', () => {
       }
       const rules = Object.values(template.findResources('AWS::Events::Rule'))
       expect(
-        rules.some((r) => String(r.Properties?.Description).includes('Temporal API keys')),
+        rules.some((r) => String(r.Properties?.Description).includes('Temporal key maintenance')),
       ).toBe(false)
     })
 
@@ -1539,13 +1539,101 @@ describe('ApiStack — Temporal namespace provisioner (Phase 3b)', () => {
       })
     })
 
-    it('schedules the daily retire-previous-keys sweep', () => {
+    it('schedules daily-maintenance', () => {
       const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
       template.hasResourceProperties('AWS::Events::Rule', {
         ScheduleExpression: 'rate(1 day)',
+        Description: Match.stringLikeRegexp('Temporal key maintenance'),
         Targets: Match.arrayWith([
-          Match.objectLike({ Input: JSON.stringify({ action: 'retire-previous-keys' }) }),
+          Match.objectLike({ Input: JSON.stringify({ action: 'daily-maintenance' }) }),
         ]),
+      })
+    })
+
+    // ---------------------------------------------------------------------
+    // Key rotation: what the provisioner may do to secrets, and nothing more
+    // ---------------------------------------------------------------------
+
+    type Statement = { Action: string | string[]; Resource: unknown; Condition?: unknown }
+    const actions = (s: Statement) => (Array.isArray(s.Action) ? s.Action : [s.Action])
+    /** Every IAM statement, tagged with the roles its policy attaches to. */
+    function statements(template: Template) {
+      return Object.values(template.findResources('AWS::IAM::Policy')).flatMap((p) =>
+        ((p.Properties?.['PolicyDocument'] as { Statement: Statement[] }).Statement ?? []).map(
+          (s) => ({ ...s, roles: p.Properties?.['Roles'] as unknown[] }),
+        ),
+      )
+    }
+    function provisionerRole(template: Template) {
+      const [, fn] = provisionerFns(template)[0]!
+      return { Ref: (fn.Properties?.['Role'] as { 'Fn::GetAtt': string[] })['Fn::GetAtt'][0] }
+    }
+
+    /** Whether an IAM Resource (string, wildcard, list or token) could cover `arn`. */
+    function covers(resource: unknown, arn: string): boolean {
+      if (Array.isArray(resource)) return resource.some((r) => covers(r, arn))
+      if (typeof resource !== 'string') {
+        // A token (Fn::Join …): count it if it names the secret at all.
+        return JSON.stringify(resource).includes(arn.split(':secret:')[1]!.split('-')[0]!)
+      }
+      const glob = resource.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+      return new RegExp(`^${glob}$`).test(arn)
+    }
+
+    it('lets only the provisioner write its secret, with PutSecretValue alone', () => {
+      const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
+      const all = statements(template)
+      // Other functions write their own secrets (pegasus/<env>/ringcentral/*);
+      // none of those grants, wildcards included, reaches this one.
+      const writers = all.filter(
+        (s) =>
+          actions(s).some(
+            (a) => a === 'secretsmanager:PutSecretValue' || a === 'secretsmanager:*',
+          ) && covers(s.Resource, PROVISIONER_ARN),
+      )
+      expect(writers).toHaveLength(1)
+      expect(writers[0]!.roles).toEqual([provisionerRole(template)])
+      expect(writers[0]!.Resource).toBe(PROVISIONER_ARN)
+      expect(actions(writers[0]!)).toEqual(['secretsmanager:PutSecretValue'])
+      // None of grantWrite's extras, on any secret.
+      for (const s of all) {
+        expect(actions(s)).not.toContain('secretsmanager:UpdateSecret')
+        expect(actions(s)).not.toContain('secretsmanager:UpdateSecretVersionStage')
+      }
+    })
+
+    it("reads only the platform secret's metadata, never its value", () => {
+      const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
+      const role = JSON.stringify(provisionerRole(template))
+      const PLATFORM_ARN = temporalProps.temporalCloudSecretArn
+      const onPlatform = statements(template).filter(
+        (s) =>
+          (s.roles as unknown[]).some((r) => JSON.stringify(r) === role) &&
+          actions(s).some((a) => a.startsWith('secretsmanager:')) &&
+          covers(s.Resource, PLATFORM_ARN),
+      )
+      // Exactly one statement of the provisioner's touches the platform
+      // secret, and it is DescribeSecret alone: no GetSecretValue.
+      expect(onPlatform).toHaveLength(1)
+      expect(onPlatform[0]!.Resource).toBe(PLATFORM_ARN)
+      expect(actions(onPlatform[0]!)).toEqual(['secretsmanager:DescribeSecret'])
+      const [, fn] = provisionerFns(template)[0]!
+      expect(vars(fn)['TEMPORAL_PLATFORM_SECRET_ARN']).toBe(temporalProps.temporalCloudSecretArn)
+    })
+
+    it('publishes metrics to Pegasus/Workflows only', () => {
+      const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        Roles: [provisionerRole(template)],
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: 'cloudwatch:PutMetricData',
+              Resource: '*',
+              Condition: { StringEquals: { 'cloudwatch:namespace': 'Pegasus/Workflows' } },
+            }),
+          ]),
+        },
       })
     })
   })
