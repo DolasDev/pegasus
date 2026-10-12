@@ -23,7 +23,8 @@
 #      only then, at least 24 h later, delete the old key.
 #
 # --tag-only: sets the expiresAt/keyId tags from the key Temporal Cloud has
-# now, and changes nothing else. Use it to seed the tags.
+# now, and changes nothing else; it never reads the secret's value. Use it to
+# seed the tags.
 #
 # Needs: tcld logged in as an account admin (scripts/temporal/build-tcld.sh,
 # then `tcld login`), AWS SSO for profile dolas-pegasus-<env>, jq.
@@ -74,12 +75,16 @@ tag_secret() { # <expiresAt> <keyId>
 echo "== Pre-flight ($E)"
 aws sts get-caller-identity --profile "$PROFILE" --query Account --output text >/dev/null \
   || { echo "AWS profile $PROFILE is not usable (aws sso login --profile $PROFILE?)" >&2; exit 1; }
-sm get-secret-value --secret-id "$SECRET_NAME" --query SecretString --output text >"$WORK/old.json"
-FIELDS="$(jq -c 'keys' "$WORK/old.json")" \
-  || { echo "$SECRET_NAME is not a JSON object" >&2; exit 1; }
-echo "  $SECRET_NAME fields: $FIELDS"
-jq -e '.apiKey | type == "string" and length > 0' "$WORK/old.json" >/dev/null \
-  || { echo "$SECRET_NAME has no apiKey field. Stopping." >&2; exit 1; }
+# Only a rotation reads the secret's value (to keep its other fields);
+# --tag-only touches metadata alone.
+if [ "$MODE" = rotate ]; then
+  sm get-secret-value --secret-id "$SECRET_NAME" --query SecretString --output text >"$WORK/old.json"
+  FIELDS="$(jq -c 'keys' "$WORK/old.json")" \
+    || { echo "$SECRET_NAME is not a JSON object" >&2; exit 1; }
+  echo "  $SECRET_NAME fields: $FIELDS"
+  jq -e '.apiKey | type == "string" and length > 0' "$WORK/old.json" >/dev/null \
+    || { echo "$SECRET_NAME has no apiKey field. Stopping." >&2; exit 1; }
+fi
 TAGGED_KEY_ID="$(sm describe-secret --secret-id "$SECRET_NAME" \
   --query "Tags[?Key=='keyId'].Value | [0]" --output text)"
 [ "$TAGGED_KEY_ID" = None ] && TAGGED_KEY_ID=""
