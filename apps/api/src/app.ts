@@ -23,6 +23,7 @@ import { settingsPegiiHandler } from './handlers/settings-pegii'
 import { jwksHandler } from './handlers/jwks'
 import { settingsCompaniesHandler } from './handlers/settings-companies'
 import { documentsHandler } from './handlers/documents'
+import { availabilityFiltersHandler } from './handlers/availability-filters'
 import { workflowsHandler } from './handlers/workflows'
 import { workflowInternalHandler } from './handlers/workflow-internal'
 import { eventsHandler } from './handlers/events'
@@ -464,6 +465,11 @@ v1.route('/integrations/ringcentral', ringcentralOauthHandler)
 // route; this sub-app only registers GET /, so it never shadows ringcentral.
 v1.route('/integrations', integrationsHandler)
 v1.route('/documents', documentsHandler)
+// Saved filters for Operations → Availability (Postgres-backed; Planning's
+// saved shipment filters stay in the legacy MSSQL table). Ungated like the
+// page's own /onprem/longhaul/driver-planning read; ownership is enforced in
+// the handler. See handlers/availability-filters.ts.
+v1.route('/availability-filters', availabilityFiltersHandler)
 // PegII dashboard: served cloud-direct from three on-prem MSSQL views
 // (v_dashboard1/2/3) via the in-VPC mssql-executor Lambda. Same pattern as the
 // longhaul-cloud reference handlers; powers the tenant dashboard's "Use PegII

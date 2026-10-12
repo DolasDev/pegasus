@@ -37,6 +37,25 @@ import {
 } from '@/features/driver-planning/utils/confidence-tier'
 import { Select } from '@/features/driver-planning/components/Select'
 import type { RootState } from '@/features/driver-planning/redux/store'
+import { Button } from '@/components/ui/button'
+import {
+  defaultAvailabilityFilterQueryOptions,
+  type AvailabilityFilter,
+  type AvailabilityMoveType,
+} from '@/api/queries/availability-filters'
+import {
+  MOVE_TYPE_OPTIONS,
+  fromSavedQuery,
+  toSavedQuery,
+  type AvailabilityFilterState,
+  type MoveTypeOption,
+  type SortOrder,
+  type ZoneOption,
+} from '@/features/driver-planning/availability/availability-filter-query'
+import {
+  AvailabilityFiltersDialog,
+  SaveAvailabilityFilterDialog,
+} from '@/features/driver-planning/availability/SavedAvailabilityFilters'
 
 const PLACEHOLDER_PHONE = '+12345678910'
 
@@ -346,8 +365,6 @@ function getReadyDateKey(driver: DriverPlanningRow): string | null {
   return getReadyDisplay(driver).date
 }
 
-type SortOrder = 'asc' | 'desc'
-
 function nextSortOrder(current: SortOrder | null): SortOrder {
   return current === 'asc' ? 'desc' : 'asc'
 }
@@ -378,25 +395,30 @@ function dateInRange(dateStr: string | null, from: string, to: string): boolean 
 //
 // Trade-off: a checkbox set cannot express the old `Local = No` exclusion. That
 // capability was dropped deliberately in favour of the union behaviour.
-type MoveTypeValue = 'local' | 'longDistance' | 'shorthaul'
-
-interface MoveTypeOption {
-  value: MoveTypeValue
-  label: string
-}
-
-const MOVE_TYPE_OPTIONS: MoveTypeOption[] = [
-  { value: 'local', label: 'Local' },
-  { value: 'longDistance', label: 'Long Dist.' },
-  { value: 'shorthaul', label: 'Shorthaul' },
-]
+// (MOVE_TYPE_OPTIONS lives in availability-filter-query.ts so saved filters
+// share the exact value set.)
 
 // Long-distance drivers are what the page shows on load.
 const DEFAULT_MOVE_TYPES: MoveTypeOption[] = MOVE_TYPE_OPTIONS.filter(
   (o) => o.value === 'longDistance',
 )
 
-function hasMoveType(driver: DriverPlanningRow, value: MoveTypeValue): boolean {
+/** The filter bar a user without a saved default lands on. Default sort is
+ *  earliest calculated availability first; the date range is today ±3 months
+ *  around the calculated availability — drivers without a calculated date are
+ *  excluded (clear both inputs to show every driver). */
+function builtInFilterState(): AvailabilityFilterState {
+  return {
+    driverName: '',
+    zones: [],
+    moveTypes: DEFAULT_MOVE_TYPES,
+    dateFrom: isoDateOffsetMonths(-3),
+    dateTo: isoDateOffsetMonths(3),
+    sortOrder: 'asc',
+  }
+}
+
+function hasMoveType(driver: DriverPlanningRow, value: AvailabilityMoveType): boolean {
   if (value === 'local') return driver.isLocal
   if (value === 'longDistance') return driver.isLongDistance
   return driver.isShorthaul
@@ -866,11 +888,6 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
   )
 }
 
-interface ZoneOption {
-  value: string
-  label: string
-}
-
 export function AvailabilityViewA() {
   const { data: drivers, isLoading } = useQuery(driverPlanningQueryOptions)
   const stateList = useSelector(
@@ -878,21 +895,46 @@ export function AvailabilityViewA() {
   )
   const zoneList = useSelector((state: RootState) => (state.common.zoneList ?? []) as ZoneRefRow[])
 
-  const [filter, setFilter] = useState('')
-  const [selectedZones, setSelectedZones] = useState<ZoneOption[]>([])
-  const [selectedMoveTypes, setSelectedMoveTypes] = useState<MoveTypeOption[]>(DEFAULT_MOVE_TYPES)
-  // Default sort: earliest calculated availability first.
-  const [sortOrder, setSortOrder] = useState<SortOrder | null>('asc')
-  // Default date range: today ±3 months, around the calculated availability.
-  // A driver passes the filter when their calculated date sits inside the
-  // window; drivers without a calculated date are excluded (clear both inputs
-  // to show every driver).
-  const [dateFrom, setDateFrom] = useState(() => isoDateOffsetMonths(-3))
-  const [dateTo, setDateTo] = useState(() => isoDateOffsetMonths(3))
+  // The whole filter bar is one object so a saved filter applies (and
+  // serializes) in a single step.
+  const [filters, setFilters] = useState<AvailabilityFilterState>(builtInFilterState)
+  const {
+    driverName: filter,
+    zones: selectedZones,
+    moveTypes: selectedMoveTypes,
+    sortOrder,
+    dateFrom,
+    dateTo,
+  } = filters
+  const patchFilters = (patch: Partial<AvailabilityFilterState>) =>
+    setFilters((f) => ({ ...f, ...patch }))
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [showFiltersDialog, setShowFiltersDialog] = useState(false)
 
   const zoneOptions: ZoneOption[] = useMemo(
     () => zoneList.map((z) => ({ value: z.zone_code, label: z.zone_description })),
     [zoneList],
+  )
+
+  // Seed the filter bar ONCE from the user's saved default. Done during render
+  // (not in an effect) so the table never paints the built-in filters first
+  // and then jumps; the page stays on "Loading..." until the default query
+  // settles. A failed default read falls back to the built-in filters.
+  const defaultFilter = useQuery(defaultAvailabilityFilterQueryOptions)
+  const [seeded, setSeeded] = useState(false)
+  if (!seeded && !defaultFilter.isPending) {
+    setSeeded(true)
+    if (defaultFilter.data) setFilters(fromSavedQuery(defaultFilter.data.query, zoneOptions))
+  }
+
+  function applySavedFilter(saved: AvailabilityFilter) {
+    setFilters(fromSavedQuery(saved.query, zoneOptions))
+  }
+
+  // A saved/default filter can be applied before the zone list loads, leaving
+  // code-labelled options; relabel from the reference list whenever it's there.
+  const zoneSelectValue = selectedZones.map(
+    (z) => zoneOptions.find((o) => normalizeRefCode(o.value) === normalizeRefCode(z.value)) ?? z,
   )
 
   const visible = useMemo(() => {
@@ -925,7 +967,7 @@ export function AvailabilityViewA() {
     })
   }, [drivers, filter, selectedZones, sortOrder, stateList, dateFrom, dateTo, selectedMoveTypes])
 
-  if (isLoading) {
+  if (isLoading || !seeded) {
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">Loading...</p>
@@ -947,7 +989,7 @@ export function AvailabilityViewA() {
               placeholder="Filter by driver name..."
               data-testid="driver-filter"
               value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              onChange={(e) => patchFilters({ driverName: e.target.value })}
               className="max-w-sm"
             />
             <div className="min-w-[16rem]" data-testid="driver-zone-filter">
@@ -955,9 +997,9 @@ export function AvailabilityViewA() {
                 isMulti
                 placeholder="Zone"
                 options={zoneOptions}
-                value={selectedZones}
+                value={zoneSelectValue}
                 onChange={(value: unknown) =>
-                  setSelectedZones((value as ZoneOption[] | null) ?? [])
+                  patchFilters({ zones: (value as ZoneOption[] | null) ?? [] })
                 }
               />
             </div>
@@ -968,7 +1010,7 @@ export function AvailabilityViewA() {
                 options={MOVE_TYPE_OPTIONS}
                 value={selectedMoveTypes}
                 onChange={(value: unknown) =>
-                  setSelectedMoveTypes((value as MoveTypeOption[] | null) ?? [])
+                  patchFilters({ moveTypes: (value as MoveTypeOption[] | null) ?? [] })
                 }
               />
             </div>
@@ -981,7 +1023,7 @@ export function AvailabilityViewA() {
                 type="date"
                 data-testid="ready-date-from"
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+                onChange={(e) => patchFilters({ dateFrom: e.target.value })}
                 className="w-40"
               />
               <span>To</span>
@@ -989,11 +1031,41 @@ export function AvailabilityViewA() {
                 type="date"
                 data-testid="ready-date-to"
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                onChange={(e) => patchFilters({ dateTo: e.target.value })}
                 className="w-40"
               />
             </div>
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="open-availability-filters"
+                onClick={() => setShowFiltersDialog(true)}
+              >
+                Saved Filters
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="save-availability-filter"
+                onClick={() => setShowSaveDialog(true)}
+              >
+                Save Filter
+              </Button>
+            </div>
           </div>
+          <SaveAvailabilityFilterDialog
+            open={showSaveDialog}
+            onOpenChange={setShowSaveDialog}
+            query={toSavedQuery(filters)}
+          />
+          <AvailabilityFiltersDialog
+            open={showFiltersDialog}
+            onOpenChange={setShowFiltersDialog}
+            onLoad={applySavedFilter}
+          />
           <div className="rounded-md bg-transparent">
             <Table data-testid="driver-table">
               <TableHeader>
@@ -1002,7 +1074,7 @@ export function AvailabilityViewA() {
                   <TableHead
                     className={`${CARD_TEXT_CLASS} cursor-pointer select-none`}
                     data-testid="ready-date-header"
-                    onClick={() => setSortOrder((o) => nextSortOrder(o))}
+                    onClick={() => patchFilters({ sortOrder: nextSortOrder(sortOrder) })}
                   >
                     <span className="inline-flex items-center gap-1">
                       Ready Date

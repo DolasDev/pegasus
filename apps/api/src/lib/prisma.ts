@@ -141,6 +141,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // via the tenant-scoped client is auto-scoped too. ArchivedTripDriver has no
   // tenantId (it links via archivedTripId) and is isolated transitively.
   'ArchivedTrip',
+  // AvailabilityFilter — a user's saved Operations → Availability filter bar.
+  // Purely tenant-owned; all CRUD goes through the scoped client on
+  // /availability-filters. Public filters are public WITHIN the tenant only,
+  // which this scoping guarantees even if a visibility predicate is wrong.
+  'AvailabilityFilter',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the
