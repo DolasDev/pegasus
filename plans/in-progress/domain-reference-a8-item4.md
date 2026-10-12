@@ -680,7 +680,30 @@ customer-side on grade_ — looks relative to (a) and (b). **Do not inherit the 
 reference model exists to be supplied to the **MVVM / domain-rule refactor of the legacy
 `peg2`/`movemanager` repository** — read by Claude Code sessions (and humans) to recover what the
 messy business logic embedded in WinForms front-end code actually _means_ in domain terms. The
-intent is to wire it into Claude Code memory and the MVVM migration skills once it is ready.
+intent was to wire it into Claude Code memory and the MVVM migration skills once it is ready.
+
+> **✅ THE HANDOFF IS DONE — 2026-10-12, `movemanager` commit `abe7d206`** on branch
+> `docs/domain-reference-handoff` off `origin/dev`. `movemanager/CLAUDE.md` gains a
+> `## Domain Reference` section (where it is — `../pegasus/docs/domain-reference/`, both clone
+> layouts keep the repos as siblings — which surface answers what, read `symptom-index.md` first,
+> use its spellings, do **not** port the TypeScript), the **Pre-Implementation Requirement** gains
+> a step 4 requiring every domain concept in a plan to carry its reference anchor, and
+> `/extract-domain-rules` + `/migrate-form-to-mvvm` gain the lookup in their prerequisites with a
+> per-rule anchoring step in Discovery.
+>
+> **The rule the user asked for, in three outcomes:** a point exists → use it; recorded **absent or
+> owed** → read the reason first and quote it; **nothing at all** → **STOP and ask whether the
+> domain reference should be extended before proceeding.** Justified on the rubric's own
+> _"our own systems are not evidence for what the domain is"_ — reverse-engineering a reading out of
+> a form and baking it into `Pegasus.Domain` launders an implementation accident into a domain rule,
+> in the one project that is supposed to be pure.
+>
+> Verified: all six referenced paths resolve from the `movemanager` root, and the chain was walked
+> end to end on a real case (`grep FlashClaim` → the `_Flash/` row marked
+> `ABSENT fact class: claim` → the glossary's `Owed` entry).
+>
+> **So §8.3(4) — "stop and let usage drive it" — is now live.** The next input on this model should
+> be a real migration session reporting a gap, not another audit round.
 
 **Nothing imports `@pegasus/domain-reference` and nothing ever will.** It is a workspace dependency
 of zero packages, and its own `package.json` says so. **That is not a defect** — for this consumer
@@ -816,8 +839,14 @@ form-clusters it will hit immediately have no fact class at all.
    (written estimate signed and dated by both parties before the BOL), §375.403 (silence after
    loading is reaffirmation; the propose/decide pair at (a)(8)), §375.409 (the broker-adopted
    estimate — see M3). All three were read this session for other reasons.
-4. **Then stop and let usage drive it.** Real migration sessions will report what is missing far
-   better than another audit round will.
+4. **Then stop and let usage drive it. ✅ NOW LIVE** — the consumer handoff landed 2026-10-12
+   (`movemanager` `abe7d206`; see the banner in §8). Real migration sessions will report what is
+   missing far better than another audit round will, and they can now see the model to do it.
+
+   **One wart found while walking the chain, worth fixing when something next touches the
+   generator:** the glossary's `Owed` entry for `claim` cites **"§8.3(3)"** — a section of _this
+   plan file_, which a `movemanager` reader cannot resolve. The docstring it is generated from
+   should cite a published surface (or state the reason in full) rather than a plan.
 
 **One thing worth rescuing from item 4, as a fix and not a round:** **M2** — `authorityToDeclare`
 **authorises whoever presents an instrument.** No grantee check, because `Instrument` has no
