@@ -55,7 +55,13 @@ generators were verified to reproduce `HEAD` byte-identically before anything wa
       symptom index; `tests/conformance/retention.test.ts` (19 assertions). **Six tampers run, red
       on the intended assertion.** Catalog **unchanged at `0.7.0`** — glossary, context map and all
       four `catalog/*` files byte-identical.
-- [ ] **§8.3(3) — write `survey`, `estimate`, `claim`.** Not started. **This is the next round.**
+- [x] **§8.3(3) — DONE as `[A10]`, catalog `0.7.1`, 2026-10-12. See
+      `plans/in-progress/domain-reference-a10-carrier-role-survey-estimate.md`.** It became a round
+      about a **ROLE**: all three candidates are asserted by _"you, the motor carrier"_ and the cast
+      had no carrier-side member, so none could be given an authority row. `contractingCarrier`
+      minted (`newClosedEnumMember`), `survey` and `estimate` minted with [A8 §5] rows 19-20
+      (`newRecordType` ×2), **`claim` refused** with its blocker written — the decider is an adjuster
+      and the cast names no decider. **First real catalog diff in four rounds**, and additive.
 - [ ] **§8.3(4) — stop, let usage drive it.**
 - [ ] **Item 4's own design round — PAUSED, do not resume.** See the banner and §8.2.
 

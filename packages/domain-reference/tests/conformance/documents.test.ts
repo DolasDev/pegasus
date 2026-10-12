@@ -580,8 +580,9 @@ describe('[SD §4.7.3] what is absent stays absent, and stays disclosed', () => 
    */
   const DECLARED_IN: Readonly<Record<string, 'item' | 'disclosure' | 'act-types-lead'>> = {
     cube: 'disclosure',
-    survey: 'disclosure',
-    estimate: 'disclosure',
+    // `survey` and `estimate` were here until [A10] minted them (catalog `0.7.1`, 2026-10-12). This
+    // gate is what noticed: it checks the map against `ABSENT_AND_OWED` in BOTH directions, so a
+    // class that leaves the absent list and stays here fails rather than going quietly stale.
     eta: 'disclosure',
     sealIntegrity: 'disclosure',
     tracerResult: 'disclosure',

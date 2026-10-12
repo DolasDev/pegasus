@@ -250,6 +250,29 @@ export interface ValueByType {
    * party as a notification target', and [SD §6.5]'s obligations cannot name a contactable party
    * until it lands." ([SD §4.7.3]) */
   notification: Owed<'notificationValue', 'A8 §9 item 6 — the party as a notification target'>
+  /**
+   * Owed, on `chargeValue`'s **exact** reasoning rather than a new one — [A10], 2026-10-12.
+   *
+   * `src:cfr-49-375` §375.401(b) fixes the fact, its subject and its two kinds (binding /
+   * non-binding) and fixes **nothing** about the shape of the amount. That is the same wall
+   * `chargeValue` hits: the corpus publishes gross / net / discount as **field names** and defines
+   * them nowhere, and `src:sirva-ade`'s own analysis calls its trio "genuinely ambiguous". A
+   * shipment-total estimate is the same money shape one aggregate up, so it is owed to the same
+   * pair — **A7** owns the charge, **A12** owns the rating shape.
+   *
+   * **This is the established pattern, not a workaround.** Four of this table's entries ship owed,
+   * and the table's own docstring says why: "the documents fix the fact class, its subject and its
+   * qualifier, and fix nothing about what the value looks like."
+   *
+   * **Bindingness rides here**, which is the honest place for it: §375.401(b) makes an estimate
+   * "indicate **whether** it is a binding or a non-binding estimate", so the flag is a property of
+   * the amount rather than a second fact key — see the `estimate` entry in `NON_ACT_TYPES` for why
+   * `charge`'s `{aspect}` qualifier is the wrong model here and §375.403(a)(7) is the reason.
+   */
+  estimate: Owed<
+    'estimateValue',
+    'A7 / A12 — as chargeValue: the corpus names gross/net/discount and defines them nowhere'
+  >
 }
 
 type ValueTableIsComplete = Exact<keyof ValueByType, NonActType>

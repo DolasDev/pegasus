@@ -15,7 +15,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 ## Contents
 
 - [Aggregates](#aggregates-15) — 15
-- [Record types](#record-types-32) — 32
+- [Record types](#record-types-34) — 34
 - [Fact-class families](#fact-class-families-8) — 8
 - [Bases](#bases-5) — 5
 - [Capture methods](#capture-methods-7) — 7
@@ -27,7 +27,7 @@ Entries are sorted in **byte order** within each section, so a regeneration on a
 - [Identity subjects](#identity-subjects-3) — 3
 - [Whitelist residue reasons](#whitelist-residue-reasons-4) — 4
 - [Reason codes](#reason-codes-24) — 24
-- [Role names](#role-names-19) — 19
+- [Role names](#role-names-20) — 20
 - [Membership forms](#membership-forms-3) — 3
 - [Custody bases](#custody-bases-2) — 2
 - [Catalog faces](#catalog-faces-2) — 2
@@ -199,7 +199,7 @@ with one stop ([A3 §3.2], binding from [SD §8.4]).
 - **Cited:** [[A3 §3.2]](analysis/A3-trip-stop-assignment.md#32-definitions) · [[SD §8.4]](analysis/00-shared-decisions.md#84-one-dependent-question-settled-here-because-8-requires-it)
 - **Declared by:** `AGGREGATE_KINDS` in `packages/domain-reference/src/ids.ts`
 
-## Record types (32)
+## Record types (34)
 
 The one published record vocabulary — every `type` an Assertion may carry. [SD §1.3] makes this the **single classification axis**: on an Assertion the `type` **is** the fact class, and [SD §4.7.1] is its complete declaration. Each entry carries the canonical subject family it may be asserted about (**E-CANON**), the `qualifier` it declares if any, and the authority row [A8 §5] gives it — or the explicit note that the row is **owed**. The last three columns are joined from `packages/domain-reference/data/canonical-subjects.json`.
 
@@ -330,6 +330,19 @@ The act that brings a **document** into existence — [A6 §3.3], family `docume
 - **Cited:** [[A6 §3.2(b)]](analysis/A6-documents-evidence.md#32-a-documents-own-identity-and-the-identity-it-merely-carries--owed-item-1) · [[A6 §3.3(b)]](analysis/A6-documents-evidence.md#33-no-act-on-a-document-has-a-record-and-documentissuance-arrives-with-its-authority-resolved--owed-item-2) · [[A6 §3.3]](analysis/A6-documents-evidence.md#33-no-act-on-a-document-has-a-record-and-documentissuance-arrives-with-its-authority-resolved--owed-item-2) · [[A6 §6]](analysis/A6-documents-evidence.md) · [[A8 §5]](analysis/A8-authority-skeleton.md)
 - **Corpus:** `src:cfr-49-375` · `src:dcsa` · `src:dp3-tender-of-service` · `src:dtr-part-iv` · `src:nmfta-ebol`
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
+
+### `estimate` (record type)
+
+The **estimated total cost of the move**, asserted — `src:cfr-49-375` §375.401(b), family
+`goods`. [A8 §5] row 20. Its `value` is **owed** to A7 / A12.
+
+- **Canonical subject family:** `goods` = {`shipment`, `portion`}
+- **Qualifier:** none — the fact key is `(subject, type)`
+- **Authority:** **assigned**, `boundBy = PRINCIPAL`. [A8 §5] row 20. The contractingCarrier. §375.401(a)-(b) put the written estimate on "you", based on the physical survey. §375.409 lets a broker's estimate be adopted "as your own estimate", so authorship moves and authority does not. §375.401(h)'s mutual signature makes the shipper a signatory, not a joint asserter of the amount. Its value is owed to A7 / A12.
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
+- **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md) · [[SD §4.1]](analysis/00-shared-decisions.md#41-the-shape)
+- **Corpus:** `src:cfr-49-375`
+- **Declared by:** `NON_ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `handover` (record type)
 
@@ -549,6 +562,19 @@ party of record for what happened inside it.
 - **Authority:** **assigned**, `boundBy = CUSTODY`. [A8 §5] row 8. sitAgent / the warehouseman holding the goods. hauler collecting is COMPETING — it is a handoff, so the exception-sheet rule applies.
 - **Scoring:** `capped-medium` ([SD §4.7] note 3)
 - **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md) · [[SD §4.7.1]](analysis/00-shared-decisions.md#471-the-table) · [[SD §5.2]](analysis/00-shared-decisions.md#52-the-rules)
+- **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
+
+### `survey` (record type)
+
+The act of **surveying the goods to be transported** — `src:cfr-49-375` §375.401(a), family
+`goods`. [A8 §5] row 19.
+
+- **Canonical subject family:** `goods` = {`shipment`, `portion`}
+- **Qualifier:** none — the fact key is `(subject, type)`
+- **Authority:** **assigned**, `boundBy = PRINCIPAL`. [A8 §5] row 19. The contractingCarrier. §375.103 DEFINES a Physical survey and puts the virtual-survey duty on "the household goods motor carrier" by name; §375.401(a) is the duty. The origin agent routinely performs it and corroborates rather than holds: performance is delegable under §375.205(a)(1), authority is not.
+- **Scoring:** `capped-medium` ([SD §4.7] note 3)
+- **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:cfr-49-375`
 - **Declared by:** `ACT_TYPES` in `packages/domain-reference/src/vocabulary.ts`
 
 ### `tripCancellation` (record type)
@@ -1461,7 +1487,7 @@ This is the shuttle reason, and it is **sourced**, not authored.
 - **Corpus:** `src:dp3-400ng` · `src:open-trip-model` · `src:shippeo` · `src:stedi-x12-reference`
 - **Declared by:** `REASON_CODES` in `packages/domain-reference/src/outcomes.ts`
 
-## Role names (19)
+## Role names (20)
 
 [A8 §2]'s cast: `src:sirva-ade`'s `Resource.Type` roles plus the four A8 adds because each asserts facts. Two naming rules bind it — **A8-NAME-1** ("the bare word `agent` is not a role in this model") and **A8-NAME-2** (the bare word `shipper` splits into `accountParty` and the goods owner). **Provisional**: [A8 §9 item 2] leaves the role enum undefined, and [A8 §2] takes the cast as a name list without defining any role individually.
 
@@ -1483,6 +1509,17 @@ The party that books the move. `src:sirva-ade`'s `Resource.Type` cast, GSD p.9, 
 - **Marker:** [ORIGINAL]
 - **Cited:** [[A8 §2]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md)
 - **Corpus:** `src:sirva-ade`
+- **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
+
+### `contractingCarrier` (role name)
+
+**The party in contract with the shipper** — whose bill of lading it is, who owes the survey
+and estimate duties, and who stays authoritative over them when it delegates performance.
+`src:cfr-49-375` §375.103, **primary captured**, and the one member of this cast whose
+authority rows were written with it ([A8 §5] rows 19 and 20).
+
+- **Cited:** [[A8 §5]](analysis/A8-authority-skeleton.md) · [[A8 §9 item 2]](analysis/A8-authority-skeleton.md)
+- **Corpus:** `src:cfr-49-375`
 - **Declared by:** `ROLE_NAMES` in `packages/domain-reference/src/envelope.ts`
 
 ### `destinationAgent` (role name)
@@ -2434,6 +2471,7 @@ This is the honest state of the model on one page. [SD §0] forbids guessing a v
 - `boundBy` — owed to [SD §4.7.1] — the binding is owed with the row _(`packages/domain-reference/src/rules/authority.ts`)_
 - `chargeValue` — owed to A7 / A12 — the corpus publishes gross/net/discount as field names and defines them nowhere _(`packages/domain-reference/src/assertions.ts`)_
 - `conditionValue` — owed to A4 / A10 — no document fixes the condition vocabulary _(`packages/domain-reference/src/assertions.ts`)_
+- `estimateValue` — owed to A7 / A12 — as chargeValue: the corpus names gross/net/discount and defines them nowhere _(`packages/domain-reference/src/assertions.ts`)_
 - `etaChange` — owed to [SD §4.7.3] — `eta` is absent-and-owed; [SD §4.5] reads it as `arrival` at basis = ESTIMATED _(`packages/domain-reference/src/rules/capture.ts`)_
 - `itemAccepted` — owed to [SD §4.7.1] — M2 names it in the possession-changing list and no type carries it _(`packages/domain-reference/src/rules/capture.ts`)_
 - `itemRefused` — owed to [SD §4.7.1] — read by [SD §5.4] as a Portion in a delivery’s reasons[].appliesTo, not a type _(`packages/domain-reference/src/rules/capture.ts`)_
@@ -2463,7 +2501,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 
 ### Record types whose authority row is owed
 
-13 of 32 declared types carry an authority that is owed in whole or in part, and [A8 §9 item 8] is the ledger. **The two numbers in that sentence are generated from the table; every other number this paragraph used to carry has been replaced by the rows it was counting**, which is [A1 §9]'s rule applied to a generator: a hand-written "nine", "two", "three" and "five" in here went stale three times, once in the same release as the change that made them wrong. The list below is the inventory; this is what the groups mean.
+13 of 34 declared types carry an authority that is owed in whole or in part, and [A8 §9 item 8] is the ledger. **The two numbers in that sentence are generated from the table; every other number this paragraph used to carry has been replaced by the rows it was counting**, which is [A1 §9]'s rule applied to a generator: a hand-written "nine", "two", "three" and "five" in here went stale three times, once in the same release as the change that made them wrong. The list below is the inventory; this is what the groups mean.
 
 **Blocked on the corpus, not on effort** — the `trip`, `membership` and `assignment` families: no external source binds a plan change, a membership offer or an assignment to an asserting role, so a row for one would be [ORIGINAL], and [SD §4.7] note 3 bars a provisional reading from scoring anyway.
 
@@ -2492,6 +2530,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 `FACT_CLASS_FAMILY` is a **[SYNTHESIS]** of [SD §4.1]'s family table and [SD §4.7.1]'s type declaration, and the rows the join cannot make are marked `owed` rather than guessed. The mirror finding is that **[SD §4.1] declares a `state` family with no publishable member**: the lifecycle types are acts, and [SD §4.7.2d] is explicit that `in-transit` "is **not a record at all**: it is a projection".
 
 - `charge` — no family in [SD §4.1]'s table (declared `owed`)
+- `estimate` — no family in [SD §4.1]'s table (declared `owed`)
 - `notification` — no family in [SD §4.1]'s table (declared `owed`)
 
 ### Fact classes named in the corpus and absent from the vocabulary
@@ -2499,9 +2538,8 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 [SD §4.7.3] lists these "so their absence is not read as an oversight". Each needs a row in [SD §4.7.1] **and** an [A8 §5] row before its area can score a dependent decision high.
 
 - `chargeCollection` — The act by which a charge is **billed and collected** — the freight bill presented, the amount tendered, the possession relinquished. [A7 §3.2].
-- `claim`
-- `cube`
-- `estimate`
+- `claim` — A claim against the carrier for loss or damage — and **the one of §8.3(3)'s three that the `contractingCarrier` member did not close.**
+- `cube` — The surveyed **volume** of the goods. Named by [SD §4.7.3] and **not** closed by the round that minted `survey`: the survey is the act, and this is one of the values it produces. It needs a `MeasureValue` in a volume unit, and `unitOfMeasure` is the one owed vocabulary still on the `publishedOwedVocabulary` path ([catalog §2.3]) rather than refused — so this is blocked on a vocabulary that is expected to land, which is a better position than the entries below.
 - `eta`
 - `resourceTareWeight` — [SD §4.7.2c] the equipment's own tare — a `resource`-subject fact needing its own type.
 - `sealIntegrity`
@@ -2509,7 +2547,6 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - `stayAllowance` — The **days of storage authorised** for a stay, and the extensions that change it — [A5 §3.6].
 - `stayAuthorisation` — The act that **authorises** a storage-in-transit stay — [A5 §3.6].
 - `stayTermination` — The act that **terminates** a stay — [A5 §3.4], [A5 §3.6].
-- `survey`
 - `tracerResult`
 - `unpacking` — [SD §4.7.3] deferred alongside `weighing` "for that reason and for no evidentiary one — **its family is not in doubt**", because [SD §10.1] item 20 already directs A3 to record it as absent, and "minting `unpacking` here while `A3` is told to record it as absent would put the two halves of one decision in contradiction."
 - `weighing` — [SD §4.7.3] "`weighing`'s canonical family cannot be read off the corpus": §375.509(a)(1)-(2) performs the act on a **vehicle** to yield a fact about the **goods**. "No source settles it, and a declaration table does not settle it by preference."
@@ -2643,6 +2680,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`condition`](#condition-fact-class-family) — fact-class family
 - [`condition`](#condition-record-type) — record type
 - [`context`](#context-refused-filter-axis) — refused filter axis
+- [`contractingCarrier`](#contractingcarrier-role-name) — role name
 - [`count`](#count-fact-class-family) — fact-class family
 - [`currentState`](#currentstate-refused-filter-axis) — refused filter axis
 - [`custodyAt`](#custodyat-rule) — rule
@@ -2652,6 +2690,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`document`](#document-aggregate) — aggregate
 - [`documentIssuance`](#documentissuance-record-type) — record type
 - [`driver`](#driver-role-name) — role name
+- [`estimate`](#estimate-record-type) — record type
 - [`externallyPerformedLeg`](#externallyperformedleg-aggregate) — aggregate
 - [`factClassFamily`](#factclassfamily-filter-axis) — filter axis
 - [`factRef`](#factref-filter-axis) — filter axis
@@ -2718,6 +2757,7 @@ A vocabulary whose **shape** is published and whose **members** are not, carried
 - [`subject.aggregate`](#subjectaggregate-filter-axis) — filter axis
 - [`subject.id`](#subjectid-filter-axis) — filter axis
 - [`subjectFamily`](#subjectfamily-filter-axis) — filter axis
+- [`survey`](#survey-record-type) — record type
 - [`tense`](#tense-refused-filter-axis) — refused filter axis
 - [`time`](#time-fact-class-family) — fact-class family
 - [`trip`](#trip-aggregate) — aggregate

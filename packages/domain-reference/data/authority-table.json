@@ -843,6 +843,82 @@
       "confidence": "medium",
       "confidenceNote": "[A8 §10] caps a row whose authority is converted from a duty. Capped further by what the row does NOT answer: [A1 §3.5]'s deadline-lapse edge is an orderResponse at NOT_COMPLETED that src:dtr-part-iv §C.4.b publishes as \"caused by nobody\", and §C.4.b gives the PPSO an overt confirmation step that may make the awarding role competing on that branch alone. Recorded on the row rather than deferred.",
       "citations": ["[A8 §5 r18]", "[A8 §4.3]", "[A1 §3.5]", "[A1 §Cross-area]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 19,
+      "type": "survey",
+      "family": "goods",
+      "boundBy": "PRINCIPAL",
+      "sameAs": null,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["contractingCarrier"],
+          "unresolved": [],
+          "note": "The asserter is named in the DEFINITION rather than inferred. src:cfr-49-375 §375.103 defines a Physical survey as one \"conducted on-site or virtually\" and puts the virtual-survey duty on \"the household goods motor carrier\" BY NAME; §375.401(a) is the duty (\"You must conduct a physical survey\"). That same §375.103 definition of the carrier is itself constituted by this service and by estimate — \"(i) Binding and nonbinding estimates; (ii) Inventorying\" — so the role and the fact class are defined in terms of each other, which is why [A10] minted them together. This is the FIRST row whose holder is a role the enum did not contain until the same round added it.",
+          "cardinality": "one"
+        },
+        "corroborating": {
+          "roles": ["originAgent"],
+          "unresolved": [],
+          "note": "The origin agent routinely performs the survey and does not hold authority over it. §375.205(a)(1): a prime agent \"provides a transportation service for you or on your behalf ... under the terms of an agreement or arrangement with you\", where \"you\" is the motor carrier. That is the whole content of boundBy = PRINCIPAL here: performance is delegable, authority is not."
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [],
+          "note": "EMPTY rather than guessed, on row 18's precedent. The shipper may WAIVE the survey (§375.401(a)(1)-(3)) and signs the estimate it feeds (§375.401(h)), but a permission over whether an act happens is not a competing assertion about it — A1-PERMISSION keeps the two apart."
+        },
+        "advisory": {
+          "roles": ["platform"],
+          "unresolved": [],
+          "note": "The platform is advisory and never authoritative on an act ([SD §5.2] M2/M3's family bar reaches every act)."
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED, primary captured: src:cfr-49-375 §375.103 (Physical survey, a DEFINED term, with the virtual-survey duty on the household goods motor carrier by name) and §375.401(a) (the conduct duty, and the clause that makes this survey the estimate's own input — \"a written estimate, based on the physical survey\"). §375.205(a)(1) supplies the delegation reading that keeps authority with the principal.",
+      "authored": "[ORIGINAL]: converting the conduct duty into assertional authority, which [A8 §10] records as authored in rows 1-5, 8, 11 and 18 too. The WAIVER is deliberately modelled as nothing: §375.401(a)(1)-(3) is a signature plus a retention rule, and both are already settled against being fact classes (documentIssuance on signatures, [A8 §9 item 4] M1 on retention periods). A waived survey is the ABSENCE of this record.",
+      "confidence": "medium",
+      "confidenceNote": "[A8 §10] caps a row whose authority is converted from a duty, and §375.401(a) states a duty. Capped accordingly, as rows 1-5, 8, 11 and 18.",
+      "citations": ["[A8 §5 r19]", "[A10]", "[SD §4.7.1]"]
+    },
+    {
+      "row": 20,
+      "type": "estimate",
+      "family": "goods",
+      "boundBy": "PRINCIPAL",
+      "sameAs": 19,
+      "standings": {
+        "kind": "uniform",
+        "authoritative": {
+          "roles": ["contractingCarrier"],
+          "unresolved": [],
+          "note": "As row 19. §375.401(a)-(b) put the written estimate on \"you\", the household goods motor carrier, based on the physical survey, and require it to indicate WHETHER it binds. §375.409 is the sharpest case FOR this holder rather than against it: a broker may produce the estimate \"provided there is a written agreement between the broker and you, the motor carrier, adopting the broker's estimate as YOUR OWN estimate\" — so authorship moves and authority does not.",
+          "cardinality": "one"
+        },
+        "corroborating": {
+          "roles": ["booker"],
+          "unresolved": [],
+          "note": "booker is the nearest cast member to the party that may author an estimate on the carrier's behalf. [A8 §9 item 4] M3 established that booker is the van-line agent booking under agreement and NOT the independent household goods broker, whom §375.205(a)(1) expressly excludes from prime agency — so the broker of §375.409 is not in the cast at all, and what it does is transfer attribution rather than hold a standing."
+        },
+        "competing": {
+          "roles": [],
+          "unresolved": [],
+          "note": "EMPTY. §375.401(h) — \"You and the individual shipper must sign the estimate of charges\" — makes the shipper a mutual SIGNATORY, not a competing asserter of the amount: the signature is not the fact, which is the reading documentIssuance already took. Row 9's jointAtCustodyBoundary is deliberately NOT reused, because it resolves through AuthorityContext.atCustodyBoundary and a contract moment is not a custody boundary."
+        },
+        "advisory": {
+          "roles": ["platform"],
+          "unresolved": [],
+          "note": "As row 19."
+        }
+      },
+      "settlement": null,
+      "inputAuthority": null,
+      "evidence": "SOURCED, primary captured: src:cfr-49-375 §375.401(a)-(b) (the written estimate, on \"you\", based on the physical survey, indicating whether it binds), §375.403 (the binding form, including (a)(3) making it \"an integral part of the bill of lading contract\" and (a)(7) reaffirmation by silence), §375.405 (the non-binding form), §375.409 (the broker-adopted estimate), §375.401(h) (mutual signature).",
+      "authored": "[ORIGINAL]: the duty-to-authority conversion, as row 19. ONE FACT KEY, not two, and that is this row's substantive step: §375.403(a)(7) makes \"failure to execute a new binding estimate OR a non-binding estimate\" a reaffirmation of the original, so the two kinds are ALTERNATIVES resolved by recency through supersedes ([SD §4.1]) and bindingness is a property of the value rather than a qualifier. charge's {aspect} exists because an approval must not compete with an amount; two estimates of one total SHOULD compete — same mechanism, opposite answer. Its value is owed to A7 / A12 as chargeValue is.",
+      "confidence": "medium",
+      "confidenceNote": "As row 19: one conversion away from a stated duty.",
+      "citations": ["[A8 §5 r20]", "[A10]", "[SD §4.7.1]", "[SD §4.1]"]
     }
   ]
 }

@@ -216,7 +216,7 @@ describe('[A8 §5] the authority table', () => {
     // By row number rather than by `size`, for `authority-custody-corrections.test.ts`'s reason: a
     // total cannot see a gap or a duplicate, and the number is what [A8 §5]'s prose cites.
     expect([...table.rows.keys()].sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
     ])
     // [A8 §9 item 8]: everything else is uncovered, so there is deliberately no completeness check.
     expect(table.byType.has('tripDelay')).toBe(false)
@@ -472,7 +472,7 @@ describe('the three tables together', () => {
     const tables = loadDomainTables({ canonicalSubjects, authority: authorityTable, reasons })
     expect(tables.canonicalSubjects.rows.size).toBe(ASSERTION_TYPES.length)
     expect([...tables.authority.rows.keys()].sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
     ])
     expect(tables.reasons.status).toBe('published')
   })

@@ -479,7 +479,13 @@ export type AuthorityRule<T extends AssertionType = AssertionType> = AuthorityRu
       }
   )
 
-export type A8Row = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18
+/**
+ * The row numbers [A8 §5] publishes. **19 and 20 were added by [A10]** (2026-10-12) with `survey`
+ * and `estimate` — the first rows whose holder is a role member the enum did not have until the same
+ * round minted it (`contractingCarrier`).
+ */
+export type A8Row =
+  1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20
 
 /**
  * A fact class [A8 §5] does not reach — [A8 §9 item 8] lists them: "cube, piece count, packing
@@ -520,6 +526,37 @@ export const ISSUER_OF_SCHEME: RuleRef = ruleRef('ISSUER-OF-SCHEME', '1')
 
 /** [A8 §5] row 11: three aspects, three fact keys, three authorities ([SD §4.7.2b]). */
 export const PRINCIPAL_AT_ASPECT: RuleRef = ruleRef('PRINCIPAL-AT-ASPECT', '1')
+
+/**
+ * **[A8 §5] rows 19 and 20** — [A10], 2026-10-12. Authority belongs to the party the arrangement is
+ * **for**, and **performance is delegable while authority is not**.
+ *
+ * The rule exists because both rows had to answer the same question and no existing `RuleRef`
+ * answered it. `ISSUER_OF_SCHEME` could not: it works for `documentIssuance` only because the bill
+ * of lading **has a number scheme of its own**, and a physical survey has neither a scheme nor an
+ * instrument. `PRINCIPAL_AT_ASPECT` is row 11's and splits by `ChargeAspect`, which these rows do
+ * not have.
+ *
+ * **It is `boundBy = PRINCIPAL` read against a primary source, not a new binding.**
+ * `src:cfr-49-375` §375.205(a)(1): a **prime agent** _"provides a transportation service **for you
+ * or on your behalf**… under the terms of an agreement or arrangement with you"_, where "you" is
+ * the motor carrier (Subpart B is _"Before Offering Services to My Customers"_). So when an origin
+ * agent conducts the survey, the arrangement is **for** the contracting carrier and authority does
+ * not move to the performer — which is exactly {@link BOUND_BY}'s `PRINCIPAL`: _"belongs to the
+ * party the arrangement is for; moves only when the principal changes."_
+ *
+ * §375.409 is the same shape from the other end and is the sharper case: a household goods broker
+ * may produce the estimate _"provided there is a written agreement between the broker and you, the
+ * motor carrier, **adopting the broker's estimate as your own estimate**"_. Authorship moves;
+ * authority does not.
+ *
+ * **It is NOT a delegation axis**, and this is the scope line. `[A8 §9 item 4]`'s M3 identified the
+ * broker-adopted estimate as "a third delegation shape" and that round is **paused**. What is
+ * settled here is only the binding for these two rows: an attribution transfer needs no new
+ * machinery, because `PRINCIPAL` already keeps authority with the principal. Where a *second*
+ * delegation axis lives is still item 4's and is still open.
+ */
+export const PRINCIPAL_OF_THE_ARRANGEMENT: RuleRef = ruleRef('PRINCIPAL-OF-THE-ARRANGEMENT', '1')
 
 /** [A8 §5] row 7: [SD §5.2] M4's mandatory derivation. */
 export const SIT_ENTRY_DERIVED: RuleRef = ruleRef('SIT-ENTRY-DATE-DERIVED', '1')
@@ -1250,6 +1287,72 @@ export const AUTHORITY_TABLE = {
       'who ASSERTS it is a capture question this row does not answer, and §C.4.b gives the PPSO an ' +
       'overt confirmation step that may make the awarding role competing on that branch alone.',
   },
+
+  /* ---- Row 19 — survey. The first row a NEW role member closed. ------------------------------ */
+  survey: {
+    a8Row: 19,
+    type: 'survey',
+    rule: PRINCIPAL_OF_THE_ARRANGEMENT,
+    boundBy: 'PRINCIPAL',
+    authoritative: { kind: 'held', primary: { kind: 'role', role: 'contractingCarrier' } },
+    // The origin agent routinely performs the survey, and §375.205(a)(1) is explicit that it does so
+    // "for you or on your behalf ... under the terms of an agreement or arrangement with you" — so
+    // it corroborates and does not hold. That is the whole content of `boundBy = PRINCIPAL` here:
+    // performance is delegable, authority is not.
+    corroborating: standingRoles('originAgent'),
+    // The shipper signs the estimate this survey feeds (§375.401(h)) and may WAIVE the survey
+    // altogether (§375.401(a)(1)-(3)) — a permission over whether the act happens, which
+    // A1-PERMISSION keeps distinct from authority over the act. Empty rather than guessed, on row
+    // 18's precedent.
+    competing: [],
+    advisory: standingRoles('platform'),
+    note:
+      'SOURCED, and the asserter is named in the DEFINITION rather than inferred: `src:cfr-49-375` ' +
+      '§375.103 defines `Physical survey` as "a survey which is conducted on-site or virtually" and ' +
+      'puts the virtual-survey duty on "**the household goods motor carrier**" by name; §375.401(a) ' +
+      'is the duty ("You **must** conduct a physical survey"). §375.103\'s definition of that ' +
+      'carrier is itself constituted by this service and by `estimate` — "(i) Binding and nonbinding ' +
+      'estimates; (ii) Inventorying" — so the role and the fact class are defined in terms of each ' +
+      'other, which is why they minted together. ' +
+      '**[ORIGINAL]:** converting the conduct duty into assertional authority, as [A8 §10] records ' +
+      'for rows 1-5, 8, 11 and 18 — confidence medium, capped accordingly. ' +
+      'The WAIVER is deliberately not modelled: §375.401(a)(1)-(3) is a signature plus a retention ' +
+      'rule, and both are already settled against being fact classes (`documentIssuance` on ' +
+      'signatures, [A8 §9 item 4] M1 on retention periods).',
+  },
+
+  /* ---- Row 20 — estimate. One key, and the value is owed. ----------------------------------- */
+  estimate: {
+    a8Row: 20,
+    type: 'estimate',
+    rule: PRINCIPAL_OF_THE_ARRANGEMENT,
+    boundBy: 'PRINCIPAL',
+    authoritative: { kind: 'held', primary: { kind: 'role', role: 'contractingCarrier' } },
+    // §375.409's broker-adopted estimate is the sharpest case FOR this row rather than against it:
+    // the broker authors the estimate and the written agreement adopts it "as **your own**
+    // estimate", so authorship moves and authority does not. `booker` is the nearest cast member
+    // ([A8 §9 item 4] M3 established it is the van-line agent booking under agreement, NOT the
+    // independent broker §375.205(a)(1) excludes), so it corroborates.
+    corroborating: standingRoles('booker'),
+    // §375.401(h) makes the shipper a mutual SIGNATORY of the estimate, not a competing asserter of
+    // the amount — the signature is not the fact. Row 9's `jointAtCustodyBoundary` is deliberately
+    // NOT reused: it is resolved through `AuthorityContext.atCustodyBoundary`, and a contract
+    // moment is not a custody boundary.
+    competing: [],
+    advisory: standingRoles('platform'),
+    note:
+      'SOURCED: `src:cfr-49-375` §375.401(a)-(b) put the written estimate on "you", the household ' +
+      'goods motor carrier, based on the physical survey, and require it to indicate whether it ' +
+      'binds; §375.403 governs the binding form and §375.405 the non-binding one; §375.409 lets a ' +
+      "broker's estimate be adopted as the carrier's own by written agreement. " +
+      '**ONE fact key, not two.** §375.403(a)(7) — "failure to execute a new binding estimate **or ' +
+      'a non-binding estimate** signifies you have reaffirmed the original" — makes the two kinds ' +
+      'ALTERNATIVES resolved by recency through `supersedes`, so bindingness is a property of the ' +
+      "value and not a qualifier. `charge`'s `{aspect}` exists because an approval must not compete " +
+      'with an amount; two estimates of one total SHOULD compete. Same mechanism, opposite answer. ' +
+      'Its `value` is **owed to A7 / A12** as `chargeValue` is, for the same documented reason. ' +
+      '**[ORIGINAL]:** the duty-to-authority conversion, as row 19.',
+  },
 } as const satisfies { readonly [T in AssertionType]: AuthorityTableEntry<T> }
 
 /**
@@ -1293,6 +1396,11 @@ type TheRowedTypesAreExactlyThese = Exact<
   | 'pieceCount'
   | 'documentIssuance'
   | 'orderResponse'
+  // [A10], 2026-10-12 — rows 19 and 20. This gate is the reason the two are listed by name rather
+  // than counted: it fired the moment the rows were added and made extending the published set a
+  // deliberate edit instead of a side effect ([A1 §9], and gotcha 7's literal anchor).
+  | 'survey'
+  | 'estimate'
 >
 const _theRowedTypesAreExactlyThese: TheRowedTypesAreExactlyThese = true
 void _theRowedTypesAreExactlyThese

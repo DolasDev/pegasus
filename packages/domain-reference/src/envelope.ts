@@ -172,6 +172,61 @@ export const ROLE_NAMES = [
    */
   'hauler',
   /**
+   * **The party in contract with the shipper** — whose bill of lading it is, who owes the survey
+   * and estimate duties, and who stays authoritative over them when it delegates performance.
+   * `src:cfr-49-375` §375.103, **primary captured**, and the one member of this cast whose
+   * authority rows were written with it ([A8 §5] rows 19 and 20).
+   *
+   * ## The definition is constituted by the fact classes it asserts
+   *
+   * This is the argument for the member, and it is stronger than any count. §375.103:
+   *
+   * > "**Household goods motor carrier** means — (1) In general, a motor carrier that, in the
+   * > ordinary course of its business of providing transportation of household goods, offers some or
+   * > all of the following additional services: **(i) Binding and nonbinding estimates;
+   * > (ii) Inventorying; (iii) Protective packing and unpacking** of individual items at personal
+   * > residences; **(iv) Loading and unloading** at personal residences."
+   *
+   * Two of the four services that **constitute the definition** are `estimate` and the inventorying
+   * a `survey` produces; `packing`, `loading` and `unloading` are already in the vocabulary with
+   * [A8 §5] rows of their own. So this role is not inferred from scattered duties — the duties
+   * **are** the defined term, which is why it closes rows the role enum could not reach before.
+   *
+   * ## Why not the defined term as the name
+   *
+   * **A8-NAME-1**, and `goodsOwner`'s precedent: `[A8 §9 item 2]` picked `goodsOwner` **over**
+   * §375.103's own `individual shipper` because "the word that matches the axis is the owner's".
+   * The axis here is **contract against performance** — `hauler` performs the linehaul, `r19Agent`
+   * is an authorised substitute performer, `originAgent`/`loadAgent`/`packer` perform at a place,
+   * and none of them is the party the shipper contracted with. `householdGoodsCarrier` was the
+   * alternative; it names the industry rather than the axis and would **not distinguish this role
+   * from `hauler`**, which is also a household goods motor carrier. `principalCarrier` was ruled
+   * out because {@link BOUND_BY}'s `PRINCIPAL` already means "the party the arrangement is for",
+   * and these two rows are bound by it — a role spelled with the same word would collide in prose
+   * with its own binding.
+   *
+   * ## The counts, and the trap in them
+   *
+   * In the captured part: `household goods motor carrier` **8** occurrences (**5** regulatory, 3
+   * Appendix A), **3** carrying a duty, and it is the **§375.103 defined term**; `motor carrier`
+   * 35/10; `carrier` 52/18; `moving company` 2 with **no** duty; **`van line` 0**.
+   *
+   * **`mover` looks like the best-evidenced name in the part and is not: 225 occurrences, of which
+   * 222 are in Appendix A** — the consumer booklet "Your Rights and Responsibilities When You
+   * Move" — against **3** in the regulatory text. A raw count picks the consumer-facing word, which
+   * is exactly how item 2 first picked `customer` over `individual shipper` and had to be reversed.
+   *
+   * ## What it does NOT close
+   *
+   * Three carrier-adjacent gaps stay open because they are **different parties**, and the round that
+   * minted this member was proposed as closing six: row 11's `RATED` aspect is owed to a
+   * **`tariffOwner`** — the **van line**, "whose tariff prices it", and a van line and its agent are
+   * both household goods motor carriers, so this is not that party; and `stayAuthorisation` /
+   * `stayTermination` are owed to a **Government transportation office** (the PPSO). All three
+   * remain `[A8 §9 item 2]`'s.
+   */
+  'contractingCarrier',
+  /**
    * An authorised substitute performer. `src:sirva-ade`'s **R19** (SOE pp.16-17): an
    * `R19AuthNumber` licenses a substitute agent with its own resource, weight and charge codes —
    * an **instrument** in [A8 §6]'s sense, granting a role rather than a field-level correction, and

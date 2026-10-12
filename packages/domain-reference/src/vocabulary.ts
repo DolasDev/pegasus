@@ -187,6 +187,37 @@ export const ACT_TYPES = [
    * [A6 §6] owes it to the user, and that debt is **not** discharged by this member.
    */
   'documentIssuance',
+  /**
+   * The act of **surveying the goods to be transported** — `src:cfr-49-375` §375.401(a), family
+   * `goods`. [A8 §5] row 19.
+   *
+   * **A §375.103 DEFINED term, which is rare in this vocabulary:**
+   *
+   * > "**Physical survey** means a survey which is conducted on-site or virtually. If the survey is
+   * > performed virtually, **the household goods motor carrier must be able to view** the household
+   * > goods through live or pre-recorded video that allows it to clearly identify the household
+   * > goods to be transported."
+   *
+   * The definition names the asserter itself — the household goods motor carrier,
+   * `contractingCarrier` — and §375.401(a) is the duty: _"You **must** conduct a physical survey of
+   * the household goods to be transported and provide the prospective individual shipper with a
+   * written estimate, **based on the physical survey**"_. That last clause is why this and
+   * {@link NON_ACT_TYPES}'s `estimate` minted in one round: the survey is the estimate's own input.
+   *
+   * **An act, so it has no `ValueByType` entry** — what is published is that the survey happened,
+   * by whom and when. The condition and count facts a survey *produces* are `condition` and
+   * `pieceCount`, which already exist; the **cube** it produces does not, and `cube` stays absent.
+   *
+   * **Its waiver is deliberately minted as nothing.** §375.401(a)(1)-(3) lets the shipper waive the
+   * survey in writing, "signed by the shipper **before the shipment is loaded**", retained as a
+   * bill-of-lading addendum under §375.505(d)'s retention period. That is a **signature** plus a
+   * **filing rule**, and this model has already decided both: `documentIssuance` leaves signatures
+   * unminted because "no source publishes what a signature **asserts** — and a fact class needs a
+   * value", and a retention period is `evidence[]` / obligation territory rather than a fact.
+   * A waived survey is therefore the **absence** of this record, which is assertable by omission in
+   * the same way §375.403(a)(7) and NTS §1.6.2 are.
+   */
+  'survey',
 ] as const
 
 export type ActType = (typeof ACT_TYPES)[number]
@@ -302,6 +333,60 @@ export const NON_ACT_TYPES = [
    * which needs the role enum ([A8 §9 item 2], `refusedOnEvidence`).
    */
   'partyRole',
+  /**
+   * The **estimated total cost of the move**, asserted — `src:cfr-49-375` §375.401(b), family
+   * `goods`. [A8 §5] row 20. Its `value` is **owed** to A7 / A12.
+   *
+   * §375.401(a): _"You must conduct a physical survey… and provide the prospective individual
+   * shipper with a **written estimate, based on the physical survey, of the charges** for the
+   * transportation and all related services."_ §375.401(b) requires it to _"indicate whether it is
+   * a binding or a non-binding estimate"_, and defines both:
+   *
+   * - **binding** — _"an agreement made in advance… It **guarantees** the total cost of the move…
+   *   The binding estimate must indicate that you and the shipper are bound by the charges."_
+   * - **non-binding** — _"what **you believe** the total cost will be… A non-binding estimate is
+   *   **not binding on you**. You will base the final charges upon the actual weight."_
+   *
+   * ## It is NOT `charge` at `aspect = PROPOSED`, and the reason is written here because someone
+   * will try to collapse them
+   *
+   * Two reasons, either sufficient. **(1)** Row 11's `PROPOSED` holder is `performingRole` —
+   * "whichever role performed the service being charged" — which **presupposes performance**, and
+   * §375.401 produces the estimate before the bill of lading exists and before anything is
+   * performed. **(2)** The grain differs: `charge`'s family is `charge`, one charge; this is "the
+   * **total** cost" for the shipment, and a shipment total is not a value of a per-charge fact.
+   *
+   * ## Binding vs non-binding is NOT a qualifier — one key, successive assertions
+   *
+   * `charge`'s `{aspect}` is the tempting model and the corpus refuses it. §375.403(a)(7):
+   * _"Once you load a shipment, **failure to execute a new binding estimate or a non-binding
+   * estimate** signifies you have **reaffirmed the original binding estimate**."_ A new estimate
+   * **of either kind** replaces the original, so the two kinds are **alternatives on one key**,
+   * resolved by recency through `supersedes` ([SD §4.1]).
+   *
+   * `{aspect}` exists because without it "an **approval** would compete with an **amount**" — two
+   * things that are not alternatives. Two estimates of one total **are** alternatives. Same
+   * mechanism, opposite answer, and the asymmetry is the whole argument.
+   *
+   * Bindingness therefore rides on the (owed) value as a property of the estimate, which
+   * §375.401(b)'s "must indicate whether" says it is.
+   *
+   * ## Reaffirmation by silence is the model's second instance, not its first
+   *
+   * §375.403(a)(7) publishes a fact by **omission**: not executing a new estimate reaffirms the old
+   * one. NTS §1.6.2 does the same for `condition` ([A8 §5] row 9's note). Neither silence is minted
+   * as a record — what is published is the fact, and the silence is read against it.
+   *
+   * ## The mutual signature is not joint authority
+   *
+   * §375.401(h) — _"You and the individual shipper **must sign** the estimate of charges"_, already
+   * cited in `ROLE_NAMES`' `goodsOwner` entry — makes this a mutually **signed** document. It does
+   * not make the amount jointly asserted: `jointAtCustodyBoundary` is row 9's holder kind, resolved
+   * through `AuthorityContext.atCustodyBoundary`, and reusing it at a **contract** moment would bend
+   * a custody-boundary rule onto a boundary it was not written for. No new holder kind is needed,
+   * because the signature is not the fact — the same reading `documentIssuance` already took.
+   */
+  'estimate',
 ] as const
 
 export type NonActType = (typeof NON_ACT_TYPES)[number]
@@ -460,6 +545,12 @@ export const CANONICAL_SUBJECT_FAMILY = {
   // assigned to as an accountable artefact; this row is the second kind, and `identity`'s own
   // `anyAggregate` family already admitted a `document` subject before this act existed.
   documentIssuance: 'document',
+  // [A10], minted 2026-10-12. Both are about the consignment, so both take the `goods` family —
+  // `{shipment, portion}`. `src:cfr-49-375` §375.401(a) surveys "the household goods **to be
+  // transported**" and estimates "the **total** cost of the move", and a `portion` subject is what
+  // lets a part-lot survey or a split estimate be expressed without a second type.
+  survey: 'goods',
+  estimate: 'goods',
 } as const satisfies { readonly [T in AssertionType]: SubjectFamilyName }
 
 /** The family one `type` declares. */
@@ -745,6 +836,12 @@ export const FACT_CLASS_FAMILY = {
   orderResponse: 'actPerformance',
   orderCancellation: 'actPerformance',
   documentIssuance: 'actPerformance',
+  // [A10], 2026-10-12. `survey` is an act, so `actPerformance` as every act above. `estimate` is a
+  // money fact whose shape nobody publishes, so it is `'owed'` — the same cell `charge` carries,
+  // and for the same reason: the corpus names gross/net/discount as field names and defines them
+  // nowhere. See `ValueByType`'s `estimate` entry.
+  survey: 'actPerformance',
+  estimate: 'owed',
 } as const satisfies { readonly [T in AssertionType]: FactClassFamily | 'owed' }
 
 /**
@@ -861,12 +958,41 @@ export const PROSE_ALIASES = {
  * high". `custody` is absent for a different reason and is listed separately below.
  */
 export const ABSENT_AND_OWED = [
+  /**
+   * The surveyed **volume** of the goods. Named by [SD §4.7.3] and **not** closed by the round that
+   * minted `survey`: the survey is the act, and this is one of the values it produces. It needs a
+   * `MeasureValue` in a volume unit, and `unitOfMeasure` is the one owed vocabulary still on the
+   * `publishedOwedVocabulary` path ([catalog §2.3]) rather than refused — so this is blocked on a
+   * vocabulary that is expected to land, which is a better position than the entries below.
+   */
   'cube',
-  'survey',
-  'estimate',
   'eta',
   'sealIntegrity',
   'tracerResult',
+  /**
+   * A claim against the carrier for loss or damage — and **the one of §8.3(3)'s three that the
+   * `contractingCarrier` member did not close.**
+   *
+   * **The blocker is the DECIDER, not the claimant.** `goodsOwner` already names the party that
+   * files, and `contractingCarrier` now names the party that **receives**. What no member of
+   * `ROLE_NAMES` names is the party that **decides** — the carrier's claims adjuster — and a claim
+   * is a propose/decide pair whose decide half has no holder. That is `[A8 §9 item 2]` again, and
+   * it is the identical shape to `stayAuthorisation`'s: minting the row would make it
+   * `[A8 §9 item 8]`-owed on the day it was written.
+   *
+   * **And its area is context-map-only by design.** `rubric.md` A11 is _"Claims & valuation —
+   * released vs full value protection, claims lifecycle"_, and the rubric states that
+   * _"A10-A13 are context-map-only by design and **are not gaps**"_. So unlike `survey` and
+   * `estimate` — whose A10 subject matter the model already carries, as `condition`'s
+   * `'A4 / A10'` owed-owner shows — there is no area document in which this decision could be
+   * recorded even if the role existed. `src:cfr-49-375` Appendix A's **valuation charge** is a
+   * charge *for* a liability level and is A11's neighbour, not this.
+   *
+   * **What its absence costs:** 17 files in the legacy `movemanager` repo touch it (`_Flash/`,
+   * measured 2026-10-10 at `f0abdf16`), and a migration session reading them gets silence. The
+   * symptom index says so rather than leaving them unmentioned, which is the most this model can
+   * honestly offer until the role lands.
+   */
   'claim',
   /** [SD §4.7.2c] the equipment's own tare — a `resource`-subject fact needing its own type. */
   'resourceTareWeight',

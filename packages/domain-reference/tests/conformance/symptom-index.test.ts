@@ -119,16 +119,25 @@ describe('the authored half keeps its disclosure', () => {
 describe('the index still points at the gaps — the reason it exists', () => {
   const absent = new Set(catalogIndex.owed.absentFactClasses as string[])
 
-  it('tells a migrator in `_SurveyResults/` that the reference has NOTHING', () => {
-    // The single most useful row in the table: three absent fact classes and no concept at all.
-    // Silence is what the glossary gives today, and silence reads as "no match found" rather than
-    // "this is a known gap".
+  it('tells a migrator in `_SurveyResults/` what the reference has and what it still lacks', () => {
+    // **This assertion changed at catalog `0.7.1` and the old version is worth stating.** It used to
+    // read `concepts === []` with all three of `survey`, `estimate` and `cube` absent — the single
+    // most useful row in the table precisely because the reference had NOTHING for the module.
+    // `[A10]` minted `survey` and `estimate`, so two thirds of that gap closed and the row now
+    // carries real concepts.
+    //
+    // **The gate is kept rather than deleted, because the thing it protects has not changed:** this
+    // module must go on naming what is still missing. `cube` — the surveyed VOLUME — is the
+    // remainder, and it is a narrower and more honest gap than "the reference has nothing". The
+    // sibling assertion below is what forced this edit, and its comment called it: "a round WRITES
+    // `survey`, the catalog stops listing it as absent, and this table goes on telling migrators
+    // there is nothing there."
     const survey = modules.find((m) => m.module === '_SurveyResults')
     expect(survey).toBeDefined()
-    expect(survey?.concepts).toEqual([])
-    expect(survey?.absentConcepts ?? []).toEqual(
-      expect.arrayContaining(['survey', 'estimate', 'cube']),
-    )
+    expect(survey?.concepts).toEqual(['survey', 'estimate'])
+    expect(survey?.absentConcepts ?? []).toEqual(['cube'])
+    // And the module must still SAY so in prose, not only in the data — a migrator reads the note.
+    expect(survey?.note ?? '').toMatch(/cube/)
   })
 
   it('keeps every `absentConcepts` claim true of the published catalog', () => {

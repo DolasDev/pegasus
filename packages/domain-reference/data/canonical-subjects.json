@@ -806,6 +806,48 @@
         "citations": ["[A6 §3.3]", "[A8 §5 r17]"]
       },
       "citations": ["[A6 §3.3]", "[A8 §9 item 8(e)]"]
+    },
+    {
+      "type": "survey",
+      "proseAliases": [],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["order", "partyRole"],
+      "contextNote": "The order the survey was conducted under, and the party role that conducted it. Both are cross-references and neither is authoritative ([SD §1.4]); the performer is in this column precisely BECAUSE it is not the holder — authority is bound by PRINCIPAL to the contracting carrier, and §375.205(a)(1) makes a prime agent act \"for you or on your behalf\", so reading the holder off this column is what rule 1 forbids.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "PRINCIPAL",
+        "a8Row": {
+          "row": 19,
+          "sameType": true,
+          "why": null
+        },
+        "summary": "The contractingCarrier. §375.103 DEFINES a Physical survey and puts the virtual-survey duty on \"the household goods motor carrier\" by name; §375.401(a) is the duty. The origin agent routinely performs it and corroborates rather than holds: performance is delegable under §375.205(a)(1), authority is not.",
+        "scoring": "capped-medium",
+        "citations": ["[A10]", "[A8 §5 r19]"]
+      },
+      "citations": ["[A10]", "[A8 §5 r19]"]
+    },
+    {
+      "type": "estimate",
+      "proseAliases": [],
+      "family": "goods",
+      "qualifier": null,
+      "context": ["order"],
+      "contextNote": "The order estimated. The written instrument that CARRIES the amount is deliberately not in this column: a document that merely carries a fact belongs in evidence[], and [A6 §3.3] enumerates the six rows on which document appears in context[] — adding a seventh would change a published claim to record something evidence[] already holds. Deliberately NOT a {binding} qualifier either: §375.403(a)(7) makes a new estimate of either kind a replacement of the original and silence a reaffirmation, so binding and non-binding are alternatives on ONE key resolved by supersedes ([SD §4.1]), not two fact keys.",
+      "authority": {
+        "status": "assigned",
+        "boundBy": "PRINCIPAL",
+        "a8Row": {
+          "row": 20,
+          "sameType": true,
+          "why": null
+        },
+        "summary": "The contractingCarrier. §375.401(a)-(b) put the written estimate on \"you\", based on the physical survey. §375.409 lets a broker's estimate be adopted \"as your own estimate\", so authorship moves and authority does not. §375.401(h)'s mutual signature makes the shipper a signatory, not a joint asserter of the amount. Its value is owed to A7 / A12.",
+        "scoring": "capped-medium",
+        "citations": ["[A10]", "[A8 §5 r20]"]
+      },
+      "citations": ["[A10]", "[A8 §5 r20]"]
     }
   ]
 }
