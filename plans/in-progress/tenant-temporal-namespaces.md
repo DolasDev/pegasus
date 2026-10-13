@@ -12,9 +12,11 @@
   Phase 2 evidence: `plans/completed/2b1e2147-durable-workflow-isolation-spike.md`.
 - **Status:** Stage A merged and deployed inert (#797, `22cef033`,
   2026-10-05). Stage B Steps 1 and 2 are done (2026-10-11/12); the guardrail
-  probe **passed**. The **enable PR** (branch `fix/tenant-temporal-namespaces`)
-  adds both ARNs and a stronger readiness check. **Next: Step 9 ⚠️**, staging
-  acceptance, once the enable PR deploys.
+  probe **passed**. The enable PR (#835) and key rotation (#838) are live.
+  **Step 9 PASSED 2026-10-13** on run 3, after fixing the two bugs it found
+  (#844: the provisioner can't list a tenant's keys; #845: one
+  `async_operation_id` per operation). **Next: Step 10** (docs and landing),
+  then 3b.2 may start.
 
 ## Detailed plan (written 2026-10-05; execution starts in a new session)
 
@@ -298,11 +300,12 @@ account work blocks the code.
   - **Reminder:** `TemporalKeyDaysToExpiry` per `KeyClass`, alarmed under 30
     days (BREACHING on missing data), plus `TemporalKeyRotationFailed`, staging
     and prod only.
-  - ⚠️ **User:** run `rotate-platform-key.sh staging --tag-only` and
-    `prod --tag-only`. Until the tags exist, the platform alarm fires by
-    design.
-- [ ] Step 9: staging acceptance (add: forced provisioner self-rotation, and
-      a tenant rotate that passes readiness, once the rotation PR is in).
+  - [x] **User:** `rotate-platform-key.sh staging --tag-only` and
+        `prod --tag-only` (done 2026-10-12; both tags read back as 2028-06-04).
+- [x] Step 9: staging acceptance, **PASSED 2026-10-13** (run 3), including
+      the forced provisioner self-rotation and a tenant rotate through the
+      pending slot. Runs 1 and 2 each found a bug (#844, #845). Record under
+      "Step 9" below.
 
 **~~Owed before 3b.2 depends on rotation~~ — retired by the rotation PR:**
 rotate used to store the new key as current before checking it, with no way
@@ -602,6 +605,17 @@ step.
   row is FAILED with the previous key and the namespace still present.
   **After that deploys:** click Deprovision again, and confirm the key, the
   namespace and the row are all gone. That's the last Step 9 check.
+
+**Run 3 (2026-10-13, after #845 deployed): PASSED.** Deprovision on the
+FAILED row: `key_deleted` (the previous key, `Xp53…`), `namespace_deleted`,
+`done`. As the provisioner, the namespace, the scoped SA and both tenant keys
+all read **404**, and the `TenantTemporalNamespace` row is gone. Step 9 is
+complete: every check above passed across runs 2 and 3.
+
+Left for the user: the forced self-rotation left the old staging provisioner
+key `yyDenH2L…` alive until 2027-10-11 (its value is in AWSPREVIOUS). Delete
+it with `tcld apikey delete -i yyDenH2L0rl8UYIpxVy6nD5T7f1XknqW` if a spare
+isn't wanted.
 
 **Step 10: docs and landing.**
 
