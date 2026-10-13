@@ -2707,10 +2707,25 @@ Found building the 3b.1 provisioner (`apps/api/src/lib/temporal-cloud-ops.ts`,
   ended `STATE_FAILED` with the same id replays the failure. So the provisioner
   uses a per-run nonce in its op ids and makes each step idempotent by
   **checking Cloud state first** (`getNamespace`, `findServiceAccountByName`,
-  `listApiKeys`).
+  and the key ids on the row).
 - **An API key's `token` is returned once**, in the `POST /cloud/api-keys`
   response. Store it (KMS-encrypted) before any other call that can fail. A key
-  whose token was lost can't be recovered: delete it and mint a new one.
+  whose token was lost can't be recovered, and the provisioner can't find it
+  either (next bullet): mint a new one and leave the orphan to the namespace
+  delete. Nobody holds its token.
+- **The provisioner can't LIST a tenant account's keys.**
+  `GET /cloud/api-keys?owner_id=<tenant SA>` returns **403** "only global
+  admins or namespace admins may list API keys for other users", even for a
+  scoped account on a namespace the provisioner created and long after it was
+  created (Step 9 run 1, 2026-10-13: it failed every provision at the key
+  step). Create, **get by id** and **delete by id** all work (verified live).
+  Deleting the namespace **cascades** to its scoped account and that
+  account's keys (both read 404 afterwards). So track keys by the ids the
+  create calls return; `listApiKeys` was removed. The Stage B guardrail probe
+  missed this because its cleanup ignored the listing's status, and its
+  "gone" checks counted 403 as gone. Fixed, but the lesson generalises:
+  **a cleanup that deletes "whatever the list returned" passes silently on a
+  refused list.**
 - **A Lambda killed by its timeout runs no `catch`.** A status-only guard
   (`PROVISIONING`) would wedge the row forever. `TenantTemporalNamespace` has a
   `leaseExpiresAt` instead, and the provisioner's async invoke has

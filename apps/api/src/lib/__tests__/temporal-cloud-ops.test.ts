@@ -265,24 +265,6 @@ describe('createTemporalCloudOpsClient — requests', () => {
     })
   })
 
-  it('listApiKeys pages through the keys of one owner', async () => {
-    const { client, calls } = harness([
-      {
-        status: 200,
-        body: { api_keys: [{ id: 'k1', resource_version: 'r1' }], next_page_token: 'p2' },
-      },
-      { status: 200, body: { api_keys: [{ id: 'k2', resource_version: 'r2' }] } },
-    ])
-    expect(await client.listApiKeys('sa-1')).toEqual([
-      { id: 'k1', resourceVersion: 'r1' },
-      { id: 'k2', resourceVersion: 'r2' },
-    ])
-    expect(calls[0]!.url).toBe(
-      'https://saas-api.tmprl.cloud/cloud/api-keys?owner_id=sa-1&owner_type=OWNER_TYPE_SERVICE_ACCOUNT',
-    )
-    expect(calls[1]!.url).toContain('page_token=p2')
-  })
-
   it('listOwnApiKeys lists every key the caller can see, with owner and expiry', async () => {
     // The live API answers in lowerCamel (probed against staging, 2026-10-12).
     const { client, calls } = harness([

@@ -36,9 +36,10 @@
 // Token-once: Temporal Cloud returns an API key's token exactly once. It is
 // stored (encrypted) immediately after the create call returns, before any
 // other call that could fail. A key whose token never reached the row can't
-// be recovered, so a resumed provision deletes every key on the service
-// account before minting a new one, and a rotation deletes every key that is
-// neither current nor previous.
+// be recovered, and can't be found either: the provisioner may create, read
+// and delete a tenant account's keys BY ID, but listing them is refused (403,
+// verified 2026-10-13). Such an orphan is harmless (nobody holds its token)
+// and is deleted with the namespace, which takes the account and its keys.
 //
 // Concurrency: each per-tenant action holds the row's lease for its whole
 // run (`claimLease`), gated on the status that action expects. A run killed
@@ -64,7 +65,6 @@ export type CloudOpsPort = Pick<
   | 'findServiceAccountByName'
   | 'createApiKey'
   | 'getApiKey'
-  | 'listApiKeys'
   | 'listOwnApiKeys'
   | 'deleteApiKey'
   | 'waitForOperation'
@@ -409,13 +409,12 @@ export async function runTemporalProvisioner(
           })
         }
 
-        // 3. API key — stored before anything else can fail.
+        // 3. API key — stored before anything else can fail. A key minted by
+        //    an earlier run whose token never reached the row is an orphan:
+        //    nobody holds its token, and the provisioner can't list the
+        //    account's keys to find it (403), so it stays until deprovision
+        //    deletes the namespace, which takes the account and its keys.
         if (row.apiKeyId === null) {
-          // Any key already on the account was minted by a run whose token
-          // never reached the row: unrecoverable, so delete it.
-          for (const orphan of await cloud.listApiKeys(serviceAccountId)) {
-            await deleteKeyIfExists(tenantId, orphan.id)
-          }
           const expiresAt = new Date(now().getTime() + KEY_TTL_MS)
           const key = await cloud.createApiKey({
             ownerId: serviceAccountId,
@@ -460,13 +459,9 @@ export async function runTemporalProvisioner(
         const serviceAccountId = row.cloudServiceAccountId
         if (!serviceAccountId) throw new Error('READY row has no service account')
 
-        // 1. Clear out what dead rotations left behind: a pending key that
-        //    never verified, and any key whose token never reached the row
-        //    (token-once). Only the current and previous keys are kept.
-        const keep = new Set([row.apiKeyId, row.previousApiKeyId].filter((id) => id !== null))
-        for (const key of await cloud.listApiKeys(serviceAccountId)) {
-          if (!keep.has(key.id)) await deleteKeyIfExists(tenantId, key.id)
-        }
+        // 1. Discard the pending key a dead rotation left behind (by id: the
+        //    provisioner can't list the account's keys). A key whose token
+        //    never reached the row is an orphan until deprovision.
         if (row.pendingApiKeyId !== null) {
           await deleteKeyIfExists(tenantId, row.pendingApiKeyId)
           await repo.clearPendingKey(tenantId)
@@ -537,7 +532,6 @@ export async function runTemporalProvisioner(
     tenantId: string,
     namespace: string,
   ): Promise<ProvisionerResult> {
-    const serviceAccountName = `${namespace.split('.')[0]!}-writer`
     return withLease(
       'deprovision',
       tenantId,
@@ -545,14 +539,11 @@ export async function runTemporalProvisioner(
       async () => {
         assertProvisionableName(env, namespace)
         const row = (await repo.findByTenant(tenantId))!
-        const serviceAccountId =
-          row.cloudServiceAccountId ??
-          (await cloud.findServiceAccountByName(serviceAccountName))?.id
-        if (serviceAccountId) {
-          // Current, previous and pending alike.
-          for (const key of await cloud.listApiKeys(serviceAccountId)) {
-            await deleteKeyIfExists(tenantId, key.id)
-          }
+        // The keys the row knows of, by id. Deleting the namespace then takes
+        // its scoped service account with it, and any orphan key on it
+        // (verified: both read 404 afterwards).
+        for (const keyId of [row.apiKeyId, row.previousApiKeyId, row.pendingApiKeyId]) {
+          if (keyId !== null) await deleteKeyIfExists(tenantId, keyId)
         }
         const ns = await cloud.getNamespace(namespace)
         if (ns) {

@@ -358,26 +358,10 @@ export function createTemporalCloudOpsClient(opts: CloudOpsClientOptions) {
       return { id: str(key, 'id'), resourceVersion: str(key, 'resource_version') }
     },
 
-    /** Every key owned by a service account (to clean up a key whose token was lost). */
-    async listApiKeys(ownerId: string): Promise<Array<{ id: string; resourceVersion: string }>> {
-      const keys: Array<{ id: string; resourceVersion: string }> = []
-      let pageToken = ''
-      do {
-        const body = await request('GET', '/cloud/api-keys', {
-          query: {
-            owner_id: ownerId,
-            owner_type: 'OWNER_TYPE_SERVICE_ACCOUNT',
-            ...(pageToken ? { page_token: pageToken } : {}),
-          },
-        })
-        const page = field(body, 'api_keys')
-        for (const k of Array.isArray(page) ? page : []) {
-          keys.push({ id: str(k, 'id'), resourceVersion: str(k, 'resource_version') })
-        }
-        pageToken = str(body, 'next_page_token')
-      } while (pageToken)
-      return keys
-    },
+    // No `listApiKeys(ownerId)`: listing ANOTHER account's keys needs Global
+    // Admin or namespace Admin, and a Developer-role provisioner gets a 403
+    // even for a scoped account on a namespace it created (verified
+    // 2026-10-13). Track keys by the ids the create calls return.
 
     /**
      * Every key the CALLER can see, with owner and expiry. A provisioner key
