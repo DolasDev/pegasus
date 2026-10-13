@@ -7,7 +7,11 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest'
 import { db } from '../../db'
 import { createTenantTemporalNamespaceRepository } from '../../repositories/tenant-temporal-namespace.repository'
-import { assertProvisionableName, CloudOpsOperationError } from '../temporal-cloud-ops'
+import {
+  assertProvisionableName,
+  CloudOpsConflictError,
+  CloudOpsOperationError,
+} from '../temporal-cloud-ops'
 import {
   keyExpiryGauges,
   runTemporalProvisioner,
@@ -65,6 +69,21 @@ class FakeCloud implements CloudOpsPort {
     throw f.error
   }
 
+  /**
+   * Real Cloud treats async_operation_id as an idempotency key: reusing one
+   * for a different operation is a 409 (hit live in Step 9, 2026-10-13).
+   */
+  private usedOperationIds = new Set<string>()
+  private useOperationId(id: string) {
+    if (this.usedOperationIds.has(id)) {
+      throw new CloudOpsConflictError(
+        `409: async_operation_id="${id}" was already used by a different operation`,
+        409,
+      )
+    }
+    this.usedOperationIds.add(id)
+  }
+
   private next(prefix: string) {
     return `${prefix}-${++this.seq}`
   }
@@ -83,6 +102,7 @@ class FakeCloud implements CloudOpsPort {
   }
 
   async createNamespace(input: { name: string; asyncOperationId: string }) {
+    this.useOperationId(input.asyncOperationId)
     this.calls.push('createNamespace')
     assertProvisionableName('test', input.name)
     this.maybeFail('createNamespace', 'before')
@@ -103,7 +123,12 @@ class FakeCloud implements CloudOpsPort {
     }
   }
 
-  async deleteNamespace(input: { namespace: string; resourceVersion: string }) {
+  async deleteNamespace(input: {
+    namespace: string
+    resourceVersion: string
+    asyncOperationId: string
+  }) {
+    this.useOperationId(input.asyncOperationId)
     this.calls.push('deleteNamespace')
     this.maybeFail('deleteNamespace', 'before')
     this.namespaces.delete(input.namespace)
@@ -117,7 +142,12 @@ class FakeCloud implements CloudOpsPort {
     return { asyncOperationId: this.next('op') }
   }
 
-  async createScopedServiceAccount(input: { name: string; namespace: string }) {
+  async createScopedServiceAccount(input: {
+    name: string
+    namespace: string
+    asyncOperationId: string
+  }) {
+    this.useOperationId(input.asyncOperationId)
     this.calls.push('createScopedServiceAccount')
     this.maybeFail('createScopedServiceAccount', 'before')
     const id = this.next('sa')
@@ -131,7 +161,8 @@ class FakeCloud implements CloudOpsPort {
     return null
   }
 
-  async createApiKey(input: { ownerId: string; expiryTime: Date }) {
+  async createApiKey(input: { ownerId: string; expiryTime: Date; asyncOperationId: string }) {
+    this.useOperationId(input.asyncOperationId)
     this.calls.push('createApiKey')
     this.maybeFail('createApiKey', 'before')
     // Real Cloud refuses an expiry under 24 h (verified 2026-10-12).
@@ -164,7 +195,8 @@ class FakeCloud implements CloudOpsPort {
       .map((k) => ({ id: k.id, ownerId: k.ownerId, expiresAt: k.expiresAt }))
   }
 
-  async deleteApiKey(input: { keyId: string; resourceVersion: string }) {
+  async deleteApiKey(input: { keyId: string; resourceVersion: string; asyncOperationId: string }) {
+    this.useOperationId(input.asyncOperationId)
     this.calls.push(`deleteApiKey:${input.keyId}`)
     this.maybeFail('deleteApiKey', 'before')
     this.keys.delete(input.keyId)
@@ -617,6 +649,30 @@ describe.skipIf(!hasDb)('runTemporalProvisioner (integration)', () => {
       expect(row!.pendingApiKeyId).not.toBeNull()
       expect(cloud.keys.has(row!.pendingApiKeyId!)).toBe(true)
       expect(d.metrics).toEqual([{ name: 'TemporalKeyRotationFailed', value: 1 }])
+    })
+
+    it('one rotate can discard a pending key AND retire a previous key (two deletes, one run)', async () => {
+      const { cloud, oldKeyId } = await provisioned()
+      // Rotation 1 succeeds: oldKeyId becomes the previous key.
+      await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))
+      // A later rotation left a pending key behind (it timed out).
+      const stale = await cloud.createApiKey({
+        ownerId: (await repo.findByTenant(tenantId))!.cloudServiceAccountId!,
+        expiryTime: new Date('2027-10-06T12:00:00.000Z'),
+        asyncOperationId: 'test-seed-pending',
+      })
+      await repo.storePendingKey(tenantId, { apiKeyId: stale.keyId, token: stale.token })
+
+      // Past the grace period, one rotate deletes BOTH: two key deletes in
+      // one run, which must not share an async_operation_id.
+      const out = await runTemporalProvisioner(
+        { action: 'rotate', tenantId },
+        deps(cloud, { now: () => new Date('2026-10-07T00:00:00.000Z') }),
+      )
+      expect(out).toEqual({ outcome: 'done' })
+      expect(cloud.keys.has(stale.keyId)).toBe(false)
+      expect(cloud.keys.has(oldKeyId)).toBe(false)
+      expect((await repo.findByTenant(tenantId))!.pendingApiKeyId).toBeNull()
     })
 
     it('the next rotate discards the stale pending key, then rotates', async () => {

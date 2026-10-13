@@ -2703,9 +2703,15 @@ Found building the 3b.1 provisioner (`apps/api/src/lib/temporal-cloud-ops.ts`,
   you poll (`GET /cloud/operations/{id}`, honouring `check_duration`). There is a
   cap of **10 concurrent async operations per account**, and staging and prod
   share the account. Don't fan out.
-- **`async_operation_id` is Temporal's idempotency key.** Retrying a step that
-  ended `STATE_FAILED` with the same id replays the failure. So the provisioner
-  uses a per-run nonce in its op ids and makes each step idempotent by
+- **`async_operation_id` is Temporal's idempotency key — unique per
+  OPERATION, not per step.** Retrying a step that ended `STATE_FAILED` with the
+  same id replays the failure, and reusing an id for a _different_ operation
+  is a **409** ("async_operation_id … was already used by a different
+  operation"). The provisioner first used one id per step per run, so the
+  second key delete in a run failed (Step 9, 2026-10-13: deprovision deleted
+  the current key, then 409'd on the previous one). Its ids are now a per-run
+  nonce plus a per-run counter, and the test fake rejects reuse. It makes each
+  step idempotent by
   **checking Cloud state first** (`getNamespace`, `findServiceAccountByName`,
   and the key ids on the row).
 - **An API key's `token` is returned once**, in the `POST /cloud/api-keys`

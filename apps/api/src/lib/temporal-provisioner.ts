@@ -225,10 +225,13 @@ export async function runTemporalProvisioner(
   const { repo, cloud, env, logger: log } = deps
   const now = deps.now ?? (() => new Date())
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
-  // One nonce per run: Temporal treats async_operation_id as an idempotency
-  // key, so a retried step must not reuse the id of an earlier failed one.
+  // Temporal treats async_operation_id as an idempotency key: reusing one for
+  // a different operation is a 409. So every OPERATION gets its own id — a
+  // nonce per run (a retried run never reuses an earlier run's ids) plus a
+  // counter within the run (one run can delete several keys of one tenant).
   const nonce = randomBytes(6).toString('hex')
-  const opId = (tenantId: string, what: string) => `${tenantId}-${what}-${nonce}`
+  let opSeq = 0
+  const opId = (tenantId: string, what: string) => `${tenantId}-${what}-${nonce}-${++opSeq}`
   const wait = (id: string) => cloud.waitForOperation(id, { timeoutMs: OPERATION_TIMEOUT_MS })
 
   async function deleteKeyIfExists(tenantId: string, keyId: string): Promise<void> {
