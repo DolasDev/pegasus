@@ -65,14 +65,73 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # -----------------------------------------------------------------------
+      # `--squash` is not passed. The merge queue dictates the strategy anyway
+      # (SQUASH, from the `merge-queue-main` ruleset), so the flag bought nothing
+      # and cost a misleading line of output: gh answers
+      #
+      #     ! The merge strategy for main is set by the merge queue
+      #
+      # and exits 0. Auto-merge IS still enabled — that warning is noise, not a
+      # refusal. If the queue is ever removed, re-add the flag then.
+      #
+      # THAT NOISE IS NOT HARMLESS: on 2026-10-13 it was read as a refusal, and
+      # the conclusion drawn was that this gate had been approving nothing. It was
+      # wrong. The gate works; what actually fails is the GITHUB_TOKEN enqueue
+      # downstream (see `enqueue`). Dropping the flag removes the bait.
+      #
+      # The verification below is the real content of this step, and it exists
+      # because of that same mistake. "The step exited 0" and "this PR is now
+      # marked approved" are independent claims — but so are the two ways a mark
+      # can show up, and reading only ONE of them is what caused the misdiagnosis:
+      # auto-merge CONVERTS INTO A QUEUE ENTRY and clears `autoMergeRequest`, so a
+      # PR that is already queued legitimately reads null. `autoMergeRequest: null`
+      # alone therefore proves nothing. Log BOTH signals, always, so the next
+      # reader cannot repeat it.
+      # -----------------------------------------------------------------------
       - name: Enable auto-merge for minor and patch updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
-        # --squash is kept even though the queue overrides it (gh warns and exits
-        # 0). It is the correct fallback if the merge queue is ever removed.
-        run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          gh pr merge --auto "$PR_URL"
+
+          # --- Record the outcome, with BOTH signals -------------------------
+          # Not a bug fix — an observability fix. Nothing used to print whether
+          # the mark landed, so the only way to find out was to query the PR
+          # later, by which time a queued PR reads `autoMergeRequest: null` and
+          # looks exactly like a PR that was never approved. That ambiguity cost
+          # a wrong diagnosis on 2026-10-13. Both signals, in the log, every run.
+          read -r HAS_AUTO IN_QUEUE <<<"$(
+            gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+              repository(owner:$owner,name:$repo){
+                pullRequest(number:$pr){ autoMergeRequest{mergeMethod} isInMergeQueue }
+              }
+            }' -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F pr="$PR_NUMBER" \
+              --jq '.data.repository.pullRequest
+                    | [(.autoMergeRequest != null), .isInMergeQueue] | @tsv'
+          )"
+          echo "PR #$PR_NUMBER autoMergeRequest=$HAS_AUTO isInMergeQueue=$IN_QUEUE"
+
+          if [[ "$HAS_AUTO" != "true" && "$IN_QUEUE" != "true" ]]; then
+            echo "::warning::Policy approved PR #$PR_NUMBER but NEITHER an auto-merge request nor \
+          a queue entry exists afterwards. \`enqueue\` will refuse this PR with 'policy did not \
+          approve it' and it will never merge unattended. Read the gh output above for a refusal \
+          line. Note this has never actually been observed — as of 2026-10-13 the gate works, and \
+          the real failure is the GITHUB_TOKEN enqueue downstream."
+          fi
+
+          # A WARNING, NOT A FAILURE. The condition has never been observed, so
+          # failing on it would be guessing at a failure mode rather than guarding
+          # a known one — and a false red here would block every Dependabot PR for
+          # something nobody can fix from CI. Revisit only if the warning ever
+          # actually fires; at that point it will come with the gh output that
+          # explains why, which is the whole point of printing both signals.
 
   # ---------------------------------------------------------------------------
   # Re-assert the (now stale) auto-merge request once CI has actually passed, so
