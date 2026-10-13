@@ -363,7 +363,10 @@ BREACHING missing data.
   (a test reproduced exactly that).
 - **The rotate's first step deletes every key on the tenant's SA that is
   neither current nor previous**, not only the recorded pending key, to cover
-  a run that died between minting and storing (token-once).
+  a run that died between minting and storing (token-once). **Reversed by
+  `fix/temporal-provisioner-key-listing` (2026-10-13):** the provisioner gets
+  a 403 listing a tenant account's keys, so this sweep could never run. Only
+  the recorded pending key is deleted, by id.
 - **`TemporalKeyRotationFailed` is published twice on a day with sweep
   failures:** once with the gauges (failures so far, 0 when healthy, so the
   alarm always has data), once after the sweep. The alarm sums them.

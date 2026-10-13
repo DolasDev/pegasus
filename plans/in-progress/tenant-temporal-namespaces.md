@@ -266,12 +266,13 @@ account work blocks the code.
        DescribeWorkflowExecution (NOT_FOUND counts as authorized) and a 5 s
        PollWorkflowTaskQueue (a deadline counts as authorized) on the
        provisioner's readiness check.
-    4. **Unverified, check in Step 9:** cleanup found the throwaway scoped
-       service account by name but listed no keys for it. If `GET
-/cloud/api-keys?owner_id=<scoped SA>` returns nothing to a Developer
-       key, the provisioner's `listApiKeys` orphan-delete (the token-once
-       recovery) is a silent no-op. Impact is low, because an orphan's token
-       was never stored, so nobody holds it.
+    4. **FAILED in Step 9 run 1 (2026-10-13), worse than feared:** `GET
+/cloud/api-keys?owner_id=<scoped SA>` isn't empty, it's a **403** to
+       the provisioner, so every provision failed at the key step (and
+       deprovision and #838's rotate sweep would have too). Fixed in
+       `fix/temporal-provisioner-key-listing`: the provisioner no longer
+       lists keys, and deletes the ones it knows by id; deleting the
+       namespace cascades to the rest (verified).
 - [x] Enable PR: both ARNs in `TEMPORAL_SECRET_ARNS`, checked with
       `describe-secret` in each account (the `_deploy.yml` pre-flight check).
       The provisioner entry was bundled with esbuild (CDK's settings) and loads
@@ -554,6 +555,24 @@ test tenant through admin-web.
 - Deprovision it, and confirm it's gone.
 - Scripts from `plans/completed/2b1e2147-…` Appendix A; adapt them into
   `scripts/temporal/` if they get reused a third time.
+
+**Run 1 (2026-10-13), FAILED, then fixed:** test tenant
+`4b2e0267-c597-451e-a367-771dfac52fba` ("AVP Smoke 2026-05-08"), provisioned
+from admin-web.
+
+- Namespace `pg-staging-4b2e0267c597.chgel` created (14:45:31Z), scoped SA
+  `50c581c9774845978dc44dc1dfc8992b` created 73 s later, then the run **failed**
+  at the key step: finding 4's listing is a 403 (see above). The row was left
+  FAILED at `service_account_created` on purpose.
+- Live checks as the staging provisioner, on that SA: create a key, get it by
+  id, delete it by id, read 404 → all work. Only listing is refused.
+- Finding 3 (READY only once the runner APIs are authorized): not reached.
+- **Resume after `fix/temporal-provisioner-key-listing` deploys:** click
+  **Retry** on the FAILED row in admin-web (it resumes from
+  `service_account_created`, testing the resume path), then carry on with
+  this list and the rotation checks in the Stage B progress list (forced
+  `rotate-own-key`, a tenant rotate through the pending slot, a
+  `daily-maintenance` run and its gauges).
 
 **Step 10: docs and landing.**
 

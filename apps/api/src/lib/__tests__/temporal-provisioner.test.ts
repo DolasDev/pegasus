@@ -107,8 +107,12 @@ class FakeCloud implements CloudOpsPort {
     this.calls.push('deleteNamespace')
     this.maybeFail('deleteNamespace', 'before')
     this.namespaces.delete(input.namespace)
+    // Real Cloud cascades: the scoped account and its keys go too (both read
+    // 404 afterwards, verified 2026-10-12/13).
     for (const [id, sa] of this.serviceAccounts) {
-      if (sa.namespace === input.namespace) this.serviceAccounts.delete(id)
+      if (sa.namespace !== input.namespace) continue
+      this.serviceAccounts.delete(id)
+      for (const [keyId, key] of this.keys) if (key.ownerId === id) this.keys.delete(keyId)
     }
     return { asyncOperationId: this.next('op') }
   }
@@ -149,12 +153,6 @@ class FakeCloud implements CloudOpsPort {
   async getApiKey(keyId: string) {
     const k = this.keys.get(keyId)
     return k ? { id: k.id, resourceVersion: k.resourceVersion } : null
-  }
-
-  async listApiKeys(ownerId: string) {
-    return [...this.keys.values()]
-      .filter((k) => k.ownerId === ownerId)
-      .map((k) => ({ id: k.id, resourceVersion: k.resourceVersion }))
   }
 
   /** What the provisioner's own key sees: only its own account's keys. */
@@ -388,7 +386,7 @@ describe.skipIf(!hasDb)('runTemporalProvisioner (integration)', () => {
       },
     )
 
-    it('token-once: a key minted by a run that never stored it is deleted and re-minted', async () => {
+    it('token-once: a key minted by a run that never stored it is re-minted; the orphan goes with the namespace', async () => {
       const cloud = new FakeCloud()
       // createApiKey succeeds in Cloud, but its response (with the token) is lost.
       cloud.failOnce.set('createApiKey', { afterEffect: true, error: new Error('socket hang up') })
@@ -405,9 +403,17 @@ describe.skipIf(!hasDb)('runTemporalProvisioner (integration)', () => {
         outcome: 'done',
       })
 
-      expect(cloud.calls).toContain(`deleteApiKey:${orphan!.id}`)
-      expect(cloud.keys.has(orphan!.id)).toBe(false)
-      expect(cloud.keys.size).toBe(1)
+      // The provisioner can't list the account's keys to find the orphan, so
+      // it stays (nobody holds its token); the stored key is a new one.
+      const row = await repo.findByTenant(tenantId)
+      expect(row!.status).toBe('READY')
+      expect(row!.apiKeyId).not.toBe(orphan!.id)
+      expect(cloud.keys.has(orphan!.id)).toBe(true)
+
+      // Deprovision deletes the namespace, which takes the orphan with it.
+      await repo.transition(tenantId, ['READY'], 'DEPROVISIONING')
+      await runTemporalProvisioner({ action: 'deprovision', tenantId }, deps(cloud))
+      expect(cloud.keys.size).toBe(0)
     })
 
     it('stores the token before waiting on the key operation', async () => {
@@ -632,17 +638,33 @@ describe.skipIf(!hasDb)('runTemporalProvisioner (integration)', () => {
       expect(cloud.keys.size).toBe(2)
     })
 
-    it('token-once: a key minted by a rotate that never stored it is deleted next time', async () => {
+    it('token-once: a rotate whose key never got stored still converges next time', async () => {
       const { cloud, oldKeyId } = await provisioned()
       cloud.failOnce.set('createApiKey', { afterEffect: true, error: new Error('socket hang up') })
       await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))
       const orphan = [...cloud.keys.keys()].find((id) => id !== oldKeyId)!
-      expect((await repo.findByTenant(tenantId))!.pendingApiKeyId).toBeNull()
+      let row = await repo.findByTenant(tenantId)
+      expect(row!.pendingApiKeyId).toBeNull()
+      expect(row!.apiKeyId).toBe(oldKeyId)
 
+      expect(await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))).toEqual({
+        outcome: 'done',
+      })
+      row = await repo.findByTenant(tenantId)
+      expect(row!.previousApiKeyId).toBe(oldKeyId)
+      expect([oldKeyId, orphan]).not.toContain(row!.apiKeyId)
+      // The orphan can't be found by listing (403); it goes with the namespace.
+      expect(cloud.keys.has(orphan)).toBe(true)
+    })
+
+    it('never lists the account keys (Cloud refuses it to the provisioner)', async () => {
+      // CloudOpsPort has no listApiKeys, so this is a type-level guarantee;
+      // the runtime check guards against a cast sneaking one back in.
+      const { cloud } = await provisioned()
       await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))
-      expect(cloud.keys.has(orphan)).toBe(false)
-      expect(cloud.keys.has(oldKeyId)).toBe(true)
-      expect(cloud.keys.size).toBe(2)
+      await repo.transition(tenantId, ['READY'], 'DEPROVISIONING')
+      await runTemporalProvisioner({ action: 'deprovision', tenantId }, deps(cloud))
+      expect(cloud.calls.filter((c) => c.startsWith('list'))).toEqual([])
     })
 
     it('never logs a token', async () => {

@@ -470,16 +470,24 @@ def cleanup(keys: dict[str, str]) -> None:
         pkey, ns = keys[e], ns_id(e)
         sa = find_sa(pkey, f"{THROWAWAY[e]}-writer")
         if sa:
-            sa_id = f(sa, "id")
+            # The provisioner can't LIST a tenant account's keys (403, found in
+            # Step 9 run 1, 2026-10-13); this probe once ignored that status and
+            # deleted nothing. Report it, then delete by the id it created.
             status, body = ops(pkey, "GET", "/cloud/api-keys",
-                               query={"owner_id": sa_id, "owner_type": "OWNER_TYPE_SERVICE_ACCOUNT"})
-            for k in f(body, "api_keys") or []:
-                s, b = ops(pkey, "DELETE", f"/cloud/api-keys/{f(k, 'id')}",
-                           query={"resource_version": f(k, "resource_version") or "",
+                               query={"owner_id": f(sa, "id"), "owner_type": "OWNER_TYPE_SERVICE_ACCOUNT"})
+            print(f"  {e}: list the scoped SA's keys -> {status} "
+                  f"{'(expected: the provisioner may not list them)' if status == 403 else body.get('message', '')}",
+                  flush=True)
+        m = MADE.get(e)
+        if m and m.key_id:
+            s, k = ops(pkey, "GET", f"/cloud/api-keys/{m.key_id}")
+            if s == 200:
+                s, b = ops(pkey, "DELETE", f"/cloud/api-keys/{m.key_id}",
+                           query={"resource_version": f(f(k, "api_key"), "resource_version") or "",
                                   "async_operation_id": f"guardrail-c-{uuid.uuid4().hex[:8]}"})
                 if s == 200:
                     wait_op(pkey, op_id(b), "delete key")
-                print(f"  {e}: delete key {f(k, 'id')} -> {s}", flush=True)
+            print(f"  {e}: delete key {m.key_id} by id -> {s}", flush=True)
         status, n = get_ns(pkey, ns)
         if status == 200:
             s, b = ops(pkey, "DELETE", f"/cloud/namespaces/{ns}",
@@ -494,14 +502,14 @@ def cleanup(keys: dict[str, str]) -> None:
         if sa:
             cleanup_intruder_sa(pkey, f(sa, "id"))
         status, _ = get_ns(pkey, ns)
-        print(f"  {e}: verify namespace gone -> {status} {'OK' if status in (403, 404) else 'STILL PRESENT?'}", flush=True)
+        print(f"  {e}: verify namespace gone -> {status} {'OK' if status == 404 else ('UNKNOWN: a 403 can hide it' if status == 403 else 'STILL PRESENT?')}", flush=True)
         m = MADE.get(e)
         if m and m.sa_id:
             s1, _ = ops(pkey, "GET", f"/cloud/service-accounts/{m.sa_id}")
-            print(f"  {e}: verify scoped SA {m.sa_id} gone -> {s1} {'OK' if s1 in (403, 404) else 'STILL PRESENT?'}", flush=True)
+            print(f"  {e}: verify scoped SA {m.sa_id} gone -> {s1} {'OK' if s1 == 404 else ('UNKNOWN: a 403 can hide it' if s1 == 403 else 'STILL PRESENT?')}", flush=True)
         if m and m.key_id:
             s2, _ = ops(pkey, "GET", f"/cloud/api-keys/{m.key_id}")
-            print(f"  {e}: verify tenant key {m.key_id} gone -> {s2} {'OK' if s2 in (403, 404) else 'STILL PRESENT?'}", flush=True)
+            print(f"  {e}: verify tenant key {m.key_id} gone -> {s2} {'OK' if s2 == 404 else ('UNKNOWN: a 403 can hide it' if s2 == 403 else 'STILL PRESENT?')}", flush=True)
 
 
 # ---------------------------------------------------------------------------
