@@ -574,6 +574,35 @@ from admin-web.
   `rotate-own-key`, a tenant rotate through the pending slot, a
   `daily-maintenance` run and its gauges).
 
+**Run 2 (2026-10-13, after #844 deployed):** everything passed but the last
+step.
+
+- **Retry resumed the provision** from `service_account_created`: the key was
+  created 19:08:31Z and the row was READY 19:09:08Z (about 25 s after the key
+  operation was fulfilled; READY is gated on `namespaceKeyAuthorized`, which
+  includes DescribeWorkflowExecution and a task-queue poll: finding 3 ✅).
+- **The stored key, through the API's own `getDecryptedKey`**, matched the
+  row and was **AUTHORIZED** on its own namespace (namespace and regional
+  endpoints) and **REFUSED** by `pegasus-staging` (both endpoints).
+- **Forced `rotate-own-key`:** `{"outcome":"done"}`; the secret got a new
+  AWSCURRENT (old one now AWSPREVIOUS) with `keyId`/`expiresAt`; the new key
+  lists both provisioner keys, so it works, and the old one
+  (`yyDenH2L…`, 2027-10-11) is kept. Logged `own_key_created` →
+  `own_key_rotated` in 10 s.
+- **Tenant Rotate key (admin-web):** `pending_key_created` →
+  `key_rotated` in 26 s; the new key is current and decrypts, the old one is
+  `previousApiKeyId`; re-probed: AUTHORIZED / REFUSED as above.
+- **`daily-maintenance`:** `{"outcome":"done"}`, `failures: 0`; gauges
+  provisioner 364, tenant 364, platform 599, all three in CloudWatch; **all
+  four alarms OK**. (The scheduled run earlier that day reported provisioner
+  363 and tenant 365 = no READY rows.)
+- **Deprovision FAILED:** it deleted the current key, then got a **409** on
+  the previous key's delete: every key delete in a run shared one
+  `async_operation_id`. Fixed in `fix/temporal-provisioner-op-id-reuse`. The
+  row is FAILED with the previous key and the namespace still present.
+  **After that deploys:** click Deprovision again, and confirm the key, the
+  namespace and the row are all gone. That's the last Step 9 check.
+
 **Step 10: docs and landing.**
 
 - `DECISIONS.md`: provisioning by a Developer-role service account per env,
