@@ -31,9 +31,61 @@ export interface LonghaulTrip {
   total_days: number | null
 }
 
-/** Trip detail embeds its shipments (and activities/notes we don't render). */
+/** Trip detail embeds its shipments and activities (and notes we don't render). */
 export interface LonghaulTripDetail extends LonghaulTrip {
   shipments?: LonghaulShipment[]
+  activities?: LonghaulActivity[]
+}
+
+/**
+ * A LongDistanceDispatchActivity row as GET /trips/:id returns it (`a.*` plus
+ * the joined Longhaul_ActivityType fields and the server-derived arrival-window
+ * fields). Only the subset the driver ETA editor reads.
+ */
+export interface LonghaulActivity {
+  id: number
+  order_num?: number | string | null
+  TripMaster_id?: number | null
+  ActivityType_code?: string | null
+  activityType_code?: string | null
+  activityType_name?: string | null
+  activityType_abbreviation?: string | null
+  /** Longhaul_ActivityType.isHasETA — false ⇒ the driver sets a window only. */
+  activityType_isHasETA?: boolean | number | null
+  /** The ETA — a calendar day (serialized as midnight UTC). */
+  estimated_date?: string | null
+  planned_start?: string | null
+  planned_end?: string | null
+  actual_date?: string | null
+  /** Local wall clock `HH:mm` at the activity's address. */
+  arrival_window_start?: string | null
+  arrival_window_end?: string | null
+  /** IANA zone of the window. */
+  arrival_window_tz?: string | null
+  /** What the server would pick for this address when no zone is stored. */
+  arrival_window_tz_suggested?: string | null
+  /** `EDT` / `CST` … derived server-side. */
+  arrival_window_tz_label?: string | null
+  /**
+   * "Confirmed" — the driver AND the shipper have committed to this date.
+   * (Dispatch shows it as "Driver committed".) SQL Server bits may arrive as
+   * 0/1 rather than booleans.
+   */
+  is_committed?: boolean | number | null
+  assigned_driver_id?: number | null
+  city?: string | null
+  state?: string | null
+}
+
+/** Body of PATCH /onprem/longhaul/driver/activities/:id/eta. */
+export interface DriverEtaUpdate {
+  /** `YYYY-MM-DD`. Only for activity types that have an ETA. */
+  estimated_date?: string | null
+  arrival_window_start?: string | null
+  arrival_window_end?: string | null
+  arrival_window_tz?: string | null
+  /** Required — every save states the commitment explicitly. */
+  committed: boolean
 }
 
 /** A shipment row — curated subset rendered on mobile. */
@@ -78,6 +130,9 @@ export interface LonghaulShipment {
   // Notes / instructions
   disp_instructions?: string | null
   survey_remarks?: string | null
+
+  /** Embedded on trip detail: this shipment's activities on the trip. */
+  activities?: LonghaulActivity[]
 }
 
 /** The /api/v1/me/driver response payload (after the `{ data }` unwrap). */

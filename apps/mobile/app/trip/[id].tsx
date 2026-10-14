@@ -10,9 +10,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
 import { TripStatusBadge } from '../../src/components/TripStatusBadge'
+import { DeliveryEtaCard } from '../../src/components/DeliveryEtaCard'
+import { EtaEditorModal } from '../../src/components/EtaEditorModal'
+import { isDriverEtaActivity } from '../../src/utils/driver-eta'
 import { TripService } from '../../src/services/tripService'
 import { formatLonghaulDate, formatLonghaulSpread } from '../../src/utils/longhaul-format'
-import type { LonghaulTripDetail, LonghaulShipment } from '../../src/types/longhaul'
+import type {
+  LonghaulActivity,
+  LonghaulTripDetail,
+  LonghaulShipment,
+} from '../../src/types/longhaul'
 import { colors, fontSize, spacing, borderRadius } from '../../src/theme/colors'
 
 export default function TripDetailScreen() {
@@ -21,6 +28,7 @@ export default function TripDetailScreen() {
   const [trip, setTrip] = useState<LonghaulTripDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editing, setEditing] = useState<LonghaulActivity | null>(null)
 
   useEffect(() => {
     let active = true
@@ -64,6 +72,24 @@ export default function TripDetailScreen() {
 
   const shipments = trip.shipments ?? []
   const weight = trip.total_actual_lbs ?? trip.total_estimated_lbs
+  const etaActivities = (trip.activities ?? []).filter(isDriverEtaActivity)
+  const shipperName = (orderNum: LonghaulActivity['order_num']) =>
+    shipments.find((s) => String(s.order_num) === String(orderNum))?.shipper_name ?? null
+
+  // Merge the saved row back in place so the card reflects it without a reload.
+  const handleEtaSaved = (updated: LonghaulActivity) => {
+    setTrip((t) =>
+      t
+        ? {
+            ...t,
+            activities: (t.activities ?? []).map((a) =>
+              a.id === updated.id ? { ...a, ...updated } : a,
+            ),
+          }
+        : t,
+    )
+    setEditing(null)
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -95,6 +121,20 @@ export default function TripDetailScreen() {
           </View>
         </View>
 
+        {etaActivities.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>DELIVERY ETAS ({etaActivities.length})</Text>
+            {etaActivities.map((a) => (
+              <DeliveryEtaCard
+                key={a.id}
+                activity={a}
+                shipperName={shipperName(a.order_num)}
+                onPress={() => setEditing(a)}
+              />
+            ))}
+          </>
+        ) : null}
+
         <Text style={styles.sectionTitle}>SHIPMENTS ({shipments.length})</Text>
 
         {shipments.length === 0 ? (
@@ -109,6 +149,12 @@ export default function TripDetailScreen() {
           ))
         )}
       </ScrollView>
+      <EtaEditorModal
+        visible={editing != null}
+        activity={editing}
+        onClose={() => setEditing(null)}
+        onSaved={handleEtaSaved}
+      />
     </SafeAreaView>
   )
 }

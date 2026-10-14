@@ -98,4 +98,22 @@ describe('TripService', () => {
       await expect(TripService.getShipment('nope')).resolves.toBeNull()
     })
   })
+  describe('updateActivityEta', () => {
+    it('PATCHes the driver-scoped ETA route with the commitment', async () => {
+      mockFetch.mockResolvedValueOnce({ id: 5, is_committed: true })
+      const body = {
+        estimated_date: '2026-11-02',
+        arrival_window_start: '08:00',
+        arrival_window_end: '10:00',
+        arrival_window_tz: 'America/Chicago',
+        committed: true,
+      }
+      const result = await TripService.updateActivityEta(5, body)
+      expect(result).toEqual({ id: 5, is_committed: true })
+      const [path, init] = mockFetch.mock.calls[0]
+      expect(path).toBe('/api/v1/onprem/longhaul/driver/activities/5/eta')
+      expect(init.method).toBe('PATCH')
+      expect(JSON.parse(init.body)).toEqual(body)
+    })
+  })
 })

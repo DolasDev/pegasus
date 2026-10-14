@@ -68,6 +68,7 @@ import {
   longhaulPatchTripNoteHandler,
 } from './handlers/longhaul-cloud/trip-notes'
 import { longhaulSaveActivityHandler } from './handlers/longhaul-cloud/activities-write'
+import { driverActivityEtaHandler } from './handlers/longhaul-cloud/driver-activity-eta'
 import {
   longhaulTripStatusHandler,
   longhaulTripCancelHandler,
@@ -607,6 +608,11 @@ v1.post('/onprem/longhaul/shipments/:id/coverage', longhaulShipmentCoverageHandl
 v1.post('/onprem/longhaul/trips/:id/notes', longhaulCreateTripNoteHandler)
 v1.patch('/onprem/longhaul/notes/:id', longhaulPatchTripNoteHandler)
 v1.post('/onprem/longhaul/activities/:id', longhaulSaveActivityHandler)
+// Mobile driver app: the driver sets the ETA on their own Delivery / SIT-IN
+// activity and marks it Confirmed (is_committed). Driver-scoped and
+// ownership-checked — NOT the salesman-mapped dispatcher save above. See
+// handlers/longhaul-cloud/driver-activity-eta.ts.
+v1.patch('/onprem/longhaul/driver/activities/:id/eta', driverActivityEtaHandler)
 // Phase 4 (Unit 3): trip status / cancel / summary served cloud-direct. status
 // + cancel author the multi-table mutation as one in-SQL transaction (Unit 0
 // pattern); summary is a faithful direct field-touch (NOT a recompute — see

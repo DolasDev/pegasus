@@ -413,3 +413,23 @@ expect(DECLARED.length).toBe((SPEC.match(/^one sig T_/gm) ?? []).length)
 
 Precedents: `tests/conformance/documents.test.ts` (prose ↔ vocabulary) and
 `tests/conformance/alloy-vocabulary.test.ts` (Alloy spec ↔ vocabulary).
+
+## A driver-scoped write on the legacy longhaul tables
+
+The `/onprem/longhaul/*` reads are **not** driver-scoped: only the `driver_id` filter the client
+sends limits them. A route that lets a _driver_ write must therefore check ownership itself. It
+must not reuse the dispatcher save (`POST /activities/:id`), which needs a `v_longhaul_salesman`
+mapping that drivers don't have and accepts every column. Precedent:
+`handlers/longhaul-cloud/driver-activity-eta.ts`.
+
+- **Identity** is `TenantUser.longhaulDriverId` (the same mapping `GET /me/driver` reads), via
+  the request-scoped `c.get('db')`. The db-access guard rejects the base client in handlers.
+- **Ownership** is the activity's `assigned_driver_id`, falling back to the trip's `driver_id`.
+  `v_longhaul_drivers` carries a placeholder driver `0`, so treat `0` as unassigned on both sides.
+  Also refuse a login mapped to `0`, or it could claim every unassigned activity.
+- **Narrow body.** Use a `.strict()` zod schema with an explicit column allow-list. Drivers set
+  `is_committed` ("Driver committed"); `is_confirmed` is the dispatcher's flag and must stay
+  unreachable.
+- **Type by `ActivityType_code`**, never by abbreviation. SITIN and SITOUT are both `SIT`.
+- **Audit.** `modified_by` is a salesman code, so a driver write stamps NULL (as the M2M path does)
+  and logs the driver id.
