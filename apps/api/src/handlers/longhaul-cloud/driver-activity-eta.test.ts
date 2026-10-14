@@ -36,6 +36,7 @@ function activityRow(overrides: Record<string, unknown> = {}) {
     assigned_driver_id: DRIVER_ID,
     trip_driver_id: DRIVER_ID,
     ActivityType_code: 'RDEL',
+    actual_date: null,
     isHasETA: true,
     ...overrides,
   }
@@ -203,6 +204,15 @@ describe('PATCH /driver/activities/:id/eta', () => {
     const [, sql] = updateCall()!
     expect(sql).not.toContain('estimated_date')
     expect(sql).toContain('arrival_window_end = @arrival_window_end')
+  })
+
+  it('rejects edits once the delivery has an actual date with 409, and writes nothing', async () => {
+    routeSql(activityRow({ actual_date: '2026-11-02T00:00:00.000Z' }))
+    const res = await patch('5', { estimated_date: '2026-11-04', committed: false })
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { code: string }).code).toBe('ACTIVITY_COMPLETED')
+    expect(updateCall()).toBeUndefined()
+    expect(recomputeMock).not.toHaveBeenCalled()
   })
 
   it('returns 404 when the activity does not exist', async () => {

@@ -78,6 +78,21 @@ describe('Trip detail — delivery ETAs', () => {
     expect(queryByText(/SIT-OUT/)).toBeNull()
   })
 
+  it('a delivered activity is read-only — no editor opens', async () => {
+    getTripMock.mockResolvedValue({
+      ...trip,
+      activities: trip.activities.map((a) =>
+        a.id === 3 ? { ...a, actual_date: '2026-11-02T00:00:00.000Z' } : a,
+      ),
+    })
+    const { findByLabelText, getByText, queryByLabelText } = render(<TripDetailScreen />)
+    const card = await findByLabelText('Delivery #1234, delivered')
+    expect(getByText(/Delivered Mon, Nov 2, 2026 — ask dispatch/)).toBeTruthy()
+    expect(queryByLabelText('Set ETA for Delivery #1234')).toBeNull()
+    fireEvent.press(card)
+    expect(queryByLabelText('Mark as Confirmed')).toBeNull()
+  })
+
   it('confirming an ETA updates its badge in place', async () => {
     updateMock.mockResolvedValue({ id: 3, is_committed: true })
     const { findByLabelText, getByLabelText, getByText, getAllByText } = render(

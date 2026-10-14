@@ -19,7 +19,9 @@
 //   - only RDEL / SITIN, matched by ActivityType_code — SITIN and SITOUT share
 //     the `SIT` abbreviation;
 //   - types whose Longhaul_ActivityType.isHasETA is false take an arrival
-//     window only (it anchors to planned_start), never an estimated_date.
+//     window only (it anchors to planned_start), never an estimated_date;
+//   - once the activity has an actual_date the delivery has happened, and its
+//     ETA and commitment are history — the driver can no longer change them.
 //
 // `modified_by` is a salesman code; a driver has none, so it is stamped NULL
 // (same as the M2M path) and the driver id is logged for audit.
@@ -70,6 +72,7 @@ SELECT a.id,
        a.TripMaster_id,
        a.assigned_driver_id,
        a.ActivityType_code,
+       a.actual_date,
        at.isHasETA,
        t.driver_id AS trip_driver_id
 FROM LongDistanceDispatchActivity a
@@ -101,6 +104,7 @@ interface OwnershipRow {
   TripMaster_id: number | null
   assigned_driver_id: number | null
   ActivityType_code: string | null
+  actual_date: Date | string | null
   isHasETA: boolean | number | null
   trip_driver_id: number | null
 }
@@ -208,6 +212,16 @@ export const driverActivityEtaHandler: Handler<AppEnv> = async (c) => {
           correlationId,
         },
         422,
+      )
+    }
+    if (activity.actual_date != null) {
+      return c.json(
+        {
+          error: 'This delivery is already done — ask dispatch if its ETA needs to change',
+          code: 'ACTIVITY_COMPLETED',
+          correlationId,
+        },
+        409,
       )
     }
     if (!activity.isHasETA && patch['estimated_date'] !== undefined) {

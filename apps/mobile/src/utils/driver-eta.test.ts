@@ -1,6 +1,7 @@
 import {
   activityHasEta,
   arrivalWindowError,
+  completedOn,
   confirmAlertMessage,
   describeCommitment,
   etaActivityLabel,
@@ -78,5 +79,13 @@ describe('commitment wording', () => {
     const msg = confirmAlertMessage(describeCommitment('2026-11-02', window))
     expect(msg).toContain('both you and the shipper have committed')
     expect(msg).toContain('on Mon, Nov 2, 2026 between 8:00 AM – 10:00 AM Central')
+  })
+})
+
+describe('completedOn', () => {
+  it('is the actual date as a calendar day, or null before delivery', () => {
+    expect(completedOn({ id: 1, actual_date: '2026-11-02T00:00:00.000Z' })).toBe('2026-11-02')
+    expect(completedOn({ id: 1, actual_date: null })).toBeNull()
+    expect(completedOn({ id: 1 })).toBeNull()
   })
 })

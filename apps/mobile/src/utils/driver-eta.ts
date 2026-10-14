@@ -56,6 +56,14 @@ export function isCommitted(activity: LonghaulActivity): boolean {
   return Boolean(activity.is_committed)
 }
 
+/**
+ * The day the delivery actually happened, or null. Once set, the ETA and its
+ * commitment are history — the API refuses edits (ACTIVITY_COMPLETED).
+ */
+export function completedOn(activity: LonghaulActivity): string | null {
+  return toDateOnly(activity.actual_date)
+}
+
 /** `YYYY-MM-DD` of a legacy date value (stored as naive midnight UTC), or null. */
 export function toDateOnly(value: string | null | undefined): string | null {
   if (!value) return null

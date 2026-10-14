@@ -152,3 +152,7 @@ flags out of its type.
 - **E2E acceptance — skipped.** The longhaul routes need a tenant MSSQL. There is no legacy-activity
   fixture in `apps/e2e`, and QA longhaul E2E is on-demand only. Coverage is the API handler unit
   tests plus the mobile component and screen tests.
+- **Delivered activities are locked.** Once `actual_date` is set, the route
+  returns 409 `ACTIVITY_COMPLETED` before any write, and the mobile card turns
+  read-only ("Delivered <date> — ask dispatch if this ETA needs to change").
+  Added after the self-review flagged it; dispatch can still edit from the Gantt.
