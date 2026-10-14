@@ -1,7 +1,9 @@
 import { getApiClient } from '../api/client'
 import { logger } from '../utils/logger'
 import type {
+  DriverEtaUpdate,
   DriverMapping,
+  LonghaulActivity,
   LonghaulTrip,
   LonghaulTripDetail,
   LonghaulShipment,
@@ -10,8 +12,8 @@ import type {
 // ---------------------------------------------------------------------------
 // Trip service — sources the driver "My Trips" experience entirely from the
 // existing cloud operations (longhaul) endpoints, plus the small /me/driver
-// mapping endpoint for identity. No new data endpoints; mirrors the data the
-// tenant-web operations module shows.
+// mapping endpoint for identity. Mirrors the data the tenant-web operations
+// module shows. The one write is the driver-scoped ETA save.
 // ---------------------------------------------------------------------------
 
 const PENDING_STATUS = 'pending'
@@ -71,6 +73,22 @@ export class TripService {
       logger.warn('Failed to fetch shipment detail', error)
       throw error
     }
+  }
+
+  /**
+   * Save the ETA (date and/or arrival window) on one of the driver's own
+   * Delivery / SIT-IN activities, and whether it is Confirmed — i.e. the driver
+   * and the shipper have both committed to it. Returns the updated activity.
+   */
+  static async updateActivityEta(
+    activityId: number,
+    body: DriverEtaUpdate,
+  ): Promise<LonghaulActivity> {
+    const client = getApiClient()
+    return client.fetch<LonghaulActivity>(
+      `/api/v1/onprem/longhaul/driver/activities/${activityId}/eta`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    )
   }
 }
 
