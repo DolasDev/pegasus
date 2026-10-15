@@ -18,4 +18,18 @@ describe('MetricCard', () => {
     rerender(<MetricCard label="Balance" value="$1,000" />)
     expect(queryByText('Available')).toBeNull()
   })
+
+  it('renders extra subtitle lines', () => {
+    const { getByText } = render(
+      <MetricCard
+        label="Balance"
+        value="$1"
+        subtitle="Available"
+        subtitleLines={['Line A', 'Line B']}
+      />,
+    )
+    expect(getByText('Available')).toBeTruthy()
+    expect(getByText('Line A')).toBeTruthy()
+    expect(getByText('Line B')).toBeTruthy()
+  })
 })

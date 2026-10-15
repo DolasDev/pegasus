@@ -3291,3 +3291,24 @@ Measure from inside **vitest**, which resolves them. And note that vitest's defa
 as an `expect` and read it out of the failure message. The best version of this is to write the real
 gate first and run it red — the red output _is_ the measurement, and it doubles as a tamper against
 a genuine defect rather than a synthetic one.
+
+## NW's legacy driver/trip columns are emptier than their names say — measure before you sum
+
+Found building the mobile driver dashboard (`GET /me/driver/metrics`, 2026-10-15) against Nelson
+Westerberg prod via mssql-executor. Each one would have shipped a plausible-looking wrong number:
+
+- **`TripMaster.actual_last_day` and `finalized_date` are never filled** (0 of 1,234 Finalized trips in
+  6 months). Only `planned_last_day` is — "completed this week" uses `COALESCE(actual_last_day, planned_last_day)`.
+- **`settlementmaster.settle_status` is always `P` at NW** (12,697 of 12,697 in a year): NW posts straight
+  through, so "Draft + Working" is permanently $0.
+- **`settlementmaster.transfer_date IS NULL` is not "awaiting payout" on its own** — ~100k rows back to 2016
+  were never stamped (driver 75 alone: 2,843 rows / $1.23M). Every real transfer lands within 8 weeks, so
+  pending is bounded to entries in the last 90 days.
+- **`driverytdsummary.end_balance` is unused (0); the month-end is `monthend_bal`** (= next month's
+  `begin_balance` for 786/786 drivers). Month 13 is a per-year bucket, all zeros.
+- **`v_longhaul_drivers` reads `driverall`, not `drivers`**: `NWSUB` drivers are `crews` rows with no `drivers`
+  row, so anything keyed on `drivers` (escrow/retainer) is absent for them.
+
+The ad-hoc read pattern: Admin profile → `pegasus/prod/database-url` → the tenant's `mssql_connection_string` →
+`aws lambda invoke` the `MssqlExecutorFn` with `{connectionString, sql}`. Keep the connection string in a
+`umask 077` file and delete it after; never echo it.
