@@ -24,6 +24,10 @@
 //   driver. Deliberately separate from /onprem/longhaul/users/me — that route
 //   requires a v_longhaul_salesman row and 422s for users without one, whereas
 //   a driver may have no salesman mapping at all.
+//
+// GET /driver/metrics
+//   The driver dashboard's trip counts + financials for the caller's linked
+//   driver. See the route below for the partial-failure contract.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -31,6 +35,11 @@ import type { Context } from 'hono'
 import type { AppEnv } from '../types'
 import { listAllowedPermissions } from '../lib/authz'
 import { isReportingEnabled } from '../lib/reporting-feature'
+import { executeSql } from '../lib/mssql-executor-client'
+import { logger } from '../lib/logger'
+import { driverWeekFor } from '../lib/driver-week'
+import { resolvePegiiCaller } from '../lib/pegii-request-context'
+import { resolveDriverGateway } from '../gateways/driver-gateway.factory'
 import {
   getUserPreferences,
   updateUserPreferences,
@@ -107,6 +116,128 @@ meHandler.get('/driver', async (c) => {
   })
 
   return c.json({ data: { longhaulDriverId: user?.longhaulDriverId ?? null } })
+})
+
+// ---------------------------------------------------------------------------
+// GET /driver/metrics — the driver dashboard's numbers.
+//
+// Scoped like /driver: the driver id comes ONLY from the caller's
+// TenantUser.longhaulDriverId — never from the query or body — so a driver can
+// read nobody else's trips or money. Trip counts come from one aggregate read of
+// the tenant's legacy TripMaster; financials come from on-prem Pegasus.Api via
+// the pegII gateway. The two run concurrently and fail independently: a section
+// that cannot be served is null with a reason in `unavailable`, and the route
+// still returns 200 so e.g. an on-prem site that has not deployed the financials
+// endpoint yet still gets trip counts.
+//
+// "This week" is Monday 00:00 US Central → now (lib/driver-week.ts).
+// ---------------------------------------------------------------------------
+
+// Parameterized throughout; nothing the client sends reaches this string.
+// COUNT(CASE …) (not SUM) so a driver with no trips gets 0, not NULL.
+// Completed = Finalized (5) with its end date in this Monday-start week. NW
+// never fills actual_last_day or finalized_date (0 of 1,234 finalized trips,
+// 2026-10-15), so the planned end stands in until the actual one is recorded.
+const DRIVER_TRIP_COUNTS_SQL = `
+SELECT
+  COUNT(CASE WHEN TripStatus_id IN (3, 4) THEN 1 END) AS activeShipments,
+  COUNT(CASE WHEN TripStatus_id = 5
+              AND COALESCE(actual_last_day, planned_last_day) >= CAST(@weekStart AS date)
+              AND COALESCE(actual_last_day, planned_last_day) < DATEADD(day, 7, CAST(@weekStart AS date))
+             THEN 1 END) AS completedThisWeek
+FROM TripMaster
+WHERE driver_id = @driverId
+  AND (internal_status IS NULL OR internal_status <> 'canceled')`
+
+interface UnavailableSection {
+  section: 'trips' | 'financials'
+  reason: string
+}
+
+function reasonOf(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code
+  return typeof code === 'string' && code.length > 0 ? code : 'UNAVAILABLE'
+}
+
+meHandler.get('/driver/metrics', async (c) => {
+  const db = c.get('db')
+  const userId = c.get('userId')
+  const tenantId = c.get('tenantId')
+  const correlationId = c.get('correlationId')
+
+  const user = userId
+    ? await db.tenantUser.findUnique({
+        where: { id: userId },
+        select: { longhaulDriverId: true },
+      })
+    : null
+  const driverId = user?.longhaulDriverId ?? null
+  if (driverId === null) {
+    return c.json({ error: 'This login is not linked to a driver', code: 'DRIVER_NOT_LINKED' }, 404)
+  }
+
+  const now = new Date()
+  const { weekStartDate, weekStartInstant } = driverWeekFor(now)
+
+  const loadTrips = async (): Promise<{ activeShipments: number; completedThisWeek: number }> => {
+    const tenant = await db.tenant.findUnique({
+      where: { id: tenantId },
+      select: { mssqlConnectionString: true },
+    })
+    if (!tenant?.mssqlConnectionString) {
+      throw Object.assign(new Error('Legacy database not configured for this tenant'), {
+        code: 'NOT_CONFIGURED',
+      })
+    }
+    const { recordset } = await executeSql(tenant.mssqlConnectionString, DRIVER_TRIP_COUNTS_SQL, {
+      params: [
+        { name: 'driverId', value: driverId },
+        { name: 'weekStart', value: weekStartDate },
+      ],
+    })
+    const row = (recordset[0] ?? {}) as Record<string, unknown>
+    return {
+      activeShipments: Number(row['activeShipments'] ?? 0),
+      completedThisWeek: Number(row['completedThisWeek'] ?? 0),
+    }
+  }
+
+  const loadFinancials = async () => {
+    const gateway = await resolveDriverGateway(db, tenantId, () => resolvePegiiCaller(c))
+    return gateway.getFinancials(driverId)
+  }
+
+  const [trips, financials] = await Promise.allSettled([loadTrips(), loadFinancials()])
+
+  const unavailable: UnavailableSection[] = []
+  const settle = <T>(section: UnavailableSection['section'], r: PromiseSettledResult<T>) => {
+    if (r.status === 'fulfilled') return r.value
+    const reason = reasonOf(r.reason)
+    // Log the code and message only — never the connection string / token.
+    logger.warn('driver metrics section unavailable', {
+      section,
+      reason,
+      tenantId,
+      correlationId,
+      error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+    })
+    unavailable.push({ section, reason })
+    return null
+  }
+
+  const tripsData = settle('trips', trips)
+  const financialsData = settle('financials', financials)
+
+  return c.json({
+    data: {
+      driverId,
+      asOf: now.toISOString(),
+      weekStart: weekStartInstant.toISOString(),
+      trips: tripsData,
+      financials: financialsData,
+      unavailable,
+    },
+  })
 })
 
 // ---------------------------------------------------------------------------

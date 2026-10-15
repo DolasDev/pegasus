@@ -6,15 +6,22 @@ interface MetricCardProps {
   label: string
   value: string
   subtitle?: string
+  /** Extra subtitle lines rendered under `subtitle`. */
+  subtitleLines?: string[]
   accent?: string
 }
 
-export function MetricCard({ label, value, subtitle, accent }: MetricCardProps) {
+export function MetricCard({ label, value, subtitle, subtitleLines, accent }: MetricCardProps) {
   return (
     <View style={[styles.card, accent ? { borderLeftColor: accent, borderLeftWidth: 4 } : null]}>
       <Text style={styles.label}>{label}</Text>
       <Text style={styles.value}>{value}</Text>
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      {subtitleLines?.map((line) => (
+        <Text key={line} style={styles.subtitle}>
+          {line}
+        </Text>
+      ))}
     </View>
   )
 }

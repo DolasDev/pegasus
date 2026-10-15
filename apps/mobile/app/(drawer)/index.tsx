@@ -13,22 +13,43 @@ import { useRouter } from 'expo-router'
 import { MetricCard } from '../../src/components/MetricCard'
 import { getDriverMetrics } from '../../src/services/driverMetrics'
 import { useTrips } from '../../src/context/TripsContext'
+import { logger } from '../../src/utils/logger'
 import type { DriverMetrics } from '../../src/types'
 import { colors, fontSize, spacing } from '../../src/theme/colors'
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const UNAVAILABLE = 'Unavailable'
+const DASH = '—'
+
+type LoadError = 'not_linked' | 'failed'
+
+function money(value: number | null | undefined): string {
+  return value == null ? DASH : currency.format(value)
+}
+
 export default function DashboardScreen() {
   const [metrics, setMetrics] = useState<DriverMetrics | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [error, setError] = useState<LoadError | null>(null)
   const router = useRouter()
   const { offeredCount, refresh: refreshTrips } = useTrips()
 
   const load = useCallback(async () => {
     try {
-      const data = await getDriverMetrics()
-      setMetrics(data)
+      const result = await getDriverMetrics()
+      if (result.status === 'not_linked') {
+        setMetrics(null)
+        setError('not_linked')
+      } else {
+        setMetrics(result.metrics)
+        setError(null)
+      }
+    } catch (err) {
+      logger.error('Failed to load driver metrics', err)
+      setError('failed')
     } finally {
       setIsLoading(false)
       setIsRefreshing(false)
@@ -45,7 +66,13 @@ export default function DashboardScreen() {
     load()
   }
 
-  if (isLoading || !metrics) {
+  const retry = () => {
+    setError(null)
+    setIsLoading(true)
+    void load()
+  }
+
+  if (isLoading) {
     return (
       <SafeAreaView style={styles.loading}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -53,6 +80,38 @@ export default function DashboardScreen() {
       </SafeAreaView>
     )
   }
+
+  if (error || !metrics) {
+    return (
+      <SafeAreaView style={styles.loading}>
+        <Text style={styles.errorText}>
+          {error === 'not_linked'
+            ? "Your account isn't linked to a driver yet — ask your dispatcher."
+            : "We couldn't load your dashboard."}
+        </Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={retry}
+          accessibilityRole="button"
+          accessibilityLabel="Retry"
+        >
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    )
+  }
+
+  const { trips, financials } = metrics
+  const monthEnd = financials?.monthEnd ?? null
+  const balanceLines: string[] = []
+  if (financials?.escrowHeld != null)
+    balanceLines.push(`Escrow held ${money(financials.escrowHeld)}`)
+  if (monthEnd) {
+    balanceLines.push(
+      `Month-end ${MONTHS[monthEnd.month - 1] ?? monthEnd.month} ${monthEnd.year} ${money(monthEnd.balance)}`,
+    )
+  }
+  const balanceKnown = financials?.runningBalance != null
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
@@ -94,8 +153,8 @@ export default function DashboardScreen() {
           >
             <MetricCard
               label="Active Shipments"
-              value={String(metrics.activeShipments)}
-              subtitle="Assigned to you"
+              value={trips ? String(trips.activeShipments) : DASH}
+              subtitle={trips ? 'Assigned to you' : UNAVAILABLE}
             />
           </TouchableOpacity>
         </View>
@@ -103,30 +162,27 @@ export default function DashboardScreen() {
         <View style={styles.row}>
           <MetricCard
             label="Account Balance"
-            value={currency.format(metrics.accountBalance)}
-            subtitle="Available"
+            value={money(financials?.runningBalance)}
+            subtitle={balanceKnown ? undefined : UNAVAILABLE}
+            subtitleLines={balanceLines}
             accent={colors.primary}
           />
           <View style={styles.gap} />
           <MetricCard
             label="Completed (wk)"
-            value={String(metrics.completedThisWeek)}
-            subtitle="This week"
+            value={trips ? String(trips.completedThisWeek) : DASH}
+            subtitle={trips ? 'This week' : UNAVAILABLE}
           />
         </View>
 
         <View style={styles.row}>
           <MetricCard
             label="Pending Settlement"
-            value={currency.format(metrics.pendingSettlementTotal)}
-            subtitle="Awaiting payout"
+            value={money(financials?.pendingSettlement.total)}
+            subtitle={
+              financials ? `${financials.pendingSettlement.count} awaiting payout` : UNAVAILABLE
+            }
             accent={colors.primary}
-          />
-          <View style={styles.gap} />
-          <MetricCard
-            label="Miles (wk)"
-            value={metrics.milesThisWeek.toLocaleString('en-US')}
-            subtitle="This week"
           />
         </View>
       </ScrollView>
@@ -167,6 +223,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.backgroundLight,
+  },
+  errorText: {
+    fontSize: fontSize.large,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  retryButton: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  retryText: {
+    color: colors.background,
+    fontWeight: '700',
+    fontSize: fontSize.large,
   },
   loadingText: {
     marginTop: spacing.md,

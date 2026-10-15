@@ -29,6 +29,12 @@ export const PegiiCapabilities = {
   SalesmenList: 'pegii.salesmen.list.v1',
   /** `PATCH /api/v1/pegii/orders/{n}` — allowlisted order write-back (sdk-feedback 0044). */
   OrdersWrite: 'pegii.orders.write.v1',
+  /**
+   * `GET /api/v1/pegii/drivers/{driverId}/financials` — a driver's running balance,
+   * escrow held, last month-end and pending settlement (driver dashboard). Service-only
+   * auth on the site: cloud token with no `scp`, or the configured bridge hub user.
+   */
+  DriversFinancials: 'pegii.drivers.financials.v1',
 } as const
 
 export interface PegiiVersionInfo {
