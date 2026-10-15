@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# create-provisioner.sh — Stage B Step 1 of plans/in-progress/tenant-temporal-namespaces.md:
+# create-provisioner.sh — Stage B Step 1 of plans/completed/f0d47ffb-tenant-temporal-namespaces.md:
 # create the per-env temporal provisioner identity and store its key.
 #
 #   scripts/temporal/create-provisioner.sh <staging|prod>

@@ -2,7 +2,7 @@
 
 - **Branch:** `feat/temporal-key-rotation`, started with
   `/workstream-start feat temporal-key-rotation ~/.claude/plans/temporal-key-rotation.md`.
-- **Parent plan:** `plans/in-progress/tenant-temporal-namespaces.md`. This
+- **Parent plan:** `plans/completed/f0d47ffb-tenant-temporal-namespaces.md`. This
   implements the "Key rotation and expiry alarm" item in its Stage B progress
   list, so update that item when this lands.
 - **User request (2026-10-12):** _"If the rotation can be reasonably automated
@@ -11,7 +11,7 @@
 - **Status:** approved 2026-10-12; steps 1–7 and 9 done 2026-10-12 (see
   **Progress** at the end). Archived when the PR opened: step 8 (staging
   acceptance) runs after deploy and is tracked by the parent plan's **Step 9**
-  in `plans/in-progress/tenant-temporal-namespaces.md`, as is the ⚠️ user
+  in `plans/completed/f0d47ffb-tenant-temporal-namespaces.md`, as is the ⚠️ user
   `--tag-only` action.
 
 ## Facts this plan rests on (verified 2026-10-12)

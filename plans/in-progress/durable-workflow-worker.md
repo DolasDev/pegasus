@@ -11,10 +11,13 @@
 - **Status:** detailed plan approved 2026-09-29. **3a landed** (this PR,
   2026-10-04): DNS Firewall code plus both key downgrades, which are already
   live. The post-deploy DNS check passed 2026-10-05; still owed from 3a: the
-  namespace-cap request. **3b is in progress**: its detailed plan is
-  `plans/in-progress/tenant-temporal-namespaces.md`. **3b.1 Stage A** (the
-  inert provisioning foundation) is in its PR; Stage B (Cloud identities,
-  guardrail probe, enable PR, staging acceptance) and 3b.2 (routing) follow. This file stays in
+  namespace-cap request. **3b is in progress.** **3b.1 is COMPLETE**
+  (2026-10-15; plan archived at
+  `plans/completed/f0d47ffb-tenant-temporal-namespaces.md`): the
+  per-env provisioner is live (#797, #835), keys rotate themselves with
+  expiry alarms (#838), and staging acceptance passed after fixes #844/#845.
+  Nothing routes to tenant namespaces yet. **Next: 3b.2 (routing)**, seeded in
+  `plans/todo/tenant-temporal-routing-3b2.md`. This file stays in
   `plans/in-progress/` until 3c lands; each part's PR updates it. (The
   "Approved outline" section at the bottom is the original checklist, copied
   verbatim from the master plan; the detailed plan above supersedes it.)
