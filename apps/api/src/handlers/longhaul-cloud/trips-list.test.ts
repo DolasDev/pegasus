@@ -32,12 +32,27 @@ import { executeSql } from '../../lib/mssql-executor-client'
 const findUnique = db.tenant.findUnique as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
 
-function buildApp() {
+const tenantUserFind = vi.fn()
+
+interface AppOpts {
+  roleNames?: string[]
+  userId?: string
+}
+
+// Default caller is a dispatcher (Operations role) so pre-scoping tests keep
+// meaning "dispatcher": the read scope is `all`.
+function buildApp(opts: AppOpts = {}) {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'tenant-1')
     c.set('correlationId', 'corr-1')
+    c.set('principal', {
+      sub: 'sub-1',
+      roleNames: opts.roleNames ?? ['long_distance_dispatch'],
+    } as unknown as AppEnv['Variables']['principal'])
+    if (opts.userId) c.set('userId', opts.userId)
+    c.set('db', { tenantUser: { findUnique: tenantUserFind } } as never)
     await next()
   })
   app.get('/onprem/longhaul/trips', longhaulTripsListHandler)
@@ -400,5 +415,68 @@ describe('GET longhaul/trips (cloud-direct LIST)', () => {
 
     expect(res.status).toBe(500)
     expect(((await res.json()) as { code: string }).code).toBe('INTERNAL_ERROR')
+  })
+})
+
+describe('GET longhaul/trips — driver read scoping', () => {
+  const DRIVER = { userId: 'user-1', roleNames: ['driver'] }
+  const clientFilter = (driverId: number) =>
+    `?filters=${encodeURIComponent(JSON.stringify({ filters: { driver_id: { value: driverId } } }))}`
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+  })
+
+  it('dispatcher keeps the client driver_id filter and no scope predicate', async () => {
+    const res = await buildApp().request(`/onprem/longhaul/trips${clientFilter(77)}`)
+    expect(res.status).toBe(200)
+    const [, sql, opts] = executeSqlMock.mock.calls[0] as [string, string, { params: unknown[] }]
+    expect(sql).toContain('TripMaster.driver_id = @p0')
+    expect(sql).not.toContain('@scopeDriverId')
+    expect(opts.params).toEqual([{ name: 'p0', value: 77 }])
+    expect(tenantUserFind).not.toHaveBeenCalled()
+  })
+
+  it('driver is forced to their own driver_id even with no filters', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/trips')
+    expect(res.status).toBe(200)
+    const [, sql, opts] = executeSqlMock.mock.calls[0] as [string, string, { params: unknown[] }]
+    expect(sql).toContain('TripMaster.driver_id = @scopeDriverId')
+    expect(opts.params).toEqual([{ name: 'scopeDriverId', value: 5 }])
+  })
+
+  it("driver sending another driver's driver_id still gets only their own", async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    await buildApp(DRIVER).request(`/onprem/longhaul/trips${clientFilter(77)}`)
+    const [, sql, opts] = executeSqlMock.mock.calls[0] as [string, string, { params: unknown[] }]
+    expect(sql).toContain('TripMaster.driver_id = @scopeDriverId')
+    expect(sql).not.toContain('@p0')
+    expect(opts.params).toEqual([{ name: 'scopeDriverId', value: 5 }])
+  })
+
+  it('driver scope combines with other client filters', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    const f = encodeURIComponent(
+      JSON.stringify({ filters: { driver_id: { value: 77 }, id: '42' } }),
+    )
+    await buildApp(DRIVER).request(`/onprem/longhaul/trips?filters=${f}`)
+    const [, sql, opts] = executeSqlMock.mock.calls[0] as [string, string, { params: unknown[] }]
+    expect(sql).toContain('TripMaster.driver_id = @scopeDriverId')
+    expect(sql).toContain('TripMaster.id = @p0')
+    expect(opts.params).toEqual([
+      { name: 'scopeDriverId', value: 5 },
+      { name: 'p0', value: '42' },
+    ])
+  })
+
+  it('unmapped non-ops user gets an empty list and no MSSQL query', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: null })
+    const res = await buildApp(DRIVER).request(`/onprem/longhaul/trips${clientFilter(77)}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ data: [], meta: { count: 0 } })
+    expect(executeSqlMock).not.toHaveBeenCalled()
   })
 })

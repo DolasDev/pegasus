@@ -27,6 +27,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { logger } from '../../lib/logger'
 import { fetchTripDetail } from '../../lib/longhaul-trip-fetch'
+import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
 
 type Row = Record<string, unknown>
 
@@ -78,6 +79,12 @@ function toCardHeader(snapshot: unknown): Row {
 export const createRejectedTripHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')
   const correlationId = c.get('correlationId')
+
+  // A dispatcher tool (the mobile app never calls it): snapshotting a trip and
+  // naming rejecting drivers is not something a driver-scoped caller may do.
+  if ((await resolveLonghaulReadScope(c)).kind !== 'all') {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN', correlationId }, 403)
+  }
 
   const parsed = CreateRejectedTripBody.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {
@@ -162,12 +169,23 @@ export const listRejectedTripsHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')
   const correlationId = c.get('correlationId')
 
+  const scope = await resolveLonghaulReadScope(c)
+  if (scope.kind === 'none') {
+    return c.json({ data: [], meta: { count: 0 } })
+  }
+
   const driverIdRaw = c.req.query('driverId')
   const originalTripIdRaw = c.req.query('originalTripId')
-  const driverId = driverIdRaw != null && driverIdRaw !== '' ? Number(driverIdRaw) : undefined
+  // A driver-scoped caller always reads their own rejections, whatever they send.
+  const driverId =
+    scope.kind === 'driver'
+      ? scope.driverId
+      : driverIdRaw != null && driverIdRaw !== ''
+        ? Number(driverIdRaw)
+        : undefined
   const originalTripId =
     originalTripIdRaw != null && originalTripIdRaw !== '' ? Number(originalTripIdRaw) : undefined
-  if (driverId !== undefined && !Number.isFinite(driverId)) {
+  if (scope.kind === 'all' && driverId !== undefined && !Number.isFinite(driverId)) {
     return c.json({ error: 'Invalid driverId', code: 'VALIDATION_ERROR', correlationId }, 400)
   }
   if (originalTripId !== undefined && !Number.isFinite(originalTripId)) {
@@ -220,9 +238,21 @@ export const getRejectedTripHandler: Handler<AppEnv> = async (c) => {
     return c.json({ error: 'Invalid id', code: 'VALIDATION_ERROR', correlationId }, 400)
   }
 
+  // 404, not 403 — don't confirm a rejection exists to a caller it isn't about.
+  const scope = await resolveLonghaulReadScope(c)
+  if (scope.kind === 'none') {
+    return c.json({ error: 'Rejected trip not found', code: 'NOT_FOUND', correlationId }, 404)
+  }
+
   try {
     const row = await db.archivedTrip.findFirst({
-      where: { id, tenantId },
+      where: {
+        id,
+        tenantId,
+        // "Names me" = the rejection has a per-driver row for the caller (the
+        // same relation the list filters on).
+        ...(scope.kind === 'driver' ? { drivers: { some: { driverId: scope.driverId } } } : {}),
+      },
       include: { drivers: true },
     })
     if (!row) {

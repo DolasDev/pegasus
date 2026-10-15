@@ -15,6 +15,7 @@
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { Hono } from 'hono'
+import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../../types'
 import { registerTestErrorHandler } from '../../test-helpers'
 
@@ -32,10 +33,20 @@ import { executeSql } from '../../lib/mssql-executor-client'
 const findUnique = db.tenant.findUnique as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
 
-function buildApp() {
+const tenantUserFind = vi.fn()
+
+/** Defaults to an Operations principal, so the pre-scoping tests mean "dispatcher". */
+function buildApp(roleNames: string[] = ['long_distance_dispatch']) {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
+    c.set('userId', 'user-1')
+    c.set('principal', {
+      sub: 's',
+      tenantId: 'tenant-1',
+      roleNames,
+    } as AppEnv['Variables']['principal'])
+    c.set('db', { tenantUser: { findUnique: tenantUserFind } } as unknown as PrismaClient)
     c.set('tenantId', 'tenant-1')
     c.set('correlationId', 'corr-1')
     await next()
@@ -531,5 +542,42 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
 
     expect(res.status).toBe(500)
     expect(((await res.json()) as { code: string }).code).toBe('INTERNAL_ERROR')
+  })
+})
+
+describe('GET longhaul/driver-planning — driver scoping', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    executeSqlMock.mockReset()
+  })
+
+  it('dispatcher: unscoped query, no params, no mapping lookup', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+    await buildApp().request('/onprem/longhaul/driver-planning')
+    const [, sql, opts] = executeSqlMock.mock.calls[0]!
+    expect(sql).not.toContain('@scopeDriverId')
+    expect(opts).toBeUndefined()
+    expect(tenantUserFind).not.toHaveBeenCalled()
+  })
+
+  it('driver: main query is restricted to own driver id as a bound param', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 4766 })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+    const res = await buildApp(['driver']).request('/onprem/longhaul/driver-planning?driverId=7')
+    expect(res.status).toBe(200)
+    const [, sql, opts] = executeSqlMock.mock.calls[0]!
+    expect(sql).toMatch(/WHERE[\s\S]*\n\s*AND d\.DRIVER_ID = @scopeDriverId$/)
+    expect(sql).not.toContain('4766')
+    expect(opts).toEqual({ params: [{ name: 'scopeDriverId', value: 4766 }] })
+  })
+
+  it('unmapped non-ops user: empty response and no query', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: null })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    const res = await buildApp(['driver']).request('/onprem/longhaul/driver-planning')
+    expect(await res.json()).toEqual({ data: [], meta: { count: 0 } })
+    expect(executeSqlMock).not.toHaveBeenCalled()
   })
 })

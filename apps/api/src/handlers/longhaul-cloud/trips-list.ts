@@ -22,6 +22,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
+import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
 
 // ---------------------------------------------------------------------------
 // Filter / sort query shapes — mirror TripQuery in trips.repository.ts.
@@ -140,7 +141,10 @@ interface TripRow {
  * Build the WHERE clause and bound parameters from the parsed filters. Every
  * user value binds as an `@name` parameter — never string-concatenated.
  */
-function buildWhere(filters: TripFilters | undefined): {
+function buildWhere(
+  filters: TripFilters | undefined,
+  scopeDriverId?: number,
+): {
   clause: string
   params: SqlParam[]
 } {
@@ -159,13 +163,29 @@ function buildWhere(filters: TripFilters | undefined): {
     conditions.push(`${col} IN (${cleaned.map((v) => bind(v)).join(', ')})`)
   }
 
-  if (!filters) return { clause: '', params }
+  // Restricted (driver-scoped) caller: the server-side predicate is always
+  // applied and the client's own driver_id filter is ignored below.
+  if (scopeDriverId !== undefined) {
+    params.push({ name: 'scopeDriverId', value: scopeDriverId })
+    conditions.push('TripMaster.driver_id = @scopeDriverId')
+  }
+
+  if (!filters) {
+    return {
+      clause: conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '',
+      params,
+    }
+  }
 
   if (filters.id) {
     conditions.push(`TripMaster.id = ${bind(filters.id)}`)
   }
 
-  if (filters.driver_id?.value !== undefined && filters.driver_id.value !== null) {
+  if (
+    scopeDriverId === undefined &&
+    filters.driver_id?.value !== undefined &&
+    filters.driver_id.value !== null
+  ) {
     conditions.push(`TripMaster.driver_id = ${bind(filters.driver_id.value)}`)
   }
 
@@ -294,6 +314,11 @@ function buildOrderBy(sortBy: TripSortBy | undefined): string {
 export const longhaulTripsListHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')
 
+  const scope = await resolveLonghaulReadScope(c)
+  if (scope.kind === 'none') {
+    return c.json({ data: [], meta: { count: 0 } })
+  }
+
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
     select: { mssqlConnectionString: true },
@@ -330,7 +355,10 @@ export const longhaulTripsListHandler: Handler<AppEnv> = async (c) => {
     }
   }
 
-  const { clause, params } = buildWhere(query.filters)
+  const { clause, params } = buildWhere(
+    query.filters,
+    scope.kind === 'driver' ? scope.driverId : undefined,
+  )
   const orderBy = buildOrderBy(query.sortBy)
   const sql = `${SELECT_AND_JOINS}${clause}${orderBy}`
 

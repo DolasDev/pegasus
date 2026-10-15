@@ -31,6 +31,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
+import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
 import { availabilityDriverFilter } from './driver-filter'
 import { ENSURE_CONFIRMED_TABLE_SQL } from './driver-confirmed-availability-schema'
 
@@ -57,6 +58,8 @@ const TRIP_STATUS_ACCEPTED = 3
 // active-only filter (see ./driver-filter). This card renders one row per
 // driver with no search, so it is stricter than the Planning driver dropdown,
 // which lists every active driver.
+// Must END with its outer WHERE: a driver-scoped caller appends
+// `AND d.DRIVER_ID = @scopeDriverId` (see the handler) — no ORDER BY / GROUP BY after it.
 const PLANNING_SQL = `
 SELECT
   d.DRIVER_ID   AS driver_id,
@@ -302,8 +305,20 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
 
   const connectionString = tenant.mssqlConnectionString
 
+  // Non-Operations callers see only their own driver row; an unmapped one sees
+  // nothing (and costs no query).
+  const scope = await resolveLonghaulReadScope(c)
+  if (scope.kind === 'none') {
+    return c.json({ data: [], meta: { count: 0 } })
+  }
+
   try {
-    const { recordset } = await executeSql(connectionString, PLANNING_SQL)
+    const { recordset } =
+      scope.kind === 'driver'
+        ? await executeSql(connectionString, `${PLANNING_SQL}  AND d.DRIVER_ID = @scopeDriverId`, {
+            params: [{ name: 'scopeDriverId', value: scope.driverId }],
+          })
+        : await executeSql(connectionString, PLANNING_SQL)
     const rows = recordset as PlanningRow[]
 
     // Round trip 2 — RDEL deliveries AND final-activity-per-shipment for every

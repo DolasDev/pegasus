@@ -35,12 +35,27 @@ import { executeSql } from '../../lib/mssql-executor-client'
 const findUnique = db.tenant.findUnique as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
 
-function buildApp() {
+const tenantUserFind = vi.fn()
+
+interface AppOpts {
+  roleNames?: string[]
+  userId?: string
+}
+
+// Default caller is a dispatcher (Operations role) so pre-scoping tests keep
+// meaning "dispatcher": the read scope is `all`.
+function buildApp(opts: AppOpts = {}) {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'tenant-1')
     c.set('correlationId', 'corr-1')
+    c.set('principal', {
+      sub: 'sub-1',
+      roleNames: opts.roleNames ?? ['long_distance_dispatch'],
+    } as unknown as AppEnv['Variables']['principal'])
+    if (opts.userId) c.set('userId', opts.userId)
+    c.set('db', { tenantUser: { findUnique: tenantUserFind } } as never)
     await next()
   })
   app.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
@@ -332,5 +347,60 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
 
     expect(res.status).toBe(500)
     expect(((await res.json()) as { code: string }).code).toBe('INTERNAL_ERROR')
+  })
+})
+
+describe('GET longhaul/trips/:id — driver read scoping', () => {
+  const DRIVER = { userId: 'user-1', roleNames: ['driver'] }
+  const mockTrip = (driverId: number | null) => {
+    const row = { ...tripRow, driver_id: driverId }
+    executeSqlMock.mockResolvedValue({
+      recordset: [row],
+      recordsets: [[row], [], []],
+      rowsAffected: [],
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+  })
+
+  it("dispatcher can read any driver's trip", async () => {
+    mockTrip(99)
+    const res = await buildApp().request('/onprem/longhaul/trips/42')
+    expect(res.status).toBe(200)
+  })
+
+  it('driver reads their own trip', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    mockTrip(5)
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/trips/42')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { id: number } }
+    expect(body.data.id).toBe(42)
+  })
+
+  it("driver gets 404 NOT_FOUND for someone else's trip", async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    mockTrip(99)
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/trips/42')
+    expect(res.status).toBe(404)
+    expect(await res.json()).toMatchObject({ error: 'Trip not found', code: 'NOT_FOUND' })
+  })
+
+  it('driver gets 404 for an unassigned trip', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    mockTrip(null)
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/trips/42')
+    expect(res.status).toBe(404)
+  })
+
+  it('unmapped non-ops user gets 404 and no MSSQL query', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 0 })
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/trips/42')
+    expect(res.status).toBe(404)
+    expect(await res.json()).toMatchObject({ code: 'NOT_FOUND' })
+    expect(executeSqlMock).not.toHaveBeenCalled()
   })
 })

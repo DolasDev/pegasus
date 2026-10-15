@@ -22,10 +22,19 @@ import type { Handler } from 'hono'
 import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { logger } from '../../lib/logger'
+import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
 import { fetchTripDetail } from '../../lib/longhaul-trip-fetch'
 
 export const longhaulTripDetailHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')
+
+  const scope = await resolveLonghaulReadScope(c)
+  if (scope.kind === 'none') {
+    return c.json(
+      { error: 'Trip not found', code: 'NOT_FOUND', correlationId: c.get('correlationId') },
+      404,
+    )
+  }
 
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
@@ -54,7 +63,8 @@ export const longhaulTripDetailHandler: Handler<AppEnv> = async (c) => {
 
   try {
     const trip = await fetchTripDetail(connectionString, id)
-    if (!trip) {
+    // 404 (not 403) for another driver's trip — don't confirm it exists.
+    if (!trip || (scope.kind === 'driver' && Number(trip['driver_id']) !== scope.driverId)) {
       return c.json(
         { error: 'Trip not found', code: 'NOT_FOUND', correlationId: c.get('correlationId') },
         404,
