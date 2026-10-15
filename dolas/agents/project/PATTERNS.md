@@ -433,3 +433,11 @@ mapping that drivers don't have and accepts every column. Precedent:
 - **Type by `ActivityType_code`**, never by abbreviation. SITIN and SITOUT are both `SIT`.
 - **Audit.** `modified_by` is a salesman code, so a driver write stamps NULL (as the M2M path does)
   and logs the driver id.
+
+## A pegII route keyed by an arbitrary entity id needs a policy narrower than "any valid token"
+
+Most cloud-facing Pegasus.Api routes `RequireAuthorization()` and leave _which_ principal may read to the
+cloud (Cedar). That is only safe when the route is not a per-person secret. `GET /api/v1/pegii/drivers/{id}/financials`
+returns any driver's money by id, and desktop-session tokens (`scp=desktop`) live on users' machines — so it uses
+`AuthPolicies.DriverFinancials`: cloud tokens **without** `scp`, or the configured bridge hub user, and nothing else.
+The cloud side resolves the id from the caller (`TenantUser.longhaulDriverId`), never from the request.

@@ -152,3 +152,19 @@ active = `TripStatus_id IN (3,4)`; completedThisWeek = `TripStatus_id = 5 AND ac
 - Signed-in linked driver sees real Active, Completed (wk), three balance figures and pending settlement matching the WinForms driver grid / settlement screen for the same driver.
 - Unlinked driver or pegII outage shows a legible state, never a spinner.
 - `npm test` + typecheck green in `apps/api` and `apps/mobile`; `Pegasus.Api.Tests` green.
+
+## Outcome (2026-10-15)
+
+- Implemented as above. Verified on NW prod: running balance + escrow equal the legacy procs to the cent (5 drivers);
+  the trip-count SQL runs and returns plausible counts (4766: 2 active / 1 completed this week).
+- **NW financials will show "Unavailable" until NW has a bridge credential.** NW's tenant has **no** `pegii_api_key_ref`
+  and its site has `cloud_auth_enabled = false`, so the cloud reaches NW's Pegasus.Api with no Authorization at all.
+  Either run NW's cloud-auth rollout (`plans/todo/cloud-identity-and-companies.md` item 3) or provision a hub bridge user
+  - secret and set `Api:DriverFinancials:BridgeHubUser` on NW to its username. Trip counts don't depend on this.
+- New definitions with no WinForms screen to reconcile against: Pending Settlement (90-day untransferred) and
+  Completed (wk) (planned end fallback).
+- OpenAPI: `/me/driver/metrics` is NOT in the m2m OpenAPI spec, matching `/me/driver` — both are mobile session
+  routes, not integration surface.
+- movemanager: `feat/driver-financials` → `dev` (plan `plans/completed/*-driver-financials-endpoint.md` there).
+- Out of scope, still open: `trips-list` / `trip-detail` / `shipments-list` accept a client-supplied `driver_id`
+  with no `requirePermission`.
