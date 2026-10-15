@@ -119,8 +119,11 @@ Read the identity line that #826 added — it is the first thing the step prints
 Then `PR #145 author is 'steve-dolo', not Dependabot — refusing.` and exit 0. It never reaches
 `--disable-auto`/`--auto`, so this is safe to run repeatedly.
 
-**Stage 2, the real proof — an open Dependabot PR. The window is open now.** When one of its
-minor/patch PRs goes green and `enqueue` fires, a `merge_group` run should appear within ~a minute:
+**Stage 2, the real proof — an open Dependabot PR.** When one of its minor/patch PRs goes green and
+`enqueue` fires, a `merge_group` run should appear within ~a minute. Note what makes it a _valid_
+test: the run must come from **`enqueue`'s own enqueue**, not from a human running
+`gh pr merge --auto`. A human token triggers the run regardless, so nudging a stalled PR unblocks the
+queue but proves nothing about the App:
 
 ```
 gh run list --limit 40 --json createdAt,event,status,conclusion,headBranch \
@@ -142,13 +145,28 @@ instead of 18–21 minutes.
 > gh pr list --state open --author app/dependabot
 > ```
 
-**As of 2026-10-12 the subjects are #829 (hono) and #830 (aws-cdk)** — both green. **#831**
-(`minor-and-patch`, 32 updates) is **not** a usable subject: all four of its heavy jobs are red from
-a single cause, Dependabot shipping a `package.json`/`package-lock.json` pair that `npm ci` rejects
-(`Missing: … from lock file`, 17 packages). That is the known defect recorded in GOTCHAS and in
-State of play's lesson 3 — `@dependabot recreate` does **not** fix it; the lockfile has to be
-regenerated with **npm 11** and pushed to the branch. Until that lands, #831 can never reach the
-queue, so it proves nothing about the App token either way.
+**No subject is currently available — all of 2026-10-11's batch has merged** (#829, #831, #842;
+#830 was closed and superseded by #842). Nothing new as of **2026-10-15**. Ask with the command
+above; do not predict the day.
+
+**But those three produced the two best measurements this item has ever had.** #842 and #829 were
+each enqueued by the `enqueue` job under `GITHUB_TOKEN`, sat at position 1 `AWAITING_CHECKS` with
+**no `merge_group` run**, and produced one within seconds of a human-token dequeue + re-enqueue:
+
+| PR   | bot-enqueued at | no group run after | after nudge |
+| ---- | --------------- | ------------------ | ----------- |
+| #842 | 02:49:53Z       | **94 min**         | **16 s**    |
+| #829 | 04:37Z          | **11 min**         | **17 s**    |
+
+Reproductions **nine and ten**. Both had to be nudged rather than waited out, because a stalled entry
+holds the HEAD of an `ALLGREEN` queue — #843 was itself stuck behind #842. That is the cost of not
+having the App, measured in other people's blocked merges rather than in theory.
+
+**#831 was a different failure and is worth not confusing with this one:** all four of its heavy jobs
+were red from one cause — Dependabot shipping a `package.json`/`package-lock.json` pair that `npm ci`
+rejects (`Missing: … from lock file`, 17 packages). Fixed by regenerating with **npm 11** and pushing
+to its branch (a normal fast-forward push, which works; it is Dependabot's own _rebase_ that does
+not — see the runbook). `@dependabot recreate` does **not** fix that class.
 
 **The one unverified link, stated plainly.** Stage 1 proves the App token is minted and can _read_
 PR metadata. It does **not** prove that `enablePullRequestAutoMerge` /
