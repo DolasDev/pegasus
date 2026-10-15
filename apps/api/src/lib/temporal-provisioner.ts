@@ -9,7 +9,7 @@
 //               namespace-scoped Write service account and its API key;
 //               stores the key KMS-encrypted; waits until the key is
 //               authorized on the namespace.
-//   rotate      READY → READY. Mints a new key into the row's PENDING slot,
+//   rotate      unchanged status (any KEY_HOLDING_STATUSES). Mints a new key into the row's PENDING slot,
 //               and promotes it to current only once it is authorized on the
 //               namespace; the old key stays alive for a grace period
 //               (running runners keep working). A rotation that never
@@ -49,7 +49,10 @@
 // ---------------------------------------------------------------------------
 
 import { randomBytes } from 'node:crypto'
-import type { TenantTemporalNamespaceRepository } from '../repositories/tenant-temporal-namespace.repository'
+import {
+  KEY_HOLDING_STATUSES,
+  type TenantTemporalNamespaceRepository,
+} from '../repositories/tenant-temporal-namespace.repository'
 import {
   assertProvisionableName,
   type CloudOpsLogger,
@@ -163,7 +166,7 @@ export const SWEEP_MAX_ROTATIONS = 20
  * discards it.
  */
 export const SWEEP_START_BUDGET_MS = 5 * 60 * 1000
-/** The tenant gauge with no READY rows: nothing can expire, so stay green. */
+/** The tenant gauge with no key-holding rows: nothing can expire, so stay green. */
 export const NO_TENANT_KEYS_DAYS = 365
 
 export const PROVISION_STEPS = [
@@ -194,7 +197,7 @@ function daysUntil(expiresAt: Date, now: Date): number {
 /**
  * The `TemporalKeyDaysToExpiry` gauges. `provisioner` undefined (its expiry
  * couldn't be read) emits nothing, so the alarm's missing-data rule fires.
- * No READY tenant rows emits NO_TENANT_KEYS_DAYS. A missing platform tag
+ * No key-holding tenant rows (KEY_HOLDING_STATUSES) emits NO_TENANT_KEYS_DAYS. A missing platform tag
  * emits 0: the alarm fires until someone records the expiry.
  */
 export function keyExpiryGauges(input: {
@@ -455,12 +458,14 @@ export async function runTemporalProvisioner(
     return withLease(
       'rotate',
       tenantId,
-      ['READY'],
+      // Every status that holds a served key keeps rotating — a cut-over
+      // (ACTIVE) tenant above all. Rotation never changes the status.
+      [...KEY_HOLDING_STATUSES],
       async () => {
         assertProvisionableName(env, namespace)
         const row = (await repo.findByTenant(tenantId))!
         const serviceAccountId = row.cloudServiceAccountId
-        if (!serviceAccountId) throw new Error('READY row has no service account')
+        if (!serviceAccountId) throw new Error(`${row.status} row has no service account`)
 
         // 1. Discard the pending key a dead rotation left behind (by id: the
         //    provisioner can't list the account's keys). A key whose token
@@ -522,7 +527,7 @@ export async function runTemporalProvisioner(
           previousApiKeyId: row.apiKeyId,
         })
       },
-      // The old key still works: a failed rotate leaves the row READY.
+      // The old key still works: a failed rotate leaves the row (and its status) intact.
       (message) => repo.setLastError(tenantId, message),
     )
   }
@@ -574,7 +579,7 @@ export async function runTemporalProvisioner(
       const out = await withLease(
         'retire-previous-key',
         row.tenantId,
-        ['READY', 'FAILED'],
+        [...KEY_HOLDING_STATUSES, 'FAILED'],
         () => retirePreviousKey(row.tenantId, row.previousApiKeyId!),
         (message) => repo.setLastError(row.tenantId, message),
       )
@@ -593,7 +598,7 @@ export async function runTemporalProvisioner(
       const out = await withLease(
         'discard-pending-key',
         row.tenantId,
-        ['READY', 'FAILED'],
+        [...KEY_HOLDING_STATUSES, 'FAILED'],
         async () => {
           const current = (await repo.findByTenant(row.tenantId))!
           if (current.pendingApiKeyId === null) return

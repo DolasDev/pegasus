@@ -19,7 +19,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Client } from '@temporalio/client'
-import { _setTemporalClientForTesting } from '../lib/temporal-client'
+import {
+  _setTemporalClientForTesting,
+  _setTenantTemporalDepsForTesting,
+} from '../lib/temporal-client'
 
 const { mockSend, putMetricDataInputs, mockFindMany, mockUpdateMany } = vi.hoisted(() => ({
   mockSend: vi.fn(),
@@ -147,9 +150,7 @@ describe('lambda-reconcile-workflow-executions', () => {
 
   it('flips a stale RUNNING row to COMPLETED and carries the result', async () => {
     mockFindMany.mockResolvedValue([runningRow()])
-    _setTemporalClientForTesting(
-      fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }),
-    )
+    _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }))
 
     const out = await handler()
 
@@ -188,16 +189,16 @@ describe('lambda-reconcile-workflow-executions', () => {
 
     _setTemporalClientForTesting(fakeClient({ statusName: 'TERMINATED' }))
     await handler()
-    expect(
-      (mockUpdateMany.mock.calls[0]![0] as { data: { status: string } }).data.status,
-    ).toBe('CANCELLED')
+    expect((mockUpdateMany.mock.calls[0]![0] as { data: { status: string } }).data.status).toBe(
+      'CANCELLED',
+    )
 
     mockUpdateMany.mockClear()
     _setTemporalClientForTesting(fakeClient({ statusName: 'TIMED_OUT' }))
     await handler()
-    expect(
-      (mockUpdateMany.mock.calls[0]![0] as { data: { status: string } }).data.status,
-    ).toBe('TIMED_OUT')
+    expect((mockUpdateMany.mock.calls[0]![0] as { data: { status: string } }).data.status).toBe(
+      'TIMED_OUT',
+    )
   })
 
   it('leaves a row alone when Temporal still reports RUNNING', async () => {
@@ -215,9 +216,7 @@ describe('lambda-reconcile-workflow-executions', () => {
     mockFindMany.mockResolvedValue([runningRow()])
     // The conditional updateMany matched zero rows: the worker beat us to it.
     mockUpdateMany.mockResolvedValue({ count: 0 })
-    _setTemporalClientForTesting(
-      fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }),
-    )
+    _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }))
 
     const out = await handler()
 
@@ -228,9 +227,7 @@ describe('lambda-reconcile-workflow-executions', () => {
 
   it('emits WorkflowExecutionReconciled with a Status dimension', async () => {
     mockFindMany.mockResolvedValue([runningRow()])
-    _setTemporalClientForTesting(
-      fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }),
-    )
+    _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }))
 
     await handler()
 
@@ -285,5 +282,56 @@ describe('lambda-reconcile-workflow-executions', () => {
     expect((mockUpdateMany.mock.calls[0]![0] as { where: { id: string } }).where.id).toBe(
       'exec-good',
     )
+  })
+})
+
+describe('tenant namespaces (3b.2)', () => {
+  const NS = 'pg-test-tenant1.acct'
+
+  it('asks the namespace recorded on the row, with that tenant’s key', async () => {
+    const shared = fakeClient({ statusName: 'RUNNING' })
+    _setTemporalClientForTesting(shared)
+    const tenantClient = fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } })
+    const loadKey = vi.fn(async () => ({
+      namespace: NS,
+      grpcAddress: `${NS}.tmprl.cloud:7233`,
+      apiKeyId: 'k1',
+      apiKey: 'secret',
+    }))
+    const connect = vi.fn(async () => ({ client: tenantClient, close: vi.fn(async () => {}) }))
+    _setTenantTemporalDepsForTesting({ loadKey, connect })
+    try {
+      mockFindMany.mockResolvedValue([runningRow({ temporalNamespace: NS })])
+
+      const out = await handler()
+
+      expect(out.reconciled).toBe(1)
+      expect(loadKey).toHaveBeenCalledWith('tenant-1')
+      expect(shared.workflow.getHandle).not.toHaveBeenCalled()
+      expect(mockUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'COMPLETED', result: { ok: true } }),
+        }),
+      )
+    } finally {
+      _setTenantTemporalDepsForTesting(null)
+    }
+  })
+
+  it('a key failure on one row skips it and the tick goes on', async () => {
+    _setTemporalClientForTesting(fakeClient({ statusName: 'FAILED', resultError: new Error('x') }))
+    _setTenantTemporalDepsForTesting({ loadKey: vi.fn(async () => null) })
+    try {
+      mockFindMany.mockResolvedValue([
+        runningRow({ id: 'exec-tenant', temporalNamespace: NS }),
+        runningRow({ id: 'exec-shared' }),
+      ])
+
+      const out = await handler()
+
+      expect(out).toEqual({ scanned: 2, reconciled: 1 })
+    } finally {
+      _setTenantTemporalDepsForTesting(null)
+    }
   })
 })

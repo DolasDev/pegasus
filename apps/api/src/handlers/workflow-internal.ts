@@ -57,7 +57,10 @@ import type { WorkflowExecutionStatus } from '../repositories/workflow-execution
 import { decryptRuntimeToken } from '../lib/runtime-token-crypto'
 import { presignDownload } from '../lib/documents-s3'
 import { verifyTenantBrokerToken } from '../lib/tenant-broker-credential'
-import { createTenantTemporalNamespaceRepository } from '../repositories/tenant-temporal-namespace.repository'
+import {
+  createTenantTemporalNamespaceRepository,
+  ROUTED_STATUSES,
+} from '../repositories/tenant-temporal-namespace.repository'
 import { logger } from '../lib/logger'
 import type { AppEnv, WorkflowBrokerAuth } from '../types'
 
@@ -536,8 +539,12 @@ workflowInternalHandler.get('/tenant-workflows', async (c) => {
 // This is the first broker route that returns a SECRET the platform minted
 // (the others return a status, a presigned URL, or the per-workflow `vnd_`
 // token). So:
-//   * READY only (3b.2 switches this to ACTIVE): any other status, no row, or
-//     no stored key is 404, and the key is never decrypted for those.
+//   * ACTIVE or REVERTING only (ROUTED_STATUSES, 3b.2): the states in which
+//     the tenant's executions live in its own namespace, so a scoped runner
+//     needs the key — REVERTING too, because its open executions are still
+//     there while they drain. READY (provisioned, not routed), DRAINING (work
+//     still in the shared namespace), any other status, no row, or no stored
+//     key is 404, and the key is never decrypted for those.
 //   * Per-tenant `wbk_` tokens ONLY. The shared secret is refused (403
 //     TENANT_TOKEN_REQUIRED) even though it has full access on the other
 //     routes: only a tenant's own runner needs that tenant's key, and the
@@ -575,7 +582,7 @@ workflowInternalHandler.get('/temporal-credentials', async (c) => {
 
   try {
     const row = await temporalNamespaces.findByTenant(tenantId)
-    if (!row || row.status !== 'READY') return notFound()
+    if (!row || !(ROUTED_STATUSES as readonly string[]).includes(row.status)) return notFound()
     const key = await temporalNamespaces.getDecryptedKey(tenantId)
     if (!key) return notFound()
 

@@ -18,7 +18,7 @@
 //     presigned URL + sha fields present, Cache-Control: no-store.
 //   - GET /temporal-credentials (Phase 3b): the first broker route that
 //     returns a SECRET (the tenant's Temporal API key) — wbk_ tokens only
-//     (shared secret = 403), READY-only, tenant confinement (cross-tenant =
+//     (shared secret = 403), ACTIVE/REVERTING-only, tenant confinement (cross-tenant =
 //     404), no-store, and the key never reaches a logger call or error body.
 //
 // Strategy: mock the `db` module (so no real Prisma is needed) and the
@@ -91,7 +91,9 @@ vi.mock('../repositories/workflow-execution.repository', () => ({
   createWorkflowExecutionRepository: vi.fn(() => mockExecRepo),
 }))
 
-vi.mock('../repositories/tenant-temporal-namespace.repository', () => ({
+vi.mock('../repositories/tenant-temporal-namespace.repository', async (importOriginal) => ({
+  // Real status sets (ROUTED_STATUSES), mocked repository.
+  ...(await importOriginal<Record<string, unknown>>()),
   createTenantTemporalNamespaceRepository: vi.fn(() => mockTemporalNsRepo),
 }))
 
@@ -850,11 +852,12 @@ describe('workflow-internal handler', () => {
   describe('GET /temporal-credentials', () => {
     const API_KEY = 'tenant-temporal-api-key-SECRET'
     const NS = 'pg-staging-111111111111.chgel'
-    const readyRow = (overrides: Record<string, unknown> = {}) => ({
+    // A cut-over tenant (3b.2): the state in which its runner needs the key.
+    const routedRow = (overrides: Record<string, unknown> = {}) => ({
       tenantId: TENANT_A,
       namespace: NS,
       grpcAddress: `${NS}.tmprl.cloud:7233`,
-      status: 'READY',
+      status: 'ACTIVE',
       ...overrides,
     })
 
@@ -865,7 +868,7 @@ describe('workflow-internal handler', () => {
     beforeEach(() => {
       stubCredentials()
       mockTemporalNsRepo.findByTenant.mockImplementation((tenantId: string) =>
-        Promise.resolve(tenantId === TENANT_A ? readyRow() : null),
+        Promise.resolve(tenantId === TENANT_A ? routedRow() : null),
       )
       mockTemporalNsRepo.getDecryptedKey.mockImplementation((tenantId: string) =>
         Promise.resolve(
@@ -895,7 +898,7 @@ describe('workflow-internal handler', () => {
       expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
     })
 
-    it('returns the address, namespace and key for the token own READY tenant', async () => {
+    it('returns the address, namespace and key for the token own ACTIVE tenant', async () => {
       const res = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
       expect(res.status).toBe(200)
       expect(await json(res)).toEqual({
@@ -931,17 +934,24 @@ describe('workflow-internal handler', () => {
       expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
     })
 
-    it.each(['PROVISIONING', 'FAILED', 'DEPROVISIONING'])(
+    it.each(['PROVISIONING', 'READY', 'DRAINING', 'FAILED', 'DEPROVISIONING'])(
       '404s while the namespace is %s, without decrypting the key',
       async (status) => {
-        mockTemporalNsRepo.findByTenant.mockResolvedValue(readyRow({ status }))
+        mockTemporalNsRepo.findByTenant.mockResolvedValue(routedRow({ status }))
         const res = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
         expect(res.status).toBe(404)
         expect(mockTemporalNsRepo.getDecryptedKey).not.toHaveBeenCalled()
       },
     )
 
-    it('404s a READY row with no stored key', async () => {
+    it('serves the key while REVERTING: its open executions still live in the tenant namespace', async () => {
+      mockTemporalNsRepo.findByTenant.mockResolvedValue(routedRow({ status: 'REVERTING' }))
+      const res = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+      expect(res.status).toBe(200)
+      expect(((await json(res))['data'] as Record<string, unknown>)['apiKey']).toBe(API_KEY)
+    })
+
+    it('404s an ACTIVE row with no stored key', async () => {
       mockTemporalNsRepo.getDecryptedKey.mockResolvedValue(null)
       const res = await getCredentials({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
       expect(res.status).toBe(404)

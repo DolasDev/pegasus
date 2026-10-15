@@ -737,6 +737,13 @@ export class ApiStack extends cdk.Stack {
       dbSecret.grantRead(reconcileFunction)
       temporalSecret.grantRead(reconcileFunction)
 
+      // Phase 3b.2: a cut-over tenant's executions live in its OWN namespace,
+      // reachable only with that tenant's key, which is stored KMS-encrypted
+      // on TenantTemporalNamespace. Decrypt only — the reconciler never
+      // writes a key.
+      workflowTokenKey.grantDecrypt(reconcileFunction)
+      reconcileFunction.addEnvironment('WORKFLOW_TOKEN_KMS_KEY_ID', workflowTokenKey.keyId)
+
       // PutMetricData has no resource-level scoping (Resource must be `*`); the
       // cloudwatch:namespace condition narrows this role to the Pegasus/Workflows
       // namespace only — it can't publish to arbitrary customer namespaces.
@@ -976,12 +983,16 @@ export class ApiStack extends cdk.Stack {
       if (props.tenantRunnerSubnets?.length && props.tenantRunnerSecurityGroup) {
         const tenantRunnerClusterArn = `arn:aws:ecs:${this.region}:${this.account}:cluster/pegasus-temporal-worker-${envName}`
         const tenantRunnerTaskFamily = `pegasus-tenant-runner-${envName}`
+        // Phase 3b.2: runners for tenants cut over to their own namespace (no
+        // Temporal secret; mirrored from temporal-worker-stack.ts by name).
+        const tenantRunnerScopedTaskFamily = `pegasus-tenant-runner-scoped-${envName}`
 
         const tenantRunnerEnv: Record<string, string> = {
           TENANT_RUNNER_CLUSTER_ARN: tenantRunnerClusterArn,
           // Bare family name — RunTask resolves the latest ACTIVE revision,
           // so task-def updates need no dispatcher re-wiring.
           TENANT_RUNNER_TASK_DEFINITION: tenantRunnerTaskFamily,
+          TENANT_RUNNER_SCOPED_TASK_DEFINITION: tenantRunnerScopedTaskFamily,
           TENANT_RUNNER_CONTAINER_NAME: 'tenant-runner',
           TENANT_RUNNER_SUBNET_IDS: cdk.Fn.join(
             ',',
@@ -1000,10 +1011,10 @@ export class ApiStack extends cdk.Stack {
           // ecs:cluster condition pins launches to our cluster either way.
           new iam.PolicyStatement({
             actions: ['ecs:RunTask'],
-            resources: [
-              `arn:aws:ecs:${this.region}:${this.account}:task-definition/${tenantRunnerTaskFamily}:*`,
-              `arn:aws:ecs:${this.region}:${this.account}:task-definition/${tenantRunnerTaskFamily}`,
-            ],
+            resources: [tenantRunnerTaskFamily, tenantRunnerScopedTaskFamily].flatMap((family) => [
+              `arn:aws:ecs:${this.region}:${this.account}:task-definition/${family}:*`,
+              `arn:aws:ecs:${this.region}:${this.account}:task-definition/${family}`,
+            ]),
             conditions: { ArnEquals: { 'ecs:cluster': tenantRunnerClusterArn } },
           }),
           // ListTasks (startedBy dedupe + family-scoped pool gauge) and

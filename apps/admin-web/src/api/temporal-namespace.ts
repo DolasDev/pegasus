@@ -8,7 +8,18 @@ import { getConfig } from '@/config'
 // material.
 // ---------------------------------------------------------------------------
 
-export type TemporalNamespaceStatus = 'PROVISIONING' | 'READY' | 'FAILED' | 'DEPROVISIONING'
+export type TemporalNamespaceStatus =
+  | 'PROVISIONING'
+  /** Provisioned; Automations still run in the shared namespace. */
+  | 'READY'
+  | 'FAILED'
+  | 'DEPROVISIONING'
+  /** Cutover in progress (3b.2): new runs paused while shared-namespace runs finish. */
+  | 'DRAINING'
+  /** Cut over: Automations run in this namespace. */
+  | 'ACTIVE'
+  /** Rollback in progress: new runs paused while this namespace's runs finish. */
+  | 'REVERTING'
 
 export interface TemporalNamespace {
   tenantId: string
@@ -26,6 +37,11 @@ export interface TemporalNamespace {
   previousKeyRetireAt: string | null
   createdAt: string
   updatedAt: string
+  /**
+   * GET only, while DRAINING / REVERTING: the open executions the drain is
+   * still waiting for. Null (or absent) otherwise.
+   */
+  openExecutions?: number | null
 }
 
 export interface TemporalNamespaceState {
@@ -33,6 +49,11 @@ export interface TemporalNamespaceState {
   data: TemporalNamespace | null
   /** False when no provisioner is deployed in this environment. */
   configured: boolean
+  /**
+   * False when the scoped tenant-runner task definition isn't deployed here,
+   * so a cut-over tenant couldn't run: the API refuses a cutover (3b.2).
+   */
+  scopedRunnerConfigured: boolean
 }
 
 // Raw fetch: the envelope carries `configured` beside `data`, which the
@@ -71,4 +92,14 @@ export function deprovisionTemporalNamespace(
   tenantId: string,
 ): Promise<{ data: TemporalNamespace }> {
   return call(tenantId, '/deprovision', 'POST')
+}
+
+/** READY → DRAINING: start routing the tenant's Automations to this namespace. */
+export function cutoverTemporalNamespace(tenantId: string): Promise<{ data: TemporalNamespace }> {
+  return call(tenantId, '/cutover', 'POST')
+}
+
+/** ACTIVE → REVERTING (back to shared), or DRAINING → READY (cancel a cutover). */
+export function rollbackTemporalNamespace(tenantId: string): Promise<{ data: TemporalNamespace }> {
+  return call(tenantId, '/rollback', 'POST')
 }

@@ -1152,6 +1152,25 @@ describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', 
     })
   })
 
+  it('can decrypt a cut-over tenant’s Temporal key (3b.2): KMS key id env + kms:Decrypt', () => {
+    const template = synthTemporal()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const [logicalId, poller] =
+      Object.entries(fns).find(([id]) => id.startsWith('ReconcileWorkflowExecutionsFunction')) ?? []
+    if (!poller || !logicalId) throw new Error('reconcile poller Lambda not found')
+    if (poller.Properties?.Environment?.Variables?.WORKFLOW_TOKEN_KMS_KEY_ID === undefined) {
+      throw new Error('reconcile poller is missing WORKFLOW_TOKEN_KMS_KEY_ID')
+    }
+    // Its role may decrypt with the workflow-token key — and not encrypt.
+    const roleRef = (poller.Properties?.Role as { 'Fn::GetAtt'?: string[] })['Fn::GetAtt']?.[0]
+    const policies = Object.values(template.findResources('AWS::IAM::Policy')).filter((p) =>
+      JSON.stringify(p.Properties?.Roles ?? []).includes(String(roleRef)),
+    )
+    const actions = JSON.stringify(policies.map((p) => p.Properties?.PolicyDocument))
+    if (!actions.includes('kms:Decrypt')) throw new Error('reconcile poller cannot kms:Decrypt')
+    if (actions.includes('kms:Encrypt')) throw new Error('reconcile poller must not kms:Encrypt')
+  })
+
   it('wires the poller Lambda with DATABASE_URL + the Temporal env trio + API key', () => {
     const template = synthTemporal()
     template.hasResourceProperties('AWS::Lambda::Function', {
@@ -1229,9 +1248,13 @@ describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', 
       MemorySize: 256,
       Timeout: 120,
     })
+    // Since 3b.2 the reconcile poller also carries WORKFLOW_TOKEN_KMS_KEY_ID
+    // (it decrypts cut-over tenants' Temporal keys), so the env no longer
+    // tells the two apart: find the dispatcher by its construct id.
     const fns = template.findResources('AWS::Lambda::Function')
-    const dispatchers = Object.values(fns).filter(
-      (fn) =>
+    const dispatchers = Object.entries(fns).filter(
+      ([id, fn]) =>
+        id.startsWith('DispatchWorkflowTriggersFunction') &&
         fn.Properties?.Environment?.Variables?.WORKFLOW_TOKEN_KMS_KEY_ID !== undefined &&
         fn.Properties?.Environment?.Variables?.TEMPORAL_ADDRESS !== undefined &&
         fn.Properties?.MemorySize === 256,
@@ -1324,6 +1347,9 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
       ) {
         throw new Error(`unexpected cluster ARN: ${JSON.stringify(vars.TENANT_RUNNER_CLUSTER_ARN)}`)
       }
+      if (vars.TENANT_RUNNER_SCOPED_TASK_DEFINITION !== 'pegasus-tenant-runner-scoped-staging') {
+        throw new Error('TENANT_RUNNER_SCOPED_TASK_DEFINITION must be the scoped bare family name')
+      }
       if (vars.TENANT_RUNNER_TASK_DEFINITION !== 'pegasus-tenant-runner-staging') {
         throw new Error('TENANT_RUNNER_TASK_DEFINITION must be the bare family name')
       }
@@ -1353,6 +1379,9 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
             Resource: [
               'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging:*',
               'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging',
+              // Phase 3b.2: the scoped family, for tenants on their own namespace.
+              'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-scoped-staging:*',
+              'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-scoped-staging',
             ],
             Condition: {
               ArnEquals: {

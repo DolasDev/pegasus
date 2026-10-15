@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         PegasusApiError,
         PegasusClient,
         SmsChannelNotConnected,
+        TenantMigrating,
         WorkflowInUse,
         WorkflowStateConflict,
     )
@@ -45,6 +46,7 @@ __all__ = [
     "WorkflowStateConflict",
     "SmsChannelNotConnected",
     "WorkflowInUse",
+    "TenantMigrating",
     "Manifest",
     "ManifestError",
     "load_manifest",
@@ -63,6 +65,7 @@ _LAZY_EXPORTS = {
     "WorkflowStateConflict": "api",
     "SmsChannelNotConnected": "api",
     "WorkflowInUse": "api",
+    "TenantMigrating": "api",
     "Manifest": "manifest",
     "ManifestError": "manifest",
     "load_manifest": "manifest",

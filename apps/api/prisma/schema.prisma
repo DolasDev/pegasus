@@ -1817,6 +1817,12 @@ model WorkflowExecution {
   /// Temporal run identifier backing this execution. Null until queued.
   temporalRunId String? @map("temporal_run_id")
 
+  /// The tenant's own Temporal namespace this execution was started in (3b.2),
+  /// written on the QUEUED insert. Null = the shared platform namespace (every
+  /// STDLIB run, and every run from before the tenant was cut over). Readers
+  /// (history, cancel, reconcile) use this, never the tenant's current status.
+  temporalNamespace String? @map("temporal_namespace")
+
   /// TenantUser.id of the principal that triggered this execution. Null for
   /// trigger-fired executions (triggerSource EVENT / SCHEDULE) — those carry
   /// triggeredByTriggerId instead. Denormalized; not an FK so the row
@@ -2491,9 +2497,19 @@ model TenantBrokerCredential {
 
 enum TenantTemporalNamespaceStatus {
   PROVISIONING
+  /// Provisioned, but the tenant's Automations still run in the shared namespace.
   READY
   FAILED
   DEPROVISIONING
+  /// Cutover in progress (3b.2): new tenant-runner starts are refused (409
+  /// TENANT_MIGRATING) until the tenant's open shared-namespace executions
+  /// finish, then the dispatcher moves the row to ACTIVE.
+  DRAINING
+  /// Cut over: tenant-runner executions start in the tenant's own namespace.
+  ACTIVE
+  /// Rollback in progress: starts refused until the open tenant-namespace
+  /// executions finish, then the dispatcher moves the row back to READY.
+  REVERTING
 
   @@schema("public")
 }

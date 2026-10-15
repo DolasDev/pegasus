@@ -12,6 +12,9 @@
 //   1. resolveWorkflowRoute(workflow)          — routing decision (one place)
 //   2. TENANT_RUNNER only: concurrency cap     — count before insert, 429 if over
 //   3. TENANT_RUNNER only: daily quota         — count before insert, 429 if over
+//      (and, before both, Phase 3b.2's namespace check: a DRAINING/REVERTING
+//      tenant is refused 409 TENANT_MIGRATING; an ACTIVE one starts in its
+//      own namespace, recorded on the row at insert)
 //   4. ensureTenantRunner (per-tenant runner)  — kick off before Temporal start
 //   5. lazy runtime-service-account mint       — same transaction as insert
 //   6. insert the QUEUED WorkflowExecution row with provenance
@@ -58,7 +61,11 @@ import type { WorkflowRow } from '../repositories/workflow.repository'
 import { createWorkflowExecutionRepository } from '../repositories/workflow-execution.repository'
 import type { WorkflowExecutionRow } from '../repositories/workflow-execution.repository'
 import { encryptRuntimeToken } from './runtime-token-crypto'
-import { getTemporalClient, temporalTaskQueue } from './temporal-client'
+import {
+  createTenantTemporalNamespaceRepository,
+  MIGRATING_STATUSES,
+} from '../repositories/tenant-temporal-namespace.repository'
+import { temporalTaskQueue, withTemporalClient } from './temporal-client'
 import { resolveWorkflowRoute, tenantTaskQueue } from './workflow-route'
 import { ensureTenantRunner } from './tenant-runner'
 import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
@@ -102,7 +109,11 @@ const METRIC_NAMESPACE = 'Pegasus/Workflows'
 
 const cloudwatch = new CloudWatchClient({})
 
-type RejectionReason = 'CONCURRENCY_LIMIT' | 'DAILY_QUOTA_EXCEEDED'
+type RejectionReason = 'CONCURRENCY_LIMIT' | 'DAILY_QUOTA_EXCEEDED' | 'TENANT_MIGRATING'
+
+function isMigratingStatus(status: string): boolean {
+  return (MIGRATING_STATUSES as readonly string[]).includes(status)
+}
 
 /**
  * Emits WorkflowExecutionRejected{Reason=<reason>} to CloudWatch.
@@ -215,6 +226,13 @@ export type StartWorkflowExecutionResult =
    * written or started. See race posture note above.
    */
   | { outcome: 'DAILY_QUOTA_EXCEEDED' }
+  /**
+   * TENANT_RUNNER: the tenant's Temporal namespace is mid-cutover (DRAINING)
+   * or mid-rollback (REVERTING) — Phase 3b.2. Nothing written, no runner
+   * launched. Transient (a drain is bounded by the 15-min execution cap); the
+   * handler maps this to 409 TENANT_MIGRATING with a retry hint.
+   */
+  | { outcome: 'TENANT_MIGRATING' }
   /**
    * TENANT_RUNNER: the caller tried to directly run a non-curated GLOBAL
    * workflow it does not own (workflow.tenantId !== caller's tenantId). Nothing
@@ -459,6 +477,9 @@ export async function startWorkflowExecution(
   // cheap reads that reject invalid or abusively-frequent callers without
   // touching ECS, Temporal, or the broker.
 
+  /** The tenant namespace this run starts in; null = the shared namespace. */
+  let temporalNamespace: string | null = null
+
   if (route === 'TENANT_RUNNER') {
     // ── Cross-tenant GLOBAL run guard ───────────────────────────────────────
     //
@@ -483,6 +504,26 @@ export async function startWorkflowExecution(
       })
       return { outcome: 'MUST_FORK' }
     }
+
+    // ── Tenant namespace (Phase 3b.2) ───────────────────────────────────────
+    //
+    // A tenant mid-cutover (DRAINING) or mid-rollback (REVERTING) takes no new
+    // runner work until its open executions drain — dry runs included, since
+    // they run on the runner too. Refused here, BEFORE ensureTenantRunner, so
+    // a refused start never launches a runner. A cut-over (ACTIVE) tenant's
+    // run goes to its own namespace; every other state, the shared one.
+    const namespaceRow = await createTenantTemporalNamespaceRepository(db).findByTenant(tenantId)
+    if (namespaceRow && isMigratingStatus(namespaceRow.status)) {
+      logger.warn('Workflow start refused — tenant Temporal namespace migrating', {
+        tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        namespaceStatus: namespaceRow.status,
+      })
+      await emitRejectionMetric('TENANT_MIGRATING')
+      return { outcome: 'TENANT_MIGRATING' }
+    }
+    if (namespaceRow?.status === 'ACTIVE') temporalNamespace = namespaceRow.namespace
 
     // Dry-runs are benign rehearsals: never capped or quota-limited (and they
     // don't count toward either — see the count helpers' dryRun:false filter),
@@ -532,7 +573,11 @@ export async function startWorkflowExecution(
   // work exists — degraded latency, never a lost run. ensureTenantRunner
   // never throws for the failures it models and logs/metrics internally.
   if (route === 'TENANT_RUNNER') {
-    await ensureTenantRunner(db, tenantId)
+    // A run in the tenant's own namespace needs the scoped runner (no shared
+    // Temporal key; fetches the tenant's key from the broker).
+    await ensureTenantRunner(db, tenantId, {
+      family: temporalNamespace === null ? 'legacy' : 'scoped',
+    })
   }
 
   // Single transaction: lazy-mint the runtime account if needed, then
@@ -561,6 +606,10 @@ export async function startWorkflowExecution(
       temporalWorkflowId: opts.temporalWorkflowId ?? null,
       input: input as Prisma.InputJsonValue,
       dryRun: opts.dryRun ?? false,
+      // Recorded at insert, before the Temporal start: a row that exists
+      // already knows where it lives, so the runner sweep, history, cancel and
+      // the reconciler never re-derive it from the tenant's (changing) status.
+      temporalNamespace,
     })
   })
 
@@ -590,24 +639,25 @@ export async function startWorkflowExecution(
   // runtime failures.
   const dryRun = opts.dryRun ?? false
   try {
-    const client = await getTemporalClient()
-    const handle = await client.workflow.start(workflow.name, {
-      // dryRun rides the envelope so the tenant runner's subprocess driver sees
-      // it and injects the dry-run client + trace capture.
-      args: [{ executionId: inserted.id, input, dryRun }],
-      taskQueue,
-      workflowId: temporalWorkflowId,
-      // Tag the execution in Temporal so dry-runs are filterable in the Web UI
-      // and never mistaken for a real run.
-      memo: { dryRun },
-      // Idempotent re-submit: if a previous call already started this id,
-      // we'd rather error here than start a second run.
-      workflowIdReusePolicy: 'REJECT_DUPLICATE',
-      // (a) Timeout — TENANT_RUNNER only (undefined = Temporal default for STDLIB)
-      ...(workflowExecutionTimeout !== undefined
-        ? { workflowExecutionTimeout: `${workflowExecutionTimeout}s` }
-        : {}),
-    })
+    const handle = await withTemporalClient({ tenantId, namespace: temporalNamespace }, (client) =>
+      client.workflow.start(workflow.name, {
+        // dryRun rides the envelope so the tenant runner's subprocess driver sees
+        // it and injects the dry-run client + trace capture.
+        args: [{ executionId: inserted.id, input, dryRun }],
+        taskQueue,
+        workflowId: temporalWorkflowId,
+        // Tag the execution in Temporal so dry-runs are filterable in the Web UI
+        // and never mistaken for a real run.
+        memo: { dryRun },
+        // Idempotent re-submit: if a previous call already started this id,
+        // we'd rather error here than start a second run.
+        workflowIdReusePolicy: 'REJECT_DUPLICATE',
+        // (a) Timeout — TENANT_RUNNER only (undefined = Temporal default for STDLIB)
+        ...(workflowExecutionTimeout !== undefined
+          ? { workflowExecutionTimeout: `${workflowExecutionTimeout}s` }
+          : {}),
+      }),
+    )
 
     // Eagerly transition QUEUED → RUNNING so the row reflects reality
     // before the worker write-back lands. The worker's PATCH will be a

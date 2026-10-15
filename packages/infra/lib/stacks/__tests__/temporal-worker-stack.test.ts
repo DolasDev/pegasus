@@ -104,9 +104,9 @@ describe('TemporalWorkerStack — ECS cluster + Fargate service', () => {
     synth().template.resourceCountIs('AWS::ECS::Cluster', 1)
   })
 
-  it('creates two task definitions (worker + tenant-runner) but exactly ONE service', () => {
+  it('creates three task definitions (worker + legacy and scoped tenant-runner) but exactly ONE service', () => {
     const { template } = synth()
-    template.resourceCountIs('AWS::ECS::TaskDefinition', 2)
+    template.resourceCountIs('AWS::ECS::TaskDefinition', 3)
     // The tenant-runner MUST NOT have a service — runners are RunTask-only
     // and scale to zero (Phase 3 Resolved #1). A second service appearing
     // here means someone broke the scale-to-zero contract.
@@ -160,6 +160,38 @@ function findTaskDef(family: string): TaskDefResource {
   expect(def, `no task definition with family ${family}`).toBeDefined()
   return def as TaskDefResource
 }
+
+describe('TemporalWorkerStack — SCOPED tenant-runner task definition (Phase 3b.2)', () => {
+  const scoped = () => findTaskDef('pegasus-tenant-runner-scoped-staging')
+
+  it('registers family pegasus-tenant-runner-scoped-<env> at the same 512 CPU / 1024 MiB', () => {
+    expect(scoped().Properties?.Cpu).toBe('512')
+    expect(scoped().Properties?.Memory).toBe('1024')
+  })
+
+  it('carries NO secrets at all — the runner fetches its tenant key from the broker', () => {
+    const container = scoped().Properties?.ContainerDefinitions?.[0]
+    expect(container?.Secrets ?? []).toEqual([])
+  })
+
+  it('carries no TEMPORAL_* env (its absence is broker mode), only the static contract', () => {
+    const container = scoped().Properties?.ContainerDefinitions?.[0]
+    expect(container?.Name).toBe('tenant-runner')
+    const envNames = (container?.Environment ?? []).map((e) => e.Name).sort()
+    expect(envNames).toEqual(['ENV_NAME', 'PEGASUS_API_BASE_URL'])
+  })
+
+  it('reuses the legacy task + execution roles (the PassRole contract is unchanged)', () => {
+    const legacy = findTaskDef('pegasus-tenant-runner-staging').Properties
+    expect(scoped().Properties?.TaskRoleArn).toEqual(legacy?.TaskRoleArn)
+    expect(scoped().Properties?.ExecutionRoleArn).toEqual(legacy?.ExecutionRoleArn)
+  })
+
+  it('exports its family', () => {
+    const outputs = Object.keys(synth().template.toJSON().Outputs ?? {})
+    expect(outputs).toContain('TenantRunnerScopedTaskDefinitionFamily')
+  })
+})
 
 describe('TemporalWorkerStack — tenant-runner task definition (Phase 3 Unit 9)', () => {
   it('registers family pegasus-tenant-runner-<env> at 512 CPU / 1024 MiB', () => {

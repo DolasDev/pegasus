@@ -41,6 +41,8 @@ const {
   mockGetHandle,
   mockHandleCancel,
   mockHandleFetchHistory,
+  mockTemporalTargets,
+  mockNamespaceFindUnique,
 } = vi.hoisted(() => {
   const start = vi.fn()
   const handleCancel = vi.fn()
@@ -93,6 +95,8 @@ const {
     mockGetHandle: getHandle,
     mockHandleCancel: handleCancel,
     mockHandleFetchHistory: handleFetchHistory,
+    mockTemporalTargets: [] as unknown[],
+    mockNamespaceFindUnique: vi.fn(async (): Promise<unknown> => null),
   }
 })
 
@@ -130,7 +134,18 @@ vi.mock('../repositories/workflow-secret-config.repository', () => ({
 // no real Temporal connection is opened.
 vi.mock('../lib/temporal-client', async (importActual) => {
   const actual = (await importActual()) as Record<string, unknown>
-  return { ...actual, getTemporalClient: mockGetTemporalClient }
+  return {
+    ...actual,
+    getTemporalClient: mockGetTemporalClient,
+    // Route every call through the mocked client, recording the target
+    // (tenant + namespace from the execution row, 3b.2).
+    withTemporalClient: vi.fn(
+      async (target: unknown, fn: (client: unknown) => Promise<unknown>) => {
+        mockTemporalTargets.push(target)
+        return fn(await mockGetTemporalClient())
+      },
+    ),
+  }
 })
 
 vi.mock('../lib/documents-s3', () => ({
@@ -156,6 +171,7 @@ vi.mock('../middleware/dual-auth', () => ({
 }))
 
 import { workflowsHandler } from './workflows'
+import { TenantTemporalKeyUnavailableError } from '../lib/temporal-client'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 
 // ---------------------------------------------------------------------------
@@ -197,6 +213,8 @@ function buildApp(
   // same fakeDb mocks regardless of the transaction wrapping.
   const fakeDb = {
     tenant: { findUnique: mockTenantFindUnique },
+    // 3b.2: the tenant's Temporal namespace row — none unless a test sets one.
+    tenantTemporalNamespace: { findUnique: mockNamespaceFindUnique },
     tenantUser: { create: mockTenantUserCreate },
     workflow: { update: vi.fn() },
   } as unknown as PrismaClient
@@ -1092,6 +1110,26 @@ describe('workflows handler', () => {
       )
     })
 
+    it('409 TENANT_MIGRATING with Retry-After while the tenant namespace drains (3b.2)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue({
+        ...provisionedRow,
+        name: 'tenant_custom_workflow',
+        visibility: 'TENANT' as const,
+        tenantId: 'test-tenant-id',
+        executable: true,
+      })
+      mockNamespaceFindUnique.mockResolvedValueOnce({
+        tenantId: 'test-tenant-id',
+        namespace: 'pg-test.acct',
+        status: 'DRAINING',
+      })
+      const res = await buildApp().request('/wf-1/run', post({ input: {} }))
+      expect(res.status).toBe(409)
+      expect(res.headers.get('Retry-After')).toBe('60')
+      expect((await json(res)).code).toBe('TENANT_MIGRATING')
+      expect(mockTemporalStart).not.toHaveBeenCalled()
+    })
+
     it('422 DRY_RUN_UNSUPPORTED — dry-run of a curated (STDLIB) workflow is rejected', async () => {
       mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
       const res = await buildApp().request('/wf-1/run', post({ input: {}, mode: 'dry_run' }))
@@ -1405,6 +1443,34 @@ describe('workflows handler', () => {
       const res = await buildApp().request('/wf-1/executions/exec-1/history')
       expect(res.status).toBe(502)
       expect((await json(res)).code).toBe('TEMPORAL_HISTORY_UNAVAILABLE')
+    })
+
+    it('asks the namespace recorded on the execution row (3b.2)', async () => {
+      mockTemporalTargets.length = 0
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue({
+        ...runningExec,
+        temporalNamespace: 'pg-test-tenant.acct',
+      })
+      mockHandleFetchHistory.mockResolvedValue(fakeHistory)
+      const res = await buildApp().request('/wf-1/executions/exec-1/history')
+      expect(res.status).toBe(200)
+      expect(mockTemporalTargets).toEqual([
+        { tenantId: runningExec.tenantId, namespace: 'pg-test-tenant.acct' },
+      ])
+    })
+
+    it('returns 404 when the run’s tenant namespace has no key left (deprovisioned)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue({
+        ...runningExec,
+        temporalNamespace: 'pg-test-tenant.acct',
+      })
+      mockHandleFetchHistory.mockRejectedValue(
+        new TenantTemporalKeyUnavailableError('t', 'pg-test-tenant.acct'),
+      )
+      const res = await buildApp().request('/wf-1/executions/exec-1/history')
+      expect(res.status).toBe(404)
     })
   })
 

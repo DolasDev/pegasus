@@ -240,3 +240,66 @@ def test_patch_sends_expected_payload() -> None:
         "finishedAt": "2026-06-11T00:00:00.000Z",
         "errorMessage": "boom",
     }
+
+
+# ---------------------------------------------------------------------------
+# fetch_temporal_credentials (Phase 3b.2, broker mode)
+# ---------------------------------------------------------------------------
+
+SCOPED_KEY = "tenant-scoped-temporal-key-SECRET"
+CREDS = {
+    "address": "pg-staging-111111111111.chgel.tmprl.cloud:7233",
+    "namespace": "pg-staging-111111111111.chgel",
+    "apiKey": SCOPED_KEY,
+}
+
+
+def test_temporal_credentials_sends_token_and_parses() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"data": CREDS})
+
+    creds = _client(handler).fetch_temporal_credentials()
+    assert seen[0].method == "GET"
+    assert seen[0].url.path == "/api/v1/internal/temporal-credentials"
+    assert seen[0].headers["X-Workflow-Broker-Token"] == TOKEN
+    assert creds.address == CREDS["address"]
+    assert creds.namespace == CREDS["namespace"]
+    assert creds.api_key == SCOPED_KEY
+    # The key never rides along in a repr (and so never into a log line).
+    assert SCOPED_KEY not in repr(creds)
+
+
+def test_temporal_credentials_404_is_unavailable_not_a_generic_error() -> None:
+    from pegasus_tenant_runner.broker_client import TemporalCredentialsUnavailable
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"code": "NOT_FOUND"})
+
+    with pytest.raises(TemporalCredentialsUnavailable):
+        _client(handler).fetch_temporal_credentials()
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_temporal_credentials_auth_rejection(status: int) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"code": "TENANT_TOKEN_REQUIRED"})
+
+    with pytest.raises(BrokerAuthError):
+        _client(handler).fetch_temporal_credentials()
+
+
+@pytest.mark.parametrize("missing", ["address", "namespace", "apiKey"])
+def test_temporal_credentials_missing_field_names_it_without_echoing_the_body(
+    missing: str,
+) -> None:
+    body = {k: v for k, v in CREDS.items() if k != missing}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": body})
+
+    with pytest.raises(BrokerError, match=missing) as raised:
+        _client(handler).fetch_temporal_credentials()
+    assert SCOPED_KEY not in str(raised.value)
