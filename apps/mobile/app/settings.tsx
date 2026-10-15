@@ -23,7 +23,8 @@ const PRIVACY_POLICY_URL = 'https://pegasus.dolas.dev/privacy.html'
  * "1.0.0 (13)" — the marketing version plus the build number that actually
  * distinguishes two installs.
  *
- * `expoConfig.version` is static (1.0.0 on every release), and the row used to
+ * `expoConfig.version` (app.json) only changes when bumped by hand — Apple
+ * closes a version's TestFlight train once it is approved — and the row used to
  * sit next to a hard-coded "Preview", so there was no way to tell which build
  * was on a device — the question that matters every time a fix ships to closed
  * testing. `nativeBuildVersion` is the EAS-incremented Android versionCode.
