@@ -15,8 +15,9 @@
   probe **passed**. The enable PR (#835) and key rotation (#838) are live.
   **Step 9 PASSED 2026-10-13** on run 3, after fixing the two bugs it found
   (#844: the provisioner can't list a tenant's keys; #845: one
-  `async_operation_id` per operation). **Next: Step 10** (docs and landing),
-  then 3b.2 may start.
+  `async_operation_id` per operation). Step 10 done 2026-10-15. **3b.1 is
+  COMPLETE and this plan is archived.** 3b.2 (routing) continues from
+  `plans/todo/tenant-temporal-routing-3b2.md`.
 
 ## Detailed plan (written 2026-10-05; execution starts in a new session)
 
@@ -617,7 +618,13 @@ key `yyDenH2L…` alive until 2027-10-11 (its value is in AWSPREVIOUS). Delete
 it with `tcld apikey delete -i yyDenH2L0rl8UYIpxVy6nD5T7f1XknqW` if a spare
 isn't wanted.
 
-**Step 10: docs and landing.**
+**Step 10: docs and landing. DONE 2026-10-15.** The DECISIONS entries
+(provisioning by a Developer-role SA per env; no platform service account;
+key rotation) and the GOTCHAS "Temporal Cloud Ops" section landed with the
+PRs that made them true (#797, #835, #838, #844, #845). The 3a DNS check was
+already ticked in `durable-workflow-worker.md` (passed 2026-10-05). Its status
+now says 3b.1 is done, and this plan is archived. 3b.2 is seeded in
+`plans/todo/tenant-temporal-routing-3b2.md`. The original Step 10 list:
 
 - `DECISIONS.md`: provisioning by a Developer-role service account per env,
   and why Developer is enough; and **no platform service account**, with the

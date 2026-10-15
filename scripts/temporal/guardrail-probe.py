@@ -5,7 +5,7 @@
 # ///
 """Stage B, Step 2: guardrail probe for the per-env temporal provisioners.
 
-plans/in-progress/tenant-temporal-namespaces.md, "Step 2". Proves the property
+plans/completed/f0d47ffb-tenant-temporal-namespaces.md, "Step 2". Proves the property
 3b relies on: ONE env's provisioner cannot touch what the OTHER env's provisioner
 created, nor the existing platform namespaces, and a tenant key minted in one env
 is refused by the other env's namespaces.
@@ -16,7 +16,7 @@ Run:   uv run scripts/temporal/guardrail-probe.py            (full probe)
 Needs AWS SSO for profiles dolas-pegasus-{staging,prod} (it reads both
 provisioner keys from Secrets Manager). Re-run it whenever the provisioner
 identities or their roles change. Results of the first passing run (2026-10-12)
-are in plans/*/tenant-temporal-namespaces.md, Appendix B.
+are in plans/completed/f0d47ffb-tenant-temporal-namespaces.md, Appendix B.
 
 Talks to the Cloud Ops REST API exactly as the provisioner Lambda does
 (saas-api.tmprl.cloud, temporal-cloud-api-version v0.23.0, Bearer key).

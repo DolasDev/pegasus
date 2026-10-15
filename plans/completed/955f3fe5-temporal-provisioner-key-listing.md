@@ -2,7 +2,7 @@
 
 - **Branch:** `fix/temporal-provisioner-key-listing`.
 - **Found by:** Step 9 staging acceptance, run 1 (2026-10-13), in
-  `plans/in-progress/tenant-temporal-namespaces.md`. Test tenant
+  `plans/completed/f0d47ffb-tenant-temporal-namespaces.md`. Test tenant
   `4b2e0267-c597-451e-a367-771dfac52fba` (AVP Smoke 2026-05-08).
 - **Status:** approved by the user 2026-10-13 ("Fix workstream", with a
   live delete-by-id check, which passed).
