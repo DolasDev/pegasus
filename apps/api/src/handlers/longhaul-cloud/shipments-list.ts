@@ -40,6 +40,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
+import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
 import {
   ACTIVITY_TYPE_CODE,
   enrichShipmentWithTripInfo,
@@ -139,9 +140,22 @@ class ParamBag {
 // Base query builder — mirrors findShipmentsWithQuery in the on-prem repo.
 // ---------------------------------------------------------------------------
 
-function buildBaseSql(query: ShipmentQuery, bag: ParamBag): string {
+function buildBaseSql(query: ShipmentQuery, bag: ParamBag, scopeDriverId?: number): string {
   const S = SHIPMENTS_TABLE
   const where: string[] = []
+
+  // Restricted (driver-scoped) caller: always applied, independent of
+  // searchTerm / filters, so a restricted list is never an unfiltered dump.
+  // Activity-based so a multi-leg / SIT shipment on the driver's trip stays visible.
+  if (scopeDriverId !== undefined) {
+    bag.params.push({ name: 'scopeDriverId', value: scopeDriverId })
+    where.push(
+      `EXISTS (SELECT 1 FROM LongDistanceDispatchActivity a` +
+        ` LEFT JOIN TripMaster t ON a.TripMaster_id = t.id` +
+        ` WHERE a.order_num = ${S}.order_num` +
+        ` AND (a.assigned_driver_id = @scopeDriverId OR t.driver_id = @scopeDriverId))`,
+    )
+  }
 
   if (query.searchTerm && query.searchTerm.length >= 3) {
     const term = query.searchTerm.toLowerCase()
@@ -483,6 +497,11 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')
   const correlationId = c.get('correlationId')
 
+  const scope = await resolveLonghaulReadScope(c)
+  if (scope.kind === 'none') {
+    return c.json({ data: [], meta: { count: 0 } })
+  }
+
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
     select: { mssqlConnectionString: true, longhaulClient: true },
@@ -534,7 +553,11 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
   try {
     // --- round trip 1: base shipments query ---
     const baseBag = new ParamBag()
-    const baseSql = buildBaseSql(query, baseBag)
+    const baseSql = buildBaseSql(
+      query,
+      baseBag,
+      scope.kind === 'driver' ? scope.driverId : undefined,
+    )
     const baseRes = await executeSql(connectionString, baseSql, { params: baseBag.params })
     const { rows: rawShipments, dropped: duplicateRows } = dedupeByOrderNum(
       baseRes.recordset as ShipmentRow[],

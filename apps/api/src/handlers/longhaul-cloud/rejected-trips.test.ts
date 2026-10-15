@@ -14,6 +14,7 @@
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { Hono } from 'hono'
+import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../../types'
 import { registerTestErrorHandler } from '../../test-helpers'
 
@@ -41,10 +42,19 @@ const findManyMock = db.archivedTrip.findMany as unknown as Mock
 const findFirstMock = db.archivedTrip.findFirst as unknown as Mock
 const fetchTripDetailMock = fetchTripDetail as unknown as Mock
 
-function buildApp() {
+const tenantUserFind = vi.fn()
+
+/** Defaults to an Operations principal, so the pre-scoping tests mean "dispatcher". */
+function buildApp(roleNames: string[] = ['long_distance_dispatch']) {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
+    c.set('principal', {
+      sub: 's',
+      tenantId: 'tenant-1',
+      roleNames,
+    } as AppEnv['Variables']['principal'])
+    c.set('db', { tenantUser: { findUnique: tenantUserFind } } as unknown as PrismaClient)
     c.set('tenantId', 'tenant-1')
     c.set('userId', 'user-9')
     c.set('correlationId', 'corr-1')
@@ -239,6 +249,82 @@ describe('rejected-trip handlers', () => {
       findFirstMock.mockResolvedValue(null)
       const res = await buildApp().request('/onprem/longhaul/rejected-trips/missing')
       expect(res.status).toBe(404)
+    })
+  })
+
+  describe('driver scoping', () => {
+    const asDriver = (id: number | null) => {
+      tenantUserFind.mockResolvedValue({ longhaulDriverId: id })
+      return buildApp(['driver'])
+    }
+    const whereOf = (m: Mock) => (m.mock.calls[0]![0] as { where: Record<string, unknown> }).where
+
+    it('list: driver is forced to own driverId, overriding the client value', async () => {
+      findManyMock.mockResolvedValue([])
+      const res = await asDriver(4766).request('/onprem/longhaul/rejected-trips?driverId=7')
+      expect(res.status).toBe(200)
+      expect(whereOf(findManyMock)).toMatchObject({ drivers: { some: { driverId: 4766 } } })
+    })
+
+    it('list: driver with no driverId param is still restricted', async () => {
+      findManyMock.mockResolvedValue([])
+      await asDriver(4766).request('/onprem/longhaul/rejected-trips')
+      expect(whereOf(findManyMock)).toMatchObject({ drivers: { some: { driverId: 4766 } } })
+    })
+
+    it('list: unmapped non-ops user gets an empty list and no query', async () => {
+      const res = await asDriver(null).request('/onprem/longhaul/rejected-trips?driverId=7')
+      expect(await res.json()).toEqual({ data: [], meta: { count: 0 } })
+      expect(findManyMock).not.toHaveBeenCalled()
+    })
+
+    it('detail: driver query is constrained to rejections naming them', async () => {
+      findFirstMock.mockResolvedValue(null)
+      const res = await asDriver(4766).request('/onprem/longhaul/rejected-trips/archived-1')
+      expect(res.status).toBe(404)
+      expect(whereOf(findFirstMock)).toEqual({
+        id: 'archived-1',
+        tenantId: 'tenant-1',
+        drivers: { some: { driverId: 4766 } },
+      })
+    })
+
+    it('detail: unmapped non-ops user gets 404 and no query', async () => {
+      const res = await asDriver(0).request('/onprem/longhaul/rejected-trips/archived-1')
+      expect(res.status).toBe(404)
+      expect(findFirstMock).not.toHaveBeenCalled()
+    })
+
+    it('POST: a driver gets 403 FORBIDDEN and nothing is read or written', async () => {
+      const res = await asDriver(4766).request('/onprem/longhaul/rejected-trips', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tripId: 42, rejections: [{ driverId: 7 }] }),
+      })
+      expect(res.status).toBe(403)
+      expect(await res.json()).toEqual({
+        error: 'Forbidden',
+        code: 'FORBIDDEN',
+        correlationId: 'corr-1',
+      })
+      expect(createMock).not.toHaveBeenCalled()
+      expect(fetchTripDetailMock).not.toHaveBeenCalled()
+    })
+
+    it('POST: an unmapped non-ops user gets 403 even with an invalid body', async () => {
+      const res = await asDriver(null).request('/onprem/longhaul/rejected-trips', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      })
+      expect(res.status).toBe(403)
+    })
+
+    it('dispatcher: client driverId honoured and detail unconstrained', async () => {
+      findManyMock.mockResolvedValue([])
+      await buildApp().request('/onprem/longhaul/rejected-trips?driverId=7')
+      expect(whereOf(findManyMock)).toMatchObject({ drivers: { some: { driverId: 7 } } })
+      expect(tenantUserFind).not.toHaveBeenCalled()
     })
   })
 })

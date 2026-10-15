@@ -34,6 +34,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
+import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
 
 /**
  * Hard cap on returned activities. Mirrors the shipments board's contract: past
@@ -51,6 +52,7 @@ const ACTIVITY_ROW_CAP = ACTIVITY_RESULT_LIMIT + 1
 
 const A = 'a' // LongDistanceDispatchActivity
 const S = 's' // v_longhaul_shipments_v2
+const TM = 'tm' // TripMaster (joined only for driver-scoped callers)
 
 /**
  * Filters the board sends, URL-encoded as `?filters=<json>`.
@@ -196,6 +198,8 @@ const FROM_AND_JOINS =
   ` LEFT JOIN v_longhaul_drivers AS drv ON ${A}.assigned_driver_id = drv.driver_id` +
   ` LEFT JOIN v_longhaul_shipments_v2 AS ${S} ON ${A}.order_num = ${S}.order_num`
 
+const TRIP_OWNER_JOIN = ` LEFT JOIN TripMaster AS ${TM} ON ${A}.TripMaster_id = ${TM}.id`
+
 /**
  * Build the one query the handler runs.
  *
@@ -204,8 +208,14 @@ const FROM_AND_JOINS =
  * On this data `planned_end < planned_start` is legitimate rather than corrupt
  * (#619/#622), so an overlap predicate quietly drops the inverted spans.
  */
-function buildActivitiesSql(query: ActivityQuery, bag: ParamBag): string {
+function buildActivitiesSql(query: ActivityQuery, bag: ParamBag, scopeDriverId?: number): string {
   const where: string[] = []
+  // Driver-scoped caller: the row must be theirs by assignment or by trip
+  // ownership. Applied regardless of client filters; the id is a bound param.
+  if (scopeDriverId !== undefined) {
+    const me = bag.bind(scopeDriverId)
+    where.push(`(${A}.assigned_driver_id = ${me} OR ${TM}.driver_id = ${me})`)
+  }
   const f = query.filters ?? {}
 
   if (f.date_range) {
@@ -271,6 +281,7 @@ function buildActivitiesSql(query: ActivityQuery, bag: ParamBag): string {
   return (
     `SELECT TOP (${ACTIVITY_ROW_CAP}) ${SELECT_COLUMNS}` +
     FROM_AND_JOINS +
+    (scopeDriverId !== undefined ? TRIP_OWNER_JOIN : '') +
     (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
     ` ORDER BY ${orderBy}`
   )
@@ -300,6 +311,13 @@ export const longhaulActivitiesListHandler: Handler<AppEnv> = async (c) => {
   // is per-client. That handler needs it only to resolve the client's
   // import/export code set, which has no analogue here.
 
+  // Non-Operations callers only see their own driver's activities; an unmapped
+  // one sees nothing (and costs no query).
+  const scope = await resolveLonghaulReadScope(c)
+  if (scope.kind === 'none') {
+    return c.json({ data: [], meta: { count: 0 } })
+  }
+
   let query: ActivityQuery = {}
   const rawFilters = c.req.query('filters')
   if (rawFilters) {
@@ -312,7 +330,7 @@ export const longhaulActivitiesListHandler: Handler<AppEnv> = async (c) => {
 
   try {
     const bag = new ParamBag()
-    const sql = buildActivitiesSql(query, bag)
+    const sql = buildActivitiesSql(query, bag, scope.kind === 'driver' ? scope.driverId : undefined)
     const { recordset } = await executeSql(tenant.mssqlConnectionString, sql, {
       params: bag.params,
     })

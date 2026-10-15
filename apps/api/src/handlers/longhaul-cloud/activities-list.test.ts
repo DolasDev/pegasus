@@ -15,6 +15,7 @@
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { Hono } from 'hono'
+import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../../types'
 import { registerTestErrorHandler } from '../../test-helpers'
 
@@ -32,12 +33,22 @@ import { executeSql } from '../../lib/mssql-executor-client'
 const findUnique = db.tenant.findUnique as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
 
-function buildApp() {
+const tenantUserFind = vi.fn()
+
+/** Defaults to an Operations principal, so the pre-scoping tests mean "dispatcher". */
+function buildApp(roleNames: string[] = ['long_distance_dispatch']) {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'tenant-1')
     c.set('correlationId', 'corr-1')
+    c.set('userId', 'user-1')
+    c.set('principal', {
+      sub: 's',
+      tenantId: 'tenant-1',
+      roleNames,
+    } as AppEnv['Variables']['principal'])
+    c.set('db', { tenantUser: { findUnique: tenantUserFind } } as unknown as PrismaClient)
     await next()
   })
   app.get('/onprem/longhaul/activities', longhaulActivitiesListHandler)
@@ -85,6 +96,54 @@ function filtersQs(filters: unknown, extra: Record<string, unknown> = {}): strin
 describe('GET longhaul/activities (cloud-direct LIST)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  describe('driver scoping', () => {
+    it('dispatcher: no ownership predicate, no TripMaster join, client filters honoured', async () => {
+      withRows([])
+      await buildApp().request(
+        `/onprem/longhaul/activities${filtersQs({ operations_id: [{ value: 'OPS1' }] })}`,
+      )
+      expect(sentSql()).not.toContain('TripMaster AS')
+      expect(sentSql()).not.toContain('tm.driver_id')
+      expect(sentParams().map((p) => p.value)).toEqual(['OPS1'])
+      expect(tenantUserFind).not.toHaveBeenCalled()
+    })
+
+    it('driver: restricts to own assignment or own trip via a bound param', async () => {
+      tenantUserFind.mockResolvedValue({ longhaulDriverId: 4766 })
+      withRows([{ id: 1 }])
+      const res = await buildApp(['driver']).request('/onprem/longhaul/activities')
+      expect(res.status).toBe(200)
+      expect(sentSql()).toMatch(/LEFT JOIN TripMaster AS tm ON a\.TripMaster_id = tm\.id/)
+      expect(sentSql()).toMatch(/\(a\.assigned_driver_id = @p0 OR tm\.driver_id = @p0\)/)
+      expect(sentSql()).not.toContain('4766')
+      expect(sentParams()).toEqual([{ name: 'p0', value: 4766 }])
+    })
+
+    it('driver: scope is ANDed with client filters', async () => {
+      tenantUserFind.mockResolvedValue({ longhaulDriverId: 4766 })
+      withRows([])
+      await buildApp(['driver']).request(
+        `/onprem/longhaul/activities${filtersQs({ operations_id: [{ value: 'OPS1' }] })}`,
+      )
+      expect(sentParams()).toEqual([
+        { name: 'p0', value: 4766 },
+        { name: 'p1', value: 'OPS1' },
+      ])
+      expect(sentSql()).toMatch(
+        /WHERE \(a\.assigned_driver_id = @p0 OR tm\.driver_id = @p0\) AND s\.operations_id IN \(@p1\)/,
+      )
+    })
+
+    it('unmapped non-ops user: empty response and no query', async () => {
+      tenantUserFind.mockResolvedValue({ longhaulDriverId: null })
+      findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+      const res = await buildApp(['driver']).request('/onprem/longhaul/activities')
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ data: [], meta: { count: 0 } })
+      expect(executeSqlMock).not.toHaveBeenCalled()
+    })
   })
 
   describe('response envelope', () => {

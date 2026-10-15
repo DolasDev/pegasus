@@ -30,12 +30,27 @@ import { LONGHAUL_SHIPMENT_VIEW_COLUMNS } from '@pegasus/longhaul-contracts'
 const findUnique = db.tenant.findUnique as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
 
-function buildApp() {
+const tenantUserFind = vi.fn()
+
+interface AppOpts {
+  roleNames?: string[]
+  userId?: string
+}
+
+// Default caller is a dispatcher (Operations role) so pre-scoping tests keep
+// meaning "dispatcher": the read scope is `all`.
+function buildApp(opts: AppOpts = {}) {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'tenant-1')
     c.set('correlationId', 'corr-1')
+    c.set('principal', {
+      sub: 'sub-1',
+      roleNames: opts.roleNames ?? ['long_distance_dispatch'],
+    } as unknown as AppEnv['Variables']['principal'])
+    if (opts.userId) c.set('userId', opts.userId)
+    c.set('db', { tenantUser: { findUnique: tenantUserFind } } as never)
     await next()
   })
   app.get('/onprem/longhaul/shipments', longhaulShipmentsListHandler)
@@ -1195,5 +1210,72 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
       expect(res.status).toBe(200)
       expect(baseSql()).toContain('ORDER BY v_longhaul_shipments_v2.shipper_city ASC')
     })
+  })
+})
+
+describe('GET longhaul/shipments — driver read scoping', () => {
+  const DRIVER = { userId: 'user-1', roleNames: ['driver'] }
+  const q = (obj: unknown) => `?filters=${encodeURIComponent(JSON.stringify(obj))}`
+  const sqlOf = () => executeSqlMock.mock.calls[0]![1] as string
+  const paramsOf = () =>
+    (executeSqlMock.mock.calls[0]![2] as { params: Array<{ name: string; value: unknown }> }).params
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+  })
+
+  it('dispatcher query has no scope predicate', async () => {
+    await buildApp().request('/onprem/longhaul/shipments')
+    expect(sqlOf()).not.toContain('scopeDriverId')
+    expect(tenantUserFind).not.toHaveBeenCalled()
+  })
+
+  it('driver gets the activity-based EXISTS predicate with their id bound, with no filters', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/shipments')
+    expect(res.status).toBe(200)
+    expect(sqlOf()).toContain(
+      'EXISTS (SELECT 1 FROM LongDistanceDispatchActivity a LEFT JOIN TripMaster t ON a.TripMaster_id = t.id' +
+        ' WHERE a.order_num = v_longhaul_shipments_v2.order_num' +
+        ' AND (a.assigned_driver_id = @scopeDriverId OR t.driver_id = @scopeDriverId))',
+    )
+    expect(paramsOf()).toContainEqual({ name: 'scopeDriverId', value: 5 })
+  })
+
+  it('the predicate also applies with a short searchTerm', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    await buildApp(DRIVER).request('/onprem/longhaul/shipments?searchTerm=ab')
+    expect(sqlOf()).toContain('@scopeDriverId')
+  })
+
+  it('the predicate is ANDed with a long searchTerm and with filters', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    await buildApp(DRIVER).request('/onprem/longhaul/shipments?searchTerm=acme')
+    expect(sqlOf()).toContain('@scopeDriverId')
+    expect(sqlOf()).toContain('LIKE')
+    executeSqlMock.mockClear()
+    await buildApp(DRIVER).request(
+      `/onprem/longhaul/shipments${q({ filters: { order_num: [{ value: 1001 }] } })}`,
+    )
+    expect(sqlOf()).toContain('@scopeDriverId')
+    expect(sqlOf()).toContain('order_num IN (')
+  })
+
+  it('a client "assigned" filter cannot widen the scope', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5 })
+    await buildApp(DRIVER).request(
+      `/onprem/longhaul/shipments${q({ filters: { assigned: [{ value: 'No' }] } })}`,
+    )
+    expect(sqlOf()).toContain('@scopeDriverId')
+  })
+
+  it('unmapped non-ops user gets an empty list and no MSSQL query', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: null })
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/shipments')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ data: [], meta: { count: 0 } })
+    expect(executeSqlMock).not.toHaveBeenCalled()
   })
 })
