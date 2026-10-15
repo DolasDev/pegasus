@@ -21,12 +21,7 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 
 /** Status enum as it appears at the API boundary. Mirrors the Prisma enum. */
 export type WorkflowExecutionStatus =
-  | 'QUEUED'
-  | 'RUNNING'
-  | 'COMPLETED'
-  | 'FAILED'
-  | 'TIMED_OUT'
-  | 'CANCELLED'
+  'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'TIMED_OUT' | 'CANCELLED'
 
 /** Terminal statuses — no transitions out of these. */
 export const TERMINAL_STATUSES: ReadonlySet<WorkflowExecutionStatus> = new Set([
@@ -50,6 +45,11 @@ export type WorkflowExecutionRow = {
   errorMessage: string | null
   temporalWorkflowId: string | null
   temporalRunId: string | null
+  /**
+   * The tenant namespace this execution was started in (3b.2); null = the
+   * shared namespace. Internal routing data: never put in a response.
+   */
+  temporalNamespace: string | null
   /** Null for trigger-fired executions (triggerSource EVENT / SCHEDULE). */
   triggeredByUserId: string | null
   triggerSource: WorkflowExecutionTriggerSource
@@ -83,6 +83,7 @@ const EXECUTION_SELECT = {
   errorMessage: true,
   temporalWorkflowId: true,
   temporalRunId: true,
+  temporalNamespace: true,
   triggeredByUserId: true,
   triggerSource: true,
   triggeredByTriggerId: true,
@@ -130,6 +131,8 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
       input: Prisma.InputJsonValue
       /** Started in dry-run mode. Defaults false. */
       dryRun?: boolean
+      /** The tenant namespace it will start in; null/omitted = shared (3b.2). */
+      temporalNamespace?: string | null
     }): Promise<WorkflowExecutionRow> {
       return db.workflowExecution.create({
         data: {
@@ -141,6 +144,7 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
           temporalWorkflowId: input.temporalWorkflowId ?? null,
           input: input.input,
           dryRun: input.dryRun ?? false,
+          temporalNamespace: input.temporalNamespace ?? null,
           status: 'QUEUED',
           queuedAt: new Date(),
         },

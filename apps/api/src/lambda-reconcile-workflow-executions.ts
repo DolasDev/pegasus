@@ -23,11 +23,11 @@
 // ---------------------------------------------------------------------------
 
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
-import type { WorkflowExecutionStatusName } from '@temporalio/client'
+import type { Client, WorkflowExecutionStatusName } from '@temporalio/client'
 import type { Prisma } from '@prisma/client'
 import { db } from './db'
 import { createLogger } from './lib/logger'
-import { getTemporalClient } from './lib/temporal-client'
+import { withTemporalClient } from './lib/temporal-client'
 
 const logger = createLogger('pegasus-reconcile-workflow-executions')
 const cloudwatch = new CloudWatchClient({})
@@ -103,6 +103,59 @@ async function emitReconciledMetric(status: TerminalStatus): Promise<void> {
   )
 }
 
+type TemporalOutcome = {
+  temporalStatus: WorkflowExecutionStatusName
+  terminal: TerminalStatus | null
+  result?: Prisma.InputJsonValue
+  errorMessage?: string
+}
+
+/**
+ * Describes the run and, if it is terminal, pulls the payload the (crashed)
+ * worker would have written back. Read-only, so safe for withTemporalClient
+ * to repeat after an auth refusal.
+ */
+async function readTemporalOutcome(
+  client: Client,
+  temporalWorkflowId: string,
+  executionId: string,
+): Promise<TemporalOutcome> {
+  const handle = client.workflow.getHandle(temporalWorkflowId)
+  const description = await handle.describe()
+  const temporalStatus = description.status.name
+  const terminal = mapTemporalStatus(temporalStatus)
+  const outcome: TemporalOutcome = { temporalStatus, terminal }
+
+  if (terminal === 'COMPLETED') {
+    try {
+      const returnValue = await handle.result()
+      if (returnValue !== undefined && returnValue !== null) {
+        outcome.result = returnValue as Prisma.InputJsonValue
+      }
+    } catch (err) {
+      // Shouldn't happen for a COMPLETED run, but don't let a result
+      // fetch failure block flipping the status — better a terminal row
+      // with no result than a permanent orphan.
+      logger.warn('Failed to fetch result for COMPLETED execution', {
+        executionId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  } else if (terminal === 'FAILED') {
+    try {
+      await handle.result()
+    } catch (err) {
+      // result() throws WorkflowFailedError for a failed run; its message
+      // (and its `cause`) carry the failure detail.
+      const cause =
+        err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined
+      const base = err instanceof Error ? err.message : String(err)
+      outcome.errorMessage = cause ? `${base}: ${cause}` : base
+    }
+  }
+  return outcome
+}
+
 export async function handler(): Promise<{ scanned: number; reconciled: number }> {
   const cutoff = new Date(Date.now() - GRACE_MS)
 
@@ -121,7 +174,6 @@ export async function handler(): Promise<{ scanned: number; reconciled: number }
     return { scanned: 0, reconciled: 0 }
   }
 
-  const client = await getTemporalClient()
   let reconciled = 0
 
   for (const row of orphans) {
@@ -136,10 +188,13 @@ export async function handler(): Promise<{ scanned: number; reconciled: number }
     }
 
     try {
-      const handle = client.workflow.getHandle(row.temporalWorkflowId)
-      const description = await handle.describe()
-      const temporalStatus = description.status.name
-      const terminal = mapTemporalStatus(temporalStatus)
+      const temporalWorkflowId = row.temporalWorkflowId
+      // Ask the namespace the run was started in (3b.2): the row records it.
+      const read = await withTemporalClient(
+        { tenantId: row.tenantId, namespace: row.temporalNamespace },
+        (client) => readTemporalOutcome(client, temporalWorkflowId, row.id),
+      )
+      const { temporalStatus, terminal, result, errorMessage } = read
 
       if (terminal === null) {
         // Still RUNNING (or CONTINUED_AS_NEW) on Temporal's side — the worker
@@ -153,37 +208,6 @@ export async function handler(): Promise<{ scanned: number; reconciled: number }
           })
         }
         continue
-      }
-
-      // Pull the payload that the (crashed) worker would have written back.
-      let result: Prisma.InputJsonValue | undefined
-      let errorMessage: string | undefined
-      if (terminal === 'COMPLETED') {
-        try {
-          const returnValue = await handle.result()
-          if (returnValue !== undefined && returnValue !== null) {
-            result = returnValue as Prisma.InputJsonValue
-          }
-        } catch (err) {
-          // Shouldn't happen for a COMPLETED run, but don't let a result
-          // fetch failure block flipping the status — better a terminal row
-          // with no result than a permanent orphan.
-          logger.warn('Failed to fetch result for COMPLETED execution', {
-            executionId: row.id,
-            error: err instanceof Error ? err.message : String(err),
-          })
-        }
-      } else if (terminal === 'FAILED') {
-        try {
-          await handle.result()
-        } catch (err) {
-          // result() throws WorkflowFailedError for a failed run; its message
-          // (and its `cause`) carry the failure detail.
-          const cause =
-            err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined
-          const base = err instanceof Error ? err.message : String(err)
-          errorMessage = cause ? `${base}: ${cause}` : base
-        }
       }
 
       // Idempotent write: only flip rows still RUNNING. If the worker's

@@ -347,6 +347,57 @@ describe.skipIf(!hasDb)('TenantTemporalNamespace repository (integration)', () =
     expect(await repo.earliestReadyKeyExpiry()).toEqual(expiresAt)
   })
 
+  // 3b.2: a cut-over or migrating tenant holds a SERVED key — dropping it from
+  // rotation or the expiry gauge would let a routed tenant's key expire.
+  it.each(['DRAINING', 'ACTIVE', 'REVERTING'] as const)(
+    'a %s row keeps rotating and counts in the expiry gauge',
+    async (status) => {
+      await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
+      const expiresAt = new Date('2000-01-01T00:00:00.000Z')
+      await repo.storeKey(tenantId, { apiKeyId: 'key-1', token: 't', expiresAt })
+      await db.tenantTemporalNamespace.update({ where: { tenantId }, data: { status } })
+
+      expect(await repo.earliestReadyKeyExpiry()).toEqual(expiresAt)
+      const due = await repo.findDueForRotation(
+        { cutoff: new Date('2000-02-01T00:00:00.000Z'), now: new Date('2000-01-01T00:00:00.000Z') },
+        500,
+      )
+      expect(due.map((r) => r.tenantId)).toContain(tenantId)
+    },
+  )
+
+  it('findMigrating lists exactly the DRAINING and REVERTING rows', async () => {
+    await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
+    await repo.createProvisioning({
+      tenantId: otherTenantId,
+      namespace: 'pg-test-000000000002.chgel',
+      grpcAddress: GRPC,
+    })
+    const mine = async () =>
+      (await repo.findMigrating())
+        .map((r) => [r.tenantId, r.status])
+        .filter(([id]) => id === tenantId || id === otherTenantId)
+
+    await repo.markReady(tenantId)
+    await repo.markReady(otherTenantId)
+    expect(await mine()).toEqual([])
+
+    expect(await repo.transition(tenantId, ['READY'], 'DRAINING')).toBe(true)
+    await db.tenantTemporalNamespace.update({
+      where: { tenantId: otherTenantId },
+      data: { status: 'ACTIVE' },
+    })
+    expect(await mine()).toEqual([[tenantId, 'DRAINING']])
+
+    expect(await repo.transition(otherTenantId, ['ACTIVE'], 'REVERTING')).toBe(true)
+    expect((await mine()).sort()).toEqual(
+      [
+        [tenantId, 'DRAINING'],
+        [otherTenantId, 'REVERTING'],
+      ].sort(),
+    )
+  })
+
   it('claimLease holds the row for one action at a time, gated on status', async () => {
     await repo.createProvisioning({ tenantId, namespace: NAMESPACE, grpcAddress: GRPC })
     const t0 = new Date('2026-10-05T12:00:00.000Z')

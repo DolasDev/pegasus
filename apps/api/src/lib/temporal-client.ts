@@ -29,9 +29,31 @@
 //
 // Tests: import _setTemporalClientForTesting to inject a mock Client so tests
 // don't open a real connection.
+//
+// Tenant namespaces (Phase 3b.2)
+// ──────────────────────────────
+// A tenant that has been cut over runs its Automations in its OWN namespace,
+// reachable only with that tenant's namespace-scoped key (the shared key is
+// refused there, and the tenant key is refused everywhere else). So besides
+// the shared client above there is one cached client per tenant namespace,
+// built from `getDecryptedKey(tenantId)`. Callers never pick a client
+// themselves: they pass the namespace recorded on the execution row to
+// `withTemporalClient`, which
+//   * uses the shared client for a null / shared namespace;
+//   * otherwise loads the tenant's CURRENT key, refuses it if it belongs to a
+//     different namespace, and caches the client for TENANT_CLIENT_TTL_MS;
+//   * on PERMISSION_DENIED / UNAUTHENTICATED (a key rotated and then retired
+//     under a warm container) evicts the client, re-fetches the key and
+//     retries the call ONCE.
 // ---------------------------------------------------------------------------
 
-import { Client, Connection } from '@temporalio/client'
+import { Client, Connection, isGrpcServiceError } from '@temporalio/client'
+import { db } from '../db'
+import {
+  createTenantTemporalNamespaceRepository,
+  type DecryptedTemporalKey,
+} from '../repositories/tenant-temporal-namespace.repository'
+import { logger } from './logger'
 
 // ---------------------------------------------------------------------------
 // Workflow history summary (developer execution inspection)
@@ -204,6 +226,11 @@ function temporalNamespace(): string {
   return process.env['TEMPORAL_NAMESPACE'] || 'default'
 }
 
+/** The shared platform namespace (`pegasus-<env>.<account>`, or `default`). */
+export function sharedTemporalNamespace(): string {
+  return temporalNamespace()
+}
+
 /** Task queue name — e.g. `pegasus-stdlib-staging`. */
 export function temporalTaskQueue(): string {
   return process.env['TEMPORAL_TASK_QUEUE'] || 'pegasus-stdlib-dev'
@@ -277,4 +304,161 @@ export async function getTemporalClient(): Promise<Client> {
     _client = null
   })
   return _client
+}
+
+// ---------------------------------------------------------------------------
+// Tenant-namespace clients (Phase 3b.2)
+// ---------------------------------------------------------------------------
+
+/** Where an execution lives: its tenant, and the namespace on its row. */
+export type TemporalTarget = {
+  tenantId: string
+  /** `WorkflowExecution.temporalNamespace`. Null = the shared namespace. */
+  namespace: string | null
+}
+
+/** A connected tenant client plus the means to close it on eviction. */
+export type TenantTemporalConnection = { client: Client; close: () => Promise<void> }
+
+type TenantClientDeps = {
+  loadKey: (tenantId: string) => Promise<DecryptedTemporalKey | null>
+  connect: (key: DecryptedTemporalKey) => Promise<TenantTemporalConnection>
+  now: () => number
+}
+
+/** How long a warm container reuses a tenant client before re-reading the key. */
+export const TENANT_CLIENT_TTL_MS = 10 * 60 * 1000
+
+/** No row, or no stored key, for the tenant whose namespace was asked for. */
+export class TenantTemporalKeyUnavailableError extends Error {
+  constructor(tenantId: string, namespace: string) {
+    super(`No Temporal key for tenant ${tenantId} (namespace ${namespace})`)
+    this.name = 'TenantTemporalKeyUnavailableError'
+  }
+}
+
+const defaultTenantClientDeps: TenantClientDeps = {
+  loadKey: (tenantId) => createTenantTemporalNamespaceRepository(db).getDecryptedKey(tenantId),
+  async connect(key) {
+    const connection = await Connection.connect({
+      address: key.grpcAddress,
+      tls: true,
+      apiKey: key.apiKey,
+      metadata: { 'temporal-namespace': key.namespace },
+    })
+    return {
+      client: new Client({ connection, namespace: key.namespace }),
+      close: () => connection.close(),
+    }
+  },
+  now: () => Date.now(),
+}
+
+let tenantClientDeps: TenantClientDeps = defaultTenantClientDeps
+
+type TenantClientEntry = { pending: Promise<TenantTemporalConnection>; expiresAt: number }
+const tenantClients = new Map<string, TenantClientEntry>()
+
+/**
+ * Test injection hook: replaces the key loader / connector / clock and clears
+ * the tenant-client cache. `null` restores the real dependencies.
+ */
+export function _setTenantTemporalDepsForTesting(deps: Partial<TenantClientDeps> | null): void {
+  tenantClients.clear()
+  tenantClientDeps = deps ? { ...defaultTenantClientDeps, ...deps } : defaultTenantClientDeps
+}
+
+/** True for the shared namespace: a null row value, or the platform namespace itself. */
+export function isSharedTemporalNamespace(namespace: string | null | undefined): boolean {
+  return namespace === null || namespace === undefined || namespace === temporalNamespace()
+}
+
+// grpc status codes, named here rather than importing @grpc/grpc-js.
+const GRPC_PERMISSION_DENIED = 7
+const GRPC_UNAUTHENTICATED = 16
+
+/**
+ * PERMISSION_DENIED / UNAUTHENTICATED anywhere in the error's cause chain.
+ * The Temporal client wraps gRPC errors (`ServiceError` with the gRPC error
+ * as `cause`), so the code is rarely on the top-level error.
+ */
+export function isTemporalAuthError(err: unknown): boolean {
+  let current: unknown = err
+  for (let depth = 0; depth < 5 && current; depth++) {
+    if (
+      isGrpcServiceError(current) &&
+      (current.code === GRPC_PERMISSION_DENIED || current.code === GRPC_UNAUTHENTICATED)
+    ) {
+      return true
+    }
+    current = current instanceof Error ? current.cause : undefined
+  }
+  return false
+}
+
+async function evictTenantClient(namespace: string): Promise<void> {
+  const entry = tenantClients.get(namespace)
+  if (!entry) return
+  tenantClients.delete(namespace)
+  try {
+    await (await entry.pending).close()
+  } catch {
+    // A failed connect has nothing to close; a failed close changes nothing.
+  }
+}
+
+async function tenantClient(tenantId: string, namespace: string): Promise<Client> {
+  const now = tenantClientDeps.now()
+  const cached = tenantClients.get(namespace)
+  if (cached && cached.expiresAt > now) return (await cached.pending).client
+  if (cached) await evictTenantClient(namespace)
+
+  const deps = tenantClientDeps
+  const pending = (async () => {
+    const key = await deps.loadKey(tenantId)
+    if (!key) throw new TenantTemporalKeyUnavailableError(tenantId, namespace)
+    // Never connect with one namespace's key to another namespace: a row
+    // naming a namespace its tenant's key doesn't belong to is a bug.
+    if (key.namespace !== namespace) {
+      throw new Error(
+        `Temporal key for tenant ${tenantId} belongs to ${key.namespace}, not ${namespace}`,
+      )
+    }
+    return deps.connect(key)
+  })()
+  const entry: TenantClientEntry = { pending, expiresAt: now + TENANT_CLIENT_TTL_MS }
+  tenantClients.set(namespace, entry)
+  pending.catch(() => {
+    if (tenantClients.get(namespace) === entry) tenantClients.delete(namespace)
+  })
+  return (await pending).client
+}
+
+/**
+ * Runs `fn` with the Temporal client for `target`: the shared client for a
+ * null / shared namespace, else the tenant's namespace client. A tenant call
+ * refused for auth (a retired key in a warm cache) is retried ONCE on a
+ * freshly loaded key; a second refusal propagates. `fn` must be safe to
+ * repeat after an auth refusal; Temporal refuses before acting, so a start,
+ * describe or cancel that was refused did nothing.
+ */
+export async function withTemporalClient<T>(
+  target: TemporalTarget,
+  fn: (client: Client) => Promise<T>,
+): Promise<T> {
+  if (isSharedTemporalNamespace(target.namespace)) return fn(await getTemporalClient())
+  const namespace = target.namespace as string
+
+  const client = await tenantClient(target.tenantId, namespace)
+  try {
+    return await fn(client)
+  } catch (err) {
+    if (!isTemporalAuthError(err)) throw err
+    logger.warn('temporal.tenant_client.auth_refused_refetching', {
+      tenantId: target.tenantId,
+      namespace,
+    })
+    await evictTenantClient(namespace)
+    return fn(await tenantClient(target.tenantId, namespace))
+  }
 }

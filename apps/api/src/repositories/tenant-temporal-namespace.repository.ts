@@ -56,6 +56,39 @@ const SELECT = {
   updatedAt: true,
 } as const satisfies Prisma.TenantTemporalNamespaceSelect
 
+/**
+ * Statuses whose row holds a live key that must keep rotating (3b.2). A
+ * cut-over tenant (ACTIVE) and one mid-cutover or mid-rollback are as much in
+ * service as READY: dropping them from the rotation, retirement and gauge
+ * queries would let a routed tenant's key expire.
+ */
+export const KEY_HOLDING_STATUSES = [
+  'READY',
+  'DRAINING',
+  'ACTIVE',
+  'REVERTING',
+] as const satisfies readonly TenantTemporalNamespaceStatus[]
+
+/**
+ * Statuses in which tenant-runner starts are refused (409 TENANT_MIGRATING)
+ * and the tenant's EVENT outbox rows are held back: a drain in either
+ * direction.
+ */
+export const MIGRATING_STATUSES = [
+  'DRAINING',
+  'REVERTING',
+] as const satisfies readonly TenantTemporalNamespaceStatus[]
+
+/**
+ * Statuses in which the tenant's executions run in its OWN namespace, so the
+ * broker serves its key and runners use the scoped task definition: ACTIVE,
+ * and REVERTING (whose open executions are still in the tenant namespace).
+ */
+export const ROUTED_STATUSES = [
+  'ACTIVE',
+  'REVERTING',
+] as const satisfies readonly TenantTemporalNamespaceStatus[]
+
 export type CreateProvisioningResult =
   | { outcome: 'created'; row: TenantTemporalNamespaceRow }
   | { outcome: 'exists'; row: TenantTemporalNamespaceRow }
@@ -279,9 +312,23 @@ export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
     },
 
     /**
-     * READY rows whose current key expires before `cutoff` that can be
-     * rotated now: no previous key still in its grace period and no live
-     * lease. Rows whose last attempt failed (`lastError` set) come last, so a
+     * Rows mid-cutover or mid-rollback (DRAINING / REVERTING). `tenantIds`
+     * narrows it (tests share one database; production passes nothing).
+     */
+    async findMigrating(tenantIds?: string[]): Promise<TenantTemporalNamespaceRow[]> {
+      return db.tenantTemporalNamespace.findMany({
+        where: {
+          status: { in: [...MIGRATING_STATUSES] },
+          ...(tenantIds ? { tenantId: { in: tenantIds } } : {}),
+        },
+        select: SELECT,
+      })
+    },
+
+    /**
+     * Key-holding rows (KEY_HOLDING_STATUSES) whose current key expires
+     * before `cutoff` that can be rotated now: no previous key still in its
+     * grace period and no live lease. Rows whose last attempt failed (`lastError` set) come last, so a
      * row that keeps failing can't starve the others of the daily budget;
      * then soonest expiry first.
      */
@@ -291,7 +338,7 @@ export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
     ): Promise<TenantTemporalNamespaceRow[]> {
       return db.tenantTemporalNamespace.findMany({
         where: {
-          status: 'READY',
+          status: { in: [...KEY_HOLDING_STATUSES] },
           apiKeyExpiresAt: { lt: cutoff },
           previousApiKeyId: null,
           OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }],
@@ -302,10 +349,14 @@ export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
       })
     },
 
-    /** The soonest current-key expiry across READY rows; null when there are none. */
+    /**
+     * The soonest current-key expiry across key-holding rows
+     * (KEY_HOLDING_STATUSES, not just READY: a cut-over tenant's key matters
+     * most); null when there are none. Name kept for its callers.
+     */
     async earliestReadyKeyExpiry(): Promise<Date | null> {
       const agg = await db.tenantTemporalNamespace.aggregate({
-        where: { status: 'READY', apiKeyExpiresAt: { not: null } },
+        where: { status: { in: [...KEY_HOLDING_STATUSES] }, apiKeyExpiresAt: { not: null } },
         _min: { apiKeyExpiresAt: true },
       })
       return agg._min.apiKeyExpiresAt

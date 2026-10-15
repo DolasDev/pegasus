@@ -1379,6 +1379,33 @@ client.list_workflows(include_retired=True)                 # rows carry status
 - **Forks keep running.** A tenant's fork is its own row; the result's
   `forkCount` says how many exist.
 
+## Runs paused while your Automations move (`TENANT_MIGRATING`)
+
+The platform can move a tenant's Automations into their own isolated Temporal
+runtime (a dedicated namespace with its own key), and back. While a move is in
+progress, new runs are refused until the runs already in flight finish. That
+takes at most about 15 minutes, the execution cap. (0.50.0+)
+
+```python
+from pegasus_workflows import TenantMigrating
+
+try:
+    client.run_workflow(workflow_id, {"orderId": "123"})
+except TenantMigrating as err:
+    time.sleep(err.retry_after_seconds or 60)  # then try again
+```
+
+- **HTTP 409, `code="TENANT_MIGRATING"`,** with a `Retry-After` header, from
+  `POST /workflows/{id}/run` and `POST /workflows/{id}/executions/{id}/retry`
+  (`run_workflow`, `retry_execution`, and `pegasus-workflows run`). Dry runs are
+  paused too.
+- **Nothing was started,** so retrying is safe.
+- **Triggers lose nothing.** Event triggers' events wait and fire once the move
+  finishes. A schedule tick that falls inside the move is skipped, like any
+  missed tick (schedules never catch up).
+- **Your code doesn't change.** The same task queue, the same `from_runtime()`
+  client, the same broker: only where Temporal runs it changes.
+
 ## Deployment ledger — `deployments.toml`
 
 Automation ids are **environment-specific** — publishing the same Automation to QA and

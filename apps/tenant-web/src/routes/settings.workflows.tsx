@@ -126,6 +126,11 @@ function friendlyRunError(error: unknown): string {
   if (error.code === 'WORKFLOWS_DISABLED') {
     return 'Automation runs are currently disabled for your account. Contact your platform administrator.'
   }
+  if (error.code === 'TENANT_MIGRATING') {
+    // Phase 3b.2: transient — the account's Automations are moving to their
+    // own isolated runtime; in-flight runs finish first (≤ ~15 minutes).
+    return 'Your Automations are being moved to their own isolated runtime. New runs are paused until in-flight runs finish (about 15 minutes at most). Try again shortly.'
+  }
   return error.message || 'Failed to start run.'
 }
 

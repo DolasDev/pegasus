@@ -1679,6 +1679,34 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/workflows/{id}/run': {
+        post: {
+          operationId: 'runWorkflow',
+          summary: 'Start an execution of an automation (RunWorkflow)',
+          description:
+            'Body { input?: object, mode?: "dry_run" }. Starts a server-side execution and returns it (RUNNING once Temporal accepted the start). A dry run reads live but captures every mutation instead of performing it; only tenant-runner automations support it (422 DRY_RUN_UNSUPPORTED otherwise). ' +
+            'Limits on tenant-runner automations: 429 CONCURRENCY_LIMIT (5 queued/running) and 429 DAILY_QUOTA_EXCEEDED (resets at midnight UTC); dry runs count toward neither. ' +
+            '409 TENANT_MIGRATING (with Retry-After) while the platform moves the tenant’s automations to or from their own isolated Temporal namespace: new runs, dry runs included, are refused until in-flight runs finish (at most ~15 minutes); nothing was started, so retry. Event triggers lose nothing during a move; their events fire after it.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '201': { description: 'Execution started ({data: execution})' },
+            '400': { description: 'WORKFLOW_NOT_EXECUTABLE, or an invalid body' },
+            '403': {
+              description: 'WORKFLOW_MUST_FORK: fork a GLOBAL automation before running it',
+            },
+            '409': {
+              description:
+                'TENANT_MIGRATING: runs paused while the tenant’s automations move namespace; honour Retry-After',
+            },
+            '422': { description: 'DRY_RUN_UNSUPPORTED' },
+            '423': { description: 'WORKFLOWS_DISABLED for this tenant' },
+            '429': { description: 'CONCURRENCY_LIMIT | DAILY_QUOTA_EXCEEDED' },
+            '502': { description: 'TEMPORAL_START_FAILED' },
+          },
+        },
+      },
       '/api/v1/workflows/{id}/executions/{executionId}/cancel': {
         post: {
           operationId: 'cancelWorkflowExecution',
@@ -1702,7 +1730,13 @@ export function getOpenApiSpec() {
             { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
             { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
           ],
-          responses: { '201': { description: 'New execution started ({data: execution})' } },
+          responses: {
+            '201': { description: 'New execution started ({data: execution})' },
+            '409': {
+              description:
+                'Execution not in a retryable state, or TENANT_MIGRATING (runs paused while the tenant’s automations move namespace; honour Retry-After)',
+            },
+          },
         },
       },
       // Re-declared here (after the OPERATIONAL_READ_PATHS spread) to add the

@@ -20,7 +20,7 @@
 // ---------------------------------------------------------------------------
 
 import { randomUUID } from 'node:crypto'
-import { isGrpcDeadlineError, isGrpcServiceError, type Connection } from '@temporalio/client'
+import { Connection, isGrpcDeadlineError, isGrpcServiceError } from '@temporalio/client'
 
 /** Never used by real work: polling it can't steal a task. */
 export const READINESS_TASK_QUEUE = 'pegasus-provisioner-readiness-probe'
@@ -88,4 +88,28 @@ export async function namespaceKeyAuthorized(
   }
 
   return true
+}
+
+/**
+ * Opens a short-lived connection with `target.apiKey` to its namespace and
+ * runs `namespaceKeyAuthorized`. Used by the provisioner (is a new key ready?)
+ * and the cutover route (is the current key ready before routing to it?).
+ */
+export async function keyAuthorizedOnNamespace(target: {
+  namespace: string
+  grpcAddress: string
+  apiKey: string
+}): Promise<boolean> {
+  const connection = await Connection.connect({
+    address: target.grpcAddress,
+    tls: true,
+    apiKey: target.apiKey,
+    metadata: { 'temporal-namespace': target.namespace },
+    connectTimeout: 10_000,
+  })
+  try {
+    return await namespaceKeyAuthorized(connection, target.namespace)
+  } finally {
+    await connection.close()
+  }
 }

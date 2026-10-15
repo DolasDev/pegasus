@@ -52,8 +52,8 @@ def test_recognises_temporal_cloud() -> None:
     [
         "TENANT_ID",
         "ENV_NAME",
+        # Env mode (TEMPORAL_ADDRESS set) still requires the namespace.
         "TEMPORAL_NAMESPACE",
-        "TEMPORAL_ADDRESS",
         "PEGASUS_API_BASE_URL",
         "WORKFLOW_BROKER_TOKEN",
     ],
@@ -101,3 +101,47 @@ def test_tunables_parse_and_validate() -> None:
 def test_tunables_reject_non_positive_or_garbage(bad: str) -> None:
     with pytest.raises(ConfigError, match="RUNNER_IDLE_TIMEOUT_SECONDS"):
         load_config(_full_env() | {"RUNNER_IDLE_TIMEOUT_SECONDS": bad})
+
+
+# ---------------------------------------------------------------------------
+# Broker mode (Phase 3b.2): the scoped task definition carries no Temporal env
+# ---------------------------------------------------------------------------
+
+
+def _scoped_env() -> dict[str, str]:
+    env = _full_env()
+    for key in ("TEMPORAL_ADDRESS", "TEMPORAL_NAMESPACE"):
+        env.pop(key)
+    return env
+
+
+def test_env_mode_when_the_address_is_set() -> None:
+    config = load_config(_full_env())
+    assert config.uses_broker_credentials is False
+
+
+def test_broker_mode_when_no_temporal_env_at_all() -> None:
+    config = load_config(_scoped_env())
+    assert config.uses_broker_credentials is True
+    assert config.temporal_address == ""
+    assert config.temporal_namespace == ""
+    assert config.temporal_cloud_api_key == ""
+    # The queue name doesn't depend on the namespace: same queue, new namespace.
+    assert config.task_queue == f"pegasus-tenant-{TENANT_ID}-dev"
+    assert config.temporal_credentials_refresh_seconds == 1800
+
+
+@pytest.mark.parametrize(
+    "leftover",
+    [{"TEMPORAL_CLOUD_API_KEY": "eyJ.shared.key"}, {"TEMPORAL_NAMESPACE": "pegasus-prod"}],
+)
+def test_broker_mode_refuses_a_shared_temporal_setting_left_in_the_env(
+    leftover: dict[str, str],
+) -> None:
+    with pytest.raises(ConfigError, match="cross-wired"):
+        load_config(_scoped_env() | leftover)
+
+
+def test_refresh_interval_is_tunable() -> None:
+    config = load_config(_scoped_env() | {"RUNNER_TEMPORAL_CREDENTIALS_REFRESH_SECONDS": "60"})
+    assert config.temporal_credentials_refresh_seconds == 60

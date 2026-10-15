@@ -48,7 +48,13 @@ const {
   mockTenantFindUnique,
   mockEventTypeFindMany,
   mockDomainEventCreate,
+  mockNamespaceFindMany,
+  mockNamespaceFindUnique,
+  mockNamespaceUpdateMany,
 } = vi.hoisted(() => ({
+  mockNamespaceFindMany: vi.fn(async (): Promise<unknown[]> => []),
+  mockNamespaceFindUnique: vi.fn(async (): Promise<unknown> => null),
+  mockNamespaceUpdateMany: vi.fn(async () => ({ count: 1 })),
   mockSend: vi.fn(),
   putMetricDataInputs: [] as unknown[],
   mockDomainEventFindMany: vi.fn(),
@@ -105,6 +111,13 @@ vi.mock('../db', () => {
     // Kill-switch check in start-workflow-execution.ts.
     tenant: {
       findUnique: mockTenantFindUnique,
+    },
+    // Phase 3b.2: migrating tenants (findMany) and the run path's per-tenant
+    // namespace lookup (findUnique). None by default.
+    tenantTemporalNamespace: {
+      findMany: mockNamespaceFindMany,
+      findUnique: mockNamespaceFindUnique,
+      updateMany: mockNamespaceUpdateMany,
     },
     // The shared run path wraps its insert in a transaction; run the callback
     // against the same fake so the model mocks above resolve.
@@ -1137,5 +1150,79 @@ describe('domain-condition derivation', () => {
 
     expect(out.derived).toBe(1) // the second succeeded
     expect(out.dispatched).toBe(1)
+  })
+})
+
+// ── Phase 3b.2: tenant Temporal-namespace migrations ─────────────────────
+
+describe('tenant namespace migrations (3b.2)', () => {
+  const drainingRow = {
+    tenantId: 'tenant-1',
+    namespace: 'pg-test-tenant1.acct',
+    status: 'DRAINING',
+  }
+
+  afterEach(() => {
+    // clearAllMocks keeps implementations: restore the no-migration defaults.
+    mockNamespaceFindMany.mockResolvedValue([])
+    mockNamespaceFindUnique.mockResolvedValue(null)
+  })
+
+  it('excludes a migrating tenant’s events AT THE QUERY — never loaded, never parked', async () => {
+    mockNamespaceFindMany.mockResolvedValue([drainingRow])
+    // Still draining: one open shared-namespace execution.
+    mockExecutionCount.mockResolvedValueOnce(1)
+
+    await handler()
+
+    expect(mockDomainEventFindMany).toHaveBeenCalledWith({
+      where: { dispatchedAt: null, tenantId: { notIn: ['tenant-1'] } },
+      orderBy: { occurredAt: 'asc' },
+      take: 100,
+    })
+    // The drain did not finish: no transition.
+    expect(mockNamespaceUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it('finishes a drain (DRAINING → ACTIVE) before the event phase once nothing is open', async () => {
+    mockNamespaceFindMany
+      .mockResolvedValueOnce([drainingRow]) // the drain pass
+      .mockResolvedValueOnce([]) // the event-phase exclusion, after the flip
+    mockExecutionCount.mockResolvedValueOnce(0)
+
+    await handler()
+
+    expect(mockNamespaceUpdateMany).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-1', status: { in: ['DRAINING'] } },
+      data: { status: 'ACTIVE', lastError: null },
+    })
+    // Settled this tick, so its events are no longer excluded.
+    expect(mockDomainEventFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { dispatchedAt: null } }),
+    )
+  })
+
+  it('a tenant that starts migrating MID-TICK leaves its event undispatched for redelivery', async () => {
+    // Not migrating when the events were loaded …
+    mockNamespaceFindMany.mockResolvedValue([])
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // … but DRAINING by the time the run path reads its namespace row.
+    mockNamespaceFindUnique.mockResolvedValueOnce(drainingRow)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(out.dispatched).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    // NOT stamped: the event must fire once the migration settles.
+    expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'TENANT_MIGRATING' }],
+      }),
+    )
   })
 })

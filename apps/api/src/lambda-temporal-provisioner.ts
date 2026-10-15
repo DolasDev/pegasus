@@ -29,11 +29,10 @@ import {
   PutSecretValueCommand,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager'
-import { Connection } from '@temporalio/client'
 import { db } from './db'
 import { createLogger } from './lib/logger'
 import { createTemporalCloudOpsClient } from './lib/temporal-cloud-ops'
-import { namespaceKeyAuthorized } from './lib/temporal-namespace-readiness'
+import { keyAuthorizedOnNamespace } from './lib/temporal-namespace-readiness'
 import {
   runTemporalProvisioner,
   type KeyMetric,
@@ -66,29 +65,6 @@ async function readProvisionerSecret(secretArn: string): Promise<ProvisionerSecr
     throw new Error('provisioner secret has no apiKey field')
   }
   return parsed as ProvisionerSecret
-}
-
-/**
- * True once the tenant's own key is authorized on its namespace for every API
- * a runner needs (see lib/temporal-namespace-readiness.ts).
- */
-async function checkReady(target: {
-  namespace: string
-  grpcAddress: string
-  apiKey: string
-}): Promise<boolean> {
-  const connection = await Connection.connect({
-    address: target.grpcAddress,
-    tls: true,
-    apiKey: target.apiKey,
-    metadata: { 'temporal-namespace': target.namespace },
-    connectTimeout: 10_000,
-  })
-  try {
-    return await namespaceKeyAuthorized(connection, target.namespace)
-  } finally {
-    await connection.close()
-  }
 }
 
 /**
@@ -146,7 +122,7 @@ export async function handler(event: unknown): Promise<ProvisionerResult> {
     repo: createTenantTemporalNamespaceRepository(db),
     cloud: createTemporalCloudOpsClient({ apiKey: secret.apiKey, env, logger }),
     env,
-    checkReady,
+    checkReady: keyAuthorizedOnNamespace,
     ownKey: {
       recordedKeyId: async () => (typeof secret['keyId'] === 'string' ? secret['keyId'] : null),
       // A fresh client on the NEW token: proves the token itself authenticates.

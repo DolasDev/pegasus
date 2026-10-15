@@ -32,7 +32,11 @@ from .artifacts import (
     prepare_workflow,
     select_latest,
 )
-from .broker_client import TenantBrokerClient
+from .broker_client import (
+    TemporalCredentials,
+    TemporalCredentialsUnavailable,
+    TenantBrokerClient,
+)
 from .config import RunnerConfig, load_config
 from .executor import TenantCodeExecutor
 from .hardening import set_non_dumpable
@@ -40,22 +44,37 @@ from .idle import IdleTracker, run_idle_watchdog
 from .logging_setup import configure_logging
 from .preparer import WorkflowPreparer
 from .proxy import build_registrations
+from .temporal_credentials import run_credentials_refresh
 
 log = logging.getLogger("pegasus_tenant_runner")
 
 
-def _base_log_context(config: RunnerConfig) -> dict[str, str]:
+def _base_log_context(config: RunnerConfig, namespace: str | None = None) -> dict[str, str]:
     return {
         "env": config.env_name,
         "tenant_id": config.tenant_id,
-        "namespace": config.temporal_namespace,
+        "namespace": namespace or config.temporal_namespace,
         "task_queue": config.task_queue,
     }
 
 
-async def build_temporal_client(config: RunnerConfig) -> Client:
-    """Connect to Temporal — Cloud (API key ⇒ TLS) or local dev (no auth)."""
+async def build_temporal_client(
+    config: RunnerConfig, credentials: TemporalCredentials | None = None
+) -> Client:
+    """Connect to Temporal.
+
+    Broker mode (``credentials`` given, Phase 3b.2): the tenant's own namespace
+    with its namespace-scoped key (API key ⇒ TLS). Env mode: Cloud (API key ⇒
+    TLS) or local dev (no auth).
+    """
     identity = f"pegasus-tenant-runner-{config.tenant_id}-{config.env_name}"
+    if credentials is not None:
+        return await Client.connect(
+            credentials.address,
+            namespace=credentials.namespace,
+            api_key=credentials.api_key,
+            identity=identity,
+        )
     if config.uses_temporal_cloud:
         return await Client.connect(
             config.temporal_address,
@@ -126,13 +145,31 @@ async def run_runner(config: RunnerConfig) -> None:
     base = _base_log_context(config)
     log.info(
         "runner.starting",
-        extra={**base, "uses_temporal_cloud": config.uses_temporal_cloud},
+        extra={
+            **base,
+            "uses_temporal_cloud": config.uses_temporal_cloud,
+            "uses_broker_credentials": config.uses_broker_credentials,
+        },
     )
 
     broker = TenantBrokerClient(
         api_base_url=config.pegasus_api_base_url,
         broker_token=config.workflow_broker_token,
     )
+
+    # Broker mode (Phase 3b.2): fetch the tenant's own namespace + key FIRST,
+    # before any artifact work. A 404 means the tenant isn't routed to its own
+    # namespace (a launch that raced a rollback): nothing to poll, exit 0 like
+    # the no-workflows case. The Needed-vs-Running alarm surfaces a loop.
+    credentials: TemporalCredentials | None = None
+    if config.uses_broker_credentials:
+        try:
+            credentials = await asyncio.to_thread(broker.fetch_temporal_credentials)
+        except TemporalCredentialsUnavailable:
+            log.warning("runner.temporal_credentials_unavailable", extra=base)
+            return
+        base = _base_log_context(config, credentials.namespace)
+        log.info("runner.temporal_credentials_fetched", extra=base)
 
     prepared, listed_count = await asyncio.to_thread(prepare_all, config, broker)
     if listed_count == 0:
@@ -168,7 +205,7 @@ async def run_runner(config: RunnerConfig) -> None:
         execution_timeout_seconds=config.execution_timeout_seconds,
     )
 
-    client = await build_temporal_client(config)
+    client = await build_temporal_client(config, credentials)
     log.info(
         "runner.connected",
         extra={
@@ -210,11 +247,26 @@ async def run_runner(config: RunnerConfig) -> None:
 
     drain_task = asyncio.create_task(_drain_on_shutdown())
 
+    background = [drain_task, watchdog_task]
+    if credentials is not None:
+        background.append(
+            asyncio.create_task(
+                run_credentials_refresh(
+                    broker=broker,
+                    client=client,
+                    current=credentials,
+                    interval_seconds=config.temporal_credentials_refresh_seconds,
+                    shutdown_requested=shutdown_requested,
+                    log_context=base,
+                )
+            )
+        )
+
     log.info("runner.polling", extra=base)
     try:
         await worker.run()
     finally:
-        for task in (drain_task, watchdog_task):
+        for task in background:
             if not task.done():
                 task.cancel()
                 try:

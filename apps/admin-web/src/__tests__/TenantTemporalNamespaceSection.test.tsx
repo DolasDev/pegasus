@@ -9,6 +9,8 @@ vi.mock('@/api/temporal-namespace', () => ({
   provisionTemporalNamespace: vi.fn(),
   rotateTemporalNamespaceKey: vi.fn(),
   deprovisionTemporalNamespace: vi.fn(),
+  cutoverTemporalNamespace: vi.fn(),
+  rollbackTemporalNamespace: vi.fn(),
 }))
 vi.mock('@/auth/cognito', () => ({ getAccessToken: () => 'tok-123' }))
 vi.mock('@/config', () => ({ getConfig: () => ({ apiUrl: 'https://api.test' }) }))
@@ -18,6 +20,8 @@ import {
   provisionTemporalNamespace,
   rotateTemporalNamespaceKey,
   deprovisionTemporalNamespace,
+  cutoverTemporalNamespace,
+  rollbackTemporalNamespace,
 } from '@/api/temporal-namespace'
 
 const TENANT = 'a90b22bc-4393-4ccc-8ddd-eeeeeeeeffff'
@@ -54,7 +58,11 @@ beforeEach(() => {
 
 describe('TenantTemporalNamespaceSection', () => {
   it('says provisioning is not configured and disables the button', async () => {
-    vi.mocked(getTemporalNamespace).mockResolvedValue({ data: null, configured: false })
+    vi.mocked(getTemporalNamespace).mockResolvedValue({
+      data: null,
+      configured: false,
+      scopedRunnerConfigured: false,
+    })
     renderSection()
     expect(await screen.findByTestId('temporal-namespace-not-configured')).toHaveTextContent(
       'Temporal namespace provisioning is not configured for this environment',
@@ -63,7 +71,11 @@ describe('TenantTemporalNamespaceSection', () => {
   })
 
   it('provisions a tenant with no namespace', async () => {
-    vi.mocked(getTemporalNamespace).mockResolvedValue({ data: null, configured: true })
+    vi.mocked(getTemporalNamespace).mockResolvedValue({
+      data: null,
+      configured: true,
+      scopedRunnerConfigured: true,
+    })
     vi.mocked(provisionTemporalNamespace).mockResolvedValue({
       data: ns({ status: 'PROVISIONING', step: null }),
     })
@@ -75,7 +87,11 @@ describe('TenantTemporalNamespaceSection', () => {
   })
 
   it('shows a READY namespace with Rotate key and Deprovision', async () => {
-    vi.mocked(getTemporalNamespace).mockResolvedValue({ data: ns(), configured: true })
+    vi.mocked(getTemporalNamespace).mockResolvedValue({
+      data: ns(),
+      configured: true,
+      scopedRunnerConfigured: true,
+    })
     vi.mocked(rotateTemporalNamespaceKey).mockResolvedValue({ data: ns() })
     renderSection()
     expect(await screen.findByTestId('temporal-namespace-status')).toHaveTextContent('Ready')
@@ -87,7 +103,11 @@ describe('TenantTemporalNamespaceSection', () => {
   })
 
   it('asks for confirmation in the page before deprovisioning', async () => {
-    vi.mocked(getTemporalNamespace).mockResolvedValue({ data: ns(), configured: true })
+    vi.mocked(getTemporalNamespace).mockResolvedValue({
+      data: ns(),
+      configured: true,
+      scopedRunnerConfigured: true,
+    })
     vi.mocked(deprovisionTemporalNamespace).mockResolvedValue({
       data: ns({ status: 'DEPROVISIONING' }),
     })
@@ -108,6 +128,7 @@ describe('TenantTemporalNamespaceSection', () => {
     vi.mocked(getTemporalNamespace).mockResolvedValue({
       data: ns({ status: 'FAILED', lastError: 'CloudOpsAuthError: denied' }),
       configured: true,
+      scopedRunnerConfigured: true,
     })
     vi.mocked(provisionTemporalNamespace).mockResolvedValue({
       data: ns({ status: 'PROVISIONING' }),
@@ -125,6 +146,7 @@ describe('TenantTemporalNamespaceSection', () => {
     vi.mocked(getTemporalNamespace).mockResolvedValue({
       data: ns({ status: 'FAILED', busy: true }),
       configured: true,
+      scopedRunnerConfigured: true,
     })
     renderSection()
     expect(await screen.findByRole('button', { name: 'Retry provisioning' })).toBeDisabled()
@@ -135,9 +157,84 @@ describe('TenantTemporalNamespaceSection', () => {
     vi.mocked(getTemporalNamespace).mockResolvedValue({
       data: ns({ status: 'PROVISIONING', step: 'namespace_created' }),
       configured: true,
+      scopedRunnerConfigured: true,
     })
     renderSection()
     expect(await screen.findByText(/step: namespace_created/)).toBeInTheDocument()
     expect(screen.queryByRole('button')).toBeNull()
+  })
+})
+
+describe('TenantTemporalNamespaceSection — routing (3b.2)', () => {
+  const state = (overrides: Partial<TemporalNamespace>, scopedRunnerConfigured = true) => ({
+    data: ns(overrides),
+    configured: true,
+    scopedRunnerConfigured,
+  })
+
+  it('READY says Automations still run in the shared namespace, and cuts over after a confirm', async () => {
+    vi.mocked(getTemporalNamespace).mockResolvedValue(state({}))
+    vi.mocked(cutoverTemporalNamespace).mockResolvedValue({ data: ns({ status: 'DRAINING' }) })
+    renderSection()
+    expect(await screen.findByTestId('temporal-namespace-routing')).toHaveTextContent(
+      'shared platform namespace',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cut over' }))
+    expect(cutoverTemporalNamespace).not.toHaveBeenCalled()
+    expect(screen.getByTestId('temporal-namespace-confirm-cutover')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, cut over' }))
+    await waitFor(() => expect(cutoverTemporalNamespace).toHaveBeenCalledWith(TENANT))
+  })
+
+  it('disables Cut over, and says why, when the scoped runner is not deployed', async () => {
+    vi.mocked(getTemporalNamespace).mockResolvedValue(state({}, false))
+    renderSection()
+    expect(await screen.findByRole('button', { name: 'Cut over' })).toBeDisabled()
+    expect(screen.getByTestId('temporal-namespace-no-scoped-runner')).toBeInTheDocument()
+  })
+
+  it('DRAINING shows what it is waiting for, offers Cancel cutover, and no Deprovision', async () => {
+    vi.mocked(getTemporalNamespace).mockResolvedValue(
+      state({ status: 'DRAINING', openExecutions: 2 }),
+    )
+    vi.mocked(rollbackTemporalNamespace).mockResolvedValue({ data: ns() })
+    renderSection()
+    expect(await screen.findByTestId('temporal-namespace-status')).toHaveTextContent('Cutting over')
+    expect(screen.getByTestId('temporal-namespace-routing')).toHaveTextContent(
+      'Waiting for 2 open runs to finish',
+    )
+    expect(screen.queryByRole('button', { name: 'Deprovision' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel cutover' }))
+    await waitFor(() => expect(rollbackTemporalNamespace).toHaveBeenCalledWith(TENANT))
+  })
+
+  it('ACTIVE runs here, still rotates, and rolls back after a confirm; no Deprovision', async () => {
+    vi.mocked(getTemporalNamespace).mockResolvedValue(state({ status: 'ACTIVE' }))
+    vi.mocked(rollbackTemporalNamespace).mockResolvedValue({ data: ns({ status: 'REVERTING' }) })
+    renderSection()
+    expect(await screen.findByTestId('temporal-namespace-routing')).toHaveTextContent(
+      'Automations run in this namespace',
+    )
+    expect(screen.getByRole('button', { name: 'Rotate key' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Deprovision' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Roll back' }))
+    expect(rollbackTemporalNamespace).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, roll back' }))
+    await waitFor(() => expect(rollbackTemporalNamespace).toHaveBeenCalledWith(TENANT))
+  })
+
+  it('REVERTING shows the drain and offers neither cutover nor rollback', async () => {
+    vi.mocked(getTemporalNamespace).mockResolvedValue(
+      state({ status: 'REVERTING', openExecutions: 1 }),
+    )
+    renderSection()
+    expect(await screen.findByTestId('temporal-namespace-routing')).toHaveTextContent(
+      'Waiting for 1 open run to finish',
+    )
+    expect(screen.queryByRole('button', { name: 'Cut over' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Roll back' })).toBeNull()
   })
 })

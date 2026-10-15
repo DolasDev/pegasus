@@ -30,8 +30,13 @@ import {
 } from '../../lib/temporal-provisioner-invoke'
 import {
   createTenantTemporalNamespaceRepository,
+  KEY_HOLDING_STATUSES,
+  MIGRATING_STATUSES,
   type TenantTemporalNamespaceRow,
 } from '../../repositories/tenant-temporal-namespace.repository'
+import { loadTenantRunnerConfig } from '../../lib/tenant-runner'
+import { keyAuthorizedOnNamespace } from '../../lib/temporal-namespace-readiness'
+import { countOpenTenantRunnerExecutions } from '../../lib/temporal-namespace-cutover'
 
 export const adminTemporalNamespaceRouter = new Hono<AdminEnv>()
 
@@ -146,6 +151,11 @@ async function start(
   return c.json({ data: toDto(row) }, 202)
 }
 
+/** The scoped runner task definition is deployed here (3b.2 cutover prerequisite). */
+function scopedRunnerConfigured(): boolean {
+  return loadTenantRunnerConfig()?.scopedTaskDefinition != null
+}
+
 async function tenantExists(tenantId: string): Promise<boolean> {
   return (await db.tenant.findUnique({ where: { id: tenantId }, select: { id: true } })) !== null
 }
@@ -159,9 +169,19 @@ adminTemporalNamespaceRouter.get('/', async (c) => {
     return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
   }
   const row = await repo.findByTenant(tenantId)
+  // While a drain runs, how many executions it is still waiting for.
+  const openExecutions =
+    row && (MIGRATING_STATUSES as readonly string[]).includes(row.status)
+      ? await countOpenTenantRunnerExecutions(
+          db,
+          tenantId,
+          row.status === 'DRAINING' ? null : row.namespace,
+        )
+      : null
   return c.json({
-    data: row ? toDto(row) : null,
+    data: row ? { ...toDto(row), openExecutions } : null,
     configured: temporalProvisionerFunctionName() !== null,
+    scopedRunnerConfigured: scopedRunnerConfigured(),
   })
 })
 
@@ -187,6 +207,10 @@ adminTemporalNamespaceRouter.post('/', async (c) => {
 
   switch (current.status) {
     case 'READY':
+    case 'DRAINING':
+    case 'ACTIVE':
+    case 'REVERTING':
+      // Already provisioned (and possibly routed): nothing to do.
       return c.json({ data: toDto(current) })
     case 'DEPROVISIONING':
       return conflict(c, current, 'provision')
@@ -219,15 +243,19 @@ adminTemporalNamespaceRouter.post('/rotate-key', async (c) => {
   const current = await repo.findByTenant(tenantId)
   if (!current)
     return c.json({ error: 'No Temporal namespace for this tenant', code: 'NOT_FOUND' }, 404)
-  if (current.status !== 'READY') return conflict(c, current, 'rotate the key')
+  // Any status holding a served key rotates, a cut-over tenant above all.
+  if (!(KEY_HOLDING_STATUSES as readonly string[]).includes(current.status)) {
+    return conflict(c, current, 'rotate the key')
+  }
 
   await audit(c, 'ROTATE_TEMPORAL_NAMESPACE_KEY', tenantId, current, current)
   return start(c, 'rotate', tenantId, current)
 })
 
 // ---------------------------------------------------------------------------
-// POST /deprovision — READY or FAILED only (3b.2 adds ACTIVE, which must
-// never be deprovisioned without a cutover back first).
+// POST /deprovision — READY or FAILED only. A routed (ACTIVE) or migrating
+// (DRAINING / REVERTING) tenant must be rolled back to READY first: its
+// executions live, or are about to live, in the namespace.
 // ---------------------------------------------------------------------------
 adminTemporalNamespaceRouter.post('/deprovision', async (c) => {
   const tenantId = c.req.param('tenantId')!
@@ -254,4 +282,130 @@ adminTemporalNamespaceRouter.post('/deprovision', async (c) => {
   const next = (await repo.findByTenant(tenantId))!
   await audit(c, 'DEPROVISION_TEMPORAL_NAMESPACE', tenantId, current, next)
   return start(c, 'deprovision', tenantId, next)
+})
+
+// ---------------------------------------------------------------------------
+// POST /cutover — READY → DRAINING (Phase 3b.2)
+//
+// Starts routing the tenant's Automations to its own namespace. New
+// tenant-runner starts are refused (409 TENANT_MIGRATING) from now on; the
+// trigger dispatcher moves the row to ACTIVE once the tenant's open
+// shared-namespace executions finish (lib/temporal-namespace-cutover.ts).
+//
+// Refused unless everything an ACTIVE tenant depends on is in place: the
+// scoped runner task definition is deployed here (503), no provisioner run
+// holds the row (409), and the tenant's current key is authorized on its
+// namespace for every API a runner needs (409 KEY_NOT_READY). Idempotent: a
+// row already DRAINING or ACTIVE answers 200 with itself.
+// ---------------------------------------------------------------------------
+adminTemporalNamespaceRouter.post('/cutover', async (c) => {
+  const tenantId = c.req.param('tenantId')!
+  if (!(await tenantExists(tenantId))) {
+    return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
+  }
+  const current = await repo.findByTenant(tenantId)
+  if (!current)
+    return c.json({ error: 'No Temporal namespace for this tenant', code: 'NOT_FOUND' }, 404)
+  if (current.status === 'DRAINING' || current.status === 'ACTIVE') {
+    return c.json({ data: toDto(current) })
+  }
+  if (current.status !== 'READY') return conflict(c, current, 'cut over')
+  if (leaseHeld(current)) {
+    return c.json(
+      {
+        error: 'Cannot cut over while a provisioner run holds the namespace; try again shortly',
+        code: 'CONFLICT',
+        data: toDto(current),
+      },
+      409,
+    )
+  }
+
+  if (!scopedRunnerConfigured()) {
+    return c.json(
+      {
+        error:
+          'The scoped tenant-runner task definition is not deployed in this environment, so a cut-over tenant could not run',
+        code: 'SCOPED_RUNNER_NOT_CONFIGURED',
+      },
+      503,
+    )
+  }
+
+  let authorized: boolean
+  try {
+    const key = await repo.getDecryptedKey(tenantId)
+    authorized = key !== null && (await keyAuthorizedOnNamespace(key))
+  } catch (err) {
+    // Only the error's name: never risk echoing key material.
+    logger.error('admin.temporal_namespace.cutover_key_check_failed', {
+      tenantId,
+      errorName: err instanceof Error ? err.name : 'unknown',
+    })
+    return c.json(
+      { error: 'Could not check the namespace key on Temporal Cloud', code: 'KEY_CHECK_FAILED' },
+      502,
+    )
+  }
+  if (!authorized) {
+    return c.json(
+      {
+        error:
+          'The namespace key is not yet authorized for every API a runner needs. Try again in a few minutes.',
+        code: 'KEY_NOT_READY',
+        data: toDto(current),
+      },
+      409,
+    )
+  }
+
+  if (!(await repo.transition(tenantId, ['READY'], 'DRAINING'))) {
+    return conflict(c, (await repo.findByTenant(tenantId)) ?? current, 'cut over')
+  }
+  const next = (await repo.findByTenant(tenantId))!
+  await audit(c, 'CUTOVER_TEMPORAL_NAMESPACE', tenantId, current, next)
+  logger.info('admin.temporal_namespace.cutover_started', {
+    audit: true,
+    tenantId,
+    namespace: next.namespace,
+  })
+  return c.json({ data: toDto(next) })
+})
+
+// ---------------------------------------------------------------------------
+// POST /rollback — back to the shared namespace (Phase 3b.2)
+//
+//   ACTIVE   → REVERTING: starts refused while the tenant's open executions in
+//                         its own namespace finish; the dispatcher then moves
+//                         the row to READY.
+//   DRAINING → READY:     cancels a cutover still draining. Nothing has run in
+//                         the tenant namespace yet, so no drain is needed.
+// Idempotent: REVERTING answers 200 with itself.
+// ---------------------------------------------------------------------------
+adminTemporalNamespaceRouter.post('/rollback', async (c) => {
+  const tenantId = c.req.param('tenantId')!
+  if (!(await tenantExists(tenantId))) {
+    return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
+  }
+  const current = await repo.findByTenant(tenantId)
+  if (!current)
+    return c.json({ error: 'No Temporal namespace for this tenant', code: 'NOT_FOUND' }, 404)
+  if (current.status === 'REVERTING') return c.json({ data: toDto(current) })
+
+  const to =
+    current.status === 'ACTIVE' ? 'REVERTING' : current.status === 'DRAINING' ? 'READY' : null
+  if (!to) return conflict(c, current, 'roll back')
+  if (!(await repo.transition(tenantId, [current.status], to))) {
+    return conflict(c, (await repo.findByTenant(tenantId)) ?? current, 'roll back')
+  }
+  const next = (await repo.findByTenant(tenantId))!
+  await audit(c, 'ROLLBACK_TEMPORAL_NAMESPACE', tenantId, current, next)
+  logger.info('admin.temporal_namespace.rollback_started', {
+    audit: true,
+    tenantId,
+    namespace: next.namespace,
+    from: current.status,
+    to,
+  })
+  return c.json({ data: toDto(next) })
 })

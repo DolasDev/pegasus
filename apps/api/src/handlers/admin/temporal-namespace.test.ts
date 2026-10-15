@@ -8,7 +8,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { AdminEnv } from '../../types'
 
-const { mockDb, mockRepo, mockInvoke, mockAudit } = vi.hoisted(() => ({
+const {
+  mockDb,
+  mockRepo,
+  mockInvoke,
+  mockAudit,
+  mockRunnerConfig,
+  mockKeyAuthorized,
+  mockCountOpen,
+} = vi.hoisted(() => ({
   mockDb: {
     tenant: { findUnique: vi.fn() },
     $transaction: vi.fn(),
@@ -18,15 +26,31 @@ const { mockDb, mockRepo, mockInvoke, mockAudit } = vi.hoisted(() => ({
     createProvisioning: vi.fn(),
     transition: vi.fn(),
     markFailed: vi.fn(),
+    getDecryptedKey: vi.fn(),
   },
+  mockRunnerConfig: vi.fn(),
+  mockKeyAuthorized: vi.fn(),
+  mockCountOpen: vi.fn(),
   mockInvoke: vi.fn(),
   mockAudit: vi.fn(),
 }))
 
 vi.mock('../../db', () => ({ db: mockDb }))
 vi.mock('./audit', () => ({ writeAuditLog: mockAudit }))
-vi.mock('../../repositories/tenant-temporal-namespace.repository', () => ({
+vi.mock('../../repositories/tenant-temporal-namespace.repository', async (importOriginal) => ({
+  // Real status sets, mocked repository.
+  ...(await importOriginal<Record<string, unknown>>()),
   createTenantTemporalNamespaceRepository: () => mockRepo,
+}))
+// 3b.2 cutover prerequisites: the scoped runner, the key check, the drain count.
+vi.mock('../../lib/tenant-runner', () => ({
+  loadTenantRunnerConfig: () => mockRunnerConfig(),
+}))
+vi.mock('../../lib/temporal-namespace-readiness', () => ({
+  keyAuthorizedOnNamespace: mockKeyAuthorized,
+}))
+vi.mock('../../lib/temporal-namespace-cutover', () => ({
+  countOpenTenantRunnerExecutions: mockCountOpen,
 }))
 vi.mock('../../lib/temporal-provisioner-invoke', () => ({
   invokeTemporalProvisioner: mockInvoke,
@@ -87,6 +111,18 @@ beforeEach(() => {
   mockDb.tenant.findUnique.mockResolvedValue({ id: TENANT_ID })
   mockDb.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({}))
   mockInvoke.mockResolvedValue(undefined)
+  // 3b.2 defaults: the scoped runner is deployed, the key is authorized,
+  // nothing open.
+  mockRunnerConfig.mockReturnValue({ scopedTaskDefinition: 'pegasus-tenant-runner-scoped-staging' })
+  mockKeyAuthorized.mockResolvedValue(true)
+  mockCountOpen.mockResolvedValue(0)
+  mockRepo.getDecryptedKey.mockResolvedValue({
+    namespace: NS,
+    grpcAddress: `${NS}.tmprl.cloud:7233`,
+    apiKeyId: 'key-1',
+    apiKey: 'SECRET-KEY',
+  })
+  mockRepo.transition.mockResolvedValue(true)
 })
 
 // ---------------------------------------------------------------------------
@@ -103,13 +139,17 @@ describe('GET /tenants/:tenantId/temporal-namespace', () => {
     mockRepo.findByTenant.mockResolvedValue(null)
     const res = await req('', 'GET')
     expect(res.status).toBe(200)
-    expect(await body(res)).toEqual({ data: null, configured: true })
+    expect(await body(res)).toEqual({ data: null, configured: true, scopedRunnerConfigured: true })
   })
 
   it('reports configured=false when the provisioner is not deployed', async () => {
     delete process.env['TEMPORAL_PROVISIONER_FUNCTION_NAME']
     mockRepo.findByTenant.mockResolvedValue(null)
-    expect(await body(await req('', 'GET'))).toEqual({ data: null, configured: false })
+    expect(await body(await req('', 'GET'))).toEqual({
+      data: null,
+      configured: false,
+      scopedRunnerConfigured: true,
+    })
   })
 
   it('returns status fields and never key material or Cloud ids', async () => {
@@ -128,6 +168,7 @@ describe('GET /tenants/:tenantId/temporal-namespace', () => {
       lastError: null,
       apiKeyExpiresAt: '2027-10-05T12:00:00.000Z',
       previousKeyRetireAt: null,
+      openExecutions: null,
       createdAt: NOW.toISOString(),
       updatedAt: NOW.toISOString(),
     })
@@ -345,5 +386,175 @@ describe('POST /tenants/:tenantId/temporal-namespace/deprovision', () => {
     expect(res.status).toBe(202)
     expect(mockRepo.transition).not.toHaveBeenCalled()
     expect(mockInvoke).toHaveBeenCalledWith({ action: 'deprovision', tenantId: TENANT_ID })
+  })
+
+  it.each(['DRAINING', 'ACTIVE', 'REVERTING'])(
+    'refuses a routed or migrating (%s) namespace: roll back to READY first',
+    async (status) => {
+      mockRepo.findByTenant.mockResolvedValue(row({ status }))
+      expect((await req('/deprovision')).status).toBe(409)
+      expect(mockRepo.transition).not.toHaveBeenCalled()
+      expect(mockInvoke).not.toHaveBeenCalled()
+    },
+  )
+})
+
+// ---------------------------------------------------------------------------
+// Phase 3b.2 — the other statuses on the existing routes
+// ---------------------------------------------------------------------------
+
+describe('existing routes with the 3b.2 statuses', () => {
+  it.each(['DRAINING', 'ACTIVE', 'REVERTING'])(
+    'rotates the key of a %s namespace (a routed tenant must keep rotating)',
+    async (status) => {
+      mockRepo.findByTenant.mockResolvedValue(row({ status }))
+      expect((await req('/rotate-key')).status).toBe(202)
+      expect(mockInvoke).toHaveBeenCalledWith({ action: 'rotate', tenantId: TENANT_ID })
+    },
+  )
+
+  it.each(['DRAINING', 'ACTIVE', 'REVERTING'])(
+    'POST / on an already-provisioned %s row is a no-op 200',
+    async (status) => {
+      mockRepo.findByTenant.mockResolvedValue(row({ status }))
+      const res = await req('')
+      expect(res.status).toBe(200)
+      expect(mockInvoke).not.toHaveBeenCalled()
+    },
+  )
+
+  it('GET reports the open executions a DRAINING row is waiting for (shared namespace)', async () => {
+    mockRepo.findByTenant.mockResolvedValue(row({ status: 'DRAINING' }))
+    mockCountOpen.mockResolvedValue(3)
+    const data = (await body(await req('', 'GET')))['data'] as Record<string, unknown>
+    expect(data['openExecutions']).toBe(3)
+    expect(mockCountOpen).toHaveBeenCalledWith(mockDb, TENANT_ID, null)
+  })
+
+  it('GET counts a REVERTING row’s open executions in the TENANT namespace', async () => {
+    mockRepo.findByTenant.mockResolvedValue(row({ status: 'REVERTING' }))
+    await req('', 'GET')
+    expect(mockCountOpen).toHaveBeenCalledWith(mockDb, TENANT_ID, NS)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /cutover (3b.2)
+// ---------------------------------------------------------------------------
+
+describe('POST /tenants/:tenantId/temporal-namespace/cutover', () => {
+  it('READY → DRAINING after checking the scoped runner and the key; audited', async () => {
+    mockRepo.findByTenant
+      .mockResolvedValueOnce(row())
+      .mockResolvedValueOnce(row({ status: 'DRAINING' }))
+    const res = await req('/cutover')
+    expect(res.status).toBe(200)
+    expect(((await body(res))['data'] as Record<string, unknown>)['status']).toBe('DRAINING')
+    expect(mockKeyAuthorized).toHaveBeenCalledWith(
+      expect.objectContaining({ namespace: NS, apiKey: 'SECRET-KEY' }),
+    )
+    expect(mockRepo.transition).toHaveBeenCalledWith(TENANT_ID, ['READY'], 'DRAINING')
+    expect(mockAudit.mock.calls[0]![3]).toBe('CUTOVER_TEMPORAL_NAMESPACE')
+  })
+
+  it('never returns key material', async () => {
+    mockRepo.findByTenant.mockResolvedValue(row())
+    expect(await (await req('/cutover')).text()).not.toContain('SECRET-KEY')
+  })
+
+  it('503s, writing nothing, when the scoped runner task definition is not deployed', async () => {
+    mockRunnerConfig.mockReturnValue({ scopedTaskDefinition: null })
+    mockRepo.findByTenant.mockResolvedValue(row())
+    const res = await req('/cutover')
+    expect(res.status).toBe(503)
+    expect((await body(res))['code']).toBe('SCOPED_RUNNER_NOT_CONFIGURED')
+    expect(mockRepo.transition).not.toHaveBeenCalled()
+  })
+
+  it('409 KEY_NOT_READY, writing nothing, while the key is not yet authorized', async () => {
+    mockKeyAuthorized.mockResolvedValue(false)
+    mockRepo.findByTenant.mockResolvedValue(row())
+    const res = await req('/cutover')
+    expect(res.status).toBe(409)
+    expect((await body(res))['code']).toBe('KEY_NOT_READY')
+    expect(mockRepo.transition).not.toHaveBeenCalled()
+  })
+
+  it('502s when the key check itself fails, without echoing the error', async () => {
+    mockKeyAuthorized.mockRejectedValue(new Error('connect failed SECRET-KEY'))
+    mockRepo.findByTenant.mockResolvedValue(row())
+    const res = await req('/cutover')
+    expect(res.status).toBe(502)
+    expect(await res.text()).not.toContain('SECRET-KEY')
+    expect(mockRepo.transition).not.toHaveBeenCalled()
+  })
+
+  it('409s while a provisioner run holds the row', async () => {
+    mockRepo.findByTenant.mockResolvedValue(
+      row({ leaseExpiresAt: new Date('2026-10-05T12:05:00.000Z') }),
+    )
+    expect((await req('/cutover')).status).toBe(409)
+    expect(mockRepo.transition).not.toHaveBeenCalled()
+  })
+
+  it.each(['PROVISIONING', 'FAILED', 'DEPROVISIONING', 'REVERTING'])(
+    '409s from %s',
+    async (status) => {
+      mockRepo.findByTenant.mockResolvedValue(row({ status }))
+      expect((await req('/cutover')).status).toBe(409)
+      expect(mockRepo.transition).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['DRAINING', 'ACTIVE'])('is idempotent from %s (200, no transition)', async (status) => {
+    mockRepo.findByTenant.mockResolvedValue(row({ status }))
+    expect((await req('/cutover')).status).toBe(200)
+    expect(mockRepo.transition).not.toHaveBeenCalled()
+  })
+
+  it('404s when there is no namespace', async () => {
+    mockRepo.findByTenant.mockResolvedValue(null)
+    expect((await req('/cutover')).status).toBe(404)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /rollback (3b.2)
+// ---------------------------------------------------------------------------
+
+describe('POST /tenants/:tenantId/temporal-namespace/rollback', () => {
+  it('ACTIVE → REVERTING (its open executions drain in the tenant namespace); audited', async () => {
+    mockRepo.findByTenant
+      .mockResolvedValueOnce(row({ status: 'ACTIVE' }))
+      .mockResolvedValueOnce(row({ status: 'REVERTING' }))
+    const res = await req('/rollback')
+    expect(res.status).toBe(200)
+    expect(mockRepo.transition).toHaveBeenCalledWith(TENANT_ID, ['ACTIVE'], 'REVERTING')
+    expect(mockAudit.mock.calls[0]![3]).toBe('ROLLBACK_TEMPORAL_NAMESPACE')
+  })
+
+  it('DRAINING → READY cancels a cutover still draining (nothing ran in the namespace)', async () => {
+    mockRepo.findByTenant.mockResolvedValue(row({ status: 'DRAINING' }))
+    expect((await req('/rollback')).status).toBe(200)
+    expect(mockRepo.transition).toHaveBeenCalledWith(TENANT_ID, ['DRAINING'], 'READY')
+  })
+
+  it('is idempotent from REVERTING', async () => {
+    mockRepo.findByTenant.mockResolvedValue(row({ status: 'REVERTING' }))
+    expect((await req('/rollback')).status).toBe(200)
+    expect(mockRepo.transition).not.toHaveBeenCalled()
+  })
+
+  it.each(['READY', 'PROVISIONING', 'FAILED', 'DEPROVISIONING'])('409s from %s', async (status) => {
+    mockRepo.findByTenant.mockResolvedValue(row({ status }))
+    expect((await req('/rollback')).status).toBe(409)
+    expect(mockRepo.transition).not.toHaveBeenCalled()
+  })
+
+  it('409s on a lost compare-and-set', async () => {
+    mockRepo.findByTenant.mockResolvedValue(row({ status: 'ACTIVE' }))
+    mockRepo.transition.mockResolvedValue(false)
+    expect((await req('/rollback')).status).toBe(409)
+    expect(mockAudit).not.toHaveBeenCalled()
   })
 })

@@ -73,8 +73,15 @@ const config: TenantRunnerConfig = {
   containerName: 'tenant-runner',
   subnetIds: ['subnet-aaa', 'subnet-bbb'],
   securityGroupId: 'sg-ccc',
+  scopedTaskDefinition: 'pegasus-tenant-runner-scoped-staging',
 }
 
+const LEGACY_TASK_DEF_ARN =
+  'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging:7'
+const SCOPED_TASK_DEF_ARN =
+  'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-scoped-staging:2'
+
+/** The required (all-or-nothing) half of the env contract. */
 const fullEnv = {
   TENANT_RUNNER_CLUSTER_ARN: config.clusterArn,
   TENANT_RUNNER_TASK_DEFINITION: config.taskDefinition,
@@ -107,7 +114,17 @@ function fakeEcs(handlers: {
     }
     if (command instanceof DescribeTasksCommand) {
       calls.describeTasks.push(command.input)
-      return handlers.describeTasks ? handlers.describeTasks(command.input) : { tasks: [] }
+      // Default: every listed task is a not-yet-RUNNING LEGACY-family runner,
+      // like ECS describing what ListTasks returned.
+      return handlers.describeTasks
+        ? handlers.describeTasks(command.input)
+        : {
+            tasks: (command.input.tasks ?? []).map((taskArn) => ({
+              taskArn,
+              taskDefinitionArn: LEGACY_TASK_DEF_ARN,
+              lastStatus: 'PENDING',
+            })),
+          }
     }
     throw new Error(`unexpected ECS command: ${String(command)}`)
   })
@@ -144,7 +161,19 @@ beforeEach(() => {
 
 describe('loadTenantRunnerConfig', () => {
   it('parses a complete TENANT_RUNNER_* env (splitting subnet ids)', () => {
-    expect(loadTenantRunnerConfig(fullEnv)).toEqual(config)
+    expect(
+      loadTenantRunnerConfig({
+        ...fullEnv,
+        TENANT_RUNNER_SCOPED_TASK_DEFINITION: config.scopedTaskDefinition!,
+      }),
+    ).toEqual(config)
+  })
+
+  it('treats the scoped task definition as optional: legacy launches survive an API-first deploy', () => {
+    expect(loadTenantRunnerConfig(fullEnv)).toEqual({ ...config, scopedTaskDefinition: null })
+    expect(
+      loadTenantRunnerConfig({ ...fullEnv, TENANT_RUNNER_SCOPED_TASK_DEFINITION: '  ' }),
+    ).toEqual({ ...config, scopedTaskDefinition: null })
   })
 
   it.each(Object.keys(fullEnv))('returns null when %s is missing (all-or-nothing)', (key) => {
@@ -231,6 +260,82 @@ describe('ensureTenantRunner', () => {
     expect(ecs.calls.runTask).toHaveLength(0)
     // The wbk_ plaintext must not be KMS-recovered when it is not needed.
     expect(mockGetOrCreateCredential).not.toHaveBeenCalled()
+  })
+
+  describe('runner families (Phase 3b.2)', () => {
+    it('launches the SCOPED task definition when asked, with the same overrides', async () => {
+      const ecs = fakeEcs({})
+      const result = await ensureTenantRunner(db, TENANT_ID, {
+        ecsClient: ecs.client,
+        config,
+        family: 'scoped',
+      })
+
+      expect(result).toEqual({ outcome: 'LAUNCHED', taskArn: 'arn:task/launched' })
+      expect(ecs.calls.runTask[0]!.taskDefinition).toBe(config.scopedTaskDefinition)
+      // No Temporal key in the overrides: the scoped runner fetches it itself.
+      const env = ecs.calls.runTask[0]!.overrides!.containerOverrides![0]!.environment!
+      expect(env.map((e) => e.name).sort()).toEqual(['TENANT_ID', 'WORKFLOW_BROKER_TOKEN'])
+    })
+
+    it('fails loudly — never falls back to legacy — when the scoped family is not deployed', async () => {
+      const ecs = fakeEcs({})
+      const result = await ensureTenantRunner(db, TENANT_ID, {
+        ecsClient: ecs.client,
+        config: { ...config, scopedTaskDefinition: null },
+        family: 'scoped',
+      })
+
+      expect(result).toEqual({ outcome: 'LAUNCH_FAILED', reason: 'SCOPED_UNCONFIGURED' })
+      expect(ecs.send).not.toHaveBeenCalled()
+      expect(emittedMetricNames()).toContain('TenantRunnerLaunchFailed')
+    })
+
+    it('a legacy runner idling out after cutover does NOT hold off the scoped launch', async () => {
+      const ecs = fakeEcs({
+        listTasks: () => ({ taskArns: ['arn:task/legacy-idle'] }),
+        describeTasks: () => ({
+          tasks: [
+            {
+              taskArn: 'arn:task/legacy-idle',
+              taskDefinitionArn: LEGACY_TASK_DEF_ARN,
+              lastStatus: 'RUNNING',
+            },
+          ],
+        }),
+      })
+      const result = await ensureTenantRunner(db, TENANT_ID, {
+        ecsClient: ecs.client,
+        config,
+        family: 'scoped',
+      })
+
+      expect(result).toEqual({ outcome: 'LAUNCHED', taskArn: 'arn:task/launched' })
+      expect(ecs.calls.runTask).toHaveLength(1)
+    })
+
+    it('a scoped runner counts as already running for scoped work only', async () => {
+      const scopedUp = {
+        listTasks: () => ({ taskArns: ['arn:task/scoped'] }),
+        describeTasks: () => ({
+          tasks: [{ taskArn: 'arn:task/scoped', taskDefinitionArn: SCOPED_TASK_DEF_ARN }],
+        }),
+      }
+      const scoped = fakeEcs(scopedUp)
+      expect(
+        await ensureTenantRunner(db, TENANT_ID, {
+          ecsClient: scoped.client,
+          config,
+          family: 'scoped',
+        }),
+      ).toEqual({ outcome: 'ALREADY_RUNNING', taskArns: ['arn:task/scoped'] })
+
+      const legacy = fakeEcs(scopedUp)
+      expect(await ensureTenantRunner(db, TENANT_ID, { ecsClient: legacy.client, config })).toEqual(
+        { outcome: 'LAUNCHED', taskArn: 'arn:task/launched' },
+      )
+      expect(legacy.calls.runTask[0]!.taskDefinition).toBe(config.taskDefinition)
+    })
   })
 
   it('launches with the full RunTask contract when no runner exists', async () => {
@@ -357,7 +462,11 @@ describe('ensureTenantRunner', () => {
 
 describe('sweepTenantRunners', () => {
   function dbWithOpenExecutions(
-    rows: Array<{ tenantId: string; workflow: { name: string; executable: boolean } }>,
+    rows: Array<{
+      tenantId: string
+      temporalNamespace?: string | null
+      workflow: { name: string; executable: boolean }
+    }>,
     opts?: { workflowsDisabled?: boolean },
   ): {
     db: PrismaClient
@@ -387,6 +496,28 @@ describe('sweepTenantRunners', () => {
     expect(findMany).not.toHaveBeenCalled()
   })
 
+  it('picks each runner family from the ROW namespace — a tenant mid-cutover gets both', async () => {
+    const { db: sweepDb } = dbWithOpenExecutions([
+      // A start that raced the flip to DRAINING: still in the shared namespace.
+      { tenantId: TENANT_ID, temporalNamespace: null, workflow: { name: 'a', executable: true } },
+      {
+        tenantId: TENANT_ID,
+        temporalNamespace: 'pg-staging-0f1e2d3c4b5a.acct',
+        workflow: { name: 'b', executable: true },
+      },
+    ])
+    const ecs = fakeEcs({})
+
+    const result = await sweepTenantRunners(sweepDb, { ecsClient: ecs.client, config })
+
+    expect(result).toEqual({ tenantsNeedingRunner: 2, launched: 2, launchFailed: 0 })
+    expect(ecs.calls.runTask.map((c) => c.taskDefinition)).toEqual([
+      config.taskDefinition,
+      config.scopedTaskDefinition,
+    ])
+    expect(emittedMetricValue('TenantRunnersNeeded')).toBe(2)
+  })
+
   it('ensures one runner per unique tenant with non-curated open work', async () => {
     const { db: sweepDb, findMany } = dbWithOpenExecutions([
       // Curated rows never need a runner — filtered out.
@@ -405,7 +536,11 @@ describe('sweepTenantRunners', () => {
 
     expect(findMany).toHaveBeenCalledWith({
       where: { status: { in: ['QUEUED', 'RUNNING'] } },
-      select: { tenantId: true, workflow: { select: { name: true, executable: true } } },
+      select: {
+        tenantId: true,
+        temporalNamespace: true,
+        workflow: { select: { name: true, executable: true } },
+      },
     })
     expect(result).toEqual({ tenantsNeedingRunner: 2, launched: 2, launchFailed: 0 })
     expect(ecs.calls.runTask.map((c) => c.startedBy)).toEqual([TENANT_ID, OTHER_TENANT_ID])
@@ -492,9 +627,11 @@ describe('publishTenantRunnerPoolMetrics', () => {
     const ecs = fakeEcs({ listTasks: () => ({ taskArns: [] }) })
     await publishTenantRunnerPoolMetrics({ ecsClient: ecs.client, config, now: () => now })
 
-    // Family-scoped listing (the cluster is shared with the stdlib worker).
+    // Family-scoped listing (the cluster is shared with the stdlib worker),
+    // once per runner family (3b.2).
     expect(ecs.calls.listTasks).toEqual([
       { cluster: config.clusterArn, family: config.taskDefinition },
+      { cluster: config.clusterArn, family: config.scopedTaskDefinition },
     ])
     const gauge = putMetricDataInputs
       .flatMap((p) => p.MetricData ?? [])

@@ -9,14 +9,29 @@ established by ``apps/temporal-worker/pegasus_temporal_worker/config.py``.
 Required:
     TENANT_ID                The tenant this runner serves (lowercase UUID).
     ENV_NAME                 staging / prod / dev — log tagging + queue name.
-    TEMPORAL_NAMESPACE       Temporal Cloud namespace (``default`` locally).
-    TEMPORAL_ADDRESS         Temporal gRPC host:port.
     PEGASUS_API_BASE_URL     Base URL for broker calls.
     WORKFLOW_BROKER_TOKEN    Per-tenant ``wbk_`` broker token (Unit 7). The
                              runner NEVER receives the shared broker secret.
 
+Temporal connection — one of two modes (Phase 3b.2):
+    env mode     TEMPORAL_ADDRESS + TEMPORAL_NAMESPACE set (the legacy task
+                 definition, and local dev). TEMPORAL_CLOUD_API_KEY empty →
+                 local dev server (no TLS/auth).
+    broker mode  TEMPORAL_ADDRESS absent (the scoped task definition). The
+                 runner fetches its tenant's own namespace, address and
+                 namespace-scoped key from the broker
+                 (GET /internal/temporal-credentials) and refreshes the key
+                 while it runs. TEMPORAL_NAMESPACE / TEMPORAL_CLOUD_API_KEY
+                 must then be absent too: a shared key next to a scoped task
+                 definition is a cross-wired deploy, and the runner refuses it.
+    The image (``:latest``) deploys independently of the task definitions,
+    so it must work under both.
+
 Optional:
-    TEMPORAL_CLOUD_API_KEY            Empty → local dev server (no TLS/auth).
+    RUNNER_TEMPORAL_CREDENTIALS_REFRESH_SECONDS  Broker mode: how often to
+                                      re-fetch the key (1800). Must stay well
+                                      under the 24 h grace a rotated-out key
+                                      keeps working for.
     RUNNER_IDLE_TIMEOUT_SECONDS       Idle window before self-exit (600).
     RUNNER_EXECUTION_TIMEOUT_SECONDS  Subprocess wall-clock budget (900).
     RUNNER_MAX_UNPACKED_BYTES         Per-workflow install-size guard (100 MiB).
@@ -51,7 +66,9 @@ class RunnerConfig:
 
     tenant_id: str
     env_name: str
+    #: Empty in broker mode — the broker supplies it at start.
     temporal_namespace: str
+    #: Empty in broker mode — the broker supplies it at start.
     temporal_address: str
     pegasus_api_base_url: str
     workflow_broker_token: str
@@ -62,6 +79,12 @@ class RunnerConfig:
     max_output_bytes: int
     max_result_bytes: int
     work_dir: str
+    temporal_credentials_refresh_seconds: int = 1800
+
+    @property
+    def uses_broker_credentials(self) -> bool:
+        """Broker mode (Phase 3b.2): no Temporal connection in the env."""
+        return not self.temporal_address
 
     @property
     def task_queue(self) -> str:
@@ -131,15 +154,33 @@ def load_config(env: dict[str, str] | None = None) -> RunnerConfig:
             "refusing to start with a cross-wired credential"
         )
 
+    temporal_address = source.get("TEMPORAL_ADDRESS", "").strip()
+    temporal_namespace = source.get("TEMPORAL_NAMESPACE", "").strip()
+    temporal_cloud_api_key = source.get("TEMPORAL_CLOUD_API_KEY", "").strip()
+    if temporal_address:
+        # Env mode: the namespace is required alongside the address.
+        temporal_namespace = _require("TEMPORAL_NAMESPACE", source)
+    elif temporal_namespace or temporal_cloud_api_key:
+        # Broker mode with a Temporal setting left in the env: a scoped task
+        # definition must carry no shared namespace or key at all.
+        raise ConfigError(
+            "TEMPORAL_ADDRESS is unset (broker mode) but TEMPORAL_NAMESPACE or "
+            "TEMPORAL_CLOUD_API_KEY is set — refusing a cross-wired Temporal "
+            "configuration"
+        )
+
     return RunnerConfig(
         tenant_id=tenant_id,
         env_name=_require("ENV_NAME", source),
-        temporal_namespace=_require("TEMPORAL_NAMESPACE", source),
-        temporal_address=_require("TEMPORAL_ADDRESS", source),
+        temporal_namespace=temporal_namespace,
+        temporal_address=temporal_address,
         pegasus_api_base_url=_require("PEGASUS_API_BASE_URL", source),
         workflow_broker_token=token,
-        # Optional — empty for local dev (no TLS, no auth).
-        temporal_cloud_api_key=source.get("TEMPORAL_CLOUD_API_KEY", "").strip(),
+        # Optional — empty for local dev (no TLS, no auth) and broker mode.
+        temporal_cloud_api_key=temporal_cloud_api_key,
+        temporal_credentials_refresh_seconds=_positive_int(
+            "RUNNER_TEMPORAL_CREDENTIALS_REFRESH_SECONDS", source, 1800
+        ),
         idle_timeout_seconds=_positive_int("RUNNER_IDLE_TIMEOUT_SECONDS", source, 600),
         execution_timeout_seconds=_positive_int("RUNNER_EXECUTION_TIMEOUT_SECONDS", source, 900),
         max_unpacked_bytes=_positive_int("RUNNER_MAX_UNPACKED_BYTES", source, 100 * 1024 * 1024),

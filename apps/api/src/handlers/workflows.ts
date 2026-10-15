@@ -57,7 +57,11 @@ import {
   provisionRuntimeServiceAccount,
   startWorkflowExecution,
 } from '../lib/start-workflow-execution'
-import { getTemporalClient, summarizeWorkflowHistory } from '../lib/temporal-client'
+import {
+  summarizeWorkflowHistory,
+  TenantTemporalKeyUnavailableError,
+  withTemporalClient,
+} from '../lib/temporal-client'
 import { parseCronExpression } from '../lib/cron'
 import { DOMAIN_EVENT_TYPES, INTEGRATION_EVENT_TYPES } from '../lib/domain-events'
 import { logger } from '../lib/logger'
@@ -476,6 +480,18 @@ function startResultToResponse(
           code: 'WORKFLOW_MUST_FORK',
         },
         403,
+      )
+    case 'TENANT_MIGRATING':
+      // Phase 3b.2: transient. A drain is bounded by the 15-minute execution
+      // cap, so a retry after a minute or two succeeds.
+      c.header('Retry-After', '60')
+      return c.json(
+        {
+          error:
+            'Automations for this account are being moved to their own isolated runtime. New runs are paused until in-flight runs finish (at most about 15 minutes). Try again shortly.',
+          code: 'TENANT_MIGRATING',
+        },
+        409,
       )
     default: {
       // START_FAILED, plus ALREADY_STARTED mapped to the same 502 surface
@@ -1268,17 +1284,26 @@ workflowsHandler.get(
     }
 
     try {
-      const client = await getTemporalClient()
-      const handle = client.workflow.getHandle(
-        execution.temporalWorkflowId,
-        execution.temporalRunId ?? undefined,
+      const temporalWorkflowId = execution.temporalWorkflowId
+      // The namespace recorded on the row (3b.2), never the tenant's current
+      // status: a run started before a cutover still lives in the shared one.
+      const history = await withTemporalClient(
+        { tenantId: execution.tenantId, namespace: execution.temporalNamespace },
+        (client) =>
+          client.workflow
+            .getHandle(temporalWorkflowId, execution.temporalRunId ?? undefined)
+            .fetchHistory(),
       )
-      const history = await handle.fetchHistory()
       return c.json({ data: { events: summarizeWorkflowHistory(history) } })
     } catch (err) {
       // Temporal's not-found error class name is stable across SDK versions;
-      // match on it rather than importing a possibly-renamed class.
-      if (err instanceof Error && err.name === 'WorkflowNotFoundError') {
+      // match on it rather than importing a possibly-renamed class. A run
+      // whose tenant namespace has since been deprovisioned (no key left) is
+      // gone the same way.
+      if (
+        err instanceof TenantTemporalKeyUnavailableError ||
+        (err instanceof Error && err.name === 'WorkflowNotFoundError')
+      ) {
         return c.json({ error: 'Execution history is no longer available', code: 'NOT_FOUND' }, 404)
       }
       logger.error('Failed to fetch workflow execution history', {
@@ -1338,12 +1363,14 @@ workflowsHandler.post(
     }
 
     try {
-      const client = await getTemporalClient()
-      const handle = client.workflow.getHandle(
-        execution.temporalWorkflowId,
-        execution.temporalRunId ?? undefined,
+      const temporalWorkflowId = execution.temporalWorkflowId
+      await withTemporalClient(
+        { tenantId: execution.tenantId, namespace: execution.temporalNamespace },
+        (client) =>
+          client.workflow
+            .getHandle(temporalWorkflowId, execution.temporalRunId ?? undefined)
+            .cancel(),
       )
-      await handle.cancel()
     } catch (err) {
       logger.error('Failed to cancel workflow execution', {
         executionId: execution.id,

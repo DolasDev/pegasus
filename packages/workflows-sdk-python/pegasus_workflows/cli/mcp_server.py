@@ -226,6 +226,17 @@ an EVENT trigger on ``sms.received``; re-read with
 ``client.get_text_message(payload["messageId"])`` (``ReadTextMessage``) and
 dedupe on ``messageId`` — events may be delivered twice.
 
+## Runs paused while Automations move (``TENANT_MIGRATING``)
+
+While the platform moves a tenant's Automations to (or back from) their own
+isolated Temporal namespace, ``run_workflow`` / ``retry_execution`` (and
+``pegasus-workflows run``) raise ``TenantMigrating`` (409
+``TENANT_MIGRATING``, a ``PegasusApiError`` subclass importable from
+``pegasus_workflows``) until in-flight runs finish, at most ~15 minutes.
+Nothing was started: wait ``err.retry_after_seconds`` (or 60) and retry.
+Event triggers lose nothing (their events fire after the move); a schedule
+tick inside the move is skipped. Workflow code needs no change.
+
 ## Email (internal only)
 
 ``client.send_email(to, subject, body, cc=, body_type="text", dedup_key=)``

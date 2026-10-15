@@ -151,6 +151,44 @@ class WorkflowInUse(PegasusApiError):
     open_executions: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class TenantMigrating(PegasusApiError):
+    """New runs are paused while the tenant's Automations move (HTTP 409).
+
+    Raised by :meth:`PegasusClient.run_workflow` and
+    :meth:`PegasusClient.retry_execution` with ``code`` ``"TENANT_MIGRATING"``:
+    the platform is moving this tenant's Automations to (or back from) their
+    own isolated Temporal runtime, and refuses new runs until the runs already
+    in flight finish. Nothing was started. Transient: a move is bounded by the
+    15-minute execution cap, so retry after ``retry_after_seconds``. Event
+    triggers are not lost — their events wait and fire once the move finishes.
+
+    Attributes:
+        retry_after_seconds: From the ``Retry-After`` header (60 today), or
+            ``None`` if the server sent none.
+    """
+
+    retry_after_seconds: int | None = None
+
+
+def _raise_for_tenant_migrating(response: httpx.Response) -> None:
+    """Raise :class:`TenantMigrating` for a 409 ``TENANT_MIGRATING``."""
+    if response.status_code != 409:
+        return
+    try:
+        body = response.json()
+    except ValueError:
+        return
+    if isinstance(body, dict) and body.get("code") == "TENANT_MIGRATING":
+        retry_after = response.headers.get("Retry-After")
+        raise TenantMigrating(
+            status_code=409,
+            code="TENANT_MIGRATING",
+            message=body.get("error"),
+            retry_after_seconds=int(retry_after) if retry_after and retry_after.isdigit() else None,
+        )
+
+
 def _raise_for_workflow_in_use(response: httpx.Response) -> None:
     """Raise :class:`WorkflowInUse` for a 409 ``WORKFLOW_IN_USE``."""
     if response.status_code != 409:
@@ -501,6 +539,9 @@ class PegasusClient:
             the Temporal start round-trip has completed).
 
         Raises:
+            TenantMigrating: 409 ``TENANT_MIGRATING`` — new runs are paused
+                while the tenant's Automations move to (or from) their own
+                runtime. Transient; retry after ``retry_after_seconds``.
             PegasusApiError: On 400 (not in allowlist), 404, 422
                 (``DRY_RUN_UNSUPPORTED``), 502 (Temporal start failed), or any
                 other non-2xx.
@@ -513,6 +554,7 @@ class PegasusClient:
                 f"/api/v1/workflows/{workflow_id}/run",
                 json=payload,
             )
+        _raise_for_tenant_migrating(response)
         _raise_for_status(response)
         return response.json()["data"]
 
@@ -650,6 +692,8 @@ class PegasusClient:
             The new ``ExecutionResponse``.
 
         Raises:
+            TenantMigrating: 409 ``TENANT_MIGRATING`` — new runs are paused
+                while the tenant's Automations move; retry shortly.
             PegasusApiError: 404 (unknown execution), 409 (execution not in a
                 retryable terminal state), or any non-2xx.
         """
@@ -657,6 +701,7 @@ class PegasusClient:
             response = client.post(
                 f"/api/v1/workflows/{workflow_id}/executions/{execution_id}/retry"
             )
+        _raise_for_tenant_migrating(response)
         _raise_for_status(response)
         return response.json()["data"]
 

@@ -23,6 +23,11 @@ the token header and retry posture:
   terminal status write-back, with the same retry/backoff semantics as
   ``status_sync.py`` (5xx/network retry with exponential backoff, 401/403
   raise immediately — a wrong token won't fix itself by retrying).
+
+Plus, in broker mode only (Phase 3b.2), :meth:`fetch_temporal_credentials` —
+GET ``/internal/temporal-credentials``: the tenant's own Temporal namespace,
+address and namespace-scoped key, for a runner launched from the scoped task
+definition (which carries no Temporal secret).
 """
 
 from __future__ import annotations
@@ -41,6 +46,8 @@ __all__ = [
     "BrokerError",
     "ExecutableWorkflow",
     "RuntimeGrant",
+    "TemporalCredentials",
+    "TemporalCredentialsUnavailable",
     "TenantBrokerClient",
 ]
 
@@ -49,6 +56,7 @@ BROKER_TOKEN_HEADER = "X-Workflow-Broker-Token"
 LIST_PATH = "/api/v1/internal/tenant-workflows"
 TOKEN_PATH = "/api/v1/internal/workflow-runtime-token"
 PATCH_PATH = "/api/v1/internal/workflow-executions/{execution_id}"
+TEMPORAL_CREDENTIALS_PATH = "/api/v1/internal/temporal-credentials"
 
 VALID_TERMINAL_STATUSES = frozenset({"COMPLETED", "FAILED", "TIMED_OUT", "CANCELLED"})
 
@@ -59,6 +67,23 @@ class BrokerError(RuntimeError):
 
 class BrokerAuthError(BrokerError):
     """401/403 from the broker — the wbk_ token is wrong, rotated, or revoked."""
+
+
+class TemporalCredentialsUnavailable(BrokerError):
+    """404 from the credentials route: the tenant isn't cut over to its own
+    namespace (or is no longer) — a scoped runner has nothing to poll."""
+
+
+@dataclass(frozen=True)
+class TemporalCredentials:
+    """The tenant's own Temporal namespace and its namespace-scoped key.
+
+    ``api_key`` is excluded from ``repr``: it must never reach a log line.
+    """
+
+    address: str
+    namespace: str
+    api_key: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -230,6 +255,42 @@ class TenantBrokerClient:
             workflow_id=_optional_str("workflowId"),
             workflow_name=_optional_str("workflowName"),
             workflow_version=_optional_str("workflowVersion"),
+        )
+
+    def fetch_temporal_credentials(self) -> TemporalCredentials:
+        """GET the tenant's own namespace, address and current scoped key.
+
+        Broker mode (Phase 3b.2) only. The broker serves the CURRENT key, so
+        calling this again after a rotation returns the new one; the old key
+        keeps working for a 24 h grace, which is what makes a periodic refresh
+        enough. 404 → :class:`TemporalCredentialsUnavailable` (the tenant is
+        not routed to its own namespace); 401/403 → :class:`BrokerAuthError`.
+        """
+        with self._client() as client:
+            response = client.get(TEMPORAL_CREDENTIALS_PATH)
+        self._check_auth(response)
+        if response.status_code == 404:
+            raise TemporalCredentialsUnavailable(
+                "no Temporal credentials for this tenant (not cut over to its own namespace)"
+            )
+        if not response.is_success:
+            raise BrokerError(f"temporal credentials fetch failed: HTTP {response.status_code}")
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise BrokerError("temporal credentials response was not JSON") from exc
+        data = body.get("data") if isinstance(body, dict) else None
+        values = {}
+        for key in ("address", "namespace", "apiKey"):
+            value = data.get(key) if isinstance(data, dict) else None
+            if not isinstance(value, str) or not value:
+                # Name the field, never echo the body: it may hold the key.
+                raise BrokerError(f"temporal credentials response missing {key!r}")
+            values[key] = value
+        return TemporalCredentials(
+            address=values["address"],
+            namespace=values["namespace"],
+            api_key=values["apiKey"],
         )
 
     def patch_execution(

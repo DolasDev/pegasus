@@ -2774,6 +2774,34 @@ Found building the 3b.1 provisioner (`apps/api/src/lib/temporal-cloud-ops.ts`,
   deploy on a NotFound. Never write an example ARN in a comment there, and add
   an ARN only once its secret exists.
 
+## Tenant namespace routing (3b.2): five traps found building it
+
+Found in `feat/tenant-temporal-routing`, 2026-10-15. All are pinned by tests.
+
+- **`READY` was the provisioner's word for "has a live key".** Rotation
+  (`findDueForRotation`), the expiry gauge (`earliestReadyKeyExpiry`), the
+  retire-previous-key and discard-pending-key sweeps, and the admin rotate route
+  all filtered on `status: 'READY'`. Adding `ACTIVE` without widening them would
+  have silently stopped rotating exactly the keys in use. They now share
+  `KEY_HOLDING_STATUSES`; a new status must be added there deliberately.
+- **`ListTasks { startedBy: tenantId }` is family-blind.** `startedBy` is the
+  36-char tenant id, so it can't carry the task-definition family. Without the
+  `DescribeTasks` family filter in `ensureTenantRunner`, a legacy runner idling
+  out after a cutover reports ALREADY_RUNNING and blocks the scoped launch for
+  up to its 10-minute idle window.
+- **Orphaned QUEUED rows never close.** The start path deliberately leaves the
+  row of a raced `REJECT_DUPLICATE` start QUEUED forever, and the reconciler
+  only looks at RUNNING rows. A drain that counts every QUEUED row could wedge
+  for good, so `countOpenTenantRunnerExecutions` ignores QUEUED rows older than
+  30 minutes, and curated (STDLIB) rows, which are never refused.
+- **A trigger can hit `TENANT_MIGRATING` mid-tick** (the tenant flipped after
+  the event query ran). Stamping that event would lose it, so the dispatcher
+  leaves the whole event undispatched; the deterministic-id pre-check absorbs
+  the triggers that already fired.
+- **`advanceNamespaceMigrations` is cross-tenant**, and vitest runs files in
+  parallel against one database: a cutover test would flip another suite's
+  DRAINING rows. Tests pass `{ tenantIds }`; production passes nothing.
+
 ## A nested `playwright` shadows the runner — never `npx playwright` in `apps/e2e`
 
 A dependency of `apps/e2e` that brings its own `playwright` gets it installed at

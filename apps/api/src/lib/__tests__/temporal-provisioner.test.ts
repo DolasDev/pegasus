@@ -557,6 +557,30 @@ describe.skipIf(!hasDb)('runTemporalProvisioner (integration)', () => {
       )
     })
 
+    // 3b.2: a cut-over tenant's key is the one most in use. Rotation, and the
+    // later retirement of the old key, must act on it and leave it routed.
+    it.each(['ACTIVE', 'DRAINING', 'REVERTING'] as const)(
+      'rotates a %s namespace, retires its old key later, and never changes its status',
+      async (status) => {
+        const { cloud, oldKeyId } = await provisioned()
+        await db.tenantTemporalNamespace.update({ where: { tenantId }, data: { status } })
+
+        expect(await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))).toEqual({
+          outcome: 'done',
+        })
+        let row = await repo.findByTenant(tenantId)
+        expect(row!.status).toBe(status)
+        expect(row!.previousApiKeyId).toBe(oldKeyId)
+
+        const later = deps(cloud, { now: () => new Date('2026-10-07T00:00:00.000Z') })
+        await runTemporalProvisioner({ action: 'retire-previous-keys' }, later)
+        row = await repo.findByTenant(tenantId)
+        expect(row!.status).toBe(status)
+        expect(row!.previousApiKeyId).toBeNull()
+        expect(cloud.keys.has(oldKeyId)).toBe(false)
+      },
+    )
+
     it('refuses while the previous key is still inside its grace period', async () => {
       const { cloud } = await provisioned()
       await runTemporalProvisioner({ action: 'rotate', tenantId }, deps(cloud))

@@ -3,6 +3,20 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.50.0
+
+### Added — `TenantMigrating` (Automations moving to their own namespace)
+
+- `run_workflow` and `retry_execution` raise the new `TenantMigrating` (a
+  `PegasusApiError`) for HTTP 409 `code="TENANT_MIGRATING"`: the platform is
+  moving the tenant's Automations to (or back from) their own isolated Temporal
+  namespace, and refuses new runs until in-flight runs finish (at most ~15
+  minutes). Nothing was started; retry after `retry_after_seconds` (from the
+  `Retry-After` header, 60 today). Dry runs are paused too.
+- Event triggers lose nothing: their events wait and fire after the move. A
+  schedule tick inside the move is skipped (schedules never catch up).
+- Exported from the package root: `from pegasus_workflows import TenantMigrating`.
+
 ## 0.49.0
 
 ### Added — write back onto a pegII order (sdk-feedback 0044 A/B)

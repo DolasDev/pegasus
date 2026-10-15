@@ -11,6 +11,13 @@
 // POST /workflows/:id/run (lib/start-workflow-execution.ts) — with provenance
 // triggerSource=EVENT + triggeredByTriggerId and a null triggeredByUserId.
 //
+// PHASE 0 — namespace drains (Phase 3b.2), before phase 1: moves DRAINING
+// tenants to ACTIVE and REVERTING ones to READY once their open executions in
+// the namespace they're leaving have finished (lib/temporal-namespace-
+// cutover.ts). A migrating tenant's events are excluded from phase 1's query
+// until then; a trigger that hits TENANT_MIGRATING mid-tick (the tenant began
+// migrating after the query) leaves its event undispatched for redelivery.
+//
 // PHASE 2 — schedules (Phase 3 Unit 4). The same tick evaluates every enabled
 // SCHEDULE trigger's cron expression (lib/cron.ts — dependency-free 5-field
 // matcher, UTC) against the tick's fire-minute and fires the matches through
@@ -71,6 +78,8 @@ import { matchesFilter as matchesTriggerFilter } from './lib/event-filter'
 import { createLogger } from './lib/logger'
 import { startWorkflowExecution } from './lib/start-workflow-execution'
 import { sweepTenantRunners } from './lib/tenant-runner'
+import { advanceNamespaceMigrations } from './lib/temporal-namespace-cutover'
+import { createTenantTemporalNamespaceRepository } from './repositories/tenant-temporal-namespace.repository'
 import { createWorkflowRepository } from './repositories/workflow.repository'
 
 const logger = createLogger('pegasus-dispatch-workflow-triggers')
@@ -98,6 +107,7 @@ type TriggerSkipReason =
   | 'DAILY_QUOTA_EXCEEDED' // Phase 3 Unit 10: tenant daily execution quota reached
   | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
   | 'MUST_FORK' // defensive: trigger on a cross-tenant GLOBAL workflow (config mistake)
+  | 'TENANT_MIGRATING' // Phase 3b.2: tenant's Temporal namespace mid-cutover/rollback
   | 'ERROR' // unexpected per-trigger exception
 
 export { matchesTriggerFilter }
@@ -281,6 +291,12 @@ type FirableTrigger = {
  * kind-specific match decision (filter match for EVENT, cron match for
  * SCHEDULE): visibility lookup, deterministic-id pre-check, start, outcome
  * accounting. Throws are left to the caller's per-trigger isolation catch.
+ *
+ * Returns 'DEFERRED' when the occurrence must be retried later rather than
+ * consumed: the tenant's Temporal namespace started migrating after this tick
+ * loaded its events (Phase 3b.2). The EVENT caller then leaves the event
+ * undispatched, so it fires once the migration settles; SCHEDULE has no
+ * outbox row, so for it a deferral is a skipped minute (no catch-up).
  */
 async function fireTrigger(opts: {
   workflowRepo: ReturnType<typeof createWorkflowRepository>
@@ -293,7 +309,7 @@ async function fireTrigger(opts: {
   skip: (reason: TriggerSkipReason) => void
   /** Occurrence identifiers ({ domainEventId } / { fireMinute }) for logs. */
   logContext: Record<string, unknown>
-}): Promise<void> {
+}): Promise<'DEFERRED' | void> {
   const { workflowRepo, trigger, triggerSource, dedupeKey, input, counts, skip, logContext } = opts
 
   // Same visibility rule as the manual run path: the workflow must be the
@@ -425,6 +441,19 @@ async function fireTrigger(opts: {
         ...logContext,
       })
       break
+    case 'TENANT_MIGRATING':
+      // Phase 3b.2: the tenant flipped to DRAINING / REVERTING after this tick
+      // loaded its events (the event query already excludes migrating
+      // tenants). Nothing was written; the caller keeps the event undispatched.
+      skip('TENANT_MIGRATING')
+      logger.info('Trigger deferred — tenant Temporal namespace migrating', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        triggerSource,
+        ...logContext,
+      })
+      return 'DEFERRED'
     case 'ALREADY_STARTED':
       // The pre-check raced a concurrent start; Temporal's REJECT_DUPLICATE
       // guarantees the run exists exactly once. Success-already-handled: no
@@ -484,8 +513,36 @@ export async function handler(): Promise<{
 
   // ── Phase 1: domain-event dispatch (EVENT triggers) ──────────────────────
 
+  // ── Phase 0 (3b.2): finish namespace drains ───────────────────────────────
+  //
+  // Before the event query, so a tenant that settles now gets its waiting
+  // events dispatched this tick. Failure-isolated: a broken pass leaves every
+  // migrating tenant migrating (its events wait), never breaks the tick.
+  try {
+    const migration = await advanceNamespaceMigrations(db)
+    if (migration.advanced.length > 0 || migration.waiting.length > 0) {
+      logger.info('Temporal namespace migrations checked', { ...migration })
+    }
+  } catch (err) {
+    logger.error('Temporal namespace migration pass failed — next tick retries', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  // Phase 3b.2: a tenant mid-cutover or mid-rollback takes no new runner work,
+  // so its events wait, undispatched, until the drain settles. Excluded AT THE
+  // QUERY — never loaded and skipped — so they can't sit at the head of this
+  // oldest-first batch and starve every other tenant (GOTCHAS: "A global
+  // oldest-first outbox drain + an infinite park").
+  const migratingTenantIds = (
+    await createTenantTemporalNamespaceRepository(db).findMigrating()
+  ).map((r) => r.tenantId)
+
   const events = await db.domainEvent.findMany({
-    where: { dispatchedAt: null },
+    where: {
+      dispatchedAt: null,
+      ...(migratingTenantIds.length > 0 ? { tenantId: { notIn: migratingTenantIds } } : {}),
+    },
     orderBy: { occurredAt: 'asc' },
     take: BATCH_SIZE,
   })
@@ -513,6 +570,7 @@ export async function handler(): Promise<{
         orderBy: { createdAt: 'asc' },
       })
 
+      let deferred = false
       for (const trigger of triggers) {
         // Failure isolation: one trigger's failure must not poison the event
         // (its other triggers, the dispatchedAt stamp) or the batch.
@@ -520,7 +578,7 @@ export async function handler(): Promise<{
           if (!matchesTriggerFilter(trigger.filter, event.payload)) {
             continue
           }
-          await fireTrigger({
+          const fired = await fireTrigger({
             workflowRepo,
             trigger,
             triggerSource: 'EVENT',
@@ -538,6 +596,7 @@ export async function handler(): Promise<{
             skip,
             logContext: { domainEventId: event.id },
           })
+          if (fired === 'DEFERRED') deferred = true
         } catch (err) {
           skip('ERROR')
           logger.error('Trigger dispatch failed', {
@@ -548,6 +607,12 @@ export async function handler(): Promise<{
           })
         }
       }
+
+      // A deferred trigger means the tenant began migrating mid-tick: leave
+      // the WHOLE event undispatched. The next ticks exclude the tenant at the
+      // query; once it settles the event is redelivered, and the triggers that
+      // did fire now are absorbed by the deterministic-id pre-check.
+      if (deferred) continue
 
       // Stamp AFTER the event's triggers are processed. Conditional on
       // dispatchedAt still being null so a concurrent tick can't double-count
