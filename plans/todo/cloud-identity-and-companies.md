@@ -8,10 +8,10 @@
 - Model a customer **tenant** as an organization containing one or more **companies** (legal entities, each one legacy database).
 - Retire the on-prem hub, so hub users and cloud users become the same people.
 
-**Status:** IN PROGRESS. Direction approved 2026-10-02. I1, I2 and I3 are **live**; QMM is the only site on cloud auth. **I4** (desktop sign-in through the cloud) is approved (2026-10-06): the cloud half is in `plans/completed/dd1f3242-cloud-identity-i4.md`, and the movemanager half comes next.
+**Status:** IN PROGRESS. Direction approved 2026-10-02. I1, I2 and I3 are **live**; QMM and NW are on cloud auth (RVS is not). **I4** (desktop sign-in through the cloud) is approved (2026-10-06): the cloud half is in `plans/completed/dd1f3242-cloud-identity-i4.md`, and the movemanager half comes next.
 
 - **I1 is live** (pegasus #770 → `dd1bbc56`, 2026-10-03).
-- **I2 is live on alpha** (movemanager `69e6c050`). **QMM's site has cloud auth on** (2026-10-05, verified end to end). NW and RVS are on hold (Steve).
+- **I2 is live on alpha** (movemanager `69e6c050`). **QMM's site has cloud auth on** (2026-10-05, verified end to end). **NW's site has cloud auth on** (2026-10-15, verified end to end by an employee sync). RVS is on hold (Steve).
 - **I3 is live** (pegasus #800 → `478d9027`, SDK 0.45.1; movemanager `dev` `2364ca3b` → alpha `2026.10.5.4`). Both QMM companies are synced (2026-10-06).
 - **"Add from pegII"** (Users page; optional invite, SSO-only users) is live: pegasus #802 → `892f0c53`.
 
@@ -70,7 +70,13 @@
      3. The person signs in with Microsoft; the row becomes Active.
    - **If it fails:** first login reports `SSO_ERROR_NOT_ROSTERED`, which means the emails differ.
 2. **Clear the test Windows username on `steve@dolas.dev`.** It is `bandreopulos`, the same as `bandreopulos@qmm.com`, so employee 7392 is ambiguous and links nobody. Clear it on Settings → Users, then **Sync employees** on both QMM companies.
-3. **NW / RVS rollout (on hold — Steve).**
+3. **NW / RVS rollout — NW DONE 2026-10-15; RVS on hold (Steve).**
+   - **NW (done):** the NW server was already on `2026.10.10.1` with `pegii.cloud-auth.v1` advertised, so no on-prem change was
+     needed. Set `sites.cloud_auth_enabled = true` (site `29eb5c90…`) and `companies.system_employee_code = 1001` (company
+     `NELSON-WESTERBERG`, `c30c8c2b…`) by direct single-row UPDATEs (Steve chose this; the PATCH handlers only write the row
+     plus a log line). Salesman 1001 = `PEGASUS, GENERATED`, active (checked on NW's DB). Verified: **Sync employees** on NW
+     linked the employees (a cloud-minted token accepted by NW's Pegasus.Api). 1001 never appears in that list — it is the
+     service-account `emp`, not a membership. `nelson-westerberg-test`'s server (10.200.0.2) did not answer the tunnel; not rolled out.
    - Per site: set the env pair (ids below), confirm `/version` lists `pegii.cloud-auth.v1`, then `PATCH /api/v1/settings/sites/:id {"cloudAuthEnabled": true}` with **that tenant's** admin session. `/settings/*` is Cognito-only; an API key is refused at `tenantMiddleware`.
    - For NW, also set `systemEmployeeCode = 1001` on its company (Settings → Companies), then sync.
    - **Open:** do the `-test`/`-qa` tenants have their own servers? One server can hold only one site id.
@@ -78,7 +84,7 @@
 
    | Tenant slug                   | Site.id                                                |
    | ----------------------------- | ------------------------------------------------------ |
-   | `nelson-westerberg`           | `29eb5c90-9a16-428d-9ba6-4236e67ffeb1`                 |
+   | `nelson-westerberg`           | `29eb5c90-9a16-428d-9ba6-4236e67ffeb1` (cloud auth ON) |
    | `nelson-westerberg-test`      | `571a3c92-19e4-48de-a70a-abb8f3c00f2c`                 |
    | `quality-move-management`     | `631fce83-f7e5-41e5-856b-fc7f630565a6` (cloud auth ON) |
    | `quality-move-management-qa`  | `658c2d40-1658-4b20-8700-d16c20d4b92b`                 |
