@@ -19,7 +19,9 @@
   - The cloud identity blocker (I1 + I2) cleared: NW's site has had cloud auth on since 2026-10-15 (`plans/in-progress/cloud-identity-and-companies.md`).
   - pegasus side DONE 2026-10-16 (branch `feat/pulse-order-search`): `GET /api/v1/pegii/orders/search` → `search_orders`, gated on `pegii.orders.search.v1`; `list_orders` deprecated (D4) and its stub deleted; DTO `Delivery` → `DelResidence`; docs. See "As built" under Phase 5.
   - **Not yet verified on NW:** that NW's deployed pegII (`2026.10.10.1`) advertises `pegii.orders.search.v1`. Probe `/version` before the Phase 8 dry run.
-- [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK 0.44.0 (+ one-line desktop guard fix)
+- [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK **0.52.0** (+ desktop guard fix). Code-complete 2026-10-16; see "As built" under Phase 6.
+  - movemanager: branch `feat/api-task-create-close` (plan `api-task-create-close.md`, D17–D28 approved by Steve 2026-10-16). Pushed, **not on `dev`**. It lands after checklist item 0: the `TriggerTasksUpdate` body, the `Tasks.id` identity check and the desktop login's grant on the sidecar, read on PegNW + pegQMM. Those reads need AWS SSO.
+  - pegasus: branch `feat/pulse-tasks`, gated on `pegii.tasks.v1`, so it is safe to merge before any site has the endpoints.
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
 
@@ -338,44 +340,76 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
 **movemanager** (plan `api-task-create-close.md`):
 
-- [ ] **Domain** `Pegasus.Domain/Task`:
+- [x] **Domain** `Pegasus.Domain/Task`:
   - `ApiTaskRules`: validation, priority vocabulary `low|normal|high`, and the title rule (≤ 200, whitespace collapsed, control chars stripped).
   - A registry of API task types, seeded with `Pulse Follow-Up`. The type lives in the sidecar, **never** in `mastertasks`.
-- [ ] **`POST /api/v1/pegii/tasks`** `{orderNumber, taskType, title, description?, priority, dueAt?, assigneeCode?, idempotencyKey?}`. The legacy row is written to be **desktop-safe**:
+- [x] **`POST /api/v1/pegii/tasks`** `{orderNumber, taskType, title, description?, priority, dueAt?, assigneeCode?, idempotencyKey?}`. The legacy row is written to be **desktop-safe**: _(As built: `POST /api/v1/pegii/orders/{n}/tasks`, `dueDate` required — see As built.)_
   - `code='USRDEF'` (skipped by `UpdateTasks`), `did_edit_target='Y'`.
   - **Every** string column non-null, copying exactly the column set `New Task(Order)` + `TaskMaintenanceFormNew` write for a user-defined task. That column set is the contract, and an integration test asserts it.
   - `description` = title, `note` = description, `target_date` = dueAt, `task_coord_id` = assignee (default: the order's coordinator), `active='Y'`, `was_completed='N'`.
   - The sidecar row holds type, title, priority and the idempotency record, all in one transaction.
   - 404 on unknown order; 400 on unknown type or bad priority.
-- [ ] `GET /tasks/{id}` and `GET /tasks?orderNumber=&taskType=&open=&dueBefore=`: the join of legacy row + sidecar. The daily check needs "open Pulse Follow-Up tasks due before X" across orders.
-- [ ] **`POST /tasks/close`** `{taskId | orderNumber+taskType, reason?}`:
+- [x] `GET /tasks/{id}` and `GET /tasks?orderNumber=&taskType=&open=&dueBefore=`: the join of legacy row + sidecar. The daily check needs "open Pulse Follow-Up tasks due before X" across orders.
+- [x] **`POST /tasks/close`** `{taskId | orderNumber+taskType, reason?}`: _(As built: the site closes by id (`/tasks/{id}/close`); the cloud resolves order + type.)_
   - Sets `was_completed='Y'`, `completed_time`, `completed_by` = the system employee code (S7), and appends the reason to `note`. Sidecar `close_reason`/`closed_utc`.
   - Idempotent (`alreadyClosed`). 400 when neither or both identifiers are given.
-- [ ] **Desktop guard fix** (hazard a): `GetTasksForOrder` counts only non-API rows (`… AND id NOT IN (SELECT task_id FROM pegasus_api_task_meta)`).
+- [x] **Desktop guard fix** (hazard a): `GetTasksForOrder` counts only non-API rows (`… AND id NOT IN (SELECT task_id FROM pegasus_api_task_meta)`). _(As built: counts only `created_by_api = 1` rows; a cloud-closed desktop task has a `created_by_api = 0` sidecar row.)_
   - This is a desktop change, so it ships on the **MSIX** cadence. Until NW's client has it, S6 measures the exposure.
-  - Until then (D3): the API returns 409 `ORDER_TASKS_NOT_INITIALIZED` when the order has zero task rows, and the reply workflow falls back to email-only escalation.
-- [ ] Tests: unit (rules); integration (a row written by the API round-trips through the VB `IO.Task.ReadList` + `UpdateTasks` without throwing; idempotent create; close).
+  - ~~Until then (D3): the API returns 409 `ORDER_TASKS_NOT_INITIALIZED` when the order has zero task rows, and the reply workflow falls back to email-only escalation.~~ **Withdrawn (D18, Steve 2026-10-16):** create is allowed on a task-less order. Until NW's desktop has the guard fix, such a task suppresses that order's master-task generation (recover with "Clear And Rebuild Tasks"). Measured exposure: S6, 0 of 36.
+- [ ] Tests: unit (rules); integration (a row written by the API round-trips through the VB `IO.Task.ReadList` + `UpdateTasks` without throwing; idempotent create; close). _(Unit + Linux SQL Server done; the VB round-trip on the PegNW clone is owed — movemanager item 6, Windows.)_
 
 **pegasus:**
 
-- [ ] Replace `services/pegii-tasks.ts` with gateway calls.
+- [x] Replace `services/pegii-tasks.ts` with gateway calls.
   - Routes: `POST /pegii/tasks` (`CreateTask`, new action); existing `GET /pegii/tasks[/:id]` and `POST /pegii/tasks/close` (`ReadTask`, `CloseTask`).
   - Close is additive: `taskId` or `orderId+taskType`.
-- [ ] SDK `create_task(...)` with `dedup_key` → pegII `idempotencyKey`; `list_tasks` gains filters; `close_task(task_id=…)`.
-- [ ] Discoverability checklist.
+- [x] SDK `create_task(...)` with `dedup_key` → pegII `idempotencyKey`; `list_tasks` gains filters; `close_task(task_id=…)`.
+- [ ] Discoverability checklist. _(Items 1–7 done; item 8, the authoring `CLAUDE.md`, after merge.)_
 
 **Acceptance criteria from sdk-feedback 0046** (folded in 2026-10-07 by `plans/in-progress/sdk-feedback-open-set.md`; the interim stub fixes shipped in its Phase 5, SDK 0.48.1):
 
-- [ ] Task ids are opaque per-instance ids (the `Tasks.id` PK), never `task_{orderId}_{taskType}`. Two same-type tasks on one order have different ids.
-- [ ] `close_task`: exactly one of `task_id` or `(order_id, task_type)`, else `ValueError` before any request. An `(order_id, task_type)` matching two or more OPEN tasks → `409` naming the candidate ids, with nothing closed. A match on nothing → `404 TASK_NOT_FOUND` (the stub already does this). A genuine repeat close → `alreadyClosed: true`.
-- [ ] Metering: a refused close (404 or 409) and an `alreadyClosed` replay don't meter. Only a real close does. The usage-meter integration test already pins the 404 case.
-- [ ] `list_tasks` for a nonexistent order → `404` (or `502 PEGII_SOURCE_*`). An order with no tasks → `[]`. Nothing is minted at read time, and `createdAt` is stable and earlier than the read.
-- [ ] Drop `stub: true` from `toTaskResponse` (`handlers/pegii-runtime.ts`) when the stub is replaced.
-- [ ] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`.
-- [ ] `create_task` is in `testing._MUTATIONS` and captured under `--dry-run`.
-- [ ] OpenAPI documents the create route; `closePegiiTask` gains the `taskId` form and the 409. The MCP `pegasus://reference/api` resource lists `create_task` and the new `close_task` signature.
+- [x] Task ids are opaque per-instance ids (the `Tasks.id` PK), never `task_{orderId}_{taskType}`. Two same-type tasks on one order have different ids.
+- [x] `close_task`: exactly one of `task_id` or `(order_id, task_type)`, else `ValueError` before any request. An `(order_id, task_type)` matching two or more OPEN tasks → `409` naming the candidate ids, with nothing closed. A match on nothing → `404 TASK_NOT_FOUND` (the stub already does this). A genuine repeat close → `alreadyClosed: true`.
+- [x] Metering: a refused close (404 or 409) and an `alreadyClosed` replay don't meter. Only a real close does. The usage-meter integration test already pins the 404 case.
+- [x] `list_tasks` for a nonexistent order → `404` (or `502 PEGII_SOURCE_*`). An order with no tasks → `[]`. Nothing is minted at read time, and `createdAt` is stable and earlier than the read.
+- [x] Drop `stub: true` from `toTaskResponse` (`handlers/pegii-runtime.ts`) when the stub is replaced.
+- [ ] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`. _(403 pinned by real-Cedar handler tests for both actions; the live 0009 AC3 run is still owed.)_
+- [x] `create_task` is in `testing._MUTATIONS` and captured under `--dry-run`.
+- [x] OpenAPI documents the create route; `closePegiiTask` gains the `taskId` form and the 409. The MCP `pegasus://reference/api` resource lists `create_task` and the new `close_task` signature.
 
 **Version note:** SDK 0.44.0 and 0.45.0, named in this plan's Phase 6/7 headings, were used by #792 and #793. 0.46.0–0.48.1 were used by the sdk-feedback open-set plan. Take the next free minor at merge.
+
+**As built (2026-10-16):**
+
+- **movemanager** (`feat/api-task-create-close`; the plan file there is the full record). Five routes, advertised as `pegii.tasks.v1`:
+  - `POST/GET /api/v1/pegii/orders/{n}/tasks`;
+  - `GET /api/v1/pegii/tasks/{id}`;
+  - `GET /api/v1/pegii/tasks?taskType=` (cloud-created tasks only, keyset-paged);
+  - `POST /api/v1/pegii/tasks/{id}/close`.
+
+  The site does close by id only. Close by (order, type) is resolved in the cloud.
+
+  A create writes a `USRDEF` row, the way the desktop writes its own: `did_edit_target='Y'`, `CSR`, the title uppercased and cut to 50 in `description`, the caller's description in `note`, and `sort_sequence` = max + 10. The sidecar holds the type, full title and priority. The idempotency key is stored as `task:<key>`, and everything commits in one transaction.
+
+  `dueDate` is **required** (D28, a change from the optional `due_at` above).
+
+  Close sets complete / completion time / `completed_by` (the token's `emp`, else 0) and fills `actual_date` if empty. The reason is appended to `note`. A desktop task gets a sidecar row with `created_by_api = 0`.
+
+  Desktop guard (D20): `TaskGeneration.NeedsMasterTasks` ignores tasks with `created_by_api = 1`.
+
+- **pegasus** (`feat/pulse-tasks`):
+  - The stub `services/pegii-tasks.ts` is **deleted**. A `TaskGateway` (`gateways/pegii-task.gateway.ts`) requires `pegii.tasks.v1` on every call, reads included, so a site without the routes is 503, never "not found".
+  - New `POST /pegii/tasks` (`CreateTask`: Cedar trio, granted to `workflow_runtime`, metered as `task:<id>`; an `alreadyExists` replay is free). `dedupKey` → pegII `idempotencyKey`.
+  - `POST /pegii/tasks/close` takes `{taskId}` or `{orderId, taskType}`. By type: one open match is closed; two or more → 409 `TASK_AMBIGUOUS` with `candidateIds`; none open but some closed → the latest as `alreadyClosed`; none → 404.
+  - `GET /pegii/tasks` needs `orderId` (every task on the order) or `taskType` (the cross-order search).
+  - Rows drop `stub` and `updatedAt`, and `taskType` is no longer limited to `IDENT_RE`, which rejected "Pulse Follow-Up".
+  - SDK **0.52.0** adds `create_task`, `close_task(task_id=)` and `TaskAmbiguous`, plus `list_tasks` filters with paging. README, CHANGELOG, MCP guide and OpenAPI (`createPegiiTask`, both close forms) are updated, and the Usage page has a "Tasks created" label.
+- **Owed:**
+  - movemanager item 0, then landing on `dev`;
+  - movemanager item 6 (Windows integration on the PegNW clone);
+  - NW's `/version` advertising `pegii.tasks.v1`;
+  - NW company `systemEmployeeCode` set (else `completed_by = 0`);
+  - after the pegasus merge: tag `sdk-python-v0.52.0` and update the authoring `CLAUDE.md`.
 
 ## Phase 7 — Memos + text read-mirror + conversation links → SDK 0.45.0
 
@@ -399,7 +433,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 ## Phase 8 — NW enablement + end-to-end test move (ops)
 
 - [ ] **Test on NW Prod in dry-run** (decided 2026-09-29; NW QA's tunnel isn't connected). NW Prod's pegII API on a `dev`-derived release containing Phases 4–7, with JWT + the hub DB configured, the service user provisioned, and `/version` capabilities confirmed. All workflow runs stay `--dry-run` (every mutation captured, nothing sent) until NW signs off on a live test. Live steps, when approved, use `TEST_PHONES` only.
-- [ ] NW desktop on the MSIX build with the Phase 6 guard fix; then lift the 409 `ORDER_TASKS_NOT_INITIALIZED` fallback.
+- [ ] NW desktop on the MSIX build with the Phase 6 guard fix (D20). There is no 409 fallback to lift: D3 was withdrawn (D18).
 - [ ] Tenant config:
   - `nw_pulse` CONFIG group: `PILOT_COORDINATORS`, `CS_PHONE`, `SAFETY_NET_EMAIL`, `HOLIDAYS`, `HELP_REPLY`, per-phase on/off.
   - Allowed email domains.
@@ -423,7 +457,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
 - **D1 pegII API auth (REVISED):** JWT, via a dedicated cloud service user on movemanager `dev`'s existing auth (`/auth/login`), with credentials in AWS Secrets Manager. This replaces the shared-secret header originally approved, because `dev` is retiring header keys. movemanager work targets `dev`.
 - **D2 Email recipients** (unchanged; now enforced before the pegII call): restricted to a tenant-admin-managed allowed-domain list → 400 `RECIPIENT_NOT_ALLOWED` (Phase 3).
-- **D3 Task-less orders:** until NW's desktop has the Phase 6 guard fix, `POST /tasks` returns 409 `ORDER_TASKS_NOT_INITIALIZED` for an order with zero task rows, and the reply workflow escalates by email only.
+- **D3 Task-less orders — WITHDRAWN 2026-10-16 (movemanager D18, Steve: "There is no reason to reject creating a task on an order with no task rows").** No 409 `ORDER_TASKS_NOT_INITIALIZED`. The desktop guard fix (D20) ships in the same movemanager change, on the MSIX cadence.
 - **D4 `list_orders`:** deprecated in favour of `search_orders`. The SDK emits a `DeprecationWarning` pointing at `search_orders`; the route and method are removed in a later minor.
 - **D5 SDK cadence:** one minor per pegasus phase, tagged and published on merge.
 

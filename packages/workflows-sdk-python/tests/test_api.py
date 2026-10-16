@@ -6,6 +6,7 @@ Uses ``httpx.MockTransport`` so the client exercises real request building
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 
 import httpx
@@ -16,6 +17,7 @@ from pegasus_workflows.api import (
     MAX_ARTIFACT_BYTES,
     PegasusApiError,
     PegasusClient,
+    TaskAmbiguous,
     WorkflowInUse,
 )
 
@@ -1564,10 +1566,10 @@ def test_list_tasks_scopes_by_order_id() -> None:
         return httpx.Response(200, json={"data": [{"id": "task-1"}], "meta": {"count": 1}})
 
     client = _client_with(handler)
-    tasks = client.list_tasks(order_id="ord-1", status="open")
+    tasks = client.list_tasks(order_id="490317", status="open")
     assert tasks == [{"id": "task-1"}]
     assert captured["path"] == "/api/v1/pegii/tasks"
-    assert captured["query"] == {"orderId": "ord-1", "status": "open"}
+    assert captured["query"] == {"orderId": "490317", "status": "open"}
 
 
 def test_get_task_returns_data() -> None:
@@ -1684,6 +1686,210 @@ def test_close_task_forbidden_raises() -> None:
     with pytest.raises(PegasusApiError) as exc_info:
         client.close_task(order_id="ord-1", task_type="date_confirmation")
     assert exc_info.value.status_code == 403
+
+
+def test_list_tasks_by_type_follows_every_page() -> None:
+    queries: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        q = dict(request.url.params)
+        queries.append(q)
+        if "cursor" not in q:
+            return httpx.Response(
+                200, json={"data": [{"id": "1"}, {"id": "2"}], "meta": {"nextCursor": "2"}}
+            )
+        return httpx.Response(200, json={"data": [{"id": "3"}], "meta": {"nextCursor": None}})
+
+    client = _client_with(handler)
+    tasks = client.list_tasks(
+        task_type="Pulse Follow-Up", status="open", due_before=_dt.date(2026, 10, 20)
+    )
+
+    assert [t["id"] for t in tasks] == ["1", "2", "3"]
+    assert queries[0] == {
+        "taskType": "Pulse Follow-Up",
+        "status": "open",
+        "dueBefore": "2026-10-20",
+        "limit": "500",
+    }
+    assert queries[1]["cursor"] == "2"
+
+
+def test_list_tasks_by_type_refuses_to_truncate() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"data": [{"id": "1"}, {"id": "2"}], "meta": {"nextCursor": "2"}}
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="more than 1 tasks"):
+        client.list_tasks(task_type="Pulse Follow-Up", max_results=1)
+
+
+def test_list_tasks_needs_an_order_or_a_type_before_any_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
+        raise AssertionError("no request expected")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="order_id, or task_type"):
+        client.list_tasks()
+
+
+def test_create_task_posts_the_body_and_returns_the_task() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            201, json={"data": {"id": "77", "status": "open", "alreadyExists": False}}
+        )
+
+    client = _client_with(handler)
+    result = client.create_task(
+        "490317",
+        "Pulse Follow-Up",
+        "Call back the shipper",
+        due_date=_dt.date(2026, 10, 20),
+        description="No reply",
+        priority="high",
+        assignee_code=8121,
+        dedup_key="pulse-490317-2026-10-16",
+    )
+
+    assert result == {"id": "77", "status": "open", "alreadyExists": False}
+    assert captured == {
+        "method": "POST",
+        "path": "/api/v1/pegii/tasks",
+        "body": {
+            "orderId": "490317",
+            "taskType": "Pulse Follow-Up",
+            "title": "Call back the shipper",
+            "dueDate": "2026-10-20",
+            "description": "No reply",
+            "priority": "high",
+            "assigneeCode": 8121,
+            "dedupKey": "pulse-490317-2026-10-16",
+        },
+    }
+
+
+def test_create_task_sends_only_what_was_given() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"id": "77", "alreadyExists": True}})
+
+    client = _client_with(handler)
+    client.create_task("490317", "Pulse Follow-Up", "t", due_date="2026-10-20")
+
+    assert captured["body"] == {
+        "orderId": "490317",
+        "taskType": "Pulse Follow-Up",
+        "title": "t",
+        "dueDate": "2026-10-20",
+    }
+
+
+def test_create_task_refuses_an_unknown_priority_before_any_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
+        raise AssertionError("no request expected")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="priority must be one of"):
+        client.create_task(
+            "490317", "Pulse Follow-Up", "t", due_date="2026-10-20", priority="urgent"
+        )
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (400, "UNKNOWN_TASK_TYPE"),
+        (403, "FORBIDDEN"),
+        (404, "ORDER_NOT_FOUND"),
+        (409, "IDEMPOTENCY_KEY_REUSED"),
+        (503, "PEGII_CAPABILITY_MISSING"),
+    ],
+)
+def test_create_task_raises_the_api_error(status: int, code: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": "nope", "code": code})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.create_task("490317", "Pulse Follow-Up", "t", due_date="2026-10-20")
+    assert (exc_info.value.status_code, exc_info.value.code) == (status, code)
+
+
+def test_close_task_by_id_posts_the_id_as_a_string() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"id": "77", "alreadyClosed": False}})
+
+    client = _client_with(handler)
+    client.close_task(task_id=77, reason="Customer replied")
+
+    assert captured["body"] == {"taskId": "77", "reason": "Customer replied"}
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"task_id": "77", "order_id": "1", "task_type": "t"},
+        {"task_id": "77", "order_id": "1"},
+        {"order_id": "1"},
+        {"task_type": "t"},
+    ],
+)
+def test_close_task_needs_exactly_one_form_before_any_request(kwargs) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
+        raise AssertionError("no request expected")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="close_task"):
+        client.close_task(**kwargs)
+
+
+def test_close_task_ambiguous_raises_task_ambiguous_with_the_candidates() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            409,
+            json={"error": "two open", "code": "TASK_AMBIGUOUS", "candidateIds": ["77", "78"]},
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(TaskAmbiguous) as exc_info:
+        client.close_task(order_id="490317", task_type="Pulse Follow-Up")
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.candidate_ids == ["77", "78"]
+    assert isinstance(exc_info.value, PegasusApiError)
+
+
+def test_close_task_other_409_stays_a_plain_api_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(409, json={"error": "x", "code": "SOMETHING_ELSE"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.close_task(task_id="77")
+    assert not isinstance(exc_info.value, TaskAmbiguous)
+
+
+def test_create_task_and_close_by_id_are_captured_under_dry_run() -> None:
+    client = PegasusClient(base_url="http://dry-run.invalid", token="dry-run", dry_run=True)
+
+    created = client.create_task("490317", "Pulse Follow-Up", "t", due_date="2026-10-20")
+    closed = client.close_task(task_id="77")
+
+    assert created["dryRun"] is True and created["alreadyExists"] is False
+    assert closed["id"] == "77" and closed["status"] == "closed"
+    assert [c["capability"] for c in client.captured] == ["CreateTask", "CloseTask"]
 
 
 def test_deliver_to_external_posts_body_and_returns_data() -> None:

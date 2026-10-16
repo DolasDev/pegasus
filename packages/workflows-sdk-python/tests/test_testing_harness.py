@@ -132,6 +132,13 @@ def test_get_correlated_state_is_keyed_by_local_entity_id() -> None:
         (lambda c: c.send_sms(to="+1555", body="hi"), "SendSms"),
         (lambda c: c.emit_event("order.saved", {"id": 1}), "EmitTenantEvent"),
         (lambda c: c.close_task(order_id="S-1", task_type="t"), "CloseTask"),
+        (lambda c: c.close_task(task_id="77"), "CloseTask"),
+        (
+            lambda c: c.create_task(
+                "490317", "Pulse Follow-Up", "Call back", due_date="2026-10-20"
+            ),
+            "CreateTask",
+        ),
         (lambda c: c.update_order("S-1", {"Survey": {"SerivceStatus": "x"}}), "WriteOrder"),
         (lambda c: c.put_projection("i", "order", "S-1", {"x": 1}), "WriteIntegrationProjection"),
         (lambda c: c.delete_projection("i", "order", "S-1"), "WriteIntegrationProjection"),
@@ -303,6 +310,15 @@ _MUTATION_CALLS = [
     lambda c: c.mark_text_message_read("m-1"),
     lambda c: c.emit_event("order.saved", {"id": 1}),
     lambda c: c.close_task(order_id="S-1", task_type="date_confirmation", reason="done"),
+    lambda c: c.close_task(task_id=77, reason="done"),
+    lambda c: c.create_task(
+        "490317",
+        "Pulse Follow-Up",
+        "Call back",
+        due_date="2026-10-20",
+        priority="high",
+        dedup_key="pulse-490317-2026-10-16",
+    ),
     lambda c: c.update_order("S-1", {"Survey": {"SerivceStatus": "In Progress"}}),
     lambda c: c.put_projection("demo_partner", "order", "S-1", {"x": 1}),
     lambda c: c.delete_projection("demo_partner", "order", "S-1"),

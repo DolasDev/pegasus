@@ -14,26 +14,25 @@
 //   PATCH /orders/:orderId       WriteOrder    write allowlisted fields back (native fragment)
 //   GET  /salesmen               ReadSalesman  list salesmen (?active=…)
 //   GET  /salesmen/:salesmanId   ReadSalesman  fetch one salesman
-//   GET  /tasks                  ReadTask    list tasks (?orderId=… ?status=…)
-//   GET  /tasks/:taskId          ReadTask    fetch one task
-//   POST /tasks/close            CloseTask   close (orderId, taskType) — idempotent
+//   GET  /tasks                  ReadTask      an order's tasks (?orderId=) or one type across orders (?taskType=)
+//   GET  /tasks/:taskId          ReadTask      fetch one task
+//   POST /tasks                  CreateTask    create a task on an order (idempotent with dedupKey)
+//   POST /tasks/close            CloseTask     close by taskId or (orderId, taskType) — idempotent
 //
 // This is a namespaced legacy-bridge surface, exactly like the retired longhaul
 // cloud handlers lived under `/api/v1/onprem/longhaul/*`. Single-order reads are
 // LIVE: GET /orders/:orderId resolves an OrderGateway (gateways/order-gateway.
 // factory.ts) and fetches the serialized order from the pegII team's on-prem API
 // at `/api/v1/pegii/serialized/orders/:id` over the WireGuard tunnel; selecting
-// orders is the site's live search (GET /orders/search). The task routes remain
-// STUB-backed (services/pegii-tasks.ts) until the pegII task API lands (NW pulse
-// Phase 6), with the route contract + Cedar gating real so the SDK and workflow
-// authors build against them now.
+// orders is the site's live search (GET /orders/search). Tasks are the site's
+// task API (pegii.tasks.v1, NW pulse Phase 6) through a TaskGateway.
 //
 // Distinct from the M2M `/api/v1/orders` endpoint (handlers/orders.ts), which is
 // a move-backed reporting view for integration clients and is left untouched.
 //
 // Mounted on dualAuthMiddleware for symmetry with /workflow-secrets-configs and
 // /integration-projections: the workflow_runtime `vnd_` key carries ReadOrder /
-// ReadTask / CloseTask, so a Cognito session authenticates but is authorized
+// ReadTask / CreateTask / CloseTask, so a Cognito session authenticates but is authorized
 // away (403) on every route here.
 // ---------------------------------------------------------------------------
 
@@ -53,22 +52,35 @@ import {
   ORDER_SEARCH_MAX_SPAN_DAYS,
 } from '../gateways/pegii/pegii-order-search.dto'
 import type { SalesmanRecord } from '../services/pegii-salesmen'
-import { closeTask, getTask, listTasks, type TaskRecord } from '../services/pegii-tasks'
+import { resolveTaskGateway } from '../gateways/task-gateway.factory'
+import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
+import { TASK_SEARCH_MAX_LIMIT } from '../gateways/pegii/pegii-task.dto'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
 import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
 import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 import { logger } from '../lib/logger'
 
-/** Identifier shape for orderId / taskId / taskType path+body segments. */
-const IDENT_RE = /^[A-Za-z0-9._:-]{1,128}$/
+/** A pegII order number or task id: the site's routes are `{n:int}`. */
+const PEGII_INT_RE = /^[1-9]\d{0,9}$/
+const PEGII_INT_MAX = 2_147_483_647
+const isPegiiInt = (v: string): boolean => PEGII_INT_RE.test(v) && Number(v) <= PEGII_INT_MAX
 
-const CloseBody = z
-  .object({
-    orderId: z.string().regex(IDENT_RE, 'orderId must match [A-Za-z0-9._:-]{1,128}'),
-    taskType: z.string().regex(IDENT_RE, 'taskType must match [A-Za-z0-9._:-]{1,128}'),
-    reason: z.string().trim().min(1).max(1000).optional(),
-  })
-  .strict()
+const orderNumber = z
+  .string({ error: 'orderId is required' })
+  .refine(isPegiiInt, 'orderId must be a pegII order number (digits)')
+// A task type is free text with spaces ("Pulse Follow-Up"); the site's sidecar column is 64.
+const taskType = z
+  .string({ error: 'taskType is required' })
+  .trim()
+  .min(1, 'taskType must not be empty')
+  .max(64, 'taskType may be at most 64 characters')
+  .refine(
+    (v) => [...v].every((ch) => ch.charCodeAt(0) >= 0x20 && ch.charCodeAt(0) !== 0x7f),
+    'taskType must not contain control characters',
+  )
+
+/** pegII task types compare case-insensitively (the site's registry does). */
+const sameTaskType = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
 
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 const isoDay = (name: string) =>
@@ -81,6 +93,80 @@ const isoDay = (name: string) =>
       return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v
     }, `${name} is not a real date`)
 const DAY_MS = 24 * 60 * 60 * 1000
+
+const TaskListQuery = z
+  .object({
+    orderId: orderNumber.optional(),
+    taskType: taskType.optional(),
+    status: z.enum(['open', 'closed'], { error: "status must be 'open' or 'closed'" }).optional(),
+    dueBefore: isoDay('dueBefore').optional(),
+    cursor: z.coerce.number().int().min(0, 'cursor must not be negative').optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1, `limit must be between 1 and ${TASK_SEARCH_MAX_LIMIT}`)
+      .max(TASK_SEARCH_MAX_LIMIT, `limit must be between 1 and ${TASK_SEARCH_MAX_LIMIT}`)
+      .optional(),
+  })
+  .strict()
+  .superRefine((q, ctx) => {
+    if (q.orderId === undefined && q.taskType === undefined)
+      ctx.addIssue({ code: 'custom', message: 'orderId or taskType is required' })
+    if (q.orderId !== undefined && (q.cursor !== undefined || q.limit !== undefined))
+      ctx.addIssue({
+        code: 'custom',
+        message: "cursor/limit page the cross-order search; an order's tasks come in one response",
+      })
+  })
+
+const CreateTaskBody = z
+  .object({
+    orderId: orderNumber,
+    taskType,
+    title: z
+      .string({ error: 'title is required' })
+      .trim()
+      .min(1, 'title is required')
+      .max(200, 'title may be at most 200 characters'),
+    description: z
+      .string()
+      .trim()
+      .max(1000, 'description may be at most 1000 characters')
+      .optional(),
+    priority: z
+      .enum(['low', 'normal', 'high'], { error: "priority must be 'low', 'normal' or 'high'" })
+      .optional(),
+    dueDate: isoDay('dueDate'),
+    assigneeCode: z
+      .number()
+      .int()
+      .positive('assigneeCode must be a MoveManager employee code')
+      .optional(),
+    dedupKey: z
+      .string()
+      .trim()
+      .min(1, 'dedupKey must not be empty')
+      .max(190, 'dedupKey may be at most 190 characters')
+      .optional(),
+  })
+  .strict()
+
+const CloseBody = z
+  .object({
+    taskId: z.union([z.string(), z.number().int()]).transform(String).optional(),
+    orderId: orderNumber.optional(),
+    taskType: taskType.optional(),
+    reason: z.string().trim().min(1).max(1000).optional(),
+  })
+  .strict()
+  .superRefine((b, ctx) => {
+    const byId = b.taskId !== undefined
+    const byType = b.orderId !== undefined || b.taskType !== undefined
+    if (byId === byType)
+      ctx.addIssue({ code: 'custom', message: 'give exactly one of taskId, or orderId + taskType' })
+    else if (byType && (b.orderId === undefined || b.taskType === undefined))
+      ctx.addIssue({ code: 'custom', message: 'orderId and taskType go together' })
+  })
 
 // Mirrors movemanager OrderSearchCriteria so a bad call fails here with a
 // legible 400 instead of a tunnel round-trip; the site re-validates anyway.
@@ -147,21 +233,33 @@ function toSalesmanResponse(salesman: SalesmanRecord) {
   }
 }
 
-function toTaskResponse(task: TaskRecord) {
+const statusOf = (t: PegiiTaskDto): 'open' | 'closed' => (t.completed ? 'closed' : 'open')
+
+/**
+ * A pegII task in the SDK's shape. Ids are strings (opaque per instance). `createdAt` is
+ * known only for a task the cloud created (pegII's `Tasks` has no created column) and
+ * `closedAt` only for a close made through the API; `completedAt` is the site-local time
+ * MoveManager stamps on any completion.
+ */
+function toTaskResponse(task: PegiiTaskDto) {
   return {
-    id: task.id,
-    orderId: task.orderId,
+    id: String(task.id),
+    orderId: String(task.orderNumber),
     taskType: task.taskType,
-    status: task.status,
-    reason: task.reason,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-    closedAt: task.closedAt,
-    // Every task row is synthesized by the in-memory stub (services/pegii-tasks)
-    // until the real pegII task bridge lands (NW pulse Phase 6), which drops
-    // this flag. It is on the row so no caller can mistake a fake for pegII
-    // state (sdk-feedback 0046 C).
-    stub: true as const,
+    title: task.title,
+    description: task.description,
+    priority: task.priority,
+    dueDate: task.dueDate,
+    assigneeCode: task.assigneeCode,
+    status: statusOf(task),
+    reason: task.closeReason,
+    createdByApi: task.createdByApi,
+    active: task.active,
+    completedAt: task.completedAt,
+    completedBy: task.completedBy,
+    actualDate: task.actualDate,
+    createdAt: task.createdUtc,
+    closedAt: task.closedUtc,
   }
 }
 
@@ -387,67 +485,216 @@ pegiiRuntimeHandler.get(
 )
 
 // ── Tasks ─────────────────────────────────────────────────────────────────
+//
+// Backed by the pegII site's task API (gateways/pegii-task.gateway.ts), gated on
+// the site's `pegii.tasks.v1` (503 PEGII_CAPABILITY_MISSING without it). Ids are
+// pegII's `Tasks.id`, one per task instance. Reads cover every task on an
+// order, the desktop's own included (a desktop task reports its legacy code as
+// `taskType` and has no priority); create writes a desktop user-defined task;
+// close completes any task.
 
-// GET /tasks — list tasks, optionally scoped to one order and/or status.
-pegiiRuntimeHandler.get('/tasks', requirePermission(Actions.ReadTask), async (c) => {
-  const tenantId = c.get('tenantId')
-  const orderId = c.req.query('orderId')
-  const status = c.req.query('status')
+// GET /tasks — an order's tasks (`orderId`), or cloud-created tasks of one type
+// across orders (`taskType`, keyset-paged by `meta.nextCursor`). One of the two
+// is required. An unknown order → 404 ORDER_NOT_FOUND; an order with no tasks
+// → []. Nothing is created by a read.
+pegiiRuntimeHandler.get(
+  '/tasks',
+  requirePermission(Actions.ReadTask),
+  validator('query', (value, c) => {
+    const parsed = TaskListQuery.safeParse(value)
+    if (!parsed.success) {
+      const message = parsed.error.issues.map((i) => i.message).join('; ')
+      return c.json({ error: message, code: 'VALIDATION_ERROR' }, 400)
+    }
+    return parsed.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const q = c.req.valid('query')
+    const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
 
-  const tasks = listTasks(tenantId, {
-    ...(orderId ? { orderId } : {}),
-    ...(status ? { status } : {}),
-  })
-  logger.info('pegII tasks listed', { count: tasks.length, orderId, status, tenantId })
-  return c.json({ data: tasks.map(toTaskResponse), meta: { count: tasks.length } })
-})
+    if (q.orderId !== undefined) {
+      const all = await gateway.listOrderTasks(Number(q.orderId))
+      if (all === null) {
+        return c.json({ error: `Order ${q.orderId} not found`, code: 'ORDER_NOT_FOUND' }, 404)
+      }
+      const tasks = all.filter(
+        (t) =>
+          (q.taskType === undefined || sameTaskType(t.taskType, q.taskType)) &&
+          (q.status === undefined || statusOf(t) === q.status) &&
+          (q.dueBefore === undefined || (t.dueDate !== null && t.dueDate < q.dueBefore)),
+      )
+      logger.info('pegII tasks listed', { tenantId, orderId: q.orderId, count: tasks.length })
+      return c.json({
+        data: tasks.map(toTaskResponse),
+        meta: { count: tasks.length, nextCursor: null },
+      })
+    }
 
-// GET /tasks/:taskId — fetch a single task.
+    const page = await gateway.searchTasks({
+      taskType: q.taskType!,
+      ...(q.status !== undefined ? { open: q.status === 'open' } : {}),
+      ...(q.dueBefore !== undefined ? { dueBefore: q.dueBefore } : {}),
+      ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
+      ...(q.limit !== undefined ? { limit: q.limit } : {}),
+    })
+    logger.info('pegII tasks searched', {
+      tenantId,
+      taskType: q.taskType,
+      count: page.items.length,
+      more: page.nextCursor !== null,
+    })
+    return c.json({
+      data: page.items.map(toTaskResponse),
+      meta: {
+        count: page.items.length,
+        nextCursor: page.nextCursor === null ? null : String(page.nextCursor),
+      },
+    })
+  },
+)
+
+// GET /tasks/:taskId — one task, desktop or cloud. An id that isn't a pegII
+// task id (e.g. the retired stub's `task_<order>_<type>`) is simply not found.
 pegiiRuntimeHandler.get('/tasks/:taskId', requirePermission(Actions.ReadTask), async (c) => {
   const tenantId = c.get('tenantId')
   const taskId = c.req.param('taskId') ?? ''
+  if (!isPegiiInt(taskId)) {
+    return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404)
+  }
 
-  const task = getTask(tenantId, taskId)
+  const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+  const task = await gateway.getTask(Number(taskId))
   if (!task) {
     return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404)
   }
   return c.json({ data: toTaskResponse(task) })
 })
 
-// POST /tasks/close — close (orderId, taskType). Idempotent: a second close of
-// an already-closed task returns 200 with `alreadyClosed: true`, never an error.
+// POST /tasks — create a task on an order (CreateTask, billable). The site
+// writes a MoveManager user-defined (USRDEF) task the coordinator sees and
+// completes like their own, and validates the type (`Pulse Follow-Up` today),
+// title, priority and assignee — its 400s pass through with their codes.
+// `dedupKey` makes it idempotent: the same key with the same request answers
+// 200 `alreadyExists: true` (the original task; not billed), with a different
+// request 409 IDEMPOTENCY_KEY_REUSED. A new task is 201.
+pegiiRuntimeHandler.post(
+  '/tasks',
+  requirePermission(Actions.CreateTask),
+  meterUsage(Actions.CreateTask),
+  validator('json', (value, c) => {
+    const parsed = CreateTaskBody.safeParse(value)
+    if (!parsed.success) {
+      const message = parsed.error.issues.map((i) => i.message).join('; ')
+      return c.json({ error: message, code: 'VALIDATION_ERROR' }, 400)
+    }
+    return parsed.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const b = c.req.valid('json')
+
+    const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+    const result = await gateway.createTask(Number(b.orderId), {
+      taskType: b.taskType,
+      title: b.title,
+      dueDate: b.dueDate,
+      ...(b.description !== undefined ? { description: b.description } : {}),
+      ...(b.priority !== undefined ? { priority: b.priority } : {}),
+      ...(b.assigneeCode !== undefined ? { assigneeCode: b.assigneeCode } : {}),
+      ...(b.dedupKey !== undefined ? { idempotencyKey: b.dedupKey } : {}),
+    })
+    if (!result.found) {
+      return c.json({ error: `Order ${b.orderId} not found`, code: result.code }, 404)
+    }
+
+    logger.info('pegII task created', {
+      tenantId,
+      orderId: b.orderId,
+      taskId: result.task.id,
+      taskType: b.taskType,
+      alreadyExists: result.alreadyExists,
+    })
+    return c.json(
+      { data: { ...toTaskResponse(result.task), alreadyExists: result.alreadyExists } },
+      result.alreadyExists ? 200 : 201,
+    )
+  },
+)
+
+// POST /tasks/close — close one task (CloseTask, billable), by `taskId` or by
+// `(orderId, taskType)`. Exactly one form. Idempotent: closing a closed task is
+// 200 `alreadyClosed: true` (not billed). By (order, type), the order's OPEN
+// tasks of that type decide: one → closed; two or more → 409 TASK_AMBIGUOUS
+// naming `candidateIds`, nothing closed; none open but some closed → the latest
+// as `alreadyClosed`; none at all → 404 TASK_NOT_FOUND.
 pegiiRuntimeHandler.post(
   '/tasks/close',
   requirePermission(Actions.CloseTask),
   meterUsage(Actions.CloseTask),
   validator('json', (value, c) => {
-    const r = CloseBody.safeParse(value)
-    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
-    return r.data
+    const parsed = CloseBody.safeParse(value)
+    if (!parsed.success) {
+      const message = parsed.error.issues.map((i) => i.message).join('; ')
+      return c.json({ error: message, code: 'VALIDATION_ERROR' }, 400)
+    }
+    return parsed.data
   }),
   async (c) => {
     const tenantId = c.get('tenantId')
-    const { orderId, taskType, reason } = c.req.valid('json')
+    const body = c.req.valid('json')
+    const reason = body.reason ?? null
+    const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
 
-    const result = closeTask(tenantId, {
-      orderId,
-      taskType,
-      reason: reason ?? null,
-    })
-    if (!result) {
-      // A miss is a 404, never a fabricated success. The meter skips non-2xx,
-      // so a close that closed nothing is not billed (sdk-feedback 0046 B).
-      return c.json(
-        {
-          error: `No ${taskType} task on order ${orderId}`,
-          code: 'TASK_NOT_FOUND',
-        },
-        404,
-      )
+    let taskId: number
+    if (body.taskId !== undefined) {
+      if (!isPegiiInt(body.taskId)) {
+        return c.json({ error: `Task ${body.taskId} not found`, code: 'TASK_NOT_FOUND' }, 404)
+      }
+      taskId = Number(body.taskId)
+    } else {
+      const { orderId, taskType } = body as { orderId: string; taskType: string }
+      const all = await gateway.listOrderTasks(Number(orderId))
+      if (all === null) {
+        return c.json({ error: `Order ${orderId} not found`, code: 'ORDER_NOT_FOUND' }, 404)
+      }
+      const matches = all.filter((t) => sameTaskType(t.taskType, taskType))
+      const open = matches.filter((t) => !t.completed)
+      if (open.length > 1) {
+        const candidateIds = open.map((t) => String(t.id))
+        return c.json(
+          {
+            error: `Order ${orderId} has ${open.length} open ${taskType} tasks; close one by taskId`,
+            code: 'TASK_AMBIGUOUS',
+            candidateIds,
+          },
+          409,
+        )
+      }
+      if (open.length === 0) {
+        const latest = matches.reduce<PegiiTaskDto | null>(
+          (best, t) => (best === null || t.id > best.id ? t : best),
+          null,
+        )
+        if (latest === null) {
+          return c.json(
+            { error: `No ${taskType} task on order ${orderId}`, code: 'TASK_NOT_FOUND' },
+            404,
+          )
+        }
+        logger.info('pegII task closed', { tenantId, taskId: latest.id, alreadyClosed: true })
+        return c.json({ data: { ...toTaskResponse(latest), alreadyClosed: true } })
+      }
+      taskId = open[0]!.id
     }
-    const { task, alreadyClosed } = result
-    logger.info('pegII task closed', { orderId, taskType, alreadyClosed, tenantId })
-    return c.json({ data: { ...toTaskResponse(task), alreadyClosed } })
+
+    const result = await gateway.closeTask(taskId, reason)
+    if (!result) {
+      // A miss is a 404, never a fabricated success; the meter skips non-2xx.
+      return c.json({ error: `Task ${taskId} not found`, code: 'TASK_NOT_FOUND' }, 404)
+    }
+    logger.info('pegII task closed', { tenantId, taskId, alreadyClosed: result.alreadyClosed })
+    return c.json({ data: { ...toTaskResponse(result.task), alreadyClosed: result.alreadyClosed } })
   },
 )
 

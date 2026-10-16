@@ -1012,6 +1012,7 @@ world, performed by an Automation or API client.** One each:
 | Text sent (`SendSms`)                          | `send_sms`                                                     |
 | Email sent (`SendEmail`)                       | `send_email`                                                   |
 | Inbound text marked read (`UpdateTextMessage`) | `mark_text_message_read`                                       |
+| Task created (`CreateTask`)                    | `create_task`                                                  |
 | Task closed (`CloseTask`)                      | `close_task`                                                   |
 | Order written back (`WriteOrder`)              | `update_order` (only when a value changed)                     |
 | Delivery to a partner (`DeliverToExternal`)    | `deliver_to_external` (only when the partner accepted it)      |
@@ -1025,7 +1026,7 @@ world, performed by an Automation or API client.** One each:
 - Automation runs, schedules and triggers; `emit_event` (internal)
 - dry runs, and any non-2xx response (a failed send, a 409, a partner error)
 - **idempotent replays** — a response with `alreadySent` / `alreadyRead` /
-  `alreadyClosed`, so a retry with the same `dedup_key` costs nothing; and an
+  `alreadyClosed` / `alreadyExists`, so a retry with the same `dedup_key` costs nothing; and an
   `update_order` that changes nothing (`meta.applied: false`)
 - opt-out records, and anything a **person** does in the web app
 
@@ -1087,24 +1088,57 @@ The pegII operational surface (legacy orders + tasks + salesmen) has its own rea
 client.search_orders("plan_pack", "2026-10-20", "2026-10-20")  # ReadOrder — LIVE from sales, all pages
 client.get_order("SO-12345")         # ReadOrder — projected row {id, orderNumber, status, …}
 client.update_order("490317", {"Survey": {"SerivceStatus": "In Progress"}})  # WriteOrder — native fragment
-client.list_tasks(order_id="SO-12345")   # ReadTask
-client.get_task("task-1")            # ReadTask
-client.close_task(order_id="SO-12345", task_type="date_confirmation", reason="done")  # CloseTask
+client.list_tasks(order_id="490317")    # ReadTask — every task on the order, MoveManager's own too
+client.list_tasks(task_type="Pulse Follow-Up", status="open", due_before=today)  # ReadTask — across orders
+client.get_task("1234567")           # ReadTask
+client.create_task("490317", "Pulse Follow-Up", "Call back", due_date=today, dedup_key="pulse-490317-2026-10-16")  # CreateTask
+client.close_task(task_id="1234567", reason="Customer replied")  # CloseTask — or order_id= + task_type=
 client.list_salesmen(active="true")  # ReadSalesman — the whole directory, live from the site
 client.get_salesman("213056")        # ReadSalesman — {id, name, email, branch, active, …}
 ```
 
-> **Tasks are a stub today.** The platform does not read pegII's real tasks
-> yet. Every order, including one that doesn't exist, returns two synthesized
-> tasks (`date_confirmation`, `survey_scheduling`), held in memory and reset on a
-> cold start, and every row carries `stub: true`.
->
-> `close_task` on a task type the order doesn't have raises `PegasusApiError`
-> 404 `TASK_NOT_FOUND`. It creates nothing and isn't billed. Before 0.48.1 it
-> answered 200 with a task invented on the spot, and billed for it.
->
-> There is no `create_task` and no close-by-id yet. Both arrive with the real
-> pegII task bridge.
+#### Tasks (real since 0.52.0)
+
+Tasks are the coordinator's task list on an order in MoveManager. Every call
+reaches the tenant's pegII site, which must advertise `pegii.tasks.v1` (else 503
+`PEGII_CAPABILITY_MISSING`).
+
+- **Ids are pegII's own**, one per task (strings, e.g. `"1234567"`). Two tasks of
+  the same type on one order have different ids.
+- **`create_task`** puts a MoveManager user-defined task on the order. The
+  coordinator sees it like one they added: they can edit and complete it there,
+  and MoveManager never re-dates it. Its grid text is the title, uppercased and
+  cut to 50; the full title is kept.
+  - `task_type` must be one the site lets the cloud create. Today that is only
+    `"Pulse Follow-Up"`; anything else is 400 `UNKNOWN_TASK_TYPE`.
+  - `due_date` is **required**.
+  - `priority` is `low` / `normal` / `high`.
+  - `assignee_code` is a MoveManager employee code; it defaults to the order's coordinator.
+  - **Pass a `dedup_key`.** The same key with the same request returns the original task
+    with `alreadyExists: True` and isn't billed. The same key with a different request is
+    409 `IDEMPOTENCY_KEY_REUSED`.
+- **`close_task`** completes **any** task, the way a coordinator does. It takes
+  `task_id=` or `order_id=` + `task_type=`, exactly one of the two (else
+  `ValueError`).
+  - By type, the order's open tasks of that type decide:
+    - exactly one → closed;
+    - two or more → `TaskAmbiguous` (409, `candidate_ids`), nothing closed;
+    - none open but some closed → the latest, with `alreadyClosed: True`;
+    - none at all → 404 `TASK_NOT_FOUND`.
+  - `reason` is appended to the task's note in MoveManager as `Closed by Pegasus: …`.
+  - A repeat close, a 404 and a 409 are never billed.
+- **Reads cover MoveManager's own tasks too.** A desktop task reports:
+  - its legacy code (e.g. `PACK`) as `taskType`;
+  - its grid text as `title`;
+  - `priority: None`.
+
+  `createdAt` is set only for a task the cloud created. `closedAt` (UTC) is set only for a
+  close made through the API. `completedAt` is the site-local time of any completion.
+
+- `list_tasks(task_type=...)` without `order_id` searches **cloud-created** tasks of
+  that type across orders, following every page.
+- `list_tasks` needs `order_id` or `task_type`.
+- An unknown order is 404 `ORDER_NOT_FOUND`. An order with no tasks is `[]`.
 
 #### Selecting orders (`search_orders`, 0.51.0+)
 

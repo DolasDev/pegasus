@@ -173,6 +173,38 @@ class TenantMigrating(PegasusApiError):
     retry_after_seconds: int | None = None
 
 
+@dataclass
+class TaskAmbiguous(PegasusApiError):
+    """A close by ``(order_id, task_type)`` matched two or more open tasks (HTTP 409).
+
+    Raised by :meth:`PegasusClient.close_task` with ``code`` ``"TASK_AMBIGUOUS"``.
+    Nothing was closed, and nothing was billed. Close one by ``task_id`` instead.
+
+    Attributes:
+        candidate_ids: The open tasks of that type on the order.
+    """
+
+    candidate_ids: list[str] = field(default_factory=list)
+
+
+def _raise_for_task_ambiguous(response: httpx.Response) -> None:
+    """Raise :class:`TaskAmbiguous` for a 409 ``TASK_AMBIGUOUS``."""
+    if response.status_code != 409:
+        return
+    try:
+        body = response.json()
+    except ValueError:
+        return
+    if isinstance(body, dict) and body.get("code") == "TASK_AMBIGUOUS":
+        ids = body.get("candidateIds")
+        raise TaskAmbiguous(
+            status_code=409,
+            code="TASK_AMBIGUOUS",
+            message=body.get("error"),
+            candidate_ids=[str(i) for i in ids] if isinstance(ids, list) else [],
+        )
+
+
 def _raise_for_tenant_migrating(response: httpx.Response) -> None:
     """Raise :class:`TenantMigrating` for a 409 ``TENANT_MIGRATING``."""
     if response.status_code != 409:
@@ -225,6 +257,10 @@ def _raise_for_sms_channel_not_connected(response: httpx.Response) -> None:
 
 #: ``date_field`` values :meth:`PegasusClient.search_orders` accepts (the site's whitelist).
 ORDER_SEARCH_DATE_FIELDS = ("plan_pack", "plan_load", "del_actual", "pack_date", "load_date")
+
+
+#: ``create_task`` priorities (the pegII site's vocabulary).
+TASK_PRIORITIES = ("low", "normal", "high")
 
 
 def _iso_day(value: str | _dt.date) -> str:
@@ -2325,99 +2361,281 @@ class PegasusClient:
         native = self.get_order(order_id, shape="native")
         return self.map_from_external(integration_id, native)
 
-    # Tasks are the unit of human work in the moving-ops flow (date
-    # confirmation, survey scheduling, paperwork, QA sign-off). A workflow whose
-    # job is to advance or close out operational tasks in response to events
-    # uses these. Reads are gated by ``ReadTask``; ``close_task`` by
+    # Tasks are the unit of human work in the moving-ops flow: the coordinator's
+    # task list on an order in MoveManager (pegII). A workflow reads them, puts a
+    # follow-up on a coordinator's list, and closes them out. Reads are gated by
+    # ``ReadTask``, ``create_task`` by ``CreateTask``, ``close_task`` by
     # ``CloseTask`` — declared in the workflow manifest ``required_actions``.
     #
-    # STUB (sdk-feedback 0046): the platform does not yet read pegII's real
-    # tasks. Every row is synthesized: two seeded types per order
-    # (``date_confirmation``, ``survey_scheduling``), for ANY order id, kept in
-    # memory and reset on a cold start. Rows carry ``stub: True`` (0.48.1+). Do
-    # not build behavior that depends on the task data being real until that
-    # flag is gone. The real bridge (create, close by id) is NW pulse Phase 6.
+    # Real since 0.52.0 (NW pulse Phase 6): every call reaches the tenant's pegII
+    # site, which must advertise ``pegii.tasks.v1`` (else 503
+    # ``PEGII_CAPABILITY_MISSING``). A task id is pegII's own, one per task.
 
-    def list_tasks(self, order_id: str | None = None, **params: Any) -> list[dict[str, Any]]:
-        """List pegII tasks, optionally scoped to one order. Requires ``ReadTask``.
+    def list_tasks(
+        self,
+        order_id: str | None = None,
+        *,
+        task_type: str | None = None,
+        status: str | None = None,
+        due_before: str | _dt.date | None = None,
+        max_results: int = 1000,
+        **params: Any,
+    ) -> list[dict[str, Any]]:
+        """List pegII tasks: an order's, or one type across orders. Requires ``ReadTask``.
+
+        Two modes:
+
+        * ``order_id`` given — **every** task on that order, MoveManager's own
+          and the cloud's, in one response. ``task_type``/``status``/
+          ``due_before`` filter it.
+        * ``task_type`` only — tasks the cloud created of that type across all
+          orders (the daily check's "open Pulse Follow-Ups due before today").
+          Pages are followed until the last one.
 
         Args:
-            order_id: If given, only tasks belonging to this order are returned
-                (sent as the ``orderId`` query param).
-            **params: Additional query params (e.g. ``status``).
+            order_id: The order (pegII order number, digits).
+            task_type: The task type, e.g. ``"Pulse Follow-Up"``
+                (case-insensitive). Required when ``order_id`` is not given.
+            status: ``"open"`` or ``"closed"`` (omit for both).
+            due_before: Only tasks due strictly before this day (a ``date`` or
+                ``"YYYY-MM-DD"``). Tasks with no due date never match.
+            max_results: Safety cap for the cross-order mode. More matches raise
+                ``ValueError`` rather than silently truncating.
+            **params: Extra query params, passed through.
 
         Returns:
-            A list of task rows (``{id, orderId, taskType, status, reason,
-            createdAt, updatedAt, closedAt, stub}``). ``stub`` is ``True`` while
-            the rows are synthesized rather than read from pegII (see the note
-            above this method).
+            Task rows::
+
+                {id, orderId, taskType, title, description, priority, dueDate,
+                 assigneeCode, status,          # "open" | "closed"
+                 reason,                        # the close reason given through the API
+                 createdByApi, active,
+                 completedAt, completedBy, actualDate,
+                 createdAt, closedAt}
+
+            ``id``/``orderId`` are strings. A MoveManager task reports its
+            legacy code as ``taskType`` (e.g. ``"PACK"``), its grid text as
+            ``title``, and ``priority: None``. ``createdAt`` is set only for a task
+            the cloud created; ``closedAt`` (UTC) only for a close made through
+            the API; ``completedAt`` is the site-local time MoveManager stamps on
+            any completion. An order with no tasks is ``[]``.
 
         Raises:
-            PegasusApiError: On 403 (manifest lacks ``ReadTask``) or any other
-                non-2xx.
+            ValueError: When neither ``order_id`` nor ``task_type`` is given
+                (before any request), or past ``max_results``.
+            PegasusApiError: On 400, 403 (manifest lacks ``ReadTask``), 404
+                ``ORDER_NOT_FOUND``, 503 ``PEGII_CAPABILITY_MISSING``, or any
+                other non-2xx.
         """
+        if order_id is None and task_type is None:
+            raise ValueError("list_tasks needs order_id, or task_type to search across orders")
+        query: dict[str, Any] = dict(params)
+        if task_type is not None:
+            query["taskType"] = task_type
+        if status is not None:
+            query["status"] = status
+        if due_before is not None:
+            query["dueBefore"] = _iso_day(due_before)
         if order_id is not None:
-            params["orderId"] = order_id
-        return self._get_json("/api/v1/pegii/tasks", **params)["data"]
+            query["orderId"] = order_id
+            return self._get_json("/api/v1/pegii/tasks", **query)["data"]
 
-    def get_task(self, task_id: str) -> dict[str, Any]:
+        query.setdefault("limit", 500)
+        tasks: list[dict[str, Any]] = []
+        while True:
+            body = self._get_json("/api/v1/pegii/tasks", **query)
+            tasks.extend(body["data"])
+            if len(tasks) > max_results:
+                raise ValueError(
+                    f"list_tasks matched more than {max_results} tasks; narrow the filters "
+                    "or raise max_results"
+                )
+            next_cursor = (body.get("meta") or {}).get("nextCursor")
+            if next_cursor is None:
+                return tasks
+            query["cursor"] = next_cursor
+
+    def get_task(self, task_id: str | int) -> dict[str, Any]:
         """Fetch a single pegII task by id. Requires ``ReadTask``.
 
         Returns:
-            The task row, same shape as :meth:`list_tasks` (``stub: True`` while
-            synthesized).
+            The task row, same shape as :meth:`list_tasks`.
 
         Raises:
             PegasusApiError: On 403 (manifest lacks ``ReadTask``), 404 (no such
-                task), or any other non-2xx.
+                task), 503 ``PEGII_CAPABILITY_MISSING``, or any other non-2xx.
         """
         return self._get_json(f"/api/v1/pegii/tasks/{task_id}")["data"]
+
+    def create_task(
+        self,
+        order_id: str,
+        task_type: str,
+        title: str,
+        *,
+        due_date: str | _dt.date,
+        description: str | None = None,
+        priority: str | None = None,
+        assignee_code: int | None = None,
+        dedup_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Put a task on an order's MoveManager task list. Requires ``CreateTask``. Billable.
+
+        The coordinator sees it on the order like a task they added themselves
+        (a MoveManager user-defined task): they can edit and complete it there,
+        and MoveManager never re-dates it. The task list's grid shows the title
+        uppercased and cut to 50 characters; the full title is kept and returned.
+
+        Args:
+            order_id: The order (pegII order number, digits).
+            task_type: A type the site lets the cloud create — today only
+                ``"Pulse Follow-Up"``. Anything else is a 400 ``UNKNOWN_TASK_TYPE``.
+            title: Up to 200 characters.
+            due_date: Required — a ``date`` or ``"YYYY-MM-DD"`` (a ``datetime``'s
+                time is dropped). A task with no due date would never show up in
+                a "due before" check.
+            description: Optional note, up to 1000 characters.
+            priority: ``"low"``, ``"normal"`` (the default) or ``"high"``.
+            assignee_code: A MoveManager employee code; defaults to the order's
+                coordinator.
+            dedup_key: Makes the create idempotent (up to 190 characters). The
+                same key with the same request returns the original task with
+                ``alreadyExists: True`` — not billed; the same key with a
+                different request is a 409 ``IDEMPOTENCY_KEY_REUSED``. Use one
+                per logical follow-up, e.g. ``f"pulse-{order_id}-{day}"``.
+
+        Returns:
+            The task row (see :meth:`list_tasks`) plus ``alreadyExists``.
+
+        Raises:
+            ValueError: On a ``priority`` outside the vocabulary (before any request).
+            PegasusApiError: On 400 (``VALIDATION_ERROR``, ``UNKNOWN_TASK_TYPE``,
+                ``UNKNOWN_ASSIGNEE``, …); 403 (manifest lacks ``CreateTask``); 404
+                ``ORDER_NOT_FOUND``; 409 ``IDEMPOTENCY_KEY_REUSED`` or
+                ``IDEMPOTENT_TASK_DELETED`` (the key's task was deleted in
+                MoveManager); 503 ``PEGII_CAPABILITY_MISSING``; or any other
+                non-2xx. Under ``--dry-run`` and ``pegasus_workflows.testing`` the
+                create is captured, not sent.
+        """
+        if priority is not None and priority not in TASK_PRIORITIES:
+            raise ValueError(
+                f"priority must be one of {', '.join(TASK_PRIORITIES)}; got {priority!r}"
+            )
+        due = _iso_day(due_date)
+        payload: dict[str, Any] = {
+            "orderId": order_id,
+            "taskType": task_type,
+            "title": title,
+            "dueDate": due,
+        }
+        if description is not None:
+            payload["description"] = description
+        if priority is not None:
+            payload["priority"] = priority
+        if assignee_code is not None:
+            payload["assigneeCode"] = assignee_code
+        if dedup_key is not None:
+            payload["dedupKey"] = dedup_key
+        captured = self._capture_mutation(
+            "CreateTask",
+            "create_task",
+            {
+                "order_id": order_id,
+                "task_type": task_type,
+                "title": title,
+                "due_date": due,
+                "description": description,
+                "priority": priority,
+                "assignee_code": assignee_code,
+                "dedup_key": dedup_key,
+            },
+            {
+                "id": "dry-run",
+                "orderId": order_id,
+                "taskType": task_type,
+                "title": title,
+                "description": description,
+                "priority": priority or "normal",
+                "dueDate": due,
+                "status": "open",
+                "createdByApi": True,
+                "alreadyExists": False,
+                "dryRun": True,
+            },
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post("/api/v1/pegii/tasks", json=payload)
+        _raise_for_status(response)
+        return response.json()["data"]
 
     def close_task(
         self,
         *,
-        order_id: str,
-        task_type: str,
+        task_id: str | int | None = None,
+        order_id: str | None = None,
+        task_type: str | None = None,
         reason: str | None = None,
     ) -> dict[str, Any]:
-        """Close an order's task by ``(order_id, task_type)``. Requires ``CloseTask``.
+        """Complete a task. Requires ``CloseTask``. Billable.
 
-        Identifying a task by ``(order_id, task_type)`` avoids having to first
-        list tasks to find an id — the common "close the date-confirmation task
-        for this order" shape. **Idempotent**: closing an already-closed task is
-        a no-op success (not an error), so a long-running workflow can safely
-        retry the activity.
+        Closes **any** task — one the cloud created or one a coordinator added —
+        the way a coordinator completes it in MoveManager. Name it one of two ways:
+
+        * ``task_id`` — the task's id (from :meth:`create_task` or
+          :meth:`list_tasks`). Preferred.
+        * ``order_id`` + ``task_type`` — the order's one OPEN task of that type.
+          Two or more open matches raise :class:`TaskAmbiguous` naming them and
+          close nothing; none open but some already closed returns the latest
+          with ``alreadyClosed: True``; none at all is a 404.
+
+        **Idempotent**: closing a closed task is a success with
+        ``alreadyClosed: True`` (not billed), so an activity can retry safely.
 
         Args:
-            order_id: The order the task belongs to.
-            task_type: The task's type, e.g. ``"date_confirmation"``.
-            reason: Optional human-readable note recorded on the close.
+            task_id: The task's id.
+            order_id: The order, with ``task_type``.
+            task_type: The type, e.g. ``"Pulse Follow-Up"`` (case-insensitive).
+            reason: Optional, up to 1000 characters. Kept with the task and
+                appended to its note in MoveManager as ``Closed by Pegasus: …``.
 
         Returns:
-            The closed task row (``status == "closed"``, ``stub: True`` while
-            synthesized). The response also carries ``alreadyClosed: True``
-            when the task was already closed. That replay is not billed.
+            The task row (``status == "closed"``) plus ``alreadyClosed``.
 
         Raises:
-            PegasusApiError: On 403 (manifest lacks ``CloseTask``), **404
-                ``TASK_NOT_FOUND``** when the order has no task of that type
-                (0.48.1+; it used to answer 200 with a task invented and closed on
-                the spot, and that miss was billed), or any other non-2xx. A
-                404 creates nothing and is not billed. Under ``--dry-run`` and
-                ``pegasus_workflows.testing`` the close is captured, not sent,
-                so a miss can't surface there.
+            ValueError: Unless exactly one of ``task_id`` or
+                (``order_id`` + ``task_type``) is given — before any request.
+            TaskAmbiguous: 409 ``TASK_AMBIGUOUS``; ``candidate_ids`` lists the
+                open tasks. Nothing was closed. Not billed.
+            PegasusApiError: On 403 (manifest lacks ``CloseTask``), 404
+                ``TASK_NOT_FOUND`` / ``ORDER_NOT_FOUND`` (nothing created, not
+                billed), 503 ``PEGII_CAPABILITY_MISSING``, or any other non-2xx.
+                Under ``--dry-run`` and ``pegasus_workflows.testing`` the close
+                is captured, not sent, so a miss can't surface there.
         """
-        payload: dict[str, Any] = {"orderId": order_id, "taskType": task_type}
+        by_id = task_id is not None
+        by_type = order_id is not None or task_type is not None
+        if by_id == by_type:
+            raise ValueError("close_task takes exactly one of task_id, or order_id + task_type")
+        if by_type and (order_id is None or task_type is None):
+            raise ValueError("close_task needs both order_id and task_type")
+
+        payload: dict[str, Any] = (
+            {"taskId": str(task_id)} if by_id else {"orderId": order_id, "taskType": task_type}
+        )
         if reason is not None:
             payload["reason"] = reason
         captured = self._capture_mutation(
             "CloseTask",
             "close_task",
-            {"order_id": order_id, "task_type": task_type, "reason": reason},
+            {"task_id": task_id, "order_id": order_id, "task_type": task_type, "reason": reason},
             {
+                "id": str(task_id) if by_id else None,
                 "orderId": order_id,
                 "taskType": task_type,
                 "status": "closed",
+                "reason": reason,
                 "alreadyClosed": False,
                 "dryRun": True,
             },
@@ -2426,6 +2644,7 @@ class PegasusClient:
             return captured
         with self._client() as client:
             response = client.post("/api/v1/pegii/tasks/close", json=payload)
+        _raise_for_task_ambiguous(response)
         _raise_for_status(response)
         return response.json()["data"]
 

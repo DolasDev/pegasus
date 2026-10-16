@@ -94,6 +94,7 @@ describe('meterUsage — counting rules', () => {
     ['SendEmail', Actions.SendEmail, { id: 'e', alreadySent: true }],
     ['UpdateTextMessage', Actions.UpdateTextMessage, { id: 'm', alreadyRead: true }],
     ['CloseTask', Actions.CloseTask, { id: 't', alreadyClosed: true }],
+    ['CreateTask', Actions.CreateTask, { id: '77', alreadyExists: true }],
   ])('a %s replay counts zero', async (_name, action, data) => {
     const app = appFor(action, { status: 200, body: { data } }, RUNTIME)
     expect((await call(app)).status).toBe(200)
@@ -121,6 +122,7 @@ describe('meterUsage — counting rules', () => {
       [Actions.SendEmail, { id: 'e1', alreadySent: false }, 'email:e1'],
       [Actions.UpdateTextMessage, { id: 'm1', readStatus: 'Read', alreadyRead: false }, 'read:m1'],
       [Actions.CloseTask, { id: 't1', status: 'closed', alreadyClosed: false }, 'close:t1'],
+      [Actions.CreateTask, { id: '77', status: 'open', alreadyExists: false }, 'task:77'],
     ] as const
     for (const [action, data, key] of cases) {
       mockRecord.mockClear()

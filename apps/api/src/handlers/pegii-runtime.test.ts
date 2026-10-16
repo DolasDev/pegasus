@@ -4,12 +4,12 @@
 // dualAuthMiddleware is stubbed to inject the AppEnv context; requirePermission
 // is NOT mocked — real Cedar RBAC runs against workflow-runtime.cedar, so these
 // tests double as verification that ReadOrder / ReadSalesman / ReadTask /
-// CloseTask are granted to workflow_runtime and withheld from workflow_developer.
+// CreateTask / CloseTask are granted to workflow_runtime and withheld from workflow_developer.
 //
 // Single-order reads go through the OrderGateway, so order-gateway.factory is
 // mocked to a controllable stub (its own resolution + tunnel transport are
-// covered in the gateway/factory unit tests). Task routes stay on the
-// in-memory pegII stub (services/pegii-tasks), reset between cases.
+// covered in the gateway/factory unit tests). Task routes go through the
+// TaskGateway the same way (task-gateway.factory mocked).
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -18,7 +18,7 @@ import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
-import { _resetTaskStore } from '../services/pegii-tasks'
+import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
 import type { OrderRecord } from '../services/pegii-orders'
 import type { SalesmanRecord } from '../services/pegii-salesmen'
 
@@ -54,6 +54,23 @@ vi.mock('../gateways/salesman-gateway.factory', () => ({
   resolveSalesmanGateway: vi.fn(async () => ({
     findSalesmanById,
     listSalesmen,
+  })),
+}))
+
+const { listOrderTasks, getTask, searchTasks, createTask, closeTask } = vi.hoisted(() => ({
+  listOrderTasks: vi.fn(),
+  getTask: vi.fn(),
+  searchTasks: vi.fn(),
+  createTask: vi.fn(),
+  closeTask: vi.fn(),
+}))
+vi.mock('../gateways/task-gateway.factory', () => ({
+  resolveTaskGateway: vi.fn(async () => ({
+    listOrderTasks,
+    getTask,
+    searchTasks,
+    createTask,
+    closeTask,
   })),
 }))
 
@@ -124,7 +141,6 @@ const salesmanRecord = (over: Partial<SalesmanRecord> = {}): SalesmanRecord => (
 beforeEach(() => {
   vi.clearAllMocks()
   _clearAuthzCache()
-  _resetTaskStore()
   // Default: source reachable. Individual cases override to simulate a down source.
   checkReachable.mockResolvedValue(undefined)
 })
@@ -481,56 +497,6 @@ describe('GET /pegii/salesmen', () => {
   })
 })
 
-describe('GET /pegii/tasks', () => {
-  it('lists seeded tasks for an order (workflow_runtime)', async () => {
-    const app = buildApp(['workflow_runtime'])
-    const res = await app.request('/pegii/tasks?orderId=ord-1')
-    expect(res.status).toBe(200)
-    const data = (await json(res))['data'] as Array<Record<string, unknown>>
-    expect(data.length).toBeGreaterThan(0)
-    expect(data.every((t) => t['orderId'] === 'ord-1')).toBe(true)
-    expect(data.some((t) => t['taskType'] === 'date_confirmation')).toBe(true)
-  })
-
-  it('filters by status', async () => {
-    const app = buildApp(['workflow_runtime'])
-    await app.request(
-      '/pegii/tasks/close',
-      post({ orderId: 'ord-1', taskType: 'date_confirmation' }),
-    )
-    const res = await app.request('/pegii/tasks?orderId=ord-1&status=closed')
-    expect(res.status).toBe(200)
-    const data = (await json(res))['data'] as Array<Record<string, unknown>>
-    expect(data.length).toBe(1)
-    expect(data[0]?.['status']).toBe('closed')
-  })
-
-  it('rejects a role without ReadTask (workflow_developer) with 403', async () => {
-    const app = buildApp(['workflow_developer'])
-    const res = await app.request('/pegii/tasks?orderId=ord-1')
-    expect(res.status).toBe(403)
-  })
-})
-
-describe('GET /pegii/tasks/:taskId', () => {
-  it('returns a task by id', async () => {
-    const app = buildApp(['workflow_runtime'])
-    const list = (await json(await app.request('/pegii/tasks?orderId=ord-9')))['data'] as Array<
-      Record<string, unknown>
-    >
-    const taskId = list[0]?.['id'] as string
-    const res = await app.request(`/pegii/tasks/${taskId}`)
-    expect(res.status).toBe(200)
-    expect((await json(res))['data']).toMatchObject({ id: taskId, orderId: 'ord-9' })
-  })
-
-  it('returns 404 for an unknown task', async () => {
-    const app = buildApp(['workflow_runtime'])
-    const res = await app.request('/pegii/tasks/task_does_not_exist')
-    expect(res.status).toBe(404)
-  })
-})
-
 describe('PATCH /pegii/orders/:orderId', () => {
   const patch = (body: unknown): RequestInit => ({
     method: 'PATCH',
@@ -634,83 +600,421 @@ describe('PATCH /pegii/orders/:orderId', () => {
   })
 })
 
-describe('POST /pegii/tasks/close', () => {
-  it('closes a task and is idempotent', async () => {
+// ── Tasks (the site's task API through a TaskGateway; NW pulse Phase 6) ──
+
+const taskDto = (over: Partial<PegiiTaskDto> = {}): PegiiTaskDto => ({
+  id: 77,
+  orderNumber: 490317,
+  taskType: 'Pulse Follow-Up',
+  title: 'Call back the shipper',
+  description: 'No reply to the pulse text',
+  priority: 'high',
+  dueDate: '2026-10-20',
+  assigneeCode: 8121,
+  completed: false,
+  completedAt: null,
+  completedBy: null,
+  actualDate: null,
+  active: true,
+  createdByApi: true,
+  closeReason: null,
+  closedUtc: null,
+  createdUtc: '2026-10-16T18:00:00Z',
+  ...over,
+})
+
+const desktopTask = (over: Partial<PegiiTaskDto> = {}): PegiiTaskDto =>
+  taskDto({
+    id: 10,
+    taskType: 'PACK',
+    title: 'SCHEDULE PACK',
+    priority: null,
+    createdByApi: false,
+    createdUtc: null,
+    ...over,
+  })
+
+describe('GET /pegii/tasks', () => {
+  it("maps an order's tasks, desktop and cloud, to the SDK shape — no stub flag", async () => {
+    listOrderTasks.mockResolvedValue([desktopTask(), taskDto()])
     const app = buildApp(['workflow_runtime'])
-    const body = { orderId: 'ord-1', taskType: 'date_confirmation', reason: 'packing date set' }
 
-    const first = await app.request('/pegii/tasks/close', post(body))
-    expect(first.status).toBe(200)
-    const firstData = (await json(first))['data'] as Record<string, unknown>
-    expect(firstData['status']).toBe('closed')
-    expect(firstData['alreadyClosed']).toBe(false)
-    expect(firstData['reason']).toBe('packing date set')
+    const res = await app.request('/pegii/tasks?orderId=490317')
 
-    const second = await app.request('/pegii/tasks/close', post(body))
-    expect(second.status).toBe(200)
-    const secondData = (await json(second))['data'] as Record<string, unknown>
-    expect(secondData['status']).toBe('closed')
-    expect(secondData['alreadyClosed']).toBe(true)
+    expect(res.status).toBe(200)
+    expect(listOrderTasks).toHaveBeenCalledWith(490317)
+    const body = await json(res)
+    const data = body['data'] as Array<Record<string, unknown>>
+    expect(data[1]).toEqual({
+      id: '77',
+      orderId: '490317',
+      taskType: 'Pulse Follow-Up',
+      title: 'Call back the shipper',
+      description: 'No reply to the pulse text',
+      priority: 'high',
+      dueDate: '2026-10-20',
+      assigneeCode: 8121,
+      status: 'open',
+      reason: null,
+      createdByApi: true,
+      active: true,
+      completedAt: null,
+      completedBy: null,
+      actualDate: null,
+      createdAt: '2026-10-16T18:00:00Z',
+      closedAt: null,
+    })
+    expect(data[0]).toMatchObject({ id: '10', taskType: 'PACK', priority: null, createdAt: null })
+    expect(data.every((t) => !('stub' in t))).toBe(true)
+    expect(body['meta']).toEqual({ count: 2, nextCursor: null })
+  })
+
+  it('filters an order’s tasks by type (case-insensitive), status and dueBefore', async () => {
+    listOrderTasks.mockResolvedValue([
+      desktopTask(),
+      taskDto({ id: 1, dueDate: '2026-10-10' }),
+      taskDto({ id: 2, dueDate: '2026-10-30' }),
+      taskDto({ id: 3, dueDate: '2026-10-11', completed: true }),
+      taskDto({ id: 4, dueDate: null }),
+    ])
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request(
+      '/pegii/tasks?orderId=490317&taskType=pulse%20follow-up&status=open&dueBefore=2026-10-20',
+    )
+
+    const data = (await json(res))['data'] as Array<Record<string, unknown>>
+    expect(data.map((t) => t['id'])).toEqual(['1'])
+  })
+
+  it('an order with no tasks is [], and an unknown order is 404 ORDER_NOT_FOUND', async () => {
+    const app = buildApp(['workflow_runtime'])
+
+    listOrderTasks.mockResolvedValueOnce([])
+    const empty = await app.request('/pegii/tasks?orderId=490317')
+    listOrderTasks.mockResolvedValueOnce(null)
+    const missing = await app.request('/pegii/tasks?orderId=490318')
+
+    expect(empty.status).toBe(200)
+    expect((await json(empty))['data']).toEqual([])
+    expect(missing.status).toBe(404)
+    expect(await json(missing)).toMatchObject({ code: 'ORDER_NOT_FOUND' })
+  })
+
+  it('searches one type across orders and pages with a string cursor', async () => {
+    searchTasks.mockResolvedValue({ items: [taskDto()], nextCursor: 77 })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request(
+      '/pegii/tasks?taskType=Pulse%20Follow-Up&status=open&dueBefore=2026-10-20&cursor=5&limit=1',
+    )
+
+    expect(res.status).toBe(200)
+    expect(searchTasks).toHaveBeenCalledWith({
+      taskType: 'Pulse Follow-Up',
+      open: true,
+      dueBefore: '2026-10-20',
+      cursor: 5,
+      limit: 1,
+    })
+    expect((await json(res))['meta']).toEqual({ count: 1, nextCursor: '77' })
+  })
+
+  it.each([
+    ['', 'orderId or taskType is required'],
+    ['?status=open', 'orderId or taskType is required'],
+    ['?orderId=ord-1', 'pegII order number'],
+    ['?orderId=490317&cursor=5', 'cursor/limit page the cross-order search'],
+    ['?taskType=x&dueBefore=2026-02-30', 'not a real date'],
+    ['?taskType=x&status=done', "status must be 'open' or 'closed'"],
+    ['?taskType=x&limit=501', 'limit must be between'],
+  ])('400s %j before calling the site', async (query, message) => {
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request(`/pegii/tasks${query}`)
+
+    expect(res.status).toBe(400)
+    expect(((await json(res))['error'] as string).includes(message)).toBe(true)
+    expect(listOrderTasks).not.toHaveBeenCalled()
+    expect(searchTasks).not.toHaveBeenCalled()
+  })
+
+  it('a site without pegii.tasks.v1 is 503 PEGII_CAPABILITY_MISSING, not an empty list', async () => {
+    listOrderTasks.mockRejectedValue(
+      new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'does not support: pegii.tasks.v1'),
+    )
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks?orderId=490317')
+
+    expect(res.status).toBe(503)
+    expect(await json(res)).toMatchObject({ code: 'PEGII_CAPABILITY_MISSING' })
+  })
+
+  it('rejects a role without ReadTask (workflow_developer) with 403', async () => {
+    const app = buildApp(['workflow_developer'])
+    const res = await app.request('/pegii/tasks?orderId=490317')
+    expect(res.status).toBe(403)
+  })
+})
+
+describe('GET /pegii/tasks/:taskId', () => {
+  it('returns a task by id', async () => {
+    getTask.mockResolvedValue(taskDto())
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks/77')
+
+    expect(res.status).toBe(200)
+    expect(getTask).toHaveBeenCalledWith(77)
+    expect((await json(res))['data']).toMatchObject({ id: '77', orderId: '490317' })
+  })
+
+  it('404s an unknown task, and a non-pegII id without calling the site', async () => {
+    getTask.mockResolvedValue(null)
+    const app = buildApp(['workflow_runtime'])
+
+    const unknown = await app.request('/pegii/tasks/78')
+    const stubId = await app.request('/pegii/tasks/task_490317_date_confirmation')
+
+    expect(unknown.status).toBe(404)
+    expect(stubId.status).toBe(404)
+    expect(getTask).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('POST /pegii/tasks (create)', () => {
+  const create = {
+    orderId: '490317',
+    taskType: 'Pulse Follow-Up',
+    title: 'Call back the shipper',
+    description: 'No reply to the pulse text',
+    priority: 'high',
+    dueDate: '2026-10-20',
+    assigneeCode: 8121,
+    dedupKey: 'pulse-490317-2026-10-16',
+  }
+
+  it('creates on the site (dedupKey → idempotencyKey) and answers 201', async () => {
+    createTask.mockResolvedValue({ found: true, task: taskDto(), alreadyExists: false })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks', post(create))
+
+    expect(res.status).toBe(201)
+    expect(createTask).toHaveBeenCalledWith(490317, {
+      taskType: 'Pulse Follow-Up',
+      title: 'Call back the shipper',
+      description: 'No reply to the pulse text',
+      priority: 'high',
+      dueDate: '2026-10-20',
+      assigneeCode: 8121,
+      idempotencyKey: 'pulse-490317-2026-10-16',
+    })
+    expect((await json(res))['data']).toMatchObject({ id: '77', alreadyExists: false })
+  })
+
+  it('a replay with the same dedupKey answers 200 alreadyExists', async () => {
+    createTask.mockResolvedValue({ found: true, task: taskDto(), alreadyExists: true })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks', post(create))
+
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({ id: '77', alreadyExists: true })
+  })
+
+  it("an unknown order is 404 with pegII's code", async () => {
+    createTask.mockResolvedValue({ found: false, code: 'ORDER_NOT_FOUND', message: 'x' })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks', post(create))
+
+    expect(res.status).toBe(404)
+    expect(await json(res)).toMatchObject({ code: 'ORDER_NOT_FOUND' })
+  })
+
+  it.each([
+    ['UNKNOWN_TASK_TYPE', 400],
+    ['UNKNOWN_ASSIGNEE', 400],
+    ['IDEMPOTENCY_KEY_REUSED', 409],
+  ])("the site's %s passes through as %i", async (code, status) => {
+    createTask.mockRejectedValue(
+      new PegiiApiError('PEGII_API_HTTP_ERROR', `pegII API ${status}: ${code}`, status, code),
+    )
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks', post(create))
+
+    expect(res.status).toBe(status)
+    expect(await json(res)).toMatchObject({ code })
+  })
+
+  it.each([
+    [{ ...create, orderId: 'ord-1' }, 'pegII order number'],
+    [{ ...create, dueDate: undefined }, 'dueDate is required'],
+    [{ ...create, dueDate: '2026-02-30' }, 'not a real date'],
+    [{ ...create, title: '  ' }, 'title is required'],
+    [{ ...create, title: 'x'.repeat(201) }, 'at most 200'],
+    [{ ...create, priority: 'urgent' }, "priority must be 'low', 'normal' or 'high'"],
+    [{ ...create, assigneeCode: 0 }, 'employee code'],
+    [{ ...create, dedupKey: 'k'.repeat(191) }, 'at most 190'],
+    [{ ...create, extra: true }, 'Unrecognized key'],
+  ])('400s an invalid body before calling the site (%#)', async (body, message) => {
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks', post(body))
+
+    expect(res.status).toBe(400)
+    expect(((await json(res))['error'] as string).includes(message)).toBe(true)
+    expect(createTask).not.toHaveBeenCalled()
+  })
+
+  it('accepts a task type with a space (the IDENT_RE that rejected it is gone)', async () => {
+    createTask.mockResolvedValue({ found: true, task: taskDto(), alreadyExists: false })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks', post({ ...create, taskType: 'Pulse Follow-Up' }))
+
+    expect(res.status).toBe(201)
+  })
+
+  it('rejects a role without CreateTask (workflow_developer) with 403', async () => {
+    const app = buildApp(['workflow_developer'])
+
+    const res = await app.request('/pegii/tasks', post(create))
+
+    expect(res.status).toBe(403)
+    expect(createTask).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /pegii/tasks/close', () => {
+  it('closes by taskId, passing the reason', async () => {
+    closeTask.mockResolvedValue({
+      task: taskDto({ completed: true, closeReason: 'Customer replied' }),
+      alreadyClosed: false,
+    })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request(
+      '/pegii/tasks/close',
+      post({ taskId: '77', reason: 'Customer replied' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(closeTask).toHaveBeenCalledWith(77, 'Customer replied')
+    expect((await json(res))['data']).toMatchObject({
+      id: '77',
+      status: 'closed',
+      reason: 'Customer replied',
+      alreadyClosed: false,
+    })
+  })
+
+  it("passes the site's alreadyClosed through on a repeat close by id", async () => {
+    closeTask.mockResolvedValue({ task: taskDto({ completed: true }), alreadyClosed: true })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks/close', post({ taskId: 77 }))
+
+    expect(closeTask).toHaveBeenCalledWith(77, null)
+    expect((await json(res))['data']).toMatchObject({ alreadyClosed: true })
+  })
+
+  it('404s an unknown task id (and a non-pegII id without calling the site)', async () => {
+    closeTask.mockResolvedValue(null)
+    const app = buildApp(['workflow_runtime'])
+
+    const unknown = await app.request('/pegii/tasks/close', post({ taskId: '78' }))
+    const stubId = await app.request('/pegii/tasks/close', post({ taskId: 'task_1_x' }))
+
+    expect(unknown.status).toBe(404)
+    expect(await json(unknown)).toMatchObject({ code: 'TASK_NOT_FOUND' })
+    expect(stubId.status).toBe(404)
+    expect(closeTask).toHaveBeenCalledTimes(1)
+  })
+
+  describe('by (orderId, taskType)', () => {
+    const byType = { orderId: '490317', taskType: 'pulse follow-up', reason: 'replied' }
+
+    it('closes the one open task of that type', async () => {
+      listOrderTasks.mockResolvedValue([
+        desktopTask(),
+        taskDto({ id: 70, completed: true }),
+        taskDto({ id: 77 }),
+      ])
+      closeTask.mockResolvedValue({ task: taskDto({ completed: true }), alreadyClosed: false })
+      const app = buildApp(['workflow_runtime'])
+
+      const res = await app.request('/pegii/tasks/close', post(byType))
+
+      expect(res.status).toBe(200)
+      expect(closeTask).toHaveBeenCalledWith(77, 'replied')
+    })
+
+    it('two or more OPEN matches → 409 TASK_AMBIGUOUS naming them, nothing closed', async () => {
+      listOrderTasks.mockResolvedValue([taskDto({ id: 77 }), taskDto({ id: 78 })])
+      const app = buildApp(['workflow_runtime'])
+
+      const res = await app.request('/pegii/tasks/close', post(byType))
+
+      expect(res.status).toBe(409)
+      expect(await json(res)).toMatchObject({ code: 'TASK_AMBIGUOUS', candidateIds: ['77', '78'] })
+      expect(closeTask).not.toHaveBeenCalled()
+    })
+
+    it('none open but some closed → the latest, alreadyClosed (a genuine repeat close)', async () => {
+      listOrderTasks.mockResolvedValue([
+        taskDto({ id: 70, completed: true }),
+        taskDto({ id: 77, completed: true, closeReason: 'replied' }),
+      ])
+      const app = buildApp(['workflow_runtime'])
+
+      const res = await app.request('/pegii/tasks/close', post(byType))
+
+      expect(res.status).toBe(200)
+      expect((await json(res))['data']).toMatchObject({ id: '77', alreadyClosed: true })
+      expect(closeTask).not.toHaveBeenCalled()
+    })
+
+    it('no task of that type → 404 TASK_NOT_FOUND; an unknown order → 404 ORDER_NOT_FOUND', async () => {
+      const app = buildApp(['workflow_runtime'])
+
+      listOrderTasks.mockResolvedValueOnce([desktopTask()])
+      const none = await app.request('/pegii/tasks/close', post(byType))
+      listOrderTasks.mockResolvedValueOnce(null)
+      const noOrder = await app.request('/pegii/tasks/close', post(byType))
+
+      expect(none.status).toBe(404)
+      expect(await json(none)).toMatchObject({ code: 'TASK_NOT_FOUND' })
+      expect(noOrder.status).toBe(404)
+      expect(await json(noOrder)).toMatchObject({ code: 'ORDER_NOT_FOUND' })
+      expect(closeTask).not.toHaveBeenCalled()
+    })
+  })
+
+  it.each([
+    [{}, 'exactly one'],
+    [{ taskId: '77', orderId: '490317', taskType: 'x' }, 'exactly one'],
+    [{ orderId: '490317' }, 'go together'],
+    [{ taskType: 'x' }, 'go together'],
+    [{ orderId: '', taskType: 'x' }, 'pegII order number'],
+    [{ taskId: '77', reason: 'r'.repeat(1001) }, ''],
+  ])('400s %j before calling the site', async (body, message) => {
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/tasks/close', post(body))
+
+    expect(res.status).toBe(400)
+    expect(((await json(res))['error'] as string).includes(message)).toBe(true)
+    expect(listOrderTasks).not.toHaveBeenCalled()
+    expect(closeTask).not.toHaveBeenCalled()
   })
 
   it('rejects a role without CloseTask (workflow_developer) with 403', async () => {
     const app = buildApp(['workflow_developer'])
-    const res = await app.request(
-      '/pegii/tasks/close',
-      post({ orderId: 'ord-1', taskType: 'date_confirmation' }),
-    )
+    const res = await app.request('/pegii/tasks/close', post({ taskId: '77' }))
     expect(res.status).toBe(403)
-  })
-
-  it('returns 400 on an invalid body', async () => {
-    const app = buildApp(['workflow_runtime'])
-    const res = await app.request('/pegii/tasks/close', post({ orderId: '', taskType: 'x' }))
-    expect(res.status).toBe(400)
-  })
-
-  // sdk-feedback 0046 B. A close that matched nothing used to answer 200 with
-  // a row created and closed in the same millisecond, so "I closed the
-  // follow-up" and "there was no follow-up" looked identical, and closing
-  // nothing was billable. A miss is now a 404 that creates nothing.
-  it('404s a task type that does not exist on the order, and creates nothing', async () => {
-    const app = buildApp(['workflow_runtime'])
-
-    const res = await app.request(
-      '/pegii/tasks/close',
-      post({ orderId: 'zzz-probe-order-0046', taskType: 'never_existed_type' }),
-    )
-
-    expect(res.status).toBe(404)
-    expect(await json(res)).toMatchObject({ code: 'TASK_NOT_FOUND' })
-    const list = (await json(await app.request('/pegii/tasks?orderId=zzz-probe-order-0046')))[
-      'data'
-    ] as Array<Record<string, unknown>>
-    expect(list.map((t) => t['taskType'])).not.toContain('never_existed_type')
-  })
-})
-
-// sdk-feedback 0046 C, interim. Until the real pegII task bridge lands (NW pulse
-// Phase 6), every task row is synthesized. It has to SAY so, because a silent
-// fake is what let this surface reach a customer proposal.
-describe('stub task rows are marked', () => {
-  it('carries stub: true on list, get and close', async () => {
-    const app = buildApp(['workflow_runtime'])
-
-    const list = (await json(await app.request('/pegii/tasks?orderId=ord-1')))['data'] as Array<
-      Record<string, unknown>
-    >
-    expect(list.length).toBeGreaterThan(0)
-    expect(list.every((t) => t['stub'] === true)).toBe(true)
-
-    const one = await json(await app.request(`/pegii/tasks/${String(list[0]?.['id'])}`))
-    expect((one['data'] as Record<string, unknown>)['stub']).toBe(true)
-
-    const closed = await json(
-      await app.request(
-        '/pegii/tasks/close',
-        post({ orderId: 'ord-1', taskType: 'date_confirmation' }),
-      ),
-    )
-    expect((closed['data'] as Record<string, unknown>)['stub']).toBe(true)
   })
 })

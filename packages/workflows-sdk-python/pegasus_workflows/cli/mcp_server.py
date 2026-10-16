@@ -279,17 +279,44 @@ current values is free. No order-saved event fires. NW's database already sets
 these two fields itself, from its own Weichert integration, so don't write them
 there until that integration has moved to the platform.
 
+## pegII tasks (create / read / close)
+
+Tasks are the coordinator's task list on an order in MoveManager. Every call
+reaches the site, which must advertise ``pegii.tasks.v1`` (else 503
+``PEGII_CAPABILITY_MISSING``). Ids are pegII's own, one per task.
+
+- ``create_task(order_id, task_type, title, *, due_date, description=None,
+  priority=None, assignee_code=None, dedup_key=None)`` (``CreateTask``, billable)
+  adds a MoveManager user-defined task that the coordinator completes like their own.
+  - ``task_type`` must be one the site registers: today only ``"Pulse Follow-Up"``.
+  - ``due_date`` is required.
+  - ALWAYS pass a ``dedup_key``. A replay returns ``alreadyExists: True`` and is
+    free; a different request under the same key is 409 ``IDEMPOTENCY_KEY_REUSED``.
+- ``close_task(task_id=...)`` or ``close_task(order_id=..., task_type=...)``
+  (``CloseTask``, billable) takes exactly one form, else ``ValueError``. It closes
+  ANY task. By type:
+  - two or more OPEN matches raise ``TaskAmbiguous`` (409, ``candidate_ids``),
+    and nothing is closed;
+  - none open but some closed returns the latest with ``alreadyClosed: True``;
+  - none at all is 404 ``TASK_NOT_FOUND``.
+
+  ``reason`` lands in the task note as ``Closed by Pegasus: …``.
+- ``list_tasks(order_id)`` returns EVERY task on the order (MoveManager's own too).
+  A desktop task reports its legacy code as ``taskType`` and ``priority: None``.
+  ``list_tasks(task_type=..., status="open", due_before=day)`` searches cloud-created
+  tasks across orders (all pages). One of ``order_id`` / ``task_type`` is required.
+
 ## Billable actions (usage) — design Automations to be cheap
 
 Plans buy an ANNUAL pool of billable actions (Starter 6,000 / Growth 15,000 /
 Scale 50,000 per year). One action each: ``send_sms``, ``send_email``,
-``mark_text_message_read``, ``close_task``, ``update_order`` (only when a value
+``mark_text_message_read``, ``create_task``, ``close_task``, ``update_order`` (only when a value
 changed), ``deliver_to_external`` (partner accepted), and ``call_external`` with
 POST/PUT/PATCH/DELETE or
 ``mutating=True``. Free: every read (including ``call_external`` GET /
 ``mutating=False`` and ``api_get``), workflow state, runs/schedules/triggers,
 ``emit_event``, dry runs, any non-2xx response, idempotent replays
-(``alreadySent`` / ``alreadyRead`` / ``alreadyClosed``), opt-out records, and
+(``alreadySent`` / ``alreadyRead`` / ``alreadyClosed`` / ``alreadyExists``), opt-out records, and
 anything a person does in the web app. Always pass a ``dedup_key`` to
 ``send_sms`` / ``send_email`` so retries replay for free; the meter counts one
 per subject. Check consumption with ``client.get_usage_summary(year=None)``

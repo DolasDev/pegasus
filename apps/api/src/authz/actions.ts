@@ -202,10 +202,11 @@ export const Actions = {
   // exactly like ReadOrder (see handlers/pegii-runtime.ts).
   ReadSalesman: { id: 'ReadSalesman', resourceType: 'Salesman', permission: 'salesman:read' },
   // ── Tasks (operational work items; workflow-runtime surface, pegII-bound) ─
-  // Read/close of an order's tasks (date confirmation, survey scheduling, …)
-  // from a running workflow. Backed by a stub today; bridges to the pegII API
-  // like the retired longhaul surface (see handlers/pegii-runtime.ts).
+  // Read/create/close an order's tasks from a running workflow, over the pegII
+  // site's task API (pegii.tasks.v1; see handlers/pegii-runtime.ts). Create
+  // writes a desktop user-defined task (NW pulse Phase 6); close completes any.
   ReadTask: { id: 'ReadTask', resourceType: 'Task', permission: 'task:read' },
+  CreateTask: { id: 'CreateTask', resourceType: 'Task', permission: 'task:create' },
   CloseTask: { id: 'CloseTask', resourceType: 'Task', permission: 'task:close' },
   // ── Events (inbound platform event queue; M2M-only surface) ─────────────
   ReadEvent: { id: 'ReadEvent', resourceType: 'Event', permission: 'event:read' },

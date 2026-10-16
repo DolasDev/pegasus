@@ -9,17 +9,41 @@
  * workflow runtime's: a workflow_runtime service account behind an ApiClient
  * named `wf-runtime-<workflowId>`.
  *
- * CloseTask is the billable route with no external dependency (its backing
- * service is the in-memory pegII stub).
+ * CloseTask is the billable route under test. Its pegII site is replaced by an
+ * in-memory TaskGateway (the factory is mocked) holding one open task, so the
+ * route, its close-by-(order, type) resolution and the meter all run for real.
  *
  * Requires a live PostgreSQL database. Skipped automatically when DATABASE_URL
  * is not set.
  */
 import crypto from 'node:crypto'
-import { describe, it, expect, afterAll, beforeAll } from 'vitest'
+import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest'
+import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
 import { db } from '../db'
 import { m2mV1 } from '../app'
 import { _clearAuthzCache } from '../lib/authz'
+
+// One open date_confirmation task on ORDER_NUMBER; closing it flips it closed.
+const ORDER_NUMBER = 4_900_001
+const { tasks } = vi.hoisted(() => ({ tasks: new Map<number, PegiiTaskDto>() }))
+vi.mock('../gateways/task-gateway.factory', () => ({
+  resolveTaskGateway: vi.fn(async () => ({
+    listOrderTasks: async (n: number) => [...tasks.values()].filter((t) => t.orderNumber === n),
+    getTask: async (id: number) => tasks.get(id) ?? null,
+    searchTasks: async () => ({ items: [], nextCursor: null }),
+    createTask: async () => {
+      throw new Error('not used')
+    },
+    closeTask: async (id: number) => {
+      const t = tasks.get(id)
+      if (!t) return null
+      if (t.completed) return { task: t, alreadyClosed: true }
+      const closed = { ...t, completed: true }
+      tasks.set(id, closed)
+      return { task: closed, alreadyClosed: false }
+    },
+  })),
+}))
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 const SLUG = 'test-usage-meter-e2e'
@@ -43,6 +67,27 @@ const close = (order: string) =>
   runtime('/pegii/tasks/close', {
     method: 'POST',
     body: JSON.stringify({ orderId: order, taskType: 'date_confirmation' }),
+  })
+
+const seedTask = () =>
+  tasks.set(501, {
+    id: 501,
+    orderNumber: ORDER_NUMBER,
+    taskType: 'date_confirmation',
+    title: 'DATE CONFIRMATION',
+    description: null,
+    priority: null,
+    dueDate: null,
+    assigneeCode: 0,
+    completed: false,
+    completedAt: null,
+    completedBy: null,
+    actualDate: null,
+    active: true,
+    createdByApi: false,
+    closeReason: null,
+    closedUtc: null,
+    createdUtc: null,
   })
 
 const metered = () => db.usageEvent.findMany({ where: { apiClientId } })
@@ -106,7 +151,8 @@ describe.skipIf(!hasDb)('usage meter through the real m2m stack (integration)', 
   })
 
   it('a runtime close counts one action, attributed to the workflow', async () => {
-    const res = await close(orderId)
+    seedTask()
+    const res = await close(String(ORDER_NUMBER))
     expect(res.status).toBe(200)
     expect(((await res.json()) as { data: { alreadyClosed: boolean } }).data.alreadyClosed).toBe(
       false,
@@ -117,7 +163,7 @@ describe.skipIf(!hasDb)('usage meter through the real m2m stack (integration)', 
   })
 
   it('a retry of the same close is a replay and counts nothing', async () => {
-    const res = await close(orderId)
+    const res = await close(String(ORDER_NUMBER))
     expect(((await res.json()) as { data: { alreadyClosed: boolean } }).data.alreadyClosed).toBe(
       true,
     )
@@ -127,7 +173,7 @@ describe.skipIf(!hasDb)('usage meter through the real m2m stack (integration)', 
   it('a close that matches no task is a 404 and counts nothing (sdk-feedback 0046)', async () => {
     const res = await runtime('/pegii/tasks/close', {
       method: 'POST',
-      body: JSON.stringify({ orderId, taskType: 'never_existed_type' }),
+      body: JSON.stringify({ orderId: String(ORDER_NUMBER), taskType: 'never_existed_type' }),
     })
     expect(res.status).toBe(404)
     expect(await metered()).toHaveLength(1)

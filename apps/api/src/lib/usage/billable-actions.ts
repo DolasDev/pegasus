@@ -71,8 +71,12 @@ export const BILLABLE_ACTIONS = {
   SendEmail: { billable: always, subjectKey: idKey('email') },
   // POST /sms/messages/:id/read — `alreadyRead` replay. Keyed on the message.
   UpdateTextMessage: { billable: always, subjectKey: idKey('read') },
-  // POST /pegii/tasks/close — `alreadyClosed` replay. Keyed on the task.
+  // POST /pegii/tasks/close — `alreadyClosed` replay. Keyed on the task (pegII's
+  // Tasks.id). A refused close (404 no match, 409 ambiguous) is non-2xx.
   CloseTask: { billable: always, subjectKey: idKey('close') },
+  // POST /pegii/tasks — 201 new, 200 `alreadyExists` replay (same dedup key, same
+  // request). Keyed on the created task's pegII id.
+  CreateTask: { billable: always, subjectKey: idKey('task') },
   // PATCH /pegii/orders/:orderId — the order write-back. `data` is the native
   // order, so the outcome rides in the `x-pegasus-applied` header the route sets
   // from pegII's: re-sending the values already on the order changes nothing and
