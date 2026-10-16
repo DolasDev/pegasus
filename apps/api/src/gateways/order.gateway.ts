@@ -7,14 +7,14 @@
 // WireGuard tunnel. See order-gateway.factory.ts for how a tenant is resolved
 // to a live gateway, and pegii-order.gateway.ts for the implementation.
 //
-// v1 is a single by-id read — the only shape the pegII serialized endpoint
-// (`/api/v1/pegii/serialized/orders/:id`) exposes. Listing stays on the stub in
-// services/pegii-orders.ts until a pegII collection endpoint exists; when it
-// does, add `listOrders` here and implement it in pegii-order.gateway.ts, and
-// the handler's list route swaps to the gateway with no new abstraction.
+// By-id reads come from the serialized snapshot (`/api/v1/pegii/serialized/
+// orders/:id`). Selecting orders is `searchOrders`, the site's LIVE search over
+// `sales` (`/api/v1/pegii/orders/search`) — the snapshot can lag DB triggers, so
+// there is deliberately no snapshot-backed listing.
 // ---------------------------------------------------------------------------
 
 import type { OrderRecord } from '../services/pegii-orders'
+import type { OrderSearchCriteria, PegiiOrderSearchPageDto } from './pegii/pegii-order-search.dto'
 
 export interface OrderGateway {
   /** Fetch one order by id. Resolves null when pegII reports 404 (no such order). */
@@ -34,11 +34,20 @@ export interface OrderGateway {
    * Probe that the pegII source is reachable, without fetching a specific order.
    * Resolves when the source answers; throws `PegiiApiError` when it is
    * unreachable (tunnel/HTTP failure). Lets reachability-only callers (the
-   * `/orders` list route, whose data is still stub-backed) fail the same way a
-   * by-id read does, instead of silently returning an empty list while the
-   * source is down.
+   * deprecated `/orders` list route, which has no data source) fail the same
+   * way a by-id read does, instead of silently returning an empty list while
+   * the source is down.
    */
   checkReachable(): Promise<void>
+
+  /**
+   * One page of the site's LIVE order search over `sales` (not the snapshot):
+   * orders whose `dateField` falls in `[from, to]`, keyset-paged on order
+   * number. The site owns validation (its 400 passes through as a
+   * PegiiApiError). A site whose API predates the search throws
+   * PEGII_API_CAPABILITY_MISSING (→ 503).
+   */
+  searchOrders(criteria: OrderSearchCriteria): Promise<PegiiOrderSearchPageDto>
 
   /**
    * Write allowlisted fields back onto an order (`PATCH /api/v1/pegii/orders/{n}`

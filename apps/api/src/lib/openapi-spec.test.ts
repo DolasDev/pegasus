@@ -27,6 +27,15 @@ describe('getOpenApiSpec', () => {
     expect(order?.['patch']?.security).toEqual([{ ApiKeyAuth: [] }])
   })
 
+  it('documents the live order search with its required params, and deprecates the list', () => {
+    const search = spec.paths['/api/v1/pegii/orders/search']?.['get'] as
+      { operationId?: string; parameters?: Array<{ name: string; required: boolean }> } | undefined
+    expect(search?.operationId).toBe('searchPegiiOrders')
+    const required = (search?.parameters ?? []).filter((p) => p.required).map((p) => p.name)
+    expect(required.sort()).toEqual(['dateField', 'from', 'to'])
+    expect(spec.paths['/api/v1/pegii/orders']?.['get']).toMatchObject({ deprecated: true })
+  })
+
   it('documents factDocs on the floor contract, so the spec matches what the route serves', () => {
     const props = (
       spec.paths['/api/v1/integrations/floors/{floorId}'] as unknown as {

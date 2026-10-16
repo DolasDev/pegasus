@@ -263,3 +263,118 @@ describe('createPegiiOrderGateway.updateOrderNative', () => {
     expect(patch).not.toHaveBeenCalled()
   })
 })
+
+describe('createPegiiOrderGateway.searchOrders', () => {
+  const item = {
+    orderNumber: 490317,
+    shipmentStatus: 'A',
+    pack: { planned: '2026-10-20', earliest: null, latest: '2026-10-20', actual: null },
+    texting: {
+      status: 'Allowed',
+      orderAllows: true,
+      accountBlocks: false,
+      parentAccountBlocks: false,
+    },
+  }
+
+  function gatewayWith(
+    get: PegiiApiClient['get'],
+    requireCapabilities = vi.fn().mockResolvedValue(undefined),
+  ) {
+    return {
+      requireCapabilities,
+      gateway: createPegiiOrderGateway({
+        tenantId: 't1',
+        baseUrl: 'https://pegii.test:8443',
+        client: stubClient(get),
+        requireCapabilities,
+      }),
+    }
+  }
+
+  it('GETs the live search with the criteria as query params and returns the page', async () => {
+    const get = vi.fn().mockResolvedValue({ items: [item], nextCursor: 490317 })
+    const { gateway, requireCapabilities } = gatewayWith(get)
+
+    const page = await gateway.searchOrders({
+      dateField: 'plan_pack',
+      from: '2026-10-20',
+      to: '2026-10-21',
+      status: '*',
+      cursor: 100,
+      limit: 50,
+    })
+
+    expect(requireCapabilities).toHaveBeenCalledWith(
+      'https://pegii.test:8443',
+      ['pegii.orders.search.v1'],
+      {},
+    )
+    expect(get).toHaveBeenCalledWith('/api/v1/pegii/orders/search', {
+      dateField: 'plan_pack',
+      from: '2026-10-20',
+      to: '2026-10-21',
+      status: '*',
+      cursor: 100,
+      limit: 50,
+    })
+    expect(page).toEqual({ items: [item], nextCursor: 490317 })
+  })
+
+  it('leaves omitted criteria undefined so the site applies its defaults', async () => {
+    const get = vi.fn().mockResolvedValue({ items: [], nextCursor: null })
+    const { gateway } = gatewayWith(get)
+
+    const page = await gateway.searchOrders({
+      dateField: 'del_actual',
+      from: '2026-10-01',
+      to: '2026-10-01',
+    })
+
+    expect(get.mock.calls[0]![1]).toEqual({
+      dateField: 'del_actual',
+      from: '2026-10-01',
+      to: '2026-10-01',
+      status: undefined,
+      cursor: undefined,
+      limit: undefined,
+    })
+    expect(page).toEqual({ items: [], nextCursor: null })
+  })
+
+  it('treats a page with no items/cursor as an empty last page', async () => {
+    const { gateway } = gatewayWith(vi.fn().mockResolvedValue({}))
+
+    expect(
+      await gateway.searchOrders({ dateField: 'plan_pack', from: '2026-10-20', to: '2026-10-20' }),
+    ).toEqual({ items: [], nextCursor: null })
+  })
+
+  it('refuses before calling when the site lacks pegii.orders.search.v1', async () => {
+    const missing = new PegiiApiError(
+      'PEGII_API_CAPABILITY_MISSING',
+      'does not support: pegii.orders.search.v1',
+    )
+    const get = vi.fn()
+    const { gateway } = gatewayWith(get, vi.fn().mockRejectedValue(missing))
+
+    await expect(
+      gateway.searchOrders({ dateField: 'plan_pack', from: '2026-10-20', to: '2026-10-20' }),
+    ).rejects.toBe(missing)
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it("rethrows the site's 400 so the route can pass it through", async () => {
+    const err = new PegiiApiError(
+      'PEGII_API_HTTP_ERROR',
+      'pegII API 400: VALIDATION_ERROR — limit',
+      400,
+      'VALIDATION_ERROR',
+    )
+    const { gateway } = gatewayWith(vi.fn().mockRejectedValue(err))
+
+    await expect(
+      gateway.searchOrders({ dateField: 'plan_pack', from: '2026-10-20', to: '2026-10-20' }),
+    ).rejects.toBe(err)
+  })
+})

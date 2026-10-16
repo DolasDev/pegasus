@@ -5,10 +5,11 @@
 // The pegII (MoveManager) system is the source of truth for orders and the
 // operational tasks hung off them (date confirmation, survey scheduling, …). A
 // lifecycle workflow re-fetches authoritative order state and closes tasks here
-// via the SDK (PegasusClient.get_order / update_order / list_orders / list_tasks /
+// via the SDK (PegasusClient.get_order / update_order / search_orders / list_tasks /
 // get_task / close_task).
 //
-//   GET  /orders                 ReadOrder     list orders (?status=…)
+//   GET  /orders                 ReadOrder     DEPRECATED — always [] (use /orders/search)
+//   GET  /orders/search          ReadOrder     live order search over `sales`
 //   GET  /orders/:orderId        ReadOrder     fetch one order
 //   PATCH /orders/:orderId       WriteOrder    write allowlisted fields back (native fragment)
 //   GET  /salesmen               ReadSalesman  list salesmen (?active=…)
@@ -21,11 +22,11 @@
 // cloud handlers lived under `/api/v1/onprem/longhaul/*`. Single-order reads are
 // LIVE: GET /orders/:orderId resolves an OrderGateway (gateways/order-gateway.
 // factory.ts) and fetches the serialized order from the pegII team's on-prem API
-// at `/api/v1/pegii/serialized/orders/:id` over the WireGuard tunnel. Order
-// LISTING and all task routes remain STUB-backed (services/pegii-orders.ts +
-// services/pegii-tasks.ts) — the pegII serialized endpoint is by-id only — with
-// the route contract + Cedar gating real so the SDK and workflow authors build
-// against them now, and the backing store swaps when pegII exposes collections.
+// at `/api/v1/pegii/serialized/orders/:id` over the WireGuard tunnel; selecting
+// orders is the site's live search (GET /orders/search). The task routes remain
+// STUB-backed (services/pegii-tasks.ts) until the pegII task API lands (NW pulse
+// Phase 6), with the route contract + Cedar gating real so the SDK and workflow
+// authors build against them now.
 //
 // Distinct from the M2M `/api/v1/orders` endpoint (handlers/orders.ts), which is
 // a move-backed reporting view for integration clients and is left untouched.
@@ -45,7 +46,12 @@ import { Actions } from '../authz/actions'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
 import { meterUsage } from '../middleware/meter-usage'
-import { listOrders, type OrderRecord } from '../services/pegii-orders'
+import type { OrderRecord } from '../services/pegii-orders'
+import {
+  ORDER_SEARCH_DATE_FIELDS,
+  ORDER_SEARCH_MAX_LIMIT,
+  ORDER_SEARCH_MAX_SPAN_DAYS,
+} from '../gateways/pegii/pegii-order-search.dto'
 import type { SalesmanRecord } from '../services/pegii-salesmen'
 import { closeTask, getTask, listTasks, type TaskRecord } from '../services/pegii-tasks'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
@@ -63,6 +69,50 @@ const CloseBody = z
     reason: z.string().trim().min(1).max(1000).optional(),
   })
   .strict()
+
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+const isoDay = (name: string) =>
+  z
+    .string({ error: `${name} is required (YYYY-MM-DD)` })
+    .regex(ISO_DAY_RE, `${name} must be YYYY-MM-DD`)
+    // Round-trip, because Date.parse rolls 2026-02-30 over to March 2.
+    .refine((v) => {
+      const t = Date.parse(`${v}T00:00:00Z`)
+      return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v
+    }, `${name} is not a real date`)
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// Mirrors movemanager OrderSearchCriteria so a bad call fails here with a
+// legible 400 instead of a tunnel round-trip; the site re-validates anyway.
+const OrderSearchQuery = z
+  .object({
+    dateField: z.enum(ORDER_SEARCH_DATE_FIELDS, {
+      error: `dateField must be one of: ${ORDER_SEARCH_DATE_FIELDS.join(', ')}`,
+    }),
+    from: isoDay('from'),
+    to: isoDay('to'),
+    status: z
+      .string()
+      .regex(/^([A-Za-z]|\*)$/, "status must be one shipment-status letter, or '*' for all")
+      .optional(),
+    cursor: z.coerce.number().int().min(0, 'cursor must not be negative').optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1, `limit must be between 1 and ${ORDER_SEARCH_MAX_LIMIT}`)
+      .max(ORDER_SEARCH_MAX_LIMIT, `limit must be between 1 and ${ORDER_SEARCH_MAX_LIMIT}`)
+      .optional(),
+  })
+  .strict()
+  .superRefine((q, ctx) => {
+    const span = (Date.parse(q.to) - Date.parse(q.from)) / DAY_MS
+    if (span < 0) ctx.addIssue({ code: 'custom', message: 'to must be on or after from' })
+    else if (span > ORDER_SEARCH_MAX_SPAN_DAYS)
+      ctx.addIssue({
+        code: 'custom',
+        message: `the from/to range may span at most ${ORDER_SEARCH_MAX_SPAN_DAYS} days`,
+      })
+  })
 
 function toOrderResponse(order: OrderRecord) {
   return {
@@ -144,27 +194,70 @@ pegiiRuntimeHandler.use('*', dualAuthMiddleware)
 
 // ── Orders ────────────────────────────────────────────────────────────────
 
-// GET /orders — list orders, optionally filtered by status.
-//
-// The list itself is still stub-backed (the pegII serialized API is by-id only),
-// but we first probe reachability through the OrderGateway so this route fails the
-// SAME way GET /orders/:orderId does when the source is down — a 502/503 that names
-// the dependency — rather than misleadingly returning `200 []` for a firewalled
-// tenant. resolveOrderGateway throws PEGII_API_NOT_CONFIGURED (→ 503) and
-// checkReachable throws PEGII_API_TUNNEL_ERROR (→ 502); the error boundary maps
-// both. See sdk-feedback spec 0018 (AC: list_orders and get_order agree on
-// reachability).
+// GET /orders — DEPRECATED (D4, NW pulse plan Phase 5). pegII has no snapshot
+// collection to list, and the old in-memory stub only ever returned `[]` at
+// runtime. Select orders with GET /orders/search instead. Kept so existing
+// callers don't break: still probes reachability through the OrderGateway, so a
+// down source is the same 502/503 a by-id read gives (sdk-feedback 0018), never
+// a misleading `200 []`. Removed in a later SDK minor.
 pegiiRuntimeHandler.get('/orders', requirePermission(Actions.ReadOrder), async (c) => {
   const tenantId = c.get('tenantId')
-  const status = c.req.query('status')
 
   const gateway = await resolveOrderGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
   await gateway.checkReachable()
 
-  const orders = listOrders(tenantId, { ...(status ? { status } : {}) })
-  logger.info('pegII orders listed', { count: orders.length, status, tenantId })
-  return c.json({ data: orders.map(toOrderResponse), meta: { count: orders.length } })
+  c.header('Deprecation', 'true')
+  c.header('Link', '</api/v1/pegii/orders/search>; rel="successor-version"')
+  return c.json({
+    data: [],
+    meta: {
+      count: 0,
+      deprecated: 'GET /api/v1/pegii/orders is deprecated; use GET /api/v1/pegii/orders/search',
+    },
+  })
 })
+
+// GET /orders/search — the site's LIVE order search over `sales` (not the
+// serialized snapshot, which DB triggers and direct `UPDATE sales` paths leave
+// stale): orders whose `dateField` falls in [from, to], one keyset page per
+// call, each item carrying the eligibility fields a scheduled workflow needs —
+// including the desktop's own texting verdict (`texting.status`). Items pass
+// through unchanged; `meta.nextCursor` is null on the last page. Registered
+// BEFORE /orders/:orderId so "search" is never read as an order id. A site whose
+// API predates the search → 503 PEGII_CAPABILITY_MISSING; the site's own 400
+// passes through with its code.
+pegiiRuntimeHandler.get(
+  '/orders/search',
+  requirePermission(Actions.ReadOrder),
+  validator('query', (value, c) => {
+    const parsed = OrderSearchQuery.safeParse(value)
+    if (!parsed.success) {
+      const message = parsed.error.issues.map((i) => i.message).join('; ')
+      return c.json({ error: message, code: 'VALIDATION_ERROR' }, 400)
+    }
+    return parsed.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const criteria = c.req.valid('query')
+
+    const gateway = await resolveOrderGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+    const page = await gateway.searchOrders(criteria)
+
+    logger.info('pegII orders searched', {
+      tenantId,
+      dateField: criteria.dateField,
+      from: criteria.from,
+      to: criteria.to,
+      count: page.items.length,
+      more: page.nextCursor !== null,
+    })
+    return c.json({
+      data: page.items,
+      meta: { count: page.items.length, nextCursor: page.nextCursor },
+    })
+  },
+)
 
 // GET /orders/:orderId — fetch one order from the pegII serialized endpoint via
 // the OrderGateway. A tenant with no configured pegII target → 503 and an

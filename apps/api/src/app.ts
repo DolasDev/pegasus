@@ -268,7 +268,9 @@ app.route('/api/vpn', vpnAgentHandler)
 //   GET    /api/v1/orders              ← GET  /orders
 //   POST   /api/v1/orders              ← POST /orders/create[/{customer_app_id}]
 //   GET    /api/v1/orders/:orderId     ← (new — single order lookup)
-//   GET    /api/v1/pegii/orders        ← workflow-runtime pegII order reads (ReadOrder)
+//   GET    /api/v1/pegii/orders        ← DEPRECATED, always [] (ReadOrder)
+//   GET    /api/v1/pegii/orders/search ← workflow-runtime live order search over sales (ReadOrder)
+//   GET    /api/v1/pegii/orders/:id    ← workflow-runtime pegII order read (ReadOrder)
 //   PATCH  /api/v1/pegii/orders/:id    ← workflow-runtime pegII order write-back (WriteOrder)
 //   GET    /api/v1/pegii/tasks         ← workflow-runtime pegII task reads (ReadTask)
 //   POST   /api/v1/pegii/tasks/close   ← workflow-runtime pegII task close (CloseTask)

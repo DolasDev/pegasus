@@ -1320,19 +1320,133 @@ def test_delete_projection_issues_delete() -> None:
 # -- pegII order reads -------------------------------------------------------
 
 
-def test_list_orders_returns_data_array() -> None:
+def test_list_orders_is_deprecated_but_still_calls_the_route() -> None:
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
         captured["query"] = dict(request.url.params)
-        return httpx.Response(200, json={"data": [{"id": "ord-1"}], "meta": {"count": 1}})
+        return httpx.Response(200, json={"data": [], "meta": {"count": 0}})
 
     client = _client_with(handler)
-    orders = client.list_orders(status="booked")
-    assert orders == [{"id": "ord-1"}]
+    with pytest.warns(DeprecationWarning, match="search_orders"):
+        orders = client.list_orders(status="booked")
+    assert orders == []
     assert captured["path"] == "/api/v1/pegii/orders"
     assert captured["query"] == {"status": "booked"}
+
+
+def _search_item(order_number: int) -> dict:
+    return {
+        "orderNumber": order_number,
+        "shipmentStatus": "A",
+        "texting": {
+            "status": "Allowed",
+            "orderAllows": True,
+            "accountBlocks": False,
+            "parentAccountBlocks": False,
+        },
+    }
+
+
+def test_search_orders_follows_every_page() -> None:
+    import datetime as dt
+
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/pegii/orders/search"
+        query = dict(request.url.params)
+        calls.append(query)
+        if "cursor" not in query:
+            return httpx.Response(
+                200,
+                json={
+                    "data": [_search_item(1), _search_item(2)],
+                    "meta": {"count": 2, "nextCursor": 2},
+                },
+            )
+        return httpx.Response(
+            200, json={"data": [_search_item(3)], "meta": {"count": 1, "nextCursor": None}}
+        )
+
+    client = _client_with(handler)
+    orders = client.search_orders(
+        "plan_pack", dt.date(2026, 10, 20), dt.datetime(2026, 10, 21, 13, 5), status="*"
+    )
+
+    assert [o["orderNumber"] for o in orders] == [1, 2, 3]
+    assert calls == [
+        {
+            "dateField": "plan_pack",
+            "from": "2026-10-20",
+            "to": "2026-10-21",
+            "status": "*",
+            "limit": "500",
+        },
+        {
+            "dateField": "plan_pack",
+            "from": "2026-10-20",
+            "to": "2026-10-21",
+            "status": "*",
+            "limit": "500",
+            "cursor": "2",
+        },
+    ]
+
+
+def test_search_orders_defaults_to_active_status_and_passes_string_dates() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(dict(request.url.params))
+        return httpx.Response(200, json={"data": [], "meta": {"count": 0, "nextCursor": None}})
+
+    client = _client_with(handler)
+    assert client.search_orders("del_actual", "2026-10-01", "2026-10-01") == []
+    assert captured["status"] == "A"
+    assert captured["from"] == "2026-10-01"
+
+
+def test_search_orders_rejects_unknown_date_field_before_any_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("no request expected")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="date_field must be one of"):
+        client.search_orders("move_desc", "2026-10-01", "2026-10-01")
+
+
+def test_search_orders_refuses_to_truncate_past_max_results() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [_search_item(1), _search_item(2)],
+                "meta": {"count": 2, "nextCursor": 2},
+            },
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="more than 3 orders"):
+        client.search_orders("plan_pack", "2026-10-01", "2026-10-02", max_results=3)
+
+
+def test_search_orders_surfaces_capability_missing() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            json={
+                "error": "does not support: pegii.orders.search.v1",
+                "code": "PEGII_CAPABILITY_MISSING",
+            },
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc:
+        client.search_orders("plan_pack", "2026-10-01", "2026-10-01")
+    assert exc.value.status_code == 503
+    assert exc.value.code == "PEGII_CAPABILITY_MISSING"
 
 
 def test_get_order_returns_data() -> None:

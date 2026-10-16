@@ -3340,3 +3340,7 @@ Westerberg prod via mssql-executor. Each one would have shipped a plausible-look
 The ad-hoc read pattern: Admin profile → `pegasus/prod/database-url` → the tenant's `mssql_connection_string` →
 `aws lambda invoke` the `MssqlExecutorFn` with `{connectionString, sql}`. Keep the connection string in a
 `umask 077` file and delete it after; never echo it.
+
+## `Date.parse` accepts impossible calendar dates — round-trip to validate a `YYYY-MM-DD`
+
+`Date.parse('2026-02-30T00:00:00Z')` is not `NaN` in V8: it rolls over to March 2. So a zod `.refine((v) => !Number.isNaN(Date.parse(v)))` accepts February 30th. Validate a calendar day by round-tripping it instead: `new Date(t).toISOString().slice(0, 10) === v`. The pegII order-search query (`handlers/pegii-runtime.ts`, `isoDay`) does this, and a test pins `2026-02-30`.

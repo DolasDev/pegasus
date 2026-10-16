@@ -3,6 +3,38 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.51.0
+
+### Added — select pegII orders live (`search_orders`, NW pulse Phase 5)
+
+- `PegasusClient.search_orders(date_field, date_from, date_to, *, status="A",
+max_results=5000)`, gated by `ReadOrder` (a read, not billable). It returns
+  every order whose `date_field` falls in the inclusive range, read **live**
+  from the site's `sales` table, following every page.
+  - `date_field`: `plan_pack` / `plan_load` (the desktop KeyDate "Latest"),
+    `pack_date` / `load_date` ("Planned"), or `del_actual`. Anything else is a
+    `ValueError` before any request.
+  - Each item carries the pack/load/delivery KeyDates, SIT dates, coordinator,
+    national account, relo company, move type, shipper first name and cell,
+    origin/destination zip + state, and `texting`: MoveManager's own
+    shipper-texting verdict (`Allowed` / `NotApprovedOnOrder` /
+    `BlockedByAccount`).
+  - More than `max_results` matches raises `ValueError` rather than truncating.
+  - 503 `PEGII_CAPABILITY_MISSING` when the site's pegII API predates
+    `pegii.orders.search.v1`.
+- Why not the snapshot: `get_order` reads the serialized snapshot the desktop
+  writes on save, which DB triggers and direct `sales` updates never touch.
+- Docs: README, MCP guide and OpenAPI (`searchPegiiOrders`) now spell out the
+  live-vs-snapshot split, the native `KeyMoveDates` key list (delivery is
+  `DelResidence`), `SchemaVersion`, and that `UnusedFields.move_desc` is always
+  empty.
+
+### Deprecated
+
+- `list_orders()` emits a `DeprecationWarning`. It has always returned `[]`
+  against a real tenant (pegII has no snapshot collection), and the route is
+  marked `deprecated` in OpenAPI. It will be removed in a later minor.
+
 ## 0.50.0
 
 ### Added — `TenantMigrating` (Automations moving to their own namespace)

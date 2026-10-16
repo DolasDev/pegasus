@@ -125,9 +125,92 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     "Get an execution's Temporal event-history timeline (ReadWorkflow)",
     { tags: ['Workflows'], path: ['id', 'executionId'] },
   ),
-  '/api/v1/pegii/orders': apiKeyGet('listPegiiOrders', 'List pegII orders (ReadOrder)', {
-    tags: ['pegII'],
-  }),
+  '/api/v1/pegii/orders': {
+    get: {
+      ...apiKeyGet('listPegiiOrders', 'DEPRECATED — always [] (ReadOrder)', {
+        tags: ['pegII'],
+        responseDescription:
+          '{data: [], meta: {count: 0, deprecated}} with Deprecation + Link headers. pegII has no ' +
+          'snapshot collection to list; select orders with GET /api/v1/pegii/orders/search.',
+      }).get,
+      deprecated: true,
+    },
+  },
+  '/api/v1/pegii/orders/search': {
+    get: {
+      operationId: 'searchPegiiOrders',
+      summary: 'Search pegII orders by a date range, read LIVE from sales (ReadOrder)',
+      description:
+        "Orders whose dateField falls in [from, to], read live from the site's sales table — not the serialized " +
+        'snapshot GET /orders/{orderId} returns, which DB triggers and direct sales updates leave stale (e.g. a delivery ' +
+        'actual entered by a trigger). Each item carries the eligibility fields a scheduled workflow needs: ' +
+        'pack/load/delivery as {planned, earliest, latest, actual}, sitIn/sitOut {planned, actual}, planSit, actSitOut, ' +
+        'coordinatorCode/Name, nationalAccountCode/Name, reloCompanyCode/Name, moveType (import_export) and moveTypeLegacy, ' +
+        "shipperFirstName, shipperCellPhone, shipper/consignee zip + state, and texting: the desktop's own shipper-texting " +
+        'verdict {status: Allowed | NotApprovedOnOrder | BlockedByAccount, orderAllows, accountBlocks, parentAccountBlocks}. ' +
+        'Dates are YYYY-MM-DD. Keyset-paged on order number: pass meta.nextCursor back as cursor; null means the last page. ' +
+        "503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.orders.search.v1.",
+      tags: ['pegII'],
+      security: [{ ApiKeyAuth: [] }],
+      parameters: [
+        {
+          name: 'dateField',
+          in: 'query',
+          required: true,
+          schema: {
+            type: 'string',
+            enum: ['plan_pack', 'plan_load', 'del_actual', 'pack_date', 'load_date'],
+          },
+          description:
+            "plan_pack / plan_load are the desktop KeyDate 'Latest' for pack/load; pack_date / load_date its 'Planned'; " +
+            'del_actual the actual delivery date.',
+        },
+        {
+          name: 'from',
+          in: 'query',
+          required: true,
+          schema: { type: 'string', format: 'date' },
+          description: 'Inclusive start, YYYY-MM-DD.',
+        },
+        {
+          name: 'to',
+          in: 'query',
+          required: true,
+          schema: { type: 'string', format: 'date' },
+          description: 'Inclusive end, YYYY-MM-DD; at most 366 days after from.',
+        },
+        {
+          name: 'status',
+          in: 'query',
+          required: false,
+          schema: { type: 'string', default: 'A' },
+          description: "One shipment-status letter (default A), or '*' for every status.",
+        },
+        {
+          name: 'cursor',
+          in: 'query',
+          required: false,
+          schema: { type: 'integer', minimum: 0 },
+          description: 'meta.nextCursor from the previous page.',
+        },
+        {
+          name: 'limit',
+          in: 'query',
+          required: false,
+          schema: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
+        },
+      ],
+      responses: {
+        '200': {
+          description: '{data: [order search item], meta: {count, nextCursor: int | null}}',
+        },
+        '400': { description: 'VALIDATION_ERROR naming the bad parameter' },
+        '403': { description: 'Missing ReadOrder' },
+        '502': { description: 'PEGII_SOURCE_UNREACHABLE / PEGII_SOURCE_BAD_RESPONSE' },
+        '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
+      },
+    },
+  },
   '/api/v1/pegii/orders/{orderId}': apiKeyGet('getPegiiOrder', 'Get a pegII order (ReadOrder)', {
     tags: ['pegII'],
     path: ['orderId'],

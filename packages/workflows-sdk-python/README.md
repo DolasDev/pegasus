@@ -1084,7 +1084,7 @@ it from the move it is processing.)
 The pegII operational surface (legacy orders + tasks + salesmen) has its own reads/mutation:
 
 ```python
-client.list_orders()                 # ReadOrder
+client.search_orders("plan_pack", "2026-10-20", "2026-10-20")  # ReadOrder — LIVE from sales, all pages
 client.get_order("SO-12345")         # ReadOrder — projected row {id, orderNumber, status, …}
 client.update_order("490317", {"Survey": {"SerivceStatus": "In Progress"}})  # WriteOrder — native fragment
 client.list_tasks(order_id="SO-12345")   # ReadTask
@@ -1105,6 +1105,78 @@ client.get_salesman("213056")        # ReadSalesman — {id, name, email, branch
 >
 > There is no `create_task` and no close-by-id yet. Both arrive with the real
 > pegII task bridge.
+
+#### Selecting orders (`search_orders`, 0.51.0+)
+
+`search_orders(date_field, date_from, date_to, status="A")` finds the orders whose
+date column falls in an inclusive range. It reads the pegII site's `sales` table
+**live** and follows every page, so a scheduled Automation can select the day's
+orders with one call:
+
+```python
+import datetime as dt
+
+today = dt.date.today()
+for order in client.search_orders("plan_pack", today, today):
+    if order["texting"]["status"] != "Allowed":
+        continue
+    ...
+```
+
+**Live, not the snapshot.** `get_order` reads a serialized snapshot that the
+desktop writes when it saves an order. DB triggers and direct `UPDATE sales`
+paths, such as a delivery actual entered by a trigger or a longhaul trip save,
+never reach it. Decide eligibility from `search_orders`, and re-run the search
+for a pre-send re-check, rather than reading the snapshot.
+
+| `date_field`              | Column                                         |
+| ------------------------- | ---------------------------------------------- |
+| `plan_pack` / `plan_load` | The desktop KeyDate **Latest** for pack / load |
+| `pack_date` / `load_date` | Its **Planned**                                |
+| `del_actual`              | The actual delivery date                       |
+
+- `date_from` / `date_to` take a `date` or `"YYYY-MM-DD"`, inclusive, at most 366 days apart.
+- `status` is one shipment-status letter (default `"A"`) or `"*"` for every status.
+- More than `max_results` (default 5,000) matches raises `ValueError` instead of truncating.
+
+Each item:
+
+```text
+{orderNumber, shipmentStatus,
+ pack, load, delivery,       # {planned, earliest, latest, actual}
+ sitIn, sitOut,              # {planned, actual}
+ planSit, actSitOut,
+ coordinatorCode, coordinatorName,
+ nationalAccountCode, nationalAccountName,
+ reloCompanyCode, reloCompanyName,
+ moveType, moveTypeLegacy,   # moveType = import_export
+ shipperFirstName, shipperCellPhone,
+ texting,                    # {status, orderAllows, accountBlocks, parentAccountBlocks}
+ shipperZip, shipperState, consigneeZip, consigneeState}
+```
+
+Dates are `"YYYY-MM-DD"` or `None`. `texting.status` is MoveManager's own
+shipper-texting verdict: `Allowed`, `NotApprovedOnOrder`, or `BlockedByAccount`
+(an account or parent-account block always wins). It is separate from the
+platform's SMS opt-out list, so check `get_sms_opt_out` as well.
+
+A site whose pegII API predates `pegii.orders.search.v1` answers 503
+`PEGII_CAPABILITY_MISSING`. `list_orders` is **deprecated**: it has always returned
+`[]` against a real tenant, now emits a `DeprecationWarning`, and will be removed.
+
+**Reading the native snapshot** (`get_order(id, shape="native")`):
+
+- `SchemaVersion` is the version the snapshot row was stored at.
+- `KeyMoveDates` is always keyed by name, whatever the stored version: `Survey`,
+  `Pack`, `Wrap`, `Load`, `AVLLoadSpread`, `AutoLoad`, `LocalPickup`,
+  `CartonDelivery`, `Rule19In`, `Rule19Out`, `Transport_ETA`, `Departure`,
+  `Arrival`, `Clearance`, `Empty_Sealed`, `SIT_PS_In`, `SIT_PS_Out`,
+  `DelResidence`, `LongDistance`, `AutoDelivery`, `Unpack`, `OverflowPU`,
+  `ExtraPickup`, `ExtraDelivery`, `DebrisPickup`, `OverflowDel`, `O_TPS`,
+  `D_TPS`, `Pier_AirPU`, `RTG`, `StorageAccess`, `PierCutoff`, `SetOff`. Each
+  is `{Planned, Earliest, Latest, Actual}`. Delivery to the residence is
+  `DelResidence`; there is no `Delivery` key.
+- `UnusedFields.move_desc` is always `""`; use the search's `moveType`.
 
 #### Writing back onto an order (`update_order`, 0.49.0+)
 

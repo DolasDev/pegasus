@@ -2,7 +2,7 @@
 
 **Branch:** none yet. One worktree + branch + PR per phase: pegasus via `scripts/new-worktree.sh feat <slug>`; movemanager per its CLAUDE.md, with its own plan file.
 **Goal:** Ship every platform capability the three NW pulse-texting workflows (`nw_pulse_send`, `nw_pulse_reply`, `nw_pulse_daily_check`) need. Cloud-owned data is built in pegasus. Legacy data is built as **real endpoints on the pegII API** (`movemanager/Pegasus.Api`) and consumed through the cloud bridge. **No direct cloud→MSSQL access and no stubs.**
-**Status:** APPROVED 2026-09-29 (v2: pegII API instead of stubs/direct DB; D1–D5 decided) · **SDK today:** 0.42.0 · **movemanager HEAD:** `f0abdf16` (Beta 9.3.1)
+**Status:** APPROVED 2026-09-29 (v2: pegII API instead of stubs/direct DB; D1–D5 decided) · **SDK today:** 0.51.0 (Phase 5) · **movemanager HEAD:** `f0abdf16` (Beta 9.3.1)
 **Inputs:** the workflow author's three specs for NW pulse texting (pulse-texting scope, proposed platform interfaces, workflows pending platform work; 09.23–09.25). They are external and not in this repo; the workflow code lives in the authoring repo under `nw-pulse-texting/`.
 
 ---
@@ -14,9 +14,11 @@
 - [x] **Phase 2** — [pegasus] 2a–2c MERGED #747 (SDK 0.40.0), 2d MERGED #748 (SDK 0.41.0); both PUBLISHED
 - [x] **Phase 3** — [pegasus → pegII] `send_email` through the pegII API's SMTP endpoint — MERGED #754 (`21d7886f`), SDK 0.42.0 PUBLISHED; authoring `CLAUDE.md` updated (`0d86b9f`)
 - [x] **Phase 4** — pegII API foundations: DONE 2026-09-29 (movemanager `dev` @ `b793b17e`, pegasus #749)
-- [~] **Phase 5** — [movemanager → pegasus] Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK 0.43.0.
+- [x] **Phase 5** — Order reads: `schemaVersion` + v1→keyed `KeyMoveDates` normalization; live order search → SDK **0.51.0**.
   - movemanager side **landed on `dev`**: `149c4c82` (plan `order-read-normalization-and-search.md`, archived at `69e6c050`; corrected 2026-10-09, the earlier "not pushed" note was stale).
-  - **Blocked on cloud identity phases I1 + I2** (`plans/todo/cloud-identity-and-companies.md`). The approved "provision a hub service user + a cloud secret per site" rollout was replaced by cloud-issued tokens, so NW's rollout becomes "set site id + issuer".
+  - The cloud identity blocker (I1 + I2) cleared: NW's site has had cloud auth on since 2026-10-15 (`plans/in-progress/cloud-identity-and-companies.md`).
+  - pegasus side DONE 2026-10-16 (branch `feat/pulse-order-search`): `GET /api/v1/pegii/orders/search` → `search_orders`, gated on `pegii.orders.search.v1`; `list_orders` deprecated (D4) and its stub deleted; DTO `Delivery` → `DelResidence`; docs. See "As built" under Phase 5.
+  - **Not yet verified on NW:** that NW's deployed pegII (`2026.10.10.1`) advertises `pegii.orders.search.v1`. Probe `/version` before the Phase 8 dry run.
 - [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK 0.44.0 (+ one-line desktop guard fix)
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
@@ -306,11 +308,31 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
 **pegasus** (after the movemanager release reaches NW):
 
-- [ ] `GET /api/v1/pegii/orders/search` → `search_orders(date_field, date_from, date_to, status="A")`, action `ReadOrder`. **Delete the in-memory `list_orders` stub.** Deprecate `list_orders` per D4 (it has returned `[]` everywhere).
-- [ ] `get_order(shape="native")` passes `schemaVersion` through.
-- [ ] Document in the SDK/MCP: the snapshot vs live distinction; `UnusedFields.move_desc` is always empty; the `KeyMoveDates` key list.
-- [ ] Update `gateways/pegii/pegii-order.dto.ts`: `Delivery` → `DelResidence` (analysis.md Trap #1).
-- [ ] Discoverability checklist.
+- [x] `GET /api/v1/pegii/orders/search` → `search_orders(date_field, date_from, date_to, status="A")`, action `ReadOrder`. **Delete the in-memory `list_orders` stub.** Deprecate `list_orders` per D4 (it has returned `[]` everywhere).
+- [x] `get_order(shape="native")` passes `schemaVersion` through.
+- [x] Document in the SDK/MCP: the snapshot vs live distinction; `UnusedFields.move_desc` is always empty; the `KeyMoveDates` key list.
+- [x] Update `gateways/pegii/pegii-order.dto.ts`: `Delivery` → `DelResidence` (analysis.md Trap #1).
+- [x] Discoverability checklist (items 1–7; item 8, the authoring repo's `CLAUDE.md`, after merge).
+
+**As built (pegasus, 2026-10-16):**
+
+- **Route:** `GET /api/v1/pegii/orders/search?dateField=&from=&to=&status=&cursor=&limit=` returns `{data: items, meta: {count, nextCursor}}`.
+  - One site page per call; items pass through unchanged (the site already speaks camelCase).
+  - Registered before `/orders/:orderId`, so `search` is never read as an id.
+  - The cloud re-validates the site's `OrderSearchCriteria` rules for a fast, legible 400: the five-value `dateField` whitelist, `YYYY-MM-DD`, `to ≥ from`, ≤ 366 days, one status letter or `*`, `limit` 1–500, `cursor` ≥ 0, unknown params refused. The site's own 400 still passes through with its code.
+  - Gate `pegii.orders.search.v1` → 503 `PEGII_CAPABILITY_MISSING`. A read, so not metered.
+- **The site's contract is wider than this plan's field list:** `dateField` also takes `pack_date`/`load_date` (A2). Each item carries `pack`/`load`/`delivery` as `{planned, earliest, latest, actual}`, `sitIn`/`sitOut`, `coordinatorName`, the national-account and relo code + name, `moveType` + `moveTypeLegacy` (A3), `shipperCellPhone`, and `texting` (the desktop's `EvaluateShipperSend` verdict).
+- **SDK `search_orders`:**
+  - Follows every page (500 per request).
+  - Takes `date`/`datetime`/`"YYYY-MM-DD"`.
+  - Raises `ValueError` on an unknown `date_field` before any request, or past `max_results` (default 5,000) instead of truncating.
+  - It is a whole-value read in `pegasus_workflows.testing`.
+- **`list_orders`:**
+  - The SDK emits a `DeprecationWarning`.
+  - The route answers `[]` with `Deprecation`/`Link` headers and is `deprecated: true` in OpenAPI, after the same reachability probe as before (sdk-feedback 0018).
+  - The in-memory store is gone.
+- **`schemaVersion`:** `?shape=native` already returns the raw payload, which carries the site's top-level `SchemaVersion`, so no code was needed; it is documented.
+- **SDK version:** 0.50.0 was taken by `TenantMigrating` (#855), so this is **0.51.0**.
 
 ## Phase 6 — Tasks → SDK 0.44.0
 

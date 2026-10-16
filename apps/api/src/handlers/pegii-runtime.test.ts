@@ -8,9 +8,8 @@
 //
 // Single-order reads go through the OrderGateway, so order-gateway.factory is
 // mocked to a controllable stub (its own resolution + tunnel transport are
-// covered in the gateway/factory unit tests). Task routes and order LISTING
-// stay on the in-memory pegII stubs (services/pegii-tasks + services/
-// pegii-orders), reset/seeded between cases.
+// covered in the gateway/factory unit tests). Task routes stay on the
+// in-memory pegII stub (services/pegii-tasks), reset between cases.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -20,7 +19,7 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
 import { _resetTaskStore } from '../services/pegii-tasks'
-import { _resetOrderStore, _seedOrder, type OrderRecord } from '../services/pegii-orders'
+import type { OrderRecord } from '../services/pegii-orders'
 import type { SalesmanRecord } from '../services/pegii-salesmen'
 
 vi.mock('../middleware/dual-auth', () => ({
@@ -29,20 +28,21 @@ vi.mock('../middleware/dual-auth', () => ({
   }),
 }))
 
-const { findOrderById, findOrderNativeById, checkReachable, updateOrderNative } = vi.hoisted(
-  () => ({
+const { findOrderById, findOrderNativeById, checkReachable, updateOrderNative, searchOrders } =
+  vi.hoisted(() => ({
     updateOrderNative: vi.fn(),
     findOrderById: vi.fn(),
     findOrderNativeById: vi.fn(),
     checkReachable: vi.fn(),
-  }),
-)
+    searchOrders: vi.fn(),
+  }))
 vi.mock('../gateways/order-gateway.factory', () => ({
   resolveOrderGateway: vi.fn(async () => ({
     findOrderById,
     findOrderNativeById,
     checkReachable,
     updateOrderNative,
+    searchOrders,
   })),
 }))
 
@@ -125,7 +125,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   _clearAuthzCache()
   _resetTaskStore()
-  _resetOrderStore()
   // Default: source reachable. Individual cases override to simulate a down source.
   checkReachable.mockResolvedValue(undefined)
 })
@@ -225,16 +224,135 @@ describe('GET /pegii/orders/:orderId', () => {
   })
 })
 
-describe('GET /pegii/orders', () => {
-  it('lists seeded orders, filterable by status (source reachable)', async () => {
-    _seedOrder('test-tenant-id', orderRecord({ id: 'ord-1', status: 'booked' }))
-    _seedOrder('test-tenant-id', orderRecord({ id: 'ord-2', status: 'booked' }))
-    _seedOrder('test-tenant-id', orderRecord({ id: 'ord-3', status: 'completed' }))
+describe('GET /pegii/orders/search', () => {
+  const item = {
+    orderNumber: 490317,
+    shipmentStatus: 'A',
+    pack: { planned: '2026-10-20', earliest: null, latest: '2026-10-20', actual: null },
+    texting: {
+      status: 'Allowed',
+      orderAllows: true,
+      accountBlocks: false,
+      parentAccountBlocks: false,
+    },
+  }
+  const url = (q: string) => `/pegii/orders/search?${q}`
+
+  it('passes the live search page through for workflow_runtime', async () => {
+    searchOrders.mockResolvedValue({ items: [item], nextCursor: 490317 })
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request(
+      url('dateField=plan_pack&from=2026-10-20&to=2026-10-21&status=*&cursor=12&limit=50'),
+    )
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({
+      data: [item],
+      meta: { count: 1, nextCursor: 490317 },
+    })
+    expect(searchOrders).toHaveBeenCalledWith({
+      dateField: 'plan_pack',
+      from: '2026-10-20',
+      to: '2026-10-21',
+      status: '*',
+      cursor: 12,
+      limit: 50,
+    })
+    // "search" is its own route, never read as an order id.
+    expect(findOrderById).not.toHaveBeenCalled()
+  })
+
+  it('omits criteria the caller left out, so the site applies its defaults', async () => {
+    searchOrders.mockResolvedValue({ items: [], nextCursor: null })
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request(url('dateField=del_actual&from=2026-10-01&to=2026-10-01'))
+    expect(res.status).toBe(200)
+    expect((await json(res))['meta']).toEqual({ count: 0, nextCursor: null })
+    expect(searchOrders).toHaveBeenCalledWith({
+      dateField: 'del_actual',
+      from: '2026-10-01',
+      to: '2026-10-01',
+    })
+  })
+
+  it.each([
+    ['an unknown dateField', 'dateField=move_desc&from=2026-10-01&to=2026-10-01', /dateField/],
+    ['a missing from', 'dateField=plan_pack&to=2026-10-01', /from/],
+    ['a non-ISO date', 'dateField=plan_pack&from=10/01/2026&to=2026-10-01', /YYYY-MM-DD/],
+    ['an impossible month', 'dateField=plan_pack&from=2026-13-01&to=2026-10-01', /real date/],
+    ['a rolled-over day', 'dateField=plan_pack&from=2026-02-30&to=2026-03-05', /real date/],
+    ['to before from', 'dateField=plan_pack&from=2026-10-02&to=2026-10-01', /on or after/],
+    ['a span over 366 days', 'dateField=plan_pack&from=2025-01-01&to=2026-10-01', /366/],
+    [
+      'a two-letter status',
+      'dateField=plan_pack&from=2026-10-01&to=2026-10-01&status=AB',
+      /status/,
+    ],
+    ['a limit over 500', 'dateField=plan_pack&from=2026-10-01&to=2026-10-01&limit=501', /limit/],
+    ['a negative cursor', 'dateField=plan_pack&from=2026-10-01&to=2026-10-01&cursor=-1', /cursor/],
+    ['an unknown param', 'dateField=plan_pack&from=2026-10-01&to=2026-10-01&page=2', /page/],
+  ])('rejects %s with 400 before calling the site', async (_label, q, message) => {
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request(url(q))
+    expect(res.status).toBe(400)
+    const body = await json(res)
+    expect(body['code']).toBe('VALIDATION_ERROR')
+    expect(String(body['error'])).toMatch(message)
+    expect(searchOrders).not.toHaveBeenCalled()
+  })
+
+  it('rejects a role without ReadOrder (workflow_developer) with 403', async () => {
+    const app = buildApp(['workflow_developer'])
+    const res = await app.request(url('dateField=plan_pack&from=2026-10-20&to=2026-10-20'))
+    expect(res.status).toBe(403)
+    expect(searchOrders).not.toHaveBeenCalled()
+  })
+
+  it('returns 503 PEGII_CAPABILITY_MISSING when the site predates the search', async () => {
+    searchOrders.mockRejectedValue(
+      new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'does not support: pegii.orders.search.v1'),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request(url('dateField=plan_pack&from=2026-10-20&to=2026-10-20'))
+    expect(res.status).toBe(503)
+    expect((await json(res))['code']).toBe('PEGII_CAPABILITY_MISSING')
+  })
+
+  it("passes the site's own 400 through with its code", async () => {
+    searchOrders.mockRejectedValue(
+      new PegiiApiError(
+        'PEGII_API_HTTP_ERROR',
+        'pegII API 400: VALIDATION_ERROR — x',
+        400,
+        'VALIDATION_ERROR',
+      ),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request(url('dateField=plan_pack&from=2026-10-20&to=2026-10-20'))
+    expect(res.status).toBe(400)
+    expect((await json(res))['code']).toBe('VALIDATION_ERROR')
+  })
+
+  it('returns 502 when the pegII source is unreachable', async () => {
+    searchOrders.mockRejectedValue(
+      new PegiiApiError('PEGII_API_TUNNEL_ERROR', 'connection refused'),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request(url('dateField=plan_pack&from=2026-10-20&to=2026-10-20'))
+    expect(res.status).toBe(502)
+    expect((await json(res))['code']).toBe('PEGII_SOURCE_UNREACHABLE')
+  })
+})
+
+describe('GET /pegii/orders (deprecated)', () => {
+  it('answers [] with Deprecation headers pointing at the search (source reachable)', async () => {
     const app = buildApp(['workflow_runtime'])
     const res = await app.request('/pegii/orders?status=booked')
     expect(res.status).toBe(200)
-    const data = (await json(res))['data'] as Array<Record<string, unknown>>
-    expect(data.length).toBe(2)
+    expect(res.headers.get('deprecation')).toBe('true')
+    expect(res.headers.get('link')).toContain('/api/v1/pegii/orders/search')
+    const body = await json(res)
+    expect(body['data']).toEqual([])
+    expect(body['meta']).toMatchObject({ count: 0 })
     expect(checkReachable).toHaveBeenCalled()
   })
 
