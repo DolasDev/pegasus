@@ -28,10 +28,10 @@ export default defineConfig({
       // the pre-change measurement. Re-pinned to measured; `autoUpdate` only
       // ever raises a floor, so a deletion has to be re-pinned by hand.
       thresholds: {
-        lines: 93.44,
-        branches: 81.95,
-        functions: 90.48,
-        statements: 92.09,
+        lines: 92.87,
+        branches: 80.93,
+        functions: 89.82,
+        statements: 91.54,
         autoUpdate: true,
       },
     },
