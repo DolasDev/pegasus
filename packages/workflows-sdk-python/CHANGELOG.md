@@ -3,6 +3,52 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.52.0
+
+### Added — real pegII tasks: create, close by id (NW pulse Phase 6)
+
+- `PegasusClient.create_task(order_id, task_type, title, *, due_date,
+description=None, priority=None, assignee_code=None, dedup_key=None)`, gated by
+  the new `CreateTask` action and billable. It puts a MoveManager user-defined
+  task on the order (the coordinator sees, edits and completes it like their
+  own).
+  - `task_type` must be one the site registers. Today that is only `"Pulse Follow-Up"`.
+  - `due_date` is required.
+  - `dedup_key` makes it idempotent. The same key with the same request returns
+    `alreadyExists: True`, which is not billed; with a different request it is 409
+    `IDEMPOTENCY_KEY_REUSED`.
+  - A `priority` outside `low`/`normal`/`high` is a `ValueError` before any request.
+- `close_task(task_id=...)`: close by the task's id. `close_task(order_id=,
+task_type=)` still works; exactly one of the two forms, else `ValueError`.
+  - Two or more OPEN tasks of the type raise the new **`TaskAmbiguous`**, a 409
+    `PegasusApiError` with `candidate_ids`. Nothing is closed.
+  - If none of that type is open but some are closed, the latest comes back as
+    `alreadyClosed: True`.
+- `list_tasks(order_id=None, *, task_type=None, status=None, due_before=None,
+max_results=1000)`. With `order_id` it returns every task on the order. With
+  `task_type` alone it returns cloud-created tasks of that type across orders,
+  following every page.
+- Exported from the package root: `from pegasus_workflows import TaskAmbiguous`.
+- `pegasus_workflows.testing` captures `create_task` (`"create_task": "CreateTask"`).
+
+### Changed — tasks are real (the stub is gone)
+
+- Every task call reaches the tenant's pegII site, which must advertise
+  `pegii.tasks.v1`; without it every task call is 503 `PEGII_CAPABILITY_MISSING`.
+- The synthesized rows (`date_confirmation` / `survey_scheduling` for any order) are
+  gone. A task id is pegII's own, never `task_<order>_<type>`.
+- Task rows:
+  - no longer carry `stub` or `updatedAt`;
+  - gain `title`, `description`, `priority`, `dueDate`, `assigneeCode`,
+    `createdByApi`, `active`, `completedAt`, `completedBy` and `actualDate`;
+  - set `createdAt` only for a task the cloud created.
+
+  A MoveManager task reports its legacy code (e.g. `PACK`) as `taskType`.
+
+- `list_tasks()` with neither `order_id` nor `task_type` is now a `ValueError`. It used to
+  return whatever the stub had made in this process.
+- An unknown order is 404 `ORDER_NOT_FOUND`. An order with no tasks is `[]`.
+
 ## 0.51.0
 
 ### Added — select pegII orders live (`search_orders`, NW pulse Phase 5)

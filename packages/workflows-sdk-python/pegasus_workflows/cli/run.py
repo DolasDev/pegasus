@@ -58,8 +58,7 @@ def _find_workflow(
         candidates = [r for r in candidates if r.get("version") == version]
     if not candidates:
         raise typer.BadParameter(
-            f"no visible Automation matches {name}"
-            + (f"@{version}" if version else "")
+            f"no visible Automation matches {name}" + (f"@{version}" if version else "")
         )
     # Prefer TENANT (more specific) over GLOBAL when multiple match.
     tenant_first = sorted(

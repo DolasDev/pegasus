@@ -25,9 +25,7 @@ def test_list_deployments_missing_is_empty(tmp_path: Path) -> None:
     assert out == {"ok": True, "deployments": {}}
 
 
-def test_list_profiles_never_returns_key(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_list_profiles_never_returns_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     creds = tmp_path / "credentials"
     monkeypatch.setenv(cr.CREDENTIALS_FILE_ENV_VAR, str(creds))
     cr.write_profile("prod", api_key="vnd_TOPSECRET", api_root="https://prod")
@@ -40,6 +38,7 @@ def test_list_profiles_never_returns_key(
 
 def test_new_tools_registered_and_no_mutation_added() -> None:
     import mcp.server.fastmcp as mcp
+
     server = ms._build_server(mcp.FastMCP)
     tool_names = {t.name for t in asyncio.run(server.list_tools())}
     assert {"list_deployments", "list_profiles"} <= tool_names

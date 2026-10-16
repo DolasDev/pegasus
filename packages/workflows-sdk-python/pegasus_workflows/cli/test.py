@@ -71,8 +71,9 @@ def _ensure_temporal(project_dir: Path) -> None:
         raise typer.Exit(code=1)
 
     if shutil.which("docker") is None:
-        typer.secho("docker is not installed — cannot start Temporal.", fg=typer.colors.RED,
-                     err=True)
+        typer.secho(
+            "docker is not installed — cannot start Temporal.", fg=typer.colors.RED, err=True
+        )
         raise typer.Exit(code=1)
 
     typer.echo(f"-> starting Temporal via {compose_file}")
@@ -109,9 +110,7 @@ def _resolve_workflow(project_dir: Path, name: str) -> tuple[Manifest, type, lis
     entry = manifest.entry_points[0]
     module_path, _, class_name = entry.partition(":")
     if not module_path or not class_name:
-        raise ManifestError(
-            f"entry point '{entry}' must be 'module.path:ClassName'"
-        )
+        raise ManifestError(f"entry point '{entry}' must be 'module.path:ClassName'")
     module = importlib.import_module(module_path)
     workflow_cls = getattr(module, class_name)
 

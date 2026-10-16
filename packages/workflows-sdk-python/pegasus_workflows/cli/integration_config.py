@@ -74,6 +74,7 @@ class _Surface:
     required_secrets: Any | None = None
     required_configs: Any | None = None
 
+
 integration_config_app = typer.Typer(
     name="integration-config",
     help="Author the integration-validator config (mapping + rules) for an integration.",
@@ -148,8 +149,7 @@ def _print_report(report: dict[str, Any]) -> None:
         )
     for failure in corpus.get("failures", []):
         typer.secho(
-            f"  corpus '{failure.get('name')}' ({failure.get('reason')}): "
-            f"{failure.get('detail')}",
+            f"  corpus '{failure.get('name')}' ({failure.get('reason')}): {failure.get('detail')}",
             fg=typer.colors.YELLOW,
             err=True,
         )

@@ -66,9 +66,7 @@ def test_merge_overwrites_with_force() -> None:
 # ── --print-mcp-config ─────────────────────────────────────────────────────────
 
 
-def test_print_mcp_config_emits_stanza_and_writes_nothing(
-    tmp_path: Path, _creds: Path
-) -> None:
+def test_print_mcp_config_emits_stanza_and_writes_nothing(tmp_path: Path, _creds: Path) -> None:
     mcp = tmp_path / ".mcp.json"
     result = runner.invoke(app, ["setup", "--print-mcp-config", "--mcp-config", str(mcp)])
     assert result.exit_code == 0, result.output
@@ -114,9 +112,7 @@ def test_setup_all_flags_seeds_profile_and_writes_mcp(tmp_path: Path, _creds: Pa
     assert "vnd_secret" not in mcp.read_text()
 
 
-def test_setup_is_idempotent_and_wont_clobber_without_force(
-    tmp_path: Path, _creds: Path
-) -> None:
+def test_setup_is_idempotent_and_wont_clobber_without_force(tmp_path: Path, _creds: Path) -> None:
     mcp = tmp_path / ".mcp.json"
     args = ["setup", "--profile", "qa", "--api-key", "vnd_a", "--mcp-config", str(mcp)]
     first = runner.invoke(app, args)
@@ -133,9 +129,7 @@ def test_setup_is_idempotent_and_wont_clobber_without_force(
 
 def test_setup_force_overwrites_existing_entry(tmp_path: Path, _creds: Path) -> None:
     mcp = tmp_path / ".mcp.json"
-    mcp.write_text(
-        json.dumps({"mcpServers": {MCP_SERVER_NAME: {"command": "stale", "args": []}}})
-    )
+    mcp.write_text(json.dumps({"mcpServers": {MCP_SERVER_NAME: {"command": "stale", "args": []}}}))
     result = runner.invoke(
         app,
         ["setup", "--api-key", "vnd_a", "--mcp-config", str(mcp), "--force"],
@@ -148,9 +142,7 @@ def test_setup_force_overwrites_existing_entry(tmp_path: Path, _creds: Path) -> 
 def test_setup_preserves_other_mcp_servers(tmp_path: Path, _creds: Path) -> None:
     mcp = tmp_path / ".mcp.json"
     mcp.write_text(json.dumps({"mcpServers": {"other": {"command": "y", "args": []}}}))
-    result = runner.invoke(
-        app, ["setup", "--api-key", "vnd_a", "--mcp-config", str(mcp)]
-    )
+    result = runner.invoke(app, ["setup", "--api-key", "vnd_a", "--mcp-config", str(mcp)])
     assert result.exit_code == 0, result.output
     doc = json.loads(mcp.read_text())
     assert "other" in doc["mcpServers"]

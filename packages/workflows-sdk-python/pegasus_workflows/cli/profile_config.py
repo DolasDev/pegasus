@@ -27,9 +27,7 @@ profile_app = typer.Typer(
 
 
 def configure_command(
-    profile: str = typer.Option(
-        "default", "--profile", help="Profile name to create or update."
-    ),
+    profile: str = typer.Option("default", "--profile", help="Profile name to create or update."),
     api_key: str = typer.Option(
         None,
         "--api-key",

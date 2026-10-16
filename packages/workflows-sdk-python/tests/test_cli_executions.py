@@ -79,9 +79,7 @@ def test_list_calls_api_and_prints_rows() -> None:
 
 
 def test_show_prints_execution_and_timeline() -> None:
-    result = runner.invoke(
-        ex.executions_app, ["show", "wf-1", "exec-1", "--token", _TOKEN]
-    )
+    result = runner.invoke(ex.executions_app, ["show", "wf-1", "exec-1", "--token", _TOKEN])
     assert result.exit_code == 0, result.output
     assert _FakeClient.last["show"] == ("wf-1", "exec-1")
     assert _FakeClient.last["history"] == ("wf-1", "exec-1")

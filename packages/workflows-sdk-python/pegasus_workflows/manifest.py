@@ -236,13 +236,9 @@ def validate_manifest_fields(
         ManifestError: If any field is missing or invalid.
     """
     if not isinstance(name, str) or not NAME_REGEX.match(name):
-        raise ManifestError(
-            f"name must be lowercase letters/digits/_/-, 1-64 chars (got {name!r})"
-        )
+        raise ManifestError(f"name must be lowercase letters/digits/_/-, 1-64 chars (got {name!r})")
     if not isinstance(version, str) or not VERSION_REGEX.match(version):
-        raise ManifestError(
-            f"version must be semver, e.g. 1.2.3 or 1.2.3-beta.1 (got {version!r})"
-        )
+        raise ManifestError(f"version must be semver, e.g. 1.2.3 or 1.2.3-beta.1 (got {version!r})")
     if not isinstance(entry_points, list) or len(entry_points) == 0:
         raise ManifestError("entryPoints must be a non-empty list of strings")
     for ep in entry_points:
@@ -260,9 +256,7 @@ def validate_manifest_fields(
                 )
     if timeout_seconds is not None:
         if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool):
-            raise ManifestError(
-                f"timeout_seconds must be an integer (got {timeout_seconds!r})"
-            )
+            raise ManifestError(f"timeout_seconds must be an integer (got {timeout_seconds!r})")
         if timeout_seconds < 1 or timeout_seconds > MANIFEST_TIMEOUT_MAX_SECONDS:
             raise ManifestError(
                 f"timeout_seconds must be between 1 and {MANIFEST_TIMEOUT_MAX_SECONDS} "

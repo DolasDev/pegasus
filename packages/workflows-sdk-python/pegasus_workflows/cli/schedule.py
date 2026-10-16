@@ -84,8 +84,7 @@ def schedule_create_command(
 
     state = "enabled" if trigger.get("enabled") else "disabled"
     typer.secho(
-        f"scheduled {row['name']}@{row['version']} on '{cron}' "
-        f"({state}) — trigger {trigger['id']}",
+        f"scheduled {row['name']}@{row['version']} on '{cron}' ({state}) — trigger {trigger['id']}",
         fg=typer.colors.GREEN,
     )
 

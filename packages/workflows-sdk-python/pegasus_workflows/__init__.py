@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         PegasusApiError,
         PegasusClient,
         SmsChannelNotConnected,
+        TaskAmbiguous,
         TenantMigrating,
         WorkflowInUse,
         WorkflowStateConflict,
@@ -47,6 +48,7 @@ __all__ = [
     "SmsChannelNotConnected",
     "WorkflowInUse",
     "TenantMigrating",
+    "TaskAmbiguous",
     "Manifest",
     "ManifestError",
     "load_manifest",
@@ -66,6 +68,7 @@ _LAZY_EXPORTS = {
     "SmsChannelNotConnected": "api",
     "WorkflowInUse": "api",
     "TenantMigrating": "api",
+    "TaskAmbiguous": "api",
     "Manifest": "manifest",
     "ManifestError": "manifest",
     "load_manifest": "manifest",
@@ -81,6 +84,7 @@ def __getattr__(name: str) -> Any:
 
     module = importlib.import_module(f".{module_name}", __name__)
     return getattr(module, name)
+
 
 #: Attribute name under which :func:`pegasus_workflow` stores its metadata
 #: dict on the decorated class.

@@ -196,11 +196,7 @@ def test_scaffold_workflow_produces_same_tree_as_render_project(tmp_path: Path) 
     assert tool_result["ok"] is True
 
     tool_files = set(tool_result["files"])
-    render_files = {
-        str(p.relative_to(render_dir))
-        for p in render_dir.rglob("*")
-        if p.is_file()
-    }
+    render_files = {str(p.relative_to(render_dir)) for p in render_dir.rglob("*") if p.is_file()}
     assert tool_files == render_files
 
 
@@ -361,9 +357,7 @@ def test_reference_api_contains_real_method_names() -> None:
     assert len(public_methods) > 0, "PegasusClient should have public methods"
 
     for method_name in public_methods:
-        assert method_name in content, (
-            f"resource_reference_api() is missing method '{method_name}'"
-        )
+        assert method_name in content, f"resource_reference_api() is missing method '{method_name}'"
 
 
 def test_reference_api_reflects_docstring_change(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -414,6 +408,7 @@ def test_secrets_config_guide_covers_publish_and_use() -> None:
 def test_secrets_config_guide_registered_as_resource() -> None:
     """The guide must be wired onto the MCP server as a resource."""
     import mcp.server.fastmcp as mcp
+
     FastMCP = mcp.FastMCP  # type: ignore[attr-defined]
 
     from pegasus_workflows.cli.mcp_server import _build_server
@@ -434,6 +429,7 @@ def test_no_mutating_tools_registered() -> None:
     as tool names.
     """
     import mcp.server.fastmcp as mcp
+
     FastMCP = mcp.FastMCP  # type: ignore[attr-defined]
 
     from pegasus_workflows.cli.mcp_server import _build_server
@@ -453,6 +449,7 @@ def test_no_mutating_tools_registered() -> None:
 def test_registered_tools_are_only_safe_actions() -> None:
     """The registered tool names match exactly the expected safe set."""
     import mcp.server.fastmcp as mcp
+
     FastMCP = mcp.FastMCP  # type: ignore[attr-defined]
 
     from pegasus_workflows.cli.mcp_server import _build_server

@@ -159,9 +159,7 @@ def _register_mcp(config_path: Path, *, force: bool) -> None:
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
-    typer.secho(
-        f"{action} MCP server '{MCP_SERVER_NAME}' in {config_path}", fg=typer.colors.GREEN
-    )
+    typer.secho(f"{action} MCP server '{MCP_SERVER_NAME}' in {config_path}", fg=typer.colors.GREEN)
 
 
 def setup_command(
