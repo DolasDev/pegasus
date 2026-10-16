@@ -82,9 +82,9 @@ def test_dry_run_integration_served_as_keyed_read() -> None:
 
 
 def test_whole_value_read_passthrough() -> None:
-    rows = [{"id": "o1"}, {"id": "o2"}]
-    client = fake_client(reads={"list_orders": rows})
-    assert client.list_orders(status="open") == rows
+    rows = [{"orderNumber": 1}, {"orderNumber": 2}]
+    client = fake_client(reads={"search_orders": rows})
+    assert client.search_orders("plan_pack", "2026-10-20", "2026-10-20") == rows
     assert client.captured == []
 
 

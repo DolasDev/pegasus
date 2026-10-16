@@ -20,6 +20,7 @@ import {
 import { requirePegiiCapabilities, PegiiCapabilities } from '../lib/pegii-capabilities'
 import { mapPegiiOrderToRecord } from './pegii/pegii-order.mapper'
 import type { PegiiOrderDto } from './pegii/pegii-order.dto'
+import type { PegiiOrderSearchPageDto } from './pegii/pegii-order-search.dto'
 
 /** The serialized-entity name for orders on the pegII API. */
 const SERIALIZED_ORDER_ENTITY = 'orders'
@@ -79,6 +80,21 @@ export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGa
       // proves connectivity. A tunnel/HTTP failure throws PegiiApiError, which
       // the router maps to 502/503 — the same surface a by-id read produces.
       await client.getHealth()
+    },
+
+    async searchOrders(criteria) {
+      await requireCaps(opts.baseUrl, [PegiiCapabilities.OrdersSearch], {
+        ...(opts.caller ? { correlationId: opts.caller.correlationId } : {}),
+      })
+      const page = await client.get<PegiiOrderSearchPageDto>('/api/v1/pegii/orders/search', {
+        dateField: criteria.dateField,
+        from: criteria.from,
+        to: criteria.to,
+        status: criteria.status,
+        cursor: criteria.cursor,
+        limit: criteria.limit,
+      })
+      return { items: page?.items ?? [], nextCursor: page?.nextCursor ?? null }
     },
 
     async updateOrderNative(id, patch) {

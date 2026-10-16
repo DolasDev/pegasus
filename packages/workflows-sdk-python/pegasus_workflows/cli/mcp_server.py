@@ -245,6 +245,28 @@ at a tenant-admin-allowed domain (else 400 ``RECIPIENT_NOT_ALLOWED``; none
 configured → 409 ``EMAIL_RECIPIENTS_NOT_CONFIGURED``). Always pass a
 ``dedup_key`` for escalations/reminders so a retried activity doesn't mail twice.
 
+## Selecting pegII orders (live search vs the snapshot)
+
+``client.search_orders(date_field, date_from, date_to, status="A")``
+(``ReadOrder``) is how a scheduled Automation finds the day's orders. It reads
+the site's ``sales`` table LIVE, and follows every page for you. ``get_order``
+reads a stored SNAPSHOT that DB triggers and direct ``sales`` updates never
+touch (a delivery actual entered by a trigger, a longhaul trip save), so decide
+eligibility, and re-check it before a side effect, from the search, not the
+snapshot. ``date_field`` is ``plan_pack`` / ``plan_load`` (the desktop KeyDate
+"Latest"), ``pack_date`` / ``load_date`` (its "Planned") or ``del_actual``. The
+range is inclusive and at most 366 days. Each item carries ``pack`` / ``load`` /
+``delivery`` as ``{planned, earliest, latest, actual}``, coordinator, account,
+relo company, ``moveType``, shipper first name + cell, zip/state, and
+``texting.status`` (``Allowed`` / ``NotApprovedOnOrder`` / ``BlockedByAccount``,
+MoveManager's own consent rule; also check ``get_sms_opt_out``). ``list_orders``
+is deprecated and always returns ``[]``.
+
+In ``get_order(id, shape="native")``: ``SchemaVersion`` is the version the
+snapshot row was stored at; ``KeyMoveDates`` is always keyed by name (Survey,
+Pack, Wrap, Load, …, ``DelResidence`` for delivery; there is no ``Delivery``
+key); ``UnusedFields.move_desc`` is always empty (use the search's ``moveType``).
+
 ## Writing back onto a pegII order
 
 ``client.update_order(order_id, patch)`` (``WriteOrder``) takes a NATIVE-shape

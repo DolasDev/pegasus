@@ -15,7 +15,9 @@ Two responsibilities:
 
 from __future__ import annotations
 
+import datetime as _dt
 import os
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -219,6 +221,19 @@ def _raise_for_sms_channel_not_connected(response: httpx.Response) -> None:
         raise SmsChannelNotConnected(
             status_code=404, code="SMS_NOT_CONNECTED", message=body.get("error")
         )
+
+
+#: ``date_field`` values :meth:`PegasusClient.search_orders` accepts (the site's whitelist).
+ORDER_SEARCH_DATE_FIELDS = ("plan_pack", "plan_load", "del_actual", "pack_date", "load_date")
+
+
+def _iso_day(value: str | _dt.date) -> str:
+    """A ``date`` (or ``datetime``, whose time is dropped) as ``YYYY-MM-DD``; a string as-is."""
+    if isinstance(value, _dt.datetime):
+        return value.date().isoformat()
+    if isinstance(value, _dt.date):
+        return value.isoformat()
+    return value
 
 
 def _raise_for_status(response: httpx.Response) -> None:
@@ -2048,20 +2063,119 @@ class PegasusClient:
     # pointer in the envelope payload — re-fetch authoritative state here.
 
     def list_orders(self, **params: Any) -> list[dict[str, Any]]:
-        """List pegII orders visible to the caller. Requires ``ReadOrder``.
+        """**Deprecated** — use :meth:`search_orders`. Requires ``ReadOrder``.
 
-        For use inside workflow activities. Pass through query params such as
-        ``status`` as keyword arguments.
+        pegII has no snapshot collection to list, so this has always returned
+        ``[]`` against a real tenant. It now emits a ``DeprecationWarning`` and
+        will be removed in a later minor. The route still fails with 502/503
+        when the pegII source is down, exactly like :meth:`get_order`.
 
         Returns:
-            A list of order rows (``{id, orderNumber, status, customerName,
-            scheduledDate, packingActualDate, createdAt, updatedAt}``).
+            ``[]``.
 
         Raises:
-            PegasusApiError: On 403 (manifest lacks ``ReadOrder``) or any other
+            PegasusApiError: On 403 (manifest lacks ``ReadOrder``), 502/503 when
+                the pegII source is unreachable or unconfigured, or any other
                 non-2xx.
         """
+        warnings.warn(
+            "list_orders() is deprecated and always returns []; select orders with "
+            "search_orders(date_field, date_from, date_to)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self._get_json("/api/v1/pegii/orders", **params)["data"]
+
+    def search_orders(
+        self,
+        date_field: str,
+        date_from: str | _dt.date,
+        date_to: str | _dt.date,
+        *,
+        status: str = "A",
+        max_results: int = 5000,
+    ) -> list[dict[str, Any]]:
+        """Find pegII orders by a date range, read **live** from ``sales``. Requires ``ReadOrder``.
+
+        The way a scheduled workflow selects the day's orders. It reads the
+        site's ``sales`` table directly, **not** the serialized snapshot
+        :meth:`get_order` returns: DB triggers and direct ``UPDATE sales`` paths
+        (a delivery actual entered by a trigger, a longhaul trip save) never
+        reach the snapshot, so eligibility decided from it can be stale. Re-run
+        the search for a pre-send re-check rather than reading the snapshot.
+
+        Args:
+            date_field: Which date column to range over:
+
+                * ``"plan_pack"`` / ``"plan_load"`` — the desktop KeyDate
+                  **Latest** for pack / load.
+                * ``"pack_date"`` / ``"load_date"`` — its **Planned**.
+                * ``"del_actual"`` — the actual delivery date.
+            date_from: Inclusive start, a ``date`` or ``"YYYY-MM-DD"``.
+            date_to: Inclusive end, at most 366 days after ``date_from``.
+            status: One shipment-status letter (default ``"A"``, active), or
+                ``"*"`` for every status.
+            max_results: Safety cap. Pages are followed until the site reports
+                the last one; more than this many matches raises ``ValueError``
+                (narrow the range) rather than silently truncating.
+
+        Returns:
+            Every matching order, ordered by order number, each::
+
+                {orderNumber, shipmentStatus,
+                 pack, load, delivery,          # {planned, earliest, latest, actual}
+                 sitIn, sitOut,                 # {planned, actual}
+                 planSit, actSitOut,
+                 coordinatorCode, coordinatorName,
+                 nationalAccountCode, nationalAccountName,
+                 reloCompanyCode, reloCompanyName,
+                 moveType,                      # import_export
+                 moveTypeLegacy,
+                 shipperFirstName, shipperCellPhone,
+                 texting,                       # the desktop's own verdict, below
+                 shipperZip, shipperState, consigneeZip, consigneeState}
+
+            Dates are ``"YYYY-MM-DD"`` or ``None``. ``texting`` is
+            ``{status, orderAllows, accountBlocks, parentAccountBlocks}``, where
+            ``status`` is ``"Allowed"``, ``"NotApprovedOnOrder"`` or
+            ``"BlockedByAccount"`` (an account or parent-account block always
+            wins). It is MoveManager's consent rule, not the platform's SMS
+            opt-out list — check :meth:`get_sms_opt_out` too.
+
+        Raises:
+            ValueError: On an unknown ``date_field`` (before any request), or
+                more than ``max_results`` matches.
+            PegasusApiError: On 400 ``VALIDATION_ERROR`` (bad date, range over
+                366 days, bad status); 403 (manifest lacks ``ReadOrder``); 503
+                ``PEGII_CAPABILITY_MISSING`` when the site's pegII API predates
+                ``pegii.orders.search.v1``; 502 when the site is unreachable; or
+                any other non-2xx.
+        """
+        if date_field not in ORDER_SEARCH_DATE_FIELDS:
+            raise ValueError(
+                f"date_field must be one of {', '.join(ORDER_SEARCH_DATE_FIELDS)}; "
+                f"got {date_field!r}"
+            )
+        params: dict[str, Any] = {
+            "dateField": date_field,
+            "from": _iso_day(date_from),
+            "to": _iso_day(date_to),
+            "status": status,
+            "limit": 500,
+        }
+        orders: list[dict[str, Any]] = []
+        while True:
+            body = self._get_json("/api/v1/pegii/orders/search", **params)
+            orders.extend(body["data"])
+            if len(orders) > max_results:
+                raise ValueError(
+                    f"search_orders matched more than {max_results} orders; narrow the date "
+                    "range or raise max_results"
+                )
+            next_cursor = (body.get("meta") or {}).get("nextCursor")
+            if next_cursor is None:
+                return orders
+            params["cursor"] = next_cursor
 
     def get_order(self, order_id: str, *, shape: str | None = None) -> Any:
         """Fetch a single pegII order by id. Requires ``ReadOrder``.

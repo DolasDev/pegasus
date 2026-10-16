@@ -53,7 +53,8 @@ export interface PegiiOrderDto {
     Survey?: { Planned?: string | null; Actual?: string | null } | null
     Pack?: { Planned?: string | null; Actual?: string | null } | null
     Load?: { Planned?: string | null; Actual?: string | null } | null
-    Delivery?: { Planned?: string | null; Actual?: string | null } | null
+    /** Delivery to the residence. pegII names it `DelResidence` (KeyDates index 17); there is no `Delivery` key. */
+    DelResidence?: { Planned?: string | null; Actual?: string | null } | null
   } | null
   /** Order/booking date — record creation timestamp. */
   OrderDate?: string | null

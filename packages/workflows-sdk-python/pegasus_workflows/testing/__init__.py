@@ -107,6 +107,7 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_invoices": None,
     "list_events": None,
     "list_orders": None,
+    "search_orders": None,
     "list_tasks": None,
     "list_salesmen": None,
     "list_projections": None,
@@ -375,7 +376,7 @@ def fake_client(reads: Mapping[str, Any] | None = None) -> FakeClient:
             reads (``get_order``, ``get_task``, ``get_config``, ``get_secret``,
             ``map_to_external``, ``get_projection``) the fixture is a mapping
             ``{key: value}`` (e.g. ``{"get_order": {"S-123": {...}}}``). For
-            list/whole-value reads (``list_orders``, ``validate_integration_config``,
+            list/whole-value reads (``search_orders``, ``validate_integration_config``,
             …) the fixture is the value returned as-is.
 
     Returns:
