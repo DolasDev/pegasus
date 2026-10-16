@@ -342,6 +342,14 @@ describe('createPegiiOrderGateway.searchOrders', () => {
     expect(page).toEqual({ items: [], nextCursor: null })
   })
 
+  it('treats a page with no items/cursor as an empty last page', async () => {
+    const { gateway } = gatewayWith(vi.fn().mockResolvedValue({}))
+
+    expect(
+      await gateway.searchOrders({ dateField: 'plan_pack', from: '2026-10-20', to: '2026-10-20' }),
+    ).toEqual({ items: [], nextCursor: null })
+  })
+
   it('refuses before calling when the site lacks pegii.orders.search.v1', async () => {
     const missing = new PegiiApiError(
       'PEGII_API_CAPABILITY_MISSING',
