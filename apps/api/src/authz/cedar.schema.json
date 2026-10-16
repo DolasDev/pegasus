@@ -310,6 +310,9 @@
       "ReadTask": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Task"] }
       },
+      "CreateTask": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Task"] }
+      },
       "CloseTask": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Task"] }
       },

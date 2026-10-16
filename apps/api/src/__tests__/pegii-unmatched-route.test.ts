@@ -35,6 +35,11 @@ vi.mock('../middleware/dual-auth', () => ({
   }),
 }))
 
+// The real route under "leaves a real route alone" reads the site's tasks; stand the site in.
+vi.mock('../gateways/task-gateway.factory', () => ({
+  resolveTaskGateway: vi.fn(async () => ({ listOrderTasks: async () => [] })),
+}))
+
 import { app } from '../app'
 
 const valid = { Authorization: 'Bearer vnd_valid' }

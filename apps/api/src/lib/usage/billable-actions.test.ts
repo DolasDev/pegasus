@@ -14,6 +14,7 @@ describe('BILLABLE_ACTIONS', () => {
     expect(Object.keys(BILLABLE_ACTIONS).sort()).toEqual([
       'CallExternal',
       'CloseTask',
+      'CreateTask',
       'DeliverToExternal',
       'SendEmail',
       'SendSms',

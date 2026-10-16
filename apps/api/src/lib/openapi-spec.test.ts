@@ -27,6 +27,17 @@ describe('getOpenApiSpec', () => {
     expect(order?.['patch']?.security).toEqual([{ ApiKeyAuth: [] }])
   })
 
+  it('documents the pegII task create beside the list, and both close forms', () => {
+    const tasks = spec.paths['/api/v1/pegii/tasks']
+    expect(Object.keys(tasks ?? {}).sort()).toEqual(['get', 'post'])
+    expect((tasks?.['post'] as { operationId?: string }).operationId).toBe('createPegiiTask')
+    const close = spec.paths['/api/v1/pegii/tasks/close']?.['post'] as
+      { description?: string; responses?: Record<string, unknown> } | undefined
+    expect(close?.description).toContain('{ taskId } or { orderId, taskType }')
+    expect(Object.keys(close?.responses ?? {})).toContain('409')
+    expect(JSON.stringify(spec.paths['/api/v1/pegii/tasks'])).not.toContain('stub')
+  })
+
   it('documents the live order search with its required params, and deprecates the list', () => {
     const search = spec.paths['/api/v1/pegii/orders/search']?.['get'] as
       { operationId?: string; parameters?: Array<{ name: string; required: boolean }> } | undefined

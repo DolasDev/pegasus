@@ -46,6 +46,11 @@ function apiKeyGet(
   }
 }
 
+/** The SDK's task row (handlers/pegii-runtime.ts toTaskResponse). */
+const TASK_SHAPE =
+  '{id, orderId, taskType, title, description, priority, dueDate, assigneeCode, status: "open"|"closed", reason, ' +
+  'createdByApi, active, completedAt, completedBy, actualDate, createdAt, closedAt}'
+
 // The operational `vnd_`-reachable GET surface (workflows / executions / triggers,
 // pegII orders+tasks, secrets/config reads, projection cache + 0026 read-model,
 // events, blobs, integration reads, legacy orders). Enforced complete by
@@ -239,22 +244,40 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
   ),
   '/api/v1/pegii/tasks': apiKeyGet(
     'listPegiiTasks',
-    'List pegII tasks (ReadTask). STUB: rows are synthesized and carry stub: true',
+    "List pegII tasks (ReadTask): an order's tasks, or one type across orders",
     {
       tags: ['pegII'],
       query: [
-        { name: 'orderId', description: 'Scope to one order' },
+        {
+          name: 'orderId',
+          description:
+            "Every task on this order (digits) — MoveManager's own and the cloud's — in one response",
+        },
+        {
+          name: 'taskType',
+          description:
+            'Without orderId: cloud-created tasks of this type across orders (keyset-paged). With orderId: a filter. One of orderId/taskType is required',
+        },
         { name: 'status', description: 'open | closed' },
+        { name: 'dueBefore', description: 'YYYY-MM-DD; due strictly before' },
+        {
+          name: 'cursor',
+          description: 'meta.nextCursor from the previous page (taskType search only)',
+        },
+        { name: 'limit', description: '1-500, default 100 (taskType search only)' },
       ],
       responseDescription:
-        '{data: [{id, orderId, taskType, status: "open"|"closed", reason, createdAt, updatedAt, closedAt, stub: true}], meta: {count}}. Until the real pegII task bridge lands, every row is synthesized in memory (two seeded types per order) and marked stub: true.',
+        `{data: [${TASK_SHAPE}], meta: {count, nextCursor}}. ` +
+        'Ids are the pegII task id, one per task. A desktop task reports its legacy code as taskType and has no priority; ' +
+        'createdAt is set only for a task the cloud created, closedAt only for a close made through the API, completedAt is the site-local completion time. ' +
+        "400 when neither orderId nor taskType is given; 404 ORDER_NOT_FOUND; an order with no tasks is []. 503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.tasks.v1.",
     },
   ),
   '/api/v1/pegii/tasks/{taskId}': apiKeyGet('getPegiiTask', 'Get a pegII task (ReadTask)', {
     tags: ['pegII'],
     path: ['taskId'],
     responseDescription:
-      '{data: task} (same shape as listPegiiTasks rows, stub: true); 404 if unknown',
+      '{data: task} (same shape as listPegiiTasks rows); 404 NOT_FOUND if unknown',
   }),
   '/api/v1/orders': apiKeyGet('listOrders', 'List orders — legacy M2M order surface (ReadOrder)', {
     tags: ['Orders'],
@@ -1868,21 +1891,98 @@ export function getOpenApiSpec() {
           },
         },
       },
+      // Re-declared here (after the OPERATIONAL_READ_PATHS spread) to add the
+      // create beside the list: keep `get` from the read table.
+      '/api/v1/pegii/tasks': {
+        ...OPERATIONAL_READ_PATHS['/api/v1/pegii/tasks'],
+        post: {
+          operationId: 'createPegiiTask',
+          summary: 'Create a task on a pegII order (CreateTask, billable)',
+          description:
+            'Body: { orderId, taskType, title, dueDate, description?, priority?, assigneeCode?, dedupKey? }. ' +
+            'MoveManager shows it as a user-defined (USRDEF) task on the order: the coordinator sees, edits and completes it like their own; its grid text is the title uppercased and cut to 50. ' +
+            'taskType must be a type the site registers (today: Pulse Follow-Up); title up to 200; description (the task note) up to 1000; priority low | normal | high (default normal); ' +
+            "dueDate YYYY-MM-DD, required; assigneeCode a MoveManager employee code (default: the order's coordinator). " +
+            'dedupKey (up to 190) makes it idempotent: the same key with the same request is 200 alreadyExists: true with the original task, not billed; with a different request, 409 IDEMPOTENCY_KEY_REUSED. ' +
+            "503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.tasks.v1.",
+          tags: ['pegII'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['orderId', 'taskType', 'title', 'dueDate'],
+                  example: {
+                    orderId: '490317',
+                    taskType: 'Pulse Follow-Up',
+                    title: 'Call back the shipper',
+                    dueDate: '2026-10-20',
+                    priority: 'high',
+                    dedupKey: 'pulse-490317-2026-10-16',
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: '{data: {...task, alreadyExists: false}}' },
+            '200': {
+              description: '{data: {...task, alreadyExists: true}} — a dedupKey replay, not billed',
+            },
+            '400': {
+              description:
+                "VALIDATION_ERROR, or the site's UNKNOWN_TASK_TYPE / INVALID_TITLE / INVALID_DUE_DATE / INVALID_PRIORITY / INVALID_DESCRIPTION / UNKNOWN_ASSIGNEE",
+            },
+            '403': { description: 'Missing CreateTask' },
+            '404': { description: 'ORDER_NOT_FOUND' },
+            '409': {
+              description:
+                "IDEMPOTENCY_KEY_REUSED (same dedupKey, different request) or IDEMPOTENT_TASK_DELETED (the key's task was deleted in MoveManager); nothing written",
+            },
+            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
+          },
+        },
+      },
       '/api/v1/pegii/tasks/close': {
         post: {
           operationId: 'closePegiiTask',
-          summary: 'Close an order task by (orderId, taskType) (CloseTask, billable)',
+          summary: 'Close a pegII task by taskId, or by (orderId, taskType) (CloseTask, billable)',
           description:
-            'Body: { orderId, taskType, reason? }. Idempotent: closing an already-closed task is 200 with alreadyClosed: true, and that replay is not billed. A close that matches no task is 404 TASK_NOT_FOUND. Nothing is created, and nothing is billed. STUB: until the real pegII task bridge lands, tasks are synthesized in memory and carry stub: true.',
+            'Body: { taskId } or { orderId, taskType }, plus reason? (up to 1000). Exactly one form. Closes ANY task, as a coordinator would: completed, completion time and employee, the actual date if empty; ' +
+            "the reason is appended to the task note as 'Closed by Pegasus: …'. By (orderId, taskType) the order's OPEN tasks of that type decide: one is closed; two or more is 409 TASK_AMBIGUOUS with candidateIds and nothing closed; " +
+            'none open but some closed returns the latest with alreadyClosed: true. Idempotent: closing a closed task is 200 alreadyClosed: true, not billed. ' +
+            "A refused close (404, 409) is not billed. 503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.tasks.v1.",
           tags: ['pegII'],
           security: [{ ApiKeyAuth: [] }],
-          responses: {
-            '200': {
-              description: '{data: {...task, stub: true, alreadyClosed: boolean}}',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  example: { taskId: '1234567', reason: 'Customer replied' },
+                },
+              },
             },
-            '400': { description: 'VALIDATION_ERROR' },
+          },
+          responses: {
+            '200': { description: '{data: {...task, alreadyClosed: boolean}}' },
+            '400': {
+              description:
+                'VALIDATION_ERROR (neither or both forms, orderId not a pegII order number)',
+            },
             '403': { description: 'Missing CloseTask' },
-            '404': { description: 'TASK_NOT_FOUND: no task of that type on the order' },
+            '404': {
+              description:
+                'TASK_NOT_FOUND (no such task, or no task of that type on the order) or ORDER_NOT_FOUND',
+            },
+            '409': {
+              description:
+                'TASK_AMBIGUOUS {candidateIds[]}: two or more open tasks of that type; nothing closed',
+            },
+            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
           },
         },
       },

@@ -5,7 +5,10 @@
 // a `vnd_` key included — a synthetic human tenant_admin. So this spec proves
 // the human side over real HTTP:
 //
-//   1. A person closing a task (CloseTask, a billable route) counts nothing.
+//   1. A person calling a billable route (CloseTask) counts nothing. The task
+//      routes reach a pegII site, which the local stack has none of, so the
+//      call itself fails (503); the assertion is only that nothing is metered.
+//      A person's SUCCESSFUL call is pinned in middleware/meter-usage.test.ts.
 //   2. GET /api/v1/usage/summary serves the full shape, and a plan assigned to
 //      the tenant (seeded as the admin route would write it) is reflected.
 //
@@ -84,12 +87,10 @@ test.describe.serial('Usage meter + summary — the human side @local-only', () 
     const before = await tenantEvents()
     const res = await apiFetch('/api/v1/pegii/tasks/close', {
       method: 'POST',
-      body: JSON.stringify({
-        orderId: `e2e-usage-${Date.now().toString(36)}`,
-        taskType: 'date_confirmation',
-      }),
+      body: JSON.stringify({ taskId: '1' }),
     })
-    expect(res.status).toBe(200)
+    // No pegII site in the local stack: 503 PEGII_SOURCE_UNAVAILABLE, never a 2xx.
+    expect(res.status).toBe(503)
     expect(await tenantEvents()).toBe(before)
   })
 

@@ -23,7 +23,8 @@
 // ReadOrder/ReadTask let a lifecycle workflow re-fetch authoritative order and
 // task state from an order.* event pointer; CloseTask lets it close out an
 // order's operational task (e.g. date_confirmation) when the triggering event
-// arrives. WriteOrder writes allowlisted fields (the integration statuses) back
+// arrives, and CreateTask lets it put a follow-up task on a coordinator's list
+// (a desktop user-defined task). WriteOrder writes allowlisted fields (the integration statuses) back
 // onto the pegII order - the one order mutation a workflow may make; the site
 // enforces which fields. ReadSalesman re-fetches an authoritative salesman (sales user /
 // employee) referenced from an order. Orders/salesmen/tasks are the pegII-bound
@@ -51,6 +52,7 @@ permit (
     Pegasus::Action::"WriteOrder",
     Pegasus::Action::"ReadSalesman",
     Pegasus::Action::"ReadTask",
+    Pegasus::Action::"CreateTask",
     Pegasus::Action::"CloseTask",
     Pegasus::Action::"CreateEvent",
     Pegasus::Action::"EmitTenantEvent",

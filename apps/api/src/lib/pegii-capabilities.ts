@@ -37,6 +37,11 @@ export const PegiiCapabilities = {
    * auth on the site: cloud token with no `scp`, or the configured bridge hub user.
    */
   DriversFinancials: 'pegii.drivers.financials.v1',
+  /**
+   * Task create / read / close: `/api/v1/pegii/orders/{n}/tasks` and `/api/v1/pegii/tasks[...]`
+   * (NW pulse Phase 6). Required on reads too: without it the site has no task routes.
+   */
+  Tasks: 'pegii.tasks.v1',
 } as const
 
 export interface PegiiVersionInfo {
