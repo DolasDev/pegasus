@@ -3344,3 +3344,11 @@ The ad-hoc read pattern: Admin profile → `pegasus/prod/database-url` → the t
 ## `Date.parse` accepts impossible calendar dates — round-trip to validate a `YYYY-MM-DD`
 
 `Date.parse('2026-02-30T00:00:00Z')` is not `NaN` in V8: it rolls over to March 2. So a zod `.refine((v) => !Number.isNaN(Date.parse(v)))` accepts February 30th. Validate a calendar day by round-tripping it instead: `new Date(t).toISOString().slice(0, 10) === v`. The pegII order-search query (`handlers/pegii-runtime.ts`, `isoDay`) does this, and a test pins `2026-02-30`.
+
+## Local dispatch crew lives in `LocalDispatchJobs`, NOT the `LocalDispatchJob{Drivers,Helpers,Master}` tables
+
+movemanager has two sets of local-dispatch tables. The live one is **`LocalDispatchJobs`**: `order_num`,
+`driver_id1-2`, `helper_id1-10`. Its ids are **`crews.employee_id`**, not `crews.id`. The normalized
+`LocalDispatchJobMaster` / `LocalDispatchJobDrivers` / `LocalDispatchJobHelpers` (and `LocalDispatchJobsDetail`)
+were filled once by a conversion script, and the app never writes them, so they look right but are stale.
+`IO_LocalDispatchJobNew.Write` is broken, and only a test form calls it. Source trace: `plans/todo/move-chat.md`, D2.
