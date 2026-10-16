@@ -41,9 +41,13 @@ def test_diagram_command_prints_prompt_without_writing_mmd(workflow_project: Pat
     assert mmd.read_text(encoding="utf-8") == "ORIGINAL"
 
 
-def test_diagram_command_writes_prompt_to_out_file(workflow_project: Path, tmp_path: Path) -> None:
+def test_diagram_command_writes_prompt_to_out_file(
+    workflow_project: Path, tmp_path: Path
+) -> None:
     out = tmp_path / "prompt.txt"
-    result = runner.invoke(_app, ["--project-dir", str(workflow_project), "--out", str(out)])
+    result = runner.invoke(
+        _app, ["--project-dir", str(workflow_project), "--out", str(out)]
+    )
     assert result.exit_code == 0, result.output
     body = out.read_text(encoding="utf-8")
     assert "demo/workflow.mmd" in body
@@ -53,5 +57,7 @@ def test_diagram_command_writes_prompt_to_out_file(workflow_project: Path, tmp_p
 
 
 def test_diagram_command_unknown_workflow_errors(workflow_project: Path) -> None:
-    result = runner.invoke(_app, ["--project-dir", str(workflow_project), "--workflow", "nope"])
+    result = runner.invoke(
+        _app, ["--project-dir", str(workflow_project), "--workflow", "nope"]
+    )
     assert result.exit_code == 1

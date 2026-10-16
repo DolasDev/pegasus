@@ -35,6 +35,10 @@ def workflow_project(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (source / "__init__.py").write_text("", encoding="utf-8")
-    (source / "workflow.py").write_text("class HelloWorkflow:\n    pass\n", encoding="utf-8")
-    (source / "workflow.mmd").write_text("flowchart TD\n  A[Start] --> B[Done]\n", encoding="utf-8")
+    (source / "workflow.py").write_text(
+        "class HelloWorkflow:\n    pass\n", encoding="utf-8"
+    )
+    (source / "workflow.mmd").write_text(
+        "flowchart TD\n  A[Start] --> B[Done]\n", encoding="utf-8"
+    )
     return project

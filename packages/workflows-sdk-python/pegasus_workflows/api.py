@@ -3582,7 +3582,11 @@ class PegasusClient:
                 # Carry the key whenever a binding was requested, so an author's
                 # `correlation` check runs in a rehearsal instead of reading None
                 # (sdk-feedback 0045 B).
-                **({"correlation": {"outcome": "dryRun"}} if local_entity_type is not None else {}),
+                **(
+                    {"correlation": {"outcome": "dryRun"}}
+                    if local_entity_type is not None
+                    else {}
+                ),
             },
         )
         if captured is not _NOT_CAPTURED:

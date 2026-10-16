@@ -61,12 +61,16 @@ def test_omitted_api_root_defaults(_hermetic_env: Path) -> None:
 
 def test_precedence_explicit_flag_wins(_hermetic_env: Path) -> None:
     _write(_hermetic_env, '[prod]\napi_key = "vnd_p"\napi_root = "https://prod"\n')
-    token, base_url = cr.resolve(token="vnd_explicit", base_url="https://explicit", profile="prod")
+    token, base_url = cr.resolve(
+        token="vnd_explicit", base_url="https://explicit", profile="prod"
+    )
     assert token == "vnd_explicit"
     assert base_url == "https://explicit"
 
 
-def test_precedence_profile_beats_env(_hermetic_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_precedence_profile_beats_env(
+    _hermetic_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write(_hermetic_env, '[prod]\napi_key = "vnd_p"\napi_root = "https://prod"\n')
     monkeypatch.setenv(cr.TOKEN_ENV_VAR, "vnd_env")
     monkeypatch.setenv(cr.BASE_URL_ENV_VAR, "https://env")

@@ -83,7 +83,7 @@ def test_multi_workflow_named_workflow_id_does_not_wipe_siblings(tmp_path: Path)
 
 # A hand-maintained ledger: header block + a Superseded audit trail + a [qa]
 # table the current publish must not touch.
-_LEDGER_WITH_COMMENTS = """\
+_LEDGER_WITH_COMMENTS = '''\
 # deployments.toml — where each workflow landed and the id it got.
 # Ids are environment-specific; this is the human-facing audit trail.
 
@@ -103,7 +103,7 @@ workflow_id = "wf-old"
 version = "0.1.0"
 visibility = "GLOBAL"
 published_at = "2026-06-26T21:05:48Z"
-"""
+'''
 
 
 def test_republish_preserves_comments_and_only_changes_target_keys(tmp_path: Path) -> None:

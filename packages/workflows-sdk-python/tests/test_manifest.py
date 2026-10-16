@@ -229,7 +229,9 @@ def test_load_manifest_rejects_malformed_requirement_group(tmp_path: Path) -> No
 
 def test_validate_manifest_fields_rejects_non_list_required_secrets() -> None:
     with pytest.raises(ManifestError, match="required_secrets must be a list"):
-        validate_manifest_fields("demo", "0.1.0", ["a:B"], None, None, None, "nope", None)
+        validate_manifest_fields(
+            "demo", "0.1.0", ["a:B"], None, None, None, "nope", None
+        )
 
 
 def test_load_manifest_missing_file(tmp_path: Path) -> None:
@@ -361,7 +363,9 @@ def test_load_manifest_timeout_seconds_at_min_boundary(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("bad_value", [901, 1200, 0, -1])
-def test_load_manifest_rejects_out_of_range_timeout_seconds(tmp_path: Path, bad_value: int) -> None:
+def test_load_manifest_rejects_out_of_range_timeout_seconds(
+    tmp_path: Path, bad_value: int
+) -> None:
     (tmp_path / "pegasus-workflows.toml").write_text(
         textwrap.dedent(
             f"""

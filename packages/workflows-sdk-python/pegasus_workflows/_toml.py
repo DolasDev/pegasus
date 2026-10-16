@@ -86,7 +86,9 @@ _KEY_LINE_RE = re.compile(r'^(\s*)("(?:[^"\\]|\\.)*"|[A-Za-z0-9_-]+)\s*=')
 #: Splits a `key = "value"` line into everything up to the value (1) and the
 #: trailing text after it (2) — so a value can be swapped without disturbing an
 #: inline comment or the key's own formatting.
-_ASSIGN_RE = re.compile(r'^(\s*(?:"(?:[^"\\]|\\.)*"|[A-Za-z0-9_-]+)\s*=\s*)"(?:[^"\\]|\\.)*"(.*)$')
+_ASSIGN_RE = re.compile(
+    r'^(\s*(?:"(?:[^"\\]|\\.)*"|[A-Za-z0-9_-]+)\s*=\s*)"(?:[^"\\]|\\.)*"(.*)$'
+)
 
 
 def _unquote(segment: str) -> str:

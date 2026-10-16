@@ -56,7 +56,9 @@ def test_push_writes_ledger_with_explicit_env(workflow_project: Path) -> None:
 
 
 def test_push_derives_env_from_base_url(workflow_project: Path) -> None:
-    result = runner.invoke(app, ["push", "-C", str(workflow_project), "--token", _TOKEN])
+    result = runner.invoke(
+        app, ["push", "-C", str(workflow_project), "--token", _TOKEN]
+    )
     assert result.exit_code == 0, result.output
     data = dp.read_deployments(workflow_project)
     # Default base URL is http://localhost:3000 → host "localhost".

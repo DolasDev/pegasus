@@ -572,7 +572,9 @@ def resource_reference_manifest() -> str:
         "draw the ``flowchart TD`` yourself, and write it to that path before\n"
         "``package_project``. ``scaffold_workflow`` seeds a starter diagram so a\n"
         "fresh project already packages.\n\n"
-        "## Manifest fields (``Manifest`` dataclass)\n\n" + "\n".join(field_lines) + "\n\n"
+        "## Manifest fields (``Manifest`` dataclass)\n\n"
+        + "\n".join(field_lines)
+        + "\n\n"
         "## Example ``pegasus-workflows.toml``\n\n"
         "    [[workflow]]\n"
         '    name = "send_quote_followup"\n'
@@ -681,7 +683,7 @@ def resource_reference_integration_config() -> str:
         "``Result{Results:'Success'|'Failed', ResultsMessage:[...]}``) instead of the generic "
         "``{status:'accepted'}``. ``ackTemplate`` strings that are exactly ``{{key}}`` "
         "substitute a context value (``status``, ``errorCount``, ``messages``, ``issues``); "
-        '``{"$map": "issues", "as": {...}}`` renders one element per issue. '
+        "``{\"$map\": \"issues\", \"as\": {...}}`` renders one element per issue. "
         "``validation`` = ``{requiredPaths, nonEmptyArrayPaths}`` (AND-checked), plus optional "
         "``oneOf`` — a list of variant shapes for a multi-shape partner (one ingress id that "
         "receives structurally different bodies, e.g. ADE Abstract vs Statement); the body must "
@@ -839,7 +841,11 @@ def tool_scaffold_workflow(name: str, dest: str) -> dict[str, Any]:
     except (ValueError, FileExistsError, OSError) as exc:
         return {"ok": False, "error": str(exc)}
 
-    files = sorted(str(p.relative_to(project_dir)) for p in project_dir.rglob("*") if p.is_file())
+    files = sorted(
+        str(p.relative_to(project_dir))
+        for p in project_dir.rglob("*")
+        if p.is_file()
+    )
     return {"ok": True, "project_dir": str(project_dir), "files": files}
 
 
