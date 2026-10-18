@@ -21,8 +21,8 @@
     "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
   },
   "devDependencies": {
-    "@aws-sdk/client-ssm": "^3.1147.0",
-    "@aws-sdk/credential-providers": "^3.1147.0",
+    "@aws-sdk/client-ssm": "^3.1152.0",
+    "@aws-sdk/credential-providers": "^3.1152.0",
     "@cedar-policy/cedar-wasm": "^4.13.0",
     "@eslint/js": "^10.0.0",
     "@napi-rs/canvas": "^0.1.99",
@@ -33,13 +33,13 @@
     "expo-server-sdk": "^6.1.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.0.0",
-    "prettier": "^3.9.9",
+    "prettier": "^3.9.10",
     "sharp": "^0.35.5",
     "shellcheck": "^4.1.0",
     "tsx": "^4.23.15",
-    "turbo": "^2.11.7",
+    "turbo": "^2.11.8",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.71.1",
+    "typescript-eslint": "^8.71.2",
     "vitest": "^4.1.11"
   },
   "lint-staged": {

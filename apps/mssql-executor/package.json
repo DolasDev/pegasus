@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "mssql": "^12.7.4"
+    "mssql": "^12.7.7"
   },
   "devDependencies": {
     "@types/mssql": "^12.3.0",

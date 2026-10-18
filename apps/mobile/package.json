@@ -53,14 +53,14 @@
     "react-native-reanimated": "4.2.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
-    "react-native-web": "^0.21.3"
+    "react-native-web": "^0.21.4"
   },
   "devDependencies": {
     "@babel/plugin-proposal-export-default-from": "^7.27.1",
     "@babel/plugin-transform-react-display-name": "^7.28.0",
     "@babel/preset-env": "^7.28.5",
     "@babel/preset-typescript": "^7.29.7",
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.64.1",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^30.0.0",
     "@types/react": "^19.2.14",
