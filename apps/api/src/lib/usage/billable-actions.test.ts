@@ -20,6 +20,7 @@ describe('BILLABLE_ACTIONS', () => {
       'SendSms',
       'UpdateTextMessage',
       'WriteOrder',
+      'WriteOrderMemo',
     ])
   })
 

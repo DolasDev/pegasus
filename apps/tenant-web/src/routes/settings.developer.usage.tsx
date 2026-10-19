@@ -31,6 +31,7 @@ const ACTION_LABELS: Record<string, string> = {
   CreateTask: 'Tasks created',
   CloseTask: 'Tasks closed',
   WriteOrder: 'Orders written back',
+  WriteOrderMemo: 'Order memos added',
   DeliverToExternal: 'Integration deliveries',
   CallExternal: 'Integration calls (writes)',
 }

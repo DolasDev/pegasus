@@ -12,6 +12,8 @@
 //   GET  /orders/search          ReadOrder     live order search over `sales`
 //   GET  /orders/:orderId        ReadOrder     fetch one order
 //   PATCH /orders/:orderId       WriteOrder    write allowlisted fields back (native fragment)
+//   POST /orders/:orderId/memos  WriteOrderMemo add a desktop order memo (idempotent with dedupKey)
+//   GET  /memo-types             ReadOrder     this company's memo-type labels
 //   GET  /salesmen               ReadSalesman  list salesmen (?active=…)
 //   GET  /salesmen/:salesmanId   ReadSalesman  fetch one salesman
 //   GET  /tasks                  ReadTask      an order's tasks (?orderId=) or one type across orders (?taskType=)
@@ -56,6 +58,8 @@ import { resolveTaskGateway } from '../gateways/task-gateway.factory'
 import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
 import { TASK_SEARCH_MAX_LIMIT } from '../gateways/pegii/pegii-task.dto'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
+import { resolveMemoGateway } from '../gateways/memo-gateway.factory'
+import type { PegiiMemoDto } from '../gateways/pegii/pegii-memo.dto'
 import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
 import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 import { logger } from '../lib/logger'
@@ -170,6 +174,44 @@ const CloseBody = z
 
 // Mirrors movemanager OrderSearchCriteria so a bad call fails here with a
 // legible 400 instead of a tunnel round-trip; the site re-validates anyway.
+const CreateMemoBody = z
+  .object({
+    memoType: z
+      .number({ error: 'memoType is required (the memo-type code, 1-7; see GET /memo-types)' })
+      .int()
+      .min(1, 'memoType must be between 1 and 7')
+      .max(7, 'memoType must be between 1 and 7'),
+    subject: z
+      .string({ error: 'subject is required' })
+      .trim()
+      .min(1, 'subject is required')
+      .max(150, 'subject may be at most 150 characters'),
+    text: z
+      .string({ error: 'text is required' })
+      .trim()
+      .min(1, 'text is required')
+      .max(1000, 'text may be at most 1000 characters'),
+    nextAction: z
+      .string()
+      .trim()
+      .min(1, 'nextAction must not be empty')
+      .max(100, 'nextAction may be at most 100 characters')
+      .optional(),
+    nextDate: isoDay('nextDate').optional(),
+    personCode: z
+      .number()
+      .int()
+      .positive('personCode must be a MoveManager employee code')
+      .optional(),
+    dedupKey: z
+      .string()
+      .trim()
+      .min(1, 'dedupKey must not be empty')
+      .max(190, 'dedupKey may be at most 190 characters')
+      .optional(),
+  })
+  .strict()
+
 const OrderSearchQuery = z
   .object({
     dateField: z.enum(ORDER_SEARCH_DATE_FIELDS, {
@@ -230,6 +272,26 @@ function toSalesmanResponse(salesman: SalesmanRecord) {
     active: salesman.active,
     startDate: salesman.startDate,
     dateTerminated: salesman.dateTerminated,
+  }
+}
+
+/** A pegII order memo in the SDK's shape. Ids are strings, like every pegII id here. */
+function toMemoResponse(memo: PegiiMemoDto) {
+  return {
+    id: String(memo.id),
+    orderId: String(memo.orderNumber),
+    memoType: memo.memoType,
+    subject: memo.subject,
+    text: memo.text,
+    nextAction: memo.nextAction,
+    nextDate: memo.nextDate,
+    callDate: memo.callDate,
+    callTime: memo.callTime,
+    whoCalled: memo.whoCalled,
+    shipper: memo.shipper,
+    personCode: memo.personCode,
+    acknowledged: memo.acknowledged,
+    createdBy: memo.createdBy,
   }
 }
 
@@ -441,6 +503,85 @@ pegiiRuntimeHandler.patch(
     return c.json({ data: result.order, meta: { applied: result.applied } })
   },
 )
+
+// ── Memos ───────────────────────────────────────────────────────────────────
+//
+// Backed by the pegII site's memo API (gateways/pegii-memo.gateway.ts), gated on
+// `pegii.memos.v1` (503 PEGII_CAPABILITY_MISSING without it).
+
+// POST /orders/:orderId/memos — add a memo to an order (WriteOrderMemo,
+// billable). The site writes a desktop order memo (`memos`, source 'O'):
+// `subject` is its "Re:" (stored uppercased), `text` its "Notes:". It lands on
+// the "Memos I need to acknowledge" list of `personCode` (default: the order's
+// coordinator) from `nextDate` (default: today). `memoType` is the stored digit;
+// its label is the company's (GET /memo-types). The site's 400s pass through
+// with their codes, among them MEMO_TEXT_TRIGGERS_REJECTION (a `text` the
+// desktop's memo trigger would treat as a rejection) and UNKNOWN_PERSON.
+// `dedupKey` makes it idempotent: the same key with the same request answers
+// 200 `alreadyExists: true` (the original memo; not billed), with a different
+// request 409 IDEMPOTENCY_KEY_REUSED. A new memo is 201.
+pegiiRuntimeHandler.post(
+  '/orders/:orderId/memos',
+  requirePermission(Actions.WriteOrderMemo),
+  meterUsage(Actions.WriteOrderMemo),
+  validator('json', (value, c) => {
+    const parsed = CreateMemoBody.safeParse(value)
+    if (!parsed.success) {
+      const message = parsed.error.issues.map((i) => i.message).join('; ')
+      return c.json({ error: message, code: 'VALIDATION_ERROR' }, 400)
+    }
+    return parsed.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const orderId = c.req.param('orderId') ?? ''
+    if (!isPegiiInt(orderId)) {
+      return c.json(
+        { error: 'orderId must be a pegII order number (digits)', code: 'VALIDATION_ERROR' },
+        400,
+      )
+    }
+    const b = c.req.valid('json')
+
+    const gateway = await resolveMemoGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+    const result = await gateway.createMemo(Number(orderId), {
+      memoType: b.memoType,
+      subject: b.subject,
+      text: b.text,
+      ...(b.nextAction !== undefined ? { nextAction: b.nextAction } : {}),
+      ...(b.nextDate !== undefined ? { nextDate: b.nextDate } : {}),
+      ...(b.personCode !== undefined ? { personCode: b.personCode } : {}),
+      ...(b.dedupKey !== undefined ? { idempotencyKey: b.dedupKey } : {}),
+    })
+    if (!result.found) {
+      return c.json({ error: `Order ${orderId} not found`, code: result.code }, 404)
+    }
+
+    logger.info('pegII order memo added', {
+      tenantId,
+      orderId,
+      memoId: result.memo.id,
+      memoType: b.memoType,
+      alreadyExists: result.alreadyExists,
+    })
+    return c.json(
+      { data: { ...toMemoResponse(result.memo), alreadyExists: result.alreadyExists } },
+      result.alreadyExists ? 200 : 201,
+    )
+  },
+)
+
+// GET /memo-types — the memo-type labels this site's desktop shows. The codes
+// are the same everywhere; the labels are the company's (on NW, 4 is "Customer
+// Service"; on QMM, "General"). `company` is null when the site can't tell, and
+// the labels are then the generic ones.
+pegiiRuntimeHandler.get('/memo-types', requirePermission(Actions.ReadOrder), async (c) => {
+  const gateway = await resolveMemoGateway(c.get('db'), c.get('tenantId'), () =>
+    resolvePegiiCaller(c),
+  )
+  const types = await gateway.listMemoTypes()
+  return c.json({ data: types.items, meta: { company: types.company, count: types.items.length } })
+})
 
 // ── Salesmen ────────────────────────────────────────────────────────────────
 

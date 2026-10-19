@@ -328,7 +328,14 @@ carries the message text itself; `client.get_text_message(payload["messageId"])`
 run the event starts. For a reply that needs no human attention (e.g. a bare
 rating), `client.mark_text_message_read(payload["messageId"])` (needs
 `UpdateTextMessage`) marks it read at RingCentral — which is what clears the
-coordinator's unread badge in the desktop app:
+coordinator's unread badge in the desktop app (0.53.0+ also mirrors it into the
+desktop's own copy at once; `mirroredToDesktop` says whether that happened). To
+find the order a customer is replying about,
+`client.get_text_message_links(payload["messageId"])` (needs `ReadTextMessage`)
+returns the desktop's links for the conversation: `orderIds`, `driverCodes`,
+`employeeCodes`. To hand a reply to a person, `client.add_order_memo(...)` (needs
+`WriteOrderMemo`) puts it on the coordinator's "Memos I need to acknowledge" list
+(see "Order memos" below):
 
 ```python
 {
@@ -1013,6 +1020,7 @@ world, performed by an Automation or API client.** One each:
 | Email sent (`SendEmail`)                       | `send_email`                                                   |
 | Inbound text marked read (`UpdateTextMessage`) | `mark_text_message_read`                                       |
 | Task created (`CreateTask`)                    | `create_task`                                                  |
+| Order memo added (`WriteOrderMemo`)            | `add_order_memo`                                               |
 | Task closed (`CloseTask`)                      | `close_task`                                                   |
 | Order written back (`WriteOrder`)              | `update_order` (only when a value changed)                     |
 | Delivery to a partner (`DeliverToExternal`)    | `deliver_to_external` (only when the partner accepted it)      |
@@ -1093,6 +1101,8 @@ client.list_tasks(task_type="Pulse Follow-Up", status="open", due_before=today) 
 client.get_task("1234567")           # ReadTask
 client.create_task("490317", "Pulse Follow-Up", "Call back", due_date=today, dedup_key="pulse-490317-2026-10-16")  # CreateTask
 client.close_task(task_id="1234567", reason="Customer replied")  # CloseTask — or order_id= + task_type=
+client.add_order_memo("490317", 4, "Pulse reply", "Crew was great", dedup_key="pulse-reply-4455")  # WriteOrderMemo
+client.list_memo_types()             # ReadOrder — {company, items: [{code, label}]}, the labels are the company's
 client.list_salesmen(active="true")  # ReadSalesman — the whole directory, live from the site
 client.get_salesman("213056")        # ReadSalesman — {id, name, email, branch, active, …}
 ```
@@ -1139,6 +1149,35 @@ reaches the tenant's pegII site, which must advertise `pegii.tasks.v1` (else 503
   that type across orders, following every page.
 - `list_tasks` needs `order_id` or `task_type`.
 - An unknown order is 404 `ORDER_NOT_FOUND`. An order with no tasks is `[]`.
+
+#### Order memos (`add_order_memo`, 0.53.0+)
+
+A memo is MoveManager's note on an order, and the way the desktop asks a person to
+act: a memo with a person and a due date sits on their "Memos I need to
+acknowledge" list until they tick it. Every call reaches the tenant's pegII site,
+which must advertise `pegii.memos.v1` (else 503 `PEGII_CAPABILITY_MISSING`).
+
+- `add_order_memo(order_id, memo_type, subject, text, *, next_action=None,
+next_date=None, person_code=None, dedup_key=None)` writes a memo the desktop
+  shows like one a user typed:
+  - `subject` is its "Re:" (up to 150, stored uppercased).
+  - `text` is its "Notes:" (up to 1000), shown in full.
+  - `next_action` is its "Next Action" (up to 100).
+  - It lands on `person_code`'s list (default: the order's coordinator) from
+    `next_date` (default: the site's today).
+  - "Who called" is the calling service employee (e.g. `PEGASUS GENERATED`).
+- **`memo_type` is a code, 1-7, and its label is the company's.** On NW, 4 is
+  "Customer Service" and 5 "Claims"; on QMM, 4 is "General".
+  `list_memo_types()` returns this site's `{company, items: [{code, label}]}`, so
+  pick by label rather than hard-coding a number.
+- A site refuses `text` that its memo trigger would treat as a rejection (it
+  contains "rejected") with 400 `MEMO_TEXT_TRIGGERS_REJECTION`. Quote a
+  customer's words around that, or reword.
+- **Pass a `dedup_key`** (one per logical memo, e.g. `f"pulse-reply-{message_id}"`).
+  A replay returns `alreadyExists: True` and isn't billed; the same key with a
+  different request is 409 `IDEMPOTENCY_KEY_REUSED`.
+- An unknown order is 404 `ORDER_NOT_FOUND`; an unknown `person_code` is 400
+  `UNKNOWN_PERSON`.
 
 #### Selecting orders (`search_orders`, 0.51.0+)
 

@@ -242,6 +242,17 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     'Get a pegII salesman (ReadSalesman)',
     { tags: ['pegII'], path: ['salesmanId'] },
   ),
+  '/api/v1/pegii/memo-types': apiKeyGet(
+    'listPegiiMemoTypes',
+    "List this site's order-memo types (ReadOrder)",
+    {
+      tags: ['pegII'],
+      responseDescription:
+        '{data: [{code, label}], meta: {company, count}}. The codes (1-7) are the same everywhere; the labels are what this ' +
+        "company's MoveManager shows (on NW, 4 is Customer Service and 5 Claims; on QMM, 4 is General). company is null when the site can't tell, and the labels are then generic. " +
+        "503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.memos.v1.",
+    },
+  ),
   '/api/v1/pegii/tasks': apiKeyGet(
     'listPegiiTasks',
     "List pegII tasks (ReadTask): an order's tasks, or one type across orders",
@@ -546,12 +557,40 @@ export function getOpenApiSpec() {
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
           ],
           responses: {
-            '200': { description: '{data: {id, readStatus: "Read", alreadyRead}}' },
+            '200': {
+              description:
+                '{data: {id, readStatus: "Read", alreadyRead, mirroredToDesktop}}. After RingCentral accepts the read it is mirrored, best-effort, into the legacy desktop\'s own copy (pegII, pegii.text-messages.v1); mirroredToDesktop is false when that could not happen (no pegII site, an older site, the desktop has not archived the message yet, or an error). It never fails the call.',
+            },
             '404': { $ref: '#/components/responses/NotFound' },
             '409': { description: 'UNSUPPORTED_SOURCE | NO_CONNECTION' },
             '429': { description: 'RingCentral rate limit; honour Retry-After' },
             '502': { description: 'UPSTREAM_ERROR' },
             '503': { description: 'SERVICE_UNAVAILABLE' },
+          },
+        },
+      },
+      '/api/v1/sms/messages/{id}/links': {
+        get: {
+          operationId: 'getTextMessageLinks',
+          summary:
+            "Which orders and employees a captured text's conversation is linked to, in the legacy desktop (ReadTextMessage)",
+          description:
+            'Returns {data: {id, externalId, conversationId, desktopReadStatus ("Read" | "Unread" | null), orderIds[], driverCodes[], employeeCodes[]}}, read live from the tenant\'s pegII site. ' +
+            "orderIds are the conversation's Shipper links (order numbers); driverCodes its Driver links, raw (a driver is not resolved to an order); employeeCodes the MoveManager employees following it. " +
+            'The desktop archives a message on its next sync pass, so a very new message answers nulls and empty lists, never 404. ' +
+            "409 UNSUPPORTED_SOURCE for thread-store messages. 503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.text-messages.v1.",
+          tags: ['SMS'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          responses: {
+            '200': { description: 'The links' },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '409': { description: 'UNSUPPORTED_SOURCE' },
+            '502': { description: 'PEGII_SOURCE_UNREACHABLE / PEGII_SOURCE_BAD_RESPONSE' },
+            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
           },
         },
       },
@@ -1886,6 +1925,60 @@ export function getOpenApiSpec() {
             '404': {
               description:
                 'ORDER_NOT_FOUND, or ORDER_SNAPSHOT_MISSING (never saved by a current MoveManager desktop; nothing written)',
+            },
+            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
+          },
+        },
+      },
+      '/api/v1/pegii/orders/{orderId}/memos': {
+        post: {
+          operationId: 'createPegiiOrderMemo',
+          summary: 'Add a memo to a pegII order (WriteOrderMemo, billable)',
+          description:
+            'Body: { memoType, subject, text, nextAction?, nextDate?, personCode?, dedupKey? }. ' +
+            'MoveManager shows it on the order\'s memo screen like one a user typed: subject is its "Re:" (up to 150, stored uppercased), text its "Notes:" (up to 1000), nextAction its "Next Action" (up to 100). ' +
+            'It lands on the "Memos I need to acknowledge" list of personCode (a MoveManager employee code; default: the order\'s coordinator) from nextDate (YYYY-MM-DD; default: the site\'s today). ' +
+            "memoType is the stored code 1-7; its label is the company's (GET /api/v1/pegii/memo-types). Who called is the calling service employee. " +
+            "400 MEMO_TEXT_TRIGGERS_REJECTION when the site refuses text its memo trigger would treat as a rejection (text containing 'rejected'); reword it. " +
+            'dedupKey (up to 190) makes it idempotent: the same key with the same request is 200 alreadyExists: true with the original memo, not billed; with a different request, 409 IDEMPOTENCY_KEY_REUSED. ' +
+            "503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.memos.v1.",
+          tags: ['pegII'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'orderId', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['memoType', 'subject', 'text'],
+                  example: {
+                    memoType: 4,
+                    subject: 'Pulse reply',
+                    text: 'Customer replied: the crew was great.',
+                    dedupKey: 'pulse-memo-490317-4455',
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description:
+                '{data: {id, orderId, memoType, subject, text, nextAction, nextDate, callDate, callTime, whoCalled, shipper, personCode, acknowledged, createdBy, alreadyExists: false}}',
+            },
+            '200': {
+              description: '{data: {...memo, alreadyExists: true}} — a dedupKey replay, not billed',
+            },
+            '400': {
+              description:
+                "VALIDATION_ERROR, or the site's MEMO_TEXT_TRIGGERS_REJECTION / UNKNOWN_PERSON / INVALID_MEMO_TYPE / INVALID_SUBJECT / INVALID_TEXT / INVALID_NEXT_ACTION / INVALID_NEXT_DATE",
+            },
+            '403': { description: 'Missing WriteOrderMemo' },
+            '404': { description: 'ORDER_NOT_FOUND' },
+            '409': {
+              description:
+                "IDEMPOTENCY_KEY_REUSED (same dedupKey, different request) or IDEMPOTENT_MEMO_DELETED (the key's memo was deleted in MoveManager); nothing written",
             },
             '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
           },

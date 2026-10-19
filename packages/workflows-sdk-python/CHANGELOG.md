@@ -3,6 +3,40 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.53.0
+
+### Added — order memos and text-message links (NW pulse Phase 7)
+
+- `PegasusClient.add_order_memo(order_id, memo_type, subject, text, *,
+next_action=None, next_date=None, person_code=None, dedup_key=None)`, gated by
+  the new `WriteOrderMemo` action and billable. It writes a MoveManager order memo
+  that lands on `person_code`'s "Memos I need to acknowledge" list (default: the
+  order's coordinator) from `next_date` (default: today).
+  - `memo_type` is the code 1-7; its label is the company's. Anything else is a
+    `ValueError` before any request.
+  - `subject` is the memo's "Re:" (up to 150, stored uppercased); `text` its
+    "Notes:" (up to 1000).
+  - `dedup_key` makes it idempotent: a replay returns `alreadyExists: True` and is
+    not billed.
+  - 400 `MEMO_TEXT_TRIGGERS_REJECTION` when the site refuses text its memo trigger
+    would treat as a rejection.
+- `list_memo_types()` (`ReadOrder`): this site's `{company, items: [{code, label}]}`.
+- `get_text_message_links(message_id)` (`ReadTextMessage`): the desktop's links
+  for a captured text's conversation, `{id, externalId, conversationId,
+desktopReadStatus, orderIds, driverCodes, employeeCodes}`. A message the desktop
+  hasn't archived yet answers nulls and empty lists.
+- `pegasus_workflows.testing` captures `add_order_memo`
+  (`"add_order_memo": "WriteOrderMemo"`) and serves `get_text_message_links` /
+  `list_memo_types` from fixtures.
+
+### Changed
+
+- `mark_text_message_read` also mirrors the read, best-effort, into the legacy
+  desktop's own copy of the message (pegII, `pegii.text-messages.v1`), so the
+  desktop's badge clears before its next RingCentral sync. The result gains
+  `mirroredToDesktop`. The mirror never fails the call and isn't billed
+  separately.
+
 ## 0.52.0
 
 ### Added — real pegII tasks: create, close by id (NW pulse Phase 6)

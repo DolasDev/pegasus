@@ -77,6 +77,9 @@ export const BILLABLE_ACTIONS = {
   // POST /pegii/tasks — 201 new, 200 `alreadyExists` replay (same dedup key, same
   // request). Keyed on the created task's pegII id.
   CreateTask: { billable: always, subjectKey: idKey('task') },
+  // POST /pegii/orders/:orderId/memos — 201 new, 200 `alreadyExists` replay (same
+  // dedup key, same request). Keyed on the created memo's pegII id (memos.memo_id).
+  WriteOrderMemo: { billable: always, subjectKey: idKey('memo') },
   // PATCH /pegii/orders/:orderId — the order write-back. `data` is the native
   // order, so the outcome rides in the `x-pegasus-applied` header the route sets
   // from pegII's: re-sending the values already on the order changes nothing and

@@ -1892,6 +1892,144 @@ def test_create_task_and_close_by_id_are_captured_under_dry_run() -> None:
     assert [c["capability"] for c in client.captured] == ["CreateTask", "CloseTask"]
 
 
+def test_add_order_memo_posts_the_body_and_returns_the_memo() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"id": "88", "alreadyExists": False}})
+
+    client = _client_with(handler)
+    result = client.add_order_memo(
+        "490317",
+        4,
+        "Pulse reply",
+        "Customer says the crew was great",
+        next_action="Call back",
+        next_date=_dt.date(2026, 10, 20),
+        person_code=8121,
+        dedup_key="pulse-reply-4455",
+    )
+
+    assert result == {"id": "88", "alreadyExists": False}
+    assert captured == {
+        "method": "POST",
+        "path": "/api/v1/pegii/orders/490317/memos",
+        "body": {
+            "memoType": 4,
+            "subject": "Pulse reply",
+            "text": "Customer says the crew was great",
+            "nextAction": "Call back",
+            "nextDate": "2026-10-20",
+            "personCode": 8121,
+            "dedupKey": "pulse-reply-4455",
+        },
+    }
+
+
+def test_add_order_memo_sends_only_what_was_given() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"id": "88", "alreadyExists": True}})
+
+    client = _client_with(handler)
+    client.add_order_memo("490317", 4, "Pulse reply", "Thanks")
+
+    assert captured["body"] == {"memoType": 4, "subject": "Pulse reply", "text": "Thanks"}
+
+
+@pytest.mark.parametrize("memo_type", [0, 8, True, "4", 4.0])
+def test_add_order_memo_refuses_a_bad_memo_type_before_any_request(memo_type) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
+        raise AssertionError("no request expected")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="memo_type"):
+        client.add_order_memo("490317", memo_type, "s", "t")
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (400, "MEMO_TEXT_TRIGGERS_REJECTION"),
+        (400, "UNKNOWN_PERSON"),
+        (404, "ORDER_NOT_FOUND"),
+        (409, "IDEMPOTENCY_KEY_REUSED"),
+        (503, "PEGII_CAPABILITY_MISSING"),
+    ],
+)
+def test_add_order_memo_raises_the_api_error(status: int, code: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": "nope", "code": code})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.add_order_memo("490317", 4, "s", "t")
+    assert (exc_info.value.status_code, exc_info.value.code) == (status, code)
+
+
+def test_add_order_memo_is_captured_under_dry_run() -> None:
+    client = PegasusClient(base_url="http://dry-run.invalid", token="dry-run", dry_run=True)
+
+    memo = client.add_order_memo("490317", 4, "Pulse reply", "Thanks", next_date="2026-10-20")
+
+    assert memo["dryRun"] is True and memo["alreadyExists"] is False
+    assert memo["subject"] == "PULSE REPLY" and memo["nextDate"] == "2026-10-20"
+    assert [c["capability"] for c in client.captured] == ["WriteOrderMemo"]
+
+
+def test_list_memo_types_returns_the_company_and_its_labels() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/pegii/memo-types"
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"code": 4, "label": "Customer Service"}],
+                "meta": {"company": "NW", "count": 1},
+            },
+        )
+
+    client = _client_with(handler)
+    assert client.list_memo_types() == {
+        "company": "NW",
+        "items": [{"code": 4, "label": "Customer Service"}],
+    }
+
+
+def test_get_text_message_links_reads_the_links() -> None:
+    links = {
+        "id": "6f1c2b8e-0d3a-4c1e-9f7a-2b3c4d5e6f70",
+        "externalId": "4455",
+        "conversationId": "conv-9",
+        "desktopReadStatus": "Unread",
+        "orderIds": ["490317"],
+        "driverCodes": [],
+        "employeeCodes": ["1015"],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == f"/api/v1/sms/messages/{links['id']}/links"
+        return httpx.Response(200, json={"data": links})
+
+    client = _client_with(handler)
+    assert client.get_text_message_links(links["id"]) == links
+
+
+def test_get_text_message_links_raises_on_an_old_site() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "x", "code": "PEGII_CAPABILITY_MISSING"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.get_text_message_links("6f1c2b8e-0d3a-4c1e-9f7a-2b3c4d5e6f70")
+    assert exc_info.value.code == "PEGII_CAPABILITY_MISSING"
+
+
 def test_deliver_to_external_posts_body_and_returns_data() -> None:
     captured: dict = {}
 

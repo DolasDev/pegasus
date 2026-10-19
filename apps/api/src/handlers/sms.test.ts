@@ -55,6 +55,18 @@ vi.mock('../repositories/messaging.repository', () => ({
   listConnectionsByTenant: mockListConnections,
 }))
 
+// The desktop's text-message store on the tenant's pegII site (NW pulse Phase 7).
+const { mockResolveMemoGateway, mockDesktop } = vi.hoisted(() => ({
+  mockResolveMemoGateway: vi.fn(),
+  mockDesktop: { markTextMessageRead: vi.fn(), getTextMessageLinks: vi.fn() },
+}))
+vi.mock('../gateways/memo-gateway.factory', () => ({
+  resolveMemoGateway: mockResolveMemoGateway,
+}))
+vi.mock('../lib/pegii-request-context', () => ({
+  resolvePegiiCaller: vi.fn(async () => ({})),
+}))
+
 vi.mock('../services/ringcentral/sms', () => ({
   sendSms: mockSendSms,
 }))
@@ -524,6 +536,87 @@ describe('/sms/opt-outs', () => {
   })
 })
 
+describe('GET /sms/messages/:id/links', () => {
+  const ID = '6f1c2b8e-0d3a-4c1e-9f7a-2b3c4d5e6f70'
+  const message = (overrides: Record<string, unknown> = {}) => ({
+    id: ID,
+    source: 'V1_STORE',
+    externalId: '4455',
+    connectionId: 'conn-1',
+    ...overrides,
+  })
+
+  beforeEach(() => {
+    mockResolveMemoGateway.mockReset().mockResolvedValue(mockDesktop)
+    mockDesktop.getTextMessageLinks.mockReset()
+  })
+
+  it("returns the conversation's orders, drivers and employees from the desktop", async () => {
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockDesktop.getTextMessageLinks.mockResolvedValue({
+      messageId: '4455',
+      conversationId: 'conv-9',
+      readStatus: 2,
+      orderNumbers: [490317, 490400],
+      driverCodes: ['D77'],
+      employeeCodes: ['1015'],
+    })
+    const res = await buildApp().request(`/sms/messages/${ID}/links`)
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual({
+      id: ID,
+      externalId: '4455',
+      conversationId: 'conv-9',
+      desktopReadStatus: 'Unread',
+      orderIds: ['490317', '490400'],
+      driverCodes: ['D77'],
+      employeeCodes: ['1015'],
+    })
+    expect(mockDesktop.getTextMessageLinks).toHaveBeenCalledWith('4455')
+  })
+
+  it('answers nulls and empty lists for a message the desktop has not archived yet', async () => {
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockDesktop.getTextMessageLinks.mockResolvedValue({
+      messageId: '4455',
+      conversationId: null,
+      readStatus: null,
+      orderNumbers: [],
+      driverCodes: [],
+      employeeCodes: [],
+    })
+    const res = await buildApp().request(`/sms/messages/${ID}/links`)
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({
+      conversationId: null,
+      desktopReadStatus: null,
+      orderIds: [],
+    })
+  })
+
+  it('400 for a non-uuid id, 404 for an unknown message, 409 for a thread-store message', async () => {
+    expect((await buildApp().request('/sms/messages/not-a-uuid/links')).status).toBe(400)
+    mockMessageFindFirst.mockResolvedValueOnce(null)
+    expect((await buildApp().request(`/sms/messages/${ID}/links`)).status).toBe(404)
+    mockMessageFindFirst.mockResolvedValueOnce(message({ source: 'THREAD_STORE' }))
+    const res = await buildApp().request(`/sms/messages/${ID}/links`)
+    expect(res.status).toBe(409)
+    expect((await json(res))['code']).toBe('UNSUPPORTED_SOURCE')
+    expect(mockDesktop.getTextMessageLinks).not.toHaveBeenCalled()
+  })
+
+  it('maps a site without the capability to 503 PEGII_CAPABILITY_MISSING', async () => {
+    const { PegiiApiError } = await import('../lib/pegii-api-client')
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockDesktop.getTextMessageLinks.mockRejectedValue(
+      new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'site lacks pegii.text-messages.v1'),
+    )
+    const res = await buildApp().request(`/sms/messages/${ID}/links`)
+    expect(res.status).toBe(503)
+    expect((await json(res))['code']).toBe('PEGII_CAPABILITY_MISSING')
+  })
+})
+
 describe('POST /sms/messages/:id/read', () => {
   const ID = '6f1c2b8e-0d3a-4c1e-9f7a-2b3c4d5e6f70'
   const message = (overrides: Record<string, unknown> = {}) => ({
@@ -536,6 +629,10 @@ describe('POST /sms/messages/:id/read', () => {
 
   beforeEach(() => {
     mockListConnections.mockResolvedValue([ACTIVE_CONNECTION])
+    mockResolveMemoGateway.mockReset().mockResolvedValue(mockDesktop)
+    mockDesktop.markTextMessageRead
+      .mockReset()
+      .mockResolvedValue({ messageId: '4455', applied: true })
   })
 
   it('marks the message read at RingCentral using the capturing connection', async () => {
@@ -543,8 +640,60 @@ describe('POST /sms/messages/:id/read', () => {
     mockSetReadStatus.mockResolvedValue({ readStatus: 'Read', changed: true })
     const res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
     expect(res.status).toBe(200)
-    expect((await json(res))['data']).toEqual({ id: ID, readStatus: 'Read', alreadyRead: false })
+    expect((await json(res))['data']).toEqual({
+      id: ID,
+      readStatus: 'Read',
+      alreadyRead: false,
+      mirroredToDesktop: true,
+    })
     expect(mockSetReadStatus).toHaveBeenCalledWith(ACTIVE_CONNECTION, '4455', 'Read')
+    // RingCentral first, then the desktop's copy, by RingCentral's message id.
+    expect(mockDesktop.markTextMessageRead).toHaveBeenCalledWith('4455')
+    expect(mockSetReadStatus.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDesktop.markTextMessageRead.mock.invocationCallOrder[0]!,
+    )
+  })
+
+  it('reports mirroredToDesktop false when the desktop has not archived the message yet', async () => {
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockSetReadStatus.mockResolvedValue({ readStatus: 'Read', changed: true })
+    mockDesktop.markTextMessageRead.mockResolvedValue({ messageId: '4455', applied: false })
+    const res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    expect(((await json(res))['data'] as JsonBody)['mirroredToDesktop']).toBe(false)
+  })
+
+  it('never fails the read when the desktop mirror cannot run', async () => {
+    const { PegiiApiError } = await import('../lib/pegii-api-client')
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockSetReadStatus.mockResolvedValue({ readStatus: 'Read', changed: true })
+    for (const failure of [
+      () =>
+        mockResolveMemoGateway.mockRejectedValueOnce(
+          new PegiiApiError('PEGII_API_NOT_CONFIGURED', 'no site'),
+        ),
+      () =>
+        mockDesktop.markTextMessageRead.mockRejectedValueOnce(
+          new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'old site'),
+        ),
+      () => mockDesktop.markTextMessageRead.mockRejectedValueOnce(new Error('tunnel down')),
+    ]) {
+      failure()
+      const res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+      expect(res.status).toBe(200)
+      expect((await json(res))['data']).toMatchObject({
+        alreadyRead: false,
+        mirroredToDesktop: false,
+      })
+    }
+  })
+
+  it('does not mirror a read RingCentral refused', async () => {
+    mockMessageFindFirst.mockResolvedValue(message())
+    mockSetReadStatus.mockRejectedValueOnce(new RingCentralOAuthError('RingCentral API 500', 500))
+    const res = await buildApp().request(`/sms/messages/${ID}/read`, { method: 'POST' })
+    expect(res.status).toBe(502)
+    expect(mockDesktop.markTextMessageRead).not.toHaveBeenCalled()
   })
 
   it('reports alreadyRead for a message that was already read', async () => {

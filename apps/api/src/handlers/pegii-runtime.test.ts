@@ -19,6 +19,7 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
 import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
+import type { PegiiMemoDto } from '../gateways/pegii/pegii-memo.dto'
 import type { OrderRecord } from '../services/pegii-orders'
 import type { SalesmanRecord } from '../services/pegii-salesmen'
 
@@ -72,6 +73,14 @@ vi.mock('../gateways/task-gateway.factory', () => ({
     createTask,
     closeTask,
   })),
+}))
+
+const { createMemo, listMemoTypes } = vi.hoisted(() => ({
+  createMemo: vi.fn(),
+  listMemoTypes: vi.fn(),
+}))
+vi.mock('../gateways/memo-gateway.factory', () => ({
+  resolveMemoGateway: vi.fn(async () => ({ createMemo, listMemoTypes })),
 }))
 
 import { pegiiRuntimeHandler } from './pegii-runtime'
@@ -1016,5 +1025,214 @@ describe('POST /pegii/tasks/close', () => {
     const app = buildApp(['workflow_developer'])
     const res = await app.request('/pegii/tasks/close', post({ taskId: '77' }))
     expect(res.status).toBe(403)
+  })
+})
+
+const memoDto = (over: Partial<PegiiMemoDto> = {}): PegiiMemoDto => ({
+  id: 88,
+  orderNumber: 490317,
+  memoType: 4,
+  subject: 'PULSE REPLY',
+  text: 'Customer says the crew was great',
+  nextAction: null,
+  nextDate: '2026-10-19',
+  callDate: '2026-10-19',
+  callTime: '2026-10-19T14:05:00',
+  whoCalled: 'PEGASUS GENERATED',
+  shipper: 'DOE, JANE',
+  personCode: 8121,
+  acknowledged: false,
+  createdBy: 1001,
+  ...over,
+})
+
+describe('POST /pegii/orders/:orderId/memos', () => {
+  const memo = {
+    memoType: 4,
+    subject: 'Pulse reply',
+    text: 'Customer says the crew was great',
+    nextAction: 'Call the customer back',
+    nextDate: '2026-10-20',
+    personCode: 8121,
+    dedupKey: 'pulse-memo-490317-4455',
+  }
+
+  it('adds the memo on the site (dedupKey → idempotencyKey) and answers 201', async () => {
+    createMemo.mockResolvedValue({ found: true, memo: memoDto(), alreadyExists: false })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317/memos', post(memo))
+
+    expect(res.status).toBe(201)
+    expect(createMemo).toHaveBeenCalledWith(490317, {
+      memoType: 4,
+      subject: 'Pulse reply',
+      text: 'Customer says the crew was great',
+      nextAction: 'Call the customer back',
+      nextDate: '2026-10-20',
+      personCode: 8121,
+      idempotencyKey: 'pulse-memo-490317-4455',
+    })
+    expect((await json(res))['data']).toEqual({
+      id: '88',
+      orderId: '490317',
+      memoType: 4,
+      subject: 'PULSE REPLY',
+      text: 'Customer says the crew was great',
+      nextAction: null,
+      nextDate: '2026-10-19',
+      callDate: '2026-10-19',
+      callTime: '2026-10-19T14:05:00',
+      whoCalled: 'PEGASUS GENERATED',
+      shipper: 'DOE, JANE',
+      personCode: 8121,
+      acknowledged: false,
+      createdBy: 1001,
+      alreadyExists: false,
+    })
+  })
+
+  it('sends only the fields given (the site defaults person, next date)', async () => {
+    createMemo.mockResolvedValue({ found: true, memo: memoDto(), alreadyExists: false })
+    const app = buildApp(['workflow_runtime'])
+
+    await app.request(
+      '/pegii/orders/490317/memos',
+      post({ memoType: 4, subject: 'Pulse reply', text: 'Thanks' }),
+    )
+
+    expect(createMemo).toHaveBeenCalledWith(490317, {
+      memoType: 4,
+      subject: 'Pulse reply',
+      text: 'Thanks',
+    })
+  })
+
+  it('a replay with the same dedupKey answers 200 alreadyExists', async () => {
+    createMemo.mockResolvedValue({ found: true, memo: memoDto(), alreadyExists: true })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317/memos', post(memo))
+
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({ id: '88', alreadyExists: true })
+  })
+
+  it("an unknown order is 404 with pegII's code", async () => {
+    createMemo.mockResolvedValue({ found: false, code: 'ORDER_NOT_FOUND', message: 'x' })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317/memos', post(memo))
+
+    expect(res.status).toBe(404)
+    expect(await json(res)).toMatchObject({ code: 'ORDER_NOT_FOUND' })
+  })
+
+  it.each([
+    ['MEMO_TEXT_TRIGGERS_REJECTION', 400],
+    ['UNKNOWN_PERSON', 400],
+    ['IDEMPOTENCY_KEY_REUSED', 409],
+    ['IDEMPOTENT_MEMO_DELETED', 409],
+  ])("the site's %s passes through as %i", async (code, status) => {
+    createMemo.mockRejectedValue(
+      new PegiiApiError('PEGII_API_HTTP_ERROR', `pegII API ${status}: ${code}`, status, code),
+    )
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317/memos', post(memo))
+
+    expect(res.status).toBe(status)
+    expect(await json(res)).toMatchObject({ code })
+  })
+
+  it('a site without pegii.memos.v1 is 503 PEGII_CAPABILITY_MISSING', async () => {
+    createMemo.mockRejectedValue(
+      new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'site lacks pegii.memos.v1'),
+    )
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317/memos', post(memo))
+
+    expect(res.status).toBe(503)
+    expect(await json(res)).toMatchObject({ code: 'PEGII_CAPABILITY_MISSING' })
+  })
+
+  it.each([
+    [{ ...memo, memoType: undefined }, 'memoType is required'],
+    [{ ...memo, memoType: 8 }, 'between 1 and 7'],
+    [{ ...memo, memoType: 0 }, 'between 1 and 7'],
+    [{ ...memo, subject: '  ' }, 'subject is required'],
+    [{ ...memo, subject: 'x'.repeat(151) }, 'at most 150'],
+    [{ ...memo, text: undefined }, 'text is required'],
+    [{ ...memo, text: 'x'.repeat(1001) }, 'at most 1000'],
+    [{ ...memo, nextAction: 'x'.repeat(101) }, 'at most 100'],
+    [{ ...memo, nextDate: '2026-02-30' }, 'not a real date'],
+    [{ ...memo, personCode: 0 }, 'employee code'],
+    [{ ...memo, dedupKey: 'k'.repeat(191) }, 'at most 190'],
+    [{ ...memo, extra: true }, 'Unrecognized key'],
+  ])('400s an invalid body before calling the site (%#)', async (body, message) => {
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/orders/490317/memos', post(body))
+
+    expect(res.status).toBe(400)
+    expect(((await json(res))['error'] as string).includes(message)).toBe(true)
+    expect(createMemo).not.toHaveBeenCalled()
+  })
+
+  it.each(['ord-1', '0', '99999999999', '12a'])(
+    '400s a non-numeric order id (%s) before calling the site',
+    async (orderId) => {
+      const app = buildApp(['workflow_runtime'])
+
+      const res = await app.request(`/pegii/orders/${orderId}/memos`, post(memo))
+
+      expect(res.status).toBe(400)
+      expect(createMemo).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rejects a role without WriteOrderMemo (workflow_developer) with 403', async () => {
+    const app = buildApp(['workflow_developer'])
+
+    const res = await app.request('/pegii/orders/490317/memos', post(memo))
+
+    expect(res.status).toBe(403)
+    expect(createMemo).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /pegii/memo-types', () => {
+  it("returns the site's labels and company", async () => {
+    listMemoTypes.mockResolvedValue({
+      company: 'NW',
+      items: [
+        { code: 4, label: 'Customer Service' },
+        { code: 5, label: 'Claims' },
+      ],
+    })
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/memo-types')
+
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({
+      data: [
+        { code: 4, label: 'Customer Service' },
+        { code: 5, label: 'Claims' },
+      ],
+      meta: { company: 'NW', count: 2 },
+    })
+  })
+
+  it('a site without pegii.memos.v1 is 503 PEGII_CAPABILITY_MISSING', async () => {
+    listMemoTypes.mockRejectedValue(
+      new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'site lacks pegii.memos.v1'),
+    )
+    const app = buildApp(['workflow_runtime'])
+
+    const res = await app.request('/pegii/memo-types')
+
+    expect(res.status).toBe(503)
   })
 })

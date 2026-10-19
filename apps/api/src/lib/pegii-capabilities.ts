@@ -42,6 +42,17 @@ export const PegiiCapabilities = {
    * (NW pulse Phase 6). Required on reads too: without it the site has no task routes.
    */
   Tasks: 'pegii.tasks.v1',
+  /**
+   * `POST /api/v1/pegii/orders/{n}/memos` + `GET /api/v1/pegii/memo-types` — add a
+   * desktop order memo; the site's memo-type labels (NW pulse Phase 7).
+   */
+  Memos: 'pegii.memos.v1',
+  /**
+   * `POST /api/v1/pegii/text-messages/{id}/read` (the desktop store's read mirror) +
+   * `GET /api/v1/pegii/text-messages/{id}/links` (conversation → orders/employees).
+   * Keyed by the RingCentral message id (NW pulse Phase 7).
+   */
+  TextMessages: 'pegii.text-messages.v1',
 } as const
 
 export interface PegiiVersionInfo {

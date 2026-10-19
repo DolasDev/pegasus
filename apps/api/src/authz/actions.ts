@@ -196,6 +196,14 @@ export const Actions = {
   // sdk-feedback 0044). The pegII site owns the allowlist (Survey.SerivceStatus,
   // Survey.APIShipmentStatus today); this action only gates who may call it.
   WriteOrder: { id: 'WriteOrder', resourceType: 'Order', permission: 'order:write' },
+  // Add a memo to a pegII order (POST /pegii/orders/:orderId/memos, NW pulse
+  // Phase 7): a desktop order memo that lands on the coordinator's "Memos I need
+  // to acknowledge" list. The site owns the row shape (pegii.memos.v1).
+  WriteOrderMemo: {
+    id: 'WriteOrderMemo',
+    resourceType: 'Order',
+    permission: 'order_memo:create',
+  },
   // ── Salesmen (legacy pegII sales users/employees; workflow-runtime surface) ─
   // Read a salesman (a.k.a. employee / sales user) from the pegII serialized
   // endpoint. Backed by a by-id read over the tunnel (list is a stub today),
