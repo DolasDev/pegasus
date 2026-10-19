@@ -2,10 +2,10 @@
 
 **Branch:** none yet. One worktree + branch + PR per phase (`scripts/new-worktree.sh feat move-chat-<phase>`).
 **Goal:** Each move (legacy order / shipment, keyed by `order_num`) has a chat room. Any tenant employee, and any
-driver or local crew member assigned to that move (employee or contractor, as long as they have a login), can read it
+longhaul or local driver assigned to that move (employee or contractor, as long as they have a login), can read it
 and post to it. It works from a standalone Teams/Slack-style page in tenant-web and from the driver app. The desktop (movemanager) gets
 it in a later phase.
-**Status:** TODO — D1–D6 approved 2026-10-16; Phase 0 done 2026-10-16; next is Phase 1 (plus the optional prod data check).
+**Status:** TODO — D1–D6 approved 2026-10-16; Phase 0 + prod data check done 2026-10-19; next is Phase 1.
 
 ---
 
@@ -39,7 +39,8 @@ it in a later phase.
 
   Employee scope is wider than `OPERATIONS_ROLES` (`lib/longhaul-read-scope.ts`), so sales and billing can chat too.
 
-- **D2 — Assigned drivers and assigned local crew are both in.**
+- **D2 — Assigned longhaul drivers and assigned local drivers are in. Local helpers are deferred** (Steve,
+  2026-10-19: any login/mapping work is limited to drivers for now).
   - **Longhaul:** the same rule as the longhaul shipment read. A shipment is the driver's when a
     `LongDistanceDispatchActivity` on it has `a.assigned_driver_id` or `t.driver_id` equal to the caller's
     `TenantUser.longhaulDriverId` (`handlers/longhaul-cloud/shipments-list.ts`, the restricted-caller `EXISTS`).
@@ -59,26 +60,36 @@ it in a later phase.
       (`Conversions Scripts/CopyLocalDispatchJobsToLocalDispatchJobsMasterDetail.sql`). The app doesn't write them
       (`IO_LocalDispatchJobNew.Write` is broken and only a test form calls it), so they're stale.
     - No pegasus code reads `LocalDispatchJobs` today. Chat would be the first.
-  - **Crew access rule:**
+  - **Local driver access rule (driver slots only; helpers deferred):**
 
     ```sql
     EXISTS (
       SELECT 1 FROM LocalDispatchJobs j
       WHERE j.order_num = @orderNum
-        AND @crewEmployeeId IN (j.driver_id1, j.driver_id2, j.helper_id1, …, j.helper_id10)
+        AND @localDriverEmployeeId IN (j.driver_id1, j.driver_id2)
     )
     ```
 
-    - `@crewEmployeeId` of `0` or null matches nothing, the same convention as longhaul driver 0.
+    - `@localDriverEmployeeId` of `0` or null matches nothing, the same convention as longhaul driver 0.
     - Like the longhaul rule, there's no date window: being on any job for the order grants access.
+    - **Helpers (`helper_id1`–`10`) are out of scope for now.** Prod has 213 distinct helper ids at NW and 46 at QMM
+      in the last year, so adding them later is the same `EXISTS` widened to the helper columns, plus helper
+      logins.
 
-  - **Login ↔ crew mapping:** add **`TenantUser.localCrewEmployeeId Int?`** (= `crews.employee_id`). An admin sets
-    it in Settings → Users next to `longhaulDriverId`, and `canReadShipment` ORs the longhaul and crew `EXISTS`.
-    - Keep it as a separate field even though the numbers may overlap. `v_longhaul_drivers` reads `driverall`,
-      whose definition isn't in any repo; it probably unions `drivers.driver_id` with `crews.employee_id`
-      (GOTCHAS: NWSUB drivers are `crews` rows). QMM's `fix-drivers-crew.sql` renumbered crew ids to match driver
-      numbers. So the two ids are _often_ the same person's number, but nothing guarantees it.
-    - Two fields are correct either way. A Phase 1 data check (below) can show whether one field would do.
+  - **The cloud principal is the source of authority** (Steve, 2026-10-19). Who someone is comes from their
+    `TenantUser` row and the mapping an admin sets on it, never from a legacy staff/crew link (`person_id`,
+    `salesman`).
+  - **Login ↔ local driver mapping:** add **`TenantUser.localDriverEmployeeId Int?`** (= `crews.employee_id` of a
+    local driver). An admin sets it in Settings → Users next to `longhaulDriverId`, and `canReadShipment` ORs the
+    longhaul and local `EXISTS`.
+    - The picker lists active local drivers (`crews` where `active='Y' AND is_local_drv='Y'`, the desktop's "Local
+      Drivers" filter).
+    - When the admin picks a longhaul driver whose number also names a `crews` row **with the same name**, prefill
+      the local field with that number. The admin still confirms it; the system never infers it.
+    - **Why two fields, not one** (prod data check, 2026-10-19, below): at NW the numbers are the same person by
+      construction. At QMM, 48 of 78 recent local drivers have no longhaul number at all, and 2 numbers name
+      **different people** in `drivers` and `crews`. One shared field would let a longhaul driver read another
+      person's local jobs.
 - **D3 — v1 is `shipment` (legacy order) only.** Any other `entityType` returns 400. The tables stay polymorphic,
   so cloud `move` rooms (crew scope via `handlers/moves.ts` `loadReadableMove`) can be turned on later.
 - **D4 — As close to real time as is cheap.**
@@ -114,14 +125,28 @@ it in a later phase.
 - **Machine principals are in the shared permit too:** the permit is unconstrained, so `workflow-runtime`,
   integration clients and service accounts all match it. The chat handler must **reject callers with an
   `apiClient` (M2M)** with 403 in v1. Automation posting is the later SDK item, and it's metered.
-- **Before or in Phase 1, a read-only data check on prod.** Use the GOTCHAS ad-hoc read pattern
-  (`MssqlExecutorFn`), and only with Steve's go-ahead. For NW and QMM:
-  1. `OBJECT_DEFINITION(OBJECT_ID('driverall'))`;
-  2. confirm the `LocalDispatchJobs` columns exist and how many rows were written in the last 90 days (whether a
-     tenant uses local dispatch at all);
-  3. whether the people with logins have the same `crews.employee_id` and longhaul `driver_id`.
-
-  It doesn't block the design; it decides whether `localCrewEmployeeId` can ever collapse into `longhaulDriverId`.
+- **Prod data check — done 2026-10-19** (read-only, via `MssqlExecutorFn`, with Steve's go-ahead; RVS's tunnel
+  timed out, so it's unchecked):
+  - **`driverall`:**
+    - **NW:** `drivers.driver_id` (type `NW`, `LEFT JOIN crews ON crews.employee_id = drivers.driver_id`) ∪
+      `crews.employee_id` where `crew_class='D'` and not in `drivers` (type `NWSUB`) ∪ `units` (type `ATLAS`).
+      `v_longhaul_drivers` keeps `NW`/`NWSUB`. At NW a driver's longhaul number **is** their crew number, by
+      design.
+    - **QMM:** `drivers` only.
+  - **Both tenants use local dispatch heavily:**
+    - **NW:** 2,266 jobs on 1,522 orders in 90 days (2,072 with a driver, 1,411 with a helper).
+    - **QMM:** 2,162 jobs on 998 orders in 90 days (1,479 with a driver, 539 with a helper).
+    - The `LocalDispatchJobs` columns match the movemanager DAL.
+  - **Id overlap** (distinct local-driver ids from the last 365 days):
+    - **NW:** 92 ids, all in `crews` and 90 in `drivers`. All 90 are the same person; the 3 name-heuristic misses
+      were formatting ("Jr", first/last order).
+    - **QMM:** 78 ids, all in `crews` but only 30 in `drivers`. 28 of those 30 are the same person; **2 are
+      different people** under the same number.
+  - **Cloud mappings today:**
+    - **NW:** 4 users with a `longhaulDriverId` (3 of them share one number, probably test logins), all the same
+      person in both tables.
+    - **QMM:** 2 users with a `longhaulDriverId`. That driver also had 31 local jobs in the last year, so they'll
+      see more rooms once the local mapping is set.
 
 ---
 
@@ -256,14 +281,14 @@ OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
 
 - [x] **Phase 0 — Spikes.** Done 2026-10-16; findings are recorded under D2 and "Phase 0 findings on authz and
       roles" above.
-  - Crew assignment = `LocalDispatchJobs.driver_id1-2/helper_id1-10` = `crews.employee_id`.
+  - Local assignment = `LocalDispatchJobs.driver_id1-2` (helpers deferred) = `crews.employee_id`.
   - Crew logins use the `driver` role.
   - The Cedar baseline tests move to `SHARED_BASELINE`.
   - M2M callers are rejected.
-  - Open: the read-only prod data check (needs Steve's go-ahead).
+  - Prod data check done 2026-10-19: two mapping fields (QMM has id collisions), drivers only.
 - [ ] **Phase 1 — Domain, data and API.** Domain module and tests; Prisma migration (chat tables plus
-      `TenantUser.localCrewEmployeeId`, with the Settings → Users field to set it); `canReadShipment` helper (shared with
-      document-read-scoping; longhaul OR local crew); handlers; Cedar actions plus the AVP re-sync; push trigger plus the
+      `TenantUser.localDriverEmployeeId`, with the Settings → Users field to set it); `canReadShipment` helper (shared with
+      document-read-scoping; longhaul OR local driver); handlers; Cedar actions plus the AVP re-sync; push trigger plus the
       outbox **atomic claim** (used by the cron and the inline send); OpenAPI; integration tests for:
   - driver can or can't see a room;
   - an employee sees every room;
@@ -307,7 +332,7 @@ OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
   - `apps/api/src/app.ts`
   - `apps/api/src/lib/push-triggers.ts`
   - `apps/api/src/repositories/push-outbox.repository.ts` + `lambda-push-forward.ts` (atomic claim)
-  - `apps/api/src/handlers/users.ts` + tenant-web `users.tsx` (`localCrewEmployeeId` mapping)
+  - `apps/api/src/handlers/users.ts` + tenant-web `users.tsx` (`localDriverEmployeeId` mapping)
   - `apps/api/src/lib/openapi-spec.ts`
   - `apps/api/src/authz/actions.ts`, `authz/cedar.schema.json`, a new `authz/policies/55-chat-shared.cedar`
   - `apps/tenant-web/.../ShipmentDetail/index.tsx` (the deep-link button), `AppShell.tsx` (nav item and badge)

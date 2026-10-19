@@ -3352,3 +3352,8 @@ movemanager has two sets of local-dispatch tables. The live one is **`LocalDispa
 `LocalDispatchJobMaster` / `LocalDispatchJobDrivers` / `LocalDispatchJobHelpers` (and `LocalDispatchJobsDetail`)
 were filled once by a conversion script, and the app never writes them, so they look right but are stale.
 `IO_LocalDispatchJobNew.Write` is broken, and only a test form calls it. Source trace: `plans/todo/move-chat.md`, D2.
+
+**Crew number ≠ driver number is tenant-specific.** At NW, `driverall` joins `crews.employee_id = drivers.driver_id`,
+so one number is one person. At QMM (`driverall` = `drivers` only), most local drivers have no `drivers` row, and
+2 of 30 overlapping numbers name **different people** (prod check, 2026-10-19). Never treat a longhaul `driver_id`
+and a `crews.employee_id` as the same person without an explicit mapping on the cloud `TenantUser`.
