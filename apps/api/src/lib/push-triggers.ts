@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Prisma } from '@prisma/client'
+import { chatPushContent } from '@pegasus/domain'
 import { enqueuePush } from '../repositories/push-outbox.repository'
 
 export type CrewAssignmentPushInput = {
@@ -96,4 +97,38 @@ export async function enqueueTripAssignmentPush(
     },
   })
   return true
+}
+
+export type ChatMessagePushInput = {
+  messageId: string
+  /** The legacy order number — the room, and the deep-link target. */
+  orderNum: string
+  authorName: string
+  recipientUserId: string
+  /** The recipient was @mentioned in this message. */
+  mentioned: boolean
+}
+
+/**
+ * Enqueues a "new message on #<order>" push for one recipient of a move chat
+ * message. The copy never includes the message text (chatPushContent, D5).
+ * Idempotent per (message, recipient). Deep link: the shipment's chat
+ * (`/shipment/[orderNum]` with the Chat tab in the app). Returns the outbox row
+ * id so the caller can deliver it immediately.
+ */
+export async function enqueueChatMessagePush(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  input: ChatMessagePushInput,
+): Promise<string> {
+  const { title, body } = chatPushContent(input)
+  return enqueuePush(tx, tenantId, {
+    userId: input.recipientUserId,
+    dedupeKey: `chat.message:${input.messageId}:${input.recipientUserId}`,
+    payload: {
+      title,
+      body,
+      data: { type: 'chat.message', orderNum: input.orderNum, messageId: input.messageId },
+    },
+  })
 }

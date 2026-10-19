@@ -230,3 +230,18 @@ export {
   SMS_OPT_OUT_KEYWORDS,
   SMS_OPT_IN_KEYWORDS,
 } from './messaging/index'
+
+// Chat context (per-move internal chat)
+export type { ChatEntityType, ChatRoomRef, ChatScope, RecipientInput } from './chat/index'
+export {
+  CHAT_ENTITY_TYPES,
+  MAX_CHAT_BODY_LENGTH,
+  DRIVER_ROLE,
+  parseChatRoomRef,
+  validateChatBody,
+  isValidClientMessageId,
+  parseMentions,
+  resolveChatScope,
+  resolveRecipients,
+  chatPushContent,
+} from './chat/index'

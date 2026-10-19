@@ -86,6 +86,34 @@ export async function listPendingPush(db: PrismaClient, limit: number, now: Date
   })
 }
 
+/** How long a claimed row stays invisible to other drainers. */
+export const PUSH_CLAIM_LEASE_MS = 2 * 60_000
+
+/**
+ * Claims one row for delivery so two drainers never send it twice — the
+ * scheduled forwarder run and a kicked one (move chat), or two overlapping runs. A compare-and-set: the row
+ * is pushed `PUSH_CLAIM_LEASE_MS` into the future ONLY if its `nextAttemptAt` is
+ * still the value the caller read. Postgres re-checks an UPDATE's WHERE against
+ * the latest row version, so of two concurrent claims exactly one matches.
+ * Returns whether this caller won. If the claimant dies mid-send, the lease
+ * expires and the row is due again.
+ */
+export async function claimPush(
+  db: PrismaClient,
+  row: { id: string; nextAttemptAt: Date },
+  now: Date = new Date(),
+): Promise<boolean> {
+  const { count } = await db.pushNotificationOutbox.updateMany({
+    where: {
+      id: row.id,
+      status: { in: ['PENDING', 'FAILED'] },
+      nextAttemptAt: row.nextAttemptAt,
+    },
+    data: { nextAttemptAt: new Date(now.getTime() + PUSH_CLAIM_LEASE_MS) },
+  })
+  return count === 1
+}
+
 /** Marks a notification delivered (accepted by Expo); records the first ticket id. */
 export async function markPushSent(
   db: PrismaClient,

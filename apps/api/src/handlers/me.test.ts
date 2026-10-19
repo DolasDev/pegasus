@@ -63,20 +63,27 @@ describe('GET /permissions', () => {
         Actions.RateShipment.permission,
         Actions.ReadTariff.permission,
         Actions.ReadReportingDataset.permission,
-        // Document read/upload is granted to every authenticated user.
+        // Document read/upload and move chat are granted to every authenticated user.
         Actions.ReadDocument.permission,
         Actions.UploadDocument.permission,
+        Actions.ReadChat.permission,
+        Actions.PostChat.permission,
       ]),
     )
   })
 
-  it('returns only the shared document baseline for an empty-roles principal', async () => {
+  it('returns only the shared baseline for an empty-roles principal', async () => {
     const res = await buildApp([]).app.request('/permissions')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { roles: string[]; permissions: string[] }
     expect(body.roles).toEqual([])
     expect(new Set(body.permissions)).toEqual(
-      new Set([Actions.ReadDocument.permission, Actions.UploadDocument.permission]),
+      new Set([
+        Actions.ReadDocument.permission,
+        Actions.UploadDocument.permission,
+        Actions.ReadChat.permission,
+        Actions.PostChat.permission,
+      ]),
     )
   })
 

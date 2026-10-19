@@ -22,6 +22,11 @@ export type TenantUser = {
   crewMemberName: string | null
   /** The legacy longhaul driver id (v_longhaul_drivers.driver_id) this login maps to, or null. */
   longhaulDriverId: number | null
+  /**
+   * The legacy local driver id (crews.employee_id) this login maps to, or null.
+   * Optional so an older API that doesn't send it reads as "not linked".
+   */
+  localDriverEmployeeId?: number | null
   /** Signs in only through the tenant's SSO provider — no invite, no password. */
   ssoOnly: boolean
 }
@@ -40,6 +45,8 @@ export type PatchUserInput = {
   crewMemberId?: string | null
   /** Legacy longhaul driver id to map this login to; null unmaps. */
   longhaulDriverId?: number | null
+  /** Legacy local driver id (crews.employee_id) to map this login to; null unmaps. */
+  localDriverEmployeeId?: number | null
 }
 
 /** A single Cedar role group as advertised by GET /role-options. */
@@ -195,6 +202,26 @@ export function useUpdateUserLonghaulDriverId() {
       apiFetch<TenantUser>(`/api/v1/users/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ longhaulDriverId }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: usersKeys.list() })
+    },
+  })
+}
+
+export function useUpdateUserLocalDriverId() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      localDriverEmployeeId,
+    }: {
+      id: string
+      localDriverEmployeeId: number | null
+    }) =>
+      apiFetch<TenantUser>(`/api/v1/users/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ localDriverEmployeeId }),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: usersKeys.list() })

@@ -63,6 +63,9 @@ const SALES_PERMISSIONS = [
   // (50-documents-shared.cedar), so it appears in every persona's set.
   'document:read',
   'document:upload',
+  // Move chat read/post likewise (55-chat-shared.cedar).
+  'chat:read',
+  'chat:post',
 ] as const
 const VIEWER_PERMISSIONS = [
   'quote:read',
@@ -92,6 +95,9 @@ const VIEWER_PERMISSIONS = [
   // Document read/upload baseline granted to all roles (50-documents-shared.cedar).
   'document:read',
   'document:upload',
+  // Move chat read/post baseline granted to all roles (55-chat-shared.cedar).
+  'chat:read',
+  'chat:post',
 ] as const
 
 type PersonaSession = {

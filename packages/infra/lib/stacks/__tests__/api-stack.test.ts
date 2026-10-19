@@ -1667,3 +1667,35 @@ describe('ApiStack — Temporal namespace provisioner (Phase 3b)', () => {
     })
   })
 })
+
+describe('ApiStack — move chat kicks the push forwarder', () => {
+  type Resource = { Properties?: Record<string, unknown> }
+  const vars = (fn: Resource) =>
+    ((fn.Properties?.['Environment'] as { Variables?: Record<string, unknown> } | undefined)
+      ?.Variables ?? {}) as Record<string, unknown>
+
+  it('gives exactly one function (the API) the forwarder name and invoke on it', () => {
+    const template = synthApiStack()
+    const functions = template.findResources('AWS::Lambda::Function')
+    const [forwarderId] = Object.entries(functions).find(([id]) =>
+      id.startsWith('PushForwardFunction'),
+    )!
+    const withName = Object.entries(functions).filter(
+      ([, fn]) => vars(fn)['PUSH_FORWARD_FUNCTION_NAME'] !== undefined,
+    )
+    expect(withName.map(([id]) => id)).toEqual([
+      expect.stringMatching(/^ApiFunction/) as unknown as string,
+    ])
+    expect(vars(withName[0]![1])['PUSH_FORWARD_FUNCTION_NAME']).toEqual({ Ref: forwarderId })
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'lambda:InvokeFunction',
+            Resource: Match.arrayWith([{ 'Fn::GetAtt': [forwarderId, 'Arn'] }]),
+          }),
+        ]),
+      },
+    })
+  })
+})

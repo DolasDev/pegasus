@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const h = vi.hoisted(() => ({
   listPendingPush: vi.fn(),
+  claimPush: vi.fn(),
   markPushSent: vi.fn(),
   markPushFailed: vi.fn(),
   listActiveTokensForUser: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock('../db', () => ({ db: {} }))
 vi.mock('../lib/push-expo', () => ({ sendToTokens: h.sendToTokens }))
 vi.mock('../repositories/push-outbox.repository', () => ({
   listPendingPush: h.listPendingPush,
+  claimPush: h.claimPush,
   markPushSent: h.markPushSent,
   markPushFailed: h.markPushFailed,
 }))
@@ -31,6 +33,7 @@ function outboxRow(overrides: Record<string, unknown> = {}) {
     userId: 'user-1',
     crewMember: null,
     attempts: 0,
+    nextAttemptAt: new Date('2026-10-19T12:00:00Z'),
     payload: { title: 'New assignment', body: 'Tap to view.', data: { type: 'move.assigned' } },
     ...overrides,
   }
@@ -42,6 +45,7 @@ function okSend(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   for (const v of Object.values(h)) (v as ReturnType<typeof vi.fn>).mockReset()
+  h.claimPush.mockResolvedValue(true)
 })
 
 describe('push-forward handler', () => {
@@ -50,6 +54,22 @@ describe('push-forward handler', () => {
     await handler()
     expect(h.sendToTokens).not.toHaveBeenCalled()
     expect(h.markPushSent).not.toHaveBeenCalled()
+  })
+
+  it('skips a row another drainer already claimed (no double send)', async () => {
+    h.listPendingPush.mockResolvedValue([outboxRow({ id: 'pn-taken' }), outboxRow({ id: 'pn-2' })])
+    h.claimPush.mockImplementation(
+      async (_db: unknown, row: { id: string }) => row.id !== 'pn-taken',
+    )
+    h.listActiveTokensForUser.mockResolvedValue(['ExponentPushToken[aaa]'])
+    h.sendToTokens.mockResolvedValue(okSend())
+
+    await handler()
+
+    expect(h.claimPush).toHaveBeenCalledWith({}, expect.objectContaining({ id: 'pn-taken' }))
+    expect(h.sendToTokens).toHaveBeenCalledTimes(1)
+    expect(h.markPushSent).toHaveBeenCalledWith({}, 'pn-2', 'tk-1')
+    expect(h.markPushFailed).not.toHaveBeenCalled()
   })
 
   it('delivers to a user target and marks SENT with the ticket id', async () => {

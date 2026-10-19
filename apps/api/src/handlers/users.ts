@@ -95,16 +95,19 @@ const PatchUserBody = z
     crewMemberId: z.string().min(1).nullable().optional(),
     /** Legacy longhaul driver id (v_longhaul_drivers.driver_id); null unmaps. */
     longhaulDriverId: z.number().int().positive().nullable().optional(),
+    /** Legacy local driver id (crews.employee_id in LocalDispatchJobs.driver_id1/2); null unmaps. */
+    localDriverEmployeeId: z.number().int().positive().nullable().optional(),
   })
   .refine(
     (d) =>
       d.roleNames !== undefined ||
       d.legacyWindowsUsername !== undefined ||
       d.crewMemberId !== undefined ||
-      d.longhaulDriverId !== undefined,
+      d.longhaulDriverId !== undefined ||
+      d.localDriverEmployeeId !== undefined,
     {
       message:
-        'At least one of roleNames, legacyWindowsUsername, crewMemberId or longhaulDriverId must be provided',
+        'At least one of roleNames, legacyWindowsUsername, crewMemberId, longhaulDriverId or localDriverEmployeeId must be provided',
     },
   )
 
@@ -119,6 +122,8 @@ type TenantUserResponse = {
   legacyWindowsUsername: string | null
   /** Legacy longhaul driver id (v_longhaul_drivers.driver_id) this login maps to, or null. */
   longhaulDriverId: number | null
+  /** Legacy local driver id (crews.employee_id) this login maps to, or null. */
+  localDriverEmployeeId: number | null
   /** Cedar role-group memberships — authoritative source for permission gating. */
   roleNames: string[]
   /** Coarse-grained role string derived from `roleNames` for display. */
@@ -146,6 +151,7 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     cognitoSub: row.cognitoSub,
     legacyWindowsUsername: row.legacyWindowsUsername,
     longhaulDriverId: row.longhaulDriverId,
+    localDriverEmployeeId: row.localDriverEmployeeId,
     roleNames: row.roleNames,
     role: deriveLegacyRole(row.roleNames),
     status: row.status,
@@ -320,7 +326,8 @@ usersHandler.post(
 //
 // Updates the Cedar role-group memberships of a TenantUser.
 //
-// Request:  { roleNames?, legacyWindowsUsername?, crewMemberId?, longhaulDriverId? }
+// Request:  { roleNames?, legacyWindowsUsername?, crewMemberId?, longhaulDriverId?,
+//            localDriverEmployeeId? }
 // Response: { data: TenantUserResponse } (200)
 //           { error, code: NOT_FOUND }        (404)
 //           { error, code: VALIDATION_ERROR } (400)
@@ -338,7 +345,13 @@ usersHandler.patch(
     const tenantId = c.get('tenantId')
     const repo = createUsersRepository(db)
     const id = c.req.param('id') ?? ''
-    const { roleNames, legacyWindowsUsername, crewMemberId, longhaulDriverId } = c.req.valid('json')
+    const {
+      roleNames,
+      legacyWindowsUsername,
+      crewMemberId,
+      longhaulDriverId,
+      localDriverEmployeeId,
+    } = c.req.valid('json')
 
     const existing = await repo.findById(id, tenantId)
     if (!existing) {
@@ -366,6 +379,9 @@ usersHandler.patch(
     }
     if (longhaulDriverId !== undefined) {
       current = await repo.updateLonghaulDriverId(id, longhaulDriverId)
+    }
+    if (localDriverEmployeeId !== undefined) {
+      current = await repo.updateLocalDriverEmployeeId(id, localDriverEmployeeId)
     }
     if (crewMemberId !== undefined) {
       await repo.linkCrewMember(id, crewMemberId)

@@ -1422,6 +1422,426 @@ export function getOpenApiSpec() {
           },
         },
       },
+      // ── Move chat (Cognito users only; see handlers/chat.ts) ─────────────────
+      '/api/v1/chat/rooms/{entityType}/{entityId}': {
+        get: {
+          operationId: 'getChatRoom',
+          summary: "A move's chat room and my membership",
+          description:
+            'Answers an empty room (id null) when nobody has posted yet. Employees read every room; driver-scoped logins only the moves they are assigned to.',
+          parameters: [
+            {
+              name: 'entityType',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', enum: ['shipment'] },
+            },
+            {
+              name: 'entityId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[1-9][0-9]{0,9}$' },
+              description: 'The legacy order number.',
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Room summary',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { type: 'object' } },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '403': {
+              description:
+                'Not assigned to this move (driver-scoped login), or not a signed-in user',
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+              },
+            },
+          },
+        },
+      },
+      '/api/v1/chat/rooms/{entityType}/{entityId}/messages': {
+        get: {
+          operationId: 'listChatMessages',
+          summary: 'Messages in a room, oldest first',
+          description:
+            'Poll with `after` (a message id); scroll back with `before`. Without either, the newest `limit` messages.',
+          parameters: [
+            ...[
+              {
+                name: 'entityType',
+                in: 'path',
+                required: true,
+                schema: { type: 'string', enum: ['shipment'] },
+              },
+              {
+                name: 'entityId',
+                in: 'path',
+                required: true,
+                schema: { type: 'string', pattern: '^[1-9][0-9]{0,9}$' },
+                description: 'The legacy order number.',
+              },
+            ],
+            { name: 'after', in: 'query', required: false, schema: { type: 'string' } },
+            { name: 'before', in: 'query', required: false, schema: { type: 'string' } },
+            {
+              name: 'limit',
+              in: 'query',
+              required: false,
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Messages',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: {
+                      data: { type: 'array', items: { $ref: '#/components/schemas/ChatMessage' } },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '403': {
+              description:
+                'Not assigned to this move (driver-scoped login), or not a signed-in user',
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+              },
+            },
+          },
+        },
+        post: {
+          operationId: 'postChatMessage',
+          summary: 'Post a message',
+          description:
+            'Idempotent on `clientMessageId`: a resend returns the stored message with 200. The first post on an order creates its room. Mention someone with `@[Name](userId)`.',
+          parameters: [
+            {
+              name: 'entityType',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', enum: ['shipment'] },
+            },
+            {
+              name: 'entityId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[1-9][0-9]{0,9}$' },
+              description: 'The legacy order number.',
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['clientMessageId', 'body'],
+                  properties: {
+                    clientMessageId: { type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$' },
+                    body: { type: 'string', minLength: 1, maxLength: 4000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Posted',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/ChatMessage' } },
+                  },
+                },
+              },
+            },
+            '200': {
+              description: 'Replay of an earlier send',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/ChatMessage' } },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '403': {
+              description:
+                'Not assigned to this move (driver-scoped login), or not a signed-in user',
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+              },
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '409': {
+              description: 'clientMessageId already used in a different room',
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+              },
+            },
+          },
+        },
+      },
+      '/api/v1/chat/rooms/{entityType}/{entityId}/read': {
+        post: {
+          operationId: 'markChatRead',
+          summary: 'Advance my read cursor',
+          parameters: [
+            {
+              name: 'entityType',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', enum: ['shipment'] },
+            },
+            {
+              name: 'entityId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[1-9][0-9]{0,9}$' },
+              description: 'The legacy order number.',
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { at: { type: 'string', format: 'date-time' } },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'New cursor',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { type: 'object' } },
+                  },
+                },
+              },
+            },
+            '403': {
+              description:
+                'Not assigned to this move (driver-scoped login), or not a signed-in user',
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+              },
+            },
+          },
+        },
+      },
+      '/api/v1/chat/rooms/{entityType}/{entityId}/membership': {
+        put: {
+          operationId: 'setChatMembership',
+          summary: 'Follow, unfollow or mute a room',
+          parameters: [
+            {
+              name: 'entityType',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', enum: ['shipment'] },
+            },
+            {
+              name: 'entityId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[1-9][0-9]{0,9}$' },
+              description: 'The legacy order number.',
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { following: { type: 'boolean' }, muted: { type: 'boolean' } },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Membership',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { type: 'object' } },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '403': {
+              description:
+                'Not assigned to this move (driver-scoped login), or not a signed-in user',
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+              },
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/chat/rooms/{entityType}/{entityId}/mentionable': {
+        get: {
+          operationId: 'listChatMentionable',
+          summary: 'People who can be @mentioned in a room',
+          parameters: [
+            {
+              name: 'entityType',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', enum: ['shipment'] },
+            },
+            {
+              name: 'entityId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^[1-9][0-9]{0,9}$' },
+              description: 'The legacy order number.',
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Employees and the move’s assigned drivers',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { type: 'array', items: { type: 'object' } } },
+                  },
+                },
+              },
+            },
+            '403': {
+              description:
+                'Not assigned to this move (driver-scoped login), or not a signed-in user',
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+              },
+            },
+          },
+        },
+      },
+      '/api/v1/chat/messages/{messageId}': {
+        delete: {
+          operationId: 'deleteChatMessage',
+          summary: 'Delete one of your messages (tenant_admin: any)',
+          parameters: [
+            { name: 'messageId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': {
+              description: 'Deleted (body is null)',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/ChatMessage' } },
+                  },
+                },
+              },
+            },
+            '403': {
+              description:
+                'Not assigned to this move (driver-scoped login), or not a signed-in user',
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+              },
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/chat/inbox': {
+        get: {
+          operationId: 'getChatInbox',
+          summary: 'My conversations, newest activity first',
+          description:
+            '`all` (employees only) lists every room with a message; otherwise the rooms I follow, with unread and unread-mention counts.',
+          parameters: [
+            {
+              name: 'filter',
+              in: 'query',
+              required: false,
+              schema: { type: 'string', enum: ['following', 'all'] },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Inbox',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { type: 'array', items: { type: 'object' } } },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
+      '/api/v1/local-drivers': {
+        get: {
+          operationId: 'listLocalDrivers',
+          summary: 'Active local drivers (legacy crews), for mapping a login',
+          responses: {
+            '200': {
+              description: 'Local drivers',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: { employeeId: { type: 'integer' }, name: { type: 'string' } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       '/api/v1/documents/upload-url': {
         post: {
           operationId: 'createDocumentUploadUrl',
@@ -2591,6 +3011,30 @@ export function getOpenApiSpec() {
         },
       },
       schemas: {
+        ChatMessage: {
+          type: 'object',
+          required: [
+            'id',
+            'clientMessageId',
+            'body',
+            'author',
+            'mentionedUserIds',
+            'createdAt',
+            'deletedAt',
+          ],
+          properties: {
+            id: { type: 'string' },
+            clientMessageId: { type: 'string' },
+            body: { type: ['string', 'null'], description: 'null once deleted' },
+            author: {
+              type: 'object',
+              properties: { id: { type: 'string' }, name: { type: 'string' } },
+            },
+            mentionedUserIds: { type: 'array', items: { type: 'string' } },
+            createdAt: { type: 'string', format: 'date-time' },
+            deletedAt: { type: ['string', 'null'], format: 'date-time' },
+          },
+        },
         ReportingDataset: {
           type: 'object',
           description:

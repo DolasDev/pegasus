@@ -1804,6 +1804,15 @@ export class ApiStack extends cdk.Stack {
 
     dbSecret.grantRead(pushForwardFunction)
 
+    // Move chat kicks the forwarder asynchronously right after a message
+    // commits, so its pushes go out in seconds rather than on the next tick
+    // (apps/api/src/lib/push-forward-invoke.ts). The API never calls Expo
+    // itself: expo-server-sdk is ESM-only and this function's ESM bundle is the
+    // only one that can load it. Each row is claimed before sending, so a
+    // kicked run overlapping the scheduled one never sends a row twice.
+    pushForwardFunction.grantInvoke(apiFunction)
+    apiFunction.addEnvironment('PUSH_FORWARD_FUNCTION_NAME', pushForwardFunction.functionName)
+
     new events.Rule(this, 'PushForwardSchedule', {
       // Near-real-time: drivers expect assignment/request pushes promptly.
       // Backoff/jitter inside the Lambda spaces out retries for failing rows.

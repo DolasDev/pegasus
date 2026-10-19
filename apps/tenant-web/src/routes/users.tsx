@@ -42,6 +42,7 @@ import {
   useUpdateUserLegacyWindowsUsername,
   useLinkCrewMember,
   useUpdateUserLonghaulDriverId,
+  useUpdateUserLocalDriverId,
   useDeactivateUser,
   useReactivateUser,
   useResetUserPassword,
@@ -51,6 +52,8 @@ import {
 } from '@/api/queries/users'
 import { crewMembersQueryOptions, type CrewMember } from '@/api/queries/crew'
 import { longhaulDriversQueryOptions, type LonghaulDriver } from '@/api/queries/longhaul-drivers'
+import { localDriversQueryOptions, type LocalDriver } from '@/api/queries/local-drivers'
+import { suggestLocalDriverId } from '@/features/users/local-driver-suggestion'
 import { AddFromPegiiPanel } from '@/features/users/AddFromPegiiPanel'
 import { getSession } from '@/auth/session'
 import { usePermissions } from '@/auth/permissions'
@@ -902,6 +905,138 @@ function LonghaulDriverLinker({
   )
 }
 
+// ---------------------------------------------------------------------------
+// Local-driver linker — shown next to the longhaul linker for `driver`-role
+// users. Maps the login to the legacy local driver (crews.employee_id) its
+// local dispatch jobs name, so it can reach those moves' chats. When the
+// longhaul number is also a local driver with the same name, the picker
+// starts on it; the admin still confirms. Unlinked is a normal state here
+// (most longhaul drivers never run local jobs), so no warning badge.
+// ---------------------------------------------------------------------------
+
+type LocalDriverLinkerProps = {
+  user: TenantUser
+  localDrivers: LocalDriver[]
+  longhaulDrivers: LonghaulDriver[]
+  driversLoading: boolean
+  driversError: boolean
+  onSave: (localDriverEmployeeId: number | null) => Promise<void>
+}
+
+export function LocalDriverLinker({
+  user,
+  localDrivers,
+  longhaulDrivers,
+  driversLoading,
+  driversError,
+  onSave,
+}: LocalDriverLinkerProps) {
+  const current = user.localDriverEmployeeId ?? null
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const suggested = suggestLocalDriverId(
+    { longhaulDriverId: user.longhaulDriverId, localDriverEmployeeId: current },
+    longhaulDrivers,
+    localDrivers,
+  )
+
+  function startEditing() {
+    setValue(current != null ? String(current) : suggested != null ? String(suggested) : '')
+    setEditing(true)
+  }
+
+  async function handleSave() {
+    setError(null)
+    setSaving(true)
+    try {
+      await onSave(value === '' ? null : Number(value))
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    const currentName = localDrivers.find((d) => d.employeeId === current)?.name
+    return (
+      <button
+        type="button"
+        onClick={startEditing}
+        className="inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+      >
+        <Truck size={11} />
+        Local driver:{' '}
+        <span className="font-medium">
+          {current != null ? (currentName ?? `#${current}`) : 'not linked'}
+        </span>
+        <Pencil size={11} />
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-muted-foreground">Local driver:</span>
+      <select
+        aria-label="Local driver"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={saving}
+        autoFocus
+        className="h-6 rounded-md border border-input bg-background px-2 py-0 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <option value="">— Not linked —</option>
+        {driversLoading && (
+          <option value="" disabled>
+            Loading local drivers…
+          </option>
+        )}
+        {driversError && (
+          <option value="" disabled>
+            Failed to load local drivers
+          </option>
+        )}
+        {localDrivers.map((d) => (
+          <option key={d.employeeId} value={d.employeeId}>
+            {d.name} (#{d.employeeId})
+          </option>
+        ))}
+      </select>
+      {current == null && suggested != null && value === String(suggested) && (
+        <span className="text-xs text-muted-foreground">
+          Suggested: same number and name as their longhaul driver
+        </span>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0"
+        aria-label="Save local driver"
+        onClick={() => void handleSave()}
+        disabled={saving}
+      >
+        {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0"
+        onClick={() => setEditing(false)}
+        disabled={saving}
+      >
+        <X size={12} />
+      </Button>
+      {error && <span className="ml-1 text-xs text-destructive">{error}</span>}
+    </div>
+  )
+}
+
 type UserRowProps = {
   user: TenantUser
   currentUserEmail: string
@@ -912,6 +1047,9 @@ type UserRowProps = {
   longhaulDrivers: LonghaulDriver[]
   longhaulDriversLoading: boolean
   longhaulDriversError: boolean
+  localDrivers: LocalDriver[]
+  localDriversLoading: boolean
+  localDriversError: boolean
   canManageRoles: boolean
   canDeactivate: boolean
   canReactivate: boolean
@@ -927,6 +1065,7 @@ type UserRowProps = {
   ) => Promise<void>
   onLinkCrewMember: (user: TenantUser, crewMemberId: string | null) => Promise<void>
   onSaveLonghaulDriverId: (user: TenantUser, longhaulDriverId: number | null) => Promise<void>
+  onSaveLocalDriverId: (user: TenantUser, localDriverEmployeeId: number | null) => Promise<void>
 }
 
 function UserRow({
@@ -938,6 +1077,9 @@ function UserRow({
   longhaulDrivers,
   longhaulDriversLoading,
   longhaulDriversError,
+  localDrivers,
+  localDriversLoading,
+  localDriversError,
   canManageRoles,
   canDeactivate,
   canReactivate,
@@ -950,6 +1092,7 @@ function UserRow({
   onSaveLegacyWindowsUsername,
   onLinkCrewMember,
   onSaveLonghaulDriverId,
+  onSaveLocalDriverId,
 }: UserRowProps) {
   const isSelf = user.email === currentUserEmail
   const isDeactivated = user.status === 'DEACTIVATED'
@@ -1007,6 +1150,16 @@ function UserRow({
                 driversLoading={longhaulDriversLoading}
                 driversError={longhaulDriversError}
                 onSave={(longhaulDriverId) => onSaveLonghaulDriverId(user, longhaulDriverId)}
+              />
+            )}
+            {longhaulEnabled && !isDeactivated && isDriver && canManageRoles && (
+              <LocalDriverLinker
+                user={user}
+                localDrivers={localDrivers}
+                longhaulDrivers={longhaulDrivers}
+                driversLoading={localDriversLoading}
+                driversError={localDriversError}
+                onSave={(id) => onSaveLocalDriverId(user, id)}
               />
             )}
           </div>
@@ -1142,6 +1295,16 @@ export function UsersPage() {
     ...longhaulDriversQueryOptions,
     enabled: canList && hasLonghaul && hasDriverUsers,
   })
+  // The local-driver list is served only to user:update holders (it exists
+  // for the mapping edit), so it is gated on that too.
+  const {
+    data: localDrivers,
+    isLoading: localDriversLoading,
+    isError: localDriversError,
+  } = useQuery({
+    ...localDriversQueryOptions,
+    enabled: canList && perms.has('user:update') && hasLonghaul && hasDriverUsers,
+  })
   const deactivateMutation = useDeactivateUser()
   const reactivateMutation = useReactivateUser()
   const resetPasswordMutation = useResetUserPassword()
@@ -1150,6 +1313,7 @@ export function UsersPage() {
   const legacyWindowsUsernameMutation = useUpdateUserLegacyWindowsUsername()
   const linkCrewMutation = useLinkCrewMember()
   const longhaulDriverMutation = useUpdateUserLonghaulDriverId()
+  const localDriverMutation = useUpdateUserLocalDriverId()
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
 
   // Count of currently-active tenant_admins. Used by ManageRolesPanel to
@@ -1250,6 +1414,10 @@ export function UsersPage() {
     await longhaulDriverMutation.mutateAsync({ id: user.id, longhaulDriverId })
   }
 
+  async function handleSaveLocalDriverId(user: TenantUser, localDriverEmployeeId: number | null) {
+    await localDriverMutation.mutateAsync({ id: user.id, localDriverEmployeeId })
+  }
+
   return (
     <div>
       <PageHeader
@@ -1312,6 +1480,9 @@ export function UsersPage() {
               longhaulDrivers={longhaulDrivers ?? []}
               longhaulDriversLoading={longhaulDriversLoading}
               longhaulDriversError={longhaulDriversError}
+              localDrivers={localDrivers ?? []}
+              localDriversLoading={localDriversLoading}
+              localDriversError={localDriversError}
               canManageRoles={perms.has('user:update')}
               canDeactivate={perms.has('user:deactivate')}
               canReactivate={perms.has('user:reactivate')}
@@ -1324,6 +1495,7 @@ export function UsersPage() {
               onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
               onLinkCrewMember={handleLinkCrewMember}
               onSaveLonghaulDriverId={handleSaveLonghaulDriverId}
+              onSaveLocalDriverId={handleSaveLocalDriverId}
             />
           )
 

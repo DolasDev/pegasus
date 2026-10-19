@@ -1,11 +1,11 @@
 # Move chat — a chat room per move for office staff and assigned drivers
 
-**Branch:** none yet. One worktree + branch + PR per phase (`scripts/new-worktree.sh feat move-chat-<phase>`).
+**Branch:** `feat/move-chat-api` (Phase 1). Later phases: one worktree + branch + PR each.
 **Goal:** Each move (legacy order / shipment, keyed by `order_num`) has a chat room. Any tenant employee, and any
 longhaul or local driver assigned to that move (employee or contractor, as long as they have a login), can read it
 and post to it. It works from a standalone Teams/Slack-style page in tenant-web and from the driver app. The desktop (movemanager) gets
 it in a later phase.
-**Status:** TODO — D1–D6 approved 2026-10-16; Phase 0 + prod data check done 2026-10-19; next is Phase 1.
+**Status:** Phase 1 DONE 2026-10-19 (`feat/move-chat-api`); next is Phase 2 (tenant-web `/messages`).
 
 ---
 
@@ -97,13 +97,16 @@ it in a later phase.
     and the rail every 15 s.
   - **Rough cost:** 20 open rooms × 10 h/day ≈ 5M requests a month for a busy tenant, which is single-digit
     dollars at HTTP API's list price of about $1 per million requests. Verify against the AWS pricing page.
-  - **Push:** after the post commits, the post handler **sends that message's push rows to Expo straight away**
-    (about 100–300 ms added to the post response). The every-minute `PushForwardFunction` stays as the retry
-    backstop. That puts push latency in seconds, with no new infrastructure.
-  - **Prerequisite:** `listPendingPush` (`repositories/push-outbox.repository.ts`) doesn't claim rows today. A
-    second concurrent drainer would double-send. Add an atomic claim (`UPDATE … SET status='SENDING', claimedUntil
-… WHERE status IN ('PENDING','FAILED') … FOR UPDATE SKIP LOCKED … RETURNING`) and use it from **both** the cron
-    and the inline path. That also fixes double-sends if a slow cron run overlaps the next one.
+  - **Push (as built, changed from the draft):** the post enqueues one outbox row per recipient in its
+    transaction, then **kicks `PushForwardFunction` asynchronously** (`lib/push-forward-invoke.ts`,
+    `InvocationType: 'Event'`). Push latency is seconds, not the next minute. The draft had the API send to Expo
+    inline; that would have pulled `expo-server-sdk` (ESM-only) into the CommonJS API bundle and crashed the API
+    Lambda at INIT (#594). `src/__tests__/expo-sdk-import-guard.test.ts` now pins the SDK to the forwarder's path.
+  - **The claim (built):** the forwarder claims each row before sending — `claimPush`, a compare-and-set on the
+    `nextAttemptAt` it read, which pushes the row out by a 2-minute lease. Postgres re-checks an UPDATE's WHERE
+    against the latest row version, so of two concurrent claims exactly one wins (real-Postgres test). Plain
+    Prisma, no raw SQL (`db-access-guard` forbids it outside the health check). Kicked and scheduled runs, or
+    two overlapping runs, never double-send.
   - **Not doing true real time (AppSync Events) in v1:** it's a new stack, auth handlers and cost, for a gain from
     ≤3 s to ~instant. Revisit if users ask for it.
 - **D5 — A push shows no message text.** Title "#<orderNum>", body "New message from <author>" (or "<author>
@@ -286,7 +289,8 @@ OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
   - The Cedar baseline tests move to `SHARED_BASELINE`.
   - M2M callers are rejected.
   - Prod data check done 2026-10-19: two mapping fields (QMM has id collisions), drivers only.
-- [ ] **Phase 1 — Domain, data and API.** Domain module and tests; Prisma migration (chat tables plus
+- [x] **Phase 1 — Domain, data and API.** Done 2026-10-19, branch `feat/move-chat-api` (one PR). See
+      "Phase 1 as built" below for what changed from this outline. Domain module and tests; Prisma migration (chat tables plus
       `TenantUser.localDriverEmployeeId`, with the Settings → Users field to set it); `canReadShipment` helper (shared with
       document-read-scoping; longhaul OR local driver); handlers; Cedar actions plus the AVP re-sync; push trigger plus the
       outbox **atomic claim** (used by the cron and the inline send); OpenAPI; integration tests for:
@@ -314,6 +318,69 @@ OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
   - a workflow SDK `post_chat_message` + `chat.message.posted` event. When this lands, the SDK discoverability rule
     applies (README, MCP, OpenAPI, the authoring repo's `CLAUDE.md`), and an automation's post is a billable
     action.
+
+## Phase 1 as built (2026-10-19)
+
+**What shipped (one PR, `feat/move-chat-api`):**
+
+- **Domain** `packages/domain/src/chat`: `parseChatRoomRef` (shipment only, positive int ≤ SQL `int`),
+  `validateChatBody` (trim, CRLF→LF, 1–4000), `isValidClientMessageId` (8–64 `[A-Za-z0-9_-]`), `parseMentions`
+  (`@[Name](userId)`, filtered to the room's mentionable set), `resolveChatScope` (D1), `resolveRecipients`,
+  `chatPushContent` (D5).
+- **Data** (two migrations: `20261019202100_move_chat`, `20261019202711_move_chat_last_message`): `chat_rooms`
+  (with a denormalized `last_message_id` so the inbox reads previews in one query), `chat_messages`,
+  `chat_room_members` (follow/mute/read cursor + `access_checked_at`), and
+  `tenant_users.local_driver_employee_id`. All three chat models are in `TENANT_SCOPED_MODELS`.
+- **Legacy reads** `apps/api/src/lib/chat-access.ts`: driver access (longhaul trip EXISTS OR an active
+  `LocalDispatchJobs` driver slot; helpers excluded; fail closed), a one-query driver order-set check for the
+  inbox, assigned drivers per order (each side soft-fails), `orderExists` (before the first post creates a room),
+  and `listLocalDrivers`.
+- **API** `handlers/chat.ts` on the Cognito-only `v1` router at `/api/v1/chat`:
+  - `GET  /rooms/:t/:id` — room + membership + unread
+  - `GET  /rooms/:t/:id/messages?after|before&limit`
+  - `POST /rooms/:t/:id/messages` — idempotent; 201 new / 200 replay / 409 id reused in another room
+  - `POST /rooms/:t/:id/read`
+  - `PUT  /rooms/:t/:id/membership`
+  - `GET  /rooms/:t/:id/mentionable`
+  - `DELETE /messages/:id`
+  - `GET  /inbox?filter=following|all` (`all` for employees)
+
+  Plus `GET /api/v1/local-drivers` (UpdateUser) for the admin picker. An `apiClient` caller gets 403. All
+  documented in `lib/openapi-spec.ts`.
+
+- **Authz:** `ReadChat` / `PostChat` (`chat:read` / `chat:post`) on a new `ChatRoom` resource, granted to every
+  principal by `policies/55-chat-shared.cedar`. The shared-baseline tests (`lib/authz.test.ts`, `me.test.ts`,
+  e2e `authz-smoke.spec.ts`) include them.
+- **Users:** `PATCH /users/:id` takes `localDriverEmployeeId`. tenant-web Settings → Users has a "Local driver"
+  linker for driver-role users. It pre-selects the longhaul number only when that number is a local driver with
+  the same surname (`features/users/local-driver-suggestion.ts`); the admin still saves.
+- **Push:** `enqueueChatMessagePush` in `lib/push-triggers.ts` (dedupe `chat.message:<msg>:<user>`, deep link
+  `{type:'chat.message', orderNum, messageId}`). Delivery moved into `lib/push-deliver.ts` with the claim.
+  `PUSH_FORWARD_FUNCTION_NAME` and `lambda:InvokeFunction` on the forwarder are granted to the API Lambda in
+  `api-stack.ts`, with an infra test.
+
+**Deviations from the outline above:**
+
+- No `canReadShipment` helper shared with document-read-scoping yet. Chat's driver check lives in
+  `lib/chat-access.ts` (`driverCanReadOrder`); when document-read-scoping is built it should call that (or
+  lift it), not write a second rule.
+- The mobile app's deep link for `chat.message` doesn't exist yet. Pushes for it are queued and delivered, but a
+  tap needs Phase 3's handler.
+- **Display names are `crewMember.name` or the email.** `TenantUser` has no name field. Revisit in Phase 2 if
+  the chat page needs real names (Cognito attributes or a profile field).
+
+**Found along the way:**
+
+- `TenantUser` is not auto-scoped by the tenant client. The mention list leaked across tenants until a
+  two-tenant test caught it (fixed; GOTCHAS entry).
+- **Pre-existing, not fixed here:** `handlers/notifications.ts` checks a push target with
+  `{ where: { id: userId } }` and no tenantId.
+
+## Resume here
+
+Phase 1 is complete in the branch and lands with this plan. **Next: Phase 2 (tenant-web `/messages` page)**, a new
+worktree. Steve has not yet set any `localDriverEmployeeId` mappings in prod (Settings → Users after deploy);
+QMM's one mapped driver had 31 local jobs in the last year and is the obvious first one.
 
 ## Files
 
@@ -347,9 +414,14 @@ OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
 - **The tunnel is down while someone posts.** Drivers' access checks fail closed (they can't read). Office posts
   still succeed, but drivers who don't already follow the room miss that push (logged). Drivers follow
   automatically after their first open, which shrinks this gap.
-- **The inline push send slows the post.** It adds about 100–300 ms; cap the Expo call at ~2 s, after which the cron
-  takes over.
+- **Account Lambda concurrency is 10.** Every post with recipients queues one async forwarder run. Posts are human-paced
+  and a run takes well under a second, so this is small; a throttled async invoke is retried by Lambda, and a lost
+  kick only costs latency (the cron still runs every minute).
 - **Reassignment.** A driver who is taken off a trip loses access straight away (once the cache expires) but keeps
   their stored follow row. `resolveRecipients` (push) and `GET /inbox` (preview) both have to filter by current
   access.
 - **PII in messages.** Staff will type customer details. Messages stay inside the tenant; push content is D5.
+- **`chat_messages.author_user_id` is `ON DELETE RESTRICT` to `tenant_users`.** It's deliberate, so a posted message
+  never loses its author. Users are deactivated, never hard-deleted, and no code path hard-deletes a tenant today;
+  `api_clients.created_by_id` already restricts the same way, so a future tenant purge has this to handle either way.
+  Tests delete messages before users.

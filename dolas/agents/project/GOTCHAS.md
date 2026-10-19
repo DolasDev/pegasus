@@ -3357,3 +3357,16 @@ were filled once by a conversion script, and the app never writes them, so they 
 so one number is one person. At QMM (`driverall` = `drivers` only), most local drivers have no `drivers` row, and
 2 of 30 overlapping numbers name **different people** (prod check, 2026-10-19). Never treat a longhaul `driver_id`
 and a `crews.employee_id` as the same person without an explicit mapping on the cloud `TenantUser`.
+
+## `TenantUser` is NOT auto-scoped by the tenant Prisma client
+
+`c.get('db')` filters only the models in `TENANT_SCOPED_MODELS`, and `TenantUser`
+isn't one (it's read by the tenant middleware itself;
+`prisma-tenant-isolation.test.ts` lists it as acknowledged). So
+`c.get('db').tenantUser.findMany({ where: { status: 'ACTIVE' } })` returns
+**every tenant's** users. Move chat's mention list did exactly this until a
+two-tenant integration test caught it. Always put `tenantId` in a `TenantUser`
+predicate.
+
+Known pre-existing instance (not fixed here): `handlers/notifications.ts`
+validates the target user with `{ where: { id: userId } }`.
