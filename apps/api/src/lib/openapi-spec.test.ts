@@ -38,6 +38,23 @@ describe('getOpenApiSpec', () => {
     expect(JSON.stringify(spec.paths['/api/v1/pegii/tasks'])).not.toContain('stub')
   })
 
+  it('documents the order memo create, the memo types and the text-message links (NW pulse Phase 7)', () => {
+    const memos = spec.paths['/api/v1/pegii/orders/{orderId}/memos']?.['post'] as
+      { operationId?: string; description?: string; security?: unknown } | undefined
+    expect(memos?.operationId).toBe('createPegiiOrderMemo')
+    expect(memos?.security).toEqual([{ ApiKeyAuth: [] }])
+    expect(memos?.description).toContain('MEMO_TEXT_TRIGGERS_REJECTION')
+    expect(spec.paths['/api/v1/pegii/memo-types']?.['get']).toMatchObject({
+      operationId: 'listPegiiMemoTypes',
+    })
+    expect(spec.paths['/api/v1/sms/messages/{id}/links']?.['get']).toMatchObject({
+      operationId: 'getTextMessageLinks',
+    })
+    expect(JSON.stringify(spec.paths['/api/v1/sms/messages/{id}/read'])).toContain(
+      'mirroredToDesktop',
+    )
+  })
+
   it('documents the live order search with its required params, and deprecates the list', () => {
     const search = spec.paths['/api/v1/pegii/orders/search']?.['get'] as
       { operationId?: string; parameters?: Array<{ name: string; required: boolean }> } | undefined

@@ -24,7 +24,8 @@
 // task state from an order.* event pointer; CloseTask lets it close out an
 // order's operational task (e.g. date_confirmation) when the triggering event
 // arrives, and CreateTask lets it put a follow-up task on a coordinator's list
-// (a desktop user-defined task). WriteOrder writes allowlisted fields (the integration statuses) back
+// (a desktop user-defined task). WriteOrderMemo adds a desktop order memo that
+// prompts the coordinator (e.g. a customer's text reply). WriteOrder writes allowlisted fields (the integration statuses) back
 // onto the pegII order - the one order mutation a workflow may make; the site
 // enforces which fields. ReadSalesman re-fetches an authoritative salesman (sales user /
 // employee) referenced from an order. Orders/salesmen/tasks are the pegII-bound
@@ -50,6 +51,7 @@ permit (
     Pegasus::Action::"ReadEvent",
     Pegasus::Action::"ReadOrder",
     Pegasus::Action::"WriteOrder",
+    Pegasus::Action::"WriteOrderMemo",
     Pegasus::Action::"ReadSalesman",
     Pegasus::Action::"ReadTask",
     Pegasus::Action::"CreateTask",

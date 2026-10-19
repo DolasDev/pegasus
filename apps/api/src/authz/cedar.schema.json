@@ -307,6 +307,9 @@
       "WriteOrder": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Order"] }
       },
+      "WriteOrderMemo": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Order"] }
+      },
       "ReadTask": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Task"] }
       },

@@ -3,7 +3,8 @@
 //
 //   POST /send                    SendSms          { to, body, dedupKey? }
 //   GET  /messages/:id            ReadTextMessage  one captured message (cloud buffer)
-//   POST /messages/:id/read       UpdateTextMessage mark it read at RingCentral
+//   POST /messages/:id/read       UpdateTextMessage mark it read at RingCentral (+ the desktop's copy)
+//   GET  /messages/:id/links      ReadTextMessage  its conversation → orders / employees (pegII)
 //   GET  /opt-outs/:phoneE164     ReadSmsOptOut    opt-out state for a number
 //   POST /opt-outs                ManageSmsOptOut  { phone, optedOut?, source? }
 //
@@ -23,7 +24,7 @@
 //   503                        — RingCentral integration disabled platform-wide
 // ---------------------------------------------------------------------------
 
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { isValidE164 } from '@pegasus/domain'
@@ -39,6 +40,48 @@ import { createSmsOptOutRepository } from '../repositories/sms-opt-out.repositor
 import { listConnectionsByTenant } from '../repositories/messaging.repository'
 import { readOAuthConfig } from '../services/ringcentral/oauth'
 import { setMessageReadStatus } from '../services/ringcentral/message-store'
+import { resolveMemoGateway } from '../gateways/memo-gateway.factory'
+import { PEGII_TEXT_MESSAGE_ID_RE } from '../gateways/pegii/pegii-memo.dto'
+import { resolvePegiiCaller } from '../lib/pegii-request-context'
+import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
+import { logger } from '../lib/logger'
+
+const MESSAGE_UUID_RE = /^[0-9a-f-]{36}$/i
+
+/** The desktop store's `ReadStatus` (1 read, 2 unread) in RingCentral's words. */
+function desktopReadStatus(status: number | null): 'Read' | 'Unread' | null {
+  if (status === 1) return 'Read'
+  if (status === 2) return 'Unread'
+  return null
+}
+
+/**
+ * Best-effort: mirror "read" into the legacy desktop's own copy of the message
+ * (pegII `TextMessageStore`, NW pulse Phase 7) so its badge clears before the
+ * next RingCentral sync pass, which would copy RingCentral's state anyway. Never
+ * fails the call: a tenant without a pegII site, a site without
+ * `pegii.text-messages.v1`, or any upstream error answers false and is logged.
+ */
+async function mirrorReadToDesktop(c: Context<AppEnv>, rcMessageId: string): Promise<boolean> {
+  const tenantId = c.get('tenantId')
+  if (!PEGII_TEXT_MESSAGE_ID_RE.test(rcMessageId)) return false
+  try {
+    const gateway = await resolveMemoGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+    const result = await gateway.markTextMessageRead(rcMessageId)
+    return result.applied
+  } catch (err) {
+    const expected =
+      err instanceof PegiiApiError &&
+      (err.code === 'PEGII_API_NOT_CONFIGURED' || err.code === 'PEGII_API_CAPABILITY_MISSING')
+    const log = expected ? logger.info : logger.warn
+    log.call(logger, 'desktop read mirror skipped', {
+      tenantId,
+      code: err instanceof PegiiApiError ? err.code : 'UNEXPECTED',
+      message: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
 
 const SendSmsBody = z.object({
   /** Destination phone number in E.164 format (e.g. +15005550006). */
@@ -171,7 +214,7 @@ smsHandler.post(
 // ---------------------------------------------------------------------------
 smsHandler.get('/messages/:id', requirePermission(Actions.ReadTextMessage), async (c) => {
   const id = c.req.param('id') ?? ''
-  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+  if (!MESSAGE_UUID_RE.test(id)) {
     return c.json({ error: 'id must be a message uuid', code: 'VALIDATION_ERROR' }, 400)
   }
   const row = await c.get('db').message.findFirst({ where: { id } })
@@ -201,7 +244,12 @@ smsHandler.get('/messages/:id', requirePermission(Actions.ReadTextMessage), asyn
 // write that clears the unread badge coordinators see. Idempotent — an already
 // read message reports `alreadyRead: true` and costs no write.
 //
-//   200 { data: { id, readStatus: 'Read', alreadyRead } }
+//   200 { data: { id, readStatus: 'Read', alreadyRead, mirroredToDesktop } }
+//
+// After RingCentral accepts it, the read is mirrored into the desktop's own
+// store (pegII), best-effort: `mirroredToDesktop` is false when the tenant has
+// no pegII site, the site predates `pegii.text-messages.v1`, the desktop hasn't
+// archived the message yet, or the mirror failed. It never fails the call.
 //   404 NOT_FOUND            unknown message id (or RingCentral no longer has it)
 //   409 UNSUPPORTED_SOURCE   a thread-store message (not addressable here)
 //   409 NO_CONNECTION        the tenant has no active RingCentral connection
@@ -213,7 +261,7 @@ smsHandler.post(
   meterUsage(Actions.UpdateTextMessage),
   async (c) => {
     const id = c.req.param('id') ?? ''
-    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    if (!MESSAGE_UUID_RE.test(id)) {
       return c.json({ error: 'id must be a message uuid', code: 'VALIDATION_ERROR' }, 400)
     }
     if (!readOAuthConfig()) {
@@ -249,8 +297,14 @@ smsHandler.post(
 
     try {
       const result = await setMessageReadStatus(connection, message.externalId, 'Read')
+      const mirroredToDesktop = await mirrorReadToDesktop(c, message.externalId)
       return c.json({
-        data: { id, readStatus: result.readStatus, alreadyRead: !result.changed },
+        data: {
+          id,
+          readStatus: result.readStatus,
+          alreadyRead: !result.changed,
+          mirroredToDesktop,
+        },
       })
     } catch (err) {
       if (err instanceof RateLimitError) {
@@ -268,6 +322,63 @@ smsHandler.post(
     }
   },
 )
+
+// ---------------------------------------------------------------------------
+// GET /messages/:id/links — which orders and employees the message's
+// conversation is linked to, read from the legacy desktop's tables on the
+// tenant's pegII site (`pegii.text-messages.v1`, NW pulse Phase 7):
+//
+//   200 { data: { id, externalId, conversationId, desktopReadStatus,
+//                 orderIds[], driverCodes[], employeeCodes[] } }
+//
+// `orderIds` are the conversation's Shipper links (each an order number);
+// `driverCodes` its Driver links, raw — a driver is not resolved to an order.
+// The desktop archives a message on its next sync pass, so a very new message
+// answers nulls and empty lists, never 404. RingCentral message-store messages
+// only (409 UNSUPPORTED_SOURCE otherwise). A tenant without a pegII site → 503;
+// a site without the capability → 503 PEGII_CAPABILITY_MISSING.
+// ---------------------------------------------------------------------------
+smsHandler.get('/messages/:id/links', requirePermission(Actions.ReadTextMessage), async (c) => {
+  const id = c.req.param('id') ?? ''
+  if (!MESSAGE_UUID_RE.test(id)) {
+    return c.json({ error: 'id must be a message uuid', code: 'VALIDATION_ERROR' }, 400)
+  }
+  const message = await c.get('db').message.findFirst({ where: { id } })
+  if (!message) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404)
+  if (message.source !== 'V1_STORE' || !PEGII_TEXT_MESSAGE_ID_RE.test(message.externalId)) {
+    return c.json(
+      {
+        error: 'Only RingCentral message-store messages are linked in the desktop',
+        code: 'UNSUPPORTED_SOURCE',
+      },
+      409,
+    )
+  }
+
+  try {
+    const gateway = await resolveMemoGateway(c.get('db'), c.get('tenantId'), () =>
+      resolvePegiiCaller(c),
+    )
+    const links = await gateway.getTextMessageLinks(message.externalId)
+    return c.json({
+      data: {
+        id,
+        externalId: message.externalId,
+        conversationId: links.conversationId,
+        desktopReadStatus: desktopReadStatus(links.readStatus),
+        orderIds: links.orderNumbers.map(String),
+        driverCodes: links.driverCodes,
+        employeeCodes: links.employeeCodes,
+      },
+    })
+  } catch (err) {
+    if (err instanceof PegiiApiError) {
+      const { status, code, message: error } = pegiiApiErrorToHttp(err)
+      return c.json({ error, code }, status)
+    }
+    throw err
+  }
+})
 
 // ---------------------------------------------------------------------------
 // GET /opt-outs/:phoneE164 — opt-out state for one number. A number with no
