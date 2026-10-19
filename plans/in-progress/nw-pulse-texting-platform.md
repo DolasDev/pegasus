@@ -19,10 +19,13 @@
   - The cloud identity blocker (I1 + I2) cleared: NW's site has had cloud auth on since 2026-10-15 (`plans/in-progress/cloud-identity-and-companies.md`).
   - pegasus side DONE 2026-10-16 (branch `feat/pulse-order-search`): `GET /api/v1/pegii/orders/search` → `search_orders`, gated on `pegii.orders.search.v1`; `list_orders` deprecated (D4) and its stub deleted; DTO `Delivery` → `DelResidence`; docs. See "As built" under Phase 5.
   - **Not yet verified on NW:** that NW's deployed pegII (`2026.10.10.1`) advertises `pegii.orders.search.v1`. Probe `/version` before the Phase 8 dry run.
-- [ ] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK **0.52.0** (+ desktop guard fix). Code-complete 2026-10-16; see "As built" under Phase 6.
-  - movemanager: branch `feat/api-task-create-close` (plan `api-task-create-close.md`, D17–D28 approved by Steve 2026-10-16). Pushed, **not on `dev`**. It lands after checklist item 0: the `TriggerTasksUpdate` body, the `Tasks.id` identity check and the desktop login's grant on the sidecar, read on PegNW + pegQMM. Those reads need AWS SSO.
-  - pegasus: branch `feat/pulse-tasks`, gated on `pegii.tasks.v1`, so it is safe to merge before any site has the endpoints.
-- [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK 0.45.0
+- [x] **Phase 6** — [movemanager → pegasus] Tasks: create, get/list, close by id → SDK **0.52.0** (+ desktop guard fix). See "As built" under Phase 6.
+  - pegasus #858 merged 2026-10-16 (`ca721b92`); `sdk-python-v0.52.0` published.
+  - movemanager landed on `dev` 2026-10-19 (`d5b2b8b7`, plan archived `e570c0d-api-task-create-close.md`). Item 0 (prod trigger/identity/grant reads) passed 2026-10-16; item 6 (Windows round trip on the PegNW clone) passed 2026-10-19.
+  - Live for NW only once its site runs that build (`/version` lists `pegii.tasks.v1`) and its desktop is on the MSIX with the guard fix.
+- [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK **0.53.0**. Code-complete 2026-10-19; see "As built" under Phase 7.
+  - movemanager: branch `feat/api-memos-and-text-read` (plan `api-memos-and-text-read.md`, D29–D35 approved by Steve 2026-10-19). Not on `dev`: item 0 (prod reads: `TriggerMemoInsert` body, `memo_id` identity, the text tables' types) needs AWS SSO; item 5 (Windows round trip) is Steve's.
+  - pegasus: branch `feat/pulse-memos`, gated on `pegii.memos.v1` / `pegii.text-messages.v1`, so it is safe to merge before any site has the endpoints.
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
 
 **Metering rule (added 2026-09-30):** every new outward-mutating action in Phases 6 and 7 (`CreateTask`, `WriteOrderMemo`) must be metered in the same PR: add it to `apps/api/src/lib/usage/billable-actions.ts` (whose test pins the list), put `meterUsage(Actions.X)` after `requirePermission` on its route, and add it to the SDK README's billable list. `SendEmail` (Phase 3) is already metered. See `plans/completed/usage-metering.md` Phase 5. The meter, plans and Usage pages shipped together (Phases 1–4), so NW billing can start once NW has a plan assigned in admin-web. **SDK 0.43.0 was taken by `get_usage_summary`**, so this plan's SDK version numbers shift up by one from Phase 5 on.
@@ -411,24 +414,39 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
   - NW company `systemEmployeeCode` set (else `completed_by = 0`);
   - after the pegasus merge: tag `sdk-python-v0.52.0` and update the authoring `CLAUDE.md`.
 
-## Phase 7 — Memos + text read-mirror + conversation links → SDK 0.45.0
+## Phase 7 — Memos + text read-mirror + conversation links → SDK 0.53.0
 
 **Constraint (S7):** a trigger on `memos` matches `%REJECTED%` in `action` and spawns a system memo, so `action` must carry a fixed template, never raw customer text. Put the reply excerpt in `regarding` or `next_action`, whichever the desktop shows. Confirm which one in the movemanager plan.
 
+> **Superseded by movemanager D31 (Steve, 2026-10-19):** `action` is the only column the desktop shows in full ("Notes:", 1000; `regarding` shows only in the edit pane, uppercased, and the grid cuts `next_action` to 50). So the caller's `subject` → `regarding` and `text` → `action`. The site refuses (400 `MEMO_TEXT_TRIGGERS_REJECTION`) any `text` containing "rejected" rather than writing it. Whether the trigger really matches on `action` is settled by movemanager item 0 (the trigger body), which can turn the guard off.
+
 **movemanager** (plan `api-memos-and-text-read.md`):
 
-- [ ] **`POST /api/v1/pegii/orders/{orderNumber}/memos`** `{text, memoType, idempotencyKey?}`.
+- [x] **`POST /api/v1/pegii/orders/{orderNumber}/memos`** `{text, memoType, idempotencyKey?}`. _(As built: `subject` is required too, D31; see As built.)_
   - Writes `memos` with `source='O'`, the order link and `memo_shipper`; `regarding`="Pulse survey"-style text; `action` = text; `created_by`/`who_called` = the system employee; `call_date/time` = now; `memo_type` per S7.
   - Mirrors the `AtlasMonitorWorker` field set; an integration test asserts the VB `IO.SaleMemo` reads it back.
   - Memo types live in `Pegasus.Domain/Sale/MemoType` (the enum re-declared with a parity test, as in Phase 5).
-- [ ] **`POST /api/v1/pegii/text-messages/{messageId}/read`**: `UPDATE TextMessageStore SET ReadStatus=1 WHERE MessageId=@id`. A missing row returns 200 `{applied:false}` (the reconciliation hasn't archived it yet). It is **a mirror only**; RingCentral is authoritative (Phase 2).
-- [ ] **`GET /api/v1/pegii/text-messages/{messageId}/links`** → `{conversationId, readStatus, orderNumbers[] (recipient_textconversation), employeeCodes[] (employee_textconversation)}`. Also 200 with nulls when the row doesn't exist yet.
+- [x] **`POST /api/v1/pegii/text-messages/{messageId}/read`**: `UPDATE TextMessageStore SET ReadStatus=1 WHERE MessageId=@id`. A missing row returns 200 `{applied:false}` (the reconciliation hasn't archived it yet). It is **a mirror only**; RingCentral is authoritative (Phase 2).
+- [x] **`GET /api/v1/pegii/text-messages/{messageId}/links`** → `{conversationId, readStatus, orderNumbers[] (recipient_textconversation), employeeCodes[] (employee_textconversation)}`. Also 200 with nulls when the row doesn't exist yet.
 
 **pegasus:**
 
-- [ ] `add_order_memo(order_id, text, memo_type, dedup_key)` (`WriteOrderMemo`); `get_text_message_links(message_id)` (`ReadTextMessage`).
-- [ ] `mark_text_message_read` (Phase 2) additionally calls the pegII mirror, best-effort (logged, never fails the call).
-- [ ] Discoverability checklist.
+- [x] `add_order_memo(order_id, text, memo_type, dedup_key)` (`WriteOrderMemo`); `get_text_message_links(message_id)` (`ReadTextMessage`). _(As built: `add_order_memo(order_id, memo_type, subject, text, …)`, plus `list_memo_types()`.)_
+- [x] `mark_text_message_read` (Phase 2) additionally calls the pegII mirror, best-effort (logged, never fails the call).
+- [x] Discoverability checklist. _(README, CHANGELOG, MCP guide, OpenAPI, `testing` harness; the authoring `CLAUDE.md` after merge.)_
+
+**As built (2026-10-19):**
+
+- **movemanager** (`feat/api-memos-and-text-read`; its plan is the full record). Four routes:
+  - `POST /api/v1/pegii/orders/{n}/memos` `{memoType 1-7, subject, text, nextAction?, nextDate?, personCode?, idempotencyKey?}` (`pegii.memos.v1`). The row is the desktop's own `New SaleMemo` (`source='O'`, `order_memo` = `master_id`, `memo_status='N'`); `person` defaults to the order's coordinator (D30), `next_date` to today (D33), `who_called` is the `emp` employee's name, else `PEGASUS` (D32); key stored as `memo:<key>`.
+  - `GET /api/v1/pegii/memo-types` → `{company, items}`: the per-company labels the desktop's edit control uses (D29). The company comes from the site database's own branches, so one site serving several companies still answers right.
+  - `POST /api/v1/pegii/text-messages/{id}/read` → `{messageId, applied}` and `GET …/links` → `{conversationId, readStatus, orderNumbers, driverCodes, employeeCodes}` (`pegii.text-messages.v1`). Drivers are not resolved to orders (D34).
+- **pegasus** (`feat/pulse-memos`):
+  - `POST /pegii/orders/:orderId/memos` (`WriteOrderMemo`: Cedar trio, granted to `workflow_runtime`, metered as `memo:<id>`; an `alreadyExists` replay is free) and `GET /pegii/memo-types` (`ReadOrder`), through a `MemoGateway` gated per call on the capability.
+  - `GET /sms/messages/:id/links` (`ReadTextMessage`): the cloud message's RingCentral id (`externalId`) → the site's links; `orderIds` are strings.
+  - `POST /sms/messages/:id/read` mirrors into the desktop store after RingCentral accepts, best-effort; the result gains `mirroredToDesktop`.
+  - SDK **0.53.0**: `add_order_memo`, `list_memo_types`, `get_text_message_links`; usage label "Order memos added".
+- **Owed:** movemanager item 0 then landing on `dev`; item 5 (Windows); NW's `/version` advertising both capabilities; after the pegasus merge, tag `sdk-python-v0.53.0` and update the authoring `CLAUDE.md`.
 
 ## Phase 8 — NW enablement + end-to-end test move (ops)
 
