@@ -142,7 +142,7 @@ describe('createPegiiMemoGateway — text messages', () => {
     expect(get).toHaveBeenCalledWith('/api/v1/pegii/text-messages/4455/links')
   })
 
-  it.each(['', '../orders/1', '44 55', 'x'.repeat(101)])(
+  it.each(['', '../orders/1', '44 55', 'x'.repeat(65)])(
     'refuses a message id (%j) that is not a pegII id before building a path',
     async (id) => {
       const post = vi.fn()

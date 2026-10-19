@@ -24,7 +24,7 @@
   - movemanager landed on `dev` 2026-10-19 (`d5b2b8b7`, plan archived `e570c0d-api-task-create-close.md`). Item 0 (prod trigger/identity/grant reads) passed 2026-10-16; item 6 (Windows round trip on the PegNW clone) passed 2026-10-19.
   - Live for NW only once its site runs that build (`/version` lists `pegii.tasks.v1`) and its desktop is on the MSIX with the guard fix.
 - [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK **0.53.0**. Code-complete 2026-10-19; see "As built" under Phase 7.
-  - movemanager: branch `feat/api-memos-and-text-read` (plan `api-memos-and-text-read.md`, D29–D35 approved by Steve 2026-10-19). Not on `dev`: item 0 (prod reads: `TriggerMemoInsert` body, `memo_id` identity, the text tables' types) needs AWS SSO; item 5 (Windows round trip) is Steve's.
+  - movemanager: branch `feat/api-memos-and-text-read` (plan `api-memos-and-text-read.md`, D29–D35 approved by Steve 2026-10-19), pushed, not on `dev`. Item 0 (prod reads) passed 2026-10-19; item 5 (Windows round trip) is Steve's, then it lands.
   - pegasus: branch `feat/pulse-memos`, gated on `pegii.memos.v1` / `pegii.text-messages.v1`, so it is safe to merge before any site has the endpoints.
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
 
@@ -418,7 +418,9 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
 **Constraint (S7):** a trigger on `memos` matches `%REJECTED%` in `action` and spawns a system memo, so `action` must carry a fixed template, never raw customer text. Put the reply excerpt in `regarding` or `next_action`, whichever the desktop shows. Confirm which one in the movemanager plan.
 
-> **Superseded by movemanager D31 (Steve, 2026-10-19):** `action` is the only column the desktop shows in full ("Notes:", 1000; `regarding` shows only in the edit pane, uppercased, and the grid cuts `next_action` to 50). So the caller's `subject` → `regarding` and `text` → `action`. The site refuses (400 `MEMO_TEXT_TRIGGERS_REJECTION`) any `text` containing "rejected" rather than writing it. Whether the trigger really matches on `action` is settled by movemanager item 0 (the trigger body), which can turn the guard off.
+> **Item 0 (2026-10-19) confirmed S7 on PegNW:** `TriggerMemoInsert` inserts a "REG HAS BEEN REJECTED" memo for the order's operations person whenever an inserted memo's `action` is `LIKE '%REJECTED%'` (case-insensitive collation). PegQMM has no memo trigger.
+>
+> **Superseded by movemanager D31 (Steve, 2026-10-19):** `action` is the only column the desktop shows in full ("Notes:", 1000; `regarding` shows only in the edit pane, uppercased, and the grid cuts `next_action` to 50). So the caller's `subject` → `regarding` and `text` → `action`. The site refuses (400 `MEMO_TEXT_TRIGGERS_REJECTION`) any `text` containing "rejected" rather than writing it. The guard stays on, on every site, so the contract is one everywhere.
 
 **movemanager** (plan `api-memos-and-text-read.md`):
 
@@ -438,7 +440,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 **As built (2026-10-19):**
 
 - **movemanager** (`feat/api-memos-and-text-read`; its plan is the full record). Four routes:
-  - `POST /api/v1/pegii/orders/{n}/memos` `{memoType 1-7, subject, text, nextAction?, nextDate?, personCode?, idempotencyKey?}` (`pegii.memos.v1`). The row is the desktop's own `New SaleMemo` (`source='O'`, `order_memo` = `master_id`, `memo_status='N'`); `person` defaults to the order's coordinator (D30), `next_date` to today (D33), `who_called` is the `emp` employee's name, else `PEGASUS` (D32); key stored as `memo:<key>`.
+  - `POST /api/v1/pegii/orders/{n}/memos` `{memoType 1-7, subject, text, nextAction?, nextDate?, personCode?, idempotencyKey?}` (`pegii.memos.v1`). The row is the desktop's own `New SaleMemo` (`source='O'`, `order_memo` = `master_id`, `memo_status='N'`); `person` defaults to the order's coordinator (D30), `next_date` to today (D33), `who_called` is the `emp` employee's name, last then first ("PEGASUS GENERATED" on NW), else `PEGASUS` (D32; PegQMM has no employee 1001); key stored as `memo:<key>`.
   - `GET /api/v1/pegii/memo-types` → `{company, items}`: the per-company labels the desktop's edit control uses (D29). The company comes from the site database's own branches, so one site serving several companies still answers right.
   - `POST /api/v1/pegii/text-messages/{id}/read` → `{messageId, applied}` and `GET …/links` → `{conversationId, readStatus, orderNumbers, driverCodes, employeeCodes}` (`pegii.text-messages.v1`). Drivers are not resolved to orders (D34).
 - **pegasus** (`feat/pulse-memos`):
@@ -446,7 +448,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
   - `GET /sms/messages/:id/links` (`ReadTextMessage`): the cloud message's RingCentral id (`externalId`) → the site's links; `orderIds` are strings.
   - `POST /sms/messages/:id/read` mirrors into the desktop store after RingCentral accepts, best-effort; the result gains `mirroredToDesktop`.
   - SDK **0.53.0**: `add_order_memo`, `list_memo_types`, `get_text_message_links`; usage label "Order memos added".
-- **Owed:** movemanager item 0 then landing on `dev`; item 5 (Windows); NW's `/version` advertising both capabilities; after the pegasus merge, tag `sdk-python-v0.53.0` and update the authoring `CLAUDE.md`.
+- **Owed:** movemanager item 5 (Windows) then landing on `dev`; NW's `/version` advertising both capabilities; after the pegasus merge, tag `sdk-python-v0.53.0` and update the authoring `CLAUDE.md`.
 
 ## Phase 8 — NW enablement + end-to-end test move (ops)
 

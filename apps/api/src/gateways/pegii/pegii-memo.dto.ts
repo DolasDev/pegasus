@@ -74,5 +74,8 @@ export interface PegiiTextMessageLinksDto {
   employeeCodes: string[]
 }
 
-/** The site's own limit (movemanager `TextMessageIds`): 1–100 of `[A-Za-z0-9_-]`. */
-export const PEGII_TEXT_MESSAGE_ID_RE = /^[A-Za-z0-9_-]{1,100}$/
+/**
+ * The site's own limit (movemanager `TextMessageIds`): 1–64 of `[A-Za-z0-9_-]`;
+ * `TextMessageStore.MessageId` is `nvarchar(64)` on the sites.
+ */
+export const PEGII_TEXT_MESSAGE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
