@@ -146,6 +146,12 @@ export const TENANT_SCOPED_MODELS = new Set([
   // /availability-filters. Public filters are public WITHIN the tenant only,
   // which this scoping guarantees even if a visibility predicate is wrong.
   'AvailabilityFilter',
+  // Move chat — rooms, messages and per-user member rows. All tenant-owned and
+  // served only through the scoped client on /chat; the push fan-out resolves
+  // recipients inside the same request, so nothing reads these cross-tenant.
+  'ChatRoom',
+  'ChatMessage',
+  'ChatRoomMember',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the

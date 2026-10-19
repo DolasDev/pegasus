@@ -20,6 +20,7 @@ export type TenantUserRow = {
   legacyWindowsUsername: string | null
   /** Legacy longhaul driver id (v_longhaul_drivers.driver_id) this login maps to. */
   longhaulDriverId: number | null
+  localDriverEmployeeId: number | null
   roleNames: string[]
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: Date
@@ -38,6 +39,7 @@ const USER_SELECT = {
   cognitoSub: true,
   legacyWindowsUsername: true,
   longhaulDriverId: true,
+  localDriverEmployeeId: true,
   roleNames: true,
   status: true,
   invitedAt: true,
@@ -148,6 +150,17 @@ export function createUsersRepository(db: PrismaClient) {
       return db.tenantUser.update({
         where: { id },
         data: { longhaulDriverId },
+        select: USER_SELECT,
+      })
+    },
+
+    updateLocalDriverEmployeeId(
+      id: string,
+      localDriverEmployeeId: number | null,
+    ): Promise<TenantUserRow> {
+      return db.tenantUser.update({
+        where: { id },
+        data: { localDriverEmployeeId },
         select: USER_SELECT,
       })
     },

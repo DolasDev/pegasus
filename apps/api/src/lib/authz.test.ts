@@ -89,9 +89,16 @@ describe('authorize — offline (cedar-wasm)', () => {
   })
 
   // Every authenticated principal — regardless of role — may read and upload
-  // documents (50-documents-shared.cedar, unconstrained permit). This baseline
-  // therefore shows up in every persona's allowed set below.
-  const DOC_BASELINE = [Actions.ReadDocument.id, Actions.UploadDocument.id]
+  // documents (50-documents-shared.cedar) and read and post in move chat
+  // (55-chat-shared.cedar); both are unconstrained permits. This shared
+  // baseline therefore shows up in every persona's allowed set below — and a
+  // stray persona permit still shows up as an extra id.
+  const SHARED_BASELINE = [
+    Actions.ReadDocument.id,
+    Actions.UploadDocument.id,
+    Actions.ReadChat.id,
+    Actions.PostChat.id,
+  ]
 
   it('sales matches its persona policy (invariant c)', async () => {
     const ids = new Set(await allowedActionIds(principal(['sales'])))
@@ -108,7 +115,7 @@ describe('authorize — offline (cedar-wasm)', () => {
         // Reporting routes are open to every human persona; the datasets a
         // sales user actually sees are still gated by the actions above.
         Actions.ReadReportingDataset.id,
-        ...DOC_BASELINE,
+        ...SHARED_BASELINE,
       ]),
     )
   })
@@ -128,33 +135,33 @@ describe('authorize — offline (cedar-wasm)', () => {
         // billing/accounting role: may also delete/archive documents.
         Actions.DeleteDocument.id,
         Actions.ReadReportingDataset.id,
-        ...DOC_BASELINE,
+        ...SHARED_BASELINE,
       ]),
     )
   })
 
-  it('a pure placeholder persona grants only the shared document baseline (invariant f)', async () => {
+  it('a pure placeholder persona grants only the shared baseline (invariant f)', async () => {
     // The placeholder Cedar files for the legacy-derived personas
     // (operations_admin, coordinator, senior_management, …) carry no permit
     // clause of their own, so assigning such a role grants nothing BEYOND the
     // universal document read/upload baseline — a stray persona permit would
     // show up here as an extra id.
     const ids = new Set(await allowedActionIds(principal(['operations_admin'])))
-    expect(ids).toEqual(new Set(DOC_BASELINE))
+    expect(ids).toEqual(new Set(SHARED_BASELINE))
   })
 
   it('billing_manager may delete documents (billing/accounting role)', async () => {
     const ids = new Set(await allowedActionIds(principal(['billing_manager'])))
     expect(ids).toEqual(
-      new Set([Actions.DeleteDocument.id, Actions.ReadReportingDataset.id, ...DOC_BASELINE]),
+      new Set([Actions.DeleteDocument.id, Actions.ReadReportingDataset.id, ...SHARED_BASELINE]),
     )
   })
 
-  it('empty-roles principal gets only the shared document baseline (invariant d)', async () => {
+  it('empty-roles principal gets only the shared baseline (invariant d)', async () => {
     // Fail-closed for everything role-gated; the only cross-role grant is the
     // universal document read/upload baseline (50-documents-shared.cedar).
     const ids = new Set(await allowedActionIds(principal([])))
-    expect(ids).toEqual(new Set(DOC_BASELINE))
+    expect(ids).toEqual(new Set(SHARED_BASELINE))
   })
 
   it('decision source is "offline" when no policyStoreId is provided', async () => {
@@ -238,7 +245,7 @@ describe('listAllowedPermissions — offline', () => {
     expect(new Set(perms)).toEqual(new Set(ALL_ACTIONS.map((a) => a.permission)))
   })
 
-  it('returns the viewer read set plus the shared document baseline', async () => {
+  it('returns the viewer read set plus the shared baseline', async () => {
     const perms = await listAllowedPermissions(principal(['viewer']), undefined, undefined)
     expect(new Set(perms)).toEqual(
       new Set([
@@ -257,14 +264,21 @@ describe('listAllowedPermissions — offline', () => {
         // Universal document baseline (upload is a write, but granted to all).
         Actions.ReadDocument.permission,
         Actions.UploadDocument.permission,
+        Actions.ReadChat.permission,
+        Actions.PostChat.permission,
       ]),
     )
   })
 
-  it('returns only the shared document baseline for an empty-roles principal', async () => {
+  it('returns only the shared baseline for an empty-roles principal', async () => {
     const perms = await listAllowedPermissions(principal([]), undefined, undefined)
     expect(new Set(perms)).toEqual(
-      new Set([Actions.ReadDocument.permission, Actions.UploadDocument.permission]),
+      new Set([
+        Actions.ReadDocument.permission,
+        Actions.UploadDocument.permission,
+        Actions.ReadChat.permission,
+        Actions.PostChat.permission,
+      ]),
     )
   })
 })

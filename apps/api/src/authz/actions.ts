@@ -41,6 +41,7 @@ export type ResourceType =
   | 'EventType'
   | 'Blob'
   | 'Document'
+  | 'ChatRoom'
   | 'Feedback'
   | 'Report'
   | 'Usage'
@@ -425,6 +426,21 @@ export const Actions = {
     id: 'DeleteDocument',
     resourceType: 'Document',
     permission: 'document:delete',
+  },
+  // ── Move chat (a chat room per move) ──────────────────────────────────────
+  // Granted to every authenticated user (55-chat-shared.cedar). WHICH rooms a
+  // caller may read/post in is decided in the handler (handlers/chat.ts +
+  // lib/chat-access.ts): employees read every room, driver-scoped logins only
+  // the moves they're assigned to.
+  ReadChat: {
+    id: 'ReadChat',
+    resourceType: 'ChatRoom',
+    permission: 'chat:read',
+  },
+  PostChat: {
+    id: 'PostChat',
+    resourceType: 'ChatRoom',
+    permission: 'chat:post',
   },
   // ── Feedback (magic-link surveys) ─────────────────────────────────────────
   // ManageFeedbackForms gates the SDK/CLI authoring surface (validate / publish /

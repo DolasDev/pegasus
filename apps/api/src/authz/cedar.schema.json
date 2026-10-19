@@ -170,6 +170,13 @@
           "attributes": {}
         }
       },
+      "ChatRoom": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "Feedback": {
         "memberOfTypes": [],
         "shape": {
@@ -417,6 +424,12 @@
       },
       "DeleteDocument": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Document"] }
+      },
+      "ReadChat": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ChatRoom"] }
+      },
+      "PostChat": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ChatRoom"] }
       },
       "WriteIntegrationProjection": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationProjection"] }

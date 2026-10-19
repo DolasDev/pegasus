@@ -33,6 +33,7 @@ const { mockSend, mockRepo, mockTenantFindUnique, mockTenantUserFindFirst } = vi
     updateRoleNames: vi.fn(),
     updateLegacyWindowsUsername: vi.fn(),
     updateLonghaulDriverId: vi.fn(),
+    updateLocalDriverEmployeeId: vi.fn(),
     deactivate: vi.fn(),
     reactivate: vi.fn(),
     countAdmins: vi.fn(),
@@ -145,6 +146,7 @@ const mockUserRow = {
   cognitoSub: null,
   legacyWindowsUsername: null,
   longhaulDriverId: null,
+  localDriverEmployeeId: null,
   role: 'USER' as const,
   roleNames: ['viewer'],
   status: 'PENDING' as const,
@@ -400,6 +402,35 @@ describe('users handler', () => {
       const res = await buildApp().request('/user-1', patch({ longhaulDriverId: 0 }))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('sets the local driver id independently of the longhaul one', async () => {
+      mockRepo.findById.mockResolvedValue(mockUserRow)
+      mockRepo.updateLocalDriverEmployeeId.mockResolvedValue({
+        ...mockUserRow,
+        localDriverEmployeeId: 71486,
+      })
+      const res = await buildApp().request('/user-1', patch({ localDriverEmployeeId: 71486 }))
+      expect(res.status).toBe(200)
+      expect(mockRepo.updateLocalDriverEmployeeId).toHaveBeenCalledWith('user-1', 71486)
+      expect(mockRepo.updateLonghaulDriverId).not.toHaveBeenCalled()
+      expect(((await json(res)).data as JsonBody)['localDriverEmployeeId']).toBe(71486)
+    })
+
+    it('clears the local driver id when null', async () => {
+      mockRepo.findById.mockResolvedValue({ ...mockUserRow, localDriverEmployeeId: 71486 })
+      mockRepo.updateLocalDriverEmployeeId.mockResolvedValue({
+        ...mockUserRow,
+        localDriverEmployeeId: null,
+      })
+      const res = await buildApp().request('/user-1', patch({ localDriverEmployeeId: null }))
+      expect(res.status).toBe(200)
+      expect(mockRepo.updateLocalDriverEmployeeId).toHaveBeenCalledWith('user-1', null)
+    })
+
+    it('rejects a non-positive local driver id', async () => {
+      const res = await buildApp().request('/user-1', patch({ localDriverEmployeeId: -3 }))
+      expect(res.status).toBe(400)
     })
   })
 

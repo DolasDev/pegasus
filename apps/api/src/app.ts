@@ -23,6 +23,8 @@ import { settingsPegiiHandler } from './handlers/settings-pegii'
 import { jwksHandler } from './handlers/jwks'
 import { settingsCompaniesHandler } from './handlers/settings-companies'
 import { documentsHandler } from './handlers/documents'
+import { chatHandler } from './handlers/chat'
+import { localDriversHandler } from './handlers/local-drivers'
 import { availabilityFiltersHandler } from './handlers/availability-filters'
 import { workflowsHandler } from './handlers/workflows'
 import { workflowInternalHandler } from './handlers/workflow-internal'
@@ -444,6 +446,11 @@ v1.route('/desktop', desktopHandler)
 // /sms moved to the m2mV1 (dual-auth) router above — see note there.
 v1.route('/sso', ssoHandler)
 v1.route('/users', usersHandler)
+// Settings → Users picker for a login's local driver id (move chat access).
+v1.route('/local-drivers', localDriversHandler)
+// Move chat: a room per move for employees + the move's assigned drivers. On the
+// Cognito-only router on purpose — no API client or service account reaches it.
+v1.route('/chat', chatHandler)
 v1.route('/customers', customersHandler)
 v1.route('/quotes', quotesHandler)
 v1.route('/rating', ratingHandler)

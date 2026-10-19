@@ -318,6 +318,11 @@ model Tenant {
   availabilityFilters    AvailabilityFilter[]
   pushNotificationOutbox PushNotificationOutbox[]
 
+  // Move chat
+  chatRooms       ChatRoom[]
+  chatMessages    ChatMessage[]
+  chatRoomMembers ChatRoomMember[]
+
   // Longhaul — archived (rejected/canceled) trip snapshots
   archivedTrips ArchivedTrip[]
 
@@ -479,6 +484,14 @@ model TenantUser {
   /// no trips in the mobile app.
   longhaulDriverId Int? @map("longhaul_driver_id")
 
+  /// Legacy local driver id (`crews.employee_id`, the value movemanager writes
+  /// into `LocalDispatchJobs.driver_id1/2`). Set by tenant admins next to
+  /// `longhaulDriverId` so a local driver's login can reach the moves their
+  /// local jobs belong to (move chat). Kept separate from `longhaulDriverId` on
+  /// purpose: at some tenants the two numbering spaces collide on different
+  /// people (see GOTCHAS, "Crew number ≠ driver number is tenant-specific").
+  localDriverEmployeeId Int? @map("local_driver_employee_id")
+
   /// Cedar role-group memberships. Authoritative source for the
   /// `custom:roles` Cognito claim emitted by the pre-token Lambda.
   roleNames     String[]         @default([]) @map("role_names")
@@ -515,10 +528,12 @@ model TenantUser {
   apiClientsActedAs ApiClient[] @relation("ApiClientActsAs")
   crewMember        CrewMember?
 
-  deviceTokens       DeviceToken[]
+  deviceTokens        DeviceToken[]
   availabilityFilters AvailabilityFilter[]
-  pushNotifications  PushNotificationOutbox[]
-  companyMemberships CompanyMembership[]
+  pushNotifications   PushNotificationOutbox[]
+  chatMessages        ChatMessage[]
+  chatRoomMembers     ChatRoomMember[]
+  companyMemberships  CompanyMembership[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3415,5 +3430,86 @@ model AvailabilityFilter {
   @@index([tenantId, ownerId])
   @@index([tenantId, isPublic])
   @@map("availability_filters")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Move chat — a chat room per move for office staff and assigned drivers.
+// Plan: plans/in-progress/move-chat-api.md. Access is decided in the API
+// (lib/chat-access.ts), never by these rows: a member row is a follow/read
+// cursor, not a grant.
+// ---------------------------------------------------------------------------
+
+/// One room per (tenant, entityType, entityId). Created on the first post; a
+/// read of a room that doesn't exist yet answers as an empty room. Polymorphic
+/// like Document so cloud `move` rooms need no migration (v1: `shipment`, keyed
+/// by the legacy `order_num`).
+model ChatRoom {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  entityType    String    @map("entity_type")
+  entityId      String    @map("entity_id")
+  lastMessageAt DateTime? @map("last_message_at") @db.Timestamptz(6)
+  /// Denormalized pointer to the newest message, so the inbox reads every
+  /// room's preview in one query. No FK: messages are never hard-deleted.
+  lastMessageId String?   @map("last_message_id")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  messages ChatMessage[]
+  members  ChatRoomMember[]
+
+  @@unique([tenantId, entityType, entityId])
+  @@index([tenantId, lastMessageAt])
+  @@map("chat_rooms")
+  @@schema("public")
+}
+
+/// A message. Business record: never purged. Deleting blanks the body and sets
+/// `deletedAt`, keeping the row for audit. `clientMessageId` is the sender's
+/// idempotency key, so an offline queue's resends are stored once.
+model ChatMessage {
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  roomId           String    @map("room_id")
+  authorUserId     String    @map("author_user_id")
+  clientMessageId  String    @map("client_message_id")
+  body             String
+  mentionedUserIds String[]  @default([]) @map("mentioned_user_ids")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  room   ChatRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  author TenantUser @relation(fields: [authorUserId], references: [id], onUpdate: Cascade)
+
+  @@unique([tenantId, authorUserId, clientMessageId])
+  @@index([roomId, createdAt])
+  @@map("chat_messages")
+  @@schema("public")
+}
+
+/// A user's relationship to a room: follow/mute state and read cursor. Written
+/// on first read, post, mention or follow change. Unread = messages after
+/// `lastReadAt`. `accessCheckedAt` is the persisted access cache for
+/// driver-scoped callers (their access check needs the legacy database; the
+/// 3-second poll must not), stamped whenever a full check passes.
+model ChatRoomMember {
+  roomId          String    @map("room_id")
+  tenantId        String    @map("tenant_id")
+  userId          String    @map("user_id")
+  following       Boolean   @default(false)
+  muted           Boolean   @default(false)
+  lastReadAt      DateTime? @map("last_read_at") @db.Timestamptz(6)
+  accessCheckedAt DateTime? @map("access_checked_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  room   ChatRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user   TenantUser @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([roomId, userId])
+  @@index([tenantId, userId])
+  @@map("chat_room_members")
   @@schema("public")
 }
