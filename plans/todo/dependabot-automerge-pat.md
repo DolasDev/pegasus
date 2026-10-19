@@ -145,9 +145,28 @@ instead of 18–21 minutes.
 > gh pr list --state open --author app/dependabot
 > ```
 
-**No subject is currently available — all of 2026-10-11's batch has merged** (#829, #831, #842;
-#830 was closed and superseded by #842). Nothing new as of **2026-10-15**. Ask with the command
-above; do not predict the day.
+**Re-checked 2026-10-19 — the App is still NOT configured** (no
+`DEPENDABOT_AUTOMERGE_APP_CLIENT_ID` variable, no `DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY` secret;
+verified, not assumed). Two Dependabot PRs are open and both are stuck: **#856** (mcp, 10-15) and
+**#861** (minor-and-patch ×29, 10-18).
+
+**Stage 1's remaining question is ANSWERED, and the answer came for free.** The policy gate's log
+line (added in #843) ran on both PRs:
+
+```
+PR #856 autoMergeRequest=true isInMergeQueue=false     (10-15 20:59)
+PR #861 autoMergeRequest=true isInMergeQueue=false     (10-18 08:41)
+```
+
+`autoMergeRequest=true` with `isInMergeQueue=false` is a **dormant auto-merge request held on a
+not-yet-green PR** — exactly the link this file flagged as unverified. GitHub accepts it. So the only
+thing left to prove is the one below.
+
+**#856 is also the clearest statement of what the missing App costs.** Policy marked it, `enqueue`
+queued it under `GITHUB_TOKEN`, no group run ever came, the entry was dropped at the 60-minute
+timeout — and auto-merge _converts into_ that entry, so the mark died with it. Four days on it is
+`CLEAN`, unqueued, `autoMergeRequest=null`, with nothing that will re-assert it. **A stalled
+Dependabot PR is not slow; it is finished, silently, with every check green.**
 
 **But those three produced the two best measurements this item has ever had.** #842 and #829 were
 each enqueued by the `enqueue` job under `GITHUB_TOKEN`, sat at position 1 `AWAITING_CHECKS` with
@@ -168,8 +187,9 @@ rejects (`Missing: … from lock file`, 17 packages). Fixed by regenerating with
 to its branch (a normal fast-forward push, which works; it is Dependabot's own _rebase_ that does
 not — see the runbook). `@dependabot recreate` does **not** fix that class.
 
-**The one unverified link, stated plainly.** Stage 1 proves the App token is minted and can _read_
-PR metadata. It does **not** prove that `enablePullRequestAutoMerge` /
+**The one unverified link, narrowed 2026-10-19.** Stage 1 proves the App token is minted and can
+_read_ PR metadata; the policy gate's own log now proves a dormant request is accepted under the
+queue. What remains unproven is that `enablePullRequestAutoMerge` /
 `disablePullRequestAutoMerge` behave identically under an **installation** token as under a PAT —
 installation tokens and PATs are not identical in what GraphQL exposes, and this could not be
 tested without a live Dependabot PR. Stage 2 covers it: if a `merge_group` run appears, both the
