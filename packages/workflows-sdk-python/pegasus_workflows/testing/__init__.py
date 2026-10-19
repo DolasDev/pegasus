@@ -95,6 +95,7 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     # Keyed on the KEY within the namespace (namespaces rarely vary in a test).
     "get_workflow_state": lambda a, k: a[1] if len(a) > 1 else k.get("key"),
     "get_text_message": lambda a, k: _first(a, k, "message_id"),
+    "get_text_message_links": lambda a, k: _first(a, k, "message_id"),
     "get_sms_opt_out": lambda a, k: _first(a, k, "phone"),
     "get_blob": lambda a, k: _first(a, k, "blob_id"),
     "get_blob_url": lambda a, k: _first(a, k, "blob_id"),
@@ -109,6 +110,7 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_orders": None,
     "search_orders": None,
     "list_tasks": None,
+    "list_memo_types": None,
     "list_salesmen": None,
     "list_projections": None,
     "list_workflow_state": None,
@@ -148,6 +150,7 @@ _MUTATIONS: dict[str, str] = {
     "create_task": "CreateTask",
     "close_task": "CloseTask",
     "update_order": "WriteOrder",
+    "add_order_memo": "WriteOrderMemo",
     "put_projection": "WriteIntegrationProjection",
     "delete_projection": "WriteIntegrationProjection",
     "put_workflow_state": "WriteWorkflowState",

@@ -306,12 +306,35 @@ reaches the site, which must advertise ``pegii.tasks.v1`` (else 503
   ``list_tasks(task_type=..., status="open", due_before=day)`` searches cloud-created
   tasks across orders (all pages). One of ``order_id`` / ``task_type`` is required.
 
+## pegII order memos and text-message links
+
+Memos are MoveManager's notes on an order and how the desktop asks a person to act.
+Memo calls need the site to advertise ``pegii.memos.v1``, text-message links
+``pegii.text-messages.v1`` (else 503 ``PEGII_CAPABILITY_MISSING``).
+
+- ``add_order_memo(order_id, memo_type, subject, text, *, next_action=None,
+  next_date=None, person_code=None, dedup_key=None)`` (``WriteOrderMemo``,
+  billable) puts a memo on ``person_code``'s "Memos I need to acknowledge" list
+  (default: the order's coordinator) from ``next_date`` (default: today).
+  - ``memo_type`` is a code 1-7 whose LABEL IS THE COMPANY'S (NW: 4 = Customer
+    Service; QMM: 4 = General). Pick by label from ``list_memo_types()``.
+  - ``subject`` = the memo's "Re:" (150, uppercased); ``text`` = its "Notes:" (1000).
+  - A site refuses text containing "rejected" (400 ``MEMO_TEXT_TRIGGERS_REJECTION``).
+  - ALWAYS pass a ``dedup_key``; a replay returns ``alreadyExists: True`` for free.
+- ``get_text_message_links(message_id)`` (``ReadTextMessage``) maps an
+  ``sms.received`` message to the desktop's ``orderIds`` / ``driverCodes`` /
+  ``employeeCodes``. A message the desktop hasn't archived yet answers empty
+  lists: retry later rather than treating it as "no order".
+- ``mark_text_message_read`` also mirrors the read into the desktop's copy,
+  best-effort (``mirroredToDesktop``).
+
 ## Billable actions (usage) — design Automations to be cheap
 
 Plans buy an ANNUAL pool of billable actions (Starter 6,000 / Growth 15,000 /
 Scale 50,000 per year). One action each: ``send_sms``, ``send_email``,
-``mark_text_message_read``, ``create_task``, ``close_task``, ``update_order`` (only when a value
-changed), ``deliver_to_external`` (partner accepted), and ``call_external`` with
+``mark_text_message_read``, ``create_task``, ``close_task``, ``add_order_memo``,
+``update_order`` (only when a value changed), ``deliver_to_external`` (partner
+accepted), and ``call_external`` with
 POST/PUT/PATCH/DELETE or
 ``mutating=True``. Free: every read (including ``call_external`` GET /
 ``mutating=False`` and ``api_get``), workflow state, runs/schedules/triggers,

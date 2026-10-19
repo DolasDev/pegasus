@@ -1320,11 +1320,18 @@ class PegasusClient:
         coordinator sees. Use it for replies that need no human attention (e.g.
         a rating-only reply). Idempotent.
 
+        Since 0.53.0 the read is also mirrored, best-effort, into the desktop's
+        own copy of the message on the tenant's pegII site, so its badge clears
+        before the desktop's next RingCentral sync. ``mirroredToDesktop`` says
+        whether that happened. It is ``False`` when the tenant has no pegII site,
+        the site predates ``pegii.text-messages.v1``, the desktop hasn't archived
+        the message yet, or the mirror failed. The mirror never fails the call.
+
         Args:
             message_id: The ``messageId`` from an ``sms.received`` event.
 
         Returns:
-            ``{id, readStatus, alreadyRead}``.
+            ``{id, readStatus, alreadyRead, mirroredToDesktop}``.
 
         Raises:
             PegasusApiError: On 404 (unknown message), 409
@@ -1334,7 +1341,13 @@ class PegasusClient:
             "UpdateTextMessage",
             "mark_text_message_read",
             {"message_id": message_id},
-            {"id": message_id, "readStatus": "Read", "alreadyRead": False, "dryRun": True},
+            {
+                "id": message_id,
+                "readStatus": "Read",
+                "alreadyRead": False,
+                "mirroredToDesktop": False,
+                "dryRun": True,
+            },
         )
         if captured is not _NOT_CAPTURED:
             return captured
@@ -1342,6 +1355,41 @@ class PegasusClient:
             response = client.post(f"/api/v1/sms/messages/{message_id}/read")
         _raise_for_status(response)
         return response.json()["data"]
+
+    def get_text_message_links(self, message_id: str) -> dict[str, Any]:
+        """Which orders and employees a captured text belongs to. Requires ``ReadTextMessage``.
+
+        Reads the legacy desktop's own conversation links, live from the
+        tenant's pegII site (``pegii.text-messages.v1``). This is how a workflow
+        reacting to ``sms.received`` finds the order a customer is replying about.
+
+        Args:
+            message_id: The ``messageId`` from an ``sms.received`` event.
+
+        Returns:
+            ``{id, externalId, conversationId, desktopReadStatus, orderIds,
+            driverCodes, employeeCodes}``:
+
+            - ``orderIds``: the conversation's shipper links, one per order
+              (strings, pegII order numbers). Usually one; more than one means
+              the customer has several orders and the workflow must choose.
+            - ``driverCodes``: the conversation's driver links, raw. A driver is
+              not resolved to an order.
+            - ``employeeCodes``: the MoveManager employees following it.
+            - ``desktopReadStatus``: ``"Read"``, ``"Unread"`` or ``None``; the
+              desktop's copy, which RingCentral overwrites on each sync.
+
+            The desktop archives a message on its next sync pass, so a very new
+            message answers ``None`` and empty lists. Retry a little later
+            rather than treating that as "no order".
+
+        Raises:
+            PegasusApiError: On 400 (not a uuid), 404 (unknown message), 409
+                ``UNSUPPORTED_SOURCE`` (not a RingCentral message-store message),
+                403, 503 ``PEGII_CAPABILITY_MISSING`` (the site predates the
+                links), 502/503 ``PEGII_SOURCE_*``, or any other non-2xx.
+        """
+        return self._get_json(f"/api/v1/sms/messages/{message_id}/links")["data"]
 
     def get_sms_opt_out(self, phone: str) -> dict[str, Any]:
         """Opt-out state for one E.164 number. Requires ``ReadSmsOptOut``.
@@ -2332,6 +2380,130 @@ class PegasusClient:
             response = client.patch(f"/api/v1/pegii/orders/{order_id}", json=patch)
         _raise_for_status(response)
         return response.json()["data"]
+
+    def add_order_memo(
+        self,
+        order_id: str,
+        memo_type: int,
+        subject: str,
+        text: str,
+        *,
+        next_action: str | None = None,
+        next_date: str | _dt.date | None = None,
+        person_code: int | None = None,
+        dedup_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Add a memo to a pegII order. Requires ``WriteOrderMemo``. Billable.
+
+        MoveManager shows it on the order's memo screen like a memo a user typed,
+        and puts it on the "Memos I need to acknowledge" list of ``person_code``
+        (default: the order's coordinator) from ``next_date`` (default: today).
+        That is how a workflow hands a customer's reply to a person.
+
+        Args:
+            order_id: The order (pegII order number, digits).
+            memo_type: The memo-type code, 1-7. **The label is the company's**:
+                on NW, 4 is "Customer Service" and 5 "Claims"; on QMM, 4 is
+                "General". Read this site's labels with :meth:`list_memo_types`.
+            subject: The memo's "Re:", up to 150 characters, stored uppercased.
+            text: The memo's "Notes:", up to 1000 characters; the desktop shows
+                it in full. A site refuses text its memo trigger would treat as
+                a rejection (it contains ``"rejected"``) with 400
+                ``MEMO_TEXT_TRIGGERS_REJECTION``. Reword it or quote around it.
+            next_action: The desktop's "Next Action", up to 100 characters.
+            next_date: When it comes due for acknowledging (a ``date`` or
+                ``"YYYY-MM-DD"``); defaults to the site's today.
+            person_code: A MoveManager employee code to prompt; defaults to the
+                order's coordinator.
+            dedup_key: Makes it idempotent (up to 190 characters). The same key
+                with the same request returns the original memo with
+                ``alreadyExists: True``, not billed; with a different request,
+                409 ``IDEMPOTENCY_KEY_REUSED``. Use one per logical memo, e.g.
+                ``f"pulse-reply-{message_id}"``.
+
+        Returns:
+            ``{id, orderId, memoType, subject, text, nextAction, nextDate,
+            callDate, callTime, whoCalled, shipper, personCode, acknowledged,
+            createdBy, alreadyExists}``. ``id``/``orderId`` are strings;
+            ``whoCalled`` is the calling service employee (e.g. "PEGASUS
+            GENERATED").
+
+        Raises:
+            ValueError: ``memo_type`` outside 1-7 (before any request).
+            PegasusApiError: On 400 (``VALIDATION_ERROR``,
+                ``MEMO_TEXT_TRIGGERS_REJECTION``, ``UNKNOWN_PERSON``, …); 403
+                (manifest lacks ``WriteOrderMemo``); 404 ``ORDER_NOT_FOUND``; 409
+                ``IDEMPOTENCY_KEY_REUSED`` or ``IDEMPOTENT_MEMO_DELETED``; 503
+                ``PEGII_CAPABILITY_MISSING`` (the site predates
+                ``pegii.memos.v1``); or any other non-2xx. Under ``--dry-run`` and
+                ``pegasus_workflows.testing`` the memo is captured, not sent.
+        """
+        if isinstance(memo_type, bool) or not isinstance(memo_type, int) or not 1 <= memo_type <= 7:
+            raise ValueError(f"memo_type must be an int from 1 to 7; got {memo_type!r}")
+        payload: dict[str, Any] = {"memoType": memo_type, "subject": subject, "text": text}
+        due = _iso_day(next_date) if next_date is not None else None
+        if next_action is not None:
+            payload["nextAction"] = next_action
+        if due is not None:
+            payload["nextDate"] = due
+        if person_code is not None:
+            payload["personCode"] = person_code
+        if dedup_key is not None:
+            payload["dedupKey"] = dedup_key
+        captured = self._capture_mutation(
+            "WriteOrderMemo",
+            "add_order_memo",
+            {
+                "order_id": order_id,
+                "memo_type": memo_type,
+                "subject": subject,
+                "text": text,
+                "next_action": next_action,
+                "next_date": due,
+                "person_code": person_code,
+                "dedup_key": dedup_key,
+            },
+            {
+                "id": "dry-run",
+                "orderId": order_id,
+                "memoType": memo_type,
+                "subject": subject.upper(),
+                "text": text,
+                "nextAction": next_action,
+                "nextDate": due,
+                "personCode": person_code,
+                "acknowledged": False,
+                "alreadyExists": False,
+                "dryRun": True,
+            },
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post(f"/api/v1/pegii/orders/{order_id}/memos", json=payload)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def list_memo_types(self) -> dict[str, Any]:
+        """This site's order-memo types and their labels. Requires ``ReadOrder``.
+
+        The codes (1-7) are the same everywhere; the labels are what this
+        company's MoveManager shows. Pick a ``memo_type`` for
+        :meth:`add_order_memo` by label rather than hard-coding a number::
+
+            types = client.list_memo_types()
+            code = next(t["code"] for t in types["items"] if t["label"] == "Customer Service")
+
+        Returns:
+            ``{company, items: [{code, label}]}``. ``company`` (e.g. ``"NW"``) is
+            ``None`` when the site can't tell; the labels are then generic.
+
+        Raises:
+            PegasusApiError: On 403, 503 ``PEGII_CAPABILITY_MISSING`` (the site
+                predates ``pegii.memos.v1``), or any other non-2xx.
+        """
+        body = self._get_json("/api/v1/pegii/memo-types")
+        return {"company": (body.get("meta") or {}).get("company"), "items": body["data"]}
 
     def dry_run_integration(self, integration_id: str, order_id: str) -> dict[str, Any]:
         """Dry-run a published integration against a REAL pegII order id.
