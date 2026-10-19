@@ -101,37 +101,62 @@ jobs:
 
           gh pr merge --auto "$PR_URL"
 
-          # --- Record the outcome, with BOTH signals -------------------------
-          # Not a bug fix — an observability fix. Nothing used to print whether
-          # the mark landed, so the only way to find out was to query the PR
-          # later, by which time a queued PR reads `autoMergeRequest: null` and
-          # looks exactly like a PR that was never approved. That ambiguity cost
-          # a wrong diagnosis on 2026-10-13. Both signals, in the log, every run.
-          read -r HAS_AUTO IN_QUEUE <<<"$(
-            gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
-              repository(owner:$owner,name:$repo){
-                pullRequest(number:$pr){ autoMergeRequest{mergeMethod} isInMergeQueue }
-              }
-            }' -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F pr="$PR_NUMBER" \
-              --jq '.data.repository.pullRequest
-                    | [(.autoMergeRequest != null), .isInMergeQueue] | @tsv'
-          )"
-          echo "PR #$PR_NUMBER autoMergeRequest=$HAS_AUTO isInMergeQueue=$IN_QUEUE"
+          # --- Assert the mark landed, with BOTH signals ---------------------
+          # Started life (#843) as a log line plus a warning, because it was not
+          # then established that GitHub would accept a DORMANT auto-merge request
+          # under a merge queue — i.e. the success path might legitimately show
+          # neither signal, and failing would have been guessing.
+          #
+          # IT IS ESTABLISHED NOW, twice, both after #843 merged:
+          #
+          #     PR #856 autoMergeRequest=true isInMergeQueue=false   (10-15)
+          #     PR #861 autoMergeRequest=true isInMergeQueue=false   (10-18)
+          #
+          # A request created and held on a not-yet-green PR. So "neither signal"
+          # is no longer an unknown shape — it is a real failure, and this now
+          # FAILS on it. That is the tightening the #843 comment asked for.
+          #
+          # WHY BOTH SIGNALS: auto-merge CONVERTS INTO A QUEUE ENTRY and clears
+          # `autoMergeRequest`, so a PR already queued legitimately reads null.
+          # Testing only that field is what caused the 2026-10-13 misdiagnosis.
+          #
+          # WHY IT RETRIES BEFORE FAILING: the read happens immediately after the
+          # write, and GitHub's PR state is eventually consistent. Both observed
+          # runs returned `true` on the first read, so the propagation window is
+          # usually short — but "usually" is not a basis for a hard failure that
+          # blocks every Dependabot PR. Three attempts over ~20s converts a
+          # propagation lag into a slower pass instead of a false red, and still
+          # fails fast on a genuine refusal.
+          PR_QUERY='query($owner:String!,$repo:String!,$pr:Int!){
+            repository(owner:$owner,name:$repo){
+              pullRequest(number:$pr){ autoMergeRequest{mergeMethod} isInMergeQueue }
+            }
+          }'
+          HAS_AUTO=false
+          IN_QUEUE=false
+          for attempt in 1 2 3; do
+            read -r HAS_AUTO IN_QUEUE <<<"$(
+              gh api graphql -f query="$PR_QUERY" \
+                -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F pr="$PR_NUMBER" \
+                --jq '.data.repository.pullRequest
+                      | [(.autoMergeRequest != null), .isInMergeQueue] | @tsv'
+            )"
+            echo "PR #$PR_NUMBER autoMergeRequest=$HAS_AUTO isInMergeQueue=$IN_QUEUE (attempt $attempt)"
+            if [[ "$HAS_AUTO" == "true" || "$IN_QUEUE" == "true" ]]; then break; fi
+            # Spelled as a full `if`, not `[[ ... ]] && sleep`: the latter is the
+            # last statement in the loop body, and whether `set -e` fires on a
+            # false AND-OR list is a POSIX subtlety nobody should have to recall
+            # while reading CI. (It does not fire — verified — but this is clearer.)
+            if [[ $attempt -lt 3 ]]; then sleep 10; fi
+          done
 
           if [[ "$HAS_AUTO" != "true" && "$IN_QUEUE" != "true" ]]; then
-            echo "::warning::Policy approved PR #$PR_NUMBER but NEITHER an auto-merge request nor \
-          a queue entry exists afterwards. \`enqueue\` will refuse this PR with 'policy did not \
-          approve it' and it will never merge unattended. Read the gh output above for a refusal \
-          line. Note this has never actually been observed — as of 2026-10-13 the gate works, and \
-          the real failure is the GITHUB_TOKEN enqueue downstream."
+            echo "::error::Policy approved PR #$PR_NUMBER but after 3 attempts NEITHER an \
+          auto-merge request nor a queue entry exists. \`enqueue\` will refuse this PR with \
+          'policy did not approve it', so it will never merge unattended and nothing downstream \
+          will say why. Read the \`gh pr merge\` output above for a refusal line."
+            exit 1
           fi
-
-          # A WARNING, NOT A FAILURE. The condition has never been observed, so
-          # failing on it would be guessing at a failure mode rather than guarding
-          # a known one — and a false red here would block every Dependabot PR for
-          # something nobody can fix from CI. Revisit only if the warning ever
-          # actually fires; at that point it will come with the gh output that
-          # explains why, which is the whole point of printing both signals.
 
   # ---------------------------------------------------------------------------
   # Re-assert the (now stale) auto-merge request once CI has actually passed, so

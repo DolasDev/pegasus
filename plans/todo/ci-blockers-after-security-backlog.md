@@ -8,7 +8,9 @@
 > gate's `--squash` and made it log both auto-merge signals (#843), and 10-15 recorded the findings
 > (#849). **The 10-19 re-check changed the picture: the stage-2 log line is DISCHARGED, but `main`
 > carries a failing check and two Dependabot PRs are stuck — one dead for four days. There IS
-> agent-doable work now; see "Resume here".**
+> agent-doable work now; see "Resume here".** All three were worked the same day: #856 unstuck,
+> #861's lockfile regenerated, and #843's assertion tightened to `exit 1`. What is left is the owner's
+> App setup plus two standing threads.
 >
 > ⚠️ **A diagnosis built on this file's own documented trap reached the merge queue on 2026-10-13
 > before being caught.** `autoMergeRequest: null` was read as "policy never approved this PR" when it
@@ -37,47 +39,57 @@
 ## Resume here
 
 **Where:** primary checkout `/home/steve/repos/pegasus`, branch `main`, last commit
-`d8634eeb docs(plans): move chat — Phase 0 findings (local crew key, crew role, authz baseline) (#860)`.
-No worktree is needed to read this.
+`454927fa chore(deps): bump mcp in /packages/workflows-sdk-python (#856)`. No worktree is needed to
+read this.
 
-**Status (re-checked 2026-10-19):** everything this file owned is merged — #819, #822, #826, #840,
-#843, #849. **The stage-2 verification is now DISCHARGED** (see below). But the state has moved
-against us: `main` carries one **failing** check, and **two Dependabot PRs are stuck**, one of them
-dead for four days. So unlike the 10-15 revision, **there IS agent-doable work now.**
+**Status (2026-10-19, after working the list):** everything this file owned is merged — #819, #822,
+#826, #840, #843, #849, #864 — and **all three items the 10-19 re-check raised are now done**. The
+stage-2 log-line verification is DISCHARGED (below). What is left is one owner-only item and two
+standing threads.
 
-**Next action — three things, in this order:**
+**[x] 1. #856 unstuck — MERGED 2026-10-19 20:25Z** (`454927fa`), after four days dead. Its lifecycle
+is kept here because the _way_ it died is the finding, not the fix:
 
-1. **Unstick #856 — it has been DEAD FOR FOUR DAYS, and the way it died is the new finding.** Full
-   lifecycle, from the logs:
+| when           | what                                                                               |
+| -------------- | ---------------------------------------------------------------------------------- |
+| 10-15 20:59:17 | policy gate: `PR #856 autoMergeRequest=true isInMergeQueue=false`                  |
+| 10-15 21:04:24 | `enqueue`: "CLEAN but not queued — re-asserting auto-merge", `isInMergeQueue=true` |
+| —              | **no `merge_group` run, ever**                                                     |
+| +60 min        | entry dropped at `check_response_timeout_minutes`                                  |
+| 10-19 20:06    | still `autoMergeRequest=null`, no entry, `CLEAN` — nothing had re-asserted it      |
 
-   | when           | what                                                                               |
-   | -------------- | ---------------------------------------------------------------------------------- |
-   | 10-15 20:59:17 | policy gate: `PR #856 autoMergeRequest=true isInMergeQueue=false`                  |
-   | 10-15 21:04:24 | `enqueue`: "CLEAN but not queued — re-asserting auto-merge", `isInMergeQueue=true` |
-   | —              | **no `merge_group` run, ever**                                                     |
-   | +60 min        | entry dropped at `check_response_timeout_minutes`                                  |
-   | now            | `autoMergeRequest=null`, no entry, `CLEAN` — and **nothing will re-assert it**     |
+**The stall does not merely DELAY a PR — it CONSUMES the auto-merge mark and leaves the PR
+permanently stuck.** Auto-merge converts into the queue entry; when the entry is dropped the mark
+goes with it, and `enqueue` only re-fires on a CI completion, which needs a branch change. A stalled
+Dependabot PR is not "slow", it is **finished**, silently, with every check green. That is the
+reason Dependabot PRs quietly never land here, and it is the argument for the App setup.
 
-   **The stall does not merely DELAY a PR — it CONSUMES the auto-merge mark and leaves the PR
-   permanently stuck.** Auto-merge converts into a queue entry; when the entry is dropped the mark is
-   gone, and `enqueue` only re-fires on a CI completion, which only happens if the branch changes. So
-   a stalled Dependabot PR is not "slow", it is **finished**, silently, with every check green. That
-   reframes the App item from an annoyance into the reason Dependabot PRs quietly never land.
-   Fix for #856 specifically: `gh pr merge 856 --auto` (human token → the queue actually builds it).
+**[x] 2. #861's lockfile regenerated — FOURTH reproduction** after #694, #799 and #831. All four
+heavy jobs were red from one cause (**24** `npm error Missing: … from lock file`); no code was
+broken. Regenerated with the plain `npm` on Node 24 (11.13.0), **not** `npm@10.8.2`. Diff was
+683/-1018 — a net _shrink_ of 335 lines, which is dedupe not loss: the package-name sets before and
+after are identical (**zero** gone, zero new), and that is the check worth repeating, because the
+gutting trap looks like a 30,000-line deletion with a cheerful exit 0. Verified past the install fix
+because a 29-package group is what trips #762's canary: `npm ci` 0, `turbo typecheck lint test` 41/41
+with **zero cache**, the #783 root-resolvable guard green, `audit-ci` green, and a real `cdk synth`
+with all four bundled packages at the expected versions.
 
-2. **Regenerate #861's lockfile — FOURTH reproduction** of the documented defect, after #694, #799
-   and #831. All four heavy jobs red from one cause: **24** `npm error Missing: … from lock file`
-   lines. Recipe is in GOTCHAS and is not the one that file used to give: regenerate with the **plain
-   `npm` on Node 24 (11.13.0)**, never `npm@10.8.2`, then gate on `npm ci`. `@dependabot recreate`
-   does not fix it. Push to the branch with a normal fast-forward push — that works, it is only
-   Dependabot's own _rebase_ that does not.
+**[x] 3. #843's assertion tightened to `exit 1`** — this PR. Its own precondition was met twice
+(`autoMergeRequest=true isInMergeQueue=false` on #856 and #861 = a dormant request accepted under the
+queue), so "neither signal" is a real failure rather than an unknown shape. **It retries three times
+over ~20s before failing**, because the read happens immediately after the write and GitHub's PR
+state is eventually consistent — both observed runs returned `true` on the first read, but "usually
+fast" is not a basis for a hard failure that would block every Dependabot PR.
 
-3. **Tighten #843's `::warning::` to `exit 1` — its own stated precondition is now met.** The comment
-   says to tighten "once the red-PR path has been observed", because it was not established that
-   GitHub would accept a _dormant_ auto-merge request under a merge queue. It now is:
-   `autoMergeRequest=true isInMergeQueue=false` on both #856 and #861, i.e. a request created and
-   held on a not-yet-green PR. Two observations, both post-#843. The warning has never fired, so
-   failing on it is now guarding a known-reachable success path rather than guessing.
+**Next action — nothing agent-doable is queued.** What remains:
+
+- **OWNER-ONLY and the only thing that unblocks the last verification:** configure the GitHub App.
+  Confirmed still unset on 2026-10-19 (no `DEPENDABOT_AUTOMERGE_APP_CLIENT_ID` variable, no
+  `DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY` secret — checked, not assumed). Twelve reproductions.
+- **`main`'s red `Dependabot` run is a THIRD kind, not the benign one this file documents** — see the
+  box below. Unfixed, non-blocking, and worth a look rather than a shrug.
+- **`@dependabot rebase` appears inoperable here**, cause unidentified, obvious suspect ruled out.
+- **The `check-overrides.mjs` question** — the one open-ended thread, and deliberately not shovel-ready.
 
 **[x] STAGE-2 VERIFICATION — DISCHARGED 2026-10-19.** #843's both-signals line has executed twice,
 on the two Dependabot PRs opened after it merged:
