@@ -54,6 +54,7 @@ import {
   listMyLinks,
   listPackers,
   replaceServiceAreas,
+  crewNames,
   searchCities,
   starsByCrew,
   type CrewLinkRow,
@@ -106,9 +107,13 @@ function caller(c: C): Caller {
   return { userId, tenantId: c.get('tenantId') }
 }
 
-/** The `:phone` path segment, normalised — any spelling of the number works. */
+/**
+ * The `:phone` path segment, normalised — any spelling of the number works.
+ * Hono has already percent-decoded it; decoding again would turn `%25zz` into
+ * a URIError (a 500) instead of a 400.
+ */
 function phoneParam(c: C): string {
-  return normalizePhoneNumber(decodeURIComponent(c.req.param('phone') ?? ''))
+  return normalizePhoneNumber(c.req.param('phone') ?? '')
 }
 
 async function requireLink(c: C, who: Caller, phone: string): Promise<CrewLinkRow> {
@@ -227,7 +232,8 @@ async function resolveOrigin(
 
 function matchesText(crew: CrewDto, text: string): boolean {
   const key = foldKey(text)
-  const digits = text.replace(/\D/g, '')
+  // Text with letters is a name search; only digits-and-punctuation matches phones.
+  const digits = /\p{L}/u.test(text) ? '' : text.replace(/\D/g, '')
   return (
     (key !== '' &&
       (foldKey(crew.name).includes(key) || foldKey(crew.nickname ?? '').includes(key))) ||
@@ -364,13 +370,28 @@ laborHandler.post('/crews/import', requirePermission(Actions.WriteLabor), (c) =>
       code?: string
       error?: string
     }> = []
-    for (const row of crews) {
-      let crew
+    const valid = crews.map((row) => {
       try {
-        crew = validateCrew(row)
+        return validateCrew(row)
       } catch (err) {
         if (!(err instanceof DomainError)) throw err
-        results.push({ phone: row.phone, outcome: 'invalid', code: err.code, error: err.message })
+        return err
+      }
+    })
+    // One lookup for every existing crew's shared name, instead of one per row.
+    const existingNames = await crewNames(
+      db,
+      valid.flatMap((v) => (v instanceof DomainError ? [] : [v.phone])),
+    )
+
+    for (const [i, crew] of valid.entries()) {
+      if (crew instanceof DomainError) {
+        results.push({
+          phone: crews[i]!.phone,
+          outcome: 'invalid',
+          code: crew.code,
+          error: crew.message,
+        })
         continue
       }
       if (mine.has(crew.phone)) {
@@ -382,12 +403,14 @@ laborHandler.post('/crews/import', requirePermission(Actions.WriteLabor), (c) =>
         continue
       }
       const created = await ensureCrew(db, crew, who.userId)
-      const existing = created ? null : await db.crew.findUnique({ where: { phone: crew.phone } })
+      // A crew created between the lookup and ensureCrew has no prefetched
+      // name; it is then treated as having this row's name (no nickname).
+      const sharedName = created ? crew.name : (existingNames.get(crew.phone) ?? crew.name)
       await createLink(db, {
         tenantUserId: who.userId,
         tenantId: who.tenantId,
         crewPhone: crew.phone,
-        nickname: existing && existing.name !== crew.name ? crew.name : null,
+        nickname: sharedName !== crew.name ? crew.name : null,
       })
       mine.add(crew.phone)
       budget--
@@ -468,14 +491,27 @@ laborHandler.put('/crews/:phone/service-areas', requirePermission(Actions.WriteL
     const areas = validateServiceAreas((await readBody(c, ServiceAreasBody)).serviceAreas)
     const db = c.get('db')
     const geo = await findCities(db, areas)
-    await db.$transaction((tx) =>
-      replaceServiceAreas(
-        tx,
-        phone,
-        areas.map((a) => ({ ...a, geo: geo.get(`${a.region}|${a.cityKey}`) })),
-        who.userId,
-      ),
-    )
+    try {
+      await db.$transaction((tx) =>
+        replaceServiceAreas(
+          tx,
+          phone,
+          areas.map((a) => ({ ...a, geo: geo.get(`${a.region}|${a.cityKey}`) })),
+          who.userId,
+        ),
+      )
+    } catch (err) {
+      // Two linked drivers saving at once: both deletes see the same rows, and
+      // the second insert hits the unique index. Last writer loses, legibly.
+      if (isUniqueViolation(err)) {
+        throw new LaborHttpError(
+          409,
+          'SERVICE_AREAS_CONFLICT',
+          'Someone else just changed these service areas — reload and try again',
+        )
+      }
+      throw err
+    }
     return c.json({ data: await crewDetail(c, who, phone) })
   }),
 )

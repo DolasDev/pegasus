@@ -77,7 +77,8 @@ export default function ImportContactsScreen() {
     const all = load?.contacts ?? []
     const q = query.trim().toLowerCase()
     if (!q) return all
-    const digits = q.replace(/\D/g, '')
+    // A query with letters is a name search; only an all-digits one matches numbers.
+    const digits = /[a-z]/.test(q) ? '' : q.replace(/\D/g, '')
     return all.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
@@ -105,8 +106,10 @@ export default function ImportContactsScreen() {
       return { phone, name: c.name, email: c.email }
     })
     setSaving(true)
+    // Batches commit independently, so a later one failing must not hide what
+    // the earlier ones already added.
+    const results: LaborImportResult[] = []
     try {
-      const results: LaborImportResult[] = []
       for (let i = 0; i < rows.length; i += BATCH) {
         results.push(...(await LaborService.importCrews(rows.slice(i, i + BATCH))))
       }
@@ -114,7 +117,17 @@ export default function ImportContactsScreen() {
         { text: 'OK', onPress: () => router.back() },
       ])
     } catch (err) {
-      Alert.alert('Import failed', err instanceof Error ? err.message : 'Please try again.')
+      const why = err instanceof Error ? err.message : 'Please try again.'
+      if (!results.length) {
+        Alert.alert('Import failed', why)
+      } else {
+        const done = new Set(results.map((r) => r.phone))
+        setPicked((prev) => new Map([...prev].filter(([, phone]) => !done.has(phone))))
+        Alert.alert(
+          'Import stopped partway',
+          `${summarizeImport(results)} The rest weren’t imported (${why}) — they’re still selected; tap Import to retry.`,
+        )
+      }
     } finally {
       setSaving(false)
     }
@@ -141,8 +154,8 @@ export default function ImportContactsScreen() {
       <View style={styles.centered}>
         <Text style={styles.title}>Contacts access is off</Text>
         <Text style={styles.muted}>
-          Allow Pegasus to read your contacts to import crews. Nothing is uploaded except the
-          contacts you pick.
+          Allow Pegasus to read your contacts to import crews. Only the contacts you pick are
+          uploaded.
         </Text>
         {load.canAskAgain ? (
           <Button label="Allow access" onPress={() => void reload()} />
@@ -157,6 +170,10 @@ export default function ImportContactsScreen() {
     <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
       <View style={styles.top}>
         <SearchBar value={query} onChangeText={setQuery} placeholder="Search contacts" />
+        <Text style={styles.note}>
+          A crew’s name, phone and email are shared with other drivers who add the same number. Your
+          nickname and rating stay private.
+        </Text>
         {load.access === 'limited' ? (
           <View style={styles.banner}>
             <Text style={styles.bannerText}>Pegasus can see only the contacts you shared.</Text>
@@ -289,6 +306,7 @@ const styles = StyleSheet.create({
   muted: { fontSize: fontSize.medium, color: colors.textSecondary },
   empty: { textAlign: 'center', marginTop: spacing.xl },
   top: { padding: spacing.md, gap: spacing.sm },
+  note: { fontSize: fontSize.small, color: colors.textSecondary },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',

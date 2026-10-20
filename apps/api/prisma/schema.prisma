@@ -535,6 +535,7 @@ model TenantUser {
   chatRoomMembers     ChatRoomMember[]
   companyMemberships  CompanyMembership[]
   laborCrewLinks      CrewLink[]
+  laborCrewLinkAdds   CrewLinkAdd[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3567,6 +3568,23 @@ model CrewLink {
   @@index([crewPhone])
   @@index([tenantUserId, createdAt])
   @@map("labor_crew_links")
+  @@schema("public")
+}
+
+/// Append-only record of every link a driver created — the add rate limit
+/// counts these, not live `CrewLink` rows, so removing a crew from your list
+/// never frees budget (add 100, delete 100, add 100 more would otherwise walk
+/// the phone-number space). Rows are never deleted by the app.
+model CrewLinkAdd {
+  id           String   @id @default(uuid())
+  tenantUserId String   @map("tenant_user_id")
+  crewPhone    String   @map("crew_phone")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([tenantUserId, createdAt])
+  @@map("labor_crew_link_adds")
   @@schema("public")
 }
 

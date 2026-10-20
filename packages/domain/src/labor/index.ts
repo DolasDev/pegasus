@@ -44,6 +44,14 @@ export function normalizePhoneNumber(raw: string): string {
   if (nanp !== undefined) {
     // NANP: area code and exchange both start 2–9.
     if (/^[2-9]\d{2}[2-9]\d{6}$/.test(nanp)) return `+1${nanp}`
+  } else if (international && /^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) {
+    // "+404 555 1212" — a US/Canadian number with the "1" left out. Taking it
+    // as some other country's number would give the same crew a second
+    // identity, so make the writer say which they meant.
+    throw new DomainError(
+      `Add the country code: +1 for the US and Canada (${raw})`,
+      'INVALID_PHONE_NUMBER',
+    )
   } else if (international && isValidE164(`+${digits}`)) {
     return `+${digits}`
   }
@@ -594,8 +602,17 @@ export const GOOGLE_CONTACTS_CSV_HEADERS = [
   'Labels',
 ] as const
 
+/**
+ * One CSV cell. Text that a spreadsheet would read as a formula (a leading
+ * `=`, `+`, `-`, `@`, tab or CR) gets a leading `'` — the names, emails and
+ * cities here are shared, editable by any linked driver, so an export must not
+ * become a way to run `=HYPERLINK(...)` in someone else's Excel. A phone
+ * number in E.164 (`+14045551212`) is the one `+` value left alone: it's ours,
+ * normalised, and a quote would end up in the imported contact.
+ */
 function csvCell(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+  const safe = /^[=+\-@\t\r]/.test(value) && !/^\+\d{8,15}$/.test(value) ? `'${value}` : value
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe
 }
 
 /** The same contacts as `crewsToVCard`, as a Google Contacts CSV. */

@@ -433,28 +433,33 @@ describe.skipIf(!hasDb)('/labor (integration)', () => {
   })
 
   it('rate-limits new crews per user per day', async () => {
-    const since = new Date()
-    await db.crew.createMany({
-      data: Array.from({ length: LINK_RATE_LIMIT }, (_, i) => ({
-        phone: `${PREFIX}9${String(i).padStart(3, '0')}`,
-        name: `Bulk ${i}`,
-        createdByUserId: U['ann']!.id,
-        updatedByUserId: U['ann']!.id,
-      })),
-    })
-    await db.crewLink.createMany({
-      data: Array.from({ length: LINK_RATE_LIMIT }, (_, i) => ({
+    // Every add is logged; the limit counts the log, not live links.
+    await addCrew('ann', 1)
+    expect(await db.crewLinkAdd.count({ where: { tenantUserId: U['ann']!.id } })).toBe(1)
+
+    await db.crewLinkAdd.createMany({
+      data: Array.from({ length: LINK_RATE_LIMIT - 1 }, (_, i) => ({
         tenantUserId: U['ann']!.id,
-        tenantId: tenantA,
         crewPhone: `${PREFIX}9${String(i).padStart(3, '0')}`,
-        createdAt: since,
       })),
     })
-    const res = await addCrew('ann', 1)
+    const res = await addCrew('ann', 2)
     expect(res.status).toBe(429)
     expect(await codeOf(res)).toBe('LINK_RATE_LIMITED')
+
+    // Removing crews from the list does not hand the budget back — otherwise
+    // add/delete cycles could walk the phone-number space.
+    expect((await appAs('ann').request(crewUrl(1), { method: 'DELETE' })).status).toBe(204)
+    expect((await addCrew('ann', 2)).status).toBe(429)
+
     // Someone else is unaffected.
-    expect((await addCrew('bob', 1)).status).toBe(201)
+    expect((await addCrew('bob', 2)).status).toBe(201)
+  })
+
+  it('answers a malformed phone segment with 400, not 500', async () => {
+    const res = await appAs('ann').request('/labor/crews/%25zz')
+    expect(res.status).toBe(400)
+    expect(await codeOf(res)).toBe('INVALID_PHONE_NUMBER')
   })
 
   it('suggests cities for the service-area editor', async () => {

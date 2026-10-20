@@ -55,6 +55,13 @@ describe('normalizePhoneNumber', () => {
     },
   )
 
+  it('rejects a US/Canadian number written with + but no 1, and says why', () => {
+    expect(codeOf(() => normalizePhoneNumber('+404 555 1212'))).toBe('INVALID_PHONE_NUMBER')
+    expect(() => normalizePhoneNumber('+404 555 1212')).toThrow('+1 for the US and Canada')
+    // A real 10-digit foreign number that isn't NANP-shaped still passes.
+    expect(normalizePhoneNumber('+46 8 123 4567')).toBe('+4681234567')
+  })
+
   it('formats NANP numbers for display and leaves others alone', () => {
     expect(formatPhoneNumber('+14045551212')).toBe('(404) 555-1212')
     expect(formatPhoneNumber('+442079460958')).toBe('+442079460958')
@@ -439,5 +446,19 @@ describe('export', () => {
     )
     expect(csv).toContain('Ana,Díaz,"Juan, Pedro; and Co",Mobile,+14045550000')
     expect(csv).not.toContain('No,Phone')
+  })
+
+  it('neutralises spreadsheet formulas in shared text, but not E.164 phones', () => {
+    const evil: ExportCrew = {
+      ...bare,
+      name: '=HYPERLINK("http://evil","x")',
+      packers: [{ ...bare.packers[0]!, firstName: '@SUM(1)', lastName: '-2+3', email: '+cmd' }],
+    }
+    const lines = crewsToGoogleContactsCsv([evil]).split('\r\n')
+    expect(lines[1]).toMatch(/^"'=HYPERLINK\(""http:\/\/evil"",""x""\)",/)
+    expect(lines[1]).toContain(',+14045559999,')
+    expect(lines[2]).toMatch(/^'@SUM\(1\),'-2\+3,/)
+    expect(lines[2]).toContain(",'+cmd,")
+    expect(lines[2]).toContain(',+14045558888,')
   })
 })

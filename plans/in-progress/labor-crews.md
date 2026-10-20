@@ -40,6 +40,27 @@ Decisions you made (2026-10-20):
     and the App Store / Play data-safety answers must now declare contacts access. Only the
     contacts the driver picks are uploaded (name, phone, email).
 
+**Code-review fixes (2026-10-20):**
+
+- The add rate limit counts an append-only `CrewLinkAdd` log (migration
+  `20261020222230_labor_crew_link_adds`). Removing a crew no longer frees budget, which add/delete
+  cycles could otherwise use to walk the number space.
+- CSV export cells starting with `= + - @` get a leading `'` (formula injection), except E.164 phones.
+- `+` followed by a NANP-shaped 10-digit number is rejected ("add +1"), so it no longer becomes a
+  second, foreign identity for the same crew.
+- The `:phone` param is no longer double-decoded (`%25zz` was a 500).
+- Concurrent service-area saves give a 409 `SERVICE_AREAS_CONFLICT` instead of a P2002 500.
+- The import looks up existing crews' names in one query instead of one per row.
+- The import screen keeps earlier batches' results when a later batch fails, and says that a
+  crew's name, phone and email are shared.
+- Text search matches phone digits only when the query has no letters.
+
+**Raised by review, left as designed (Steve's call):**
+
+- Any linked driver can read and edit a shared crew's packers.
+- A crew outlives its last link.
+- The first importer's contact name becomes the shared crew name.
+
 **Where Phase 2 deviates from the text below:**
 
 6. **No `LaborContext`.** The detail routes live on the root Stack, outside `(drawer)/_layout`, so

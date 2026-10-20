@@ -92,6 +92,37 @@ describe('ImportContactsScreen', () => {
     expect(router.back).toHaveBeenCalled()
   })
 
+  it('keeps what earlier batches added when a later batch fails', async () => {
+    const many: ContactCandidate[] = Array.from({ length: 201 }, (_, i) => ({
+      id: `m${i}`,
+      name: `Crew ${String(i).padStart(3, '0')}`,
+      email: null,
+      numbers: [num(`+1404556${String(i).padStart(4, '0')}`)],
+    }))
+    load.mockResolvedValue({ access: 'all', canAskAgain: true, contacts: many })
+    svc.importCrews
+      .mockResolvedValueOnce(
+        many.slice(0, 200).map((c) => ({ phone: c.numbers[0]!.e164, outcome: 'added' as const })),
+      )
+      .mockRejectedValueOnce(new Error('Network request failed'))
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {})
+    const { findByLabelText, getByLabelText, getByText, findByText } = render(
+      <ImportContactsScreen />,
+    )
+    await findByLabelText('Crew 000')
+    // FlatList renders a window; select through the search box to reach every row.
+    for (const c of many) {
+      fireEvent.changeText(getByLabelText('Search contacts'), c.name)
+      fireEvent.press(getByLabelText(c.name))
+    }
+    fireEvent.press(getByText('Import 201 crews'))
+    await waitFor(() => expect(alert).toHaveBeenCalled())
+    expect(alert.mock.calls[0]![0]).toBe('Import stopped partway')
+    expect(alert.mock.calls[0]![1]).toContain('200 crews added.')
+    // Only the unimported contact stays selected for a retry.
+    expect(await findByText('Import 1 crew')).toBeTruthy()
+  })
+
   it('filters contacts by name', async () => {
     load.mockResolvedValue({ access: 'limited', canAskAgain: true, contacts })
     const { findByText, getByLabelText, queryByText } = render(<ImportContactsScreen />)

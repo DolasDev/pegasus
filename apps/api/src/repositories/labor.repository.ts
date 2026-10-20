@@ -39,8 +39,9 @@ export function listMyLinks(db: Db, tenantUserId: string) {
 }
 
 /** How many crews the caller has added since `since` (the add rate limit). */
+/** Links the user has CREATED since `since` — from the append-only add log, so removals don't count back. */
 export function countLinksSince(db: Db, tenantUserId: string, since: Date) {
-  return db.crewLink.count({ where: { tenantUserId, createdAt: { gte: since } } })
+  return db.crewLinkAdd.count({ where: { tenantUserId, createdAt: { gte: since } } })
 }
 
 /** Every driver's stars for each of `phones` — the input to the anonymous aggregate. */
@@ -97,7 +98,22 @@ export async function createLink(
   link: { tenantUserId: string; tenantId: string; crewPhone: string; nickname: string | null },
 ): Promise<boolean> {
   const { count } = await db.crewLink.createMany({ data: [link], skipDuplicates: true })
+  if (count === 1) {
+    await db.crewLinkAdd.create({
+      data: { tenantUserId: link.tenantUserId, crewPhone: link.crewPhone },
+    })
+  }
   return count === 1
+}
+
+/** The shared names of whichever of `phones` already exist. */
+export async function crewNames(db: Db, phones: readonly string[]): Promise<Map<string, string>> {
+  if (phones.length === 0) return new Map()
+  const rows = await db.crew.findMany({
+    where: { phone: { in: [...phones] } },
+    select: { phone: true, name: true },
+  })
+  return new Map(rows.map((r) => [r.phone, r.name]))
 }
 
 export function listPackers(db: Db, crewPhone: string) {
