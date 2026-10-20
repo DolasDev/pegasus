@@ -44,6 +44,21 @@ describe('GET /permissions', () => {
     expect(new Set(body.permissions)).toEqual(new Set(ALL_ACTIONS.map((a) => a.permission)))
   })
 
+  it("returns the caller's own TenantUser id, and null without one", async () => {
+    const withUser = new Hono<AppEnv>()
+    withUser.use('*', seedPrincipal({ roleNames: ['viewer'] }))
+    withUser.use('*', async (c, next) => {
+      c.set('userId', 'user-123')
+      await next()
+    })
+    withUser.route('/', meHandler)
+    const res = await withUser.request('/permissions')
+    expect(((await res.json()) as { userId: unknown }).userId).toBe('user-123')
+
+    const anon = await buildApp(['viewer']).app.request('/permissions')
+    expect(((await anon.json()) as { userId: unknown }).userId).toBeNull()
+  })
+
   it('returns the viewer read set plus the shared document baseline', async () => {
     const res = await buildApp(['viewer']).app.request('/permissions')
     expect(res.status).toBe(200)

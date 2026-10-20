@@ -232,7 +232,13 @@ export {
 } from './messaging/index'
 
 // Chat context (per-move internal chat)
-export type { ChatEntityType, ChatRoomRef, ChatScope, RecipientInput } from './chat/index'
+export type {
+  ChatEntityType,
+  ChatRoomRef,
+  ChatScope,
+  RecipientInput,
+  ChatBodySegment,
+} from './chat/index'
 export {
   CHAT_ENTITY_TYPES,
   MAX_CHAT_BODY_LENGTH,
@@ -244,4 +250,6 @@ export {
   resolveChatScope,
   resolveRecipients,
   chatPushContent,
+  splitMentions,
+  formatMentionToken,
 } from './chat/index'

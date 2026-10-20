@@ -132,6 +132,24 @@ export function ShipmentDetail({
       label: 'Trip Sheet',
     },
     {
+      // Move chat lives on its own page; this is the shortcut into the room.
+      accessor: (shipment: LonghaulShipmentRow) => {
+        const orderNum = shipment.order_num == null ? '' : String(shipment.order_num).trim()
+        if (!/^[1-9]\d*$/.test(orderNum)) return ''
+        return (
+          // translatePath leaves /messages/* alone (it only rewrites legacy paths).
+          <Link
+            to={`/messages/shipment/${orderNum}`}
+            className={clickableStyles.clickable}
+            data-target="shipment-chat-link"
+          >
+            Open chat
+          </Link>
+        )
+      },
+      label: 'Chat',
+    },
+    {
       accessor: (shipment: LonghaulShipmentRow) => {
         const reg = shipment.avl_reg == null ? '' : String(shipment.avl_reg).trim()
         if (!reg) return ''

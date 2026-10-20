@@ -17,6 +17,7 @@ import {
   Zap,
   Phone,
   MessageSquareText,
+  MessagesSquare,
   Blocks,
   SlidersHorizontal,
   ChevronLeft,
@@ -32,6 +33,7 @@ import { getSession, clearSession } from '@/auth/session'
 import { getCognitoConfig, buildLogoutUrl } from '@/auth/cognito'
 import { usePermissions } from '@/auth/permissions'
 import { OPERATIONS_ROLES, DISPATCH_ACTIVITIES_ROLES } from '@/auth/role-guard'
+import { ChatUnreadBadge } from '@/features/chat/components/ChatUnreadBadge'
 
 const SIDEBAR_COLLAPSED_KEY = 'pegasus.sidebar.collapsed'
 
@@ -73,6 +75,19 @@ const NAV_ITEMS = [
     icon: LayoutDashboard,
     exact: true,
     roles: null,
+    children: null,
+  },
+  {
+    // Move chat: every signed-in user (the API scopes each room). Rooms are
+    // legacy orders, so it needs the tenant's legacy database like Operations.
+    to: '/messages' as const,
+    label: 'Messages',
+    icon: MessagesSquare,
+    exact: false,
+    roles: null,
+    permission: 'chat:read' as const,
+    capability: 'longhaul' as const,
+    badge: 'chat' as const,
     children: null,
   },
   {
@@ -267,9 +282,11 @@ type NavItemProps = {
   icon: LucideIcon
   exact: boolean
   collapsed: boolean
+  /** A live count shown after the label (e.g. unread messages). */
+  badge?: React.ReactNode
 }
 
-function NavItem({ to, label, icon: Icon, exact, collapsed }: NavItemProps) {
+function NavItem({ to, label, icon: Icon, exact, collapsed, badge }: NavItemProps) {
   // Subscribe to the location reactively — `useRouter().state` is a non-reactive
   // read (plain context), so this layout-level component wouldn't re-render on
   // client-side navigation and the active highlight would stick.
@@ -282,7 +299,7 @@ function NavItem({ to, label, icon: Icon, exact, collapsed }: NavItemProps) {
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
       className={cn(
-        'flex items-center rounded-md text-sm transition-colors',
+        'relative flex items-center rounded-md text-sm transition-colors',
         collapsed ? 'justify-center px-0 py-2' : 'gap-3 px-3 py-2',
         isActive
           ? 'bg-accent text-accent-foreground font-medium'
@@ -291,6 +308,7 @@ function NavItem({ to, label, icon: Icon, exact, collapsed }: NavItemProps) {
     >
       <Icon size={16} />
       {!collapsed && label}
+      {badge}
     </Link>
   )
 }
@@ -502,6 +520,11 @@ export function AppShell({ children }: AppShellProps) {
                   icon={item.icon}
                   exact={item.exact}
                   collapsed={collapsed}
+                  badge={
+                    'badge' in item && item.badge === 'chat' ? (
+                      <ChatUnreadBadge collapsed={collapsed} />
+                    ) : undefined
+                  }
                 />
               ),
             )}

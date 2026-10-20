@@ -85,8 +85,8 @@ Full tagging rules: [REMOTE.md](./REMOTE.md).
 
 Both CI runs (`ci.yml` e2e job, `deploy.yml` `e2e-staging` job) run Playwright
 with a JSON reporter and fail if fewer than `E2E_MIN_EXECUTED_TESTS` tests
-actually executed (passed/flaky, i.e. not skipped) — floors are `32` (CI;
-actual is 34 = 30 API + 4 browser, so the guard also fires if the browser
+actually executed (passed/flaky, i.e. not skipped) — floors are `33` (CI;
+actual is 35 = 30 API + 5 browser, so the guard also fires if the browser
 specs silently skip) and `8` (staging gate), set as env vars at the top of
 each job. This catches the
 `E2E_SKIP` / missing-env false-positive class where the suite "passes" by

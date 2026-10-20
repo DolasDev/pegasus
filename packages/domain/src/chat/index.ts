@@ -94,6 +94,38 @@ export function parseMentions(body: string, mentionable: ReadonlySet<string>): s
   return out
 }
 
+/** A message body cut into plain text and mention tokens, for rendering. */
+export type ChatBodySegment =
+  { kind: 'text'; text: string } | { kind: 'mention'; name: string; userId: string }
+
+/** Splits a body at its `@[Name](userId)` tokens, keeping the text between them. */
+export function splitMentions(body: string): ChatBodySegment[] {
+  const out: ChatBodySegment[] = []
+  let last = 0
+  for (const match of body.matchAll(MENTION_TOKEN)) {
+    const at = match.index as number
+    if (at > last) out.push({ kind: 'text', text: body.slice(last, at) })
+    out.push({ kind: 'mention', name: match[1] as string, userId: match[2] as string })
+    last = at + match[0].length
+  }
+  if (last < body.length) out.push({ kind: 'text', text: body.slice(last) })
+  return out
+}
+
+/**
+ * The composer's token for mentioning `userId`. The display name loses the
+ * characters the token can't carry (`]`, newlines) and is cut to 100, so the
+ * token always parses back.
+ */
+export function formatMentionToken(name: string, userId: string): string {
+  const safe =
+    name
+      .replace(/[\]\r\n]/g, ' ')
+      .trim()
+      .slice(0, 100) || 'user'
+  return `@[${safe}](${userId})`
+}
+
 // ---------------------------------------------------------------------------
 // Access
 // ---------------------------------------------------------------------------
