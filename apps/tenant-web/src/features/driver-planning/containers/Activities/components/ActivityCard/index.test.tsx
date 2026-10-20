@@ -9,6 +9,7 @@ function makeActivity(overrides: Partial<ActivityRow> = {}): ActivityRow {
     TripMaster_id: 77,
     ActivityType_code: 'PACK',
     estimated_date: '2026-09-14',
+    scheduled_date: '2026-09-14',
     actual_date: null,
     status: 'Scheduled',
     city: 'CHICAGO',
@@ -30,6 +31,18 @@ function makeActivity(overrides: Partial<ActivityRow> = {}): ActivityRow {
 }
 
 describe('ActivityCard', () => {
+  it('dates a no-ETA activity by its scheduled day, not the blank estimated_date', () => {
+    // PACK/LOAD are `isHasETA = 0`: estimated_date is NULL and the API's
+    // scheduled_date falls back to planned_start.
+    render(
+      <ActivityCard
+        activity={makeActivity({ estimated_date: null, scheduled_date: '2026-10-21' })}
+      />,
+    )
+
+    expect(screen.getByText('10/21/26')).toBeInTheDocument()
+  })
+
   it('renders the operational line: date, type, order, place, driver, dispatcher, status', () => {
     render(<ActivityCard activity={makeActivity()} />)
 

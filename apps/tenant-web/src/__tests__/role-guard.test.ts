@@ -131,10 +131,10 @@ describe('DISPATCH_ACTIVITIES_ROLES', () => {
     vi.clearAllMocks()
   })
 
-  // Dispatch Activities is narrower than the rest of Operations. Both the route
+  // Services (formerly Dispatch Activities) is narrower than the rest of Operations. Both the route
   // guard (dpActivitiesRoute) and the nav child spread this same const, so these
   // pin the grant in one place.
-  it.each(['tenant_admin', 'operations_admin'])('admits %s to Dispatch Activities', (role) => {
+  it.each(['tenant_admin', 'operations_admin'])('admits %s to Services', (role) => {
     mockedGetSession.mockReturnValue(makeSession({ roleNames: [role] }))
 
     expect(() => requireRole(...DISPATCH_ACTIVITIES_ROLES)()).not.toThrow()

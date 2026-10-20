@@ -51,7 +51,7 @@ const INTEGRATION_VIEW_ROLES = ['tenant_admin', 'viewer', 'integration_publisher
 // tenant_admin + operations_admin, leaving the dispatch roles only
 // Availability/Shipments.)
 //
-// Dispatch Activities is the exception: it carries its own, narrower list. Keep
+// Services (formerly Dispatch Activities) is the exception: it carries its own, narrower list. Keep
 // it in step with `dpActivitiesRoute`'s guard in router.tsx — a grant applied to
 // one but not the other either hides a reachable screen or advertises an
 // unreachable one.
@@ -62,7 +62,7 @@ const OPERATIONS_CHILDREN = [
   { to: '/driver-planning/shipments' as const, label: 'Shipments', exact: false },
   {
     to: '/driver-planning/activities' as const,
-    label: 'Dispatch Activities',
+    label: 'Services',
     exact: false,
     roles: DISPATCH_ACTIVITIES_ROLES,
   },
