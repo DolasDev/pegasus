@@ -205,3 +205,83 @@ export async function listLocalDrivers(connectionString: string): Promise<LocalD
     name: r.first ? `${r.last}, ${r.first}` : r.last,
   }))
 }
+
+export interface OrderSummary {
+  orderNum: number
+  shipperName: string | null
+  origin: string | null
+  destination: string | null
+  packDate: string | null
+  loadDate: string | null
+  deliveryDate: string | null
+}
+
+function cityState(city: unknown, state: unknown): string | null {
+  const parts = [city, state]
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter((v) => v.length > 0)
+  return parts.length > 0 ? parts.join(', ') : null
+}
+
+function trimmed(v: unknown): string | null {
+  return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null
+}
+
+/** A legacy date column as `YYYY-MM-DD` (they are calendar dates, not instants). */
+function dateOnly(v: unknown): string | null {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString().slice(0, 10)
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10)
+  return null
+}
+
+/**
+ * Header details for a batch of orders, from `sales` — one round trip, for the
+ * chat page's conversation list and room header. Not the longhaul shipments
+ * view: local-only orders aren't in it, and chat's employee scope is wider
+ * than the longhaul read scope.
+ *
+ * Pass `driver` for a driver-scoped caller: orders they can't read are left
+ * out, in the same query. Throws on a legacy failure (the caller decides how
+ * to degrade); a driver with no mapped ids gets nothing.
+ */
+export async function orderSummaries(
+  connectionString: string,
+  orderNums: readonly number[],
+  driver: DriverIds | null,
+): Promise<OrderSummary[]> {
+  if (orderNums.length === 0) return []
+  const params: SqlParam[] = []
+  let access = ''
+  if (driver) {
+    const predicate = driverPredicate('s.order_num', driver, params)
+    if (!predicate) return []
+    access = ` AND (${predicate})`
+  }
+  const placeholders = orderNums.map((n, i) => {
+    params.push({ name: `o${i}`, value: n })
+    return `@o${i}`
+  })
+  const { recordset } = await executeSql(
+    connectionString,
+    `SELECT s.order_num, s.shipper_name, s.shipper_city, s.shipper_state,` +
+      ` s.consignee_city, s.consignee_state, s.pack_date, s.load_date, s.del_date` +
+      ` FROM sales s WHERE s.order_num IN (${placeholders.join(', ')})${access}`,
+    { params },
+  )
+  // `sales` is 1:1 with an order by convention only; keep the first row.
+  const byOrder = new Map<number, OrderSummary>()
+  for (const r of recordset as Array<Record<string, unknown>>) {
+    const orderNum = Number(r['order_num'])
+    if (!Number.isInteger(orderNum) || byOrder.has(orderNum)) continue
+    byOrder.set(orderNum, {
+      orderNum,
+      shipperName: trimmed(r['shipper_name']),
+      origin: cityState(r['shipper_city'], r['shipper_state']),
+      destination: cityState(r['consignee_city'], r['consignee_state']),
+      packDate: dateOnly(r['pack_date']),
+      loadDate: dateOnly(r['load_date']),
+      deliveryDate: dateOnly(r['del_date']),
+    })
+  }
+  return [...byOrder.values()]
+}

@@ -16,6 +16,7 @@ import {
 import { requireRole, OPERATIONS_ROLES, DISPATCH_ACTIVITIES_ROLES } from '@/auth/role-guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
+import { MessagesPage } from '@/routes/messages'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
 import { QuotesPage } from '@/routes/quotes.index'
 import { QuoteDetailPage } from '@/routes/quotes.$quoteId'
@@ -150,6 +151,20 @@ const movesDetailRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/moves/$moveId',
   component: MoveDetailPage,
+})
+
+// Move chat. Open to every signed-in user — the API scopes each room (D1/D2 in
+// plans/in-progress/move-chat-api.md), so there is no role guard here.
+const messagesRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/messages',
+  component: MessagesPage,
+})
+
+const messagesRoomRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/messages/shipment/$orderNum',
+  component: MessagesPage,
 })
 
 const quotesIndexRoute = createRoute({
@@ -487,6 +502,8 @@ const routeTree = rootRoute.addChildren([
     indexRoute,
     movesIndexRoute,
     movesDetailRoute,
+    messagesRoute,
+    messagesRoomRoute,
     quotesIndexRoute,
     quotesDetailRoute,
     customersIndexRoute,

@@ -7,6 +7,8 @@ import {
   validateChatBody,
   isValidClientMessageId,
   parseMentions,
+  splitMentions,
+  formatMentionToken,
   resolveChatScope,
   resolveRecipients,
   chatPushContent,
@@ -75,6 +77,43 @@ describe('isValidClientMessageId', () => {
     'rejects %j',
     (raw) => expect(isValidClientMessageId(raw)).toBe(false),
   )
+})
+
+describe('splitMentions', () => {
+  it('cuts a body into text and mention segments', () => {
+    expect(splitMentions('hi @[Ann Lee](u-2), see @[Bo](u-1)')).toEqual([
+      { kind: 'text', text: 'hi ' },
+      { kind: 'mention', name: 'Ann Lee', userId: 'u-2' },
+      { kind: 'text', text: ', see ' },
+      { kind: 'mention', name: 'Bo', userId: 'u-1' },
+    ])
+  })
+
+  it('handles a body that starts with, or is only, adjacent tokens', () => {
+    expect(splitMentions('@[A](u-1)@[B](u-2)')).toEqual([
+      { kind: 'mention', name: 'A', userId: 'u-1' },
+      { kind: 'mention', name: 'B', userId: 'u-2' },
+    ])
+  })
+
+  it('returns plain text whole, and nothing for an empty body', () => {
+    expect(splitMentions('no tokens @here')).toEqual([{ kind: 'text', text: 'no tokens @here' }])
+    expect(splitMentions('')).toEqual([])
+  })
+})
+
+describe('formatMentionToken', () => {
+  it('builds a token that parses back to the same user', () => {
+    const token = formatMentionToken('Ann Lee', 'u-2')
+    expect(token).toBe('@[Ann Lee](u-2)')
+    expect(parseMentions(token, new Set(['u-2']))).toEqual(['u-2'])
+  })
+
+  it('strips characters the token cannot carry and caps the name', () => {
+    expect(formatMentionToken('a]b\nc', 'u-1')).toBe('@[a b c](u-1)')
+    expect(formatMentionToken('x'.repeat(150), 'u-1')).toBe(`@[${'x'.repeat(100)}](u-1)`)
+    expect(formatMentionToken(' ] ', 'u-1')).toBe('@[user](u-1)')
+  })
 })
 
 describe('parseMentions', () => {

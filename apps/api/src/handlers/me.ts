@@ -95,6 +95,9 @@ meHandler.get('/permissions', async (c) => {
     roles: principal.roleNames,
     permissions,
     capabilities,
+    // The caller's TenantUser id (null for M2M / service accounts) — lets a
+    // client recognize its own rows, e.g. which chat messages are "mine".
+    userId: c.get('userId') ?? null,
   })
 })
 

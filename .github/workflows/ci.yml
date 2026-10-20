@@ -588,12 +588,12 @@ jobs:
       TEST_TENANT_ID: e2e00000-0000-0000-0000-000000000001
       SKIP_AUTH: 'true'
       CI: 'true'
-      # Floor for the silent-skip guard below. 34 tests execute today (30 API
-      # + 4 browser specs against the served tenant-web build). Floor 32 keeps
+      # Floor for the silent-skip guard below. 35 tests execute today (30 API
+      # + 5 browser specs against the served tenant-web build). Floor 33 keeps
       # a little slack but still fires if the browser specs silently skip
       # (e.g. WEB_URL/serve step broken → back to 30). Bump when specs are
       # added/removed.
-      E2E_MIN_EXECUTED_TESTS: '32'
+      E2E_MIN_EXECUTED_TESTS: '33'
 
     steps:
       - uses: actions/checkout@v7
