@@ -240,6 +240,10 @@ function dateOnly(v: unknown): string | null {
  * view: local-only orders aren't in it, and chat's employee scope is wider
  * than the longhaul read scope.
  *
+ * Dates are the PLANNED ones (`pack_date`/`load_date`/`del_date` — the desktop
+ * labels them "Pack Planned" etc. in IO_Sale.vb; the `*_date2` columns are the
+ * "Earliest" dates the longhaul screens show as the start of a window).
+ *
  * Pass `driver` for a driver-scoped caller: orders they can't read are left
  * out, in the same query. Throws on a legacy failure (the caller decides how
  * to degrade); a driver with no mapped ids gets nothing.
