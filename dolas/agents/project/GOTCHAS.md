@@ -3383,3 +3383,20 @@ The scheduled day is `COALESCE(estimated_date, planned_start)`, the same fallbac
 the Gantt's ArrivalWindowField uses. It is a point date, so it does not bring back
 the overlap trap in #619/#622 (an inverted `planned_end`). Any new activity-level
 query that filters or sorts "by date" should use this coalesce.
+
+## Porting a tenant-web hook to `apps/mobile`: `document` guards never pause, and `/me/permissions` has no envelope
+
+Two traps hit while porting move chat (Phase 3) from tenant-web to the driver app,
+and neither shows up in jest — Node 24 has a global `crypto.randomUUID`, Hermes
+doesn't, and jest never runs a real background transition:
+
+- **`document.hidden` / `visibilitychange` have no RN equivalent.** A guard like
+  `typeof document !== 'undefined' && document.hidden` doesn't crash on a phone; it
+  is just always false, so a 3 s poll keeps running while the app is backgrounded.
+  Use `AppState.currentState === 'active'` and `AppState.addEventListener('change')`
+  (see `apps/mobile/src/chat/useChatThread.ts`). Likewise use `expo-crypto`'s
+  `randomUUID()`, never the global (the #542 outage).
+- **`GET /api/v1/me/permissions` returns a bare object**, not `{ data }`. The
+  shared `@pegasus/api-http` client returns `json.data`, so the mobile app reads it
+  as `undefined` without an error. The driver app gets its TenantUser id from
+  `GET /api/v1/me/driver` (`userId`, added for chat) instead.

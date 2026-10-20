@@ -7,11 +7,13 @@ import {
 } from '@react-navigation/drawer'
 import { useAuth } from '../context/AuthContext'
 import { useTrips } from '../context/TripsContext'
+import { useChat } from '../chat/ChatContext'
 import { colors, fontSize, spacing } from '../theme/colors'
 
 export function DrawerContent(props: DrawerContentComponentProps) {
   const { session } = useAuth()
   const { offeredCount } = useTrips()
+  const { unreadTotal } = useChat()
 
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={styles.container}>
@@ -37,6 +39,24 @@ export function DrawerContent(props: DrawerContentComponentProps) {
             </View>
           )}
           onPress={() => props.navigation.navigate('trips')}
+        />
+        <DrawerItem
+          label={() => (
+            <View style={styles.itemRow}>
+              <Text style={styles.itemLabel}>Messages</Text>
+              {unreadTotal > 0 ? (
+                <View
+                  style={[styles.badge, styles.badgeUnread]}
+                  accessibilityLabel={`${unreadTotal} unread messages`}
+                >
+                  <Text style={[styles.badgeText, styles.badgeTextUnread]}>
+                    {unreadTotal > 99 ? '99+' : unreadTotal}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+          onPress={() => props.navigation.navigate('messages')}
         />
       </View>
     </DrawerContentScrollView>
@@ -85,6 +105,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warning,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badgeUnread: {
+    backgroundColor: colors.info,
+  },
+  badgeTextUnread: {
+    color: colors.textLight,
   },
   badgeText: {
     fontSize: fontSize.small,
