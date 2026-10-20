@@ -462,7 +462,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 | NW tunnel peer | ACTIVE, `http://10.200.0.3:65274`, `/version` answers 200 | done |
 | System employee (`companies.system_employee_code`) | NELSON-WESTERBERG = **1001** | done |
 | RingCentral capture | connection ACTIVE, `V1` cursor synced minutes before the probe | done |
-| `operations.emailAllowedRecipientDomains` | **empty**, so every `send_email` is refused (`RECIPIENT_NOT_ALLOWED`, D2) | NW tenant admin |
+| `operations.emailAllowedRecipientDomains` | **empty**, so every `send_email` is refused (409 `EMAIL_RECIPIENTS_NOT_CONFIGURED`, D2). Set in tenant-web Settings → App → Operations → "Email recipient domains" | NW tenant admin |
 | Automation plan (`tenant_automation_plans`) | **none**: usage is metered but nothing bills (the pilot year starts at the test move) | Steve, in admin-web |
 | Pulse workflow | **none published** (NW has only `weichert-milestone-update`, `demo-pack-call*`, `send_order_to_partner`) | Blue Signal (we never publish workflows or configs) |
 | Triggers | **none** for pulse (only `demo-pack-call-ack` on `feedback.submitted`) | the workflow's publisher |
