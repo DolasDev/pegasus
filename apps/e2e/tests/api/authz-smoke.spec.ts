@@ -66,6 +66,8 @@ const SALES_PERMISSIONS = [
   // Move chat read/post likewise (55-chat-shared.cedar).
   'chat:read',
   'chat:post',
+  'labor:read',
+  'labor:write',
 ] as const
 const VIEWER_PERMISSIONS = [
   'quote:read',
@@ -98,6 +100,8 @@ const VIEWER_PERMISSIONS = [
   // Move chat read/post baseline granted to all roles (55-chat-shared.cedar).
   'chat:read',
   'chat:post',
+  'labor:read',
+  'labor:write',
 ] as const
 
 type PersonaSession = {

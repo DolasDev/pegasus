@@ -403,6 +403,308 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
   ),
 }
 
+// ── Labor (Cognito users only; see handlers/labor.ts) ────────────────────────
+// A driver's private book of cash-labor crews. Every crew route answers 404
+// for a crew the caller hasn't added — the caller's own link is the access.
+
+const LABOR_PHONE_PARAM = {
+  name: 'phone',
+  in: 'path',
+  required: true,
+  schema: { type: 'string' },
+  description:
+    "The crew's phone number, URL-encoded. Any spelling is accepted (`+14045551212`, `(404) 555-1212`); it is normalised to E.164.",
+}
+
+const LABOR_ERRORS = {
+  '400': { $ref: '#/components/responses/ValidationError' },
+  '404': {
+    description: 'Crew (or packer) not in your list',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+  },
+}
+
+/** One labor operation: a JSON body (optional) and a `{data}` response. */
+function laborOp(
+  operationId: string,
+  summary: string,
+  opts: {
+    description?: string
+    phone?: boolean
+    packerId?: boolean
+    query?: Array<{ name: string; description: string }>
+    body?: Record<string, unknown>
+    data?: Record<string, unknown>
+    status?: '200' | '201' | '204'
+    extraResponses?: Record<string, unknown>
+  } = {},
+): Record<string, unknown> {
+  const status = opts.status ?? '200'
+  return {
+    operationId,
+    summary,
+    tags: ['Labor'],
+    ...(opts.description ? { description: opts.description } : {}),
+    parameters: [
+      ...(opts.phone ? [LABOR_PHONE_PARAM] : []),
+      ...(opts.packerId
+        ? [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }]
+        : []),
+      ...(opts.query ?? []).map((q) => ({
+        name: q.name,
+        in: 'query',
+        required: false,
+        schema: { type: 'string' },
+        description: q.description,
+      })),
+    ],
+    ...(opts.body
+      ? {
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: opts.body } },
+          },
+        }
+      : {}),
+    responses: {
+      [status]:
+        status === '204'
+          ? { description: 'Done' }
+          : {
+              description: 'OK',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: opts.data ?? { type: 'object' } },
+                  },
+                },
+              },
+            },
+      ...LABOR_ERRORS,
+      ...(opts.extraResponses ?? {}),
+    },
+  }
+}
+
+const LABOR_CREW = { $ref: '#/components/schemas/LaborCrew' }
+const LABOR_CREW_DETAIL = { $ref: '#/components/schemas/LaborCrewDetail' }
+const LABOR_PACKER = { $ref: '#/components/schemas/LaborPacker' }
+
+const LABOR_PACKER_BODY = {
+  type: 'object',
+  required: ['firstName', 'lastName'],
+  description:
+    'First and last name plus at least one of email, cidNumber or phone. cidIssuedOn (YYYY-MM-DD, not in the future) is required with a cidNumber.',
+  properties: {
+    firstName: { type: 'string' },
+    lastName: { type: 'string' },
+    email: { type: ['string', 'null'] },
+    cidNumber: { type: ['string', 'null'], description: 'Candidate ID (certification number)' },
+    cidIssuedOn: { type: ['string', 'null'], format: 'date' },
+    phone: { type: ['string', 'null'] },
+  },
+}
+
+const LABOR_DUPLICATE = {
+  '409': {
+    description:
+      'PACKER_DUPLICATE — the crew already has a packer with that last name + CID number or last name + email',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+  },
+}
+
+const LABOR_PATHS: Record<string, Record<string, unknown>> = {
+  '/api/v1/labor/crews': {
+    get: laborOp('listLaborCrews', 'My crews, A–Z or nearest first', {
+      description:
+        'No q: A–Z. A US ZIP, a Canadian postal code / FSA, or "City, ST": every crew, nearest first on its closest service area (`distanceMiles`, null = no geocoded area; `meta.location` is the point used, `meta.locationNotFound` when the place is unknown). A state/province code: crews serving it, A–Z. Other text: crews whose name, nickname or phone matches — else, if the text is a city name, nearest first from it.',
+      query: [{ name: 'q', description: 'Search text (see description)' }],
+      data: { type: 'array', items: LABOR_CREW },
+    }),
+    post: laborOp('addLaborCrew', 'Add a crew to my list', {
+      description:
+        'Idempotent. A number already added by another driver links you to their crew (its shared name stands; yours becomes your nickname when it differs). `meta.outcome`: added | linkedExisting | alreadyInList. Rate-limited to 100 new crews per user per 24h (429 LINK_RATE_LIMITED).',
+      body: {
+        type: 'object',
+        required: ['phone', 'name'],
+        properties: {
+          phone: { type: 'string' },
+          name: { type: 'string' },
+          email: { type: ['string', 'null'] },
+          nickname: { type: ['string', 'null'] },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+      status: '201',
+      extraResponses: {
+        '429': {
+          description: 'LINK_RATE_LIMITED',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/crews/import': {
+    post: laborOp('importLaborCrews', 'Add many crews (phone-contacts import)', {
+      description:
+        'Up to 200 rows. One result per row, in order — `outcome`: added | linkedExisting | alreadyInList | invalid (with code/error) | rateLimited. A bad row never fails the batch.',
+      body: {
+        type: 'object',
+        required: ['crews'],
+        properties: {
+          crews: {
+            type: 'array',
+            maxItems: 200,
+            items: {
+              type: 'object',
+              required: ['phone', 'name'],
+              properties: {
+                phone: { type: 'string' },
+                name: { type: 'string' },
+                email: { type: ['string', 'null'] },
+              },
+            },
+          },
+        },
+      },
+      data: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['phone', 'outcome'],
+          properties: {
+            phone: { type: 'string' },
+            outcome: {
+              type: 'string',
+              enum: ['added', 'linkedExisting', 'alreadyInList', 'invalid', 'rateLimited'],
+            },
+            code: { type: 'string' },
+            error: { type: 'string' },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/crews/{phone}': {
+    get: laborOp('getLaborCrew', 'A crew with its packers', {
+      phone: true,
+      data: LABOR_CREW_DETAIL,
+    }),
+    patch: laborOp('updateLaborCrew', "Edit a crew's shared name/email or my nickname", {
+      phone: true,
+      body: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Shared with every linked driver' },
+          email: { type: ['string', 'null'], description: 'Shared' },
+          nickname: { type: ['string', 'null'], description: 'Private; null clears' },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+    }),
+    delete: laborOp('removeLaborCrew', 'Remove a crew from MY list (and my rating)', {
+      description: 'The crew itself stays for every other driver who has it.',
+      phone: true,
+      status: '204',
+    }),
+  },
+  '/api/v1/labor/crews/{phone}/service-areas': {
+    put: laborOp('setLaborCrewServiceAreas', "Replace a crew's (shared) service areas", {
+      description:
+        'US states and Canadian provinces; at most 50, de-duplicated. A city found in the geo reference data is geocoded for distance search; one that is not is kept with `geocoded: false`.',
+      phone: true,
+      body: {
+        type: 'object',
+        required: ['serviceAreas'],
+        properties: {
+          serviceAreas: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['city', 'region'],
+              properties: {
+                city: { type: 'string' },
+                region: { type: 'string', description: 'Two-letter state/province code' },
+              },
+            },
+          },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+    }),
+  },
+  '/api/v1/labor/crews/{phone}/packers': {
+    post: laborOp('addLaborPacker', 'Add a packer to a crew', {
+      phone: true,
+      body: LABOR_PACKER_BODY,
+      data: LABOR_PACKER,
+      status: '201',
+      extraResponses: LABOR_DUPLICATE,
+    }),
+  },
+  '/api/v1/labor/crews/{phone}/packers/{id}': {
+    patch: laborOp('updateLaborPacker', 'Edit a packer (omitted fields keep their value)', {
+      phone: true,
+      packerId: true,
+      body: { ...LABOR_PACKER_BODY, required: [] },
+      data: LABOR_PACKER,
+      extraResponses: LABOR_DUPLICATE,
+    }),
+    delete: laborOp('deleteLaborPacker', 'Delete a packer', {
+      phone: true,
+      packerId: true,
+      status: '204',
+    }),
+  },
+  '/api/v1/labor/crews/{phone}/rating': {
+    put: laborOp('rateLaborCrew', 'Set my private 1–5 star rating and comment', {
+      phone: true,
+      body: {
+        type: 'object',
+        required: ['stars'],
+        properties: {
+          stars: { type: 'integer', minimum: 1, maximum: 5 },
+          comment: { type: ['string', 'null'], maxLength: 1000 },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+    }),
+    delete: laborOp('clearLaborCrewRating', 'Clear my rating', {
+      phone: true,
+      data: LABOR_CREW_DETAIL,
+    }),
+  },
+  '/api/v1/labor/places': {
+    get: laborOp('searchLaborPlaces', 'City typeahead (US + Canada) for service areas', {
+      description:
+        'Name-prefix match, most populous first, at most 20. "spring" or "spring, mo" to narrow to a state/province. Fewer than two letters answers [].',
+      query: [{ name: 'q', description: 'City name prefix, optionally ", ST"' }],
+      data: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            city: { type: 'string' },
+            region: { type: 'string' },
+            country: { type: 'string', enum: ['US', 'CA'] },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/export': {
+    get: laborOp('exportLaborCrews', 'My whole list, for a contacts export', {
+      description:
+        'Each crew with its packers, service areas and my rating — the input to the app’s .vcf / Google Contacts .csv export.',
+      data: { type: 'array', items: { type: 'object' } },
+    }),
+  },
+}
+
 export function getOpenApiSpec() {
   return {
     openapi: '3.1.0',
@@ -1814,6 +2116,7 @@ export function getOpenApiSpec() {
           },
         },
       },
+      ...LABOR_PATHS,
       '/api/v1/local-drivers': {
         get: {
           operationId: 'listLocalDrivers',
@@ -3033,6 +3336,77 @@ export function getOpenApiSpec() {
             mentionedUserIds: { type: 'array', items: { type: 'string' } },
             createdAt: { type: 'string', format: 'date-time' },
             deletedAt: { type: ['string', 'null'], format: 'date-time' },
+          },
+        },
+        LaborCrew: {
+          type: 'object',
+          description:
+            'A crew as the caller sees it. name/email/serviceAreas are shared by every driver who added the number; nickname and myRating are private. averageRating is anonymous and null below 3 raters.',
+          required: ['phone', 'name', 'displayName', 'serviceAreas', 'packerCount'],
+          properties: {
+            phone: { type: 'string', description: 'E.164 — the crew’s identity' },
+            phoneDisplay: { type: 'string' },
+            name: { type: 'string' },
+            nickname: { type: ['string', 'null'] },
+            displayName: { type: 'string', description: 'nickname ?? name' },
+            email: { type: ['string', 'null'] },
+            serviceAreas: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  city: { type: 'string' },
+                  region: { type: 'string' },
+                  country: { type: 'string', enum: ['US', 'CA'] },
+                  geocoded: { type: 'boolean' },
+                },
+              },
+            },
+            packerCount: { type: 'integer' },
+            myRating: {
+              type: ['object', 'null'],
+              properties: {
+                stars: { type: 'integer', minimum: 1, maximum: 5 },
+                comment: { type: ['string', 'null'] },
+                updatedAt: { type: 'string', format: 'date-time' },
+              },
+            },
+            averageRating: {
+              type: ['object', 'null'],
+              properties: { average: { type: 'number' }, count: { type: 'integer' } },
+            },
+            addedAt: { type: 'string', format: 'date-time' },
+            distanceMiles: {
+              type: ['number', 'null'],
+              description: 'Only on a location search',
+            },
+          },
+        },
+        LaborCrewDetail: {
+          allOf: [
+            { $ref: '#/components/schemas/LaborCrew' },
+            {
+              type: 'object',
+              properties: {
+                packers: { type: 'array', items: { $ref: '#/components/schemas/LaborPacker' } },
+              },
+            },
+          ],
+        },
+        LaborPacker: {
+          type: 'object',
+          required: ['id', 'firstName', 'lastName'],
+          properties: {
+            id: { type: 'string' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            email: { type: ['string', 'null'] },
+            cidNumber: { type: ['string', 'null'] },
+            cidIssuedOn: { type: ['string', 'null'], format: 'date' },
+            phone: { type: ['string', 'null'] },
+            phoneDisplay: { type: ['string', 'null'] },
+            updatedAt: { type: 'string', format: 'date-time' },
           },
         },
         ReportingDataset: {

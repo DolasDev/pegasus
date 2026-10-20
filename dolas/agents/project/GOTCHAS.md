@@ -3370,3 +3370,22 @@ predicate.
 
 Known pre-existing instance (not fixed here): `handlers/notifications.ts`
 validates the target user with `{ where: { id: userId } }`.
+
+## `SKIP_AUTH`'s `userId` (`skip-auth-user`) has no `TenantUser` row
+
+`middleware/skip-auth.ts` sets `userId = 'skip-auth-user'` and hands out the
+**base** client, but nothing seeds a `TenantUser` with that id. A route that
+writes a row with an FK to `tenant_users` (labor's `CrewLink`, chat's member
+rows) therefore 500s on a foreign-key violation under SKIP_AUTH, including in the
+local e2e API mode. Exercise such routes in the API's Vitest integration suite
+(real router + `createTenantDb` + real TenantUser rows), not in a `@local-only`
+Playwright spec. The alternative is to seed that user in e2e global setup first.
+
+## A failed Prisma migration rolls back whole — data migrations included
+
+A `migration.sql` is sent as one multi-statement query, so Postgres runs it in
+one implicit transaction. When the geo data migration (`*_geo_places_data`) hit
+a duplicate key halfway (GeoNames lists some Canadian FSAs twice), **nothing**
+was left behind, and `prisma migrate resolve --rolled-back` said it had "never
+been applied". Fix the generator, regenerate, and run `migrate dev` again. There
+are no partial rows to clean up.

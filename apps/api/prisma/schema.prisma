@@ -534,6 +534,7 @@ model TenantUser {
   chatMessages        ChatMessage[]
   chatRoomMembers     ChatRoomMember[]
   companyMemberships  CompanyMembership[]
+  laborCrewLinks      CrewLink[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3511,5 +3512,167 @@ model ChatRoomMember {
   @@id([roomId, userId])
   @@index([tenantId, userId])
   @@map("chat_room_members")
+  @@schema("public")
+}
+
+// ===========================================================================
+// Labor context — a driver's private book of cash-labor crews
+//
+// PLATFORM-WIDE, deliberately NOT tenant-scoped (none of these models are in
+// TENANT_SCOPED_MODELS): a crew is keyed by its E.164 phone number and every
+// driver — at any tenant — who adds that number to their list shares the same
+// crew record (name, service areas, packers). The per-driver `CrewLink` is the
+// access path: every read/write in handlers/labor.ts goes through the caller's
+// own link (`tenantUserId`), and a crew with no link of yours is a 404.
+// Ratings, comments and nicknames hang off the link, so they stay private.
+// Mirrors the domain `labor` bounded context. Plan: plans/in-progress/labor-crews.md.
+// ===========================================================================
+
+/// A cash-labor crew, identified by its phone number. Shared fields are
+/// editable by every linked driver; the user-id columns are the edit trail.
+model Crew {
+  /// E.164 (`normalizePhoneNumber`). The crew's identity — never changes.
+  phone           String   @id
+  name            String
+  email           String?
+  createdByUserId String   @map("created_by_user_id")
+  updatedByUserId String   @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  links        CrewLink[]
+  serviceAreas CrewServiceArea[]
+  packers      Packer[]
+
+  @@map("labor_crews")
+  @@schema("public")
+}
+
+/// A driver's membership of a crew — the access grant. `tenantId` is recorded
+/// for audit and tenant offboarding only; scoping is by `tenantUserId`.
+model CrewLink {
+  id           String   @id @default(uuid())
+  tenantUserId String   @map("tenant_user_id")
+  tenantId     String   @map("tenant_id")
+  crewPhone    String   @map("crew_phone")
+  /// Private display name — defaults to the name in the driver's phone contacts.
+  nickname     String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   TenantUser  @relation(fields: [tenantUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crew   Crew        @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  rating CrewRating?
+
+  @@unique([tenantUserId, crewPhone])
+  @@index([crewPhone])
+  @@index([tenantUserId, createdAt])
+  @@map("labor_crew_links")
+  @@schema("public")
+}
+
+/// A city a crew works in. `lat`/`lon` are copied from the matched GeoCity at
+/// write time; an unmatched city is kept but can't be distance-ranked.
+model CrewServiceArea {
+  id              String   @id @default(uuid())
+  crewPhone       String   @map("crew_phone")
+  city            String
+  cityKey         String   @map("city_key")
+  region          String
+  country         String   @db.Char(2)
+  geoCityId       String?  @map("geo_city_id")
+  lat             Float?
+  lon             Float?
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  crew    Crew     @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  geoCity GeoCity? @relation(fields: [geoCityId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([crewPhone, country, region, cityKey])
+  @@map("labor_crew_service_areas")
+  @@schema("public")
+}
+
+/// A member of a crew. Identified within the crew by last name + CID number or
+/// last name + email (the nullable `cidKey`/`emailKey`, unique per crew —
+/// Postgres lets NULLs repeat, so a phone-only packer has no identity key).
+model Packer {
+  id              String    @id @default(uuid())
+  crewPhone       String    @map("crew_phone")
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  email           String?
+  /// Candidate ID (a certification number).
+  cidNumber       String?   @map("cid_number")
+  /// Date the CID was issued — required iff `cidNumber`.
+  cidIssuedOn     DateTime? @map("cid_issued_on") @db.Date
+  phone           String?
+  cidKey          String?   @map("cid_key")
+  emailKey        String?   @map("email_key")
+  createdByUserId String    @map("created_by_user_id")
+  updatedByUserId String    @map("updated_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  crew Crew @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([crewPhone, cidKey])
+  @@unique([crewPhone, emailKey])
+  @@index([crewPhone])
+  @@map("labor_packers")
+  @@schema("public")
+}
+
+/// One driver's rating of a crew (via their link — private). Only the
+/// anonymous aggregate, from MIN_RATERS_FOR_AVERAGE raters, is ever shown to
+/// anyone else.
+model CrewRating {
+  id         String   @id @default(uuid())
+  crewLinkId String   @unique @map("crew_link_id")
+  /// 1–5, enforced by a CHECK constraint in the migration.
+  stars      Int      @db.SmallInt
+  comment    String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  link CrewLink @relation(fields: [crewLinkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("labor_crew_ratings")
+  @@schema("public")
+}
+
+/// Reference data: US places (Census Gazetteer) and Canadian cities (GeoNames,
+/// CC-BY 4.0). Loaded by a data migration generated with
+/// scripts/generate-geo-places.ts. Global and read-only.
+model GeoCity {
+  id         String @id
+  country    String @db.Char(2)
+  region     String
+  name       String
+  /// `foldKey(name)` — what lookups and the typeahead match on.
+  nameKey    String @map("name_key")
+  lat        Float
+  lon        Float
+  population Int?
+
+  serviceAreas CrewServiceArea[]
+
+  @@index([nameKey])
+  @@index([country, region])
+  @@map("geo_cities")
+  @@schema("public")
+}
+
+/// Reference data: US ZIP5 (Census ZCTA) and Canadian FSA (first three
+/// characters of a postal code, GeoNames) centroids.
+model GeoPostalCode {
+  country String @db.Char(2)
+  code    String
+  region  String
+  lat     Float
+  lon     Float
+
+  @@id([country, code])
+  @@map("geo_postal_codes")
   @@schema("public")
 }

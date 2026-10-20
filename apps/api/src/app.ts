@@ -24,6 +24,7 @@ import { jwksHandler } from './handlers/jwks'
 import { settingsCompaniesHandler } from './handlers/settings-companies'
 import { documentsHandler } from './handlers/documents'
 import { chatHandler } from './handlers/chat'
+import { laborHandler } from './handlers/labor'
 import { localDriversHandler } from './handlers/local-drivers'
 import { availabilityFiltersHandler } from './handlers/availability-filters'
 import { workflowsHandler } from './handlers/workflows'
@@ -451,6 +452,9 @@ v1.route('/local-drivers', localDriversHandler)
 // Move chat: a room per move for employees + the move's assigned drivers. On the
 // Cognito-only router on purpose — no API client or service account reaches it.
 v1.route('/chat', chatHandler)
+// Labor: a driver's private book of cash-labor crews (mobile Labor module).
+// Cognito-only for the same reason; access is the caller's own crew links.
+v1.route('/labor', laborHandler)
 v1.route('/customers', customersHandler)
 v1.route('/quotes', quotesHandler)
 v1.route('/rating', ratingHandler)

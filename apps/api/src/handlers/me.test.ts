@@ -63,11 +63,13 @@ describe('GET /permissions', () => {
         Actions.RateShipment.permission,
         Actions.ReadTariff.permission,
         Actions.ReadReportingDataset.permission,
-        // Document read/upload and move chat are granted to every authenticated user.
+        // Document read/upload, move chat and labor are granted to every authenticated user.
         Actions.ReadDocument.permission,
         Actions.UploadDocument.permission,
         Actions.ReadChat.permission,
         Actions.PostChat.permission,
+        Actions.ReadLabor.permission,
+        Actions.WriteLabor.permission,
       ]),
     )
   })
@@ -83,6 +85,8 @@ describe('GET /permissions', () => {
         Actions.UploadDocument.permission,
         Actions.ReadChat.permission,
         Actions.PostChat.permission,
+        Actions.ReadLabor.permission,
+        Actions.WriteLabor.permission,
       ]),
     )
   })

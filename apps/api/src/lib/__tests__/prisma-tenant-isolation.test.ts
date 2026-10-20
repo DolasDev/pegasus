@@ -977,6 +977,11 @@ describe('Schema-sync: TENANT_SCOPED_MODELS matches schema.prisma', () => {
       'InboundWebhookEvent',
       'MessageForwardOutbox',
       'MessageAttachment',
+      // Labor — crews are platform-wide by design (a phone number links drivers
+      // at any tenant to one crew). tenantId is audit-only; every query in
+      // handlers/labor.ts is scoped by the caller's own tenantUserId instead,
+      // and the cross-tenant rating aggregate deliberately reads other links.
+      'CrewLink',
     ])
 
     // Extract model names that contain a tenantId field declaration.

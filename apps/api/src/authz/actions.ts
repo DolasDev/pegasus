@@ -42,6 +42,7 @@ export type ResourceType =
   | 'Blob'
   | 'Document'
   | 'ChatRoom'
+  | 'LaborCrew'
   | 'Feedback'
   | 'Report'
   | 'Usage'
@@ -449,6 +450,19 @@ export const Actions = {
     id: 'PostChat',
     resourceType: 'ChatRoom',
     permission: 'chat:post',
+  },
+  // ── Labor (a driver's private book of cash-labor crews) ──────────────────
+  // Granted to every authenticated user (56-labor-shared.cedar). The handler
+  // (handlers/labor.ts) only touches crews through the caller's own links.
+  ReadLabor: {
+    id: 'ReadLabor',
+    resourceType: 'LaborCrew',
+    permission: 'labor:read',
+  },
+  WriteLabor: {
+    id: 'WriteLabor',
+    resourceType: 'LaborCrew',
+    permission: 'labor:write',
   },
   // ── Feedback (magic-link surveys) ─────────────────────────────────────────
   // ManageFeedbackForms gates the SDK/CLI authoring surface (validate / publish /
