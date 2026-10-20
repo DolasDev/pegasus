@@ -1,0 +1,175 @@
+import React from 'react'
+import { Alert } from 'react-native'
+import { fireEvent, render, waitFor } from '@testing-library/react-native'
+import { useRouter } from 'expo-router'
+import LaborScreen, { sectionsByInitial } from '../../../app/(drawer)/labor'
+import { LaborService } from '../../../src/services/laborService'
+import { exportLaborList } from '../../../src/services/laborExport'
+import type { LaborCrew } from '../../../src/types/labor'
+
+jest.mock('../../../src/services/laborService', () => ({
+  LaborService: { searchCrews: jest.fn() },
+}))
+jest.mock('../../../src/services/laborExport', () => ({
+  exportLaborList: jest.fn(() => Promise.resolve(1)),
+}))
+
+const searchCrews = LaborService.searchCrews as jest.Mock
+const push = jest.fn()
+
+function crew(partial: Partial<LaborCrew>): LaborCrew {
+  return {
+    phone: '+14045550101',
+    phoneDisplay: '(404) 555-0101',
+    name: 'Ace Movers',
+    nickname: null,
+    displayName: 'Ace Movers',
+    email: null,
+    serviceAreas: [],
+    packerCount: 0,
+    myRating: null,
+    averageRating: null,
+    addedAt: '2026-10-20T00:00:00.000Z',
+    ...partial,
+  }
+}
+
+const ace = crew({
+  serviceAreas: [{ id: 'a1', city: 'Macon', region: 'GA', country: 'US', geocoded: true }],
+  packerCount: 2,
+  myRating: { stars: 4, comment: null, updatedAt: '2026-10-20T00:00:00.000Z' },
+  averageRating: { average: 3.7, count: 3 },
+})
+const bob = crew({ phone: '+14045550102', name: 'Bob Crew', displayName: 'Bob Crew' })
+
+beforeEach(() => {
+  ;(useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn(), back: jest.fn() })
+})
+
+describe('sectionsByInitial', () => {
+  it('groups by the accent-folded initial, with non-letters last under #', () => {
+    const sections = sectionsByInitial([
+      crew({ displayName: 'Émile' }),
+      crew({ displayName: '24/7 Labor' }),
+      crew({ displayName: 'apex' }),
+      crew({ displayName: 'Eagle' }),
+    ])
+    expect(sections.map((s) => [s.title, s.data.map((c) => c.displayName)])).toEqual([
+      ['A', ['apex']],
+      ['E', ['Émile', 'Eagle']],
+      ['#', ['24/7 Labor']],
+    ])
+  })
+})
+
+describe('LaborScreen', () => {
+  it('lists my crews A–Z with my stars, the average and packer count', async () => {
+    searchCrews.mockResolvedValue({ crews: [ace, bob], location: null, locationNotFound: false })
+    const { findByText, getByText, getByLabelText } = render(<LaborScreen />)
+    expect(await findByText('Ace Movers')).toBeTruthy()
+    expect(searchCrews).toHaveBeenCalledWith('')
+    expect(getByText('A')).toBeTruthy()
+    expect(getByText('B')).toBeTruthy()
+    expect(getByText('Macon, GA')).toBeTruthy()
+    expect(getByText('avg 3.7 (3)')).toBeTruthy()
+    expect(getByText('2 packers')).toBeTruthy()
+    expect(getByLabelText('4 out of 5 stars')).toBeTruthy()
+    expect(getByLabelText('Not rated')).toBeTruthy()
+  })
+
+  it('searches a ZIP and shows nearest first with distances', async () => {
+    searchCrews.mockResolvedValueOnce({
+      crews: [ace, bob],
+      location: null,
+      locationNotFound: false,
+    })
+    searchCrews.mockResolvedValueOnce({
+      crews: [
+        { ...ace, distanceMiles: 3.24 },
+        { ...bob, distanceMiles: null },
+      ],
+      location: { lat: 32.8, lon: -83.6, label: '31201 (GA)' },
+      locationNotFound: false,
+    })
+    const { findByText, getByLabelText, getByText, queryByText } = render(<LaborScreen />)
+    await findByText('Ace Movers')
+    fireEvent.changeText(getByLabelText('ZIP, city, state, name or phone'), '31201')
+    expect(await findByText('Nearest to 31201 (GA)')).toBeTruthy()
+    expect(searchCrews).toHaveBeenLastCalledWith('31201')
+    expect(getByText('3.2 mi')).toBeTruthy()
+    // a flat list, not A–Z sections
+    expect(queryByText('A')).toBeNull()
+  })
+
+  it('says when a location is unknown', async () => {
+    searchCrews.mockResolvedValueOnce({ crews: [ace], location: null, locationNotFound: false })
+    searchCrews.mockResolvedValueOnce({ crews: [], location: null, locationNotFound: true })
+    const { findByText, getByLabelText } = render(<LaborScreen />)
+    await findByText('Ace Movers')
+    fireEvent.changeText(getByLabelText('ZIP, city, state, name or phone'), '00000')
+    expect(await findByText('Location not found')).toBeTruthy()
+  })
+
+  it('shows the empty state, and Add Crew offers contacts or manual entry', async () => {
+    searchCrews.mockResolvedValue({ crews: [], location: null, locationNotFound: false })
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {})
+    const { findByText, getByText } = render(<LaborScreen />)
+    expect(await findByText('No crews yet')).toBeTruthy()
+
+    fireEvent.press(getByText('+ Add Crew'))
+    const buttons = alert.mock.calls[0]![2]!
+    expect(buttons.map((b) => b.text)).toEqual(['From contacts', 'Enter manually', 'Cancel'])
+    buttons[0]!.onPress!()
+    expect(push).toHaveBeenCalledWith('/labor/import')
+    buttons[1]!.onPress!()
+    expect(push).toHaveBeenCalledWith('/labor/new')
+  })
+
+  it('exports as a contacts file', async () => {
+    searchCrews.mockResolvedValue({ crews: [ace], location: null, locationNotFound: false })
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {})
+    const { findByText, getByText } = render(<LaborScreen />)
+    await findByText('Ace Movers')
+    fireEvent.press(getByText('Export'))
+    const buttons = alert.mock.calls[0]![2]!
+    expect(buttons.map((b) => b.text)).toEqual([
+      'Contacts file (.vcf)',
+      'Spreadsheet (.csv)',
+      'Cancel',
+    ])
+    buttons[0]!.onPress!()
+    await waitFor(() => expect(exportLaborList).toHaveBeenCalledWith('vcf'))
+  })
+
+  it('reports a failed export', async () => {
+    searchCrews.mockResolvedValue({ crews: [ace], location: null, locationNotFound: false })
+    ;(exportLaborList as jest.Mock).mockRejectedValueOnce(new Error('Your Labor list is empty'))
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {})
+    const { findByText, getByText } = render(<LaborScreen />)
+    await findByText('Ace Movers')
+    fireEvent.press(getByText('Export'))
+    alert.mock.calls[0]![2]![1]!.onPress!()
+    await waitFor(() =>
+      expect(alert).toHaveBeenLastCalledWith('Export failed', 'Your Labor list is empty'),
+    )
+  })
+
+  it('opens a crew', async () => {
+    searchCrews.mockResolvedValue({ crews: [ace], location: null, locationNotFound: false })
+    const { findByLabelText } = render(<LaborScreen />)
+    fireEvent.press(await findByLabelText('Crew Ace Movers'))
+    expect(push).toHaveBeenCalledWith({
+      pathname: '/labor/[phone]',
+      params: { phone: '+14045550101' },
+    })
+  })
+
+  it('shows a load error with Retry', async () => {
+    searchCrews.mockRejectedValueOnce(new Error('Network request failed'))
+    searchCrews.mockResolvedValueOnce({ crews: [ace], location: null, locationNotFound: false })
+    const { findByText, getByText } = render(<LaborScreen />)
+    expect(await findByText('Network request failed')).toBeTruthy()
+    fireEvent.press(getByText('Retry'))
+    expect(await findByText('Ace Movers')).toBeTruthy()
+  })
+})

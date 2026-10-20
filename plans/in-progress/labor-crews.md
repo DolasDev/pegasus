@@ -27,7 +27,35 @@ Decisions you made (2026-10-20):
   tests green, 100% line coverage held), `handlers/labor.ts` + `repositories/labor.repository.ts`
   (23 integration tests against real Postgres + geo data), migrations `20261020194015_labor_crews`
   and `20261020194100_geo_places_data` (23,011 cities, 35,291 postal codes), OpenAPI, authz.
-- **Phase 2 (mobile): NOT STARTED.** It ships only after Phase 1 is deployed.
+- **Phase 2 (mobile): BUILT** on the same branch. Steve chose to review both halves together, so
+  this is **one PR, not two**. That is safe because `mobile-release.yml` is `workflow_dispatch`
+  only and there is no OTA publish: merging puts nothing in front of drivers. The one ordering
+  rule left is **dispatch the EAS build only after the API deploy (and its geo migration) has
+  landed.**
+  - Labor drawer screen, crew page, add-crew, contacts import and packer form, plus 6 components.
+  - Mobile suite: 286 tests, typecheck, lint, `expo install --check` and expo-doctor all green.
+  - The Android bundle was verified with `packages/domain/dist` moved aside.
+  - **Needs an EAS native build + store release (`expo-contacts`, `expo-sharing`). No OTA.**
+  - **Release-time, outside this repo:** the privacy policy at `pegasus.dolas.dev/privacy.html`
+    and the App Store / Play data-safety answers must now declare contacts access. Only the
+    contacts the driver picks are uploaded (name, phone, email).
+
+**Where Phase 2 deviates from the text below:**
+
+6. **No `LaborContext`.** The detail routes live on the root Stack, outside `(drawer)/_layout`, so
+   a provider mounted there can't reach them. Instead, the list and crew screens re-query on focus
+   (`useFocusEffect`), which also picks up edits made on pushed screens.
+7. **CID issue date is a masked `YYYY-MM-DD` text field, not a native date picker.** One optional
+   field didn't justify a third native module. `validatePacker` (the same domain function the API
+   runs) rejects impossible and future dates.
+8. **`@pegasus/domain` is aliased to `src/index.ts` in `metro.config.js`.** Its `main` is the
+   gitignored `dist/`, which nothing builds on an EAS machine. This is the first mobile import of
+   domain (see GOTCHAS).
+9. **The `expo-sharing` config plugin is not added.** It only configures "share INTO the app"
+   (disabled by default); `shareAsync` needs no plugin. **The `expo-contacts` plugin's
+   `WRITE_CONTACTS` is stripped** via `android.blockedPermissions`, since the app only reads.
+10. **Header actions are buttons under the search bar**, not in the navigation header, because the
+    drawer header's right slot holds the user menu.
 
 **Where Phase 1 deviates from the text below:**
 

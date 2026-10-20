@@ -32,6 +32,15 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
+// @pegasus/domain → its TypeScript source.
+//
+// theme and api-http point `main` at src/, but domain's `main` is ./dist (its
+// tsc build output, gitignored — the API bundles from it). Nothing builds dist
+// on an EAS machine, so resolving the package normally would fail there. Domain
+// is pure TypeScript with no runtime dependencies, so Metro compiles the source
+// directly — the same thing jest.config.js's moduleNameMapper does for tests.
+const domainEntry = path.resolve(monorepoRoot, 'packages/domain/src/index.ts');
+
 // Store-screenshot capture only (npm run store:export).
 //
 // The screenshots are taken by driving a real `expo export --platform web`
@@ -44,18 +53,21 @@ config.resolver.nodeModulesPaths = [
 // Alias it to an import-safe stub, gated on BOTH platform === 'web' and the
 // PEGASUS_STORE_CAPTURE env var, so device/store builds and the normal `expo
 // start --web` dev flow resolve the real native module exactly as before.
-if (process.env.PEGASUS_STORE_CAPTURE === '1') {
-  const scannerStub = path.resolve(
-    projectRoot,
-    'store-assets/scripts/document-scanner.web-stub.js',
-  );
+const storeCapture = process.env.PEGASUS_STORE_CAPTURE === '1';
+const scannerStub = path.resolve(projectRoot, 'store-assets/scripts/document-scanner.web-stub.js');
 
-  config.resolver.resolveRequest = (context, moduleName, platform) => {
-    if (platform === 'web' && moduleName === 'react-native-document-scanner-plugin') {
-      return { type: 'sourceFile', filePath: scannerStub };
-    }
-    return context.resolveRequest(context, moduleName, platform);
-  };
-}
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === '@pegasus/domain') {
+    return { type: 'sourceFile', filePath: domainEntry };
+  }
+  if (
+    storeCapture &&
+    platform === 'web' &&
+    moduleName === 'react-native-document-scanner-plugin'
+  ) {
+    return { type: 'sourceFile', filePath: scannerStub };
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 module.exports = config;

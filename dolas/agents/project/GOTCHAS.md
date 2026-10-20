@@ -3389,3 +3389,17 @@ a duplicate key halfway (GeoNames lists some Canadian FSAs twice), **nothing**
 was left behind, and `prisma migrate resolve --rolled-back` said it had "never
 been applied". Fix the generator, regenerate, and run `migrate dev` again. There
 are no partial rows to clean up.
+
+## `@pegasus/domain` resolves to a gitignored `dist/` — mobile aliases it to source
+
+`packages/theme` and `packages/api-http` point `main` at `src/index.ts`, but
+`packages/domain`'s `main` is `./dist/index.js`, its `tsc` output, which is
+gitignored. On a dev machine `dist/` usually exists (a turbo build made it), so
+importing `@pegasus/domain` from the Expo app bundles fine locally and then
+fails on an EAS build machine, where nothing builds it. The Labor module is the
+first mobile code to import domain, so `apps/mobile/metro.config.js` maps
+`@pegasus/domain` to `packages/domain/src/index.ts` in `resolveRequest`, for
+every platform. That mirrors the `moduleNameMapper` in `jest.config.js`. To
+prove resolution, **move `packages/domain/dist` aside and run
+`npx expo export --platform android`**; a passing bundle with `dist/` present
+proves nothing.

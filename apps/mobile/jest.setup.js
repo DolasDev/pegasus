@@ -81,6 +81,8 @@ jest.mock('expo-router', () => {
       back: jest.fn(),
     })),
     useLocalSearchParams: jest.fn(() => ({})),
+    // Tests have no navigator, so "focus" is simply mount (and a changed callback).
+    useFocusEffect: jest.fn((effect) => React.useEffect(() => effect(), [effect])),
     useSegments: jest.fn(() => []),
     Stack: StackMock,
     Tabs: jest.fn(({ children }) => React.createElement(React.Fragment, null, children)),
@@ -117,6 +119,27 @@ jest.mock('expo-image-picker', () => ({
       assets: [{ uri: 'mock://photo.jpg' }],
     })
   ),
+}));
+
+// Mock expo-contacts (native module). Defaults to full access and an empty
+// address book; the Labor import tests override per case.
+jest.mock('expo-contacts', () => ({
+  getPermissionsAsync: jest.fn(() =>
+    Promise.resolve({ status: 'granted', granted: true, canAskAgain: true, accessPrivileges: 'all' })
+  ),
+  requestPermissionsAsync: jest.fn(() =>
+    Promise.resolve({ status: 'granted', granted: true, canAskAgain: true, accessPrivileges: 'all' })
+  ),
+  getContactsAsync: jest.fn(() => Promise.resolve({ data: [], hasNextPage: false, hasPreviousPage: false })),
+  presentAccessPickerAsync: jest.fn(() => Promise.resolve([])),
+  Fields: { Name: 'name', PhoneNumbers: 'phoneNumbers', Emails: 'emails' },
+  SortTypes: { FirstName: 'firstName', LastName: 'lastName' },
+}));
+
+// Mock expo-sharing (native module).
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn(() => Promise.resolve(true)),
+  shareAsync: jest.fn(() => Promise.resolve()),
 }));
 
 // Mock react-native-safe-area-context

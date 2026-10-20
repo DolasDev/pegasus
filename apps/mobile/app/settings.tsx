@@ -19,6 +19,8 @@ import {
  */
 const PRIVACY_POLICY_URL = 'https://pegasus.dolas.dev/privacy.html'
 
+const GEONAMES_URL = 'https://www.geonames.org/'
+
 /**
  * "1.0.0 (13)" — the marketing version plus the build number that actually
  * distinguishes two installs.
@@ -144,6 +146,17 @@ export default function SettingsScreen() {
           }
         >
           <Text style={styles.linkText}>Terms of Service</Text>
+          <Text style={styles.arrow}>→</Text>
+        </TouchableOpacity>
+        {/* Required by CC BY 4.0 — the Labor search's city and Canadian postal-code
+            locations come from GeoNames (scripts/generate-geo-places.ts). */}
+        <TouchableOpacity
+          style={styles.linkButton}
+          onPress={() => {
+            void WebBrowser.openBrowserAsync(GEONAMES_URL)
+          }}
+        >
+          <Text style={styles.linkText}>Place data © GeoNames (CC BY 4.0)</Text>
           <Text style={styles.arrow}>→</Text>
         </TouchableOpacity>
       </View>
