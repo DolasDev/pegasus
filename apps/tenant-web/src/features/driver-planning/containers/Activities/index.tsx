@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Dispatch Activities board — the activity-level counterpart to the Planning
+// Services board (formerly "Dispatch Activities") — the activity-level counterpart to the Planning
 // screen's shipment board.
 //
 // Same anatomy as `containers/Shipments` (a `Lane` scroll box under a sticky
@@ -29,7 +29,7 @@ import styles from './Activities.module.css'
  * The order here IS the order ActivityCard renders its line-1 cells in.
  */
 const HEADERS = [
-  { label: 'Date', value: 'estimated_date' },
+  { label: 'Date', value: 'scheduled_date' },
   { label: 'Type', value: 'activity_type' },
   { label: 'Order', value: 'order_num' },
   { label: 'Location', value: 'city' },
@@ -69,7 +69,7 @@ export const ActivitiesDashboard = () => {
     <div className={styles.container} data-target="activities-dashboard">
       <Lane key="Activities" className={styles.activitiesLane}>
         <div className={styles.stickyHeader}>
-          <h5 className={styles.laneTitle}>{`Activities (${activities.length})`}</h5>
+          <h5 className={styles.laneTitle}>{`Services (${activities.length})`}</h5>
           <ActivityFilters />
           <div className={styles.flexContainer}>
             {HEADERS.map(({ label, value }) => (

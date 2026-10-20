@@ -24,6 +24,7 @@ function makeActivity(overrides: Record<string, unknown> = {}) {
     TripMaster_id: 77,
     ActivityType_code: 'PACK',
     estimated_date: '2026-09-14',
+    scheduled_date: '2026-09-14',
     actual_date: null,
     status: 'Scheduled',
     city: 'CHICAGO',
@@ -60,7 +61,7 @@ describe('ActivitiesDashboard', () => {
       common: commonState,
     })
 
-    expect(screen.getByText('Activities (2)')).toBeInTheDocument()
+    expect(screen.getByText('Services (2)')).toBeInTheDocument()
   })
 
   it('renders one card per activity', () => {
@@ -131,6 +132,16 @@ describe('ActivitiesDashboard', () => {
         'Dispatcher',
         'Status',
       ])
+    })
+
+    it('sorts the Date column on scheduled_date — the key the API filters on', () => {
+      renderWithStore(<ActivitiesDashboard />, {
+        activities: { activityList: [] },
+        common: commonState,
+      })
+
+      expect(document.querySelector('[data-sort="scheduled_date"]')).not.toBeNull()
+      expect(document.querySelector('[data-sort="estimated_date"]')).toBeNull()
     })
 
     it('sorts ascending on first click and flips on the second', () => {

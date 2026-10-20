@@ -3370,3 +3370,16 @@ predicate.
 
 Known pre-existing instance (not fixed here): `handlers/notifications.ts`
 validates the target user with `{ where: { id: userId } }`.
+
+## `estimated_date` is the ETA, not the activity's day — no-ETA types never have one
+
+`LongDistanceDispatchActivity.estimated_date` is only set for activity types whose
+`Longhaul_ActivityType.isHasETA = 1`. On NW, origin-side work (PACK, LOAD, XPU,
+R19I) is `isHasETA = 0`: 13,831 of 13,897 PACKs and 14,176 of 14,235 LOADs had a
+NULL `estimated_date` (measured on prod 2026-10-20). The Services board (formerly
+Dispatch Activities) bounded its date range on `estimated_date` alone, so those types
+never appeared at all. That was reported as "not all activity types are showing".
+The scheduled day is `COALESCE(estimated_date, planned_start)`, the same fallback
+the Gantt's ArrivalWindowField uses. It is a point date, so it does not bring back
+the overlap trap in #619/#622 (an inverted `planned_end`). Any new activity-level
+query that filters or sorts "by date" should use this coalesce.

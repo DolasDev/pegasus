@@ -271,6 +271,14 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
       expect(sentSql()).not.toMatch(/s\.consignee_state(?! AS)/)
     })
 
+    it('projects the scheduled day the board filters and sorts on', async () => {
+      withRows([])
+
+      await buildApp().request('/onprem/longhaul/activities')
+
+      expect(sentSql()).toContain('COALESCE(a.estimated_date, a.planned_start) AS scheduled_date')
+    })
+
     it('joins the type catalog, the driver, and the shipments view', async () => {
       withRows([])
 
@@ -296,14 +304,14 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
       expect(sentParams()).toEqual([])
     })
 
-    it('bounds the date range on estimated_date, inclusive at both ends', async () => {
+    it('bounds the date range on the scheduled day, inclusive at both ends', async () => {
       withRows([])
 
       await buildApp().request(
         '/onprem/longhaul/activities' + filtersQs({ date_range: ['2026-09-10', '2026-09-17'] }),
       )
 
-      expect(sentSql()).toContain('a.estimated_date >= @p0')
+      expect(sentSql()).toContain('COALESCE(a.estimated_date, a.planned_start) >= @p0')
       expect(sentParams()).toEqual([
         { name: 'p0', value: '2026-09-10' },
         { name: 'p1', value: '2026-09-17' },
@@ -321,8 +329,24 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
       // #534 normalization carry times like `05:00:00`, and `<= '2026-09-17'`
       // compares against that day's midnight — dropping every one of them from
       // a board whose entire job is "show me this date".
-      expect(sentSql()).toContain('a.estimated_date < DATEADD(day, 1, @p0)')
-      expect(sentSql()).not.toMatch(/estimated_date <= /)
+      expect(sentSql()).toContain(
+        'COALESCE(a.estimated_date, a.planned_start) < DATEADD(day, 1, @p0)',
+      )
+      expect(sentSql()).not.toMatch(/ <= @p/)
+    })
+
+    it('falls back to planned_start for types that never carry an ETA', async () => {
+      withRows([])
+
+      await buildApp().request(
+        '/onprem/longhaul/activities' + filtersQs({ date_range: ['2026-09-10', '2026-09-17'] }),
+      )
+
+      // Origin-side types (PACK, LOAD, XPU, R19I) are `isHasETA = 0`, so their
+      // estimated_date is NULL — on NW prod 13,831 of 13,897 PACKs. Bounding
+      // estimated_date alone made those types vanish from the board entirely.
+      expect(sentSql()).not.toMatch(/WHERE[\s\S]*\ba\.estimated_date >=/)
+      expect(sentSql()).not.toMatch(/WHERE[\s\S]*\ba\.estimated_date </)
     })
 
     it('does NOT test overlap against planned_start/planned_end', async () => {
@@ -333,9 +357,10 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
       )
 
       // `planned_end < planned_start` is legitimate on this data (#619/#622), so
-      // an overlap predicate would silently drop the inverted spans.
-      expect(sentSql()).not.toMatch(/WHERE[\s\S]*planned_start/)
+      // an overlap predicate would silently drop the inverted spans. planned_start
+      // appears only as the point-date fallback inside the COALESCE.
       expect(sentSql()).not.toMatch(/WHERE[\s\S]*planned_end/)
+      expect(sentSql()).not.toMatch(/WHERE[\s\S]*\ba\.planned_start [<>]/)
     })
 
     it('accepts an open-ended range from one side only', async () => {
@@ -345,8 +370,8 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
         '/onprem/longhaul/activities' + filtersQs({ date_range: ['2026-09-10', null] }),
       )
 
-      expect(sentSql()).toContain('a.estimated_date >= @p0')
-      expect(sentSql()).not.toContain('a.estimated_date <=')
+      expect(sentSql()).toContain('COALESCE(a.estimated_date, a.planned_start) >= @p0')
+      expect(sentSql()).not.toContain('DATEADD')
       expect(sentParams()).toEqual([{ name: 'p0', value: '2026-09-10' }])
     })
 
@@ -440,7 +465,22 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
 
       await buildApp().request('/onprem/longhaul/activities')
 
-      expect(sentSql()).toContain('ORDER BY a.estimated_date ASC, a.id ASC')
+      expect(sentSql()).toContain(
+        'ORDER BY COALESCE(a.estimated_date, a.planned_start) ASC, a.id ASC',
+      )
+    })
+
+    it('sorts the Date column on the same scheduled day the range filters', async () => {
+      withRows([])
+
+      await buildApp().request(
+        '/onprem/longhaul/activities' +
+          filtersQs({}, { sortBy: { value: 'scheduled_date', order: 'desc' } }),
+      )
+
+      expect(sentSql()).toContain(
+        'ORDER BY COALESCE(a.estimated_date, a.planned_start) DESC, a.id ASC',
+      )
     })
 
     it('honors a whitelisted sort column and direction', async () => {
@@ -462,7 +502,9 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
           filtersQs({}, { sortBy: { value: 'a.id; DROP TABLE TripMaster--', order: 'asc' } }),
       )
 
-      expect(sentSql()).toContain('ORDER BY a.estimated_date ASC, a.id ASC')
+      expect(sentSql()).toContain(
+        'ORDER BY COALESCE(a.estimated_date, a.planned_start) ASC, a.id ASC',
+      )
       expect(sentSql()).not.toContain('DROP TABLE')
     })
 
@@ -480,7 +522,7 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
 
         expect(res.status, `${key} should not 500`).toBe(200)
         expect(sentSql(), `${key} should fall back`).toContain(
-          'ORDER BY a.estimated_date ASC, a.id ASC',
+          'ORDER BY COALESCE(a.estimated_date, a.planned_start) ASC, a.id ASC',
         )
         expect(sentSql()).not.toContain('native code')
       }

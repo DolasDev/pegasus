@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// One row of the Dispatch Activities board.
+// One row of the Services board (formerly "Dispatch Activities").
 //
 // Two lines per card, mirroring ShipmentCard: line 1 is the operational answer
 // ("what, when, who"), line 2 the identifying detail under it. Column order and
@@ -20,6 +20,11 @@ export interface ActivityRow {
   TripMaster_id: number | null
   ActivityType_code: string | null
   estimated_date: string | null
+  /**
+   * `estimated_date ?? planned_start`, computed by the API. The board's date —
+   * no-ETA types (PACK, LOAD, …) never carry an estimated_date.
+   */
+  scheduled_date: string | null
   actual_date: string | null
   status: string | null
   city: string | null
@@ -71,7 +76,7 @@ function isComplete(activity: ActivityRow): boolean {
 
 export function ActivityCard({ activity }: { activity: ActivityRow }) {
   const line1 = [
-    <b>{formatDate(activity.estimated_date, { defaultVal: EMPTY })}</b>,
+    <b>{formatDate(activity.scheduled_date, { defaultVal: EMPTY })}</b>,
     <span title={text(activity.activity_type_name)}>
       <b>{text(activity.activity_type_abbreviation ?? activity.ActivityType_code)}</b>
     </span>,
@@ -83,7 +88,7 @@ export function ActivityCard({ activity }: { activity: ActivityRow }) {
   ]
 
   const line2 = [
-    // The actual date sits directly under the estimated one so a dispatcher
+    // The actual date sits directly under the scheduled one so a dispatcher
     // reads the pair as "due / done" in a single glance down the column.
     activity.actual_date ? formatDate(activity.actual_date, { defaultVal: '' }) : EMPTY,
     text(activity.haul_mode) === 'Y' ? 'Short haul' : '',
