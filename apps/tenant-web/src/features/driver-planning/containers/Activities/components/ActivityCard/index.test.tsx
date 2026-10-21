@@ -1,6 +1,31 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
+
+vi.mock('@/features/driver-planning/utils/router-compat', () => ({
+  Link: (props: any) => (
+    <a
+      href={props.to}
+      className={props.className}
+      data-target={props['data-target']}
+      onClick={props.onClick}
+    >
+      {props.children}
+    </a>
+  ),
+}))
+
+const fetchShipments = vi.fn()
+vi.mock('../../../../utils/api', () => ({
+  API: { fetchShipments: (...args: unknown[]) => fetchShipments(...args) },
+}))
+
+import { renderWithStore } from '../../../../__test-utils__/render-with-store'
 import { ActivityCard, type ActivityRow } from './index'
+
+// Every card reads the selected shipment and dispatches on click, so it needs
+// the store even where a test only checks rendering.
+const render = (ui: ReactElement) => renderWithStore(ui)
 
 function makeActivity(overrides: Partial<ActivityRow> = {}): ActivityRow {
   return {
@@ -150,5 +175,56 @@ describe('ActivityCard', () => {
 
     rerender(<ActivityCard activity={makeActivity({ TripMaster_id: null })} />)
     expect(screen.queryByText(/^Trip /)).not.toBeInTheDocument()
+  })
+
+  it('links the trip number to the trip screen', () => {
+    render(<ActivityCard activity={makeActivity({ TripMaster_id: 77 })} />)
+
+    const link = screen.getByText('Trip 77').closest('a')!
+    // The legacy `/trip/:id` path; router-compat rewrites it to
+    // /driver-planning/trips/:id, same as the shipment detail panel's link.
+    expect(link.getAttribute('href')).toBe('/trip/77')
+    expect(link.getAttribute('data-target')).toBe('activity-trip-link')
+  })
+
+  describe('selection', () => {
+    beforeEach(() => {
+      fetchShipments.mockReset()
+      fetchShipments.mockResolvedValue([{ order_num: 5001, shipper_name: 'ACME CORP' }])
+    })
+
+    it("opens the shipment detail panel on the activity's order", async () => {
+      const { store } = render(<ActivityCard activity={makeActivity({ order_num: 5001 })} />)
+
+      fireEvent.click(document.querySelector('[data-target="activity-card"]')!)
+
+      await waitFor(() => expect(store.getState().shipments.selectedShipment?.order_num).toBe(5001))
+      expect(fetchShipments).toHaveBeenCalledWith({ searchTerm: '5001' })
+    })
+
+    it('highlights the card whose order is the selected shipment', () => {
+      renderWithStore(<ActivityCard activity={makeActivity({ order_num: 5001 })} />, {
+        shipments: { selectedShipment: { order_num: 5001 } as any },
+      })
+
+      const card = document.querySelector('[data-target="activity-card"]')!
+      expect(card.className).toMatch(/active/)
+    })
+
+    it('does nothing for an activity with no order', () => {
+      render(<ActivityCard activity={makeActivity({ order_num: null })} />)
+
+      fireEvent.click(document.querySelector('[data-target="activity-card"]')!)
+
+      expect(fetchShipments).not.toHaveBeenCalled()
+    })
+
+    it('following the trip link does not also select the shipment', () => {
+      render(<ActivityCard activity={makeActivity({ TripMaster_id: 77 })} />)
+
+      fireEvent.click(screen.getByText('Trip 77'))
+
+      expect(fetchShipments).not.toHaveBeenCalled()
+    })
   })
 })

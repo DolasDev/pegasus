@@ -1,26 +1,39 @@
 // ---------------------------------------------------------------------------
-// Dispatch Activities route module.
+// Services (formerly Dispatch Activities) route module.
 //
-// Single column, and much thinner than PlanningModule, because everything that
-// module carries exists to serve editing:
-//   - no PendingTrips  — deferred by request; the board is a reading surface
-//                        in v1, with nowhere to drag work into yet;
-//   - no ShipmentDetail — the drawer is bound to a SELECTED shipment, and this
-//                        board's unit is the activity;
-//   - no navigation blocker — PlanningModule prompts on unsaved trip edits.
-//     Nothing here mutates, so a prompt would only ever be a false alarm.
-//
-// When activities become editable, the blocker is what comes back first.
+// Single column, and thinner than PlanningModule:
+//   - ShipmentDetail IS mounted: selecting a service card selects that
+//     activity's order, and the drawer opens exactly as it does on Planning;
+//   - no PendingTrips  — deferred by request; there is nowhere to drag work
+//                        into yet;
+//   - leaving the screen clears the selection: the Trip page mounts the same
+//     drawer off the same global `selectedShipment`. A click away already
+//     closes it (outside-click), but browser Back would carry it over open;
+//   - no navigation blocker — PlanningModule prompts on unsaved trip edits,
+//     and nothing here edits a trip.
 // ---------------------------------------------------------------------------
 
+import { useEffect } from 'react'
 import { ActivitiesDashboard } from '../containers/Activities'
+import { ShipmentDetail } from '../containers/ShipmentDetail'
+import { selectShipment } from '../redux/shipments'
+import { useAppDispatch } from '../redux/hooks'
 
 export function ActivitiesModule() {
+  const dispatch = useAppDispatch()
+  useEffect(
+    () => () => {
+      dispatch(selectShipment(null) as any)
+    },
+    [dispatch],
+  )
+
   return (
     <div className="ActivitiesModule__container">
       <div className="App__left-column">
         <ActivitiesDashboard />
       </div>
+      <ShipmentDetail />
     </div>
   )
 }

@@ -262,10 +262,9 @@ describe('AppShell — Operations submenu role gate', () => {
     // Planning and Trips used to be filtered out here; the grant lifted that.
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
-    // Services (formerly Dispatch Activities) is the one child that IS still narrowed — it carries
-    // its own `roles` (DISPATCH_ACTIVITIES_ROLES) rather than inheriting the
-    // group's. This is the assertion that catches the gate being dropped.
-    expect(screen.queryByText('Services')).not.toBeInTheDocument()
+    // Services was narrowed to the admins until the dispatch personas were
+    // granted it; it now inherits the group's gate like every other child.
+    expect(screen.getByText('Services')).toBeInTheDocument()
   })
 
   it('shows the whole Operations section to central_planning_dispatch as well', () => {
@@ -284,7 +283,7 @@ describe('AppShell — Operations submenu role gate', () => {
     expect(screen.getByText('Shipments')).toBeInTheDocument()
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
-    expect(screen.queryByText('Services')).not.toBeInTheDocument()
+    expect(screen.getByText('Services')).toBeInTheDocument()
   })
 
   it('still hides the Operations section from a role outside it', () => {
