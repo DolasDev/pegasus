@@ -172,12 +172,12 @@
   min-height: 0;
 }
 
-/* Dispatch Activities needs the same height pinning as Planning, and for the
+/* Services (formerly Dispatch Activities) needs the same height pinning as Planning, and for the
  * same reason: the board's sticky header only pins if the Lane is the element
  * that scrolls, and the Lane only scrolls if this flex line is constrained.
  * Without it the root grows to content height, AppShell's <main> takes over the
- * scrolling, and the header scrolls away with the cards. No drawer rule follows
- * this one — the Activities board has no detail drawer. */
+ * scrolling, and the header scrolls away with the cards. It also mounts the
+ * Shipment Detail drawer, so it shares the drawer rule below. */
 .driver-planning-root:has(> .ActivitiesModule__container) {
   height: 100%;
   min-height: 0;
@@ -192,7 +192,8 @@
  * 56px AppShell header, inside <main>'s 24px padding), so it would spill out the
  * bottom and hand scrolling straight back to <main>. Span the root exactly
  * instead; the drawer already scrolls internally (`overflow: auto`). */
-.driver-planning-root:has(> .PlanningModule__container) [data-target='shipment-detail'] {
+.driver-planning-root:has(> .PlanningModule__container) [data-target='shipment-detail'],
+.driver-planning-root:has(> .ActivitiesModule__container) [data-target='shipment-detail'] {
   top: 0;
   margin-top: 0;
   height: 100%;

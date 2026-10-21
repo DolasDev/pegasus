@@ -23,9 +23,10 @@
   - pegasus #858 merged 2026-10-16 (`ca721b92`); `sdk-python-v0.52.0` published.
   - movemanager landed on `dev` 2026-10-19 (`d5b2b8b7`, plan archived `e570c0d-api-task-create-close.md`). Item 0 (prod trigger/identity/grant reads) passed 2026-10-16; item 6 (Windows round trip on the PegNW clone) passed 2026-10-19.
   - Live for NW only once its site runs that build (`/version` lists `pegii.tasks.v1`) and its desktop is on the MSIX with the guard fix.
-- [ ] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK **0.53.0**. Code-complete 2026-10-19; see "As built" under Phase 7.
-  - movemanager: branch `feat/api-memos-and-text-read` (plan `api-memos-and-text-read.md`, D29–D35 approved by Steve 2026-10-19), pushed, not on `dev`. Item 0 (prod reads) passed 2026-10-19; item 5 (Windows round trip) is Steve's, then it lands.
-  - pegasus: branch `feat/pulse-memos`, gated on `pegii.memos.v1` / `pegii.text-messages.v1`, so it is safe to merge before any site has the endpoints.
+- [x] **Phase 7** — [movemanager → pegasus] Order memos + local text read-mirror and conversation links → SDK **0.53.0**. See "As built" under Phase 7.
+  - pegasus #863 merged and deployed to prod 2026-10-19 (`29f2e905`); `sdk-python-v0.53.0` published; authoring `CLAUDE.md` updated (`aec510f`).
+  - movemanager landed on `dev` 2026-10-20 (`3a476558`, plan archived `a240eeb-api-memos-and-text-read.md`). Item 0 (prod reads) passed 2026-10-19; item 5 (Windows round trip on the PegNW clone, `e8ed24e3`) passed 2026-10-20: integration 2/2, net48 memo-type parity 4/4. Net8 suites on the merged `dev`: `Pegasus.Api.Tests` 304/304, `Pegasus.Infrastructure.Tests` 475/475.
+  - Live for NW only once its site runs that build. Probed 2026-10-20 over the tunnel: NW's `/version` is `2026.10.19.2` and lists `pegii.tasks.v1` and `pegii.orders.search.v1` but not yet `pegii.memos.v1` / `pegii.text-messages.v1`.
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
 
 **Metering rule (added 2026-09-30):** every new outward-mutating action in Phases 6 and 7 (`CreateTask`, `WriteOrderMemo`) must be metered in the same PR: add it to `apps/api/src/lib/usage/billable-actions.ts` (whose test pins the list), put `meterUsage(Actions.X)` after `requirePermission` on its route, and add it to the SDK README's billable list. `SendEmail` (Phase 3) is already metered. See `plans/completed/usage-metering.md` Phase 5. The meter, plans and Usage pages shipped together (Phases 1–4), so NW billing can start once NW has a plan assigned in admin-web. **SDK 0.43.0 was taken by `get_usage_summary`**, so this plan's SDK version numbers shift up by one from Phase 5 on.
@@ -448,7 +449,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
   - `GET /sms/messages/:id/links` (`ReadTextMessage`): the cloud message's RingCentral id (`externalId`) → the site's links; `orderIds` are strings.
   - `POST /sms/messages/:id/read` mirrors into the desktop store after RingCentral accepts, best-effort; the result gains `mirroredToDesktop`.
   - SDK **0.53.0**: `add_order_memo`, `list_memo_types`, `get_text_message_links`; usage label "Order memos added".
-- **Owed:** movemanager item 5 (Windows) then landing on `dev`; NW's `/version` advertising both capabilities; after the pegasus merge, tag `sdk-python-v0.53.0` and update the authoring `CLAUDE.md`.
+- **Done 2026-10-20:** movemanager item 5 and landing on `dev`; the SDK tag and the authoring `CLAUDE.md`. **Owed (Phase 8):** NW's `/version` advertising both capabilities.
 
 ## Phase 8 — NW enablement + end-to-end test move (ops)
 

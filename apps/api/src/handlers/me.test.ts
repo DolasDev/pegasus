@@ -44,6 +44,21 @@ describe('GET /permissions', () => {
     expect(new Set(body.permissions)).toEqual(new Set(ALL_ACTIONS.map((a) => a.permission)))
   })
 
+  it("returns the caller's own TenantUser id, and null without one", async () => {
+    const withUser = new Hono<AppEnv>()
+    withUser.use('*', seedPrincipal({ roleNames: ['viewer'] }))
+    withUser.use('*', async (c, next) => {
+      c.set('userId', 'user-123')
+      await next()
+    })
+    withUser.route('/', meHandler)
+    const res = await withUser.request('/permissions')
+    expect(((await res.json()) as { userId: unknown }).userId).toBe('user-123')
+
+    const anon = await buildApp(['viewer']).app.request('/permissions')
+    expect(((await anon.json()) as { userId: unknown }).userId).toBeNull()
+  })
+
   it('returns the viewer read set plus the shared document baseline', async () => {
     const res = await buildApp(['viewer']).app.request('/permissions')
     expect(res.status).toBe(200)
@@ -144,7 +159,7 @@ describe('GET /driver', () => {
     mockFindUnique.mockResolvedValue({ longhaulDriverId: 4231 })
     const res = await buildDriverApp('user-1').request('/driver')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ data: { longhaulDriverId: 4231 } })
+    expect(await res.json()).toEqual({ data: { longhaulDriverId: 4231, userId: 'user-1' } })
     expect(mockFindUnique).toHaveBeenCalledWith({
       where: { id: 'user-1' },
       select: { longhaulDriverId: true },
@@ -154,13 +169,13 @@ describe('GET /driver', () => {
   it('returns null when the user has no driver mapping', async () => {
     mockFindUnique.mockResolvedValue({ longhaulDriverId: null })
     const res = await buildDriverApp('user-1').request('/driver')
-    expect(await res.json()).toEqual({ data: { longhaulDriverId: null } })
+    expect(await res.json()).toEqual({ data: { longhaulDriverId: null, userId: 'user-1' } })
   })
 
   it('returns null without a DB lookup for an unresolved user (M2M / service account)', async () => {
     const res = await buildDriverApp(undefined).request('/driver')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ data: { longhaulDriverId: null } })
+    expect(await res.json()).toEqual({ data: { longhaulDriverId: null, userId: null } })
     expect(mockFindUnique).not.toHaveBeenCalled()
   })
 })

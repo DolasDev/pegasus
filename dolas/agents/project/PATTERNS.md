@@ -362,6 +362,28 @@ Postgres. Operations → Availability (`AvailabilityFilter`,
 - The page seeds from the default **during render**, behind its loading state,
   so the table never paints the built-in filters and then jumps.
 
+Operations → Services (`ServicesFilter`, `/api/v1/services-filters`, #876) is the
+second instance. It shows how to add the next one:
+
+- **A parallel table per screen**, not a `screen` column on the first one.
+  Adding the column would migrate a live table for a rename. A separate table
+  makes it impossible for one screen's rows to show up in the other's dialog.
+  Each screen's default gets its own key under `preferences.operations`.
+- **The dialogs are shared**: `components/saved-filters/SavedFilterDialogs.tsx`,
+  namespaced by a `screen` prop for ids and test ids. Each screen writes a
+  thin wrapper that binds its own query hooks to the dialogs.
+- **A board whose query lives in Redux** (Services, unlike Availability's local
+  state) seeds once per session behind a `defaultSeeded` flag. The route module
+  doesn't mount the board until the default settles, because the board fetches
+  on mount: mounting first fetches the built-in range and then re-fetches the
+  saved one. The flag means coming Back from a trip keeps the user's edits.
+- **Absolute dates on screen, offsets in the saved form.** Services filters on
+  absolute dates, but a saved preset still stores offsets. Unwired controls
+  (Services' `office`) are never persisted.
+- **The saved sort enum is pinned by a test to the list handler's sort
+  whitelist** (`ACTIVITY_SORT_KEYS`). Without the pin, a stale key would save
+  without error and then silently fail to sort.
+
 ## Gating a hand-maintained restatement of a code list
 
 Some artefacts have to restate a list that lives in code: an Alloy spec transcribing a table of fact

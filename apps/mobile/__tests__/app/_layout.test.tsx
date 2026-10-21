@@ -121,6 +121,7 @@ describe('RootLayout auth guard (GUARD-01)', () => {
     const PUSHED_SCREENS = [
       'trip/[id]',
       'shipment/[orderNum]',
+      'chat/[orderNum]',
       'settings',
       'labor/[phone]',
       'labor/new',

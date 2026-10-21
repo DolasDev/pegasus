@@ -2116,6 +2116,61 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/chat/summaries': {
+        get: {
+          operationId: 'getChatSummaries',
+          summary: 'Header details for a batch of moves (shipper, origin → destination, dates)',
+          description:
+            'One legacy read for up to 100 ids. A driver-scoped caller gets only the moves they can read; others are absent from the result. 503 LEGACY_UNAVAILABLE when the legacy database cannot be reached.',
+          parameters: [
+            {
+              name: 'entityType',
+              in: 'query',
+              required: true,
+              schema: { type: 'string', enum: ['shipment'] },
+            },
+            {
+              name: 'ids',
+              in: 'query',
+              required: true,
+              description: 'Comma-separated order numbers (at most 100)',
+              schema: { type: 'string' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Summaries',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          required: ['orderNum'],
+                          properties: {
+                            orderNum: { type: 'integer' },
+                            shipperName: { type: 'string', nullable: true },
+                            origin: { type: 'string', nullable: true },
+                            destination: { type: 'string', nullable: true },
+                            packDate: { type: 'string', format: 'date', nullable: true },
+                            loadDate: { type: 'string', format: 'date', nullable: true },
+                            deliveryDate: { type: 'string', format: 'date', nullable: true },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
       ...LABOR_PATHS,
       '/api/v1/local-drivers': {
         get: {

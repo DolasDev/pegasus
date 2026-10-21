@@ -1,15 +1,25 @@
 // ---------------------------------------------------------------------------
-// One row of the Dispatch Activities board.
+// One row of the Services board (formerly "Dispatch Activities").
 //
 // Two lines per card, mirroring ShipmentCard: line 1 is the operational answer
 // ("what, when, who"), line 2 the identifying detail under it. Column order and
 // count match the board's sortable header exactly — the header is what makes
 // the columns readable, so a drift between the two is a real defect.
 //
-// Read-only in v1. No click target, no selection, no add-to-trip button.
+// Clicking a card opens the shipment detail panel for the activity's order,
+// through the same `selectShipment` thunk a Planning shipment card uses. The
+// trip number links to the trip screen. Otherwise read-only: there is no
+// add-to-trip button.
 // ---------------------------------------------------------------------------
 
+import { useSelector } from 'react-redux'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
+import { Link } from '@/features/driver-planning/utils/router-compat'
 import { Card } from '../../../../components/Card'
+import clickableStyles from '../../../../components/Clickable/Clickable.module.css'
+import { selectShipment } from '../../../../redux/shipments'
+import { useAppDispatch } from '../../../../redux/hooks'
+import type { RootState } from '../../../../redux/store'
 import { formatDate } from '../../../../utils/format-date'
 import { startCase } from '../../../../utils/string'
 import styles from './ActivityCard.module.css'
@@ -20,6 +30,11 @@ export interface ActivityRow {
   TripMaster_id: number | null
   ActivityType_code: string | null
   estimated_date: string | null
+  /**
+   * `estimated_date ?? planned_start`, computed by the API. The board's date —
+   * no-ETA types (PACK, LOAD, …) never carry an estimated_date.
+   */
+  scheduled_date: string | null
   actual_date: string | null
   status: string | null
   city: string | null
@@ -70,8 +85,14 @@ function isComplete(activity: ActivityRow): boolean {
 }
 
 export function ActivityCard({ activity }: { activity: ActivityRow }) {
+  const dispatch = useAppDispatch()
+  const selectedShipment = useSelector((state: RootState) => state.shipments.selectedShipment)
+  const orderNum = activity.order_num
+  const isSelected =
+    orderNum != null && selectedShipment != null && selectedShipment.order_num === orderNum
+
   const line1 = [
-    <b>{formatDate(activity.estimated_date, { defaultVal: EMPTY })}</b>,
+    <b>{formatDate(activity.scheduled_date, { defaultVal: EMPTY })}</b>,
     <span title={text(activity.activity_type_name)}>
       <b>{text(activity.activity_type_abbreviation ?? activity.ActivityType_code)}</b>
     </span>,
@@ -83,7 +104,7 @@ export function ActivityCard({ activity }: { activity: ActivityRow }) {
   ]
 
   const line2 = [
-    // The actual date sits directly under the estimated one so a dispatcher
+    // The actual date sits directly under the scheduled one so a dispatcher
     // reads the pair as "due / done" in a single glance down the column.
     activity.actual_date ? formatDate(activity.actual_date, { defaultVal: '' }) : EMPTY,
     text(activity.haul_mode) === 'Y' ? 'Short haul' : '',
@@ -92,13 +113,36 @@ export function ActivityCard({ activity }: { activity: ActivityRow }) {
       activity.destination_city,
       activity.destination_state,
     )}`,
-    activity.TripMaster_id ? `Trip ${activity.TripMaster_id}` : '',
+    activity.TripMaster_id ? (
+      // `/trip/:id` is the legacy path; router-compat rewrites it to
+      // /driver-planning/trips/:id. stopPropagation so following the link does
+      // not also open the detail panel on the way out.
+      <Link
+        to={`/trip/${activity.TripMaster_id}`}
+        className={clickableStyles.clickable}
+        data-target="activity-trip-link"
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      >
+        {`Trip ${activity.TripMaster_id}`}
+      </Link>
+    ) : (
+      ''
+    ),
     activity.total_est_wt ? `${activity.total_est_wt} lbs` : '',
     '',
   ]
 
   return (
     <Card
+      active={isSelected}
+      onClick={(e: React.MouseEvent) => {
+        // The detail panel closes on any click outside itself; without this the
+        // same click that selects would bubble up and close it again.
+        e.stopPropagation()
+        if (orderNum == null) return
+        // The thunk needs only order_num: it fetches the full shipment row.
+        dispatch(selectShipment({ order_num: orderNum } as LonghaulShipmentRow) as any)
+      }}
       className={`${styles.activityCard} ${isComplete(activity) ? styles.complete : ''}`}
       data-target="activity-card"
       data-activity-id={String(activity.id)}

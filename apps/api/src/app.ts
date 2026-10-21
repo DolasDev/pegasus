@@ -27,6 +27,7 @@ import { chatHandler } from './handlers/chat'
 import { laborHandler } from './handlers/labor'
 import { localDriversHandler } from './handlers/local-drivers'
 import { availabilityFiltersHandler } from './handlers/availability-filters'
+import { servicesFiltersHandler } from './handlers/services-filters'
 import { workflowsHandler } from './handlers/workflows'
 import { workflowInternalHandler } from './handlers/workflow-internal'
 import { eventsHandler } from './handlers/events'
@@ -485,6 +486,8 @@ v1.route('/documents', documentsHandler)
 // page's own /onprem/longhaul/driver-planning read; ownership is enforced in
 // the handler. See handlers/availability-filters.ts.
 v1.route('/availability-filters', availabilityFiltersHandler)
+// The Operations → Services counterpart — same shape, its own table.
+v1.route('/services-filters', servicesFiltersHandler)
 // PegII dashboard: served cloud-direct from three on-prem MSSQL views
 // (v_dashboard1/2/3) via the in-VPC mssql-executor Lambda. Same pattern as the
 // longhaul-cloud reference handlers; powers the tenant dashboard's "Use PegII

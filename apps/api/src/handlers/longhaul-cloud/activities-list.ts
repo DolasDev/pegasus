@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Cloud-direct longhaul `GET /activities` (LIST) handler.
 //
-// Backs the Dispatch Activities board — the first Operations screen whose unit
+// Backs the Services board (formerly "Dispatch Activities") — the first Operations screen whose unit
 // of work is the ACTIVITY rather than the shipment. Every other longhaul list
 // endpoint answers "which orders/trips match?"; this one answers "what has to
 // happen on these dates?", which is the question a dispatcher actually opens
@@ -55,6 +55,24 @@ const S = 's' // v_longhaul_shipments_v2
 const TM = 'tm' // TripMaster (joined only for driver-scoped callers)
 
 /**
+ * The day an activity is scheduled for — what the board filters, sorts, and
+ * prints as "Date".
+ *
+ * `estimated_date` alone is NOT that day. It is the ETA, and the catalog only
+ * gives an ETA to types flagged `isHasETA`; origin-side work (PACK, LOAD, XPU,
+ * R19I on NW) is `isHasETA = 0` and never gets one. On NW prod 13,831 of
+ * 13,897 PACKs and 14,176 of 14,235 LOADs have a NULL `estimated_date`, so a
+ * range on it alone made those types disappear from the board ("not all
+ * activity types are showing"). Those rows are scheduled by `planned_start`,
+ * the same fallback the Gantt's arrival-window field uses
+ * (`estimated_date ?? planned_start`).
+ *
+ * A point date, not a span: see buildActivitiesSql on why `planned_end` stays
+ * out of it.
+ */
+const SCHEDULED_DATE = `COALESCE(${A}.estimated_date, ${A}.planned_start)`
+
+/**
  * Filters the board sends, URL-encoded as `?filters=<json>`.
  *
  * The multi-selects arrive as react-select option objects (`{ label, value }`),
@@ -100,7 +118,7 @@ interface ActivityQuery {
  * injection. Keys are what the UI's column headers emit.
  */
 const SORTABLE_COLUMNS: Record<string, string> = {
-  estimated_date: `${A}.estimated_date`,
+  scheduled_date: SCHEDULED_DATE,
   actual_date: `${A}.actual_date`,
   activity_type: 'at.abbreviation',
   order_num: `${A}.order_num`,
@@ -112,12 +130,15 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   dispatcher: `${S}.last_name`,
 }
 
+/** For the saved-filter schema's sort enum (lib/services-filter-query.ts), which a test pins to this. */
+export const ACTIVITY_SORT_KEYS = Object.keys(SORTABLE_COLUMNS)
+
 /**
  * Default ordering: the board is a work queue, so the soonest-dated activity
  * comes first, and `id` breaks ties so paging/caps are deterministic rather
  * than at the mercy of the query plan.
  */
-const DEFAULT_ORDER_BY = `${A}.estimated_date ASC, ${A}.id ASC`
+const DEFAULT_ORDER_BY = `${SCHEDULED_DATE} ASC, ${A}.id ASC`
 
 /** Accumulates WHERE clauses' bound params. Same pattern as shipments-list. */
 class ParamBag {
@@ -175,6 +196,7 @@ const SELECT_COLUMNS = [
   `${A}.actual_date`,
   `${A}.planned_start`,
   `${A}.planned_end`,
+  `${SCHEDULED_DATE} AS scheduled_date`,
   `${A}.status`,
   `${A}.street`,
   `${A}.unit`,
@@ -203,7 +225,7 @@ const TRIP_OWNER_JOIN = ` LEFT JOIN TripMaster AS ${TM} ON ${A}.TripMaster_id = 
 /**
  * Build the one query the handler runs.
  *
- * The date range filters `estimated_date` — the activity's SCHEDULED day —
+ * The date range filters SCHEDULED_DATE — the activity's scheduled day —
  * and deliberately not an overlap test against `planned_start`/`planned_end`.
  * On this data `planned_end < planned_start` is legitimate rather than corrupt
  * (#619/#622), so an overlap predicate quietly drops the inverted spans.
@@ -232,8 +254,8 @@ function buildActivitiesSql(query: ActivityQuery, bag: ParamBag, scopeDriverId?:
     // `2026-09-17 00:00:00` and silently drops every one of them, which on a
     // board whose entire job is "show me this date" is the worst possible way
     // to be wrong.
-    if (from) where.push(`${A}.estimated_date >= ${bag.bind(from)}`)
-    if (to) where.push(`${A}.estimated_date < DATEADD(day, 1, ${bag.bind(to)})`)
+    if (from) where.push(`${SCHEDULED_DATE} >= ${bag.bind(from)}`)
+    if (to) where.push(`${SCHEDULED_DATE} < DATEADD(day, 1, ${bag.bind(to)})`)
   }
 
   if (f.activity_type?.length) {

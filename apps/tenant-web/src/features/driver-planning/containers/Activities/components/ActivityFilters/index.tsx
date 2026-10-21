@@ -9,14 +9,27 @@
 // FilterTabs stores day OFFSETS from today (`daysBetween`) and reconstitutes
 // dates later. Here the dispatcher picks absolute dates, because "the 14th"
 // must still mean the 14th on a board left open overnight.
+//
+// Saved Filters / Save Filter use the same dialogs as Availability. A saved
+// filter stores the dates as day offsets (see services-filter-query.ts), so it
+// is the one place this board's dates are relative.
 // ---------------------------------------------------------------------------
 
+import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { Button } from '@/components/ui/button'
 import { Select } from '../../../../components/Select'
 import { InputField } from '../../../../components/InputField'
 import { SHAUL_LIST } from '../../../../utils/shaul-list'
-import { changeActivityQuery, clearActivityFilters } from '../../../../redux/activities'
+import {
+  changeActivityQuery,
+  clearActivityFilters,
+  setActivityQuery,
+} from '../../../../redux/activities'
 import type { RootState } from '../../../../redux/store'
+import { fromSavedQuery, toOptions, toSavedQuery } from '../../services-filter-query'
+import { useServicesReferenceOptions } from '../../use-services-reference-options'
+import { SaveServicesFilterDialog, ServicesFiltersDialog } from '../SavedServicesFilters'
 import styles from './ActivityFilters.module.css'
 
 /**
@@ -43,8 +56,9 @@ const selectStyles = {
 export function ActivityFilters() {
   const dispatch = useDispatch()
   const query = useSelector((state: RootState) => state.activities.query)
-  const filterOptions = useSelector((state: RootState) => state.common.filterOptions)
-  const dispatcherList = useSelector((state: RootState) => state.common.dispatcherList)
+  const refs = useServicesReferenceOptions()
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [showFiltersDialog, setShowFiltersDialog] = useState(false)
 
   const setFilters = (patch: Record<string, unknown>) =>
     dispatch(changeActivityQuery({ filters: patch }))
@@ -54,14 +68,17 @@ export function ActivityFilters() {
     setFilters({ date_range: index === 0 ? [value, to] : [from, value] })
   }
 
-  // The same catalog the shipments board's Last Activity filter uses — the
-  // reference-data bootstrap already loads it, so this costs no extra request.
-  const activityTypeOptions = filterOptions?.activityType ?? []
+  // The reference-data bootstrap already loads both lists, so this costs no
+  // extra request.
+  const activityTypeOptions = refs.activityTypes
+  const dispatcherOptions = refs.dispatchers
 
-  const dispatcherOptions = (dispatcherList ?? []).map((d: any) => ({
-    label: `${d.first_name} ${d.last_name}`,
-    value: d.code,
-  }))
+  // A saved filter can be applied before the dispatcher list loads, leaving
+  // code-labelled options; relabel from the list whenever it's there.
+  const dispatcherValue = toOptions(
+    query.filters.operations_id.map((o) => o.value),
+    dispatcherOptions,
+  )
 
   // Counted for the Clear affordance: the date range always has a value, so it
   // is excluded — otherwise "Clear" would offer itself on an untouched board.
@@ -155,7 +172,7 @@ export function ActivityFilters() {
             options={dispatcherOptions}
             styles={selectStyles}
             isClearable={false}
-            value={query.filters.operations_id}
+            value={dispatcherValue}
             onChange={(value: any) => setFilters({ operations_id: value ?? [] })}
           />
         </div>
@@ -170,6 +187,37 @@ export function ActivityFilters() {
           Clear ({activeCount})
         </a>
       )}
+
+      <div className={styles.savedFilters}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="open-services-filters"
+          onClick={() => setShowFiltersDialog(true)}
+        >
+          Saved Filters
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="save-services-filter"
+          onClick={() => setShowSaveDialog(true)}
+        >
+          Save Filter
+        </Button>
+      </div>
+      <SaveServicesFilterDialog
+        open={showSaveDialog}
+        onOpenChange={setShowSaveDialog}
+        query={toSavedQuery(query)}
+      />
+      <ServicesFiltersDialog
+        open={showFiltersDialog}
+        onOpenChange={setShowFiltersDialog}
+        onLoad={(saved) => dispatch(setActivityQuery(fromSavedQuery(saved.query, refs)))}
+      />
     </div>
   )
 }

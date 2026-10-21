@@ -25,8 +25,8 @@ Decisions you made (2026-10-20):
 
 - **Phase 1 (domain + API + geo data): BUILT** on `feat/labor-crews`. Domain `labor/` (501 domain
   tests green, 100% line coverage held), `handlers/labor.ts` + `repositories/labor.repository.ts`
-  (23 integration tests against real Postgres + geo data), migrations `20261020194015_labor_crews`
-  and `20261020194100_geo_places_data` (23,011 cities, 35,291 postal codes), OpenAPI, authz.
+  (23 integration tests against real Postgres + geo data), migrations `20261021200000_labor_crews`
+  and `20261021200100_geo_places_data` (23,011 cities, 35,291 postal codes), OpenAPI, authz.
 - **Phase 2 (mobile): BUILT** on the same branch. Steve chose to review both halves together, so
   this is **one PR, not two**. That is safe because `mobile-release.yml` is `workflow_dispatch`
   only and there is no OTA publish: merging puts nothing in front of drivers. The one ordering
@@ -43,7 +43,7 @@ Decisions you made (2026-10-20):
 **Code-review fixes (2026-10-20):**
 
 - The add rate limit counts an append-only `CrewLinkAdd` log (migration
-  `20261020222230_labor_crew_link_adds`). Removing a crew no longer frees budget, which add/delete
+  `20261021200200_labor_crew_link_adds`). Removing a crew no longer frees budget, which add/delete
   cycles could otherwise use to walk the number space.
 - CSV export cells starting with `= + - @` get a leading `'` (formula injection), except E.164 phones.
 - `+` followed by a NANP-shaped 10-digit number is rejected ("add +1"), so it no longer becomes a

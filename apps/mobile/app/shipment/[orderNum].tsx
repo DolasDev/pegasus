@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, Stack } from 'expo-router'
 import { TripStatusBadge } from '../../src/components/TripStatusBadge'
 import { DocumentsTab } from '../../src/components/DocumentsTab'
+import { ChatThreadView } from '../../src/components/chat/ChatThreadView'
 import { TripService } from '../../src/services/tripService'
 import { formatLonghaulDate, formatLonghaulSpread } from '../../src/utils/longhaul-format'
 import type { LonghaulShipment } from '../../src/types/longhaul'
@@ -25,6 +26,13 @@ import { colors, fontSize, spacing, borderRadius } from '../../src/theme/colors'
 
 type Row = { label: string; value: string }
 
+type ShipmentTab = 'details' | 'documents' | 'chat'
+
+/** The `?tab=` a link may carry (a chat push opens `?tab=chat`). */
+function initialTab(raw: string | undefined): ShipmentTab {
+  return raw === 'documents' || raw === 'chat' ? raw : 'details'
+}
+
 function str(value: unknown): string {
   if (value == null || value === '') return '—'
   return String(value)
@@ -36,11 +44,16 @@ function join(parts: Array<string | null | undefined>, sep = ', '): string {
 }
 
 export default function ShipmentDetailScreen() {
-  const { orderNum } = useLocalSearchParams<{ orderNum: string }>()
+  const { orderNum, tab: tabParam } = useLocalSearchParams<{ orderNum: string; tab?: string }>()
   const [shipment, setShipment] = useState<LonghaulShipment | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'details' | 'documents'>('details')
+  const [tab, setTab] = useState<ShipmentTab>(() => initialTab(tabParam))
+
+  // A second push tap while this screen is already open changes only the param.
+  useEffect(() => {
+    if (tabParam) setTab(initialTab(tabParam))
+  }, [tabParam])
 
   useEffect(() => {
     let active = true
@@ -121,22 +134,47 @@ export default function ShipmentDetailScreen() {
     { label: 'Long distance instructions', value: str(s.pegasus_shadow?.lng_dis_comments) },
   ]
 
+  const tabs = (
+    <View style={styles.tabBar}>
+      <Tab label="Details" active={tab === 'details'} onPress={() => setTab('details')} />
+      <Tab label="Documents" active={tab === 'documents'} onPress={() => setTab('documents')} />
+      <Tab label="Chat" active={tab === 'chat'} onPress={() => setTab('chat')} />
+    </View>
+  )
+
+  // The chat thread is an inverted FlatList that owns its own scrolling, so
+  // it replaces the ScrollView instead of nesting inside it. The header card
+  // is dropped there to leave the thread room above the keyboard.
+  if (tab === 'chat') {
+    const chatOrder = Number(s.order_num)
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen options={{ title: `#${s.order_num}` }} />
+        <View style={styles.chatHeader}>{tabs}</View>
+        <ChatThreadView key={chatOrder} orderNum={chatOrder} />
+      </SafeAreaView>
+    )
+  }
+
+  const header = (
+    <>
+      <View style={styles.headerCard}>
+        <View style={styles.headerRow}>
+          <Text style={styles.orderNum}>#{s.order_num}</Text>
+          {s.status_status ? <TripStatusBadge status={s.status_status} /> : null}
+        </View>
+        {s.shipper_name ? <Text style={styles.shipper}>{s.shipper_name}</Text> : null}
+      </View>
+
+      {tabs}
+    </>
+  )
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen options={{ title: `#${s.order_num}` }} />
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.headerCard}>
-          <View style={styles.headerRow}>
-            <Text style={styles.orderNum}>#{s.order_num}</Text>
-            {s.status_status ? <TripStatusBadge status={s.status_status} /> : null}
-          </View>
-          {s.shipper_name ? <Text style={styles.shipper}>{s.shipper_name}</Text> : null}
-        </View>
-
-        <View style={styles.tabBar}>
-          <Tab label="Details" active={tab === 'details'} onPress={() => setTab('details')} />
-          <Tab label="Documents" active={tab === 'documents'} onPress={() => setTab('documents')} />
-        </View>
+        {header}
 
         {tab === 'details' ? (
           <>
@@ -194,6 +232,7 @@ function Section({ title, rows, stacked }: { title: string; rows: Row[]; stacked
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.backgroundLight },
   content: { padding: spacing.md },
+  chatHeader: { paddingHorizontal: spacing.md, paddingTop: spacing.md, marginBottom: -spacing.md },
   centered: {
     flex: 1,
     alignItems: 'center',

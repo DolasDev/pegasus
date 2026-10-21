@@ -1,11 +1,90 @@
 # Move chat — a chat room per move for office staff and assigned drivers
 
-**Branch:** `feat/move-chat-api` (Phase 1). Later phases: one worktree + branch + PR each.
+**Branch:** Phase 1 was `feat/move-chat-api` (merged #866), Phase 2 `feat/move-chat-page` (merged #867), Phase 3 → `feat/move-chat-app`. One worktree + branch + PR per phase.
 **Goal:** Each move (legacy order / shipment, keyed by `order_num`) has a chat room. Any tenant employee, and any
 longhaul or local driver assigned to that move (employee or contractor, as long as they have a login), can read it
 and post to it. It works from a standalone Teams/Slack-style page in tenant-web and from the driver app. The desktop (movemanager) gets
 it in a later phase.
-**Status:** Phase 1 DONE 2026-10-19 (`feat/move-chat-api`); next is Phase 2 (tenant-web `/messages`).
+**Status:** Phases 0–2 DONE and in prod (#866 `034053c6` 2026-10-19; #867 `79047c01` 2026-10-20). Phase 3 (driver app) built 2026-10-20 on `feat/move-chat-app`. Next is Phase 4 (movemanager desktop), which needs its own approved plan.
+
+---
+
+## Resume here
+
+- **Where:** Phase 3 lands as one PR from `feat/move-chat-app` (worktree `/home/steve/repos/pegasus-move-chat-app`,
+  slug `move-chat-app` — `move-chat-mobile` collided on Postgres port 5450 with
+  `pegasus-ringcentral-forward-skip-unconfigured`; the port is the slug's character sum mod 60, see
+  `scripts/new-worktree.sh`). Once merged, tear down with `scripts/rm-worktree.sh move-chat-app`.
+- **Status:**
+  - [x] Phase 0 — spikes + prod data check (#860, #862).
+  - [x] Phase 1 — domain, data, API, push claim, Settings → Users local-driver linker. Merged #866, in prod.
+  - [x] Phase 2 — tenant-web `/messages` page + `/chat/summaries` + `userId` on `/me/permissions`. Merged #867,
+        in prod.
+  - [x] Phase 3 — driver app: Messages screen, shipment Chat tab, offline outbox, push deep link. See
+        "Phase 3 as built". Verified locally: mobile jest 34 suites / 287 tests, `tsc --noEmit` and
+        `eslint src app` clean, `jest --detectOpenHandles` clean, `expo export` bundles for web and android;
+        API `me.test.ts` 10/10. Not run on a device.
+  - [ ] Phase 4 — movemanager desktop. Not started; needs its own approved movemanager plan.
+- **Next action:** if the Phase 3 PR is not merged yet: `gh pr list --head feat/move-chat-app`, then
+  `gh pr checks <N>`. After merge, the API change (`userId` on `/me/driver`) deploys with the normal Deploy; the
+  app itself reaches drivers only through a `mobile-release` dispatch from `main` (Steve's call — see
+  "Verification still owed"). Phase 4 only on Steve's go-ahead.
+- **Uncommitted work:** none intended. `apps/e2e/.env.test` and `package-lock.json` show modified in the worktree
+  from provisioning; they are never staged.
+- **Decisions & dead ends:**
+  - The API must **never** import `expo-server-sdk` (ESM-only → API Lambda INIT crash, #594). Chat posts
+    enqueue outbox rows in the transaction, then `kickPushForwarder()` (`apps/api/src/lib/push-forward-invoke.ts`)
+    async-invokes `PushForwardFunction`. Guarded by `apps/api/src/__tests__/expo-sdk-import-guard.test.ts`.
+  - Push-row claim is a Prisma `updateMany` compare-and-set on `nextAttemptAt` (`claimPush`), because
+    `db-access-guard` bans `$queryRaw`/`FOR UPDATE SKIP LOCKED`.
+  - Two driver mapping fields (`longhaulDriverId`, `localDriverEmployeeId`), never one: at QMM 2 numbers name
+    different people in `drivers` vs `crews`.
+  - Login/mapping work is **drivers only** (Steve, 2026-10-19); helpers deferred. Ask before widening.
+  - `GET .../messages` on a room that doesn't exist returns `[]` **before** the access check, so idle polls never
+    hit the legacy tunnel.
+  - Move details come from `sales` (`GET /chat/summaries`), **not** `v_longhaul_shipments_v2`. Shipper names are
+    not joined into `/inbox` (it polls); clients fetch `/summaries` once per batch and cache it 10 min. The
+    driver app does not retry a failed summaries read until that TTL passes.
+  - Driver app identity: the TenantUser id comes from `GET /me/driver` (`userId`, added in Phase 3), because
+    `/me/permissions` answers outside the `{ data }` envelope that `@pegasus/api-http` unwraps (GOTCHAS).
+  - Driver app offline queue: AsyncStorage (already a dependency, unused before), one key per TenantUser id.
+    "Reconnect" = foreground + reopening the conversation; no NetInfo (a new native module needs a store build,
+    and the server's clientMessageId dedupe makes a blind resend safe).
+  - `ChatProvider` sits in `app/_layout.tsx` **above** the root Stack (chat screens are pushed on the root
+    stack, not in the drawer) and resets itself on an account change (tenant + sub) — keying it would remount
+    the root navigator on every login/logout.
+  - The Playwright spec mocks the chat API (`page.route`): the local e2e stack has one SKIP_AUTH identity and no
+    legacy DB. Server rules stay covered by `apps/api/src/handlers/chat.test.ts`.
+  - Don't `prisma migrate reset` in a worktree (it needs user consent); add a follow-up migration instead.
+- **Gotchas:**
+  - Display names are still `crewMember.name` or the email (`TenantUser` has no name field).
+  - Driver-scope users only see their own moves; `/inbox?filter=all` is employee-only, so the app always asks for
+    `following`. A driver's list is empty until they open a move's Chat tab (that auto-follows) or are
+    @-mentioned.
+  - Room ids are legacy `order_num` (positive int ≤ 2147483647); `entityType` is only `shipment` in v1.
+  - Posting needs a `clientMessageId` matching `/^[A-Za-z0-9_-]{8,64}$/`. On the phone it comes from
+    `expo-crypto`'s `randomUUID()` — Hermes has no global `crypto.randomUUID` (#542).
+  - Coverage-floor files (`*/vitest.config.ts`) get auto-updated by local runs and the pre-push hook — revert
+    them, never commit.
+  - Mobile tests that render `DrawerContent` must mock `@react-navigation/drawer` (ESM-only under jest); see
+    `apps/mobile/__tests__/app/chat.test.tsx`.
+- **Verification still owed:**
+  - Phase 3 PR CI and the post-merge Deploy (API part only).
+  - **A device check.** Nothing here ran on a phone (no simulator on this box). Before promoting a build: open
+    Messages; open a move's Chat tab; send with signal and in airplane mode (the bubble should say "Waiting for
+    signal", then go out on returning to the app); check the iOS keyboard doesn't cover the composer
+    (`keyboardVerticalOffset` is a guess at the header height); tap a chat push.
+  - Ship to drivers: `gh workflow run mobile-release.yml --ref main -f env=prod -f platform=all -f ios_build=store -f submit=true`
+    (Steve's call). `app.json` `version` stays 1.1.0 unless Apple has approved 1.1.0 since 2026-10-15 — then bump
+    it first (an approved version's TestFlight train closes).
+  - No real-traffic check of chat in prod yet: post on one real order as an employee and as a mapped driver.
+  - Steve: set `localDriverEmployeeId` in Settings → Users in prod (QMM's one mapped driver first).
+  - Steve: Android FCM V1 key + end-to-end iOS push check (`apps/mobile/PUSH_NOTIFICATIONS.md`) — without it the
+    app works but no background push arrives (polling still updates an open app).
+  - RVS was not covered by the prod data check; re-run the D2 queries there before relying on local-driver
+    access at RVS.
+- **Separate follow-up (not chat):** `apps/api/src/handlers/notifications.ts` looks up the push target with
+  `{ where: { id: userId } }` and no `tenantId` — same `TenantUser` not-auto-scoped gap; small fix PR.
 
 ---
 
@@ -236,8 +315,8 @@ What a post does:
    2. Map `driver_id` / crew key → `TenantUser`.
    3. Run `resolveRecipients`.
    4. Enqueue one push per recipient with `dedupeKey = chat:<messageId>:<userId>`.
-3. Still in the request: **claim and send those rows to Expo immediately** (D4). Whatever doesn't send stays
-   PENDING/FAILED for the every-minute cron.
+3. **(Superseded — see D4 "as built".)** The API kicks `PushForwardFunction` asynchronously; it never sends to
+   Expo itself. Whatever the forwarder doesn't send stays PENDING/FAILED for the every-minute cron.
 4. If step 2 or 3 fails, log `chat.fanout_failed` with the room and message ids. The post itself still succeeds.
 
 OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
@@ -301,10 +380,10 @@ OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
   - a mention getting through a mute;
   - a soft delete;
   - two concurrent drainers never double-sending a push row.
-- [ ] **Phase 2 — tenant-web.** The standalone `/messages` page (rail, conversation, composer, search), the nav
+- [x] **Phase 2 — tenant-web.** Built 2026-10-20 (`feat/move-chat-page`); see "Phase 2 as built". The standalone `/messages` page (rail, conversation, composer, search), the nav
       badge, the `ShipmentDetail` deep-link button, unit tests, and one Playwright browser spec (post → appears in a
       second session → unread clears).
-- [ ] **Phase 3 — Mobile.** The Messages screen, the shipment Chat tab, the offline queue and the push deep link. Ships in the next
+- [x] **Phase 3 — Mobile.** Built 2026-10-20 (`feat/move-chat-app`); see "Phase 3 as built". The Messages screen, the shipment Chat tab, the offline queue and the push deep link. Ships in the next
       driver app build. Blocked for background delivery until the FCM key and the iOS verification are done (a human,
       in a browser).
 - [ ] **Phase 4 — Desktop (movemanager).** A chat panel on the order form calling the cloud API with the
@@ -315,6 +394,8 @@ OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
   - true real-time delivery via AppSync Events (if ≤3 s polling isn't enough);
   - a Teams bot that mirrors rooms;
   - an email digest for unread mentions;
+  - a profile display name for staff (chat shows emails today);
+  - server-side shipper-name search for the chat page;
   - a workflow SDK `post_chat_message` + `chat.message.posted` event. When this lands, the SDK discoverability rule
     applies (README, MCP, OpenAPI, the authoring repo's `CLAUDE.md`), and an automation's post is a billable
     action.
@@ -376,11 +457,104 @@ OpenAPI: add every route to `lib/openapi-spec.ts` (the coverage test gates CI).
 - **Pre-existing, not fixed here:** `handlers/notifications.ts` checks a push target with
   `{ where: { id: userId } }` and no tenantId.
 
-## Resume here
+## Phase 2 as built (2026-10-20)
 
-Phase 1 is complete in the branch and lands with this plan. **Next: Phase 2 (tenant-web `/messages` page)**, a new
-worktree. Steve has not yet set any `localDriverEmployeeId` mappings in prod (Settings → Users after deploy);
-QMM's one mapped driver had 31 local jobs in the last year and is the obvious first one.
+**API additions (small, both read-only):**
+
+- `GET /api/v1/chat/summaries?entityType=shipment&ids=1,2,3` (≤ 100 ids): shipper, origin/destination
+  (`city, ST`), pack/load/delivery dates (`YYYY-MM-DD`) from `sales`, in one legacy query
+  (`orderSummaries` in `lib/chat-access.ts`). A driver's request carries the driver-access predicate in the same
+  query, so other orders are simply absent. 422 without a legacy DB, 503 `LEGACY_UNAVAILABLE` on a tunnel error.
+  In OpenAPI.
+- `GET /api/v1/me/permissions` now also returns `userId` (the caller's TenantUser id, null for M2M).
+
+**Domain:** `splitMentions(body)` (render segments) and `formatMentionToken(name, userId)` — the page never
+re-implements the mention regex.
+
+**tenant-web:**
+
+- Routes `/messages` and `/messages/shipment/$orderNum` (`routes/messages.tsx`, registered in `router.tsx`, no
+  role guard — the API scopes). Two panes at `md`+, two screens below.
+- `api/queries/chat.ts` (inbox 15 s poll, room, mentionable, summaries 10 min cache, membership mutation, plain
+  calls for the thread).
+- `features/chat/`: `thread-state.ts` (pure reducer: merge by id, pending sends keyed by clientMessageId,
+  retry/discard, paging), `useChatThread.ts` (first page, 3 s poll after the newest id, paused on
+  `document.hidden` with an immediate catch-up, read cursor, send/retry/delete), `mention-input.ts` (composer shows
+  `@Name`; picked names become tokens at send), `format.ts`, and components `ConversationList`,
+  `ConversationPane` (header: order · shipper, route, dates, assigned drivers from `mentionable`; follow/mute),
+  `MessageList` (grouped bubbles, mine on the right, day dividers, a "New" line from the read cursor at arrival,
+  load-older, delete for own or tenant_admin), `Composer` (Enter/Shift+Enter, @ picker), `ChatUnreadBadge`.
+- Rail filters: All (employees read `filter=all`, drivers `following`), Unread, Mentions, Following. Search
+  filters the list by order number or shipper; a typed order number opens that room even with no messages.
+- AppShell: a **Messages** nav item (permission `chat:read`, capability `longhaul`) with an unread badge = sum
+  of `unreadCount` over followed rooms.
+- driver-planning `ShipmentDetail`: a "Chat → Open chat" row linking to `/messages/shipment/:orderNum`.
+
+**Scope cuts (cheap to reverse):**
+
+- Search by shipper name only filters the rooms already listed; there is no server-side shipper search.
+- No link from the room header back to a shipment in driver-planning (that module has no per-order URL).
+- A message someone else deletes disappears from an open thread only on reload (`after=` polling sees new
+  rows, not edits); your own deletes update at once.
+- Header drivers are the move's drivers **with logins** (from `mentionable`), not every legacy driver name.
+
+**Tests:** API `chat.test.ts` (+3 summaries cases), `me.test.ts` (+userId); domain (+5); tenant-web
+`thread-state`, `mention-input`, `format`, `useChatThread` (poll/pause/catch-up), `chat-page.test.tsx` (list +
+pane against a fake API), AppShell (+4 Messages nav), ShipmentDetail (+2); Playwright
+`tests/browser/move-chat.spec.ts` (badge → open → read clears badge → post → a colleague's reply polled in).
+CI e2e floor 32 → 33 (35 executed).
+
+## Phase 3 as built (2026-10-20)
+
+**API (one small read-only addition):** `GET /api/v1/me/driver` now also returns `userId` (the caller's
+TenantUser id; null for M2M). A mobile-only route, not in OpenAPI (it never was).
+
+**Driver app (`apps/mobile`):**
+
+- `src/services/chatService.ts` — `ChatService`: inbox (`filter=following`), room, messages, post, read, delete,
+  membership, summaries (≤ 100 ids), `getMyUserId`. Same types as tenant-web's `api/queries/chat.ts`.
+- `src/chat/thread-state.ts` — tenant-web's reducer, plus a `restore` action for the outbox and a split between
+  `queued` (transient: no signal or a 5xx; resent automatically) and `failed` (a 4xx; only the user's Retry).
+- `src/chat/outbox.ts` — the offline queue in AsyncStorage, one key per TenantUser id, writes serialised;
+  `deliver` (removes on success, marks refused on a 4xx) and `flushOutbox` (oldest first, stops at the first
+  transient failure).
+- `src/chat/useChatThread.ts` — first page; 3 s poll in the foreground only (`AppState`); on foreground an
+  immediate catch-up plus a resend of queued sends; outbox restore on open; read cursor; paging back; delete.
+- `src/chat/ChatContext.tsx` — `ChatProvider` in `app/_layout.tsx` above the root Stack: my user id, the inbox
+  (15 s poll in the foreground), the unread total for the drawer badge, a 10-minute summaries cache, and the
+  outbox flush on sign-in and every foreground. Resets on account change.
+- `src/chat/inbox.ts`, `src/chat/format.ts` — list and format helpers ported from tenant-web.
+- `src/components/chat/ChatThreadView.tsx` — inverted `FlatList` of bubbles: mine on the right; author and
+  initials on the left at the start of each run; day dividers; mentions as `@Name`; "Message deleted";
+  long-press to delete your own; pending sends show Sending… / Waiting for signal / Not sent with Retry and
+  Discard; composer pinned above the keyboard (4000-character cap from the domain).
+- Screens:
+  - `app/(drawer)/messages.tsx` — All / Unread / Mentions, search by order # or shipper, "Open chat for #N" for
+    a typed order, pull to refresh.
+  - `app/chat/[orderNum].tsx` — the thread full screen, declared on the root stack inside the auth guard with
+    `detailHeader`.
+  - `app/shipment/[orderNum].tsx` — a **Chat** tab that replaces the ScrollView when selected; `?tab=chat`
+    selects it.
+- Auto-follow needs no extra call: `GET .../messages` on an existing room runs `assertAccess`, which creates the
+  driver's member row as a follow and stamps `accessCheckedAt` (so the 3 s poll stays off the tunnel).
+  - Drawer: a **Messages** item with an unread badge.
+- Push: a `chat.message` tap opens `/chat/<orderNum>` (falls back to Messages) — not the shipment Chat tab the
+  outline named: the shipment screen loads through the longhaul view, which has no local-only orders.
+
+**Scope cuts (cheap to reverse):**
+
+- No @-mention picker in the phone composer (received mentions render; the web page has the picker).
+- No follow / mute controls on the phone (the API supports them; drivers auto-follow on open).
+- No "New" divider at the read cursor.
+- A message someone else deletes disappears from an open thread only on reopen (same as the web page).
+- A push tap while the app is fully closed relies on the existing `addNotificationResponseReceivedListener`
+  wiring (unchanged from trip pushes); not verified on a device.
+
+**Tests:** mobile `chatService`, `outbox`, `thread-state`, `inbox`, `format`, `useChatThread` (foreground-only
+poll, outbox written before the POST, queued resend with the same id, refused stays failed, restore),
+`ChatContext` (idle when signed out, badge, foreground-only poll, flush, summaries cache, account reset),
+`__tests__/app/chat.test.tsx` (Messages list, thread render / send / 403, `buildRows`, shipment `?tab=chat`,
+drawer badge), push tap (+2), `_layout` BACK-01 (+`chat/[orderNum]`); API `me.test.ts` (`userId`).
 
 ## Files
 
@@ -388,12 +562,12 @@ QMM's one mapped driver had 31 local jobs in the last year and is the obvious fi
   - `packages/domain/src/chat/*`
   - `apps/api/src/handlers/chat.ts` (+ tests)
   - `apps/api/src/repositories/chat.repository.ts`
-  - `apps/api/src/lib/shipment-read-access.ts` (`canReadShipment`)
+  - ~~`apps/api/src/lib/shipment-read-access.ts`~~ — not built; the driver rule lives in `apps/api/src/lib/chat-access.ts`
   - `apps/tenant-web/src/features/chat/*`
   - `apps/tenant-web/src/routes/messages.tsx`
-  - `apps/mobile/src/components/chat/*` (thread, composer, list rows)
-  - `apps/mobile/src/services/chat*.ts`
-  - `apps/mobile/app/(drawer)/messages.tsx`
+  - `apps/mobile/src/components/chat/ChatThreadView.tsx`, `apps/mobile/src/chat/*`
+  - `apps/mobile/src/services/chatService.ts`
+  - `apps/mobile/app/(drawer)/messages.tsx`, `apps/mobile/app/chat/[orderNum].tsx`
 - **Modified:**
   - `apps/api/prisma/schema.prisma` + a migration
   - `apps/api/src/app.ts`

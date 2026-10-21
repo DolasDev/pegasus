@@ -41,6 +41,7 @@ const legacy = {
   longhaul: new Map<number, number[]>(),
   local: new Map<number, number[]>(),
   crews: [] as Array<{ employee_id: number; first: string; last: string }>,
+  salesDown: false,
 }
 
 function canRead(order: number, lh: unknown, ld: unknown): boolean {
@@ -79,6 +80,29 @@ function fakeExecute(
       (legacy.local.get(p['orderNum'] as number) ?? []).map((id) => ({
         driver_id1: id,
         driver_id2: 0,
+      })),
+    )
+  }
+  if (sql.includes('SELECT s.order_num')) {
+    if (legacy.salesDown) return Promise.reject(new Error('tunnel down'))
+    const driverScoped =
+      sql.includes('LongDistanceDispatchActivity') || sql.includes('LocalDispatchJobs')
+    const orders = Object.entries(p)
+      .filter(([k]) => /^o\d+$/.test(k))
+      .map(([, v]) => v as number)
+      .filter((o) => legacy.orders.has(o))
+      .filter((o) => !driverScoped || canRead(o, p['lh'], p['ld']))
+    return rs(
+      orders.map((o) => ({
+        order_num: o,
+        shipper_name: `  SHIPPER ${o} `,
+        shipper_city: 'Austin',
+        shipper_state: 'TX',
+        consignee_city: '',
+        consignee_state: 'CO',
+        pack_date: '2026-10-21T00:00:00.000Z',
+        load_date: null,
+        del_date: '2026-10-25T00:00:00.000Z',
       })),
     )
   }
@@ -187,6 +211,7 @@ describe.skipIf(!hasDb)('/chat (integration)', () => {
     legacy.longhaul = new Map([[100, [7]]])
     legacy.local = new Map([[200, [9]]])
     legacy.crews = []
+    legacy.salesDown = false
 
     await wipeTenant(tenantA)
     await wipeTenant(tenantB)
@@ -572,6 +597,53 @@ describe.skipIf(!hasDb)('/chat (integration)', () => {
     expect(list.map((x) => x.name)).toContain('ops@chat.test')
     expect(list.map((x) => x.name)).not.toContain('otherDriver@chat.test')
     expect(list.map((x) => x.name)).not.toContain('outsider@chat.test')
+  })
+
+  // ── summaries ─────────────────────────────────────────────────────────────
+
+  it('summarizes orders for the page header in one legacy read', async () => {
+    const res = await appAs('sales').request('/chat/summaries?entityType=shipment&ids=100,200,999')
+    expect(res.status).toBe(200)
+    const list = await data<Array<{ orderNum: number }>>(res)
+    expect(list).toEqual([
+      {
+        orderNum: 100,
+        shipperName: 'SHIPPER 100',
+        origin: 'Austin, TX',
+        destination: 'CO',
+        packDate: '2026-10-21',
+        loadDate: null,
+        deliveryDate: '2026-10-25',
+      },
+      expect.objectContaining({ orderNum: 200 }),
+    ])
+    expect(exec).toHaveBeenCalledTimes(1)
+  })
+
+  it('gives a driver summaries only for their own moves', async () => {
+    const list = await data<Array<{ orderNum: number }>>(
+      await appAs('driver').request('/chat/summaries?entityType=shipment&ids=100,200,300'),
+    )
+    expect(list.map((x) => x.orderNum)).toEqual([100])
+    const none = await data<unknown[]>(
+      await appAs('unmapped').request('/chat/summaries?entityType=shipment&ids=100'),
+    )
+    expect(none).toEqual([])
+  })
+
+  it('validates summary ids and reports a legacy outage as 503', async () => {
+    expect(
+      (await appAs('sales').request('/chat/summaries?entityType=shipment&ids=1,abc')).status,
+    ).toBe(400)
+    expect((await appAs('sales').request('/chat/summaries?entityType=move&ids=1')).status).toBe(400)
+    const many = Array.from({ length: 101 }, (_, i) => i + 1).join(',')
+    expect(
+      (await appAs('sales').request(`/chat/summaries?entityType=shipment&ids=${many}`)).status,
+    ).toBe(400)
+    legacy.salesDown = true
+    const down = await appAs('sales').request('/chat/summaries?entityType=shipment&ids=100')
+    expect(down.status).toBe(503)
+    expect(await codeOf(down)).toBe('LEGACY_UNAVAILABLE')
   })
 
   // ── local-drivers picker ──────────────────────────────────────────────────

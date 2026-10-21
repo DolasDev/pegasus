@@ -872,10 +872,15 @@ sources:
   kind: message-standard
   openness: public
   license: royalty-free
-  areas: [A4, A6, A9]
+  areas: [A1, A4, A6, A7, A9]
   priority: P2
   status: candidate
-  urls: [https://docs.oasis-open.org/ubl/UBL-2.4.html]
+  urls: [https://docs.oasis-open.org/ubl/UBL-2.4.html, https://docs.oasis-open.org/ubl/]
+  notes: >
+    Beyond the transport documents named above, UBL also standardizes Order, Quotation, Invoice and
+    DespatchAdvice — added to the hint (A1, A7) on 2026-10-20 as a gap-fill source for EXTERNAL
+    DOCUMENT EXCHANGE; see README.md § "Enriching the reference — filling a gap". A UBL document is a
+    snapshot exchanged between parties, not a lifecycle: read it for what crosses the boundary.
 
 - id: gs1-epcis-cbv
   name: GS1 EPCIS 2.0.1 + Core Business Vocabulary 2.0
@@ -1464,3 +1469,143 @@ sources:
     UN/CEFACT package — which ships as bare values with no names or definitions, so round 1's
     highest A4 coverage score is for a count, not a vocabulary. This is the one candidate for a
     neutral-standards-body status vocabulary rather than a vendor's.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GENERAL BUSINESS DATA MODELS (2026-10-20) — registered from a user-supplied list of
+# common data models and standards. NOT moving-specific: they are the LAST resort for
+# filling a gap, consulted only after the domain-specific corpus above, and they supply
+# generic concepts only (party, account, contact, document, invoice, payment, agreement).
+# The consult order and the rules are in README.md § "Enriching the reference — filling a
+# gap". `areas` on every entry below is a DISCOVERY hint written from the list's own
+# "use for" lines; none of these sources has been read.
+# ─────────────────────────────────────────────────────────────────────────────
+
+- id: microsoft-cdm
+  name: Microsoft Common Data Model (CDM)
+  publisher: Microsoft
+  role: model-evidence
+  kind: reference-model
+  openness: public
+  license: open source (see the GitHub repository's LICENSE)
+  areas: [A1, A7, A8, A9]
+  priority: P2
+  status: candidate
+  urls:
+    - https://github.com/microsoft/CDM
+    - https://learn.microsoft.com/en-us/common-data-model/
+  notes: >
+    First stop for COMMON BUSINESS VOCABULARY — account, contact, lead, opportunity, product,
+    activity — and the relationships between them. Generic CRM/ERP vocabulary with no HHG semantics;
+    read for entity and attribute naming, never for lifecycle.
+
+- id: odoo
+  name: Odoo (open-source edition) — CRM, sales, contacts, inventory, purchase, accounting, project
+  publisher: Odoo S.A.
+  role: model-evidence
+  kind: reference-model
+  openness: public
+  license: LGPL-3 (community edition); paid enterprise edition not needed
+  areas: [A1, A6, A7, A8, A9]
+  priority: P2
+  status: candidate
+  urls:
+    - https://github.com/odoo/odoo
+    - https://www.odoo.com/documentation/
+  notes: >
+    A complete business application's schema. Read for OPERATIONAL PATTERNS — how quotation, order,
+    delivery, invoice and payment records connect and change state — not for vocabulary. It is an
+    application, so its schema carries its own implementation assumptions; cite the behaviour, not
+    the table.
+
+- id: erpnext
+  name: ERPNext / Frappe — customer, supplier, quotation, sales order, delivery, stock, invoice, payment, accounting
+  publisher: Frappe Technologies
+  role: model-evidence
+  kind: reference-model
+  openness: public
+  license: GPL-3
+  areas: [A1, A5, A6, A7, A8, A9]
+  priority: P2
+  status: candidate
+  urls:
+    - https://github.com/frappe/erpnext
+    - https://docs.frappe.io/erpnext
+  notes: >
+    Odoo's comparator for OPERATIONAL PATTERNS — read both before taking a pattern from either, so
+    one application's choice is not mistaken for the domain's. Strongest on how records connect
+    across a workflow (quotation → order → delivery → invoice → payment).
+
+- id: tmforum-sid
+  name: TM Forum Information Framework (SID)
+  publisher: TM Forum
+  role: model-evidence
+  kind: reference-model
+  openness: licensed
+  license: public materials; some resources require TM Forum membership or specific licensing
+  areas: [A8, A9]
+  priority: P3
+  status: candidate
+  urls: [https://www.tmforum.org/oda/information-systems/information-framework-%28sid%29/]
+  notes: >
+    Telecom-focused enterprise information model. Useful for HOW to model at enterprise scale —
+    party / party-role separation, shared entities across domains — not for any concept of ours.
+
+- id: fibo
+  name: FIBO — Financial Industry Business Ontology
+  publisher: EDM Council
+  role: model-evidence
+  kind: ontology
+  openness: public
+  license: open specifications (see spec.edmcouncil.org)
+  areas: [A7, A8, A11]
+  priority: P3
+  status: candidate
+  urls: [https://spec.edmcouncil.org/fibo/]
+  notes: >
+    Formal ontology for legal entities, agreements, obligations and financial concepts. Consult only
+    for a finance-heavy or contractual gap (an obligation, a legal-entity distinction, a payment
+    term) that the tariffs and regulation in the corpus do not settle.
+
+- id: sap-business-objects
+  name: SAP business objects — finance, procurement, orders, inventory, logistics
+  publisher: SAP
+  role: model-evidence
+  kind: vendor-api
+  openness: licensed
+  license: commercial; documentation access varies
+  areas: [A1, A5, A7]
+  priority: P3
+  status: candidate
+  urls: [https://help.sap.com/]
+  notes: >
+    NOT src:sap-tm. That entry is SAP Transportation Management's freight-order APIs (execution);
+    this one is SAP's general ERP business objects (finance, procurement, inventory). Comparator only.
+
+- id: salesforce-data-model
+  name: Salesforce data model — accounts, contacts, leads, opportunities, cases
+  publisher: Salesforce
+  role: model-evidence
+  kind: vendor-api
+  openness: public
+  license: free documentation; paid platform
+  areas: [A8, A9]
+  priority: P3
+  status: candidate
+  urls: [https://developer.salesforce.com/docs]
+  notes: Comparator for src:microsoft-cdm on CRM vocabulary. Read after CDM, not instead of it.
+
+- id: dynamics-365
+  name: Microsoft Dynamics 365 — sales, customer service, field service, finance & operations
+  publisher: Microsoft
+  role: model-evidence
+  kind: vendor-api
+  openness: public
+  license: free documentation; paid platform
+  areas: [A3, A7, A8, A9, A13]
+  priority: P3
+  status: candidate
+  urls: [https://learn.microsoft.com/en-us/dynamics365/]
+  notes: >
+    Built on src:microsoft-cdm. The one entry in this block with a FIELD SERVICE module (work orders,
+    resource scheduling), so the generic comparator for crew and trip assignment — after the HHG and
+    telematics sources, never before them.

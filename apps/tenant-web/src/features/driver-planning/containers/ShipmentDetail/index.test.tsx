@@ -511,3 +511,23 @@ describe('ShipmentDetail — View Trip Sheet', () => {
     expect(screen.getByText('Trip Sheet')).toBeInTheDocument()
   })
 })
+
+describe('ShipmentDetail — Chat shortcut', () => {
+  const renderPane = (shipment: unknown) =>
+    renderWithStore(<ShipmentDetail />, {
+      shipments: { selectedShipment: shipment } as any,
+      user: { user: sampleUser } as any,
+    })
+  const chatLink = () => document.querySelector('[data-target="shipment-chat-link"]')
+
+  it("links to the move's room on the Messages page", () => {
+    renderPane(happyShipment)
+    expect(chatLink()?.getAttribute('href')).toBe('/messages/shipment/12345')
+    expect(chatLink()?.textContent).toBe('Open chat')
+  })
+
+  it('renders no link without a usable order number', () => {
+    renderPane({ ...happyShipment, order_num: null })
+    expect(chatLink()).toBeNull()
+  })
+})

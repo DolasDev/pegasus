@@ -95,6 +95,9 @@ meHandler.get('/permissions', async (c) => {
     roles: principal.roleNames,
     permissions,
     capabilities,
+    // The caller's TenantUser id (null for M2M / service accounts) — lets a
+    // client recognize its own rows, e.g. which chat messages are "mine".
+    userId: c.get('userId') ?? null,
   })
 })
 
@@ -102,12 +105,16 @@ meHandler.get('/permissions', async (c) => {
 // driver mapping. Scoped to the calling user via c.get('userId'); cross-user
 // disclosure is structurally impossible. Returns null for service accounts /
 // M2M principals (no TenantUser row resolved).
+//
+// `userId` is the caller's TenantUser id, so the driver app can tell which
+// chat messages are its own. (/permissions carries it too, but outside the
+// `{ data }` envelope the app's API client unwraps.)
 meHandler.get('/driver', async (c) => {
   const db = c.get('db')
   const userId = c.get('userId')
 
   if (!userId) {
-    return c.json({ data: { longhaulDriverId: null } })
+    return c.json({ data: { longhaulDriverId: null, userId: null } })
   }
 
   const user = await db.tenantUser.findUnique({
@@ -115,7 +122,7 @@ meHandler.get('/driver', async (c) => {
     select: { longhaulDriverId: true },
   })
 
-  return c.json({ data: { longhaulDriverId: user?.longhaulDriverId ?? null } })
+  return c.json({ data: { longhaulDriverId: user?.longhaulDriverId ?? null, userId } })
 })
 
 // ---------------------------------------------------------------------------

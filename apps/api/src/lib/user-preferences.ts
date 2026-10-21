@@ -45,10 +45,14 @@ const ReportingPreferences = z
  * first sets a default, which keeps existing hydrated shapes unchanged. It must
  * still be declared here — z.object strips unknown keys, so an undeclared
  * section would be wiped by the next write to any other section.
+ *
+ * `defaultServicesFilterId` is the Operations → Services counterpart, resolved
+ * the same way by GET /services-filters/default.
  */
 const OperationsPreferences = z
   .object({
     defaultAvailabilityFilterId: z.uuid().nullable().optional(),
+    defaultServicesFilterId: z.uuid().nullable().optional(),
   })
   .partial()
 
@@ -73,6 +77,7 @@ export const UserPreferencesPatch = z.object({
   operations: z
     .object({
       defaultAvailabilityFilterId: z.uuid().nullable(),
+      defaultServicesFilterId: z.uuid().nullable(),
     })
     .partial()
     .optional(),

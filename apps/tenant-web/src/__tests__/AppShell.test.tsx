@@ -60,6 +60,8 @@ let mockPermissions: {
   isLoading: boolean
   roles: string[]
   capabilities?: Record<string, boolean>
+  /** Permissions `has` denies; everything else is granted. */
+  denied?: string[]
 } = {
   isLoading: false,
   roles: ['tenant_admin'],
@@ -67,13 +69,21 @@ let mockPermissions: {
 vi.mock('@/auth/permissions', () => ({
   usePermissions: () => ({
     isLoading: mockPermissions.isLoading,
-    has: () => true,
+    has: (p: string) => !(mockPermissions.denied ?? []).includes(p),
     allOf: () => true,
     anyOf: () => true,
     permissions: new Set<string>(),
     roles: mockPermissions.roles,
     hasCapability: (c: string) => mockPermissions.capabilities?.[c] !== false,
   }),
+}))
+
+// The unread badge polls the chat inbox through TanStack Query; stand it in
+// with a marker so the shell renders without a QueryClient.
+vi.mock('@/features/chat/components/ChatUnreadBadge', () => ({
+  ChatUnreadBadge: ({ collapsed }: { collapsed: boolean }) => (
+    <span data-testid="chat-unread-badge" data-collapsed={String(collapsed)} />
+  ),
 }))
 
 import { AppShell } from '@/components/AppShell'
@@ -216,7 +226,7 @@ describe('AppShell — Operations submenu role gate', () => {
     )
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
-    expect(screen.getByText('Dispatch Activities')).toBeInTheDocument()
+    expect(screen.getByText('Services')).toBeInTheDocument()
   })
 
   it('shows Planning and Trips to tenant_admin', () => {
@@ -232,7 +242,7 @@ describe('AppShell — Operations submenu role gate', () => {
     )
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
-    expect(screen.getByText('Dispatch Activities')).toBeInTheDocument()
+    expect(screen.getByText('Services')).toBeInTheDocument()
   })
 
   it('shows the whole Operations section to long_distance_dispatch', () => {
@@ -252,10 +262,9 @@ describe('AppShell — Operations submenu role gate', () => {
     // Planning and Trips used to be filtered out here; the grant lifted that.
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
-    // Dispatch Activities is the one child that IS still narrowed — it carries
-    // its own `roles` (DISPATCH_ACTIVITIES_ROLES) rather than inheriting the
-    // group's. This is the assertion that catches the gate being dropped.
-    expect(screen.queryByText('Dispatch Activities')).not.toBeInTheDocument()
+    // Services was narrowed to the admins until the dispatch personas were
+    // granted it; it now inherits the group's gate like every other child.
+    expect(screen.getByText('Services')).toBeInTheDocument()
   })
 
   it('shows the whole Operations section to central_planning_dispatch as well', () => {
@@ -274,7 +283,7 @@ describe('AppShell — Operations submenu role gate', () => {
     expect(screen.getByText('Shipments')).toBeInTheDocument()
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
-    expect(screen.queryByText('Dispatch Activities')).not.toBeInTheDocument()
+    expect(screen.getByText('Services')).toBeInTheDocument()
   })
 
   it('still hides the Operations section from a role outside it', () => {
@@ -365,5 +374,48 @@ describe('AppShell — submenu active highlight follows the current route', () =
     // by the group parent and the exact `Availability` child, so it's asserted
     // via the browser check, not here.)
     expect(isLinkActive(container, '/driver-planning/planning')).toBe(false)
+  })
+})
+
+describe('AppShell — Messages nav', () => {
+  beforeEach(() => {
+    currentPathname = '/dashboard'
+  })
+
+  const renderShell = () =>
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+
+  it('shows Messages with its unread badge to any role holding chat:read, drivers included', () => {
+    mockPermissions = { isLoading: false, roles: ['driver'] }
+    renderShell()
+    const link = screen.getByText('Messages').closest('a')
+    expect(link?.getAttribute('href')).toBe('/messages')
+    expect(link?.querySelector('[data-testid="chat-unread-badge"]')).not.toBeNull()
+  })
+
+  it('hides Messages without chat:read', () => {
+    mockPermissions = { isLoading: false, roles: ['viewer'], denied: ['chat:read'] }
+    renderShell()
+    expect(screen.queryByText('Messages')).not.toBeInTheDocument()
+  })
+
+  it('hides Messages when the tenant has no legacy database (rooms are legacy orders)', () => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['tenant_admin'],
+      capabilities: { longhaul: false },
+    }
+    renderShell()
+    expect(screen.queryByText('Messages')).not.toBeInTheDocument()
+  })
+
+  it('puts no badge on other items', () => {
+    mockPermissions = { isLoading: false, roles: ['tenant_admin'] }
+    renderShell()
+    expect(screen.getAllByTestId('chat-unread-badge')).toHaveLength(1)
   })
 })

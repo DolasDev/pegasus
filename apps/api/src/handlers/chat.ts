@@ -45,8 +45,10 @@ import {
   driverReadableOrders,
   assignedDriverIds,
   orderExists,
+  orderSummaries,
   type DriverIds,
 } from '../lib/chat-access'
+import { logger } from '../lib/logger'
 import { enqueueChatMessagePush } from '../lib/push-triggers'
 import { kickPushForwarder } from '../lib/push-forward-invoke'
 import {
@@ -70,6 +72,7 @@ const DEFAULT_PAGE = 50
 const MAX_PAGE = 100
 const INBOX_LIMIT = 100
 const PREVIEW_CHARS = 140
+const SUMMARY_LIMIT = 100
 
 type C = Context<AppEnv>
 
@@ -653,6 +656,49 @@ chatHandler.get('/inbox', requirePermission(Actions.ReadChat), (c) =>
         }
       }),
     })
+  }),
+)
+
+const SummariesQuery = z.object({
+  entityType: z.string(),
+  ids: z.string().min(1),
+})
+
+// GET /summaries?entityType=shipment&ids=1,2,3 — header details (shipper,
+// origin → destination, dates) for the chat page's list and room header, in one
+// legacy round trip. Not on any poll path: clients cache it per order. A driver
+// gets only the orders they can read; the rest are simply absent.
+chatHandler.get('/summaries', requirePermission(Actions.ReadChat), (c) =>
+  guarded(c, async () => {
+    const q = SummariesQuery.safeParse(c.req.query())
+    if (!q.success) {
+      throw new ChatHttpError(400, 'VALIDATION_ERROR', 'Pass entityType and ids (comma-separated)')
+    }
+    const raw = q.data.ids.split(',').map((s) => s.trim())
+    if (raw.length > SUMMARY_LIMIT) {
+      throw new ChatHttpError(400, 'VALIDATION_ERROR', `At most ${SUMMARY_LIMIT} ids`)
+    }
+    const refs = raw.map((id) => {
+      try {
+        return parseChatRoomRef(q.data.entityType, id)
+      } catch (err) {
+        if (err instanceof DomainError) throw new ChatHttpError(400, err.code, err.message)
+        throw err
+      }
+    })
+    const caller = await resolveCaller(c)
+    const cs = await legacyConnectionString(c.get('tenantId'))
+    if (!cs) {
+      throw new ChatHttpError(422, 'MSSQL_NOT_CONFIGURED', 'No legacy database is configured')
+    }
+    const orderNums = [...new Set(refs.map(orderNumOf))]
+    try {
+      const data = await orderSummaries(cs, orderNums, caller.scope === 'driver' ? caller : null)
+      return c.json({ data })
+    } catch (err) {
+      logger.warn('chat summaries read failed', { error: String(err) })
+      throw new ChatHttpError(503, 'LEGACY_UNAVAILABLE', 'Move details are unavailable right now')
+    }
   }),
 )
 

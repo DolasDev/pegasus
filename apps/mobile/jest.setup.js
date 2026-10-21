@@ -106,6 +106,11 @@ jest.mock('expo-crypto', () => ({
   digestStringAsync: jest.fn(() => Promise.resolve('bW9jay1kaWdlc3Q')),
   CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
   CryptoEncoding: { BASE64: 'base64' },
+  // A distinct v4-shaped id per call, like the real one.
+  randomUUID: jest.fn(() => {
+    globalThis.__mockUuidSeq = (globalThis.__mockUuidSeq ?? 0) + 1;
+    return `00000000-0000-4000-8000-${String(globalThis.__mockUuidSeq).padStart(12, '0')}`;
+  }),
 }));
 
 // Mock expo-image-picker

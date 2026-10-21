@@ -97,4 +97,24 @@ describe('updateUserPreferences', () => {
     })
     expect(next.operations?.defaultAvailabilityFilterId).toBe(FILTER_ID)
   })
+
+  it('keeps the availability default when the services default is set, and vice versa', async () => {
+    const SERVICES_ID = '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
+    findUnique.mockResolvedValue({
+      preferences: { operations: { defaultAvailabilityFilterId: FILTER_ID } },
+    })
+    const next = await updateUserPreferences(db, 'u1', {
+      operations: { defaultServicesFilterId: SERVICES_ID },
+    })
+    expect(next.operations).toEqual({
+      defaultAvailabilityFilterId: FILTER_ID,
+      defaultServicesFilterId: SERVICES_ID,
+    })
+
+    findUnique.mockResolvedValue({ preferences: next })
+    const cleared = await updateUserPreferences(db, 'u1', {
+      operations: { defaultAvailabilityFilterId: null },
+    })
+    expect(cleared.operations?.defaultServicesFilterId).toBe(SERVICES_ID)
+  })
 })

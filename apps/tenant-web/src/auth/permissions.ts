@@ -43,6 +43,8 @@ export type MePermissions = {
   permissions: string[]
   /** Tenant capability flags. Absent on older API deploys. */
   capabilities?: Capabilities
+  /** The caller's TenantUser id; null for service principals, absent on older API deploys. */
+  userId?: string | null
 }
 
 async function fetchMePermissions(): Promise<MePermissions> {
@@ -80,6 +82,8 @@ export type PermissionsApi = {
   permissions: ReadonlySet<string>
   /** The principal's Cedar role-group memberships. */
   roles: readonly string[]
+  /** The caller's TenantUser id, once loaded (null for service principals or older APIs). */
+  userId: string | null
   /**
    * Whether the tenant has the given capability. Fails OPEN: an absent flag
    * (older API during a rolled deploy, or the query still loading) returns
@@ -110,6 +114,7 @@ export function usePermissions(): PermissionsApi {
     anyOf: (perms: readonly string[]) => perms.some((p) => set.has(p)),
     permissions: set,
     roles,
+    userId: data?.userId ?? null,
     // Fail open: only an explicit `false` gates a feature off. Absent/loading
     // → true, so a rollout skew or in-flight query never hides a real feature.
     hasCapability: (capability) => capabilities?.[capability] !== false,
