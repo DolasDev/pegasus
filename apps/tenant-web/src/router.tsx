@@ -13,7 +13,7 @@ import {
   redirectLegacyWorkflowsList,
   validateAutomationDetailSearch,
 } from '@/lib/legacy-workflow-redirects'
-import { requireRole, OPERATIONS_ROLES, DISPATCH_ACTIVITIES_ROLES } from '@/auth/role-guard'
+import { requireRole, OPERATIONS_ROLES } from '@/auth/role-guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MessagesPage } from '@/routes/messages'
@@ -473,13 +473,11 @@ const dpRejectedTripRoute = createRoute({
   component: TripDetailLazy,
 })
 
-// Dispatch Activities — narrower than its Operations siblings: gated on
-// DISPATCH_ACTIVITIES_ROLES (tenant_admin + operations_admin), not the full
-// OPERATIONS_ROLES. The nav child in AppShell.tsx carries the same list.
+// Services (formerly Dispatch Activities). Same gate as its Operations siblings.
 const dpActivitiesRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'activities',
-  beforeLoad: requireRole(...DISPATCH_ACTIVITIES_ROLES),
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
   component: ActivitiesModuleLazy,
 })
 

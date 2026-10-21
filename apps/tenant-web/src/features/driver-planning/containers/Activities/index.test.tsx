@@ -9,6 +9,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { screen, fireEvent } from '@testing-library/react'
 
+// Cards render a trip <Link>; there is no router in these tests.
+vi.mock('@/features/driver-planning/utils/router-compat', () => ({
+  Link: (props: any) => <a href={props.to}>{props.children}</a>,
+}))
+
 vi.mock('../../utils/api', () => ({
   API: { fetchActivities: vi.fn().mockResolvedValue([]) },
 }))
