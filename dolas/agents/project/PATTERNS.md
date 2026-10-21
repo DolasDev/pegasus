@@ -362,7 +362,7 @@ Postgres. Operations → Availability (`AvailabilityFilter`,
 - The page seeds from the default **during render**, behind its loading state,
   so the table never paints the built-in filters and then jumps.
 
-Operations → Services (`ServicesFilter`, `/api/v1/services-filters`, #874) is the
+Operations → Services (`ServicesFilter`, `/api/v1/services-filters`, #876) is the
 second instance. It shows how to add the next one:
 
 - **A parallel table per screen**, not a `screen` column on the first one.
