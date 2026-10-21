@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react'
 import { View, Text, StyleSheet, AppState } from 'react-native'
 import { Stack, SplashScreen, useRouter } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
+import { ChatProvider } from '../src/chat/ChatContext'
 import { isConfigValid } from '../src/config'
 import { getAuthService } from '../src/auth/authServiceInstance'
 import {
@@ -77,18 +78,29 @@ function RootLayoutNav() {
     return () => sub.remove()
   }, [isAuthenticated, accountKey])
 
+  // Tenant + Cognito sub, not the email: one email can sign in to two tenants.
+  const chatAccount = session ? `${session.tenantId}:${session.sub}` : ''
+
+  // Chat state sits above the stack: the chat screens are pushed on it, not
+  // inside the drawer. It clears itself when the account changes.
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={isAuthenticated}>
-        <Stack.Screen name="(drawer)" />
-        <Stack.Screen name="trip/[id]" options={{ ...detailHeader, title: 'Trip' }} />
-        <Stack.Screen name="shipment/[orderNum]" options={{ ...detailHeader, title: 'Shipment' }} />
-        <Stack.Screen name="settings" options={{ ...detailHeader, title: 'Settings' }} />
-      </Stack.Protected>
-      <Stack.Protected guard={!isAuthenticated}>
-        <Stack.Screen name="(auth)" />
-      </Stack.Protected>
-    </Stack>
+    <ChatProvider enabled={isAuthenticated} accountKey={chatAccount}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={isAuthenticated}>
+          <Stack.Screen name="(drawer)" />
+          <Stack.Screen name="trip/[id]" options={{ ...detailHeader, title: 'Trip' }} />
+          <Stack.Screen
+            name="shipment/[orderNum]"
+            options={{ ...detailHeader, title: 'Shipment' }}
+          />
+          <Stack.Screen name="chat/[orderNum]" options={{ ...detailHeader, title: 'Chat' }} />
+          <Stack.Screen name="settings" options={{ ...detailHeader, title: 'Settings' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={!isAuthenticated}>
+          <Stack.Screen name="(auth)" />
+        </Stack.Protected>
+      </Stack>
+    </ChatProvider>
   )
 }
 
