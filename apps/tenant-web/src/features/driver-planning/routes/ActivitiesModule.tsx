@@ -7,8 +7,8 @@
 //   - no PendingTrips  — deferred by request; there is nowhere to drag work
 //                        into yet;
 //   - leaving the screen clears the selection: the Trip page mounts the same
-//     drawer off the same global `selectedShipment`, so a card's trip link
-//     would otherwise land on the trip with the drawer still open;
+//     drawer off the same global `selectedShipment`. A click away already
+//     closes it (outside-click), but browser Back would carry it over open;
 //   - no navigation blocker — PlanningModule prompts on unsaved trip edits,
 //     and nothing here edits a trip.
 // ---------------------------------------------------------------------------
