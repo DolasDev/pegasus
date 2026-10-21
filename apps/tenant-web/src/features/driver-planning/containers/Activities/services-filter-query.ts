@@ -49,16 +49,21 @@ export function toSavedQuery(
     shortHaul: query.filters.short_haul
       .map((o) => o.value)
       .filter((v): v is 'Y' | 'N' => v === 'Y' || v === 'N'),
-    dispatchers: query.filters.operations_id.map((o) => o.value),
+    dispatchers: query.filters.operations_id.map((o) => String(o.value)),
     sortBy: query.sortBy ? { value: query.sortBy.value, order: query.sortBy.order } : null,
   }
 }
 
 /** Rehydrate `values` to options from `list`, keeping unknown values as code-labelled options. */
 export function toOptions(values: string[], list: Option[]): Option[] {
-  const norm = (v: string) => v.trim().toUpperCase()
+  // String(): a value already on the board may be a raw legacy number.
+  const norm = (v: unknown) => String(v).trim().toUpperCase()
   return values.map(
-    (value) => list.find((o) => norm(String(o.value)) === norm(value)) ?? { label: value, value },
+    (value) =>
+      list.find((o) => norm(o.value) === norm(value)) ?? {
+        label: String(value),
+        value: String(value),
+      },
   )
 }
 
