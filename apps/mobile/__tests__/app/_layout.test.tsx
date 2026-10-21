@@ -118,7 +118,16 @@ describe('RootLayout auth guard (GUARD-01)', () => {
   // sitting alone inside a nested stack, where it would be at index 0 and render
   // no back button at all. This test fails the moment someone re-nests them.
   describe('pushed detail screens keep a native back button (BACK-01)', () => {
-    const PUSHED_SCREENS = ['trip/[id]', 'shipment/[orderNum]', 'chat/[orderNum]', 'settings']
+    const PUSHED_SCREENS = [
+      'trip/[id]',
+      'shipment/[orderNum]',
+      'chat/[orderNum]',
+      'settings',
+      'labor/[phone]',
+      'labor/new',
+      'labor/import',
+      'labor/packer',
+    ]
 
     function screenOptionsFor(name: string) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports

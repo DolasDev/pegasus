@@ -95,6 +95,13 @@ function RootLayoutNav() {
           />
           <Stack.Screen name="chat/[orderNum]" options={{ ...detailHeader, title: 'Chat' }} />
           <Stack.Screen name="settings" options={{ ...detailHeader, title: 'Settings' }} />
+          <Stack.Screen name="labor/[phone]" options={{ ...detailHeader, title: 'Crew' }} />
+          <Stack.Screen name="labor/new" options={{ ...detailHeader, title: 'Add crew' }} />
+          <Stack.Screen
+            name="labor/import"
+            options={{ ...detailHeader, title: 'Import contacts' }}
+          />
+          <Stack.Screen name="labor/packer" options={{ ...detailHeader, title: 'Packer' }} />
         </Stack.Protected>
         <Stack.Protected guard={!isAuthenticated}>
           <Stack.Screen name="(auth)" />

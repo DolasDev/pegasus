@@ -177,6 +177,13 @@
           "attributes": {}
         }
       },
+      "LaborCrew": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "Feedback": {
         "memberOfTypes": [],
         "shape": {
@@ -433,6 +440,12 @@
       },
       "PostChat": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ChatRoom"] }
+      },
+      "ReadLabor": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["LaborCrew"] }
+      },
+      "WriteLabor": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["LaborCrew"] }
       },
       "WriteIntegrationProjection": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationProjection"] }
