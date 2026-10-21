@@ -159,7 +159,7 @@ Also required by the scope, though absent from the proposals:
   - **Is the cloud connection's extension the same one the desktop reconciles?** Read state is per extension, which decides whether the Phase 2 RingCentral PUT is visible to coordinators.
 - [x] **S3 SES prod readiness.** _Result: domain + DKIM verified, but production access was DENIED. Phase 3 re-routed through the pegII API's SMTP email endpoint._ Is the account out of the sandbox? Is `pegasus.dolas.dev` DKIM-verified? What is the state of `plans/todo/ses-dmarc-records.md`? Which From display name?
 - [x] **S4 NW QA tunnel.** _Result: the NW QA site's tunnel has never connected — an on-site ops task, not code. Testing uses NW Prod in dry-run until it's fixed._ Diagnose the 502 "tunnel proxy fetch failed".
-- [ ] **S5 Arrival window.** Is #668's longhaul activity window what was described at the 09.25 review?
+- [x] **S5 Arrival window.** _Result (Steve, 2026-10-21): yes, #668's longhaul activity window is the arrival window from the 09.25 review. NW already has the columns (`LongDistanceDispatchActivity.arrival_window_start/_end/_tz`, lazily added) and one saved window (prod read 2026-10-21), so #668's provisioning has worked on NW. The follow-on below is owed; it does not block Phase 8._ Is #668's longhaul activity window what was described at the 09.25 review?
   - If yes, add a follow-on: a read-only pegII API endpoint plus `get_activity_arrival_window`. #668 deferred its SDK surface "to the workflow that consumes it".
   - Either way, the pilot keeps the fixed 4–7 PM window.
 - [x] **S6 Desktop task hazard exposure.** _Result: 0 of 36 active COD orders have zero task rows today, so the D3 fallback is a safety net. "DEL ACTUAL ENTERED" comes from the `sales` update trigger, confirming the live-read requirement._ How many NW COD orders reach pack day with **zero** `Tasks` rows? That sizes hazard (a) until the Phase 6 desktop guard fix ships.
@@ -469,7 +469,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 | `nw_pulse` CONFIG group | **absent** (only the `weichert` groups exist) | NW tenant admin / Blue Signal |
 | Desktop MSIX with the Phase 6 guard fix (D20) | not visible from the cloud (no client version is recorded, S1) | Steve, on site |
 
-Also still owed from Phase 6: the live 0009 AC3 run for `CloseTask` (and `CreateTask` → 403), and S5 (arrival window) needs a human.
+Also still owed from Phase 6: the live 0009 AC3 run for `CloseTask` (and `CreateTask` → 403). S5 is answered (yes); its follow-on (`get_activity_arrival_window`) is a separate plan after the pilot, which keeps the fixed 4–7 PM window.
 
 
 - [ ] **Test on NW Prod in dry-run** (decided 2026-09-29; NW QA's tunnel isn't connected). NW Prod's pegII API on a `dev`-derived release containing Phases 4–7, with JWT + the hub DB configured, the service user provisioned, and `/version` capabilities confirmed. All workflow runs stay `--dry-run` (every mutation captured, nothing sent) until NW signs off on a live test. Live steps, when approved, use `TEST_PHONES` only.
