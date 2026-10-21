@@ -75,6 +75,11 @@ async function stubLonghaul(page: Page): Promise<void> {
     if (path === '/version') return json({ version: 'e2e' })
     return json([])
   })
+  // The board waits on the user's saved default before mounting. Stubbed as
+  // "no default" so this spec runs the normal path, not the error fallback.
+  await page.route('**/api/v1/services-filters/default', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"data":null}' }),
+  )
 }
 
 test.describe('Services board opens the shipment detail drawer @local-only', () => {

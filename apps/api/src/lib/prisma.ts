@@ -146,6 +146,8 @@ export const TENANT_SCOPED_MODELS = new Set([
   // /availability-filters. Public filters are public WITHIN the tenant only,
   // which this scoping guarantees even if a visibility predicate is wrong.
   'AvailabilityFilter',
+  // ServicesFilter — the Operations → Services counterpart; same rules.
+  'ServicesFilter',
   // Move chat — rooms, messages and per-user member rows. All tenant-owned and
   // served only through the scoped client on /chat; the push fan-out resolves
   // recipients inside the same request, so nothing reads these cross-tenant.
