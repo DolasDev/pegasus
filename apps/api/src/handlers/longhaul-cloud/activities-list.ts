@@ -130,6 +130,9 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   dispatcher: `${S}.last_name`,
 }
 
+/** For the saved-filter schema's sort enum (lib/services-filter-query.ts), which a test pins to this. */
+export const ACTIVITY_SORT_KEYS = Object.keys(SORTABLE_COLUMNS)
+
 /**
  * Default ordering: the board is a work queue, so the soonest-dated activity
  * comes first, and `id` breaks ties so paging/caps are deterministic rather

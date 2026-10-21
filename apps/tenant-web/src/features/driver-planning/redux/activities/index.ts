@@ -81,6 +81,13 @@ export interface ActivitiesState {
   activityList: any[]
   query: ActivityQuery
   error: string | null
+  /**
+   * Whether the user's saved default filter has been applied this session.
+   * The query lives in the global store and outlives the route, so the
+   * default is applied ONCE: coming Back from a trip keeps whatever the
+   * dispatcher had set.
+   */
+  defaultSeeded: boolean
 }
 
 const activitiesSlice = createSlice({
@@ -90,6 +97,7 @@ const activitiesSlice = createSlice({
     activityList: [],
     query: structuredClone(DEFAULT_ACTIVITY_QUERY),
     error: null,
+    defaultSeeded: false,
   } as ActivitiesState,
   reducers: {
     // Deep-merges `filters` so a partial payload from one control doesn't wipe
@@ -120,6 +128,18 @@ const activitiesSlice = createSlice({
       state.query.filters.operations_id = []
       state.query.filters.office = []
     },
+    /** Replace the whole query. Used when a saved filter is loaded. */
+    setActivityQuery(state, action: PayloadAction<ActivityQuery>) {
+      state.query = action.payload
+    },
+    /**
+     * Mark the default as applied, replacing the query when there is one. A
+     * null payload (no default, or the read failed) keeps the built-in query.
+     */
+    seedActivityQuery(state, action: PayloadAction<ActivityQuery | null>) {
+      if (action.payload) state.query = action.payload
+      state.defaultSeeded = true
+    },
     fetchActivitiesStart(state) {
       state.loading = true
     },
@@ -141,6 +161,8 @@ const activitiesSlice = createSlice({
 export const {
   changeActivityQuery,
   clearActivityFilters,
+  setActivityQuery,
+  seedActivityQuery,
   fetchActivitiesStart,
   fetchActivitiesSuccess,
   fetchActivitiesFailure,

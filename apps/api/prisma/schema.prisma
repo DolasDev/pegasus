@@ -316,6 +316,7 @@ model Tenant {
   // Push notifications
   deviceTokens           DeviceToken[]
   availabilityFilters    AvailabilityFilter[]
+  servicesFilters        ServicesFilter[]
   pushNotificationOutbox PushNotificationOutbox[]
 
   // Move chat
@@ -530,6 +531,7 @@ model TenantUser {
 
   deviceTokens        DeviceToken[]
   availabilityFilters AvailabilityFilter[]
+  servicesFilters     ServicesFilter[]
   pushNotifications   PushNotificationOutbox[]
   chatMessages        ChatMessage[]
   chatRoomMembers     ChatRoomMember[]
@@ -3430,6 +3432,34 @@ model AvailabilityFilter {
   @@index([tenantId, ownerId])
   @@index([tenantId, isPublic])
   @@map("availability_filters")
+  @@schema("public")
+}
+
+/// A named, saved filter-bar state for the Operations → Services board. A
+/// parallel of AvailabilityFilter rather than a `screen` discriminator on it, so
+/// neither screen's rows can surface in the other's dialog. The default is
+/// TenantUser.preferences.operations.defaultServicesFilterId.
+///
+/// `query` is the versioned, zod-validated shape in lib/services-filter-query.ts.
+/// The board itself filters on absolute dates; the SAVED form stores day offsets
+/// so a preset doesn't rot.
+model ServicesFilter {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  ownerId  String  @map("owner_id")
+  name     String  @db.VarChar(100)
+  query    Json
+  isPublic Boolean @default(false) @map("is_public")
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  owner  TenantUser @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, ownerId])
+  @@index([tenantId, isPublic])
+  @@map("services_filters")
   @@schema("public")
 }
 

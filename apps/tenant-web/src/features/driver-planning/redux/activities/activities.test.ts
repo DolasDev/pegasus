@@ -17,7 +17,10 @@ import activitiesReducer, {
   fetchActivitiesStart,
   fetchActivitiesSuccess,
   clearActivityFilters,
+  seedActivityQuery,
+  setActivityQuery,
   type ActivitiesState,
+  type ActivityQuery,
 } from './index'
 
 const fetchActivitiesMock = API.fetchActivities as unknown as ReturnType<typeof vi.fn>
@@ -30,6 +33,7 @@ function makeStore(
     activityList: [],
     query: structuredClone(DEFAULT_ACTIVITY_QUERY),
     error: null,
+    defaultSeeded: false,
   }
   return configureStore({
     reducer: { activities: activitiesReducer },
@@ -124,6 +128,45 @@ describe('activities query', () => {
     // Resetting the dates too would do more than the label promises — and the
     // dates are visible on screen, so they are not state the user needs cleared.
     expect(filters.date_range).toEqual(['2026-03-01', '2026-03-05'])
+  })
+})
+
+describe('saved filters', () => {
+  const SAVED: ActivityQuery = {
+    filters: {
+      date_range: ['2026-03-01', '2026-03-05'],
+      activity_type: [{ label: 'PK', value: 'PK' }],
+      short_haul: [],
+      operations_id: [],
+      office: [],
+    },
+    sortBy: { value: 'order_num', order: 'desc' },
+  }
+
+  it('setActivityQuery replaces the whole query, sort included', () => {
+    const store = makeStore()
+    store.dispatch(changeActivityQuery({ filters: { short_haul: [{ label: 'Yes', value: 'Y' }] } }))
+
+    store.dispatch(setActivityQuery(SAVED))
+
+    expect(store.getState().activities.query).toEqual(SAVED)
+  })
+
+  it('seedActivityQuery applies the default and marks the board seeded', () => {
+    const store = makeStore()
+
+    store.dispatch(seedActivityQuery(SAVED))
+
+    expect(store.getState().activities).toMatchObject({ query: SAVED, defaultSeeded: true })
+  })
+
+  it('seedActivityQuery(null) keeps the built-in query but still marks it seeded', () => {
+    const store = makeStore()
+
+    store.dispatch(seedActivityQuery(null))
+
+    expect(store.getState().activities.query).toEqual(DEFAULT_ACTIVITY_QUERY)
+    expect(store.getState().activities.defaultSeeded).toBe(true)
   })
 })
 
