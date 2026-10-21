@@ -55,7 +55,7 @@ Decisions you made (2026-10-20):
   crew's name, phone and email are shared.
 - Text search matches phone digits only when the query has no letters.
 
-**Raised by review, left as designed (Steve's call):**
+**Raised by review, kept as designed (Steve confirmed 2026-10-21):**
 
 - Any linked driver can read and edit a shared crew's packers.
 - A crew outlives its last link.
