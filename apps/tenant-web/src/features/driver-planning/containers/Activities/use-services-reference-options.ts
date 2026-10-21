@@ -15,9 +15,11 @@ export function useServicesReferenceOptions(): ServicesReferenceOptions {
     () => ({
       // The same catalog the shipments board's Last Activity filter uses.
       activityTypes: filterOptions?.activityType ?? [],
+      // salesman.code is an INT in the legacy schema; the board and the saved
+      // query both treat dispatcher values as strings.
       dispatchers: (dispatcherList ?? []).map((d: any) => ({
         label: `${d.first_name} ${d.last_name}`,
-        value: d.code,
+        value: String(d.code),
       })),
     }),
     [filterOptions, dispatcherList],

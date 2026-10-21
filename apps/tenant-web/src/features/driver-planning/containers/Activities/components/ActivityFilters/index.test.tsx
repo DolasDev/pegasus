@@ -117,6 +117,29 @@ describe('ActivityFilters — saved filters', () => {
     expect(screen.queryByTestId('services-filter-delete')).not.toBeInTheDocument()
   })
 
+  // salesman.code is an INT in the legacy schema, so the real dispatcher list
+  // carries numeric codes. Picking one used to crash the board (`.trim()` on a
+  // number), and saving one would have failed the API's string schema.
+  it('picks and saves a dispatcher whose code is numeric', async () => {
+    apiFetchMock.mockResolvedValue({ ...SAVED, id: 'new' })
+    renderWithStore(<ActivityFilters />, {
+      activities: { query: BOARD },
+      common: { ...COMMON, dispatcherList: [{ code: 1196, first_name: 'Ann', last_name: 'Bee' }] },
+    })
+
+    const control = screen.getByTestId('activities-filter-dispatcher')
+    fireEvent.keyDown(within(control).getByRole('combobox'), { key: 'ArrowDown' })
+    fireEvent.click(await within(control).findByText('Ann Bee'))
+    expect(within(control).getByText('Ann Bee')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('save-services-filter'))
+    fireEvent.change(screen.getByTestId('services-filter-name'), { target: { value: 'Ann' } })
+    fireEvent.click(screen.getByTestId('services-filter-save-submit'))
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalled())
+    expect(JSON.parse(apiFetchMock.mock.calls[0]![1].body).query.dispatchers).toEqual(['1196'])
+  })
+
   it('relabels a code-only dispatcher once the dispatcher list is there', () => {
     renderWithStore(<ActivityFilters />, {
       activities: {
