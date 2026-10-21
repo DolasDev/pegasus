@@ -127,4 +127,23 @@ test.describe('Services board opens the shipment detail drawer @local-only', () 
 
     await expect(page).toHaveURL(new RegExp(`/driver-planning/trips/${TRIP_ID}$`))
   })
+
+  test('following the trip link with the drawer open lands on the trip with it closed', async ({
+    page,
+  }) => {
+    // The Trip page mounts the same drawer off the same global selection. Here
+    // the link click is itself an outside click that closes the drawer; the
+    // Services module's unmount cleanup (unit-tested in ActivitiesModule.test)
+    // covers exits that are not clicks, such as browser Back.
+    await page.locator('[data-target="activity-card"]').click()
+    await expect(page.locator('[data-target="shipment-detail"]')).toHaveAttribute(
+      'data-open',
+      'true',
+    )
+
+    await page.locator('[data-target="activity-trip-link"]').click()
+
+    await expect(page).toHaveURL(new RegExp(`/driver-planning/trips/${TRIP_ID}$`))
+    await expect(page.locator('[data-target="shipment-detail"][data-open="true"]')).toHaveCount(0)
+  })
 })
