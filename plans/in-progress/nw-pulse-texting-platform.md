@@ -454,16 +454,16 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
 ## Phase 8 — NW enablement + end-to-end test move (ops)
 
-**Readiness (probed 2026-10-20, read-only: prod Postgres and NW's `/version` through the prod tunnel proxy):**
+**Readiness (probed 2026-10-20, re-probed 2026-10-21; read-only: prod Postgres and NW's `/version` through the prod tunnel proxy):**
 
 | Prerequisite | State | Who |
 | --- | --- | --- |
-| NW site build / capabilities | `2026.10.19.2`: has `pegii.tasks.v1`, `pegii.orders.search.v1`, `pegii.orders.write.v1`, `pegii.cloud-auth.v1`, `pegii.email.v1`. **Missing `pegii.memos.v1`, `pegii.text-messages.v1`**: Phase 7 landed on movemanager `dev` 2026-10-20 (`3a476558`), after this build. Expect them on the next auto-update. | NW site auto-update |
+| NW site build / capabilities | **`2026.10.20.5`** (2026-10-21): lists every capability Phases 4–7 need (`pegii.email.v1`, `pegii.orders.search.v1`, `pegii.orders.write.v1`, `pegii.tasks.v1`, `pegii.memos.v1`, `pegii.text-messages.v1`, `pegii.cloud-auth.v1`). On 2026-10-20 it was `2026.10.19.2`, without memos/text-messages. | done |
 | NW tunnel peer | ACTIVE, `http://10.200.0.3:65274`, `/version` answers 200 | done |
 | System employee (`companies.system_employee_code`) | NELSON-WESTERBERG = **1001** | done |
 | RingCentral capture | connection ACTIVE, `V1` cursor synced minutes before the probe | done |
-| `operations.emailAllowedRecipientDomains` | **empty**, so every `send_email` is refused (409 `EMAIL_RECIPIENTS_NOT_CONFIGURED`, D2). Set in tenant-web Settings → App → Operations → "Email recipient domains" | NW tenant admin |
-| Automation plan (`tenant_automation_plans`) | **none**: usage is metered but nothing bills (the pilot year starts at the test move) | Steve, in admin-web |
+| `operations.emailAllowedRecipientDomains` | `["nelsonwesterberg.com"]` (set 2026-10-21 in tenant-web Settings → App → Operations; empty ⇒ 409 `EMAIL_RECIPIENTS_NOT_CONFIGURED`, D2) | done |
+| Automation plan (`tenant_automation_plans`) | `STARTER`, term 2026-11-01 → 2027-11-01 | done |
 | Pulse workflow | **none published** (NW has only `weichert-milestone-update`, `demo-pack-call*`, `send_order_to_partner`) | Blue Signal (we never publish workflows or configs) |
 | Triggers | **none** for pulse (only `demo-pack-call-ack` on `feedback.submitted`) | the workflow's publisher |
 | `nw_pulse` CONFIG group | **absent** (only the `weichert` groups exist) | NW tenant admin / Blue Signal |
