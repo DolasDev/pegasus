@@ -30,6 +30,15 @@ commands below are the fallback / first-time bootstrap.
   submit lands on the **Closed testing** (`alpha`) track (interim until Google
   grants production access; then flip `submit.production.android.track` to
   `production`).
+- **Android internal testing** — to put a finished build on the Play
+  **Internal testing** track instead, dispatch with `submit` unticked (build
+  only), then submit that build from `apps/mobile` with the `internal` profile.
+  `eas submit` has no `--track` flag; the track comes from the profile:
+
+  ```
+  npx -y eas-cli@^21.0.0 submit --platform android --profile internal --id <build-id> --non-interactive --wait
+  ```
+
 - **iOS** — `ios_build` picks the artifact: `simulator` (unsigned, CI signal,
   the default), `device` (signed ad-hoc `.ipa` for a device registered via
   `eas device:create`), or `store` (signed `.ipa` for TestFlight/App Store).
