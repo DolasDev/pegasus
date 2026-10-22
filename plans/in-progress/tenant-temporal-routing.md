@@ -1,10 +1,10 @@
 # 3b.2: route tenant Automations to their own Temporal namespace
 
-- **Status:** CODE COMPLETE on `feat/tenant-temporal-routing` (2026-10-15);
-  PR next. After merge: staging acceptance (runbook below), then the prod
-  rollout, then archive.
-- **Branch:** `feat/tenant-temporal-routing`, worktree
-  `../pegasus-tenant-temporal-routing`; one PR (Decision 1).
+- **Status:** MERGED #855 (`76a51b68`, deployed 2026-10-15). **Staging
+  acceptance PASSED 2026-10-19/22** (results under "Acceptance"). NEXT: the
+  prod rollout (runbook at the bottom), then archive.
+- **Branch:** `feat/tenant-temporal-routing` (merged, torn down); one PR
+  (Decision 1).
 - **Goal:** TENANT_RUNNER executions for a cut-over tenant run in that tenant's
   own Temporal Cloud namespace, with that tenant's scoped key, on a runner that
   holds no shared Temporal secret.
@@ -329,15 +329,81 @@ pytest 469 + ruff.
 
 ### Acceptance (staging; a runbook, not a PR)
 
-- [ ] Deploy landed: the scoped task definition exists and the runner image
+- [x] Deploy landed: the scoped task definition exists and the runner image
       digest running is this merge's (see Risks, "Stack order").
-- [ ] Provision `4b2e0267-…` again; Cut over; watch DRAINING → ACTIVE.
-- [ ] Run an Automation end to end + a dry run; the row has `temporal_namespace`; the run is visible in the tenant namespace and **absent** from `pegasus-staging`.
-- [ ] Isolation probes again (scoped key refused on `pegasus-staging`); the probe tells 403 from 404 and checks every call's status.
-- [ ] Create a domain event during DRAINING; it fires after ACTIVE.
-- [ ] Force a rotation **while a runner is live**: the runner's refresh swaps the key (log line) and the run continues; after the previous key retires, history through the API still works (cache evict path).
-- [ ] Roll back: ACTIVE → REVERTING → READY; the next run lands in shared.
-- [ ] Archive this plan.
+- [x] Provision `4b2e0267-…` again; Cut over; watch DRAINING → ACTIVE.
+- [x] Run an Automation end to end + a dry run; the row has `temporal_namespace`; the run is visible in the tenant namespace and **absent** from `pegasus-staging`.
+- [x] Isolation probes again (scoped key refused on `pegasus-staging`); the probe tells 403 from 404 and checks every call's status.
+- [x] Create a domain event during DRAINING; it fires after ACTIVE.
+- [x] Force a rotation **while a runner is live**: the runner's refresh swaps the key (log line) and the run continues; after the previous key retires, history through the API still works (cache evict path).
+- [x] Roll back: ACTIVE → REVERTING → READY; the next run lands in shared.
+- [ ] Archive this plan — after the prod rollout below.
+
+**Results (staging, 2026-10-19, rollback 2026-10-22). PASSED, no defects.**
+
+- **Setup.** AVP Smoke (`4b2e0267-…`) had no Automations, so `smoke_canary` was
+  forked into it (`ad780834`) with a `workflow_developer` key (CLI profile
+  `avp-smoke`), plus an EVENT trigger on `quote.accepted` filtered to
+  `{acceptanceTest: "3b2"}`. The trigger was deleted afterwards. The key is
+  the user's; revoke it if it isn't wanted.
+- **Step 0.** `pegasus-tenant-runner-scoped-staging:1` was ACTIVE with no
+  secrets and env `ENV_NAME` + `PEGASUS_API_BASE_URL` only. Runner `:latest` =
+  `552c9a25`, which includes `76a51b68`. The API and dispatcher had
+  `TENANT_RUNNER_SCOPED_TASK_DEFINITION`, and the reconciler had
+  `WORKFLOW_TOKEN_KMS_KEY_ID`.
+- **Baseline at READY:** the run (`0751887a`) completed in the shared namespace
+  on a legacy runner (log stream `runner/`), and its row had
+  `temporal_namespace = NULL`.
+- **Drain held.** A synthetic QUEUED shared-namespace row
+  (`3b200000-…0001`, staging only) held DRAINING open so the hold could be
+  observed:
+  - A live run and a dry run → 409 `TENANT_MIGRATING`, `Retry-After: 60`,
+    raised as the SDK's `TenantMigrating`.
+  - A `quote.accepted` event inserted at 20:07:19 stayed **undispatched**
+    through dispatcher ticks at 20:08:03 and 20:09:08; both logged the tenant
+    as DRAINING and waiting.
+  - The synthetic row was marked FAILED. In the **same tick (20:10:06)** the
+    tenant went ACTIVE, the held event was dispatched, and its run started with
+    `temporal_namespace = pg-staging-4b2e0267c597.chgel`. It completed at
+    20:10:33.
+- **Scoped runner.** It launched at 20:10:24 **while the legacy runner from
+  20:01 was still RUNNING**: the family-aware dedupe working in production. Its
+  logs show `runner.starting` (empty namespace) →
+  `runner.temporal_credentials_fetched` → `runner.connected` to the tenant
+  namespace.
+- **Runs.** A manual run and a dry run in the tenant namespace both completed;
+  the dry run returned the trace envelope. History through the API worked
+  (11 events each).
+- **Isolation** (`probe_3b2.py`, every outcome classified; DENIED = gRPC 7,
+  never confused with NOT_FOUND):
+  - The tenant key reaches its own namespace (namespace and regional
+    endpoints). It is DENIED on `pegasus-staging` (shared and regional
+    endpoints).
+  - The shared key reaches `pegasus-staging` (control), and is DENIED on the
+    tenant namespace.
+  - The baseline run exists only in `pegasus-staging`. The event, manual and
+    dry runs exist only in the tenant namespace, matching their rows.
+- **Rotation while live.**
+  - The provisioner's `rotate` on the ACTIVE row returned done in 24 s. The
+    status stayed ACTIVE, `vxxTFT…` became current, `zJhrnt…` became previous,
+    and no pending key was left.
+  - Runner `d6ff03…` logged **`runner.temporal_key_refreshed` at 20:40:30**,
+    30 minutes after its start. Keep-warm runs every 4 minutes stayed green
+    across it (12/12).
+  - The previous key was then force-retired (its retire time set into the
+    past, then `retire-previous-keys`; the sweep ran on an ACTIVE row). The
+    **same runner `d6ff03…`** then completed another run: it was using only
+    the swapped-in key. API history kept working.
+  - The runner logs contain no key material.
+- **Rollback (2026-10-22, the user pressed Roll back).** The dispatcher logged
+  `REVERTING → READY` (20:40:03). The next run (`14ccc173`) completed in the
+  **shared** namespace on a legacy runner. History of a tenant-namespace run
+  still works after the rollback, because it is read from the row's namespace.
+- **Left in place:** the namespace is READY with key `vxxTFT…`. Deprovision it
+  from admin-web if it isn't wanted for anything else.
+- **Tooling lesson:** a CloudWatch `filter-log-events` pattern with several
+  quoted terms is an **AND**, not an OR. A watcher built that way never fires.
+  Match one term per call, or filter client-side.
 
 ### Later, separate PR (after every tenant with Automations is ACTIVE)
 
