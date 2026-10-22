@@ -378,7 +378,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 - [x] Metering: a refused close (404 or 409) and an `alreadyClosed` replay don't meter. Only a real close does. The usage-meter integration test already pins the 404 case.
 - [x] `list_tasks` for a nonexistent order → `404` (or `502 PEGII_SOURCE_*`). An order with no tasks → `[]`. Nothing is minted at read time, and `createdAt` is stable and earlier than the read.
 - [x] Drop `stub: true` from `toTaskResponse` (`handlers/pegii-runtime.ts`) when the stub is replaced.
-- [ ] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`. _(403 pinned by real-Cedar handler tests for both actions; the live 0009 AC3 run is still owed.)_
+- [x] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`. _(403 pinned by real-Cedar handler tests for both actions, for a persona without them. Live run 2026-10-22 on NW prod (order 492819) with a probe `workflow_runtime` key, minted the way `provisionRuntimeServiceAccount` mints one and hard-deleted after: `GET /pegii/tasks` → 200, `POST /pegii/tasks {}` → 400 `VALIDATION_ERROR` (authorization runs before validation, so `CreateTask` is granted), `POST /pegii/tasks/close` with an unknown type → 404 `TASK_NOT_FOUND` (so `CloseTask` is granted). 0 usage events, the order's tasks unchanged (13 open, 17 completed). The "undeclared → 403" half of the criterion is **not achievable by design**: `required_actions` is only checked for unknown ids at publish (and prefills the Configs page). Every `wf-runtime-*` key acts as a `workflow_runtime` service account, and that persona (`workflow-runtime.cedar`) grants every runtime action whatever the manifest declares. The only 403 is per persona (`workflow_developer`), pinned by the real-Cedar handler tests. Making `required_actions` narrow a key's grants would be a new feature, not part of this plan.)_
 - [x] `create_task` is in `testing._MUTATIONS` and captured under `--dry-run`.
 - [x] OpenAPI documents the create route; `closePegiiTask` gains the `taskId` form and the 409. The MCP `pegasus://reference/api` resource lists `create_task` and the new `close_task` signature.
 
@@ -469,7 +469,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 | `nw_pulse` CONFIG group | **absent** (only the `weichert` groups exist) | NW tenant admin / Blue Signal |
 | Desktop MSIX with the Phase 6 guard fix (D20) | not visible from the cloud (no client version is recorded, S1) | Steve, on site |
 
-Also still owed from Phase 6: the live 0009 AC3 run for `CloseTask` (and `CreateTask` → 403). S5 is answered (yes); its follow-on (`get_activity_arrival_window`) is a separate plan after the pilot, which keeps the fixed 4–7 PM window.
+The live 0009 AC3 run is done (2026-10-22; see Phase 6: grants confirmed on prod, and "undeclared → 403" is not how the platform works). S5 is answered (yes); its follow-on (`get_activity_arrival_window`) is a separate plan after the pilot, which keeps the fixed 4–7 PM window.
 
 
 - [ ] **Test on NW Prod in dry-run** (decided 2026-09-29; NW QA's tunnel isn't connected). NW Prod's pegII API on a `dev`-derived release containing Phases 4–7, with JWT + the hub DB configured, the service user provisioned, and `/version` capabilities confirmed. All workflow runs stay `--dry-run` (every mutation captured, nothing sent) until NW signs off on a live test. Live steps, when approved, use `TEST_PHONES` only.
