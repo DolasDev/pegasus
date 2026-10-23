@@ -116,7 +116,7 @@ No new native modules, but the app has no OTA path → EAS build, dispatched **a
 - [x] `new.tsx` / `packer.tsx` `activityId` mode + tests
 - [x] Full suites: domain, api, mobile jest, typecheck, lint; restore auto-bumped coverage floors
 - [x] DECISIONS + PATTERNS updates (no new GOTCHAS)
-- [~] Archive plan → `/workstream-finish` (one PR)
+- [x] Archive plan → `/workstream-finish` (one PR)
 
 ## Files
 
@@ -161,4 +161,4 @@ typecheck clean. Migration `20261023101130_activity_labor`. As built:
   `LaborService.updateActivityLabor` does read-modify-write for the pushed screens.
 - No new native modules, but there is no OTA path: release via an EAS build AFTER the API deploys.
 
-Next: `/workstream-finish` (archive this plan → one PR → merge queue).
+Archived by `/workstream-finish`; landing as one PR via the merge queue.

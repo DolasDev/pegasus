@@ -709,7 +709,7 @@ laborHandler.get('/export', requirePermission(Actions.ReadLabor), (c) =>
 // only the activities they own (the ETA editor's rule — lib/longhaul-driver-
 // activity); an Operations role (lib/longhaul-read-scope) sees every activity on the
 // order, editable only where its own driver mapping owns one.
-// Plan: plans/in-progress/activity-labor.md.
+// Plan: plans/completed/6f6b7bf6-activity-labor.md.
 // ---------------------------------------------------------------------------
 
 /** The caller's longhaul driver id (null when the login maps to none). */
