@@ -2,8 +2,8 @@
 // cash-labor crews and use their tenant's company crew list. There is no
 // tenant data to gate by role here: the handler (handlers/labor.ts) only ever
 // reads and writes through the CALLER'S OWN crew links or their own tenant's
-// company list. The one role rule — only an Operations role may remove a crew
-// from the company list or create one onto it by phone — is enforced in the
+// company list. The one role rule - only an Operations role may remove a crew
+// from the company list or create one onto it by phone - is enforced in the
 // handler by role name (OPERATIONS_ROLES), like the longhaul reads, because the
 // dispatcher personas are deliberate placeholders that grant nothing.
 //
