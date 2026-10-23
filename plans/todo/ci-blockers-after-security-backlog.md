@@ -85,7 +85,7 @@ and the evidence was in the service-run logs the whole time.
 
 **The `vite` override's history, which step 2 of the old next action asked for.** `git log -S` found
 exactly one commit: **#872 (`838d9811`, 2026-10-21)**. It is **not** the #779 `.bin`/`tsx`-peer
-story this file guessed at — that guess predated the override by two years of repo time. #872 added
+story this file guessed at; that guess predates the override by roughly 90 PRs. #872 added
 it as a **security floor** for GHSA-587h-7wmj-h5pm (high, launch-editor bypass, affects
 `>=8.3.0 <=8.3.2`): the root vite that vitest resolved was 8.3.0 while the web apps already had
 8.3.3, and the audit gate was red repo-wide. So the entry **is** load-bearing — just for a
@@ -169,9 +169,16 @@ about the App** (see below). The remaining work on this file is owner-only.
   this repo's overrides were _raised_ on 10-23 and none was removed. Still **not** a licence to
   delete entries, and now with no worked example pointing at one.
 - **#869** (`certifi`, the one **critical** alert, pip) is **OPEN, CLEAN, MERGEABLE, all checks
-  green, `autoMergeRequest=false`** as of 2026-10-23 — three days dead in the documented
-  stalled-queue state. **Fourteenth reproduction.** Needs a human `gh pr merge 869 --auto`; that is
-  a merge action, so ask rather than assume. It is the only one of the four alerts with a PR.
+  green, `autoMergeRequest=false`** as of 2026-10-23 — three days dead. **Fourteenth reproduction,
+  and confirmed from the gate's own log rather than inferred from the current state:** job
+  `118849690438` (2026-10-20 19:51Z) printed
+  `PR #869 autoMergeRequest=true isInMergeQueue=false (attempt 1)` with
+  `outputs.package-ecosystem: uv`. So the policy gate **did** mark it, auto-merge **was** enabled,
+  and the mark has since been consumed and the entry dropped. The competing explanation — "the gate
+  never marked a pip PR at all" — is ruled out, and it was worth ruling out, because the current
+  state alone (`autoMergeRequest=false`, never queued) is equally consistent with both. Needs a
+  human `gh pr merge 869 --auto`; that is a merge action, so ask rather than assume. It is the only
+  one of the four alerts with a PR.
 
 **Uncommitted work:** none. The 10-22 checkpoint had been left dirty in the **primary** checkout;
 on 10-23 it was carried into this worktree with `git diff > …/plan-1022.patch` + `git apply`, amended
@@ -215,6 +222,34 @@ e0bd6543  docs/nw-cloud-auth-rollout                                 (#851)
 
 After the sweep, every local branch is either a live worktree's or has an open PR, and the primary
 checkout is parked clean on `main`.
+
+**Worktree inventory 2026-10-23 — read-only, NOTHING torn down.** Four worktrees sit on branches
+whose remote is gone, which looks like staleness and mostly is, but they belong to other streams so
+they are reported, not removed. Every "dirty" file below is on this file's own
+**"Do not commit these"** list (`apps/e2e/.env.test`, `package-lock.json`,
+`*/vitest.config.ts`), i.e. noise, not work:
+
+| worktree                                | branch                                      | PR          | verdict                                                                        |
+| --------------------------------------- | ------------------------------------------- | ----------- | ------------------------------------------------------------------------------ |
+| `a9-identity`                           | `feat/a9-identity`                          | #746 MERGED | **teardown candidate** — tip is an ANCESTOR of the merged head, nothing unique |
+| `pulse-tasks`                           | `feat/pulse-tasks`                          | #858 MERGED | **teardown candidate** — tip == merged head exactly                            |
+| `ringcentral-forward-skip-unconfigured` | `fix/ringcentral-forward-skip-unconfigured` | #728 MERGED | **teardown candidate** — tip == merged head exactly                            |
+| `move-chat-app`                         | `feat/move-chat-app`                        | #871 MERGED | **UNVERIFIED — do not tear down on this evidence** (below)                     |
+| `activity-labor`                        | `feat/activity-labor`                       | #881 OPEN   | active, leave                                                                  |
+| `pulse-nw-enablement`                   | `docs/pulse-nw-enablement`                  | none        | ahead 5, active work, leave                                                    |
+| `deps-advisory-flip`                    | `chore/parked-dr`                           | none        | deliberately parked, leave                                                     |
+
+> ⚠️ **`move-chat-app` produced a FALSE "has unique commits" reading, and the mechanism is this
+> file's `poll filter matched nothing` trap in a new costume.** `git merge-base --is-ancestor` exited
+> non-zero and `git log <prhead>..<tip>` printed nothing — which reads as "diverged with nothing to
+> show". Both commands had simply **failed**: #871's head `7dfafd95` is **not in the local object
+> store** and `git fetch origin 7dfafd95` answers `couldn't find remote ref`, because the branch was
+> deleted on origin and the commit was collected. **`git cat-file -t <sha>` before trusting any
+> ancestry answer about a deleted branch** — a reachability command given an unknown object does not
+> report "unknown", it reports "no".
+
+Tearing down the three candidates is `scripts/rm-worktree.sh <slug>`, but they are other streams' —
+**ask first**, and remember the teardown makes any background watcher with that cwd exit 1.
 
 **Verification still owed:**
 
@@ -848,10 +883,12 @@ gh api graphql -f query='{repository(owner:"DolasDev",name:"pegasus"){mergeQueue
      one `semver.satisfies` call. `hono`'s `>=4.13.3 <5` already allowed 4.13.11+, and
      `vite`'s `>=8.3.3 <9` already satisfied mocker's `^6||^7||^8`. Both were exonerated by
      arithmetic before any install was run.
-  2. **`git log -S` on a bare key name can under-report, and did.** `git log -S'"vite":'` found the
-     one commit that _added_ the line, which was luck: `-S` counts occurrences, so a commit that
-     only changes an override's _value_ leaves the count unchanged and never appears. Use `-G` when
-     you want every commit that touched the line.
+  2. **`git log -S` on a bare key name can silently under-report.** Here it did not — `-S'"vite":'`
+     and `-G'"vite"'` returned the same single commit — but that was luck, not method: `-S` counts
+     _occurrences_, so a commit that only changes an override's _value_ leaves the count unchanged
+     and never appears. The one commit it found happened to be the one that _added_ the line. Use
+     `-G` when you want every commit that touched a line, and treat a one-commit `-S` result on a
+     long-lived key as suspiciously tidy until `-G` agrees.
 
 ---
 
