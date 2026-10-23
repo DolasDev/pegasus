@@ -99,3 +99,45 @@ export interface LaborPackerInput {
   cidIssuedOn?: string | null
   phone?: string | null
 }
+
+/** A packer on a crew assigned to an activity; `selected` = worked it. */
+export interface LaborActivityPacker {
+  id: string
+  firstName: string
+  lastName: string
+  phoneDisplay: string | null
+  selected: boolean
+}
+
+/** A crew assigned to an activity, with ALL its packers. */
+export interface LaborActivityCrew {
+  phone: string
+  phoneDisplay: string
+  name: string
+  nickname: string | null
+  displayName: string
+  /** False once I've removed the crew from my list — it stays on the activity. */
+  inMyBook: boolean
+  packers: LaborActivityPacker[]
+}
+
+/** A legacy longhaul activity on an order, with its labor (GET /labor/orders/:n/activities). */
+export interface LaborActivity {
+  id: number
+  orderNum: number
+  typeCode: string | null
+  typeName: string | null
+  typeAbbreviation: string | null
+  plannedStart: string | null
+  estimatedDate: string | null
+  actualDate: string | null
+  /** True when I'm the activity's driver. */
+  editable: boolean
+  crews: LaborActivityCrew[]
+}
+
+/** One crew in a PUT /labor/activities/:id body. */
+export interface LaborActivityCrewInput {
+  phone: string
+  packerIds: string[]
+}

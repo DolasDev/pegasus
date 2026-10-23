@@ -32,6 +32,7 @@ import {
   normalizePhoneNumber,
   parseLocationQuery,
   rankCrewsByDistance,
+  validateActivityLabor,
   validateCrew,
   validatePacker,
   validateRating,
@@ -59,6 +60,16 @@ import {
   starsByCrew,
   type CrewLinkRow,
 } from '../repositories/labor.repository'
+import { legacyConnectionString } from '../lib/chat-access'
+import { resolveLonghaulReadScope } from '../lib/longhaul-read-scope'
+import {
+  activityById,
+  activityOwnerDriverId,
+  orderActivities,
+  realDriverId,
+  type DriverActivityRow,
+} from '../lib/longhaul-driver-activity'
+import { logger } from '../lib/logger'
 
 /** New crews a user may add per rolling 24 hours. */
 export const LINK_RATE_LIMIT = 100
@@ -70,7 +81,7 @@ type C = Context<AppEnv>
 
 class LaborHttpError extends Error {
   constructor(
-    readonly status: 400 | 403 | 404 | 409 | 429,
+    readonly status: 400 | 403 | 404 | 409 | 422 | 429 | 503,
     readonly code: string,
     message: string,
   ) {
@@ -688,5 +699,232 @@ laborHandler.get('/export', requirePermission(Actions.ReadLabor), (c) =>
       }))
       .sort((a, b) => (a.nickname ?? a.name).localeCompare(b.nickname ?? b.name))
     return c.json({ data })
+  }),
+)
+
+// ---------------------------------------------------------------------------
+// Activity labor — which crews (and which of their packers) worked each of a
+// driver's activities on an order. Unlike the book, this is tenant data: the
+// activity is a row in the tenant's legacy database. A driver sees and edits
+// only the activities they own (the ETA editor's rule — lib/longhaul-driver-
+// activity); an Operations role (lib/longhaul-read-scope) sees every activity on the
+// order, editable only where its own driver mapping owns one.
+// Plan: plans/completed/6f6b7bf6-activity-labor.md.
+// ---------------------------------------------------------------------------
+
+/** The caller's longhaul driver id (null when the login maps to none). */
+async function myDriverId(c: C, who: Caller): Promise<number | null> {
+  // TenantUser is not auto-scoped by the tenant client — name the tenant.
+  const user = await c.get('db').tenantUser.findFirst({
+    where: { id: who.userId, tenantId: who.tenantId },
+    select: { longhaulDriverId: true },
+  })
+  return realDriverId(user?.longhaulDriverId)
+}
+
+const driverNotMapped = () =>
+  new LaborHttpError(
+    403,
+    'DRIVER_NOT_MAPPED',
+    'This login is not linked to a driver. Ask a tenant administrator to set the driver on the Users settings page.',
+  )
+
+/** Runs a legacy read, failing closed: no connection or any error is a 503. */
+async function legacy<T>(c: C, who: Caller, read: (cs: string) => Promise<T>): Promise<T> {
+  const cs = await legacyConnectionString(who.tenantId)
+  if (cs) {
+    try {
+      return await read(cs)
+    } catch (err) {
+      logger.warn('labor legacy activity read failed', {
+        error: String(err),
+        correlationId: c.get('correlationId'),
+      })
+    }
+  }
+  throw new LaborHttpError(503, 'LEGACY_UNAVAILABLE', 'The order database is unavailable')
+}
+
+function intParam(c: C, name: string): number {
+  const n = Number(c.req.param(name))
+  if (!Number.isSafeInteger(n) || n <= 0) {
+    throw new LaborHttpError(400, 'VALIDATION_ERROR', `Invalid ${name}`)
+  }
+  return n
+}
+
+/** A legacy date or datetime as its calendar day — the longhaul date-only contract. */
+function legacyDay(value: Date | string | null): string | null {
+  if (value == null || value === '') return null
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)
+}
+
+/** The labor of `activities`, shaped for the Labor tab. */
+async function activityLaborDtos(
+  c: C,
+  who: Caller,
+  activities: readonly DriverActivityRow[],
+  driverId: number | null,
+) {
+  const db = c.get('db')
+  const assigned = await db.activityLaborCrew.findMany({
+    where: { activityId: { in: activities.map((a) => a.id) } },
+    include: {
+      crew: { include: { packers: { orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] } } },
+      packers: { select: { packerId: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  const links = await db.crewLink.findMany({
+    where: { tenantUserId: who.userId, crewPhone: { in: assigned.map((a) => a.crewPhone) } },
+    select: { crewPhone: true, nickname: true },
+  })
+  const nicknames = new Map(links.map((l) => [l.crewPhone, l.nickname]))
+  return activities.map((a) => ({
+    id: a.id,
+    orderNum: a.order_num,
+    typeCode: a.ActivityType_code?.trim() || null,
+    typeName: a.activityType_name,
+    typeAbbreviation: a.activityType_abbreviation?.trim() || null,
+    plannedStart: legacyDay(a.planned_start),
+    estimatedDate: legacyDay(a.estimated_date),
+    actualDate: legacyDay(a.actual_date),
+    editable: driverId != null && activityOwnerDriverId(a) === driverId,
+    crews: assigned
+      .filter((x) => x.activityId === a.id)
+      .map((x) => {
+        const selected = new Set(x.packers.map((p) => p.packerId))
+        const nickname = nicknames.get(x.crewPhone) ?? null
+        return {
+          phone: x.crew.phone,
+          phoneDisplay: formatPhoneNumber(x.crew.phone),
+          name: x.crew.name,
+          nickname,
+          displayName: nickname ?? x.crew.name,
+          inMyBook: nicknames.has(x.crewPhone),
+          packers: x.crew.packers.map((p) => ({
+            id: p.id,
+            firstName: p.firstName,
+            lastName: p.lastName,
+            phoneDisplay: p.phone ? formatPhoneNumber(p.phone) : null,
+            selected: selected.has(p.id),
+          })),
+        }
+      }),
+  }))
+}
+
+// GET /orders/:orderNum/activities — the order's activities the caller may see,
+// each with its assigned crews and every packer of those crews (`selected` marks
+// who worked it).
+laborHandler.get('/orders/:orderNum/activities', requirePermission(Actions.ReadLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    const orderNum = intParam(c, 'orderNum')
+    // The longhaul driver-data read scope (PATTERNS): an Operations role reads
+    // every activity; anyone else only those their driver mapping owns.
+    const scope = await resolveLonghaulReadScope(c)
+    if (scope.kind === 'none') throw driverNotMapped()
+    const driverId = await myDriverId(c, who)
+    const rows = await legacy(c, who, (cs) => orderActivities(cs, orderNum))
+    const visible =
+      scope.kind === 'all' ? rows : rows.filter((a) => activityOwnerDriverId(a) === scope.driverId)
+    return c.json({ data: await activityLaborDtos(c, who, visible, driverId) })
+  }),
+)
+
+const ActivityLaborBody = z.object({
+  crews: z.array(z.object({ phone: z.string(), packerIds: z.array(z.string()) })),
+})
+
+// PUT /activities/:activityId { crews: [{ phone, packerIds }] } — replaces the
+// activity's whole labor set. Only the activity's own driver may write it. A
+// crew newly added must be in the caller's book; one already assigned may stay
+// after the driver drops it from their book. Every packer must be on its crew.
+laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    const activityId = intParam(c, 'activityId')
+    const crews = validateActivityLabor((await readBody(c, ActivityLaborBody)).crews)
+    const driverId = await myDriverId(c, who)
+    if (driverId == null) throw driverNotMapped()
+    const activity = await legacy(c, who, (cs) => activityById(cs, activityId))
+    if (!activity) throw new LaborHttpError(404, 'ACTIVITY_NOT_FOUND', 'Activity not found')
+    if (activityOwnerDriverId(activity) !== driverId) {
+      throw new LaborHttpError(403, 'NOT_YOUR_ACTIVITY', 'This activity is not assigned to you')
+    }
+
+    const db = c.get('db')
+    const existing = await db.activityLaborCrew.findMany({
+      where: { activityId },
+      select: { id: true, crewPhone: true },
+    })
+    const kept = new Set(existing.map((e) => e.crewPhone))
+    const added = crews.map((x) => x.phone).filter((p) => !kept.has(p))
+    if (added.length > 0) {
+      const mine = await db.crewLink.findMany({
+        where: { tenantUserId: who.userId, crewPhone: { in: added } },
+        select: { crewPhone: true },
+      })
+      if (mine.length !== added.length) {
+        throw new LaborHttpError(422, 'CREW_NOT_IN_YOUR_LIST', 'Add the crew to your list first')
+      }
+    }
+    const packers = await db.packer.findMany({
+      where: { id: { in: crews.flatMap((x) => x.packerIds) } },
+      select: { id: true, crewPhone: true },
+    })
+    const packerCrew = new Map(packers.map((p) => [p.id, p.crewPhone]))
+    for (const x of crews) {
+      if (x.packerIds.some((id) => packerCrew.get(id) !== x.phone)) {
+        throw new LaborHttpError(422, 'PACKER_NOT_ON_CREW', 'A selected packer is not on that crew')
+      }
+    }
+
+    try {
+      await db.$transaction(async (tx) => {
+        await tx.activityLaborCrew.deleteMany({
+          where: { activityId, crewPhone: { notIn: crews.map((x) => x.phone) } },
+        })
+        const ids = new Map(existing.map((e) => [e.crewPhone, e.id]))
+        for (const phone of added) {
+          const row = await tx.activityLaborCrew.create({
+            data: {
+              tenantId: who.tenantId,
+              activityId,
+              orderNum: activity.order_num,
+              crewPhone: phone,
+              assignedByUserId: who.userId,
+            },
+            select: { id: true },
+          })
+          ids.set(phone, row.id)
+        }
+        await tx.activityLaborPacker.deleteMany({
+          where: { activityLaborCrewId: { in: crews.map((x) => ids.get(x.phone)!) } },
+        })
+        await tx.activityLaborPacker.createMany({
+          data: crews.flatMap((x) =>
+            x.packerIds.map((packerId) => ({
+              activityLaborCrewId: ids.get(x.phone)!,
+              tenantId: who.tenantId,
+              packerId,
+            })),
+          ),
+        })
+      })
+    } catch (err) {
+      // A concurrent save assigned the same crew first.
+      if (isUniqueViolation(err)) {
+        throw new LaborHttpError(
+          409,
+          'ACTIVITY_LABOR_CONFLICT',
+          'Labor was changed at the same time — reload and try again',
+        )
+      }
+      throw err
+    }
+    const [dto] = await activityLaborDtos(c, who, [activity], driverId)
+    return c.json({ data: dto })
   }),
 )

@@ -432,6 +432,8 @@ function laborOp(
     description?: string
     phone?: boolean
     packerId?: boolean
+    /** Integer path params (legacy order / activity ids). */
+    intParams?: Array<{ name: string; description: string }>
     query?: Array<{ name: string; description: string }>
     body?: Record<string, unknown>
     data?: Record<string, unknown>
@@ -450,6 +452,13 @@ function laborOp(
       ...(opts.packerId
         ? [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }]
         : []),
+      ...(opts.intParams ?? []).map((p) => ({
+        name: p.name,
+        in: 'path',
+        required: true,
+        schema: { type: 'integer', minimum: 1 },
+        description: p.description,
+      })),
       ...(opts.query ?? []).map((q) => ({
         name: q.name,
         in: 'query',
@@ -491,6 +500,18 @@ function laborOp(
 const LABOR_CREW = { $ref: '#/components/schemas/LaborCrew' }
 const LABOR_CREW_DETAIL = { $ref: '#/components/schemas/LaborCrewDetail' }
 const LABOR_PACKER = { $ref: '#/components/schemas/LaborPacker' }
+const LABOR_ACTIVITY = { $ref: '#/components/schemas/LaborActivity' }
+
+const LABOR_ACTIVITY_ERRORS = {
+  '403': {
+    description: 'DRIVER_NOT_MAPPED, or NOT_YOUR_ACTIVITY on a write',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+  },
+  '503': {
+    description: 'LEGACY_UNAVAILABLE — the order database is not configured or failed',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+  },
+}
 
 const LABOR_PACKER_BODY = {
   type: 'object',
@@ -701,6 +722,56 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
       description:
         'Each crew with its packers, service areas and my rating — the input to the app’s .vcf / Google Contacts .csv export.',
       data: { type: 'array', items: { type: 'object' } },
+    }),
+  },
+  '/api/v1/labor/orders/{orderNum}/activities': {
+    get: laborOp('listLaborOrderActivities', "An order's activities with their crews and packers", {
+      description:
+        'A driver gets only the longhaul activities they own (the assigned driver, or the trip driver when unassigned), `editable: true`; an Operations role (tenant_admin, operations_admin, long_distance_dispatch, central_planning_dispatch) gets every activity on the order, editable only where its own driver mapping owns it. Each assigned crew lists ALL its packers, `selected` marking who worked the activity. 403 DRIVER_NOT_MAPPED for any other login without a longhaul driver; 503 LEGACY_UNAVAILABLE when the order database cannot be read.',
+      intParams: [{ name: 'orderNum', description: 'Legacy order number' }],
+      data: { type: 'array', items: LABOR_ACTIVITY },
+      extraResponses: LABOR_ACTIVITY_ERRORS,
+    }),
+  },
+  '/api/v1/labor/activities/{activityId}': {
+    put: laborOp('setLaborActivity', "Replace an activity's crews and selected packers", {
+      description:
+        "Only the activity's own driver may write. A crew newly added must be in the caller's list (422 CREW_NOT_IN_YOUR_LIST); one already assigned may stay after it is removed from the list. Every packer must be on its crew (422 PACKER_NOT_ON_CREW). At most 10 crews; an empty list clears the activity. An actual date does not lock it.",
+      intParams: [{ name: 'activityId', description: 'Legacy longhaul activity id' }],
+      body: {
+        type: 'object',
+        required: ['crews'],
+        properties: {
+          crews: {
+            type: 'array',
+            maxItems: 10,
+            items: {
+              type: 'object',
+              required: ['phone', 'packerIds'],
+              properties: {
+                phone: { type: 'string', description: 'Any spelling; normalised to E.164' },
+                packerIds: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+        },
+      },
+      data: LABOR_ACTIVITY,
+      extraResponses: {
+        ...LABOR_ACTIVITY_ERRORS,
+        '409': {
+          description: 'ACTIVITY_LABOR_CONFLICT — a concurrent save; reload and retry',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+        '422': {
+          description: 'CREW_NOT_IN_YOUR_LIST or PACKER_NOT_ON_CREW',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
     }),
   },
 }
@@ -3462,6 +3533,54 @@ export function getOpenApiSpec() {
             phone: { type: ['string', 'null'] },
             phoneDisplay: { type: ['string', 'null'] },
             updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        LaborActivity: {
+          type: 'object',
+          description: 'A legacy longhaul activity with the crews and packers that worked it.',
+          required: ['id', 'orderNum', 'editable', 'crews'],
+          properties: {
+            id: { type: 'integer' },
+            orderNum: { type: 'integer' },
+            typeCode: { type: ['string', 'null'] },
+            typeName: { type: ['string', 'null'] },
+            typeAbbreviation: { type: ['string', 'null'] },
+            plannedStart: { type: ['string', 'null'], format: 'date' },
+            estimatedDate: { type: ['string', 'null'], format: 'date' },
+            actualDate: { type: ['string', 'null'], format: 'date' },
+            editable: {
+              type: 'boolean',
+              description: "True when the caller is the activity's driver",
+            },
+            crews: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['phone', 'name', 'displayName', 'inMyBook', 'packers'],
+                properties: {
+                  phone: { type: 'string' },
+                  phoneDisplay: { type: 'string' },
+                  name: { type: 'string' },
+                  nickname: { type: ['string', 'null'], description: "The caller's private name" },
+                  displayName: { type: 'string' },
+                  inMyBook: { type: 'boolean' },
+                  packers: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      required: ['id', 'firstName', 'lastName', 'selected'],
+                      properties: {
+                        id: { type: 'string' },
+                        firstName: { type: 'string' },
+                        lastName: { type: 'string' },
+                        phoneDisplay: { type: ['string', 'null'] },
+                        selected: { type: 'boolean' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
         ReportingDataset: {

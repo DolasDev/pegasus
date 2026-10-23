@@ -359,6 +359,59 @@ export function validateServiceAreas(inputs: readonly ServiceAreaInput[]): Norma
 }
 
 // ---------------------------------------------------------------------------
+// Activity labor — the crews (and which of their packers) that worked one
+// activity on an order
+// ---------------------------------------------------------------------------
+
+export const MAX_ACTIVITY_CREWS = 10
+
+export interface ActivityLaborCrewInput {
+  phone: string
+  packerIds: readonly string[]
+}
+
+export interface NormalizedActivityLaborCrew {
+  phone: string
+  packerIds: string[]
+}
+
+/**
+ * Validates the full set of crews assigned to an activity: phones normalised
+ * to E.164, each crew at most once, each packer at most once across the set.
+ * Whether a packer belongs to its crew is a stored fact, checked by the API.
+ *
+ * @throws {DomainError} `INVALID_PHONE_NUMBER`, `TOO_MANY_ACTIVITY_CREWS`,
+ *   `DUPLICATE_ACTIVITY_CREW`, `DUPLICATE_ACTIVITY_PACKER`
+ */
+export function validateActivityLabor(
+  crews: readonly ActivityLaborCrewInput[],
+): NormalizedActivityLaborCrew[] {
+  if (crews.length > MAX_ACTIVITY_CREWS) {
+    throw new DomainError(
+      `An activity can have at most ${MAX_ACTIVITY_CREWS} crews`,
+      'TOO_MANY_ACTIVITY_CREWS',
+    )
+  }
+  const phones = new Set<string>()
+  const packers = new Set<string>()
+  return crews.map((crew) => {
+    const phone = normalizePhoneNumber(crew.phone)
+    if (phones.has(phone)) {
+      throw new DomainError(`Crew ${phone} is listed twice`, 'DUPLICATE_ACTIVITY_CREW')
+    }
+    phones.add(phone)
+    const packerIds = [...new Set(crew.packerIds)]
+    for (const id of packerIds) {
+      if (packers.has(id)) {
+        throw new DomainError(`Packer ${id} is on two crews`, 'DUPLICATE_ACTIVITY_PACKER')
+      }
+      packers.add(id)
+    }
+    return { phone, packerIds }
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Location search
 // ---------------------------------------------------------------------------
 

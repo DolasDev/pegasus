@@ -9,18 +9,26 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { DomainError, validateCrew } from '@pegasus/domain'
-import { LaborService } from '../../src/services/laborService'
+import { LaborService, withCrew } from '../../src/services/laborService'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 
 // ---------------------------------------------------------------------------
 // Add one crew by hand. The phone number IS the crew: if another driver has
 // already added it, this links to their record (and its packers) instead of
 // creating a second one, and the name typed here becomes my nickname.
+//
+// Opened from an activity's crew picker (`activityId` + `orderNum`), the new
+// crew is also assigned to that activity, and the form returns past the picker
+// straight to the shipment's Labor tab.
 // ---------------------------------------------------------------------------
 
 export default function NewCrewScreen() {
+  const { activityId, orderNum } = useLocalSearchParams<{
+    activityId?: string
+    orderNum?: string
+  }>()
   const router = useRouter()
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
@@ -43,7 +51,24 @@ export default function NewCrewScreen() {
     setError(null)
     try {
       const { crew, outcome } = await LaborService.addCrew(input)
-      router.replace({ pathname: '/labor/[phone]', params: { phone: crew.phone } })
+      if (activityId && orderNum) {
+        try {
+          await LaborService.updateActivityLabor(orderNum, Number(activityId), (set) =>
+            withCrew(set, crew.phone),
+          )
+        } catch (err) {
+          // The crew is in my list now — back on the picker it can be picked again.
+          Alert.alert(
+            'Crew added, not assigned',
+            err instanceof Error ? err.message : 'Pick it from your list to assign it.',
+          )
+          router.back()
+          return
+        }
+        router.dismiss(2)
+      } else {
+        router.replace({ pathname: '/labor/[phone]', params: { phone: crew.phone } })
+      }
       if (outcome === 'linkedExisting') {
         Alert.alert(
           'Crew already in Pegasus',

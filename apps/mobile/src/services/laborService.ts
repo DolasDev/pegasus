@@ -1,6 +1,8 @@
 import type { ExportCrew } from '@pegasus/domain'
 import { getApiClient } from '../api/client'
 import type {
+  LaborActivity,
+  LaborActivityCrewInput,
   LaborAddOutcome,
   LaborCrew,
   LaborCrewDetail,
@@ -157,4 +159,77 @@ export class LaborService {
     const rows = await getApiClient().fetch<ExportCrew[]>(`${BASE}/export`)
     return rows ?? []
   }
+
+  // ── Activity labor ────────────────────────────────────────────────────────
+
+  /** My activities on an order (every activity, read-only, for an employee). */
+  static async getOrderActivities(orderNum: string | number): Promise<LaborActivity[]> {
+    const rows = await getApiClient().fetch<LaborActivity[]>(
+      `${BASE}/orders/${encodeURIComponent(String(orderNum))}/activities`,
+    )
+    return rows ?? []
+  }
+
+  /** Replaces the activity's whole crew + packer set. */
+  static async setActivityLabor(
+    activityId: number,
+    crews: readonly LaborActivityCrewInput[],
+  ): Promise<LaborActivity> {
+    return getApiClient().fetch<LaborActivity>(
+      `${BASE}/activities/${activityId}`,
+      json('PUT', { crews }),
+    )
+  }
+
+  /**
+   * Read-modify-write one activity's set — for the screens pushed from the
+   * Labor tab (crew picker, new crew, new packer), which hold only ids.
+   */
+  static async updateActivityLabor(
+    orderNum: string | number,
+    activityId: number,
+    change: (crews: LaborActivityCrewInput[]) => LaborActivityCrewInput[],
+  ): Promise<LaborActivity> {
+    const activity = (await LaborService.getOrderActivities(orderNum)).find(
+      (a) => a.id === activityId,
+    )
+    if (!activity) throw new Error('This activity is no longer assigned to you.')
+    return LaborService.setActivityLabor(activityId, change(activityLaborInput(activity)))
+  }
+}
+
+// ── Activity-labor set helpers (pure) ────────────────────────────────────────
+
+/** The PUT body that leaves `activity` as it is. */
+export function activityLaborInput(activity: LaborActivity): LaborActivityCrewInput[] {
+  return activity.crews.map((c) => ({
+    phone: c.phone,
+    packerIds: c.packers.filter((p) => p.selected).map((p) => p.id),
+  }))
+}
+
+/** Adds a crew (no packers yet); a crew already on the activity is left as is. */
+export function withCrew(crews: LaborActivityCrewInput[], phone: string): LaborActivityCrewInput[] {
+  return crews.some((c) => c.phone === phone) ? crews : [...crews, { phone, packerIds: [] }]
+}
+
+export function withoutCrew(
+  crews: LaborActivityCrewInput[],
+  phone: string,
+): LaborActivityCrewInput[] {
+  return crews.filter((c) => c.phone !== phone)
+}
+
+/** Selects (`on`) or clears one packer on one crew. */
+export function withPacker(
+  crews: LaborActivityCrewInput[],
+  phone: string,
+  packerId: string,
+  on: boolean,
+): LaborActivityCrewInput[] {
+  return crews.map((c) => {
+    if (c.phone !== phone) return c
+    const rest = c.packerIds.filter((id) => id !== packerId)
+    return { ...c, packerIds: on ? [...rest, packerId] : rest }
+  })
 }
