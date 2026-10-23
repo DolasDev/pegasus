@@ -22,8 +22,8 @@ import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../them
 // ---------------------------------------------------------------------------
 // The shipment's Labor tab: one card per activity of mine on the order, each
 // with the crews that worked it and a checklist of their packers. Every change
-// saves the activity's whole set (PUT /labor/activities/:id); that activity's
-// controls are locked until the save answers, so two toggles never race.
+// saves the activity's whole set (PUT /labor/activities/:id); every control on
+// the tab is locked until the save answers, so two saves never race.
 // Assigning a crew, adding a crew and adding a packer happen on pushed screens,
 // so the tab reloads whenever it regains focus.
 // ---------------------------------------------------------------------------

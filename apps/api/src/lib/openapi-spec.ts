@@ -727,7 +727,7 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
   '/api/v1/labor/orders/{orderNum}/activities': {
     get: laborOp('listLaborOrderActivities', "An order's activities with their crews and packers", {
       description:
-        'A driver gets only the longhaul activities they own (the assigned driver, or the trip driver when unassigned), `editable: true`; an employee gets every activity on the order, read-only. Each assigned crew lists ALL its packers, `selected` marking who worked the activity. 403 DRIVER_NOT_MAPPED for a driver login without a longhaul driver; 503 LEGACY_UNAVAILABLE when the order database cannot be read.',
+        'A driver gets only the longhaul activities they own (the assigned driver, or the trip driver when unassigned), `editable: true`; an Operations role (tenant_admin, operations_admin, long_distance_dispatch, central_planning_dispatch) gets every activity on the order, editable only where its own driver mapping owns it. Each assigned crew lists ALL its packers, `selected` marking who worked the activity. 403 DRIVER_NOT_MAPPED for any other login without a longhaul driver; 503 LEGACY_UNAVAILABLE when the order database cannot be read.',
       intParams: [{ name: 'orderNum', description: 'Legacy order number' }],
       data: { type: 'array', items: LABOR_ACTIVITY },
       extraResponses: LABOR_ACTIVITY_ERRORS,

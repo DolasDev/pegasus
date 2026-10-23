@@ -468,3 +468,17 @@ cloud (Cedar). That is only safe when the route is not a per-person secret. `GET
 returns any driver's money by id, and desktop-session tokens (`scp=desktop`) live on users' machines — so it uses
 `AuthPolicies.DriverFinancials`: cloud tokens **without** `scp`, or the configured bridge hub user, and nothing else.
 The cloud side resolves the id from the caller (`TenantUser.longhaulDriverId`), never from the request.
+
+## Mobile tests: mock a service class, keep the module's pure helpers
+
+`jest.mock('../../src/services/laborService', () => ({ LaborService: { … } }))` replaces the WHOLE
+module, so its other named exports (`withCrew`, `withPacker`, `activityLaborInput`) become
+`undefined`. A screen that calls one fails only on the path that reaches it, and older tests that
+never hit that path keep passing. Spread the real module and replace only the class:
+
+```ts
+jest.mock('../../src/services/laborService', () => ({
+  ...jest.requireActual('../../src/services/laborService'),
+  LaborService: { getOrderActivities: jest.fn(), setActivityLabor: jest.fn() },
+}))
+```

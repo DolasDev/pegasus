@@ -220,6 +220,7 @@ describe.skipIf(!hasDb)('/labor activity labor (integration)', () => {
     await mk('other', tenantA, ['driver'], 8)
     await mk('unmapped', tenantA, ['driver'])
     await mk('ops', tenantA, ['operations_admin'])
+    await mk('sales', tenantA, ['sales'])
     await mk('outsider', tenantB, ['driver'], 7)
   })
 
@@ -235,7 +236,7 @@ describe.skipIf(!hasDb)('/labor activity labor (integration)', () => {
     expect(list[0]!.crews).toEqual([])
   })
 
-  it('shows an employee every activity, read-only', async () => {
+  it('shows an Operations role every activity, read-only', async () => {
     const list = await data<ActivityOut[]>(await getOrder('ops'))
     expect(list.map((a) => [a.id, a.editable])).toEqual([
       [1, false],
@@ -244,7 +245,8 @@ describe.skipIf(!hasDb)('/labor activity labor (integration)', () => {
     ])
   })
 
-  it('refuses a driver login with no driver mapping', async () => {
+  it('refuses a non-Operations login with no driver mapping', async () => {
+    expect(await codeOf(await getOrder('sales'))).toBe('DRIVER_NOT_MAPPED')
     const res = await getOrder('unmapped')
     expect(res.status).toBe(403)
     expect(await codeOf(res)).toBe('DRIVER_NOT_MAPPED')
@@ -380,6 +382,26 @@ describe.skipIf(!hasDb)('/labor activity labor (integration)', () => {
     const list = await data<ActivityOut[]>(await getOrder('outsider'))
     expect(list.map((a) => a.id)).toEqual([1, 2])
     expect(list[0]!.crews).toEqual([])
+  })
+
+  it('an Operations login that is also a mapped driver edits only its own activities', async () => {
+    await db.tenantUser.update({ where: { id: U['ops']!.id }, data: { longhaulDriverId: 8 } })
+    const list = await data<ActivityOut[]>(await getOrder('ops'))
+    expect(list.map((a) => [a.id, a.editable])).toEqual([
+      [1, false],
+      [2, false],
+      [3, true],
+    ])
+  })
+
+  it("a write never touches another tenant's rows for the same activity id", async () => {
+    await addCrew('outsider', 1)
+    await putLabor('outsider', 1, [{ phone: num(1), packerIds: [] }])
+    await addCrew('driver', 2)
+    await putLabor('driver', 1, [{ phone: num(2), packerIds: [] }])
+    await putLabor('driver', 1, [])
+    const rows = await db.activityLaborCrew.findMany({ where: { activityId: 1 } })
+    expect(rows.map((r) => [r.tenantId, r.crewPhone])).toEqual([[tenantB, e164(1)]])
   })
 
   it('rejects a bad body or id', async () => {

@@ -115,7 +115,7 @@ No new native modules, but the app has no OTA path → EAS build, dispatched **a
 - [x] Mobile `assign.tsx` picker + tests
 - [x] `new.tsx` / `packer.tsx` `activityId` mode + tests
 - [x] Full suites: domain, api, mobile jest, typecheck, lint; restore auto-bumped coverage floors
-- [x] DECISIONS / GOTCHAS / PATTERNS updates
+- [x] DECISIONS + PATTERNS updates (no new GOTCHAS)
 - [~] Archive plan → `/workstream-finish` (one PR)
 
 ## Files
@@ -147,9 +147,15 @@ typecheck clean. Migration `20261023101130_activity_labor`. As built:
 - Endpoints live in `handlers/labor.ts`, not a new file, so they share its guard and errors.
   Owner rule + legacy reads are in `lib/longhaul-driver-activity.ts`. The ETA route imports only
   `realDriverId` / `activityOwnerDriverId` from it and keeps its own SQL.
+- **Deviation from the design above (review):** "employee" scope is NOT chat's `resolveChatScope`.
+  The GET uses `resolveLonghaulReadScope` — PATTERNS ("A driver-scoped write on the legacy longhaul
+  tables") requires it for every longhaul driver-data read, and the shipment the tab sits on is
+  read through it too. An Operations role (`OPERATIONS_ROLES`) sees every activity; any other
+  login sees only what its driver mapping owns, and an unmapped one gets 403.
 - `editable` = the caller's `longhaulDriverId` owns the activity, whatever their role, so an
-  employee who is also a mapped driver can still edit their own activities. Employee scope widens
-  what is VISIBLE, not what is editable.
+  Operations login that is also a mapped driver can still edit its own activities. The read scope
+  widens what is VISIBLE, not what is editable.
+- Cross-tenant: a write on activity id N never touches another tenant's rows for N (tested).
 - Mobile: `src/components/labor/ActivityLaborTab.tsx`, `app/labor/assign.tsx` (registered in
   `_layout.tsx`). `new.tsx` in activity mode uses `router.dismiss(2)` back to the tab.
   `LaborService.updateActivityLabor` does read-modify-write for the pushed screens.

@@ -32,7 +32,6 @@ import {
   normalizePhoneNumber,
   parseLocationQuery,
   rankCrewsByDistance,
-  resolveChatScope,
   validateActivityLabor,
   validateCrew,
   validatePacker,
@@ -62,6 +61,7 @@ import {
   type CrewLinkRow,
 } from '../repositories/labor.repository'
 import { legacyConnectionString } from '../lib/chat-access'
+import { resolveLonghaulReadScope } from '../lib/longhaul-read-scope'
 import {
   activityById,
   activityOwnerDriverId,
@@ -707,7 +707,8 @@ laborHandler.get('/export', requirePermission(Actions.ReadLabor), (c) =>
 // driver's activities on an order. Unlike the book, this is tenant data: the
 // activity is a row in the tenant's legacy database. A driver sees and edits
 // only the activities they own (the ETA editor's rule — lib/longhaul-driver-
-// activity); an employee sees every activity on the order, read-only.
+// activity); an Operations role (lib/longhaul-read-scope) sees every activity on the
+// order, editable only where its own driver mapping owns one.
 // Plan: plans/in-progress/activity-labor.md.
 // ---------------------------------------------------------------------------
 
@@ -820,11 +821,14 @@ laborHandler.get('/orders/:orderNum/activities', requirePermission(Actions.ReadL
   guarded(c, async () => {
     const who = caller(c)
     const orderNum = intParam(c, 'orderNum')
-    const employee = resolveChatScope(c.get('principal')?.roleNames ?? []) === 'employee'
+    // The longhaul driver-data read scope (PATTERNS): an Operations role reads
+    // every activity; anyone else only those their driver mapping owns.
+    const scope = await resolveLonghaulReadScope(c)
+    if (scope.kind === 'none') throw driverNotMapped()
     const driverId = await myDriverId(c, who)
-    if (!employee && driverId == null) throw driverNotMapped()
     const rows = await legacy(c, who, (cs) => orderActivities(cs, orderNum))
-    const visible = employee ? rows : rows.filter((a) => activityOwnerDriverId(a) === driverId)
+    const visible =
+      scope.kind === 'all' ? rows : rows.filter((a) => activityOwnerDriverId(a) === scope.driverId)
     return c.json({ data: await activityLaborDtos(c, who, visible, driverId) })
   }),
 )
