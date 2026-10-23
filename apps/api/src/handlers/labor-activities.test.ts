@@ -133,6 +133,7 @@ type ActivityOut = {
     phone: string
     displayName: string
     inMyBook: boolean
+    inCompanyList: boolean
     packers: Array<{ id: string; lastName: string; selected: boolean }>
   }>
 }
@@ -158,6 +159,7 @@ async function wipe() {
   await db.crew.deleteMany({ where: { phone: { startsWith: PREFIX } } })
   for (const t of [tenantA, tenantB]) {
     await db.activityLaborCrew.deleteMany({ where: { tenantId: t } })
+    await db.companyCrewLink.deleteMany({ where: { tenantId: t } })
     await db.crewLink.deleteMany({ where: { tenantId: t } })
     await db.tenantUser.deleteMany({ where: { tenantId: t } })
   }
@@ -345,6 +347,27 @@ describe.skipIf(!hasDb)('/labor activity labor (integration)', () => {
     const kept = await putLabor('driver', 1, [{ phone: num(2), packerIds: [] }])
     expect(kept.status).toBe(200)
     expect((await data<ActivityOut>(kept)).crews[0]).toMatchObject({ inMyBook: false })
+  })
+
+  it('lets a driver assign a crew from the company list', async () => {
+    await addCrew('other', 3, 'Company Crew')
+    await appAs('other').request('/labor/company/crews', send({ phone: num(3) }))
+    const res = await putLabor('driver', 1, [{ phone: num(3), packerIds: [] }])
+    expect(res.status).toBe(200)
+    expect((await data<ActivityOut>(res)).crews[0]).toMatchObject({
+      phone: e164(3),
+      inMyBook: false,
+      inCompanyList: true,
+    })
+    // Another tenant's company list grants nothing.
+    await db.activityLaborCrew.deleteMany({ where: { tenantId: tenantA } })
+    await db.companyCrewLink.updateMany({
+      where: { crewPhone: e164(3) },
+      data: { tenantId: tenantB },
+    })
+    expect(await codeOf(await putLabor('driver', 1, [{ phone: num(3), packerIds: [] }]))).toBe(
+      'CREW_NOT_IN_YOUR_LIST',
+    )
   })
 
   it('rejects a packer that is not on its crew, and duplicate crews', async () => {

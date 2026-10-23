@@ -17,8 +17,8 @@ import type { Context } from 'hono'
 import type { AppEnv } from '../types'
 
 /**
- * Roles with the full longhaul read surface. Must agree with tenant-web's
- * OPERATIONS_ROLES (apps/tenant-web/src/auth/role-guard.ts), which gates the
+ * Roles with the full longhaul read surface. Must agree with the shared
+ * OPERATIONS_ROLES (packages/auth/src/roles.ts), which gates the
  * Operations screens client-side; this copy is the one that is enforced.
  */
 export const OPERATIONS_ROLES: readonly string[] = [
