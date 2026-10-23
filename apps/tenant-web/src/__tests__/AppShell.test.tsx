@@ -227,6 +227,7 @@ describe('AppShell — Operations submenu role gate', () => {
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
     expect(screen.getByText('Services')).toBeInTheDocument()
+    expect(screen.getByText('Labor')).toBeInTheDocument()
   })
 
   it('shows Planning and Trips to tenant_admin', () => {
@@ -243,6 +244,7 @@ describe('AppShell — Operations submenu role gate', () => {
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
     expect(screen.getByText('Services')).toBeInTheDocument()
+    expect(screen.getByText('Labor')).toBeInTheDocument()
   })
 
   it('shows the whole Operations section to long_distance_dispatch', () => {
@@ -265,6 +267,7 @@ describe('AppShell — Operations submenu role gate', () => {
     // Services was narrowed to the admins until the dispatch personas were
     // granted it; it now inherits the group's gate like every other child.
     expect(screen.getByText('Services')).toBeInTheDocument()
+    expect(screen.getByText('Labor')).toBeInTheDocument()
   })
 
   it('shows the whole Operations section to central_planning_dispatch as well', () => {
@@ -284,6 +287,7 @@ describe('AppShell — Operations submenu role gate', () => {
     expect(screen.getByText('Planning')).toBeInTheDocument()
     expect(screen.getByText('Trips')).toBeInTheDocument()
     expect(screen.getByText('Services')).toBeInTheDocument()
+    expect(screen.getByText('Labor')).toBeInTheDocument()
   })
 
   it('still hides the Operations section from a role outside it', () => {
@@ -301,6 +305,7 @@ describe('AppShell — Operations submenu role gate', () => {
     expect(screen.queryByText('Operations')).not.toBeInTheDocument()
     expect(screen.queryByText('Planning')).not.toBeInTheDocument()
     expect(screen.queryByText('Trips')).not.toBeInTheDocument()
+    expect(screen.queryByText('Labor')).not.toBeInTheDocument()
   })
 })
 

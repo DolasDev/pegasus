@@ -12,7 +12,7 @@ import '@fontsource/open-sans/400.css'
 import '@fontsource/open-sans/700.css'
 import './styles.css'
 
-// The Operations sub-sections (Availability / Planning / Trips / Shipments) are
+// The Operations sub-sections (Availability / Planning / Trips / Shipments / Services / Labor) are
 // now exposed as expandable sub-nav under "Operations" in the AppShell sidebar
 // (see components/AppShell.tsx -> OPERATIONS_CHILDREN). This layout just hosts
 // the route Outlet with its Redux/snackbar/confirm providers + AppGuard.

@@ -3,7 +3,8 @@
  *
  * A crew is keyed by its E.164 phone number. Name, email, service areas and
  * packers are shared by every driver who has the number in their list; the
- * nickname and the rating are the caller's own.
+ * nickname and the rating are the caller's own. A crew can also sit on the
+ * company's shared list (`inCompanyList`), independently of my own.
  */
 
 export interface LaborServiceArea {
@@ -31,7 +32,11 @@ export interface LaborCrew {
   phone: string
   phoneDisplay: string
   name: string
+  /** My private nickname; null unless the crew is in my list. */
   nickname: string | null
+  /** The company's display name for the crew (set by anyone at the company). */
+  companyNickname: string | null
+  /** My nickname, else the company nickname, else the crew's name. */
   displayName: string
   email: string | null
   serviceAreas: LaborServiceArea[]
@@ -39,6 +44,12 @@ export interface LaborCrew {
   myRating: LaborRating | null
   averageRating: LaborAverageRating | null
   addedAt: string
+  /** The crew is in my own list. */
+  inMyList: boolean
+  /** The crew is on my company's shared list. */
+  inCompanyList: boolean
+  /** Only Operations may take a crew off the company list. */
+  canRemoveFromCompany: boolean
   /** Present on location searches; null when the crew has no geocoded area. */
   distanceMiles?: number | null
 }
@@ -75,6 +86,9 @@ export interface LaborSearchResult {
 }
 
 export type LaborAddOutcome = 'added' | 'linkedExisting' | 'alreadyInList'
+
+/** Adding to the company list can also link a crew from my own list. */
+export type LaborCompanyAddOutcome = LaborAddOutcome | 'addedFromMyList'
 
 export type LaborImportOutcome = LaborAddOutcome | 'invalid' | 'rateLimited'
 
@@ -118,6 +132,8 @@ export interface LaborActivityCrew {
   displayName: string
   /** False once I've removed the crew from my list — it stays on the activity. */
   inMyBook: boolean
+  /** On the company list (so editable even when not in my book). */
+  inCompanyList?: boolean
   packers: LaborActivityPacker[]
 }
 

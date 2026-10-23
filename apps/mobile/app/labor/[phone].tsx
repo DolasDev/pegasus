@@ -15,17 +15,25 @@ import { StarRating } from '../../src/components/StarRating'
 import { PackerRow } from '../../src/components/PackerRow'
 import { ServiceAreaEditor, type AreaValue } from '../../src/components/ServiceAreaEditor'
 import { LaborService } from '../../src/services/laborService'
+import { laborErrorMessage } from '../../src/services/laborErrors'
 import { logger } from '../../src/utils/logger'
 import type { LaborCrewDetail, LaborPacker } from '../../src/types/labor'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 
 // ---------------------------------------------------------------------------
-// One crew: the header (shared name + email, my private nickname), its service
-// areas, my rating, and its packers. Name, email, areas and packers are shared
-// with every driver who has this number; the nickname and rating are mine.
+// One crew: the header (shared name + email, my private nickname, the company
+// nickname), its service areas, my rating, and its packers. Name, email, areas
+// and packers are shared with every driver who has this number (and with the
+// company when it's on the company list); the nickname and rating are mine.
+//
+// The card opens for a crew in my list, on the company list, or both. Anyone
+// may edit everything on it; what differs is the list actions: add to the
+// company list / add to my list, and Operations alone may take a crew off the
+// company list. My rating, private nickname and "Remove from my list" need the
+// crew to be in my own list.
 // ---------------------------------------------------------------------------
 
-const errText = (err: unknown) => (err instanceof Error ? err.message : 'Please try again.')
+const errText = (err: unknown) => laborErrorMessage(err)
 
 export default function CrewScreen() {
   const { phone } = useLocalSearchParams<{ phone: string }>()
@@ -38,6 +46,7 @@ export default function CrewScreen() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [nickname, setNickname] = useState('')
+  const [companyNickname, setCompanyNickname] = useState('')
 
   const [pendingAreas, setPendingAreas] = useState<AreaValue[] | null>(null)
   const areaSeq = useRef(0)
@@ -113,19 +122,61 @@ export default function CrewScreen() {
     setName(crew.name)
     setEmail(crew.email ?? '')
     setNickname(crew.nickname ?? '')
+    setCompanyNickname(crew.companyNickname ?? '')
     setEditing(true)
   }
 
   const saveEdit = async () => {
-    const ok = await run('Couldn’t save', () =>
-      LaborService.updateCrew(crew.phone, {
-        name,
-        email: email.trim() || null,
+    const shared = { name, email: email.trim() || null }
+    const companyName = companyNickname.trim() || null
+    const ok = await run('Couldn’t save', async () => {
+      // A crew only on the company list has no link of mine to hang a private
+      // nickname on, so everything goes through the company route.
+      if (!crew.inMyList) {
+        return LaborService.updateCompanyCrew(crew.phone, { ...shared, nickname: companyName })
+      }
+      let next = await LaborService.updateCrew(crew.phone, {
+        ...shared,
         nickname: nickname.trim() || null,
-      }),
-    )
+      })
+      if (crew.inCompanyList && companyName !== crew.companyNickname) {
+        next = await LaborService.updateCompanyCrew(crew.phone, { nickname: companyName })
+      }
+      return next
+    })
     if (ok) setEditing(false)
   }
+
+  const addToCompany = () =>
+    void run('Couldn’t add to the company list', async () => {
+      return (await LaborService.addToCompanyList(crew.phone)).crew
+    })
+
+  const addToMine = () =>
+    void run('Couldn’t add to your list', () =>
+      LaborService.addToMyList({ phone: crew.phone, name: crew.name }),
+    )
+
+  const confirmRemoveFromCompany = () =>
+    Alert.alert(
+      'Remove from the company list?',
+      'Drivers will no longer find this crew on the company list. It stays in any driver’s own list, and past jobs keep it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const ok = await run('Couldn’t remove from the company list', async () => {
+              await LaborService.removeFromCompanyList(crew.phone)
+              // Still reachable through my own list? Stay, with the new flags.
+              return crew.inMyList ? LaborService.getCrew(crew.phone) : undefined
+            })
+            if (ok && !crew.inMyList) router.back()
+          },
+        },
+      ],
+    )
 
   // Optimistic: the chips show the new list at once, so a second quick edit
   // builds on the first rather than on the still-unsaved server copy. Only the
@@ -194,8 +245,16 @@ export default function CrewScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            const ok = await run('Couldn’t remove crew', () => LaborService.removeCrew(crew.phone))
-            if (ok) router.back()
+            const ok = await run(
+              'Couldn’t remove crew',
+              async () => {
+                await LaborService.removeCrew(crew.phone)
+                // Still on the company list? The card stays, without my rating.
+                return crew.inCompanyList ? LaborService.getCrew(crew.phone) : undefined
+              },
+              true,
+            )
+            if (ok && !crew.inCompanyList) router.back()
           },
         },
       ],
@@ -218,11 +277,20 @@ export default function CrewScreen() {
               onChangeText={setEmail}
               keyboardType="email-address"
             />
-            <Field
-              label="My nickname (only you see it)"
-              value={nickname}
-              onChangeText={setNickname}
-            />
+            {crew.inMyList ? (
+              <Field
+                label="My nickname (only you see it)"
+                value={nickname}
+                onChangeText={setNickname}
+              />
+            ) : null}
+            {crew.inCompanyList ? (
+              <Field
+                label="Company nickname (everyone at the company sees it)"
+                value={companyNickname}
+                onChangeText={setCompanyNickname}
+              />
+            ) : null}
             <View style={styles.row}>
               <Button label="Cancel" onPress={() => setEditing(false)} />
               <Button label="Save" primary disabled={busy} onPress={() => void saveEdit()} />
@@ -236,8 +304,20 @@ export default function CrewScreen() {
                 <Text style={styles.link}>Edit</Text>
               </TouchableOpacity>
             </View>
-            {crew.nickname && crew.nickname !== crew.name ? (
+            {crew.displayName !== crew.name ? (
               <Text style={styles.muted}>Crew name: {crew.name}</Text>
+            ) : null}
+            {crew.inCompanyList ? (
+              <Text style={styles.tag}>
+                On the company list
+                {crew.companyNickname ? ` as “${crew.companyNickname}”` : ''}
+              </Text>
+            ) : null}
+            {!crew.inMyList && crew.averageRating ? (
+              <Text style={styles.muted}>
+                Average from {crew.averageRating.count} drivers:{' '}
+                {crew.averageRating.average.toFixed(1)} ★
+              </Text>
             ) : null}
             <Text style={styles.phone}>{crew.phoneDisplay}</Text>
             {crew.email ? <Text style={styles.muted}>{crew.email}</Text> : null}
@@ -264,37 +344,41 @@ export default function CrewScreen() {
         />
       </View>
 
-      {/* My rating */}
-      <Text style={styles.sectionTitle}>My rating</Text>
-      <View style={styles.card}>
-        <StarRating value={stars} onChange={setStars} size={fontSize.xxlarge} />
-        <TextInput
-          style={[styles.input, styles.comment]}
-          value={comment}
-          onChangeText={setComment}
-          placeholder="Comment (only you see it)"
-          placeholderTextColor={colors.textDisabled}
-          multiline
-          maxLength={1000}
-          accessibilityLabel="Rating comment"
-        />
-        {crew.averageRating ? (
-          <Text style={styles.muted}>
-            Average from {crew.averageRating.count} drivers: {crew.averageRating.average.toFixed(1)}{' '}
-            ★
-          </Text>
-        ) : null}
-        {ratingDirty ? (
-          <View style={styles.row}>
-            <Button
-              label={stars == null ? 'Clear rating' : 'Save rating'}
-              primary
-              disabled={busy}
-              onPress={saveRating}
+      {/* My rating — needs the crew in my own list */}
+      {crew.inMyList ? (
+        <>
+          <Text style={styles.sectionTitle}>My rating</Text>
+          <View style={styles.card}>
+            <StarRating value={stars} onChange={setStars} size={fontSize.xxlarge} />
+            <TextInput
+              style={[styles.input, styles.comment]}
+              value={comment}
+              onChangeText={setComment}
+              placeholder="Comment (only you see it)"
+              placeholderTextColor={colors.textDisabled}
+              multiline
+              maxLength={1000}
+              accessibilityLabel="Rating comment"
             />
+            {crew.averageRating ? (
+              <Text style={styles.muted}>
+                Average from {crew.averageRating.count} drivers:{' '}
+                {crew.averageRating.average.toFixed(1)} ★
+              </Text>
+            ) : null}
+            {ratingDirty ? (
+              <View style={styles.row}>
+                <Button
+                  label={stars == null ? 'Clear rating' : 'Save rating'}
+                  primary
+                  disabled={busy}
+                  onPress={saveRating}
+                />
+              </View>
+            ) : null}
           </View>
-        ) : null}
-      </View>
+        </>
+      ) : null}
 
       {/* Packers */}
       <View style={styles.headerRow}>
@@ -318,9 +402,30 @@ export default function CrewScreen() {
         )}
       </View>
 
-      <TouchableOpacity style={styles.remove} onPress={confirmRemove} accessibilityRole="button">
-        <Text style={styles.removeText}>Remove from my list</Text>
-      </TouchableOpacity>
+      {crew.inMyList !== crew.inCompanyList ? (
+        <View style={styles.row}>
+          {crew.inMyList ? (
+            <Button label="Add to company list" disabled={busy} onPress={addToCompany} />
+          ) : (
+            <Button label="Add to my list" disabled={busy} onPress={addToMine} />
+          )}
+        </View>
+      ) : null}
+
+      {crew.inMyList ? (
+        <TouchableOpacity style={styles.remove} onPress={confirmRemove} accessibilityRole="button">
+          <Text style={styles.removeText}>Remove from my list</Text>
+        </TouchableOpacity>
+      ) : null}
+      {crew.canRemoveFromCompany ? (
+        <TouchableOpacity
+          style={styles.remove}
+          onPress={confirmRemoveFromCompany}
+          accessibilityRole="button"
+        >
+          <Text style={styles.removeText}>Remove from company list</Text>
+        </TouchableOpacity>
+      ) : null}
     </ScrollView>
   )
 }
@@ -387,6 +492,7 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: fontSize.xlarge, fontWeight: '700', color: colors.textPrimary },
   phone: { fontSize: fontSize.large, color: colors.textPrimary },
   muted: { fontSize: fontSize.medium, color: colors.textSecondary },
+  tag: { fontSize: fontSize.small, fontWeight: '700', color: colors.brand },
   link: { fontSize: fontSize.medium, fontWeight: '700', color: colors.brand },
   sectionTitle: {
     fontSize: fontSize.large,

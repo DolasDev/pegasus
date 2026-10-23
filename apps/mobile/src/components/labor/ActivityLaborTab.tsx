@@ -137,7 +137,10 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
                   <View style={styles.crewHeader}>
                     <View style={styles.crewTitle}>
                       <Text style={styles.crewName}>{crew.displayName}</Text>
-                      <Text style={styles.crewPhone}>{crew.phoneDisplay}</Text>
+                      <Text style={styles.crewPhone}>
+                        {crew.phoneDisplay}
+                        {crew.inCompanyList && !crew.inMyBook ? ' · Company' : ''}
+                      </Text>
                     </View>
                     <SmallButton
                       label="Call"
@@ -175,7 +178,7 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
                     </TouchableOpacity>
                   ))}
 
-                  {a.editable && crew.inMyBook ? (
+                  {a.editable && (crew.inMyBook || crew.inCompanyList) ? (
                     <TouchableOpacity
                       style={styles.link}
                       disabled={locked}

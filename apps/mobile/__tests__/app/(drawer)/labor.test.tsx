@@ -5,16 +5,35 @@ import { useRouter } from 'expo-router'
 import LaborScreen, { sectionsByInitial } from '../../../app/(drawer)/labor'
 import { LaborService } from '../../../src/services/laborService'
 import { exportLaborList } from '../../../src/services/laborExport'
+import { useLaborAccess, type LaborAccess } from '../../../src/auth/laborAccess'
 import type { LaborCrew } from '../../../src/types/labor'
 
 jest.mock('../../../src/services/laborService', () => ({
-  LaborService: { searchCrews: jest.fn() },
+  LaborService: { searchCrews: jest.fn(), searchCompanyCrews: jest.fn() },
 }))
+jest.mock('../../../src/auth/laborAccess', () => ({ useLaborAccess: jest.fn() }))
 jest.mock('../../../src/services/laborExport', () => ({
   exportLaborList: jest.fn(() => Promise.resolve(1)),
 }))
 
 const searchCrews = LaborService.searchCrews as jest.Mock
+const searchCompanyCrews = LaborService.searchCompanyCrews as jest.Mock
+const access = useLaborAccess as jest.Mock
+
+const DRIVER: LaborAccess = {
+  isDriver: true,
+  isOperations: false,
+  resolved: true,
+  canSeeLabor: true,
+  operationsOnly: false,
+}
+const DRIVER_OPS: LaborAccess = { ...DRIVER, isOperations: true }
+const OPS_ONLY: LaborAccess = {
+  ...DRIVER,
+  isDriver: false,
+  isOperations: true,
+  operationsOnly: true,
+}
 const push = jest.fn()
 
 function crew(partial: Partial<LaborCrew>): LaborCrew {
@@ -23,6 +42,7 @@ function crew(partial: Partial<LaborCrew>): LaborCrew {
     phoneDisplay: '(404) 555-0101',
     name: 'Ace Movers',
     nickname: null,
+    companyNickname: null,
     displayName: 'Ace Movers',
     email: null,
     serviceAreas: [],
@@ -30,6 +50,9 @@ function crew(partial: Partial<LaborCrew>): LaborCrew {
     myRating: null,
     averageRating: null,
     addedAt: '2026-10-20T00:00:00.000Z',
+    inMyList: true,
+    inCompanyList: false,
+    canRemoveFromCompany: false,
     ...partial,
   }
 }
@@ -43,6 +66,7 @@ const ace = crew({
 const bob = crew({ phone: '+14045550102', name: 'Bob Crew', displayName: 'Bob Crew' })
 
 beforeEach(() => {
+  access.mockReturnValue(DRIVER)
   ;(useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn(), back: jest.fn() })
 })
 
@@ -171,5 +195,90 @@ describe('LaborScreen', () => {
     expect(await findByText('Network request failed')).toBeTruthy()
     fireEvent.press(getByText('Retry'))
     expect(await findByText('Ace Movers')).toBeTruthy()
+  })
+
+  describe('Company segment', () => {
+    const shared = crew({
+      phone: '+14045550103',
+      name: 'Cy Crew',
+      displayName: 'Cy Crew',
+      inMyList: false,
+      inCompanyList: true,
+      canRemoveFromCompany: false,
+      myRating: null,
+    })
+
+    it('shows My list | Company to a driver, defaulting to My list', async () => {
+      searchCrews.mockResolvedValue({ crews: [ace], location: null, locationNotFound: false })
+      const { findByText, getByLabelText } = render(<LaborScreen />)
+      await findByText('Ace Movers')
+      expect(getByLabelText('My list')).toBeTruthy()
+      expect(getByLabelText('Company')).toBeTruthy()
+      expect(searchCompanyCrews).not.toHaveBeenCalled()
+    })
+
+    it('switches to the company list: no Export, no Add Crew for a plain driver, no stars', async () => {
+      searchCrews.mockResolvedValue({ crews: [ace], location: null, locationNotFound: false })
+      searchCompanyCrews.mockResolvedValue({
+        crews: [shared],
+        location: null,
+        locationNotFound: false,
+      })
+      const { findByText, getByLabelText, queryByText, queryByLabelText } = render(<LaborScreen />)
+      await findByText('Ace Movers')
+      expect(queryByText('Export')).toBeTruthy()
+
+      fireEvent.press(getByLabelText('Company'))
+      expect(await findByText('Cy Crew')).toBeTruthy()
+      expect(searchCompanyCrews).toHaveBeenCalledWith('')
+      expect(queryByText('Ace Movers')).toBeNull()
+      expect(queryByText('Export')).toBeNull()
+      expect(queryByText('+ Add Crew')).toBeNull()
+      // not in my list: no stars of mine on the card
+      expect(queryByLabelText('Not rated')).toBeNull()
+    })
+
+    it('lets Operations add a crew straight onto the company list', async () => {
+      access.mockReturnValue(DRIVER_OPS)
+      searchCrews.mockResolvedValue({ crews: [ace], location: null, locationNotFound: false })
+      searchCompanyCrews.mockResolvedValue({
+        crews: [shared],
+        location: null,
+        locationNotFound: false,
+      })
+      const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {})
+      const { findByText, getByLabelText, getByText, queryByText } = render(<LaborScreen />)
+      await findByText('Ace Movers')
+      fireEvent.press(getByLabelText('Company'))
+      await findByText('Cy Crew')
+      expect(queryByText('Export')).toBeNull()
+      fireEvent.press(getByText('+ Add Crew'))
+      expect(alert).not.toHaveBeenCalled()
+      expect(push).toHaveBeenCalledWith({ pathname: '/labor/new', params: { scope: 'company' } })
+    })
+
+    it('shows an Operations-only user just the company list, with no segments', async () => {
+      access.mockReturnValue(OPS_ONLY)
+      searchCompanyCrews.mockResolvedValue({
+        crews: [shared],
+        location: null,
+        locationNotFound: false,
+      })
+      const { findByText, queryByLabelText, getByText } = render(<LaborScreen />)
+      expect(await findByText('Cy Crew')).toBeTruthy()
+      expect(searchCrews).not.toHaveBeenCalled()
+      expect(queryByLabelText('My list')).toBeNull()
+      expect(getByText('+ Add Crew')).toBeTruthy()
+    })
+
+    it('says so when the company list is empty', async () => {
+      access.mockReturnValue(DRIVER)
+      searchCrews.mockResolvedValue({ crews: [ace], location: null, locationNotFound: false })
+      searchCompanyCrews.mockResolvedValue({ crews: [], location: null, locationNotFound: false })
+      const { findByText, getByLabelText } = render(<LaborScreen />)
+      await findByText('Ace Movers')
+      fireEvent.press(getByLabelText('Company'))
+      expect(await findByText('No company crews yet')).toBeTruthy()
+    })
   })
 })

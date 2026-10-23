@@ -75,6 +75,11 @@ const ActivitiesModuleLazy = lazy(() =>
     default: m.ActivitiesModule,
   })),
 )
+const LaborModuleLazy = lazy(() =>
+  import('@/features/driver-planning/routes/LaborModule').then((m) => ({
+    default: m.LaborModule,
+  })),
+)
 const TripDetailLazy = lazy(() =>
   import('@/features/driver-planning/containers/Trip').then((m) => ({ default: m.Trip })),
 )
@@ -481,6 +486,14 @@ const dpActivitiesRoute = createRoute({
   component: ActivitiesModuleLazy,
 })
 
+// Labor: the company crew list. Operations-only, like its siblings.
+const dpLaborRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'labor',
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
+  component: LaborModuleLazy,
+})
+
 const dpShipmentsRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'shipments',
@@ -521,6 +534,7 @@ const routeTree = rootRoute.addChildren([
       dpTripDetailRoute,
       dpShipmentsRoute,
       dpActivitiesRoute,
+      dpLaborRoute,
     ]),
     settingsLayout.addChildren([
       ssoConfigRoute,

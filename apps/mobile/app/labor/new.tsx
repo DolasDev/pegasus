@@ -12,6 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { DomainError, validateCrew } from '@pegasus/domain'
 import { LaborService, withCrew } from '../../src/services/laborService'
+import { laborErrorMessage } from '../../src/services/laborErrors'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 
 // ---------------------------------------------------------------------------
@@ -22,17 +23,23 @@ import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/
 // Opened from an activity's crew picker (`activityId` + `orderNum`), the new
 // crew is also assigned to that activity, and the form returns past the picker
 // straight to the shipment's Labor tab.
+//
+// With `scope=company` (Operations, from the Company tab) the crew is created
+// straight onto the company list, with an optional company display name.
 // ---------------------------------------------------------------------------
 
 export default function NewCrewScreen() {
-  const { activityId, orderNum } = useLocalSearchParams<{
+  const { activityId, orderNum, scope } = useLocalSearchParams<{
     activityId?: string
     orderNum?: string
+    scope?: string
   }>()
+  const company = scope === 'company'
   const router = useRouter()
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [companyNickname, setCompanyNickname] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,6 +56,32 @@ export default function NewCrewScreen() {
     }
     setSaving(true)
     setError(null)
+    if (company) {
+      try {
+        const { crew, outcome } = await LaborService.addToCompanyList(phone, {
+          name: name.trim(),
+          email: input.email,
+          nickname: companyNickname.trim() || null,
+        })
+        router.replace({ pathname: '/labor/[phone]', params: { phone: crew.phone } })
+        if (outcome === 'alreadyInList') {
+          Alert.alert(
+            'Already on the company list',
+            `${crew.displayName} is already one of the company’s crews.`,
+          )
+        } else if (outcome === 'linkedExisting') {
+          Alert.alert(
+            'Crew already in Pegasus',
+            `${crew.phoneDisplay} is already known as “${crew.name}”. It now shares that crew’s packers and service areas.`,
+          )
+        }
+      } catch (err) {
+        setError(laborErrorMessage(err, 'Couldn’t add the crew.'))
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
     try {
       const { crew, outcome } = await LaborService.addCrew(input)
       if (activityId && orderNum) {
@@ -78,7 +111,7 @@ export default function NewCrewScreen() {
         Alert.alert('Already in your list', `${crew.displayName} is already one of your crews.`)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Couldn’t add the crew.')
+      setError(laborErrorMessage(err, 'Couldn’t add the crew.'))
     } finally {
       setSaving(false)
     }
@@ -99,6 +132,14 @@ export default function NewCrewScreen() {
         keyboardType="email-address"
         autoCapitalize="none"
       />
+      {company ? (
+        <Field
+          label="Company nickname (optional)"
+          value={companyNickname}
+          onChangeText={setCompanyNickname}
+          autoCapitalize="words"
+        />
+      ) : null}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
           {error}
@@ -113,7 +154,7 @@ export default function NewCrewScreen() {
         {saving ? (
           <ActivityIndicator color={colors.textLight} />
         ) : (
-          <Text style={styles.saveText}>Add crew</Text>
+          <Text style={styles.saveText}>{company ? 'Add to company list' : 'Add crew'}</Text>
         )}
       </TouchableOpacity>
     </ScrollView>

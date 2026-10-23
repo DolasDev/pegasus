@@ -14,6 +14,8 @@ jest.mock('../../src/services/laborService', () => {
     ...actual,
     LaborService: {
       searchCrews: jest.fn(),
+      searchCompanyCrews: jest.fn(),
+      addToCompanyList: jest.fn(),
       getOrderActivities: jest.fn(),
       updateActivityLabor: jest.fn(),
       addCrew: jest.fn(),
@@ -27,11 +29,12 @@ const router = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), dismiss: 
 const A = '+14045550101'
 const B = '+14045550102'
 
-const crew = (phone: string, name: string): LaborCrew => ({
+const crew = (phone: string, name: string, over: Partial<LaborCrew> = {}): LaborCrew => ({
   phone,
   phoneDisplay: phone,
   name,
   nickname: null,
+  companyNickname: null,
   displayName: name,
   email: null,
   serviceAreas: [],
@@ -39,6 +42,10 @@ const crew = (phone: string, name: string): LaborCrew => ({
   myRating: null,
   averageRating: null,
   addedAt: '2026-10-20T00:00:00.000Z',
+  inMyList: true,
+  inCompanyList: false,
+  canRemoveFromCompany: false,
+  ...over,
 })
 
 /** Runs the read-modify-write callback the screen passed, on `start`. */
@@ -52,6 +59,7 @@ beforeEach(() => {
   ;(useRouter as jest.Mock).mockReturnValue(router)
   ;(useLocalSearchParams as jest.Mock).mockReturnValue({ activityId: '11', orderNum: '100' })
   svc.updateActivityLabor.mockResolvedValue({} as never)
+  svc.searchCompanyCrews.mockResolvedValue({ crews: [], location: null, locationNotFound: false })
 })
 
 describe('AssignCrewScreen', () => {
@@ -111,6 +119,44 @@ describe('AssignCrewScreen', () => {
     expect(svc.updateActivityLabor).not.toHaveBeenCalled()
   })
 
+  describe('with a company list', () => {
+    const C = '+14045550103'
+    beforeEach(() => {
+      svc.searchCompanyCrews.mockResolvedValue({
+        crews: [
+          // also in my book: appears once, under mine
+          crew(B, 'Bee', { inCompanyList: true }),
+          crew(C, 'Cy (company)', { inMyList: false, inCompanyList: true }),
+        ],
+        location: null,
+        locationNotFound: false,
+      })
+    })
+
+    it('lists company crews not in my book in a second section', async () => {
+      const { findByText, getByText, getAllByText } = render(<AssignCrewScreen />)
+      expect(await findByText('Cy (company)')).toBeTruthy()
+      expect(getByText('My crews')).toBeTruthy()
+      expect(getByText('Company crews')).toBeTruthy()
+      expect(getAllByText('Bee')).toHaveLength(1)
+      expect(svc.searchCompanyCrews).toHaveBeenCalledWith('')
+    })
+
+    it('assigns a company crew', async () => {
+      const { findByText } = render(<AssignCrewScreen />)
+      fireEvent.press(await findByText('Cy (company)'))
+      await waitFor(() => expect(router.back).toHaveBeenCalled())
+      expect(changeApplied([])).toEqual([{ phone: C, packerIds: [] }])
+    })
+
+    it('still lists my crews when the company list cannot load', async () => {
+      svc.searchCompanyCrews.mockRejectedValue(new Error('down'))
+      const { findByText, queryByText } = render(<AssignCrewScreen />)
+      expect(await findByText('Bee')).toBeTruthy()
+      expect(queryByText('Company crews')).toBeNull()
+    })
+  })
+
   it('opens New crew in activity mode, and the contacts import', async () => {
     const { findByText, getByText } = render(<AssignCrewScreen />)
     fireEvent.press(await findByText('New crew'))
@@ -159,6 +205,46 @@ describe('NewCrewScreen from an activity', () => {
       }),
     )
     expect(svc.updateActivityLabor).not.toHaveBeenCalled()
+  })
+})
+
+describe('NewCrewScreen on the company list', () => {
+  const fill = (utils: ReturnType<typeof render>) => {
+    fireEvent.changeText(utils.getByLabelText('Phone *'), '404-555-0102')
+    fireEvent.changeText(utils.getByLabelText('Crew name *'), 'Bee')
+    fireEvent.changeText(utils.getByLabelText('Company nickname (optional)'), 'Bee GA')
+    fireEvent.press(utils.getByText('Add to company list'))
+  }
+
+  beforeEach(() => {
+    ;(useLocalSearchParams as jest.Mock).mockReturnValue({ scope: 'company' })
+  })
+
+  it('creates the crew on the company list and opens it', async () => {
+    svc.addToCompanyList.mockResolvedValue({ crew: { phone: B } as never, outcome: 'added' })
+    fill(render(<NewCrewScreen />))
+    await waitFor(() =>
+      expect(router.replace).toHaveBeenCalledWith({
+        pathname: '/labor/[phone]',
+        params: { phone: B },
+      }),
+    )
+    expect(svc.addToCompanyList).toHaveBeenCalledWith('404-555-0102', {
+      name: 'Bee',
+      email: null,
+      nickname: 'Bee GA',
+    })
+    expect(svc.addCrew).not.toHaveBeenCalled()
+  })
+
+  it('shows the rate limit in plain words', async () => {
+    svc.addToCompanyList.mockRejectedValue(
+      Object.assign(new Error('Too many'), { code: 'LINK_RATE_LIMITED' }),
+    )
+    const utils = render(<NewCrewScreen />)
+    fill(utils)
+    expect(await utils.findByText(/most crews allowed for today/)).toBeTruthy()
+    expect(router.replace).not.toHaveBeenCalled()
   })
 })
 

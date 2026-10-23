@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react'
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
@@ -17,8 +17,9 @@ import type { LaborCrew } from '../../src/types/labor'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 
 // ---------------------------------------------------------------------------
-// Pick a crew from my list for one activity (pushed from the shipment's Labor
-// tab). Picking assigns it and goes back. "New crew" adds one by hand and
+// Pick a crew from my list, or from the company's list, for one activity (pushed from the shipment's Labor
+// tab). Company crews that aren't in my book come in a second section; a crew
+// in both lists appears once, under mine. Picking assigns it and goes back. "New crew" adds one by hand and
 // assigns it on the way back; "From contacts" imports into my list, and the
 // imported crews appear here on return to be picked.
 // ---------------------------------------------------------------------------
@@ -29,7 +30,8 @@ export default function AssignCrewScreen() {
   const id = Number(activityId)
   const [query, setQuery] = useState('')
   const q = useDebouncedValue(query, 300)
-  const [crews, setCrews] = useState<LaborCrew[] | null>(null)
+  const [mine, setMine] = useState<LaborCrew[] | null>(null)
+  const [company, setCompany] = useState<LaborCrew[]>([])
   const [assigned, setAssigned] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -38,10 +40,16 @@ export default function AssignCrewScreen() {
   useFocusEffect(
     useCallback(() => {
       const seq = ++requestSeq.current
-      Promise.all([LaborService.searchCrews(q), LaborService.getOrderActivities(orderNum)])
-        .then(([res, activities]) => {
+      Promise.all([
+        LaborService.searchCrews(q),
+        LaborService.getOrderActivities(orderNum),
+        // The company list is a bonus: if it can't load, my own crews still pick.
+        LaborService.searchCompanyCrews(q).catch(() => null),
+      ])
+        .then(([res, activities, companyRes]) => {
           if (seq !== requestSeq.current) return
-          setCrews(res.crews)
+          setMine(res.crews)
+          setCompany((companyRes?.crews ?? []).filter((c) => !c.inMyList))
           const activity = activities.find((a) => a.id === id)
           setAssigned(new Set(activity?.crews.map((c) => c.phone) ?? []))
           setError(null)
@@ -70,6 +78,12 @@ export default function AssignCrewScreen() {
     }
   }
 
+  // Two sections only when there is a company crew to tell apart from mine.
+  const sections = [
+    { title: company.length ? 'My crews' : '', data: mine ?? [] },
+    ...(company.length ? [{ title: 'Company crews', data: company }] : []),
+  ].filter((s) => s.data.length > 0)
+
   const params = { activityId: String(id), orderNum: String(orderNum) }
 
   return (
@@ -78,20 +92,23 @@ export default function AssignCrewScreen() {
         <Action label="New crew" onPress={() => router.push({ pathname: '/labor/new', params })} />
         <Action label="From contacts" onPress={() => router.push('/labor/import')} />
       </View>
-      <SearchBar value={query} onChangeText={setQuery} placeholder="Search my crews" />
+      <SearchBar value={query} onChangeText={setQuery} placeholder="Search crews" />
       {saving ? <ActivityIndicator style={styles.saving} color={colors.primary} /> : null}
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
           {error}
         </Text>
-      ) : !crews ? (
+      ) : !mine ? (
         <ActivityIndicator style={styles.saving} size="large" color={colors.primary} />
       ) : (
-        <FlatList
-          data={crews}
+        <SectionList
+          sections={sections}
           keyExtractor={(c) => c.phone}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.list}
+          renderSectionHeader={({ section }) =>
+            section.title ? <Text style={styles.sectionHeader}>{section.title}</Text> : null
+          }
           ListEmptyComponent={
             <Text style={styles.empty}>
               {q.trim() ? 'No crews match.' : 'Your list is empty — add a crew above.'}
@@ -139,6 +156,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  sectionHeader: {
+    paddingVertical: spacing.xs,
+    fontSize: fontSize.small,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    backgroundColor: colors.backgroundLight,
   },
   assignedTag: {
     fontSize: fontSize.small,

@@ -5,6 +5,7 @@ import type {
   LaborActivityCrewInput,
   LaborAddOutcome,
   LaborCrew,
+  LaborCompanyAddOutcome,
   LaborCrewDetail,
   LaborImportResult,
   LaborPacker,
@@ -15,14 +16,16 @@ import type {
 } from '../types/labor'
 
 // ---------------------------------------------------------------------------
-// Labor service — the driver's private book of cash-labor crews, over
-// /api/v1/labor. A crew is addressed by its phone number; the API accepts any
-// spelling of it, but the app always sends the E.164 form it was given.
+// Labor service — the driver's private book of cash-labor crews and the
+// company's shared list, over /api/v1/labor. A crew is addressed by its phone
+// number; the API accepts any spelling of it, but the app always sends the
+// E.164 form it was given.
 // ---------------------------------------------------------------------------
 
 const BASE = '/api/v1/labor'
 
 const crewPath = (phone: string) => `${BASE}/crews/${encodeURIComponent(phone)}`
+const companyCrewPath = (phone: string) => `${BASE}/company/crews/${encodeURIComponent(phone)}`
 
 const json = (method: string, body: unknown): RequestInit => ({
   method,
@@ -43,23 +46,65 @@ async function fetchWithMeta<T, M>(
   return res as unknown as { data: T; meta: M }
 }
 
+async function searchAt(base: string, q: string): Promise<LaborSearchResult> {
+  const query = q.trim()
+  const path = query ? `${base}?q=${encodeURIComponent(query)}` : base
+  const res = await fetchWithMeta<
+    LaborCrew[],
+    { location: LaborSearchLocation | null; locationNotFound?: boolean }
+  >(path)
+  return {
+    crews: res.data ?? [],
+    location: res.meta?.location ?? null,
+    locationNotFound: res.meta?.locationNotFound === true,
+  }
+}
+
 export class LaborService {
   /**
    * My crews. Empty `q`: A–Z. A ZIP, postal code or "City, ST": nearest first.
    * A state/province: crews serving it. Other text: name/nickname/phone match.
    */
   static async searchCrews(q: string): Promise<LaborSearchResult> {
-    const query = q.trim()
-    const path = query ? `${BASE}/crews?q=${encodeURIComponent(query)}` : `${BASE}/crews`
-    const res = await fetchWithMeta<
-      LaborCrew[],
-      { location: LaborSearchLocation | null; locationNotFound?: boolean }
-    >(path)
-    return {
-      crews: res.data ?? [],
-      location: res.meta?.location ?? null,
-      locationNotFound: res.meta?.locationNotFound === true,
-    }
+    return searchAt(`${BASE}/crews`, q)
+  }
+
+  /** The company's shared list; same search semantics as {@link searchCrews}. */
+  static async searchCompanyCrews(q: string): Promise<LaborSearchResult> {
+    return searchAt(`${BASE}/company/crews`, q)
+  }
+
+  /**
+   * Puts a crew on the company list. From a crew in my own list send just the
+   * phone; Operations may also create a brand-new crew (`name` required then).
+   * A non-Operations caller whose list lacks the crew gets 422.
+   */
+  static async addToCompanyList(
+    phone: string,
+    extras: { name?: string; email?: string | null; nickname?: string | null } = {},
+  ): Promise<{ crew: LaborCrewDetail; outcome: LaborCompanyAddOutcome }> {
+    const res = await fetchWithMeta<LaborCrewDetail, { outcome: LaborCompanyAddOutcome }>(
+      `${BASE}/company/crews`,
+      json('POST', { phone, ...extras }),
+    )
+    return { crew: res.data, outcome: res.meta.outcome }
+  }
+
+  /** `nickname` is the company display name; `name` and `email` are shared with everyone. */
+  static async updateCompanyCrew(
+    phone: string,
+    patch: { name?: string; email?: string | null; nickname?: string | null },
+  ): Promise<LaborCrewDetail> {
+    return getApiClient().fetch<LaborCrewDetail>(companyCrewPath(phone), json('PATCH', patch))
+  }
+
+  /** Operations only: takes the crew off the company list (the crew record stays). */
+  static async removeFromCompanyList(phone: string): Promise<void> {
+    await getApiClient().fetch<null>(companyCrewPath(phone), { method: 'DELETE' })
+  }
+
+  static async addToMyList(crew: { phone: string; name: string }): Promise<LaborCrewDetail> {
+    return (await LaborService.addCrew({ phone: crew.phone, name: crew.name })).crew
   }
 
   static async addCrew(input: {
