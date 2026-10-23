@@ -2974,6 +2974,44 @@ the local `audit-ci` run before enqueuing is.
 **version-update** run failed. If only `for <pkg>` security runs are red, the cause is the advisory,
 not the service — triage the alert (fix, or dismiss with a reason).
 
+### Addendum 2026-10-23: a TRANSITIVE-only vulnerable package can never be fixed by these jobs
+
+The entry above says a red security run means "triage the alert". This is _which_ triage, and why it
+is always manual here. Dependabot's security job definition on this repo reads
+`"allowed-updates":[{"dependency-type":"direct","update-type":"all"}]` with
+`"update-subdependencies":false` — and `.github/dependabot.yml` has **no `allow:` key at all**, so
+that is GitHub's default for security updates, not a local choice. Consequence: if the vulnerable
+copy is not reachable from a _direct_ manifest edge, the job cannot fix it, and it fails in one of
+two shapes seen the same day on #883:
+
+- **`security_update_not_possible`** — the package is exact-pinned by an ancestor. `@vitest/mocker`
+  was pinned by `vitest@4.1.11`, which was itself held by `@vitest/coverage-v8@4.1.11`'s **exact
+  peer** `vitest@4.1.11`. A two-level chain; neither link can move alone. The log's
+  `conflicting-dependencies` pointed `@vitest/mocker` at **itself** with `top_level_ancestors: []`,
+  so the log names the symptom and not the cause — do not expect it to name the ancestor.
+- **`NoChangeError: No files were updated!`** — there is no direct edge at all. The vulnerable `hono`
+  was the **root** copy, which existed only to satisfy the hoisted `@hono/*` peers; the one direct
+  edge (`apps/api`, `^4.13.13`) was already patched in its own nested copy. The job found nothing to
+  edit and crashed.
+
+**Two things that follow, both of which cost time on 2026-10-22:**
+
+1. **An override that PERMITS the patched version cannot be the blocker.** Check that before
+   suspecting your own `overrides` block your own security fixes — it is one `semver.satisfies`
+   call. `hono`'s `>=4.13.3 <5` already allowed the patched 4.13.11+, and `vite`'s `>=8.3.3 <9`
+   already satisfied `@vitest/mocker@4.1.12`'s peer `^6||^7||^8`. Both were exonerated by arithmetic
+   before any install ran. A whole re-diagnosis was built on the opposite assumption and was wrong.
+2. **A range that permits a fix is not a floor that pulls it.** `vitest` was declared `^4.1.11` in
+   14 manifests, which already allows 4.1.12, which is exactly why `npm update vitest` reported
+   "up to date" and changed nothing. Raising the declared floors is what moves the tree _and_ what
+   makes it durable against the next `npm install`.
+
+**And nothing in CI will escalate any of this.** The `audit-ci` gate is `"high": true`, all three npm
+alerts were **medium**, and the fourth was **pip** (`certifi`), which the npm gate does not see. The
+daily audit stayed green while four alerts sat open. They are visible only via
+`gh api repos/DolasDev/pegasus/dependabot/alerts?state=open` — worth running by hand periodically,
+because no job does it for you.
+
 ## NW's own database already runs a Weichert integration over the fields `update_order` writes
 
 `update_order` (`PATCH /api/v1/pegii/orders/:id`, SDK 0.49.0) writes `Survey.SerivceStatus` →
