@@ -1,6 +1,6 @@
 # CI blockers + merge-queue maintenance left after the security backlog
 
-> **Resume point — state re-checked 2026-10-19 against `main` @ `d8634eeb`.** Read **"Resume here"**
+> **Resume point — checkpointed 2026-10-22 against `main` @ `7a7c5dde`.** Read **"Resume here"**
 > immediately below, then "State of play", then pick from "Live work". The body was last fully
 > re-verified 2026-10-06 (late) against `c60c00db`; since then: 10-07 closed the `@playwright/mcp`
 > decision (#819), 10-09 closed the `nodeModules` hardening (#822) and wired the merge-queue App
@@ -9,9 +9,17 @@
 > (#849). **The 10-19 re-check changed the picture: the stage-2 log line is DISCHARGED, but `main`
 > carries a failing check and two Dependabot PRs are stuck — one dead for four days. There IS
 > agent-doable work now; see "Resume here".** All three were worked the same day: #856 unstuck,
-> #861's lockfile regenerated, and #843's assertion tightened to `exit 1`. What is left is the owner's
-> App setup plus two standing threads.
+> #861's lockfile regenerated, and #843's assertion tightened to `exit 1`.
 >
+> ⚠️ **2026-10-23 SETTLED all three npm alerts and the hypothesis the 10-22 checkpoint proposed was
+> WRONG.** The failing runs are **security** jobs (the 10-22 half that held up), but our `overrides`
+> were **not** blocking them — that was never verified and is now falsified by the service logs
+> themselves. The real causes are two **transitive pins**, neither involving an override:
+> `@vitest/coverage-v8` exact-peers `vitest`, which exact-pins the vulnerable `@vitest/mocker`; and
+> the vulnerable `hono` was the **root** copy that exists only for hoisted `@hono/*` peers, so
+> Dependabot's `direct`-only security job found no edge to change and died with `NoChangeError`.
+> Fixed in one PR, which also cleared a **brand-new red audit gate on `main`** (dompurify, issue
+> #882). See the section below.
 > ⚠️ **A diagnosis built on this file's own documented trap reached the merge queue on 2026-10-13
 > before being caught.** `autoMergeRequest: null` was read as "policy never approved this PR" when it
 > is null _because the PR was queued_. The PR's commit message and body had to be rewritten and
@@ -38,58 +46,189 @@
 
 ## Resume here
 
-**Where:** primary checkout `/home/steve/repos/pegasus`, branch `main`, last commit
-`454927fa chore(deps): bump mcp in /packages/workflows-sdk-python (#856)`. No worktree is needed to
-read this.
+**Where:** worktree `/home/steve/repos/pegasus-transitive-security-pins`, branch
+`fix/transitive-security-pins`, off `main` @ `7a7c5dde`. The primary checkout stays parked on `main`.
 
-**Status (2026-10-19, after working the list):** everything this file owned is merged — #819, #822,
-#826, #840, #843, #849, #864 — and **all three items the 10-19 re-check raised are now done**. The
-stage-2 log-line verification is DISCHARGED (below). What is left is one owner-only item and two
-standing threads.
+**Status (worked 2026-10-23):** everything this file owned is merged — #819, #822, #826, #840, #843,
+#849, #864, #865 — and the one live thread, the failing Dependabot service runs, is **diagnosed and
+fixed** below. `main` was green at `7a7c5dde` on checks but its **daily audit went red at 12:42Z on
+10-23** (issue #882, dompurify); this PR clears that too.
 
-**[x] 1. #856 unstuck — MERGED 2026-10-19 20:25Z** (`454927fa`), after four days dead. Its lifecycle
-is kept here because the _way_ it died is the finding, not the fix:
+**All three npm Dependabot alerts are fixed here, and the 10-22 hypothesis they were blamed on is
+falsified.** What is left on this file after this PR is **owner-only** (the GitHub App) plus two
+parked threads.
 
-| when           | what                                                                               |
-| -------------- | ---------------------------------------------------------------------------------- |
-| 10-15 20:59:17 | policy gate: `PR #856 autoMergeRequest=true isInMergeQueue=false`                  |
-| 10-15 21:04:24 | `enqueue`: "CLEAN but not queued — re-asserting auto-merge", `isInMergeQueue=true` |
-| —              | **no `merge_group` run, ever**                                                     |
-| +60 min        | entry dropped at `check_response_timeout_minutes`                                  |
-| 10-19 20:06    | still `autoMergeRequest=null`, no entry, `CLEAN` — nothing had re-asserted it      |
+### [x] The failing Dependabot runs — DIAGNOSED AND FIXED 2026-10-23
 
-**The stall does not merely DELAY a PR — it CONSUMES the auto-merge mark and leaves the PR
-permanently stuck.** Auto-merge converts into the queue entry; when the entry is dropped the mark
-goes with it, and `enqueue` only re-fires on a CI completion, which needs a branch change. A stalled
-Dependabot PR is not "slow", it is **finished**, silently, with every check green. That is the
-reason Dependabot PRs quietly never land here, and it is the argument for the App setup.
+**All three npm alerts are closed by one PR, and the 10-22 hypothesis was wrong.** The 10-22
+checkpoint proposed that "the repo's own `overrides` are blocking its own security fixes
+(`vite` for two `@vitest/mocker` alerts; `hono` for its own)". It labelled that unverified, which
+was right: **it is false.** No override blocked anything. Both real causes are transitive pins,
+and the evidence was in the service-run logs the whole time.
 
-**[x] 2. #861's lockfile regenerated — FOURTH reproduction** after #694, #799 and #831. All four
-heavy jobs were red from one cause (**24** `npm error Missing: … from lock file`); no code was
-broken. Regenerated with the plain `npm` on Node 24 (11.13.0), **not** `npm@10.8.2`. Diff was
-683/-1018 — a net _shrink_ of 335 lines, which is dedupe not loss: the package-name sets before and
-after are identical (**zero** gone, zero new), and that is the check worth repeating, because the
-gutting trap looks like a 30,000-line deletion with a cheerful exit 0. Verified past the install fix
-because a 29-package group is what trips #762's canary: `npm ci` 0, `turbo typecheck lint test` 41/41
-with **zero cache**, the #783 root-resolvable guard green, `audit-ci` green, and a real `cdk synth`
-with all four bundled packages at the expected versions.
+**What actually failed, read from the job logs (not inferred):**
 
-**[x] 3. #843's assertion tightened to `exit 1`** — this PR. Its own precondition was met twice
-(`autoMergeRequest=true isInMergeQueue=false` on #856 and #861 = a dormant request accepted under the
-queue), so "neither signal" is a real failure rather than an unknown shape. **It retries three times
-over ~20s before failing**, because the read happens immediately after the write and GitHub's PR
-state is eventually consistent — both observed runs returned `true` on the first read, but "usually
-fast" is not a basis for a hard failure that would block every Dependabot PR.
+| job                  | error                                   | real cause                                                                                                                                                                                                                   |
+| -------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `for @vitest/mocker` | `security_update_not_possible`          | `@vitest/coverage-v8@4.1.11` exact-**peers** `vitest@4.1.11`, and `vitest@4.1.11` exact-pins `@vitest/mocker@4.1.11`. A two-level pin chain.                                                                                 |
+| `for hono`           | `NoChangeError: No files were updated!` | The vulnerable copy was the **root** `hono@4.13.7`, which exists only to satisfy the hoisted `@hono/*` peers. There is no direct root edge, and the job is `allowed-updates: direct`, so it had nothing to edit and crashed. |
 
-**Next action — nothing agent-doable is queued.** What remains:
+**How the override story was killed.** Three independent checks, each cheap:
+
+- `@vitest/mocker@4.1.12` declares `peerDependencies.vite = "^6.0.0 || ^7.0.0 || ^8.0.0"`. The
+  installed `vite` is **8.3.4**, which satisfies it. The override `>=8.3.3 <9` was never in the way.
+- The `@vitest/mocker` job log names **no peer conflict and never mentions vite**. Its
+  `conflicting-dependencies` entry is `@vitest/mocker` pointing at _itself_, with
+  `top_level_ancestors: []` — Dependabot simply never walked up the chain.
+- `npm update hono --package-lock-only` moved root `hono` 4.13.7 → **4.13.13 with the override in
+  place**, in a 16-line diff. An override that permits the patched version cannot be the blocker.
+
+**The `vite` override's history, which step 2 of the old next action asked for.** `git log -S` found
+exactly one commit: **#872 (`838d9811`, 2026-10-21)**. It is **not** the #779 `.bin`/`tsx`-peer
+story this file guessed at — that guess predated the override by two years of repo time. #872 added
+it as a **security floor** for GHSA-587h-7wmj-h5pm (high, launch-editor bypass, affects
+`>=8.3.0 <=8.3.2`): the root vite that vitest resolved was 8.3.0 while the web apps already had
+8.3.3, and the audit gate was red repo-wide. So the entry **is** load-bearing — just for a
+different reason than predicted, and the old next action's step 4 caution ("do not delete a
+security-motivated override to make a bump pass") was the correct instinct aimed at the wrong target.
+**It now has the `//overrides` note it was missing**, which is what made this re-derivable at all.
+
+**What the fix is:**
+
+- **`vitest` 4.1.11 → 4.1.12 and `@vitest/coverage-v8` → 4.1.12, together.** Moving either alone is
+  impossible: each exact-peers the other. Both alerts' package, `@vitest/mocker`, follows to 4.1.12.
+- **Declared floors raised in all 14 manifests** (`vitest` `^4.1.11` → `^4.1.12`;
+  `@vitest/coverage-v8` `^4.0.0` → `^4.1.12`). This is the #872 lesson applied: the old ranges
+  _already permitted_ 4.1.12, which is exactly why `npm update vitest` reported "up to date" and
+  changed nothing. **A range that permits a fix is not a floor that pulls it.** Without the raise
+  there is nothing durable and the next `npm install` is free to resolve back down.
+- **`hono`'s override floor raised `>=4.13.3` → `>=4.13.11`** for GHSA-5r4p-p66f-jhc7. This
+  _tightens_; it does not relax. It also matches that note's own stated design ("kept as a RANGE,
+  not a pin, so routine 4.x bumps do not re-block"). Root `hono` goes to 4.13.13 and the nested
+  `apps/api` duplicate **collapses into it** — one `hono` line, which is the override's whole purpose.
+
+**A NEW CI blocker found while verifying, and fixed in the same PR.** `scripts/audit-ci.sh` failed
+on a package this change does not touch: **`dompurify` 3.4.16**, on GHSA-cg2g-xh64-v4q7 (**critical**)
+and GHSA-mrv2-3pqr-j5jr (high), **both published 2026-10-22 16:25Z**, both fixed in 3.4.17. `main`'s
+daily audit went red at 2026-10-23 12:42Z and auto-filed **issue #882** about an hour before this was
+found. Not caused by this PR — `dompurify` is 3.4.16 on both sides of the diff — so this is the
+documented live-advisory-feed flip, the same shape as `shell-quote` and `brace-expansion`. Chain is
+`apps/tenant-web > mermaid@11.17.2 > dompurify`, mermaid's range is `^3.3.3`, single root-hoisted
+copy, so an override reaches it: added `"dompurify": ">=3.4.17"` with a note. **CLAUDE.md's
+"fix the pipeline first" rule is why this is in this PR rather than a follow-up.**
+
+> ⚠️ **Two `//overrides` notes give OPPOSITE lockfile recipes, and `hono`'s is the stale one.**
+> `hono`'s note says to delete the `*/node_modules/hono` keys from `package-lock.json` before
+> `npm install`. `brace-expansion`'s note carries a **CORRECTION** saying _not_ to — deleting a lock
+> key **prunes** the package instead of re-resolving it. The correction is right and is the recipe
+> that worked here for `dompurify`: **`npm update <pkg> --package-lock-only`, then `npm install`,
+> then confirm with `npm ls <pkg>`, then a real `npm ci`.** Raising the floor and running
+> `npm install --package-lock-only` alone left `dompurify` at 3.4.16 — npm had no reason to move a
+> version its tree already satisfied. `hono`'s note should be corrected to point at
+> `brace-expansion`'s; it is only harmless here because `hono`'s single copy happened to re-resolve.
+
+**The standing finding worth keeping.** Dependabot's **security** jobs here run
+`allowed-updates: [{dependency-type: direct}]` with `update-subdependencies: false`, and
+`.github/dependabot.yml` has **no `allow:` key at all** — so that is the platform default, not our
+configuration. Consequence: **a vulnerable package that is reachable only transitively will always
+fail these jobs**, either as `security_update_not_possible` (pinned by an ancestor) or as
+`NoChangeError` (no direct edge at all). Both of today's failures are that one shape. Combined with
+the gate being `"high": true` while all three alerts were **medium**, nothing in CI would ever have
+escalated them — they were visible only via
+`gh api repos/DolasDev/pegasus/dependabot/alerts?state=open`. **Treat a red Dependabot service run
+on a transitive package as "ours to fix by hand", not as a Dependabot outage.**
+
+**Verification run (the full #861 floor, because this moves a runtime dep that the API Lambda
+bundles):** `npm ci` 0 · `turbo typecheck lint test --force` **41/41 with zero cache** · `audit-ci`
+**PASS** (it was _failing_ before the dompurify floor) · real `cdk synth --all` 0 with the API bundle
+built and `hono` inlined · lockfile integrity checked the #861 way — **2324 → 2323 keys, zero
+additions, and the single removal is `apps/api/node_modules/hono`**, the duplicate the override is
+there to collapse. 16 version changes, all accounted for: the `@vitest/*` family + its transitive
+deps, `dompurify`, `hono`. **`vite` is untouched at 8.3.4** — the clearest statement that the
+override hypothesis was a dead end.
+
+**Next action — nothing on this thread.** All four alerts are addressed: three npm by this PR, and
+`certifi` by **#869**, which is **OPEN, CLEAN, MERGEABLE, every check green, and
+`autoMergeRequest=false` since 2026-10-20** — i.e. the exact "auto-merge consumed, queue entry
+dropped" state item 1 below documents, now in its **fourteenth** reproduction and third day dead. It
+needs a human `gh pr merge 869 --auto` nudge; that nudge is operationally right and **proves nothing
+about the App** (see below). The remaining work on this file is owner-only.
+
+**Also still open, unchanged:**
 
 - **OWNER-ONLY and the only thing that unblocks the last verification:** configure the GitHub App.
-  Confirmed still unset on 2026-10-19 (no `DEPENDABOT_AUTOMERGE_APP_CLIENT_ID` variable, no
-  `DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY` secret — checked, not assumed). Twelve reproductions.
-- **`main`'s red `Dependabot` run is a THIRD kind, not the benign one this file documents** — see the
-  box below. Unfixed, non-blocking, and worth a look rather than a shrug.
+  **Re-confirmed still unset 2026-10-22** — zero `DEPENDABOT_AUTOMERGE_APP_CLIENT_ID` variables and
+  zero `DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY` secrets. **THIRTEEN reproductions:** the thirteenth was
+  #861 on 10-19, which stalled 3+ min with no group run and produced one 17s after a human nudge —
+  and it was blocking #865, this stream's own PR, at the head of the queue. An agent cannot do this;
+  **ask rather than work around it.**
 - **`@dependabot rebase` appears inoperable here**, cause unidentified, obvious suspect ruled out.
-- **The `check-overrides.mjs` question** — the one open-ended thread, and deliberately not shovel-ready.
+- **The `check-overrides.mjs` question** — **back to purely open-ended.** The 10-22 checkpoint
+  claimed this thread had gained "a concrete first case (`vite`, and probably `hono`)". **It had
+  not**: neither override blocked anything (see the section above), so that case evaporated. Two of
+  this repo's overrides were _raised_ on 10-23 and none was removed. Still **not** a licence to
+  delete entries, and now with no worked example pointing at one.
+- **#869** (`certifi`, the one **critical** alert, pip) is **OPEN, CLEAN, MERGEABLE, all checks
+  green, `autoMergeRequest=false`** as of 2026-10-23 — three days dead in the documented
+  stalled-queue state. **Fourteenth reproduction.** Needs a human `gh pr merge 869 --auto`; that is
+  a merge action, so ask rather than assume. It is the only one of the four alerts with a PR.
+
+**Uncommitted work:** none. The 10-22 checkpoint had been left dirty in the **primary** checkout;
+on 10-23 it was carried into this worktree with `git diff > …/plan-1022.patch` + `git apply`, amended
+with the real diagnosis, and lands with the code in one PR. The primary's copy is discarded with
+`git checkout -- plans/todo/ci-blockers-after-security-backlog.md` **once this PR carries the
+content** — note the `--`, without which a session hook rejects the command as a branch switch.
+
+**In flight (2026-10-23):** this task owns the worktree `transitive-security-pins` (branch
+`fix/transitive-security-pins`, Postgres 5490) and no background watcher. Other streams own **#881**
+(`activity-labor`) and **#880** (`3b2-staging-acceptance`), plus the worktrees `a9-identity`,
+`activity-labor`, `deps-advisory-flip` (parked on `chore/parked-dr`), `move-chat-app`,
+`pulse-nw-enablement`, `pulse-tasks`, `ringcentral-forward-skip-unconfigured` — none are mine; do
+not touch them. **#869** (certifi) and **#145** (SES, draft/HOLD) are open and are not this stream's
+to merge. Re-check with `gh pr list --state open` and `git worktree list`.
+
+**Branch hygiene done 2026-10-23, and the safety check that matters.** Eight stale local branches
+were deleted. "ahead of main" is **not** a staleness signal here — every squash-merged branch looks
+ahead, so all ten candidates reported `ahead=1` or `ahead=2` and six of them were fully merged. The
+check that actually decides it is **`gh pr view <N> --json headRefOid` against the local tip**: equal
+means the merged PR carried exactly this commit and `git branch -D` is safe; extra commits mean
+unmerged work. Six matched that way (#826, #861, #831, #853, #851, #870), `pr505` matched merged
+**#505** despite the local branch having a hand-made name, and `chore/archive-feedback-requests-plan`
+(PR **#536**, closed _unmerged_) was cleared differently: its three-dot diff was a **pure rename** of
+`plans/todo/feedback-requests.md` into `plans/completed/`, and `main` already has the file archived,
+so the branch's only content had landed by another route. Its remote was deleted too — the only
+remote branch removed; every other remote has a live PR (#869, #145, #880, #881).
+
+**Recovery SHAs, in case any of those eight was a mistake** (`git branch <name> <sha>` restores it;
+the objects stay reachable in the reflog for 90 days):
+
+```
+c1147029  chore/merge-queue-app-token                                (#826)
+fde7b935  dependabot/npm_and_yarn/main/minor-and-patch-7036216bc7    (#861)
+492a760c  dependabot/npm_and_yarn/main/minor-and-patch-b9f5c92442    (#831)
+ed940cfe  docs/document-read-scoping-todo                            (#853)
+e0bd6543  docs/nw-cloud-auth-rollout                                 (#851)
+86ee2535  docs/pulse-phase7-done                                     (#870)
+01b09676  pr505                                                      (#505)
+033d653b  chore/archive-feedback-requests-plan                       (#536, closed unmerged; also deleted on origin)
+```
+
+After the sweep, every local branch is either a live worktree's or has an open PR, and the primary
+checkout is parked clean on `main`.
+
+**Verification still owed:**
+
+- **~~The hypothesis in "Next action" is UNVERIFIED~~ — now TESTED, and it FAILED.** It was run
+  against on 10-23 and the override-blocking story is false; the section above has the three checks
+  that killed it. Recorded rather than deleted because the shape is this file's recurring failure
+  mode: a plausible mechanism, named as "the leading candidate", written up with a table and a
+  five-step plan **before anything was executed against it**. The log lines that refuted it were
+  already fetchable when the hypothesis was written.
+- **The merge-queue stage-2 proof** — a `merge_group` run from `enqueue`'s OWN enqueue — remains
+  owner-gated on the App. A human `gh pr merge --auto` triggers one regardless, so nudging a stalled
+  PR is operationally right and evidentially worthless.
+- Nothing is owed from the 10-19 work: #856/#861/#865 all merged with CI green and `main`'s Deploy
+  green through prod.
 
 **[x] STAGE-2 VERIFICATION — DISCHARGED 2026-10-19.** #843's both-signals line has executed twice,
 on the two Dependabot PRs opened after it merged:
@@ -114,8 +253,10 @@ Three things that settles, beyond "the log line works":
 twelve**. A human `gh pr merge --auto` triggers one regardless, so nudging #856 (item 1) unblocks it
 but proves nothing about the App. That proof requires the App to exist.
 
-**`main` has a FAILING check, and it is NOT the documented benign case — read this before
-diagnosing:**
+**SUPERSEDED 2026-10-22 — the box below described the 10-18 failure as a VERSION job. The current
+failures are SECURITY jobs with different causes; the re-diagnosis at the top of "Resume here" is
+authoritative. The box is kept because the `vite` /`dependency_file_not_resolvable` signature it
+records is the same one that recurred on 10-20:**
 
 - The red run is `Dependabot` (the service run, 10-18 08:31Z). This file's closed item says red
   `Dependabot Updates` runs are **declined security updates** and benign. **That does not cover this
@@ -126,14 +267,21 @@ diagnosing:**
   | vite | dependency_file_not_resolvable | { "message": "Error while updating peer dependency." } |
   ```
 
-- So the taxonomy needs a third entry: red Dependabot runs are (a) declined security updates —
-  benign, (b) genuine service failures, and now (c) **a version job that created its PR but could not
-  resolve one dependency**. `vite` peer resolution has history here (#779 — a nested vite 8.3.1 left
-  the root `tsx` slot holding vite 8.3.0's optional peer), so this is plausibly the same family and
-  worth a look rather than a shrug.
-- **It does not block the merge queue.** It is a service run, not a required check on a commit the
-  queue builds — `main`'s CI, Deploy and Push-on-main are all green at `d8634eeb`. No
-  "Daily dependency audit: main is red" issue is open, and `audit-ci` is clean.
+- So the taxonomy of red Dependabot runs is: (a) declined security updates — **benign**; (b) genuine
+  service failures; (c) **a version job that created its PR but could not resolve one dependency**
+  (10-18, `vite`); and — added 2026-10-22 — (d) **a SECURITY job that cannot resolve a dependency**,
+  which is the same `vite` / `dependency_file_not_resolvable` signature arriving on a different job
+  type (10-20), plus `hono` / `unknown_error` (10-21 ×2). (a) is noise; (c) and (d) are the same
+  underlying resolution problem and are what the next action investigates.
+- `vite` peer resolution has history here (#779 — a nested vite 8.3.1 left the root `tsx` slot
+  holding vite 8.3.0's optional peer), which is why step 2 of the next action reads that commit
+  before touching the override.
+- **None of it blocks the merge queue.** These are service runs, not required checks on a commit the
+  queue builds. Verified green on the day of each observation and again at the 10-22 checkpoint
+  (`7a7c5dde`: 25 success / 17 skipped / 0 failures), with no "Daily dependency audit: main is red"
+  issue open and `audit-ci` clean — and note **why the gate stays quiet**: the three npm alerts are
+  _medium_ and the gate is `"high": true`, while the critical one is _pip_, which the npm gate does
+  not see. Nothing will escalate these on its own.
 
 - **`@dependabot rebase` appears inoperable here** and the runbook no longer names it as a fix. Cause
   unidentified; the obvious suspect (`No-Delete`) was ruled out. See the ⚠️ under runbook pattern (c).
@@ -608,7 +756,7 @@ was only a stale branch.
 gh api graphql -f query='{repository(owner:"DolasDev",name:"pegasus"){mergeQueue(branch:"main"){entries(first:10){nodes{position state enqueuedAt pullRequest{number}}}}}}'
 ```
 
-### Six diagnosis traps
+### Seven diagnosis traps
 
 - **`gh run list --event merge_group` returns STALE data here** — it reported only runs from six
   days earlier while today's were live. Filter client-side instead:
@@ -676,6 +824,34 @@ gh api graphql -f query='{repository(owner:"DolasDev",name:"pegasus"){mergeQueue
   Recovery, for the record: dequeue via the GraphQL mutation (the PR had not merged), rewrite the
   commit message and PR body with the corrected diagnosis, force-push, re-enqueue. The _change_ was
   still worth landing — it just wasn't the change the commit message claimed.
+
+- **SEVENTH, added 2026-10-23 — a hypothesis written up at the length of a finding becomes one.**
+  The 10-22 checkpoint proposed that this repo's `overrides` were blocking its own security updates.
+  It was honest about its status — "that is a hypothesis", "**not verified**", "the leading
+  candidate, not a finding" — and it was still **wrong in a way that cost the next session its first
+  hour**, because around those disclaimers it had accumulated a causal table, a named mechanism
+  (`@vitest/mocker` peers `vite`), a five-step plan whose steps 2–4 all presupposed the conclusion,
+  and a correction propagated into three other sections. Volume reads as confidence no matter what
+  the hedge says.
+
+  **What would have settled it, and was available at the time:** the failing jobs' own logs.
+  `gh api repos/DolasDev/pegasus/actions/jobs/<id>/logs`, two calls. They say
+  `security_update_not_possible` with `conflicting-dependencies` naming `@vitest/mocker` pointing at
+  _itself_ and `top_level_ancestors: []`, and `NoChangeError: No files were updated!` for `hono` —
+  **neither mentions a peer conflict and neither mentions `vite` at all.** The checkpoint instead
+  read the _alert list_ plus the lockfile's peer metadata and inferred a mechanism. Same family as
+  the sixth trap: a confident answer assembled from adjacent evidence while the direct evidence went
+  unqueried.
+
+  **Two narrower lessons that generalise past this file:**
+  1. **An override that PERMITS the patched version cannot be blocking it.** Check that first — it is
+     one `semver.satisfies` call. `hono`'s `>=4.13.3 <5` already allowed 4.13.11+, and
+     `vite`'s `>=8.3.3 <9` already satisfied mocker's `^6||^7||^8`. Both were exonerated by
+     arithmetic before any install was run.
+  2. **`git log -S` on a bare key name can under-report, and did.** `git log -S'"vite":'` found the
+     one commit that _added_ the line, which was luck: `-S` counts occurrences, so a commit that
+     only changes an override's _value_ leaves the count unchanged and never appears. Use `-G` when
+     you want every commit that touched the line.
 
 ---
 
