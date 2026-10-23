@@ -155,9 +155,7 @@ export function LaborModule() {
                   </TableCell>
                   {showDistance && (
                     <TableCell className="text-right whitespace-nowrap">
-                      {crew.distanceMiles === undefined
-                        ? '—'
-                        : `${Math.round(crew.distanceMiles)} mi`}
+                      {crew.distanceMiles == null ? '—' : `${Math.round(crew.distanceMiles)} mi`}
                     </TableCell>
                   )}
                 </TableRow>

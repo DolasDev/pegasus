@@ -280,13 +280,30 @@ describe('CrewScreen', () => {
       )
       fireEvent.press(getByText('Save'))
       await waitFor(() =>
-        expect(svc.updateCompanyCrew).toHaveBeenCalledWith(PHONE, { nickname: 'Macon Ace' }),
+        expect(svc.updateCompanyCrew).toHaveBeenCalledWith(PHONE, {
+          name: 'Ace Movers',
+          email: 'ace@example.com',
+          nickname: 'Macon Ace',
+        }),
       )
-      expect(svc.updateCrew).toHaveBeenCalledWith(PHONE, {
-        name: 'Ace Movers',
-        email: 'ace@example.com',
-        nickname: 'Big Al',
-      })
+      // My private nickname is unchanged, so there is no second call.
+      expect(svc.updateCrew).not.toHaveBeenCalled()
+    })
+
+    it('shows what landed when only my private nickname fails to save', async () => {
+      svc.getCrew.mockResolvedValue(both)
+      svc.updateCompanyCrew.mockResolvedValue({ ...both, name: 'Ace Movers 2' })
+      svc.updateCrew.mockRejectedValue(new Error('offline'))
+      const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined)
+      const { findByText, getByText, getByLabelText } = render(<CrewScreen />)
+      await findByText('Big Al')
+      fireEvent.press(getByText('Edit'))
+      fireEvent.changeText(getByLabelText('Crew name (shared)'), 'Ace Movers 2')
+      fireEvent.changeText(getByLabelText('My nickname (only you see it)'), 'Al')
+      fireEvent.press(getByText('Save'))
+      await waitFor(() => expect(alert).toHaveBeenCalledWith('Couldn’t save', 'offline'))
+      expect(svc.updateCrew).toHaveBeenCalledWith(PHONE, { nickname: 'Al' })
+      alert.mockRestore()
     })
 
     it('lets Operations remove from the company list after confirming, staying on a crew in my list', async () => {
@@ -336,7 +353,7 @@ describe('CrewScreen', () => {
       await waitFor(() =>
         expect(Alert.alert).toHaveBeenCalledWith(
           'Couldn’t add to the company list',
-          'Add this crew to your own list first, then put it on the company list from its page.',
+          'Add this crew to your own list first.',
         ),
       )
     })

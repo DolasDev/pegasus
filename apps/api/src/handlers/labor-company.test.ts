@@ -298,6 +298,29 @@ describe.skipIf(!hasDb)('/labor company list (integration)', () => {
     expect(near[0]!.distanceMiles).toBeTypeOf('number')
   })
 
+  it('treats clearing a private nickname I never had as a no-op', async () => {
+    await addCompany('ops', { phone: num(1), name: 'Crew One' })
+    const res = await appAs('ann').request(
+      crewUrl(1),
+      send({ name: 'Renamed', nickname: null }, 'PATCH'),
+    )
+    expect(res.status).toBe(200)
+    expect((await data<CrewOut>(res)).name).toBe('Renamed')
+  })
+
+  it('keeps a company crew when the user who added it is deleted', async () => {
+    await addCompany('ops', { phone: num(1), name: 'Crew One' })
+    await db.crewLinkAdd.deleteMany({ where: { tenantUserId: U['ops']!.id } })
+    await db.tenantUser.delete({ where: { id: U['ops']!.id } })
+    expect((await listCompany('ann')).map((c) => c.phone)).toEqual([e164(1)])
+  })
+
+  it('does not charge the add budget for an add that linked nothing', async () => {
+    await addCompany('ops', { phone: num(1), name: 'Crew One' })
+    await addCompany('ops', { phone: num(1), name: 'Crew One' })
+    expect(await db.crewLinkAdd.count({ where: { tenantUserId: U['ops']!.id } })).toBe(1)
+  })
+
   it('refuses PATCH on a crew not on the company list', async () => {
     await addMine('ann', 1)
     const res = await appAs('ann').request(companyUrl(1), send({ nickname: 'x' }, 'PATCH'))

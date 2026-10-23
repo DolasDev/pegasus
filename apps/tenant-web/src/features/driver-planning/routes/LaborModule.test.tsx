@@ -96,7 +96,7 @@ beforeEach(() => {
       const data = crews
         .filter((c) => !q || c.displayName.toLowerCase().includes(q))
         .map(summary)
-        .map((c) => (listMeta.withDistance ? { ...c, distanceMiles: 12.4 } : c))
+        .map((c, i) => (listMeta.withDistance ? { ...c, distanceMiles: i === 0 ? 12.4 : null } : c))
       return { data, meta: listMeta }
     }
     if (path === '/api/v1/labor/company/crews' && init?.method === 'POST') {
@@ -213,7 +213,9 @@ describe('LaborModule — list and search', () => {
     listMeta = { location: { label: 'Springfield, MO' }, withDistance: true }
     renderModule()
 
-    expect(await screen.findAllByText('12 mi')).toHaveLength(2)
+    expect(await screen.findAllByText('12 mi')).toHaveLength(1)
+    // A crew with no geocoded service area has no distance — never "0 mi".
+    expect(screen.queryByText('0 mi')).not.toBeInTheDocument()
     expect(screen.getByText('Distance')).toBeInTheDocument()
     expect(screen.getByTestId('labor-location')).toHaveTextContent('Springfield, MO')
   })

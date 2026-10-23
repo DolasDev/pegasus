@@ -9,6 +9,7 @@ describe('laborAccessFor', () => {
       isDriver: true,
       isOperations: false,
       resolved: true,
+      pending: false,
       canSeeLabor: true,
       operationsOnly: false,
     })
@@ -33,6 +34,16 @@ describe('laborAccessFor', () => {
       resolved: false,
       operationsOnly: false,
     })
+  })
+
+  it('does not call an Operations user operations-only when /me/driver failed', () => {
+    const a = laborAccessFor({
+      roleNames: ['operations_admin'],
+      driverId: null,
+      mappingResolved: true,
+      mappingFailed: true,
+    })
+    expect(a).toMatchObject({ resolved: false, pending: false, operationsOnly: false })
   })
 
   it('keeps Dashboard and Trips for an Operations user who is also a driver', () => {

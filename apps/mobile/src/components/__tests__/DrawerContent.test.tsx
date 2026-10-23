@@ -25,6 +25,7 @@ const base: LaborAccess = {
   isDriver: false,
   isOperations: false,
   resolved: true,
+  pending: false,
   canSeeLabor: false,
   operationsOnly: false,
 }

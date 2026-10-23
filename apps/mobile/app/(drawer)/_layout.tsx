@@ -24,10 +24,11 @@ export default function DrawerLayout() {
  * fed by /me/driver), so they land on Labor. Whether they are a driver can
  * depend on the /me/driver call, so for an Operations user without the
  * `driver` role the navigator waits for it rather than flashing the Dashboard
- * and redirecting. Everyone else renders at once.
+ * and redirecting. If that call fails, nothing is hidden (they may be a
+ * driver). Everyone else renders at once.
  */
 function DrawerNavigator() {
-  const { isOperations, isDriver, resolved, operationsOnly } = useLaborAccess()
+  const { isOperations, pending, operationsOnly } = useLaborAccess()
   const router = useRouter()
   const segments = useSegments() as string[]
 
@@ -38,7 +39,7 @@ function DrawerNavigator() {
     if (operationsOnly && onDriverScreen) router.replace('/labor')
   }, [operationsOnly, onDriverScreen, router])
 
-  if (isOperations && !isDriver && !resolved) {
+  if (isOperations && pending) {
     return (
       <View style={styles.pending}>
         <ActivityIndicator size="large" color={colors.primary} />

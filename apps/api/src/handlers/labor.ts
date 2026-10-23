@@ -25,7 +25,7 @@
 // Mounted on the Cognito-only tenant router; the handler also refuses an
 // `apiClient` caller. Cedar grants Read/WriteLabor to every principal
 // (56-labor-shared.cedar); the only role gate is the Operations one above.
-// Plans: plans/completed/e57eb0c4-labor-crews.md, plans/in-progress/company-labor.md.
+// Plans: plans/completed/e57eb0c4-labor-crews.md, plans/completed/a2f87151-company-labor.md.
 // ---------------------------------------------------------------------------
 
 import { Hono, type Context } from 'hono'
@@ -62,7 +62,9 @@ import {
   findCompanyLink,
   findMyLink,
   findPostalCode,
+  listCompanyLinkExtras,
   listCompanyLinks,
+  listMyLinkExtras,
   listMyLinks,
   listPackers,
   recordLinkAdd,
@@ -159,8 +161,8 @@ async function requireLink(c: C, who: Caller, phone: string): Promise<CrewLinkRo
  */
 interface CrewView {
   crew: CrewRow
-  link: CrewLinkRow | null
-  company: CompanyCrewLinkRow | null
+  link: Pick<CrewLinkRow, 'id' | 'nickname' | 'rating' | 'createdAt'> | null
+  company: Pick<CompanyCrewLinkRow, 'id' | 'nickname' | 'createdAt'> | null
 }
 
 /** The crew at `phone` if it is in the caller's book or on their company list. */
@@ -175,20 +177,26 @@ async function requireCrewAccess(c: C, who: Caller, phone: string): Promise<Crew
   return { crew, link, company }
 }
 
-/** Every crew in the caller's book (`mine`) or on their company list (`company`). */
+/**
+ * Every crew in the caller's book (`mine`) or on their company list
+ * (`company`). The other list is read only for its per-crew extras.
+ */
 async function listViews(c: C, who: Caller, scope: 'mine' | 'company'): Promise<CrewView[]> {
   const db = c.get('db')
+  if (scope === 'mine') {
+    const [mine, company] = await Promise.all([
+      listMyLinks(db, who.userId),
+      listCompanyLinkExtras(db, who.tenantId),
+    ])
+    const companyBy = new Map(company.map((l) => [l.crewPhone, l]))
+    return mine.map((l) => ({ crew: l.crew, link: l, company: companyBy.get(l.crewPhone) ?? null }))
+  }
   const [mine, company] = await Promise.all([
-    listMyLinks(db, who.userId),
+    listMyLinkExtras(db, who.userId),
     listCompanyLinks(db, who.tenantId),
   ])
   const myBy = new Map(mine.map((l) => [l.crewPhone, l]))
-  const companyBy = new Map(company.map((l) => [l.crewPhone, l]))
-  return (scope === 'mine' ? mine : company).map((l) => ({
-    crew: l.crew,
-    link: myBy.get(l.crewPhone) ?? null,
-    company: companyBy.get(l.crewPhone) ?? null,
-  }))
+  return company.map((l) => ({ crew: l.crew, link: myBy.get(l.crewPhone) ?? null, company: l }))
 }
 
 function notInYourList(): LaborHttpError {
@@ -559,7 +567,8 @@ laborHandler.patch('/crews/:phone', requirePermission(Actions.WriteLabor), (c) =
     const phone = phoneParam(c)
     const { crew, link } = await requireCrewAccess(c, who, phone)
     const input = await readBody(c, PatchCrewBody)
-    if (input.nickname !== undefined && !link) throw notInYourList()
+    // A private nickname needs my own link; clearing one I don't have is a no-op.
+    if (input.nickname != null && !link) throw notInYourList()
     const db = c.get('db')
 
     await updateSharedHeader(c, who, crew, input)
@@ -862,7 +871,6 @@ laborHandler.post('/company/crews', requirePermission(Actions.WriteLabor), (c) =
         const existing = await db.crew.findUnique({ where: { phone: crew.phone } })
         if (existing && existing.name !== crew.name) nickname ??= crew.name
       }
-      await recordLinkAdd(db, who.userId, crew.phone)
       outcome = created ? 'added' : 'linkedExisting'
     }
     const added = await createCompanyLink(db, {
@@ -873,6 +881,8 @@ laborHandler.post('/company/crews', requirePermission(Actions.WriteLabor), (c) =
     })
     // A concurrent add won the race.
     if (!added) return alreadyInList()
+    // An Operations add by phone spends the budget — only once it linked something.
+    if (outcome !== 'addedFromMyList') await recordLinkAdd(db, who.userId, phone)
     return c.json({ data: await crewDetail(c, who, phone), meta: { outcome } }, 201)
   }),
 )

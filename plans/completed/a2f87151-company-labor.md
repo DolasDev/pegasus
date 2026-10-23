@@ -297,11 +297,40 @@ pure helper (e.g. `displayNameOf(view)`), it lives here with tests.
   is green**, then submit to the Play internal track as for #878/#881. iOS is still owed from
   earlier.
 
-## Status
+## Status (2026-10-23)
 
-- [ ] Schema + migration + tenant scoping
-- [ ] Shared `OPERATIONS_ROLES`
-- [ ] API: access helper, company routes, search refactor, activity-labor check, openapi
-- [ ] Mobile: service, segments, card buttons, new-crew scope, assign picker, drawer gate
-- [ ] Tenant-web: route, nav, list/search, create/edit/remove, packers, service areas
-- [ ] All suites green, `/code-review`, plan archived, `/workstream-finish`
+- [x] Schema + migration + tenant scoping. `CompanyCrewLink`, migration `20261023200000_company_crew_links`.
+      After review, `addedByUserId` is **nullable with ON DELETE SET NULL**: deleting the user who added a
+      crew must not empty the company list.
+- [x] Shared `OPERATIONS_ROLES` in `packages/auth`, used by tenant-web and mobile. **The API keeps its own
+      copy** because it does not depend on `@pegasus/auth`, and adding a workspace dependency touches the CDK
+      bundling path (#762). `longhaul-read-scope.agree.test.ts` asserts the two copies agree.
+- [x] API work:
+  - `requireCrewAccess` lets a driver reach crews in their own book or on the company list.
+  - `listViews`/`searchViews` now serve both lists.
+  - Added the `/company/crews` GET, POST, PATCH and DELETE routes.
+  - Activity labor accepts company crews.
+  - Updated the OpenAPI spec and the cedar comment (the comment must stay ASCII; `load.test.ts` checks).
+- [x] Review fixes, API:
+  - An Operations add by phone is charged to the budget only once it actually links a crew.
+  - Sending `nickname: null` on a crew that is only on the company list is now a no-op instead of a 422.
+  - The other list is read with a light `select`.
+- [x] Mobile:
+  - The Labor screen has My list | Company segments.
+  - The contact card has "Add to company list", "Add to my list" and "Remove from company list"
+    (Operations only).
+  - New-crew scope, assign-picker sections, and the drawer gate.
+  - An Operations-only user is sent from `/` or `/trips` to `/labor`.
+  - Review fix: a **failed** `/me/driver` call (`mappingFailed`) no longer counts as "not a driver".
+  - Review fix: on a crew in both lists, the shared fields go in one call.
+- [x] Tenant-web:
+  - New Operations → Labor screen at `/driver-planning/labor`, guarded by `OPERATIONS_ROLES`.
+  - Search table, new-crew dialog, and a detail drawer with header, service areas, packers and remove.
+  - Review fix: a `distanceMiles` of null renders as "—", not "0 mi".
+- [x] Suites: API 4530, tenant-web 1678, mobile 410, auth package; typecheck and lint are clean.
+- Not changed: the review asked to gate `PATCH /company/crews` on Operations. Steve's decision (drivers
+  edit everything except remove) stands.
+- The budget check-then-spend race on concurrent adds is the same as the existing `POST /crews`, so it is
+  left as is.
+- **Release:** API + tenant-web ship with Deploy. Mobile needs an EAS build after the API deploy is green.
+  There are no new native modules, but there is also no OTA path.

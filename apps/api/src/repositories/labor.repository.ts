@@ -128,6 +128,22 @@ export function findCompanyLink(db: Db, tenantId: string, phone: string) {
   })
 }
 
+/** The caller's own links, without the crew — just the private extras per crew. */
+export function listMyLinkExtras(db: Db, tenantUserId: string) {
+  return db.crewLink.findMany({
+    where: { tenantUserId },
+    select: { id: true, crewPhone: true, nickname: true, createdAt: true, rating: true },
+  })
+}
+
+/** The company list without the crew — just its per-crew extras. */
+export function listCompanyLinkExtras(db: Db, tenantId: string) {
+  return db.companyCrewLink.findMany({
+    where: { tenantId },
+    select: { id: true, crewPhone: true, nickname: true, createdAt: true },
+  })
+}
+
 export function listCompanyLinks(db: Db, tenantId: string) {
   return db.companyCrewLink.findMany({ where: { tenantId }, include: COMPANY_LINK_INCLUDE })
 }

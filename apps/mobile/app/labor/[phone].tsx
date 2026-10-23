@@ -135,14 +135,24 @@ export default function CrewScreen() {
       if (!crew.inMyList) {
         return LaborService.updateCompanyCrew(crew.phone, { ...shared, nickname: companyName })
       }
-      let next = await LaborService.updateCrew(crew.phone, {
-        ...shared,
-        nickname: nickname.trim() || null,
-      })
-      if (crew.inCompanyList && companyName !== crew.companyNickname) {
-        next = await LaborService.updateCompanyCrew(crew.phone, { nickname: companyName })
+      const privateName = nickname.trim() || null
+      if (!crew.inCompanyList) {
+        return LaborService.updateCrew(crew.phone, { ...shared, nickname: privateName })
       }
-      return next
+      // In both lists: the shared fields and the company name in one call, then
+      // my private nickname only if it changed. If that second call fails, the
+      // first has landed — show it, so the card matches the server.
+      const next = await LaborService.updateCompanyCrew(crew.phone, {
+        ...shared,
+        nickname: companyName,
+      })
+      if (privateName === crew.nickname) return next
+      try {
+        return await LaborService.updateCrew(crew.phone, { nickname: privateName })
+      } catch (err) {
+        apply(next)
+        throw err
+      }
     })
     if (ok) setEditing(false)
   }

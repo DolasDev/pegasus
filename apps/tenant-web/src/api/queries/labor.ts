@@ -39,8 +39,8 @@ export interface LaborCrew {
   inMyList: boolean
   inCompanyList: boolean
   canRemoveFromCompany: boolean
-  /** Present on a ZIP / "City, ST" search only. */
-  distanceMiles?: number
+  /** Only on a location search; null = no geocoded service area. */
+  distanceMiles?: number | null
 }
 
 export interface LaborPacker {

@@ -6,8 +6,7 @@
 // ---------------------------------------------------------------------------
 
 const BY_CODE: Record<string, string> = {
-  CREW_NOT_IN_YOUR_LIST:
-    'Add this crew to your own list first, then put it on the company list from its page.',
+  CREW_NOT_IN_YOUR_LIST: 'Add this crew to your own list first.',
   OPERATIONS_ONLY: 'Only Operations can do this.',
   LINK_RATE_LIMITED: 'You’ve added the most crews allowed for today. Try again tomorrow.',
 }

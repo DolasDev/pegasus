@@ -29,6 +29,7 @@ const base: LaborAccess = {
   isDriver: false,
   isOperations: false,
   resolved: true,
+  pending: false,
   canSeeLabor: false,
   operationsOnly: false,
 }
@@ -75,15 +76,24 @@ describe('DrawerLayout', () => {
   })
 
   it('waits for /me/driver rather than flashing the Dashboard for an Operations user', () => {
-    const { queryByText } = setup({ isOperations: true, canSeeLabor: true, resolved: false }, [
-      '(drawer)',
-    ])
+    const { queryByText } = setup(
+      { isOperations: true, canSeeLabor: true, resolved: false, pending: true },
+      ['(drawer)'],
+    )
     expect(queryByText('DRAWER')).toBeNull()
     expect(replace).not.toHaveBeenCalled()
   })
 
   it('does not wait for anyone else', () => {
-    const { getByText } = setup({ resolved: false }, ['(drawer)'])
+    const { getByText } = setup({ resolved: false, pending: true }, ['(drawer)'])
     expect(getByText('DRAWER')).toBeTruthy()
+  })
+
+  it('hides nothing from an Operations user when /me/driver failed', () => {
+    const { getByText } = setup({ isOperations: true, canSeeLabor: true, resolved: false }, [
+      '(drawer)',
+    ])
+    expect(getByText('DRAWER')).toBeTruthy()
+    expect(replace).not.toHaveBeenCalled()
   })
 })
