@@ -9,11 +9,12 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { ApiError } from '@pegasus/api-http'
 import { DomainError, validatePacker } from '@pegasus/domain'
-import { LaborService } from '../../src/services/laborService'
+import { LaborService, withPacker } from '../../src/services/laborService'
 import type { LaborPackerInput } from '../../src/types/labor'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 
@@ -44,7 +45,14 @@ export function formatDateInput(text: string): string {
 const orNull = (v: string) => (v.trim() ? v.trim() : null)
 
 export default function PackerScreen() {
-  const { phone, id } = useLocalSearchParams<{ phone: string; id?: string }>()
+  // `activityId` + `orderNum`: opened from the shipment's Labor tab — a new
+  // packer is also selected on that activity.
+  const { phone, id, activityId, orderNum } = useLocalSearchParams<{
+    phone: string
+    id?: string
+    activityId?: string
+    orderNum?: string
+  }>()
   const router = useRouter()
   const editing = !!id
 
@@ -105,8 +113,23 @@ export default function PackerScreen() {
     setSaving(true)
     setError(null)
     try {
-      if (editing) await LaborService.updatePacker(phone, id!, input)
-      else await LaborService.addPacker(phone, input)
+      if (editing) {
+        await LaborService.updatePacker(phone, id!, input)
+      } else {
+        const packer = await LaborService.addPacker(phone, input)
+        if (activityId && orderNum) {
+          try {
+            await LaborService.updateActivityLabor(orderNum, Number(activityId), (set) =>
+              withPacker(set, phone, packer.id, true),
+            )
+          } catch (err) {
+            Alert.alert(
+              'Packer added, not selected',
+              err instanceof Error ? err.message : 'Tick them on the Labor tab.',
+            )
+          }
+        }
+      }
       router.back()
     } catch (err) {
       setError(

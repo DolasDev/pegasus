@@ -154,6 +154,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   'ChatRoom',
   'ChatMessage',
   'ChatRoomMember',
+  // Labor on longhaul activities — keyed by the tenant's legacy activity id, so
+  // tenant-owned even though the crews and packers they point at are not.
+  // Served only through the scoped client on /labor; creates set tenantId.
+  'ActivityLaborCrew',
+  'ActivityLaborPacker',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the

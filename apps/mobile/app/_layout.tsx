@@ -102,6 +102,7 @@ function RootLayoutNav() {
             options={{ ...detailHeader, title: 'Import contacts' }}
           />
           <Stack.Screen name="labor/packer" options={{ ...detailHeader, title: 'Packer' }} />
+          <Stack.Screen name="labor/assign" options={{ ...detailHeader, title: 'Assign crew' }} />
         </Stack.Protected>
         <Stack.Protected guard={!isAuthenticated}>
           <Stack.Screen name="(auth)" />

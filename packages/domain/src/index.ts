@@ -269,6 +269,8 @@ export type {
   RankableCrew,
   ExportCrew,
   ExportPacker,
+  ActivityLaborCrewInput,
+  NormalizedActivityLaborCrew,
 } from './labor/index'
 export {
   normalizePhoneNumber,
@@ -288,6 +290,8 @@ export {
   countryOfRegion,
   MAX_SERVICE_AREAS,
   validateServiceAreas,
+  MAX_ACTIVITY_CREWS,
+  validateActivityLabor,
   parseLocationQuery,
   rankCrewsByDistance,
   crewsToVCard,

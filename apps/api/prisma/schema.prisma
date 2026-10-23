@@ -324,6 +324,10 @@ model Tenant {
   chatMessages    ChatMessage[]
   chatRoomMembers ChatRoomMember[]
 
+  // Labor on longhaul activities
+  activityLaborCrews   ActivityLaborCrew[]
+  activityLaborPackers ActivityLaborPacker[]
+
   // Longhaul — archived (rejected/canceled) trip snapshots
   archivedTrips ArchivedTrip[]
 
@@ -538,6 +542,7 @@ model TenantUser {
   companyMemberships  CompanyMembership[]
   laborCrewLinks      CrewLink[]
   laborCrewLinkAdds   CrewLinkAdd[]
+  activityLaborCrews  ActivityLaborCrew[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3571,9 +3576,10 @@ model Crew {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  links        CrewLink[]
-  serviceAreas CrewServiceArea[]
-  packers      Packer[]
+  links         CrewLink[]
+  serviceAreas  CrewServiceArea[]
+  packers       Packer[]
+  activityLabor ActivityLaborCrew[]
 
   @@map("labor_crews")
   @@schema("public")
@@ -3662,7 +3668,8 @@ model Packer {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  crew Crew @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  crew          Crew                  @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  activityLabor ActivityLaborPacker[]
 
   @@unique([crewPhone, cidKey])
   @@unique([crewPhone, emailKey])
@@ -3686,6 +3693,48 @@ model CrewRating {
   link CrewLink @relation(fields: [crewLinkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("labor_crew_ratings")
+  @@schema("public")
+}
+
+/// A crew that worked one legacy longhaul activity on an order. Unlike the crew
+/// book, this IS tenant-scoped: `activityId` is LongDistanceDispatchActivity.id
+/// in the tenant's legacy database (no FK). `orderNum` is copied from that row
+/// at write time for the per-order read. The assignment outlives the driver
+/// dropping the crew from their book — it is the record of who worked the job.
+model ActivityLaborCrew {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  activityId       Int      @map("activity_id")
+  orderNum         Int      @map("order_num")
+  crewPhone        String   @map("crew_phone")
+  assignedByUserId String   @map("assigned_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crew       Crew                  @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  assignedBy TenantUser            @relation(fields: [assignedByUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  packers    ActivityLaborPacker[]
+
+  @@unique([tenantId, activityId, crewPhone])
+  @@index([tenantId, orderNum])
+  @@map("activity_labor_crews")
+  @@schema("public")
+}
+
+/// A packer selected on an assigned crew. Deleting the packer (or un-assigning
+/// the crew) drops the selection.
+model ActivityLaborPacker {
+  activityLaborCrewId String @map("activity_labor_crew_id")
+  tenantId            String @map("tenant_id")
+  packerId            String @map("packer_id")
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  assignment ActivityLaborCrew @relation(fields: [activityLaborCrewId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  packer     Packer            @relation(fields: [packerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([activityLaborCrewId, packerId])
+  @@index([packerId])
+  @@map("activity_labor_packers")
   @@schema("public")
 }
 

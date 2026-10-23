@@ -12,6 +12,7 @@ import { useLocalSearchParams, Stack } from 'expo-router'
 import { TripStatusBadge } from '../../src/components/TripStatusBadge'
 import { DocumentsTab } from '../../src/components/DocumentsTab'
 import { ChatThreadView } from '../../src/components/chat/ChatThreadView'
+import { ActivityLaborTab } from '../../src/components/labor/ActivityLaborTab'
 import { TripService } from '../../src/services/tripService'
 import { formatLonghaulDate, formatLonghaulSpread } from '../../src/utils/longhaul-format'
 import type { LonghaulShipment } from '../../src/types/longhaul'
@@ -26,11 +27,11 @@ import { colors, fontSize, spacing, borderRadius } from '../../src/theme/colors'
 
 type Row = { label: string; value: string }
 
-type ShipmentTab = 'details' | 'documents' | 'chat'
+type ShipmentTab = 'details' | 'documents' | 'labor' | 'chat'
 
 /** The `?tab=` a link may carry (a chat push opens `?tab=chat`). */
 function initialTab(raw: string | undefined): ShipmentTab {
-  return raw === 'documents' || raw === 'chat' ? raw : 'details'
+  return raw === 'documents' || raw === 'labor' || raw === 'chat' ? raw : 'details'
 }
 
 function str(value: unknown): string {
@@ -138,6 +139,7 @@ export default function ShipmentDetailScreen() {
     <View style={styles.tabBar}>
       <Tab label="Details" active={tab === 'details'} onPress={() => setTab('details')} />
       <Tab label="Documents" active={tab === 'documents'} onPress={() => setTab('documents')} />
+      <Tab label="Labor" active={tab === 'labor'} onPress={() => setTab('labor')} />
       <Tab label="Chat" active={tab === 'chat'} onPress={() => setTab('chat')} />
     </View>
   )
@@ -184,6 +186,8 @@ export default function ShipmentDetailScreen() {
             <Section title="Weight" rows={weight} />
             <Section title="Notes" rows={notes} stacked />
           </>
+        ) : tab === 'labor' ? (
+          <ActivityLaborTab orderNum={s.order_num} />
         ) : (
           <DocumentsTab orderNum={s.order_num} />
         )}
