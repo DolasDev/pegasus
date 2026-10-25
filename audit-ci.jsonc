@@ -260,5 +260,37 @@
     // unused). Note micromatch pins `^3.0.3`, so a 3.0.4 would be picked up by a plain install
     // while a 4.x would need micromatch to move first.
     "GHSA-vfj7-8cjw-p6xm",
+
+    // GHSA-mrhx-c7xc-m3w5 — zod can exhaust memory validating oversized constrained collections
+    // (high, vulnerable <4.6.6). Landed 2026-10-23 and turned main red. The 4.x copies (apps/api,
+    // @hono/zod-openapi, stryker) were moved to 4.6.7 in the lockfile; that is the reachable
+    // runtime one. What is left is ONE copy on the 3.x line:
+    //   apps/mobile > expo > @expo/cli > zod@3.25.76
+    // That is the Expo developer CLI validating our own app config / CLI flags at dev and EAS
+    // build time. It is not in the app bundle, and nothing user-supplied reaches it. There is no
+    // fix to install: the advisory's only patched release is 4.6.6 (a major for @expo/cli, an API
+    // break), and the latest @expo/cli (58.1.15 on 2026-10-25) still declares `zod: ^3.25.76`.
+    //
+    // NOTE this allowlist is by advisory id, so it would also hide a 4.x copy below 4.6.6
+    // re-entering the tree. Check `npm ls zod` when touching zod. Remove once @expo/cli moves to
+    // zod 4 (the "Consider not allowlisting advisories" report flags it once unused).
+    "GHSA-mrhx-c7xc-m3w5",
+
+    // GHSA-xcx6-jx8p-x3h5 — MSAL Node's authorization code flow may send parameters to an
+    // attacker-controlled endpoint (high, vulnerable >=5.0.0-beta.0 <7.1.0). Landed 2026-10-23.
+    // One copy: apps/mssql-executor > mssql > tedious > @azure/identity@4.13.1 >
+    // @azure/msal-node@5.2.4.
+    //
+    // NOT REACHABLE HERE: the authorization code flow is an interactive OAuth sign-in (redirect
+    // a user, exchange the returned code). tedious only ever uses @azure/identity's
+    // non-interactive credentials, for its Azure AD connection modes. And mssql-executor opens
+    // `new sql.ConnectionPool(connectionString)` with the tenant's SQL Server login connection
+    // strings, so it never takes an Azure AD path at all.
+    //
+    // No override: 7.1.0 is a major past what @azure/identity declares (`^6.0.0` even in the
+    // latest 4.14.0; tedious@20.3.8 pins identity `^4.13.1`), and forcing a major into a published
+    // package's tree is the breakage GOTCHAS warns about. Remove once @azure/identity accepts
+    // msal-node >=7.1.0 and the tree re-resolves.
+    "GHSA-xcx6-jx8p-x3h5",
   ],
 }
