@@ -66,7 +66,7 @@
     "flatted": "security fix",
     "@xmldom/xmldom": "CVE-2022-39353 XML parsing (>=0.8.10 has fix; 0.9.x breaks @expo/plist mimeType API)",
     "defu": "prototype pollution fix",
-    "undici": "HTTP request smuggling fixes + GHSA-vmh5-mc38-953g (improper cert validation, fixed in 7.28.0). Raised to >=7.29.1 on 2026-09-29 for GHSA-3wwx-pv8p-q78v (moderate, DoS via an unhandled error in WebSocket permessage-deflate decompression, vulnerable >=7.28.0 <7.29.1) - the advisory landed on the very release the previous floor pinned to, so expect to raise it again. Previously raised to >=7.29.0 on 2026-08-05 for GHSA-4cwx-7wf7-3272 (high, cross-user information disclosure + parse-time crash via degenerate private cache directives, vulnerable >=7.0.0 <7.29.0), which also clears four moderates in the same release (GHSA-8xcm/-m8rv/-jr45/-v3r7). Reachable copies are transitive: jsdom (admin-web test env) and expo-server-sdk (api push). Stays inside 7.x — jsdom@29 declares undici ^7.",
+    "undici": "HTTP request smuggling fixes + GHSA-vmh5-mc38-953g (improper cert validation, fixed in 7.28.0). Raised to >=7.30.1 on 2026-10-25 for GHSA-xjj6-f33q-929c (high, DoS via an unhandled error on excessive content-encodings, vulnerable >=7.18.0 <7.30.1). Raised to >=7.29.1 on 2026-09-29 for GHSA-3wwx-pv8p-q78v (moderate, DoS via an unhandled error in WebSocket permessage-deflate decompression, vulnerable >=7.28.0 <7.29.1) - the advisory landed on the very release the previous floor pinned to, so expect to raise it again. Previously raised to >=7.29.0 on 2026-08-05 for GHSA-4cwx-7wf7-3272 (high, cross-user information disclosure + parse-time crash via degenerate private cache directives, vulnerable >=7.0.0 <7.29.0), which also clears four moderates in the same release (GHSA-8xcm/-m8rv/-jr45/-v3r7). Reachable copies are transitive: jsdom (admin-web test env) and expo-server-sdk (api push). Stays inside 7.x — jsdom@29 declares undici ^7.",
     "path-to-regexp": "ReDoS vulnerability",
     "picomatch": "ReDoS vulnerability",
     "shell-quote": "GHSA-pqg4-j6r4-53mv (CRITICAL, CVSS 8.1, `quote()` command injection via a line terminator in a token after a `{ comment }` token, range >=1.8.4 <1.11.0) — force >=1.11.0. SECOND advisory to land above this floor: the override was added at >=1.9.0 on 2026-07-20 for GHSA-395f-4hp3-45gv (high, quadratic-complexity DoS in parse(), <=1.8.4), 1.10.0 satisfied it, and on 2026-10-06 the new range swallowed 1.10.0 too and flipped audit-ci red on main with no code change. Same stacking pattern as brace-expansion below, so expect to raise it again. react-native > react-devtools-core is the only consumer (dev/debug tooling, not shipped), but audit-ci gates on critical regardless; the single copy is root-hoisted, so unlike the aws-cdk-lib bundled cases an override DOES reach it. Raise it with `npm install` after editing this floor — never by editing lock keys (see GOTCHAS, `npm overrides: two mechanics`). Remove once react-devtools-core ships a patched shell-quote.",
@@ -115,7 +115,7 @@
       "@xmldom/xmldom": "^0.8.10"
     },
     "defu": ">=6.1.5",
-    "undici": ">=7.29.1 <8.0.0",
+    "undici": ">=7.30.1 <8.0.0",
     "path-to-regexp": ">=8.4.0",
     "picomatch": ">=4.0.4",
     "shell-quote": ">=1.11.0",
