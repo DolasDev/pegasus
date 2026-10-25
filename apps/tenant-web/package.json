@@ -26,7 +26,7 @@
     "@radix-ui/react-slot": "^1.5.0",
     "@radix-ui/react-tabs": "^1.2.1",
     "@reduxjs/toolkit": "^2.13.0",
-    "@tanstack/react-query": "^5.104.3",
+    "@tanstack/react-query": "^5.104.5",
     "@tanstack/react-router": "^1.170.44",
     "@types/react-grid-layout": "^2.1.0",
     "class-variance-authority": "^0.7.1",
@@ -58,7 +58,7 @@
     "jsdom": "*",
     "tailwindcss": "^4.0.0",
     "typescript": "*",
-    "vite": "^8.3.3",
+    "vite": "^8.3.5",
     "vitest": "^4.1.12"
   }
 }
