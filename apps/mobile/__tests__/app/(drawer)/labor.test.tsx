@@ -66,6 +66,10 @@ const ace = crew({
 })
 const bob = crew({ phone: '+14045550102', name: 'Bob Crew', displayName: 'Bob Crew' })
 
+// A search lands after the 300 ms debounce plus a render; under a loaded CI
+// runner that overruns findBy's 1 s default, so searches get more room.
+const AFTER_DEBOUNCE = { timeout: 5000 }
+
 beforeEach(() => {
   access.mockReturnValue(DRIVER)
   ;(useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn(), back: jest.fn() })
@@ -119,7 +123,7 @@ describe('LaborScreen', () => {
     const { findByText, getByLabelText, getByText, queryByText } = render(<LaborScreen />)
     await findByText('Ace Movers')
     fireEvent.changeText(getByLabelText('ZIP, city, state, name or phone'), '31201')
-    expect(await findByText('Nearest to 31201 (GA)')).toBeTruthy()
+    expect(await findByText('Nearest to 31201 (GA)', {}, AFTER_DEBOUNCE)).toBeTruthy()
     expect(searchCrews).toHaveBeenLastCalledWith('31201')
     expect(getByText('3.2 mi')).toBeTruthy()
     // a flat list, not A–Z sections
@@ -132,7 +136,7 @@ describe('LaborScreen', () => {
     const { findByText, getByLabelText } = render(<LaborScreen />)
     await findByText('Ace Movers')
     fireEvent.changeText(getByLabelText('ZIP, city, state, name or phone'), '00000')
-    expect(await findByText('Location not found')).toBeTruthy()
+    expect(await findByText('Location not found', {}, AFTER_DEBOUNCE)).toBeTruthy()
   })
 
   it('shows the empty state, and Add Crew offers contacts or manual entry', async () => {
