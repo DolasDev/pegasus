@@ -159,6 +159,9 @@ export const TENANT_SCOPED_MODELS = new Set([
   // Served only through the scoped client on /labor; creates set tenantId.
   'ActivityLaborCrew',
   'ActivityLaborPacker',
+  // The company crew list — the tenant's grant to shared crews. Served only
+  // through the scoped client on /labor/company; creates set tenantId.
+  'CompanyCrewLink',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the

@@ -11,6 +11,10 @@ jest.mock('../../src/services/laborService', () => ({
     getCrew: jest.fn(),
     updateCrew: jest.fn(),
     removeCrew: jest.fn(() => Promise.resolve()),
+    updateCompanyCrew: jest.fn(),
+    addToCompanyList: jest.fn(),
+    addToMyList: jest.fn(),
+    removeFromCompanyList: jest.fn(() => Promise.resolve()),
     setServiceAreas: jest.fn(),
     deletePacker: jest.fn(() => Promise.resolve()),
     rateCrew: jest.fn(),
@@ -28,6 +32,7 @@ const detail: LaborCrewDetail = {
   phoneDisplay: '(404) 555-0101',
   name: 'Ace Movers',
   nickname: 'Big Al',
+  companyNickname: null,
   displayName: 'Big Al',
   email: 'ace@example.com',
   serviceAreas: [{ id: 'a1', city: 'Macon', region: 'GA', country: 'US', geocoded: true }],
@@ -35,6 +40,9 @@ const detail: LaborCrewDetail = {
   myRating: { stars: 3, comment: 'ok', updatedAt: '2026-10-20T00:00:00.000Z' },
   averageRating: { average: 4.2, count: 5 },
   addedAt: '2026-10-20T00:00:00.000Z',
+  inMyList: true,
+  inCompanyList: false,
+  canRemoveFromCompany: false,
   packers: [
     {
       id: 'p1',
@@ -176,5 +184,178 @@ describe('CrewScreen', () => {
     svc.getCrew.mockRejectedValueOnce(new Error('Crew not in your list'))
     const { findByText } = render(<CrewScreen />)
     expect(await findByText('Crew not in your list')).toBeTruthy()
+  })
+
+  describe('lists', () => {
+    // On the company list only: no link of mine, so no rating or private nickname.
+    const companyOnly: LaborCrewDetail = {
+      ...detail,
+      nickname: null,
+      companyNickname: 'Ace (Macon)',
+      displayName: 'Ace (Macon)',
+      myRating: null,
+      inMyList: false,
+      inCompanyList: true,
+    }
+    const both: LaborCrewDetail = { ...detail, inCompanyList: true, companyNickname: 'Ace (Macon)' }
+    const pressRemove = async () => {
+      const alert = (Alert.alert as jest.Mock).mock
+      await alert.calls[0]![2]!.find((b: { text: string }) => b.text === 'Remove')!.onPress!()
+    }
+
+    beforeEach(() => {
+      jest.spyOn(Alert, 'alert').mockImplementation(() => {})
+    })
+
+    it('offers Add to company list for a crew only in my list, and nothing to remove it', async () => {
+      svc.addToCompanyList.mockResolvedValue({ crew: both, outcome: 'addedFromMyList' })
+      const { findByText, getByText, queryByText } = render(<CrewScreen />)
+      await findByText('Big Al')
+      expect(queryByText('Add to my list')).toBeNull()
+      expect(queryByText('Remove from company list')).toBeNull()
+      fireEvent.press(getByText('Add to company list'))
+      await waitFor(() => expect(svc.addToCompanyList).toHaveBeenCalledWith(PHONE))
+      expect(await findByText('On the company list as “Ace (Macon)”')).toBeTruthy()
+      expect(queryByText('Add to company list')).toBeNull()
+    })
+
+    it('shows a company-only crew without rating or Remove from my list, editable by anyone', async () => {
+      svc.getCrew.mockResolvedValue(companyOnly)
+      const { findByText, getByText, queryByText } = render(<CrewScreen />)
+      await findByText('Ace (Macon)')
+      expect(queryByText('My rating')).toBeNull()
+      expect(queryByText('Remove from my list')).toBeNull()
+      expect(queryByText('Remove from company list')).toBeNull()
+      expect(getByText('Add to my list')).toBeTruthy()
+      expect(getByText('Edit')).toBeTruthy()
+      expect(getByText('+ Add packer')).toBeTruthy()
+      expect(getByText('Average from 5 drivers: 4.2 ★')).toBeTruthy()
+    })
+
+    it('adds a company crew to my list with its shared name', async () => {
+      svc.getCrew.mockResolvedValue(companyOnly)
+      svc.addToMyList.mockResolvedValue({ ...both, nickname: null, displayName: 'Ace (Macon)' })
+      const { findByText, getByText, queryByText } = render(<CrewScreen />)
+      await findByText('Ace (Macon)')
+      fireEvent.press(getByText('Add to my list'))
+      await waitFor(() =>
+        expect(svc.addToMyList).toHaveBeenCalledWith({ phone: PHONE, name: 'Ace Movers' }),
+      )
+      expect(await findByText('My rating')).toBeTruthy()
+      expect(queryByText('Add to my list')).toBeNull()
+    })
+
+    it('edits a company-only crew through the company route, with no private nickname field', async () => {
+      svc.getCrew.mockResolvedValue(companyOnly)
+      svc.updateCompanyCrew.mockResolvedValue({ ...companyOnly, companyNickname: 'Ace GA' })
+      const { findByText, getByText, getByLabelText, queryByLabelText } = render(<CrewScreen />)
+      await findByText('Ace (Macon)')
+      fireEvent.press(getByText('Edit'))
+      expect(queryByLabelText('My nickname (only you see it)')).toBeNull()
+      fireEvent.changeText(
+        getByLabelText('Company nickname (everyone at the company sees it)'),
+        'Ace GA',
+      )
+      fireEvent.press(getByText('Save'))
+      await waitFor(() =>
+        expect(svc.updateCompanyCrew).toHaveBeenCalledWith(PHONE, {
+          name: 'Ace Movers',
+          email: 'ace@example.com',
+          nickname: 'Ace GA',
+        }),
+      )
+      expect(svc.updateCrew).not.toHaveBeenCalled()
+    })
+
+    it('saves my nickname and the company nickname for a crew in both lists', async () => {
+      svc.getCrew.mockResolvedValue(both)
+      svc.updateCrew.mockResolvedValue(both)
+      svc.updateCompanyCrew.mockResolvedValue(both)
+      const { findByText, getByText, getByLabelText } = render(<CrewScreen />)
+      await findByText('Big Al')
+      fireEvent.press(getByText('Edit'))
+      fireEvent.changeText(
+        getByLabelText('Company nickname (everyone at the company sees it)'),
+        'Macon Ace',
+      )
+      fireEvent.press(getByText('Save'))
+      await waitFor(() =>
+        expect(svc.updateCompanyCrew).toHaveBeenCalledWith(PHONE, {
+          name: 'Ace Movers',
+          email: 'ace@example.com',
+          nickname: 'Macon Ace',
+        }),
+      )
+      // My private nickname is unchanged, so there is no second call.
+      expect(svc.updateCrew).not.toHaveBeenCalled()
+    })
+
+    it('shows what landed when only my private nickname fails to save', async () => {
+      svc.getCrew.mockResolvedValue(both)
+      svc.updateCompanyCrew.mockResolvedValue({ ...both, name: 'Ace Movers 2' })
+      svc.updateCrew.mockRejectedValue(new Error('offline'))
+      const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined)
+      const { findByText, getByText, getByLabelText } = render(<CrewScreen />)
+      await findByText('Big Al')
+      fireEvent.press(getByText('Edit'))
+      fireEvent.changeText(getByLabelText('Crew name (shared)'), 'Ace Movers 2')
+      fireEvent.changeText(getByLabelText('My nickname (only you see it)'), 'Al')
+      fireEvent.press(getByText('Save'))
+      await waitFor(() => expect(alert).toHaveBeenCalledWith('Couldn’t save', 'offline'))
+      expect(svc.updateCrew).toHaveBeenCalledWith(PHONE, { nickname: 'Al' })
+      alert.mockRestore()
+    })
+
+    it('lets Operations remove from the company list after confirming, staying on a crew in my list', async () => {
+      svc.getCrew.mockResolvedValue({ ...both, canRemoveFromCompany: true })
+      const { findByText, getByText } = render(<CrewScreen />)
+      await findByText('Big Al')
+      expect(getByText('Remove from my list')).toBeTruthy()
+      fireEvent.press(getByText('Remove from company list'))
+      expect(svc.removeFromCompanyList).not.toHaveBeenCalled()
+      svc.getCrew.mockResolvedValue({ ...detail })
+      await pressRemove()
+      expect(svc.removeFromCompanyList).toHaveBeenCalledWith(PHONE)
+      expect(router.back).not.toHaveBeenCalled()
+      expect(svc.getCrew).toHaveBeenCalledTimes(2)
+    })
+
+    it('goes back after Operations remove a company-only crew', async () => {
+      svc.getCrew.mockResolvedValue({ ...companyOnly, canRemoveFromCompany: true })
+      const { findByText, getByText } = render(<CrewScreen />)
+      await findByText('Ace (Macon)')
+      fireEvent.press(getByText('Remove from company list'))
+      await pressRemove()
+      expect(router.back).toHaveBeenCalled()
+    })
+
+    it('stays on the card when removing from my list a crew that is also on the company list', async () => {
+      svc.getCrew.mockResolvedValue(both)
+      const { findByText, getByText } = render(<CrewScreen />)
+      await findByText('Big Al')
+      fireEvent.press(getByText('Remove from my list'))
+      svc.getCrew.mockResolvedValue({ ...companyOnly })
+      await pressRemove()
+      expect(svc.removeCrew).toHaveBeenCalledWith(PHONE)
+      expect(router.back).not.toHaveBeenCalled()
+      expect(await findByText('Add to my list')).toBeTruthy()
+    })
+
+    it('says what to do when the company list refuses an add', async () => {
+      svc.addToCompanyList.mockRejectedValue(
+        Object.assign(new Error('Add the crew to your list first'), {
+          code: 'CREW_NOT_IN_YOUR_LIST',
+        }),
+      )
+      const { findByText, getByText } = render(<CrewScreen />)
+      await findByText('Big Al')
+      fireEvent.press(getByText('Add to company list'))
+      await waitFor(() =>
+        expect(Alert.alert).toHaveBeenCalledWith(
+          'Couldn’t add to the company list',
+          'Add this crew to your own list first.',
+        ),
+      )
+    })
   })
 })

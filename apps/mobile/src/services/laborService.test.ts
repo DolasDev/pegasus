@@ -122,4 +122,82 @@ describe('LaborService', () => {
     expect(await LaborService.getExport()).toEqual([])
     expect(mockFetch).toHaveBeenLastCalledWith('/api/v1/labor/export')
   })
+
+  describe('company list', () => {
+    const CENC = `/api/v1/labor/company/crews/${ENC}`
+
+    it('searches the company list with the same query rules, keeping the location', async () => {
+      mockFetchPaginated.mockResolvedValueOnce({
+        data: [{ phone: PHONE }],
+        meta: { location: null },
+      })
+      expect((await LaborService.searchCompanyCrews(' ')).crews).toEqual([{ phone: PHONE }])
+      expect(mockFetchPaginated).toHaveBeenLastCalledWith('/api/v1/labor/company/crews', undefined)
+
+      const location = { lat: 32.8, lon: -83.6, label: '31201 (GA)' }
+      mockFetchPaginated.mockResolvedValueOnce({
+        data: [],
+        meta: { location, locationNotFound: false },
+      })
+      expect((await LaborService.searchCompanyCrews('31201')).location).toEqual(location)
+      expect(mockFetchPaginated).toHaveBeenLastCalledWith(
+        '/api/v1/labor/company/crews?q=31201',
+        undefined,
+      )
+    })
+
+    it('adds to the company list and returns the outcome', async () => {
+      mockFetchPaginated.mockResolvedValueOnce({
+        data: { phone: PHONE },
+        meta: { outcome: 'addedFromMyList' },
+      })
+      expect(await LaborService.addToCompanyList(PHONE)).toEqual({
+        crew: { phone: PHONE },
+        outcome: 'addedFromMyList',
+      })
+      const [path, init] = mockFetchPaginated.mock.calls[0]
+      expect(path).toBe('/api/v1/labor/company/crews')
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body)).toEqual({ phone: PHONE })
+    })
+
+    it('sends the extras Operations use to create a new company crew', async () => {
+      mockFetchPaginated.mockResolvedValueOnce({ data: {}, meta: { outcome: 'added' } })
+      await LaborService.addToCompanyList('404-555-0101', {
+        name: 'Ace',
+        email: null,
+        nickname: 'Macon Ace',
+      })
+      expect(JSON.parse(mockFetchPaginated.mock.calls[0][1].body)).toEqual({
+        phone: '404-555-0101',
+        name: 'Ace',
+        email: null,
+        nickname: 'Macon Ace',
+      })
+    })
+
+    it('patches and removes by the URL-encoded phone', async () => {
+      mockFetch.mockResolvedValue({})
+      await LaborService.updateCompanyCrew(PHONE, { nickname: 'Macon Ace' })
+      expect(mockFetch).toHaveBeenLastCalledWith(CENC, {
+        method: 'PATCH',
+        body: JSON.stringify({ nickname: 'Macon Ace' }),
+      })
+      await LaborService.removeFromCompanyList(PHONE)
+      expect(mockFetch).toHaveBeenLastCalledWith(CENC, { method: 'DELETE' })
+    })
+
+    it('adds to my list with the crew name, via POST /crews', async () => {
+      mockFetchPaginated.mockResolvedValueOnce({
+        data: { phone: PHONE },
+        meta: { outcome: 'linkedExisting' },
+      })
+      expect(await LaborService.addToMyList({ phone: PHONE, name: 'Ace Movers' })).toEqual({
+        phone: PHONE,
+      })
+      const [path, init] = mockFetchPaginated.mock.calls[0]
+      expect(path).toBe('/api/v1/labor/crews')
+      expect(JSON.parse(init.body)).toEqual({ phone: PHONE, name: 'Ace Movers' })
+    })
+  })
 })

@@ -14,10 +14,18 @@
 // number (and adding it) is what grants access, exactly like a phone book.
 // Adds are rate-limited per user so the number space can't be walked.
 //
+// The COMPANY LIST (/company/crews) is the tenant's own link set: a crew on it
+// is reachable by every user of the tenant as if it were in their book —
+// detail, shared edits, service areas, packers — except the private extras
+// (nickname, rating), which still need their own link. Anyone may add a crew
+// from their own book; creating one onto the list by phone, and removing one,
+// is for an Operations role (OPERATIONS_ROLES, checked here — not Cedar, like
+// the longhaul reads).
+//
 // Mounted on the Cognito-only tenant router; the handler also refuses an
 // `apiClient` caller. Cedar grants Read/WriteLabor to every principal
-// (56-labor-shared.cedar) — there is no role to gate on, since a user can only
-// reach crews they added themselves. Plan: plans/in-progress/labor-crews.md.
+// (56-labor-shared.cedar); the only role gate is the Operations one above.
+// Plans: plans/completed/e57eb0c4-labor-crews.md, plans/completed/a2f87151-company-labor.md.
 // ---------------------------------------------------------------------------
 
 import { Hono, type Context } from 'hono'
@@ -46,22 +54,30 @@ import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import {
   countLinksSince,
+  createCompanyLink,
   createLink,
   ensureCrew,
   findCities,
   findCity,
+  findCompanyLink,
   findMyLink,
   findPostalCode,
+  listCompanyLinkExtras,
+  listCompanyLinks,
+  listMyLinkExtras,
   listMyLinks,
   listPackers,
+  recordLinkAdd,
   replaceServiceAreas,
   crewNames,
   searchCities,
   starsByCrew,
+  type CompanyCrewLinkRow,
   type CrewLinkRow,
+  type CrewRow,
 } from '../repositories/labor.repository'
 import { legacyConnectionString } from '../lib/chat-access'
-import { resolveLonghaulReadScope } from '../lib/longhaul-read-scope'
+import { hasOperationsRole, resolveLonghaulReadScope } from '../lib/longhaul-read-scope'
 import {
   activityById,
   activityOwnerDriverId,
@@ -107,6 +123,8 @@ async function guarded(c: C, fn: () => Promise<Response>): Promise<Response> {
 interface Caller {
   userId: string
   tenantId: string
+  /** Holds an Operations role — may create onto and remove from the company list. */
+  operations: boolean
 }
 
 function caller(c: C): Caller {
@@ -115,7 +133,11 @@ function caller(c: C): Caller {
   }
   const userId = c.get('userId')
   if (!userId) throw new LaborHttpError(403, 'USER_NOT_FOUND', 'No user record for this login')
-  return { userId, tenantId: c.get('tenantId') }
+  return {
+    userId,
+    tenantId: c.get('tenantId'),
+    operations: hasOperationsRole(c.get('principal')?.roleNames ?? []),
+  }
 }
 
 /**
@@ -131,6 +153,60 @@ async function requireLink(c: C, who: Caller, phone: string): Promise<CrewLinkRo
   const link = await findMyLink(c.get('db'), who.userId, phone)
   if (!link) throw new LaborHttpError(404, 'CREW_NOT_FOUND', 'Crew not in your list')
   return link
+}
+
+/**
+ * A crew as the caller reaches it: through their own link, their tenant's
+ * company list, or both. `crew` is the shared record either way.
+ */
+interface CrewView {
+  crew: CrewRow
+  link: Pick<CrewLinkRow, 'id' | 'nickname' | 'rating' | 'createdAt'> | null
+  company: Pick<CompanyCrewLinkRow, 'id' | 'nickname' | 'createdAt'> | null
+}
+
+/** The crew at `phone` if it is in the caller's book or on their company list. */
+async function requireCrewAccess(c: C, who: Caller, phone: string): Promise<CrewView> {
+  const db = c.get('db')
+  const [link, company] = await Promise.all([
+    findMyLink(db, who.userId, phone),
+    findCompanyLink(db, who.tenantId, phone),
+  ])
+  const crew = link?.crew ?? company?.crew
+  if (!crew) throw new LaborHttpError(404, 'CREW_NOT_FOUND', 'Crew not in your list')
+  return { crew, link, company }
+}
+
+/**
+ * Every crew in the caller's book (`mine`) or on their company list
+ * (`company`). The other list is read only for its per-crew extras.
+ */
+async function listViews(c: C, who: Caller, scope: 'mine' | 'company'): Promise<CrewView[]> {
+  const db = c.get('db')
+  if (scope === 'mine') {
+    const [mine, company] = await Promise.all([
+      listMyLinks(db, who.userId),
+      listCompanyLinkExtras(db, who.tenantId),
+    ])
+    const companyBy = new Map(company.map((l) => [l.crewPhone, l]))
+    return mine.map((l) => ({ crew: l.crew, link: l, company: companyBy.get(l.crewPhone) ?? null }))
+  }
+  const [mine, company] = await Promise.all([
+    listMyLinkExtras(db, who.userId),
+    listCompanyLinks(db, who.tenantId),
+  ])
+  const myBy = new Map(mine.map((l) => [l.crewPhone, l]))
+  return company.map((l) => ({ crew: l.crew, link: myBy.get(l.crewPhone) ?? null, company: l }))
+}
+
+function notInYourList(): LaborHttpError {
+  return new LaborHttpError(422, 'CREW_NOT_IN_YOUR_LIST', 'Add the crew to your list first')
+}
+
+function operationsOnly(who: Caller, what: string): void {
+  if (!who.operations) {
+    throw new LaborHttpError(403, 'OPERATIONS_ONLY', `Only Operations can ${what}`)
+  }
 }
 
 async function readBody<T extends z.ZodType>(c: C, schema: T): Promise<z.infer<T>> {
@@ -161,14 +237,18 @@ function isUniqueViolation(err: unknown): boolean {
 // DTOs
 // ---------------------------------------------------------------------------
 
-function crewDto(link: CrewLinkRow, stars: readonly number[] | undefined) {
-  const { crew, rating } = link
+function crewDto(view: CrewView, stars: readonly number[] | undefined, who: Caller) {
+  const { crew, link, company } = view
+  const rating = link?.rating ?? null
+  const nickname = link?.nickname ?? null
+  const companyNickname = company?.nickname ?? null
   return {
     phone: crew.phone,
     phoneDisplay: formatPhoneNumber(crew.phone),
     name: crew.name,
-    nickname: link.nickname,
-    displayName: link.nickname ?? crew.name,
+    nickname,
+    companyNickname,
+    displayName: nickname ?? companyNickname ?? crew.name,
     email: crew.email,
     serviceAreas: crew.serviceAreas.map((a) => ({
       id: a.id,
@@ -182,7 +262,10 @@ function crewDto(link: CrewLinkRow, stars: readonly number[] | undefined) {
       ? { stars: rating.stars, comment: rating.comment, updatedAt: rating.updatedAt.toISOString() }
       : null,
     averageRating: aggregateRating(stars ?? []),
-    addedAt: link.createdAt.toISOString(),
+    addedAt: (link ?? company)!.createdAt.toISOString(),
+    inMyList: link !== null,
+    inCompanyList: company !== null,
+    canRemoveFromCompany: company !== null && who.operations,
   }
 }
 
@@ -202,18 +285,21 @@ function packerDto(p: Packer) {
   }
 }
 
-async function crewDtos(c: C, links: readonly CrewLinkRow[]): Promise<CrewDto[]> {
+async function crewDtos(c: C, who: Caller, views: readonly CrewView[]): Promise<CrewDto[]> {
   const stars = await starsByCrew(
     c.get('db'),
-    links.map((l) => l.crewPhone),
+    views.map((v) => v.crew.phone),
   )
-  return links.map((l) => crewDto(l, stars.get(l.crewPhone)))
+  return views.map((v) => crewDto(v, stars.get(v.crew.phone), who))
 }
 
 /** The crew at `phone` as the caller sees it, with its packers. */
 async function crewDetail(c: C, who: Caller, phone: string) {
-  const link = await requireLink(c, who, phone)
-  const [[dto], packers] = await Promise.all([crewDtos(c, [link]), listPackers(c.get('db'), phone)])
+  const view = await requireCrewAccess(c, who, phone)
+  const [[dto], packers] = await Promise.all([
+    crewDtos(c, who, [view]),
+    listPackers(c.get('db'), phone),
+  ])
   return { ...dto!, packers: packers.map(packerDto) }
 }
 
@@ -247,14 +333,16 @@ function matchesText(crew: CrewDto, text: string): boolean {
   const digits = /\p{L}/u.test(text) ? '' : text.replace(/\D/g, '')
   return (
     (key !== '' &&
-      (foldKey(crew.name).includes(key) || foldKey(crew.nickname ?? '').includes(key))) ||
+      [crew.name, crew.nickname, crew.companyNickname].some((n) =>
+        foldKey(n ?? '').includes(key),
+      )) ||
     (digits.length >= 3 && crew.phone.includes(digits))
   )
 }
 
 /** Nearest first from `origin`, on the stored service-area coordinates. */
-function rankFrom(links: readonly CrewLinkRow[], dtos: readonly CrewDto[], origin: SearchLocation) {
-  const areas = new Map(links.map((l) => [l.crewPhone, l.crew.serviceAreas]))
+function rankFrom(views: readonly CrewView[], dtos: readonly CrewDto[], origin: SearchLocation) {
+  const areas = new Map(views.map((v) => [v.crew.phone, v.crew.serviceAreas]))
   return rankCrewsByDistance(
     dtos.map((dto) => ({ dto, name: dto.displayName, serviceAreas: areas.get(dto.phone) ?? [] })),
     origin,
@@ -267,42 +355,48 @@ function rankFrom(links: readonly CrewLinkRow[], dtos: readonly CrewDto[], origi
 
 export const laborHandler = new Hono<AppEnv>()
 
-// GET /crews?q= — my crews. Empty q: A–Z. A ZIP, postal code or "City, ST":
-// nearest first. A state/province: crews serving it, A–Z. Other text: crews
-// whose name, nickname or phone matches — or, when none do and the text is a
-// city name, nearest first from that city.
+/**
+ * The search both lists share. Empty q: A–Z. A ZIP, postal code or "City, ST":
+ * nearest first. A state/province: crews serving it, A–Z. Other text: crews
+ * whose name, nickname or phone matches — or, when none do and the text is a
+ * city name, nearest first from that city.
+ */
+async function searchViews(c: C, who: Caller, views: readonly CrewView[]) {
+  const db = c.get('db')
+  const crews = await crewDtos(c, who, views)
+  const query = parseLocationQuery(c.req.query('q') ?? '')
+  const list = (data: unknown[], location: SearchLocation | null, notFound = false) =>
+    c.json({ data, meta: { location, ...(notFound ? { locationNotFound: true } : {}) } })
+
+  switch (query.kind) {
+    case 'none':
+      return list(crews.sort(byName), null)
+    case 'region':
+      return list(
+        crews.filter((cr) => cr.serviceAreas.some((a) => a.region === query.region)).sort(byName),
+        null,
+      )
+    case 'postal':
+    case 'city': {
+      const origin = await resolveOrigin(c, query)
+      return origin ? list(rankFrom(views, crews, origin), origin) : list([], null, true)
+    }
+    case 'text': {
+      const hits = crews.filter((cr) => matchesText(cr, query.text))
+      if (hits.length) return list(hits.sort(byName), null)
+      const city = await findCity(db, foldKey(query.text))
+      if (!city) return list([], null)
+      const origin = { lat: city.lat, lon: city.lon, label: `${city.name}, ${city.region}` }
+      return list(rankFrom(views, crews, origin), origin)
+    }
+  }
+}
+
+// GET /crews?q= — my crews (searchViews has the query rules).
 laborHandler.get('/crews', requirePermission(Actions.ReadLabor), (c) =>
   guarded(c, async () => {
     const who = caller(c)
-    const db = c.get('db')
-    const links = await listMyLinks(db, who.userId)
-    const crews = await crewDtos(c, links)
-    const query = parseLocationQuery(c.req.query('q') ?? '')
-    const list = (data: unknown[], location: SearchLocation | null, notFound = false) =>
-      c.json({ data, meta: { location, ...(notFound ? { locationNotFound: true } : {}) } })
-
-    switch (query.kind) {
-      case 'none':
-        return list(crews.sort(byName), null)
-      case 'region':
-        return list(
-          crews.filter((cr) => cr.serviceAreas.some((a) => a.region === query.region)).sort(byName),
-          null,
-        )
-      case 'postal':
-      case 'city': {
-        const origin = await resolveOrigin(c, query)
-        return origin ? list(rankFrom(links, crews, origin), origin) : list([], null, true)
-      }
-      case 'text': {
-        const hits = crews.filter((cr) => matchesText(cr, query.text))
-        if (hits.length) return list(hits.sort(byName), null)
-        const city = await findCity(db, foldKey(query.text))
-        if (!city) return list([], null)
-        const origin = { lat: city.lat, lon: city.lon, label: `${city.name}, ${city.region}` }
-        return list(rankFrom(links, crews, origin), origin)
-      }
-    }
+    return searchViews(c, who, await listViews(c, who, 'mine'))
   }),
 )
 
@@ -445,28 +539,40 @@ const PatchCrewBody = z.object({
   nickname: z.string().nullish(),
 })
 
+/** Writes the shared name/email when either is in the body. */
+async function updateSharedHeader(
+  c: C,
+  who: Caller,
+  crew: CrewRow,
+  input: { name?: string | undefined; email?: string | null | undefined },
+) {
+  if (input.name === undefined && input.email === undefined) return
+  const shared = validateCrew({
+    phone: crew.phone,
+    name: input.name ?? crew.name,
+    email: input.email === undefined ? crew.email : input.email,
+  })
+  await c.get('db').crew.update({
+    where: { phone: crew.phone },
+    data: { name: shared.name, email: shared.email ?? null, updatedByUserId: who.userId },
+  })
+}
+
 // PATCH /crews/:phone { name?, email?, nickname? } — name and email are shared
-// with every linked driver; nickname is mine.
+// with every linked driver and company list; nickname is mine, so it needs the
+// crew in my own book.
 laborHandler.patch('/crews/:phone', requirePermission(Actions.WriteLabor), (c) =>
   guarded(c, async () => {
     const who = caller(c)
     const phone = phoneParam(c)
-    const link = await requireLink(c, who, phone)
+    const { crew, link } = await requireCrewAccess(c, who, phone)
     const input = await readBody(c, PatchCrewBody)
+    // A private nickname needs my own link; clearing one I don't have is a no-op.
+    if (input.nickname != null && !link) throw notInYourList()
     const db = c.get('db')
 
-    if (input.name !== undefined || input.email !== undefined) {
-      const shared = validateCrew({
-        phone,
-        name: input.name ?? link.crew.name,
-        email: input.email === undefined ? link.crew.email : input.email,
-      })
-      await db.crew.update({
-        where: { phone },
-        data: { name: shared.name, email: shared.email ?? null, updatedByUserId: who.userId },
-      })
-    }
-    if (input.nickname !== undefined) {
+    await updateSharedHeader(c, who, crew, input)
+    if (input.nickname !== undefined && link) {
       await db.crewLink.update({
         where: { id: link.id },
         data: { nickname: normalizeNickname(input.nickname) },
@@ -491,14 +597,15 @@ const ServiceAreasBody = z.object({
   serviceAreas: z.array(z.object({ city: z.string(), region: z.string() })),
 })
 
-// PUT /crews/:phone/service-areas { serviceAreas: [{ city, region }] } —
+// PUT /crews/:phone/service-areas { serviceAreas: [{ city, region }] } — any
+// crew the caller can reach (own book or company list);
 // replaces the shared list. Each city is matched to the geo reference data for
 // distance ranking; a city we don't know is kept, just not ranked.
 laborHandler.put('/crews/:phone/service-areas', requirePermission(Actions.WriteLabor), (c) =>
   guarded(c, async () => {
     const who = caller(c)
     const phone = phoneParam(c)
-    await requireLink(c, who, phone)
+    await requireCrewAccess(c, who, phone)
     const areas = validateServiceAreas((await readBody(c, ServiceAreasBody)).serviceAreas)
     const db = c.get('db')
     const geo = await findCities(db, areas)
@@ -544,12 +651,15 @@ function packerDuplicate(): LaborHttpError {
   )
 }
 
+// The service-area and packer routes take any crew the caller can reach — their
+// own book or the company list (drivers edit company crews like their own).
+
 // POST /crews/:phone/packers — add a packer to the (shared) crew.
 laborHandler.post('/crews/:phone/packers', requirePermission(Actions.WriteLabor), (c) =>
   guarded(c, async () => {
     const who = caller(c)
     const phone = phoneParam(c)
-    await requireLink(c, who, phone)
+    await requireCrewAccess(c, who, phone)
     const p = validatePacker(await readBody(c, PackerBody), todayIso())
     try {
       const row = await c.get('db').packer.create({
@@ -574,7 +684,7 @@ laborHandler.patch('/crews/:phone/packers/:id', requirePermission(Actions.WriteL
   guarded(c, async () => {
     const who = caller(c)
     const phone = phoneParam(c)
-    await requireLink(c, who, phone)
+    await requireCrewAccess(c, who, phone)
     const db = c.get('db')
     const existing = await db.packer.findFirst({
       where: { id: c.req.param('id') ?? '', crewPhone: phone },
@@ -612,7 +722,7 @@ laborHandler.delete('/crews/:phone/packers/:id', requirePermission(Actions.Write
   guarded(c, async () => {
     const who = caller(c)
     const phone = phoneParam(c)
-    await requireLink(c, who, phone)
+    await requireCrewAccess(c, who, phone)
     const { count } = await c
       .get('db')
       .packer.deleteMany({ where: { id: c.req.param('id') ?? '', crewPhone: phone } })
@@ -703,6 +813,118 @@ laborHandler.get('/export', requirePermission(Actions.ReadLabor), (c) =>
 )
 
 // ---------------------------------------------------------------------------
+// Company list — the tenant's shared crews. Reading, adding from your own book
+// and editing are for everyone at the tenant; creating a crew onto the list by
+// phone and removing one are Operations-only. Removing never deletes the crew.
+// ---------------------------------------------------------------------------
+
+// GET /company/crews?q= — the company list, with the same search as /crews.
+laborHandler.get('/company/crews', requirePermission(Actions.ReadLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    return searchViews(c, who, await listViews(c, who, 'company'))
+  }),
+)
+
+const AddCompanyCrewBody = z.object({
+  phone: z.string(),
+  name: z.string().optional(),
+  email: z.string().nullish(),
+  nickname: z.string().nullish(),
+})
+
+type CompanyAddOutcome = 'added' | 'addedFromMyList' | 'linkedExisting'
+
+// POST /company/crews { phone, name?, email?, nickname? } — put a crew on the
+// company list. A crew in my own book goes on as-is (the "Add to company list"
+// button). Otherwise only Operations may add it, by phone + name like
+// POST /crews: an existing crew is linked (its shared name stands; mine
+// becomes the company nickname when it differs). That path spends the caller's
+// add budget, so the company list is no way around the rate limit. Idempotent.
+laborHandler.post('/company/crews', requirePermission(Actions.WriteLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    const input = await readBody(c, AddCompanyCrewBody)
+    const phone = normalizePhoneNumber(input.phone)
+    const db = c.get('db')
+    const alreadyInList = async () =>
+      c.json({ data: await crewDetail(c, who, phone), meta: { outcome: 'alreadyInList' } })
+
+    if (await findCompanyLink(db, who.tenantId, phone)) return alreadyInList()
+
+    let outcome: CompanyAddOutcome
+    let nickname = normalizeNickname(input.nickname)
+    if (await findMyLink(db, who.userId, phone)) {
+      outcome = 'addedFromMyList'
+    } else {
+      if (!who.operations) throw notInYourList()
+      const crew = validateCrew({ phone, name: input.name ?? '', email: input.email })
+      if ((await addBudget(c, who)) <= 0) {
+        throw new LaborHttpError(
+          429,
+          'LINK_RATE_LIMITED',
+          'Too many crews added today — try tomorrow',
+        )
+      }
+      const created = await ensureCrew(db, crew, who.userId)
+      if (!created) {
+        const existing = await db.crew.findUnique({ where: { phone: crew.phone } })
+        if (existing && existing.name !== crew.name) nickname ??= crew.name
+      }
+      outcome = created ? 'added' : 'linkedExisting'
+    }
+    const added = await createCompanyLink(db, {
+      tenantId: who.tenantId,
+      crewPhone: phone,
+      nickname,
+      addedByUserId: who.userId,
+    })
+    // A concurrent add won the race.
+    if (!added) return alreadyInList()
+    // An Operations add by phone spends the budget — only once it linked something.
+    if (outcome !== 'addedFromMyList') await recordLinkAdd(db, who.userId, phone)
+    return c.json({ data: await crewDetail(c, who, phone), meta: { outcome } }, 201)
+  }),
+)
+
+// PATCH /company/crews/:phone { name?, email?, nickname? } — name and email
+// are the crew's shared fields; nickname is the company display name.
+laborHandler.patch('/company/crews/:phone', requirePermission(Actions.WriteLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    const phone = phoneParam(c)
+    const company = await findCompanyLink(c.get('db'), who.tenantId, phone)
+    if (!company) throw new LaborHttpError(404, 'CREW_NOT_FOUND', 'Crew not on the company list')
+    const input = await readBody(c, PatchCrewBody)
+    await updateSharedHeader(c, who, company.crew, input)
+    if (input.nickname !== undefined) {
+      await c.get('db').companyCrewLink.update({
+        where: { id: company.id },
+        data: { nickname: normalizeNickname(input.nickname) },
+      })
+    }
+    return c.json({ data: await crewDetail(c, who, phone) })
+  }),
+)
+
+// DELETE /company/crews/:phone — Operations only. Takes the crew off the
+// company list; the crew, every driver's own link to it and past activity
+// labor all stay.
+laborHandler.delete('/company/crews/:phone', requirePermission(Actions.WriteLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    operationsOnly(who, 'remove a crew from the company list')
+    const { count } = await c.get('db').companyCrewLink.deleteMany({
+      where: { tenantId: who.tenantId, crewPhone: phoneParam(c) },
+    })
+    if (count === 0) {
+      throw new LaborHttpError(404, 'CREW_NOT_FOUND', 'Crew not on the company list')
+    }
+    return c.body(null, 204)
+  }),
+)
+
+// ---------------------------------------------------------------------------
 // Activity labor — which crews (and which of their packers) worked each of a
 // driver's activities on an order. Unlike the book, this is tenant data: the
 // activity is a row in the tenant's legacy database. A driver sees and edits
@@ -775,11 +997,19 @@ async function activityLaborDtos(
     },
     orderBy: { createdAt: 'asc' },
   })
-  const links = await db.crewLink.findMany({
-    where: { tenantUserId: who.userId, crewPhone: { in: assigned.map((a) => a.crewPhone) } },
-    select: { crewPhone: true, nickname: true },
-  })
+  const phones = assigned.map((a) => a.crewPhone)
+  const [links, company] = await Promise.all([
+    db.crewLink.findMany({
+      where: { tenantUserId: who.userId, crewPhone: { in: phones } },
+      select: { crewPhone: true, nickname: true },
+    }),
+    db.companyCrewLink.findMany({
+      where: { tenantId: who.tenantId, crewPhone: { in: phones } },
+      select: { crewPhone: true, nickname: true },
+    }),
+  ])
   const nicknames = new Map(links.map((l) => [l.crewPhone, l.nickname]))
+  const companyNicknames = new Map(company.map((l) => [l.crewPhone, l.nickname]))
   return activities.map((a) => ({
     id: a.id,
     orderNum: a.order_num,
@@ -800,8 +1030,9 @@ async function activityLaborDtos(
           phoneDisplay: formatPhoneNumber(x.crew.phone),
           name: x.crew.name,
           nickname,
-          displayName: nickname ?? x.crew.name,
+          displayName: nickname ?? companyNicknames.get(x.crewPhone) ?? x.crew.name,
           inMyBook: nicknames.has(x.crewPhone),
+          inCompanyList: companyNicknames.has(x.crewPhone),
           packers: x.crew.packers.map((p) => ({
             id: p.id,
             firstName: p.firstName,
@@ -839,8 +1070,8 @@ const ActivityLaborBody = z.object({
 
 // PUT /activities/:activityId { crews: [{ phone, packerIds }] } — replaces the
 // activity's whole labor set. Only the activity's own driver may write it. A
-// crew newly added must be in the caller's book; one already assigned may stay
-// after the driver drops it from their book. Every packer must be on its crew.
+// crew newly added must be in the caller's book or on the company list; one
+// already assigned may stay after it leaves both. Every packer must be on its crew.
 laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor), (c) =>
   guarded(c, async () => {
     const who = caller(c)
@@ -862,13 +1093,18 @@ laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor
     const kept = new Set(existing.map((e) => e.crewPhone))
     const added = crews.map((x) => x.phone).filter((p) => !kept.has(p))
     if (added.length > 0) {
-      const mine = await db.crewLink.findMany({
-        where: { tenantUserId: who.userId, crewPhone: { in: added } },
-        select: { crewPhone: true },
-      })
-      if (mine.length !== added.length) {
-        throw new LaborHttpError(422, 'CREW_NOT_IN_YOUR_LIST', 'Add the crew to your list first')
-      }
+      const [mine, company] = await Promise.all([
+        db.crewLink.findMany({
+          where: { tenantUserId: who.userId, crewPhone: { in: added } },
+          select: { crewPhone: true },
+        }),
+        db.companyCrewLink.findMany({
+          where: { tenantId: who.tenantId, crewPhone: { in: added } },
+          select: { crewPhone: true },
+        }),
+      ])
+      const reachable = new Set([...mine, ...company].map((l) => l.crewPhone))
+      if (added.some((p) => !reachable.has(p))) throw notInYourList()
     }
     const packers = await db.packer.findMany({
       where: { id: { in: crews.flatMap((x) => x.packerIds) } },

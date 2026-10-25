@@ -8,12 +8,14 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useTrips } from '../context/TripsContext'
 import { useChat } from '../chat/ChatContext'
+import { useLaborAccess } from '../auth/laborAccess'
 import { colors, fontSize, spacing } from '../theme/colors'
 
 export function DrawerContent(props: DrawerContentComponentProps) {
   const { session } = useAuth()
   const { offeredCount } = useTrips()
   const { unreadTotal } = useChat()
+  const { canSeeLabor, operationsOnly } = useLaborAccess()
 
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={styles.container}>
@@ -27,19 +29,21 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       </View>
 
       <View style={styles.items}>
-        <DrawerItem
-          label={() => (
-            <View style={styles.itemRow}>
-              <Text style={styles.itemLabel}>My Trips</Text>
-              {offeredCount > 0 ? (
-                <View style={styles.badge} accessibilityLabel={`${offeredCount} offered trips`}>
-                  <Text style={styles.badgeText}>{offeredCount}</Text>
-                </View>
-              ) : null}
-            </View>
-          )}
-          onPress={() => props.navigation.navigate('trips')}
-        />
+        {operationsOnly ? null : (
+          <DrawerItem
+            label={() => (
+              <View style={styles.itemRow}>
+                <Text style={styles.itemLabel}>My Trips</Text>
+                {offeredCount > 0 ? (
+                  <View style={styles.badge} accessibilityLabel={`${offeredCount} offered trips`}>
+                    <Text style={styles.badgeText}>{offeredCount}</Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+            onPress={() => props.navigation.navigate('trips')}
+          />
+        )}
         <DrawerItem
           label={() => (
             <View style={styles.itemRow}>
@@ -58,10 +62,12 @@ export function DrawerContent(props: DrawerContentComponentProps) {
           )}
           onPress={() => props.navigation.navigate('messages')}
         />
-        <DrawerItem
-          label={() => <Text style={styles.itemLabel}>Labor</Text>}
-          onPress={() => props.navigation.navigate('labor')}
-        />
+        {canSeeLabor ? (
+          <DrawerItem
+            label={() => <Text style={styles.itemLabel}>Labor</Text>}
+            onPress={() => props.navigation.navigate('labor')}
+          />
+        ) : null}
       </View>
     </DrawerContentScrollView>
   )

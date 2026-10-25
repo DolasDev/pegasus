@@ -15,6 +15,8 @@ interface TripsContextValue {
   loading: boolean
   /** True once the /me/driver mapping call has resolved (mapped or not). */
   mappingResolved: boolean
+  /** True when that call FAILED — "unmapped" is then unknown, not a fact. */
+  mappingFailed: boolean
   /** The logged-in user's longhaul driver id, or null when unmapped. */
   driverId: number | null
   /** Visible trips (excludes pending + canceled), sorted by planned start desc. */
@@ -32,6 +34,7 @@ const TripsContext = createContext<TripsContextValue | undefined>(undefined)
 export function TripsProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [mappingResolved, setMappingResolved] = useState(false)
+  const [mappingFailed, setMappingFailed] = useState(false)
   const [driverId, setDriverId] = useState<number | null>(null)
   const [trips, setTrips] = useState<LonghaulTrip[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -39,10 +42,13 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
+    let mapped = false
     try {
       const id = await TripService.getDriverId()
+      mapped = true
       setDriverId(id)
       setMappingResolved(true)
+      setMappingFailed(false)
       if (id == null) {
         setTrips([])
         return
@@ -53,6 +59,7 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
       logger.warn('Failed to load driver trips', err)
       setError(err instanceof Error ? err.message : 'Failed to load trips')
       setMappingResolved(true)
+      if (!mapped) setMappingFailed(true)
     } finally {
       setLoading(false)
     }
@@ -66,13 +73,14 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
     () => ({
       loading,
       mappingResolved,
+      mappingFailed,
       driverId,
       trips,
       offeredCount: trips.filter(isOfferedTrip).length,
       error,
       refresh,
     }),
-    [loading, mappingResolved, driverId, trips, error, refresh],
+    [loading, mappingResolved, mappingFailed, driverId, trips, error, refresh],
   )
 
   return <TripsContext.Provider value={value}>{children}</TripsContext.Provider>

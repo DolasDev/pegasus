@@ -404,8 +404,9 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
 }
 
 // ── Labor (Cognito users only; see handlers/labor.ts) ────────────────────────
-// A driver's private book of cash-labor crews. Every crew route answers 404
-// for a crew the caller hasn't added — the caller's own link is the access.
+// A driver's private book of cash-labor crews, plus the tenant's company list.
+// Every crew route answers 404 for a crew that is in neither the caller's book
+// nor their company list — one of those links is the access.
 
 const LABOR_PHONE_PARAM = {
   name: 'phone',
@@ -562,6 +563,78 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
       extraResponses: {
         '429': {
           description: 'LINK_RATE_LIMITED',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/company/crews': {
+    get: laborOp('listCompanyLaborCrews', "My company's crew list, A–Z or nearest first", {
+      description: 'The tenant-wide company list, with the same search as GET /labor/crews.',
+      query: [{ name: 'q', description: 'Search text (see GET /labor/crews)' }],
+      data: { type: 'array', items: LABOR_CREW },
+    }),
+    post: laborOp('addCompanyLaborCrew', 'Put a crew on the company list', {
+      description:
+        'Idempotent. A crew in your own list goes on as-is (`meta.outcome`: addedFromMyList). Any other number needs an Operations role and a name, like POST /labor/crews (added | linkedExisting — the shared name stands; yours becomes the company nickname when it differs) and spends your add budget (429 LINK_RATE_LIMITED). A non-Operations caller adding a crew not in their list gets 422 CREW_NOT_IN_YOUR_LIST. alreadyInList answers 200.',
+      body: {
+        type: 'object',
+        required: ['phone'],
+        properties: {
+          phone: { type: 'string' },
+          name: { type: 'string', description: 'Required unless the crew is in your own list' },
+          email: { type: ['string', 'null'] },
+          nickname: { type: ['string', 'null'], description: 'Company display name' },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+      status: '201',
+      extraResponses: {
+        '422': {
+          description: 'CREW_NOT_IN_YOUR_LIST',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+        '429': {
+          description: 'LINK_RATE_LIMITED',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/company/crews/{phone}': {
+    patch: laborOp(
+      'updateCompanyLaborCrew',
+      "Edit a company crew's shared name/email or company nickname",
+      {
+        phone: true,
+        body: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Shared with every linked driver' },
+            email: { type: ['string', 'null'], description: 'Shared' },
+            nickname: {
+              type: ['string', 'null'],
+              description: 'Company display name; null clears',
+            },
+          },
+        },
+        data: LABOR_CREW_DETAIL,
+      },
+    ),
+    delete: laborOp('removeCompanyLaborCrew', 'Remove a crew from the company list', {
+      description:
+        'Operations roles only (403 OPERATIONS_ONLY). The crew, every driver’s own link to it and past activity labor all stay.',
+      phone: true,
+      status: '204',
+      extraResponses: {
+        '403': {
+          description: 'OPERATIONS_ONLY',
           content: {
             'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
           },
@@ -3467,14 +3540,15 @@ export function getOpenApiSpec() {
         LaborCrew: {
           type: 'object',
           description:
-            'A crew as the caller sees it. name/email/serviceAreas are shared by every driver who added the number; nickname and myRating are private. averageRating is anonymous and null below 3 raters.',
+            'A crew as the caller sees it — from their own list, their company list, or both. name/email/serviceAreas/packers are shared by every driver who added the number; nickname and myRating are private (null unless inMyList). averageRating is anonymous and null below 3 raters.',
           required: ['phone', 'name', 'displayName', 'serviceAreas', 'packerCount'],
           properties: {
             phone: { type: 'string', description: 'E.164 — the crew’s identity' },
             phoneDisplay: { type: 'string' },
             name: { type: 'string' },
             nickname: { type: ['string', 'null'] },
-            displayName: { type: 'string', description: 'nickname ?? name' },
+            companyNickname: { type: ['string', 'null'], description: 'The company display name' },
+            displayName: { type: 'string', description: 'nickname ?? companyNickname ?? name' },
             email: { type: ['string', 'null'] },
             serviceAreas: {
               type: 'array',
@@ -3503,6 +3577,12 @@ export function getOpenApiSpec() {
               properties: { average: { type: 'number' }, count: { type: 'integer' } },
             },
             addedAt: { type: 'string', format: 'date-time' },
+            inMyList: { type: 'boolean' },
+            inCompanyList: { type: 'boolean' },
+            canRemoveFromCompany: {
+              type: 'boolean',
+              description: 'On the company list and the caller holds an Operations role',
+            },
             distanceMiles: {
               type: ['number', 'null'],
               description: 'Only on a location search',
@@ -3564,6 +3644,7 @@ export function getOpenApiSpec() {
                   nickname: { type: ['string', 'null'], description: "The caller's private name" },
                   displayName: { type: 'string' },
                   inMyBook: { type: 'boolean' },
+                  inCompanyList: { type: 'boolean' },
                   packers: {
                     type: 'array',
                     items: {

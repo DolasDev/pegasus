@@ -49,13 +49,15 @@ const INTEGRATION_VIEW_ROLES = ['tenant_admin', 'viewer', 'integration_publisher
 // reaches every screen, so the children carry no `roles` of their own and
 // inherit the group's gate. (Planning and Trips were once narrowed to
 // tenant_admin + operations_admin, and Services was too until the dispatch
-// roles were granted it.)
+// roles were granted it. Labor, the company crew list, is Operations-only like
+// the rest.)
 const OPERATIONS_CHILDREN = [
   { to: '/driver-planning' as const, label: 'Availability', exact: true },
   { to: '/driver-planning/planning' as const, label: 'Planning', exact: false },
   { to: '/driver-planning/trips' as const, label: 'Trips', exact: false },
   { to: '/driver-planning/shipments' as const, label: 'Shipments', exact: false },
   { to: '/driver-planning/activities' as const, label: 'Services', exact: false },
+  { to: '/driver-planning/labor' as const, label: 'Labor', exact: false },
 ] as const
 
 const NAV_ITEMS = [

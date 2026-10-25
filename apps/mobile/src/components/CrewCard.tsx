@@ -6,7 +6,8 @@ import { colors, fontSize, spacing, borderRadius } from '../theme/colors'
 
 // ---------------------------------------------------------------------------
 // One crew in the Labor list: name (my nickname wins), phone, the first few
-// service areas, MY stars, and the anonymous average once 3+ drivers rated.
+// service areas, MY stars (only for a crew in my own list), a "Company" tag
+// when it's on the company list, and the anonymous average once 3+ drivers rated.
 // ---------------------------------------------------------------------------
 
 const AREAS_SHOWN = 3
@@ -50,7 +51,8 @@ export function CrewCard({ crew, onPress }: CrewCardProps) {
       ) : null}
 
       <View style={styles.footer}>
-        <StarRating value={crew.myRating?.stars ?? null} />
+        {crew.inMyList ? <StarRating value={crew.myRating?.stars ?? null} /> : null}
+        {crew.inCompanyList ? <Text style={styles.tag}>Company</Text> : null}
         {crew.averageRating ? (
           <Text style={styles.average}>
             avg {crew.averageRating.average.toFixed(1)} ({crew.averageRating.count})
@@ -92,6 +94,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  tag: {
+    fontSize: fontSize.small,
+    fontWeight: '700',
+    color: colors.brand,
   },
   average: { fontSize: fontSize.small, color: colors.textSecondary },
   packers: { marginLeft: 'auto', fontSize: fontSize.small, color: colors.textSecondary },

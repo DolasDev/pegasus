@@ -327,6 +327,7 @@ model Tenant {
   // Labor on longhaul activities
   activityLaborCrews   ActivityLaborCrew[]
   activityLaborPackers ActivityLaborPacker[]
+  companyCrewLinks     CompanyCrewLink[]
 
   // Longhaul — archived (rejected/canceled) trip snapshots
   archivedTrips ArchivedTrip[]
@@ -543,6 +544,7 @@ model TenantUser {
   laborCrewLinks      CrewLink[]
   laborCrewLinkAdds   CrewLinkAdd[]
   activityLaborCrews  ActivityLaborCrew[]
+  companyCrewLinks    CompanyCrewLink[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3580,6 +3582,7 @@ model Crew {
   serviceAreas  CrewServiceArea[]
   packers       Packer[]
   activityLabor ActivityLaborCrew[]
+  companyLinks  CompanyCrewLink[]
 
   @@map("labor_crews")
   @@schema("public")
@@ -3693,6 +3696,30 @@ model CrewRating {
   link CrewLink @relation(fields: [crewLinkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("labor_crew_ratings")
+  @@schema("public")
+}
+
+/// A crew on the tenant's company list — the tenant's grant to the shared
+/// platform-wide `Crew` (name, service areas and packers stay on the crew).
+/// Every tenant user reads it, adds to it and edits its crews; only an
+/// Operations role removes one. Removing it never deletes the `Crew`.
+model CompanyCrewLink {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  crewPhone     String   @map("crew_phone")
+  /// Company display name; falls back to `Crew.name`.
+  nickname      String?
+  /// Provenance only — deleting that user must not empty the company's list.
+  addedByUserId String?  @map("added_by_user_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crew    Crew        @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  addedBy TenantUser? @relation(fields: [addedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([tenantId, crewPhone])
+  @@index([crewPhone])
+  @@map("labor_company_crew_links")
   @@schema("public")
 }
 

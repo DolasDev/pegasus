@@ -6,7 +6,9 @@
 // see the schema's Labor section), so the tenant client passes them straight
 // through. Isolation is the caller's link: every crew read here is either
 // keyed by a link the handler already resolved for the caller, or filtered on
-// `tenantUserId`. Access decisions are made in handlers/labor.ts.
+// `tenantUserId`. The one exception is `CompanyCrewLink` — the tenant's company
+// list — which IS tenant-scoped (and filtered on `tenantId` here as well).
+// Access decisions are made in handlers/labor.ts.
 // ---------------------------------------------------------------------------
 
 import type { Prisma, PrismaClient } from '@prisma/client'
@@ -14,17 +16,30 @@ import type { NormalizedServiceArea } from '@pegasus/domain'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
+const CREW_INCLUDE = {
+  include: {
+    serviceAreas: { orderBy: [{ region: 'asc' }, { city: 'asc' }] },
+    _count: { select: { packers: true } },
+  },
+} as const satisfies Prisma.CrewDefaultArgs
+
 export const LINK_INCLUDE = {
   rating: true,
-  crew: {
-    include: {
-      serviceAreas: { orderBy: [{ region: 'asc' }, { city: 'asc' }] },
-      _count: { select: { packers: true } },
-    },
-  },
+  crew: CREW_INCLUDE,
 } as const satisfies Prisma.CrewLinkInclude
 
 export type CrewLinkRow = Prisma.CrewLinkGetPayload<{ include: typeof LINK_INCLUDE }>
+
+export const COMPANY_LINK_INCLUDE = {
+  crew: CREW_INCLUDE,
+} as const satisfies Prisma.CompanyCrewLinkInclude
+
+export type CompanyCrewLinkRow = Prisma.CompanyCrewLinkGetPayload<{
+  include: typeof COMPANY_LINK_INCLUDE
+}>
+
+/** A crew with its service areas and packer count — what every crew DTO is built from. */
+export type CrewRow = CrewLinkRow['crew']
 
 /** The caller's link to the crew at `phone`, or null when they haven't added it. */
 export function findMyLink(db: Db, tenantUserId: string, phone: string) {
@@ -38,7 +53,6 @@ export function listMyLinks(db: Db, tenantUserId: string) {
   return db.crewLink.findMany({ where: { tenantUserId }, include: LINK_INCLUDE })
 }
 
-/** How many crews the caller has added since `since` (the add rate limit). */
 /** Links the user has CREATED since `since` — from the append-only add log, so removals don't count back. */
 export function countLinksSince(db: Db, tenantUserId: string, since: Date) {
   return db.crewLinkAdd.count({ where: { tenantUserId, createdAt: { gte: since } } })
@@ -104,6 +118,51 @@ export async function createLink(
     })
   }
   return count === 1
+}
+
+/** The crew at `phone` on the tenant's company list, or null. */
+export function findCompanyLink(db: Db, tenantId: string, phone: string) {
+  return db.companyCrewLink.findFirst({
+    where: { tenantId, crewPhone: phone },
+    include: COMPANY_LINK_INCLUDE,
+  })
+}
+
+/** The caller's own links, without the crew — just the private extras per crew. */
+export function listMyLinkExtras(db: Db, tenantUserId: string) {
+  return db.crewLink.findMany({
+    where: { tenantUserId },
+    select: { id: true, crewPhone: true, nickname: true, createdAt: true, rating: true },
+  })
+}
+
+/** The company list without the crew — just its per-crew extras. */
+export function listCompanyLinkExtras(db: Db, tenantId: string) {
+  return db.companyCrewLink.findMany({
+    where: { tenantId },
+    select: { id: true, crewPhone: true, nickname: true, createdAt: true },
+  })
+}
+
+export function listCompanyLinks(db: Db, tenantId: string) {
+  return db.companyCrewLink.findMany({ where: { tenantId }, include: COMPANY_LINK_INCLUDE })
+}
+
+/**
+ * Puts a crew on the tenant's company list. Returns false when it was already
+ * there — the unique (tenantId, crewPhone) makes a double add a no-op.
+ */
+export async function createCompanyLink(
+  db: Db,
+  link: { tenantId: string; crewPhone: string; nickname: string | null; addedByUserId: string },
+): Promise<boolean> {
+  const { count } = await db.companyCrewLink.createMany({ data: [link], skipDuplicates: true })
+  return count === 1
+}
+
+/** Spends one of the user's adds (the rate limit) without linking them to the crew. */
+export async function recordLinkAdd(db: Db, tenantUserId: string, crewPhone: string) {
+  await db.crewLinkAdd.create({ data: { tenantUserId, crewPhone } })
 }
 
 /** The shared names of whichever of `phones` already exist. */
