@@ -55,19 +55,42 @@ FROM LongDistanceDispatchActivity a
 LEFT JOIN Longhaul_ActivityType at ON a.ActivityType_code = at.code
 LEFT JOIN TripMaster t ON a.TripMaster_id = t.id`
 
-/** Every activity on an order, in schedule order. Throws on a legacy error. */
-export async function orderActivities(
+/** Activities matching `where` (one bound param), in schedule order. */
+async function activitiesWhere(
   connectionString: string,
-  orderNum: number,
+  where: string,
+  param: { name: string; value: number },
 ): Promise<DriverActivityRow[]> {
   const { recordset } = await executeSql(
     connectionString,
     `${ACTIVITY_SELECT}
-WHERE a.order_num = @orderNum
+WHERE ${where}
 ORDER BY COALESCE(a.estimated_date, a.planned_start), a.id`,
-    { params: [{ name: 'orderNum', value: orderNum }] },
+    { params: [param] },
   )
   return recordset as DriverActivityRow[]
+}
+
+/** Every activity on an order, in schedule order. Throws on a legacy error. */
+export function orderActivities(
+  connectionString: string,
+  orderNum: number,
+): Promise<DriverActivityRow[]> {
+  return activitiesWhere(connectionString, 'a.order_num = @orderNum', {
+    name: 'orderNum',
+    value: orderNum,
+  })
+}
+
+/** Every activity on a trip, in schedule order. Throws on a legacy error. */
+export function tripActivities(
+  connectionString: string,
+  tripId: number,
+): Promise<DriverActivityRow[]> {
+  return activitiesWhere(connectionString, 'a.TripMaster_id = @tripId', {
+    name: 'tripId',
+    value: tripId,
+  })
 }
 
 /** One activity, or null. Throws on a legacy error. */
@@ -79,19 +102,4 @@ export async function activityById(
     params: [{ name: 'id', value: id }],
   })
   return (recordset[0] as DriverActivityRow | undefined) ?? null
-}
-
-/** Every activity on a trip, in schedule order. Throws on a legacy error. */
-export async function tripActivities(
-  connectionString: string,
-  tripId: number,
-): Promise<DriverActivityRow[]> {
-  const { recordset } = await executeSql(
-    connectionString,
-    `${ACTIVITY_SELECT}
-WHERE a.TripMaster_id = @tripId
-ORDER BY COALESCE(a.estimated_date, a.planned_start), a.id`,
-    { params: [{ name: 'tripId', value: tripId }] },
-  )
-  return recordset as DriverActivityRow[]
 }

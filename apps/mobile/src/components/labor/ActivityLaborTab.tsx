@@ -12,7 +12,6 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import {
   LaborService,
   activityLaborInput,
-  activityMemberIds,
   withMember,
   withoutCrew,
   withPacker,
@@ -64,15 +63,23 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
     }, [orderNum]),
   )
 
-  // `memberIds` omitted leaves My crew as it is (a crew-only change).
-  const save = async (
-    activity: LaborActivity,
-    crews: LaborActivityCrewInput[],
-    memberIds?: string[],
-  ) => {
+  // A crew-only change sends no memberIds, leaving My crew as it is.
+  const save = (activity: LaborActivity, crews: LaborActivityCrewInput[]) =>
+    run(activity, () => LaborService.setActivityLabor(activity.id, crews, undefined))
+
+  // A member toggle re-reads the activity first: the trip-accepted auto-assign
+  // may have added members since this tab loaded, and the PUT replaces the set.
+  const toggleMember = (activity: LaborActivity, memberId: string, on: boolean) =>
+    run(activity, () =>
+      LaborService.updateActivityMembers(activity.orderNum, activity.id, (ids) =>
+        withMember(ids, memberId, on),
+      ),
+    )
+
+  const run = async (activity: LaborActivity, write: () => Promise<LaborActivity>) => {
     setSavingId(activity.id)
     try {
-      const next = await LaborService.setActivityLabor(activity.id, crews, memberIds)
+      const next = await write()
       setActivities((list) => list?.map((a) => (a.id === next.id ? next : a)) ?? null)
     } catch (err) {
       Alert.alert('Couldn’t save labor', errText(err))
@@ -225,13 +232,7 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
                       key={m.id}
                       style={styles.packer}
                       disabled={off}
-                      onPress={() =>
-                        void save(
-                          a,
-                          activityLaborInput(a),
-                          withMember(activityMemberIds(a), m.id, !m.selected),
-                        )
-                      }
+                      onPress={() => void toggleMember(a, m.id, !m.selected)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: m.selected, disabled: off }}
                       accessibilityLabel={`${m.firstName} ${m.lastName}`}

@@ -12,7 +12,8 @@ follows [Semantic Versioning](https://semver.org/).
   Pegasus (Pending/Offered → Accepted/In-Progress). Payload
   `{tripId, driverId, fromStatusId, toStatusId, assigned: [{activityId, memberIds}]}`,
   `assigned` being the driver's "Every job" My Crew members the platform just put
-  on the trip's PACK/LOAD/UNPK/RDEL/XDEL activities. No code change.
+  on the trip's PACK/LOAD/UNPK/RDEL/XDEL activities. When that step fails the
+  event still fires, with `assigned: []` and `assignFailed: true`. No code change.
 
 ## 0.53.0
 

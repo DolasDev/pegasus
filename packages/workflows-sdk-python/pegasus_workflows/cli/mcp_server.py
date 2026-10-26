@@ -418,7 +418,7 @@ externalId, connectionId}``. Reply with ``client.send_sms(to=payload["fromNumber
 (Pending/Offered -> Accepted/In-Progress; not for changes made in the desktop app):
 ``{tripId, driverId, fromStatusId, toStatusId, assigned: [{activityId, memberIds}]}``,
 ``assigned`` being the driver's "Every job" crew members just put on the trip's
-labor activities.
+labor activities (``[]`` plus ``assignFailed: true`` when that step failed).
 
 ## Shape 2 — Manual run
 

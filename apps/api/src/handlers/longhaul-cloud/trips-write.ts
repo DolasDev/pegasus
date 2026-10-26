@@ -207,7 +207,12 @@ async function assignMyCrews(
 ): Promise<void> {
   try {
     const db = c.get('db')
-    if (!db) return
+    if (!db) {
+      logger.warn('no tenant db — trip.accepted and the My Crew auto-assign skipped', {
+        tripId: input.tripId,
+      })
+      return
+    }
     const assigned = await autoAssignOnTripAccepted(db, input)
     logger.info('trip accepted — My Crew auto-assign', {
       tripId: input.tripId,
@@ -215,7 +220,8 @@ async function assignMyCrews(
       members: assigned.reduce((n, a) => n + a.memberIds.length, 0),
     })
   } catch (err) {
-    logger.warn('labor auto-assign failed', { error: errDetail(err), tripId: input.tripId })
+    // Only when even the bare trip.accepted emit failed (see autoAssignOnTripAccepted).
+    logger.error('trip.accepted emit failed', { error: errDetail(err), tripId: input.tripId })
   }
 }
 

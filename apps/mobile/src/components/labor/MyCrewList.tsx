@@ -108,7 +108,7 @@ export function MyCrewList() {
         <>
           <Text style={styles.emptyTitle}>No one in your crew yet</Text>
           <Text style={styles.emptySubtext}>
-            Add the packers who work with you. Only you can see them.
+            Add the packers who work with you. Their details stay private to you.
           </Text>
         </>
       )}

@@ -41,7 +41,8 @@ export const DOMAIN_EVENT_TYPES = [
   // emitted for status changes made in the legacy desktop app, which Pegasus
   // never sees. Payload: { tripId, driverId, fromStatusId, toStatusId,
   // assigned: [{ activityId, memberIds }] } — `assigned` is the My Crew members
-  // the same write added to the trip's labor activities.
+  // the same write added to the trip's labor activities. When that lookup or
+  // write failed, the event still fires with `assigned: []` and `assignFailed: true`.
   'trip.accepted',
 ] as const
 

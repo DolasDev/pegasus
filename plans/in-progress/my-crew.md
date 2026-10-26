@@ -179,6 +179,23 @@ driverId, fromStatusId, toStatusId })`.
       (48 suites), SDK 516; tsc + eslint clean on api / mobile / tenant-web
 - [ ] Review, PR, merge, deploy → EAS build (Android internal) → tag `sdk-python-v0.53.1`
 
+### Code review (2026-10-26, /code-review high)
+
+**Fixed:**
+
+- Others now see only a member's name.
+- `trip.accepted` still fires when the assign fails (`assignFailed`).
+- The `!db` skip is logged.
+- A member toggle re-reads the activity before its PUT.
+- A removed member's identity keys are released when an active member needs them.
+- The duplicated activity query is deduped.
+
+**Accepted, not fixed:**
+
+- The 50-member cap is count-then-create, so a double-tap can reach 51. Harmless.
+- Two concurrent accepts of the same trip both read Offered, so `trip.accepted` emits twice. Member rows are deduped by `skipDuplicates`, but the event is not. Fixing it would mean making the legacy status UPDATE conditional on the status read (a behavior change to a ported write), or adding a dedupe key to `DomainEvent`. Flag this to Steve.
+- The status PATCH now awaits a legacy activity read plus a Postgres transaction before it answers. It is best-effort, and its failures are swallowed.
+
 ### Notes from the build
 
 - The trip-save path (`lib/longhaul-trip-save.ts`) writes back the `TripStatus_id` its DTO

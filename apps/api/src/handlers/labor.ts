@@ -962,6 +962,38 @@ function memberDuplicate(): LaborHttpError {
   )
 }
 
+function identityKeys(p: { cidKey: string | null; emailKey: string | null }) {
+  return [
+    ...(p.cidKey ? [{ cidKey: p.cidKey }] : []),
+    ...(p.emailKey ? [{ emailKey: p.emailKey }] : []),
+  ]
+}
+
+/**
+ * A removed member keeps its identity keys so adding the same person again
+ * brings them back — until a live member needs one of those keys. Then the
+ * removed row gives it up (it can no longer be restored by that key), so the
+ * unique index never reports a "duplicate" the driver can't see.
+ */
+async function releaseRemovedKeys(
+  c: C,
+  who: Caller,
+  keys: ReturnType<typeof identityKeys>,
+  exceptId: string | undefined,
+): Promise<void> {
+  if (keys.length === 0) return
+  const db = c.get('db')
+  const where = {
+    tenantUserId: who.userId,
+    removedAt: { not: null },
+    ...(exceptId ? { id: { not: exceptId } } : {}),
+  }
+  for (const key of keys) {
+    const field = 'cidKey' in key ? 'cidKey' : 'emailKey'
+    await db.driverCrewMember.updateMany({ where: { ...where, ...key }, data: { [field]: null } })
+  }
+}
+
 async function requireMember(c: C, who: Caller): Promise<DriverCrewMember> {
   const member = await c.get('db').driverCrewMember.findFirst({
     where: { id: c.req.param('id') ?? '', tenantUserId: who.userId, removedAt: null },
@@ -999,10 +1031,7 @@ laborHandler.post('/my-crew', requirePermission(Actions.WriteLabor), (c) =>
         `Your crew can have at most ${MAX_CREW_MEMBERS} people`,
       )
     }
-    const keys = [
-      ...(p.cidKey ? [{ cidKey: p.cidKey }] : []),
-      ...(p.emailKey ? [{ emailKey: p.emailKey }] : []),
-    ]
+    const keys = identityKeys(p)
     const removed = keys.length
       ? await db.driverCrewMember.findFirst({
           where: { tenantUserId: who.userId, removedAt: { not: null }, OR: keys },
@@ -1010,6 +1039,7 @@ laborHandler.post('/my-crew', requirePermission(Actions.WriteLabor), (c) =>
       : null
     const data = { ...p, cidIssuedOn: toDate(p.cidIssuedOn), everyJob: body.everyJob ?? false }
     try {
+      await releaseRemovedKeys(c, who, keys, removed?.id)
       const row = removed
         ? await db.driverCrewMember.update({
             where: { id: removed.id },
@@ -1049,6 +1079,7 @@ laborHandler.patch('/my-crew/:id', requirePermission(Actions.WriteLabor), (c) =>
       todayIso(),
     )
     try {
+      await releaseRemovedKeys(c, who, identityKeys(p), existing.id)
       const row = await c.get('db').driverCrewMember.update({
         where: { id: existing.id },
         data: {
@@ -1179,12 +1210,14 @@ async function activityLaborDtos(
         })
       : Promise.resolve([]),
   ])
+  // Someone else's member shows only as a name on the job they worked — their
+  // contact details and flags stay private to the driver whose crew they are.
   const memberRow = (m: DriverCrewMember, selected: boolean) => ({
     id: m.id,
     firstName: m.firstName,
     lastName: m.lastName,
-    phoneDisplay: m.phone ? formatPhoneNumber(m.phone) : null,
-    everyJob: m.everyJob && m.removedAt === null,
+    phoneDisplay: m.phone && m.tenantUserId === who.userId ? formatPhoneNumber(m.phone) : null,
+    everyJob: m.everyJob && m.removedAt === null && m.tenantUserId === who.userId,
     // In my crew now — the only members that may be newly ticked.
     mine: m.tenantUserId === who.userId && m.removedAt === null,
     selected,

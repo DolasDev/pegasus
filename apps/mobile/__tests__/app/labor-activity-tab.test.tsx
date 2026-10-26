@@ -10,7 +10,11 @@ jest.mock('../../src/services/laborService', () => {
   const actual = jest.requireActual('../../src/services/laborService')
   return {
     ...actual,
-    LaborService: { getOrderActivities: jest.fn(), setActivityLabor: jest.fn() },
+    LaborService: {
+      getOrderActivities: jest.fn(),
+      setActivityLabor: jest.fn(),
+      updateActivityMembers: jest.fn(),
+    },
   }
 })
 
@@ -170,13 +174,20 @@ describe('ActivityLaborTab', () => {
       ...over,
     })
 
-    it('ticks a member, sending the crews as they are plus the member set', async () => {
+    it('ticks a member through a fresh read-modify-write of the activity', async () => {
       svc.getOrderActivities.mockResolvedValue([
         pack({
           myCrew: [member('m1', 'Diaz', { selected: true, everyJob: true }), member('m2', 'Ruiz')],
         }),
       ])
-      svc.setActivityLabor.mockResolvedValue(pack())
+      svc.updateActivityMembers.mockResolvedValue(
+        pack({
+          myCrew: [
+            member('m1', 'Diaz', { selected: true }),
+            member('m2', 'Ruiz', { selected: true }),
+          ],
+        }),
+      )
       const { findByLabelText, getByLabelText, getByText } = render(
         <ActivityLaborTab orderNum={100} />,
       )
@@ -184,11 +195,14 @@ describe('ActivityLaborTab', () => {
       expect(getByText('Every job')).toBeTruthy()
       fireEvent.press(getByLabelText('M Ruiz'))
       await waitFor(() =>
-        expect(svc.setActivityLabor).toHaveBeenCalledWith(
-          11,
-          [{ phone: A, packerIds: ['p1'] }],
-          ['m1', 'm2'],
-        ),
+        expect(svc.updateActivityMembers).toHaveBeenCalledWith(100, 11, expect.any(Function)),
+      )
+      // The change applies to whatever the server holds now, not the tab's snapshot.
+      const change = svc.updateActivityMembers.mock.calls[0]![2]
+      expect(change(['m1', 'auto'])).toEqual(['m1', 'auto', 'm2'])
+      expect(svc.setActivityLabor).not.toHaveBeenCalled()
+      await waitFor(() =>
+        expect(getByLabelText('M Ruiz').props.accessibilityState.checked).toBe(true),
       )
     })
 

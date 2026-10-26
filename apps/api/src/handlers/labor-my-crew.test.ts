@@ -137,7 +137,14 @@ type MemberOut = {
 type ActivityOut = {
   id: number
   editable: boolean
-  myCrew: Array<{ id: string; lastName: string; mine: boolean; selected: boolean }>
+  myCrew: Array<{
+    id: string
+    lastName: string
+    mine: boolean
+    selected: boolean
+    phoneDisplay: string | null
+    everyJob: boolean
+  }>
 }
 
 async function addMember(who: string, lastName: string, extra: Record<string, unknown> = {}) {
@@ -486,10 +493,39 @@ describe.skipIf(!hasDb)('/labor My Crew (integration)', () => {
     expect(await db.activityLaborMember.count({ where: { tenantId: tenantB } })).toBe(0)
   })
 
-  it('throws when the legacy read fails (the caller logs it), writing nothing', async () => {
+  it('still emits trip.accepted, flagged, when the legacy read fails', async () => {
     await addMember('driver', 'Diaz', { everyJob: true })
     legacyDown = true
-    await expect(accept(tenantA, 50)).rejects.toThrow('legacy down')
-    expect(await db.domainEvent.count({ where: { tenantId: tenantA } })).toBe(0)
+    expect(await accept(tenantA, 50)).toEqual([])
+    expect(await db.activityLaborMember.count({ where: { tenantId: tenantA } })).toBe(0)
+    const events = await db.domainEvent.findMany({ where: { tenantId: tenantA } })
+    expect(events.map((e) => e.payload)).toEqual([
+      expect.objectContaining({ tripId: 50, assigned: [], assignFailed: true }),
+    ])
+  })
+
+  it("hides another driver's member's phone and flag from Operations", async () => {
+    const diaz = await addMember('driver', 'Diaz', { everyJob: true })
+    await putLabor('driver', 1, { crews: [], memberIds: [diaz.id] })
+    const [a1] = await getOrder('ops')
+    expect(a1!.myCrew).toEqual([
+      expect.objectContaining({
+        lastName: 'Diaz',
+        phoneDisplay: null,
+        everyJob: false,
+        mine: false,
+      }),
+    ])
+  })
+
+  it('lets a live member take a key a removed member held', async () => {
+    const old = await addMember('driver', 'Diaz', { email: 'd@x.test' })
+    await appAs('driver').request(`/labor/my-crew/${old.id}`, { method: 'DELETE' })
+    const live = await addMember('driver', 'Ruiz')
+    const res = await appAs('driver').request(
+      `/labor/my-crew/${live.id}`,
+      send({ lastName: 'Diaz', email: 'd@x.test' }, 'PATCH'),
+    )
+    expect(res.status).toBe(200)
   })
 })

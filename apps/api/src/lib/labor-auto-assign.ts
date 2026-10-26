@@ -18,12 +18,15 @@
 // count (isLaborActivityType). Additive only: rows that exist are skipped and
 // nothing is removed, so a member the driver unticked after acceptance stays
 // unticked — unless the trip goes back to Offered and is accepted again.
+// A failed lookup or assign still emits the event (assignFailed); there is no
+// retry — the driver ticks members by hand on the Labor tab.
 // Plan: plans/in-progress/my-crew.md.
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
 import { isLaborActivityType } from '@pegasus/domain'
 import { emitDomainEvent } from './domain-events'
+import { logger } from './logger'
 import { activityOwnerDriverId, tripActivities } from './longhaul-driver-activity'
 
 export interface TripAcceptedInput {
@@ -41,15 +44,8 @@ export interface AutoAssigned {
   memberIds: string[]
 }
 
-/**
- * Adds the trip's drivers' Every-job members to its labor activities and emits
- * `trip.accepted`. Returns what was assigned (already-present rows included).
- * Throws on a legacy or database error — the caller decides it's best-effort.
- */
-export async function autoAssignOnTripAccepted(
-  db: PrismaClient,
-  input: TripAcceptedInput,
-): Promise<AutoAssigned[]> {
+/** Which Every-job members go on which of the trip's labor activities. */
+async function planAssignments(db: PrismaClient, input: TripAcceptedInput) {
   const { tenantId } = input
   const activities = (await tripActivities(input.connectionString, input.tripId)).filter((a) =>
     isLaborActivityType(a.ActivityType_code),
@@ -83,39 +79,68 @@ export async function autoAssignOnTripAccepted(
     if (driver != null) byDriver.set(driver, [...(byDriver.get(driver) ?? []), m.id])
   }
 
-  const assigned = activities
+  return activities
     .map((a) => ({
       activity: a,
       memberIds: byDriver.get(activityOwnerDriverId(a) ?? -1) ?? [],
     }))
     .filter((x) => x.memberIds.length > 0)
+}
 
-  await db.$transaction(async (tx) => {
-    if (assigned.length > 0) {
-      await tx.activityLaborMember.createMany({
-        data: assigned.flatMap(({ activity, memberIds }) =>
-          memberIds.map((memberId) => ({
-            tenantId,
-            activityId: activity.id,
-            orderNum: activity.order_num,
-            memberId,
-            assignedByUserId: null,
-          })),
-        ),
-        skipDuplicates: true,
-      })
-    }
-    await emitDomainEvent(tx, {
-      tenantId,
-      eventType: 'trip.accepted',
-      payload: {
-        tripId: input.tripId,
-        driverId: input.driverId,
-        fromStatusId: input.fromStatusId,
-        toStatusId: input.toStatusId,
-        assigned: assigned.map((x) => ({ activityId: x.activity.id, memberIds: x.memberIds })),
-      },
-    })
+/**
+ * Adds the trip's drivers' Every-job members to its labor activities and emits
+ * `trip.accepted`, in one transaction. Returns what was assigned
+ * (already-present rows included).
+ *
+ * The acceptance itself is already committed on-prem, so the event must not
+ * hang on the labor half: when the legacy read or the assign fails, it is
+ * logged and the event is still emitted alone, with `assigned: []` and
+ * `assignFailed: true`. Throws only when even that emit fails.
+ */
+export async function autoAssignOnTripAccepted(
+  db: PrismaClient,
+  input: TripAcceptedInput,
+): Promise<AutoAssigned[]> {
+  const { tenantId } = input
+  const event = (assigned: AutoAssigned[], assignFailed: boolean) => ({
+    tenantId,
+    eventType: 'trip.accepted' as const,
+    payload: {
+      tripId: input.tripId,
+      driverId: input.driverId,
+      fromStatusId: input.fromStatusId,
+      toStatusId: input.toStatusId,
+      assigned,
+      ...(assignFailed ? { assignFailed: true } : {}),
+    },
   })
-  return assigned.map((x) => ({ activityId: x.activity.id, memberIds: x.memberIds }))
+  try {
+    const plan = await planAssignments(db, input)
+    const assigned = plan.map((x) => ({ activityId: x.activity.id, memberIds: x.memberIds }))
+    await db.$transaction(async (tx) => {
+      if (plan.length > 0) {
+        await tx.activityLaborMember.createMany({
+          data: plan.flatMap(({ activity, memberIds }) =>
+            memberIds.map((memberId) => ({
+              tenantId,
+              activityId: activity.id,
+              orderNum: activity.order_num,
+              memberId,
+              assignedByUserId: null,
+            })),
+          ),
+          skipDuplicates: true,
+        })
+      }
+      await emitDomainEvent(tx, event(assigned, false))
+    })
+    return assigned
+  } catch (err) {
+    logger.warn('labor auto-assign failed — emitting trip.accepted without it', {
+      error: String(err),
+      tripId: input.tripId,
+    })
+    await emitDomainEvent(db, event([], true))
+    return []
+  }
 }
