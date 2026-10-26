@@ -41,7 +41,9 @@ const HEADERS = [
 const MemoizedActivityCards = React.memo(({ activities }: { activities: ActivityRow[] }) => (
   <>
     {activities.map((activity) => (
-      <ActivityCard key={activity.id} activity={activity} />
+      // `row_key` is set on every row when local jobs are included — a job id
+      // and an activity id can be the same number.
+      <ActivityCard key={activity.row_key ?? activity.id} activity={activity} />
     ))}
   </>
 ))
@@ -52,14 +54,15 @@ export const ActivitiesDashboard = () => {
   const query = useSelector((state: RootState) => state.activities.query)
   const loading = useSelector((state: RootState) => state.activities.loading)
   const error = useSelector((state: RootState) => state.activities.error)
+  const includeLocal = useSelector((state: RootState) => state.activities.includeLocal)
 
   // Debounced so dragging through a month in the date picker fires one query,
   // not thirty. Same 1s window the shipments board uses.
   const debouncedQuery = useDebounce(query, 1000)
 
   useEffect(() => {
-    if (debouncedQuery) dispatch(fetchActivities(debouncedQuery) as any)
-  }, [debouncedQuery, dispatch])
+    if (debouncedQuery) dispatch(fetchActivities(debouncedQuery, includeLocal) as any)
+  }, [debouncedQuery, includeLocal, dispatch])
 
   const changeSortBy = (value: string) => {
     dispatch(changeActivityQuery({ sortBy: getSortByValue(query, value) }))

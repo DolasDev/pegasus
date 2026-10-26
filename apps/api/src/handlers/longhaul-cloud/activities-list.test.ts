@@ -528,4 +528,72 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
       }
     })
   })
+
+  describe('include=local (local dispatch jobs on the board)', () => {
+    const LOCAL_JOB = {
+      id: 7001,
+      order_num: 200,
+      service_date: '2026-10-20T00:00:00.000Z',
+      services: 'PACK',
+      active: 'Y',
+      is_final: 'N',
+      is_confirmed: 'Y',
+      driver_id1: 412,
+      driver_id2: 0,
+      it_driver1_name: 'JOE SMITH',
+    }
+    const CATALOG = [{ code: 'PACK', name: 'Pack', abbreviation: 'Pack', sequencePriority: 10 }]
+
+    function withBatch(activities: unknown[], jobs: unknown[]) {
+      findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+      executeSqlMock.mockResolvedValue({
+        recordset: activities,
+        recordsets: [activities, CATALOG, jobs],
+        rowsAffected: [],
+      })
+    }
+
+    it('reads activities, the catalog and local jobs in ONE executor call, merged by date', async () => {
+      withBatch([{ id: 1, scheduled_date: '2026-10-21T00:00:00.000Z' }], [LOCAL_JOB])
+      const res = await buildApp().request(
+        `/onprem/longhaul/activities${filtersQs({ date_range: ['2026-10-19', '2026-10-25'] })}&include=local`,
+      )
+      expect(res.status).toBe(200)
+      expect(executeSqlMock).toHaveBeenCalledTimes(1)
+      expect(sentSql()).toContain('FROM LongDistanceDispatchActivity')
+      expect(sentSql()).toContain('FROM Longhaul_ActivityType')
+      expect(sentSql()).toContain('FROM LocalDispatchJobs j')
+      // One bag: the activity and job date bounds never share a param name.
+      const names = sentParams().map((p) => p.name)
+      expect(new Set(names).size).toBe(names.length)
+      const b = await body(res)
+      expect((b.data as Array<Record<string, unknown>>).map((r) => r['row_key'])).toEqual([
+        'local-job-token:7001:PACK',
+        'longhaul-activity:1',
+      ])
+      expect(b.meta?.count).toBe(2)
+    })
+
+    it('ignores the flag for a driver-scoped caller (their local work is on /me/itinerary)', async () => {
+      tenantUserFind.mockResolvedValue({ longhaulDriverId: 4766 })
+      withRows([{ id: 1 }])
+      await buildApp(['driver']).request('/onprem/longhaul/activities?include=local')
+      expect(sentSql()).not.toContain('LocalDispatchJobs')
+    })
+
+    it('leaves the longhaul-only response untouched when the flag is off', async () => {
+      withRows([{ id: 1 }])
+      const res = await buildApp().request('/onprem/longhaul/activities')
+      expect(sentSql()).not.toContain('LocalDispatchJobs')
+      expect((await body(res)).data).toEqual([{ id: 1 }])
+    })
+
+    it('counts local rows toward the result cap', async () => {
+      const many = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1 }))
+      withBatch(many, [LOCAL_JOB])
+      const res = await buildApp().request('/onprem/longhaul/activities?include=local')
+      expect(res.status).toBe(400)
+      expect((await body(res)).code).toBe('RESULT_LIMIT_EXCEEDED')
+    })
+  })
 })

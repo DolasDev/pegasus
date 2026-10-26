@@ -81,9 +81,12 @@ export function resolveRoute(routeName: string, args: unknown[]): HttpRequest {
     // handler parses one param the same way every other longhaul list does.
     case 'fetchActivities': {
       const query: Record<string, unknown> = arg0 ?? {}
+      // args[1]: include local dispatch jobs. A top-level flag, not a filter,
+      // so a saved Services filter (services-filter-query.ts) never carries it.
+      const include = args[1] === true ? '&include=local' : ''
       return {
         method: 'GET',
-        path: `/activities?filters=${encodeURIComponent(JSON.stringify(query))}`,
+        path: `/activities?filters=${encodeURIComponent(JSON.stringify(query))}${include}`,
       }
     }
 

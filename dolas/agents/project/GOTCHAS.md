@@ -3471,3 +3471,15 @@ every platform. That mirrors the `moduleNameMapper` in `jest.config.js`. To
 prove resolution, **move `packages/domain/dist` aside and run
 `npx expo export --platform android`**; a passing bundle with `dist/` present
 proves nothing.
+
+## A local dispatch job's `services` is a concatenation, and the tenant DBs have no `STRING_SPLIT`
+
+`LocalDispatchJobs.services` is space-separated act codes, but repeats are MIRRORED
+(`PACK R19I R19I PACK`, `RDEL SITOUT RDEL`) — it is two lists joined, not a count, so de-duplicate
+per job. Hand-typed codes outside movemanager's generator exist (QMM: `WHSE` on 283 jobs in 90 days,
+`MILE`, `MEET`). The job's own location columns are ~never filled (NW 7 %, QMM/RVS 0 %), so the
+place has to come from `sales`. There is **no actual date on a job**: `is_final = 'Y'` is what fires
+`TriggerLocalDispatchUpdate` to stamp `sales.*_actual = service_date` for every token in the
+string — so never set `is_final` to complete ONE act. And `STRING_SPLIT` fails with
+`Invalid object name` on NW, QMM and RVS (compatibility level < 130): split in JS. Prod check
+2026-10-25, re-runnable per tenant with `scripts/probe-local-dispatch-jobs.ts`.

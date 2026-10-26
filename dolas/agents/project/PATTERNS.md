@@ -461,6 +461,35 @@ mapping that drivers don't have and accepts every column. Precedent:
 - **Audit.** `modified_by` is a salesman code, so a driver write stamps NULL (as the M2M path does)
   and logs the driver id.
 
+## A driver's work across longhaul and local — the itinerary, not the trip
+
+A driver's work lives in two legacy places: `LongDistanceDispatchActivity` (one row per act, on a
+longhaul trip) and `LocalDispatchJobs` (one row per order per service day, its acts packed into a
+space-separated `services` string). `lib/itinerary/` reads both into ONE row shape,
+`ItineraryItem` (one act × one order × one day — the domain reference's `stopAction`), and the trip
+is a grouping on the item (`tripId`, `tripStatus`), never the way in. New driver-facing screens
+should read the itinerary (`GET /onprem/longhaul/me/itinerary`, `/drivers/itinerary`) rather than
+start from trips, or local work is invisible.
+
+- **Two ids, two numbering spaces, bound separately.** `TenantUser.longhaulDriverId`
+  (`v_longhaul_drivers.driver_id`) and `TenantUser.localDriverEmployeeId` (`crews.employee_id`).
+  Never match one number against both (GOTCHAS, "Crew number ≠ driver number").
+- **Ownership** is the ETA editor's rule for activities (assigned driver, else the trip driver when
+  unassigned) and either driver slot for local jobs. Chat's broader "any activity on the order"
+  rule is deliberately NOT reused.
+- **One date rule:** `actual ?? estimated ?? planned_start` for an activity; `service_date` for a
+  local job (and `actual = service_date` once `is_final = 'Y'`).
+- **Pending and cancelled trips are excluded, Offered kept** — the driver app's own visibility rule.
+- **One executor call per read** (a multi-statement batch read through `recordsets`; the account's
+  Lambda concurrency is 10), retried statement-by-statement on failure so one bad source degrades
+  to `failedSources` instead of an empty list.
+- **Local tokens → acts:** `splitServices` (whitespace, de-duplicated); the tenant's
+  `Longhaul_ActivityType` names and sequences shared codes, `LOCAL_ONLY_CODES` the rest, and an
+  unknown hand-typed token is shown `known: false`, never dropped. Place comes from the ORDER
+  (`sales` origin/destination by the act's side), not the job's free-text location.
+- The Services board shows local rows only behind `?include=local`, a top-level flag rather than a
+  filter, so the strict saved-filter schema never carries it.
+
 ## A pegII route keyed by an arbitrary entity id needs a policy narrower than "any valid token"
 
 Most cloud-facing Pegasus.Api routes `RequireAuthorization()` and leave _which_ principal may read to the

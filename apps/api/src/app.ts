@@ -73,6 +73,7 @@ import {
 } from './handlers/longhaul-cloud/trip-notes'
 import { longhaulSaveActivityHandler } from './handlers/longhaul-cloud/activities-write'
 import { driverActivityEtaHandler } from './handlers/longhaul-cloud/driver-activity-eta'
+import { myItineraryHandler, driverItineraryHandler } from './handlers/longhaul-cloud/itinerary'
 import {
   longhaulTripStatusHandler,
   longhaulTripCancelHandler,
@@ -546,6 +547,13 @@ v1.get('/onprem/longhaul/activity-types', longhaulActivityTypesHandler)
 // on an activity list. Registered here for the same route-precedence reason as
 // every other cloud-direct GET.
 v1.get('/onprem/longhaul/activities', longhaulActivitiesListHandler)
+// Driver itinerary: a driver's work over a date range — longhaul activities AND
+// local dispatch jobs — as one list of acts, the trip a grouping on each item
+// rather than the way in. /me is the caller's own (their TenantUser driver
+// ids); /drivers is any driver's, Operations roles only. See
+// handlers/longhaul-cloud/itinerary.ts.
+v1.get('/onprem/longhaul/me/itinerary', myItineraryHandler)
+v1.get('/onprem/longhaul/drivers/itinerary', driverItineraryHandler)
 // Phase 3: /filter-options and /dispatchers are served cloud-direct. Their
 // per-client query config (MoveType filter, dispatcher SQL) is resolved from
 // the tenant's longhaulClient column — see lib/longhaul-client-config.ts.

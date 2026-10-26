@@ -145,6 +145,15 @@ describe('resolveRoute', () => {
       })
     })
 
+    it('fetchActivities with includeLocal → the top-level include=local flag, outside filters', () => {
+      const query = { filters: {}, sortBy: null }
+      expect(resolveRoute('fetchActivities', [query, true])).toEqual({
+        method: 'GET',
+        path: `/activities?filters=${encodeURIComponent(JSON.stringify(query))}&include=local`,
+      })
+      expect(resolveRoute('fetchActivities', [query, false]).path).not.toContain('include')
+    })
+
     it('fetchActivities with no args → an empty filters payload, not a bare path', () => {
       // The handler reads one `filters` param; sending nothing is fine, but the
       // shape has to stay consistent so the parse branch is always exercised.
