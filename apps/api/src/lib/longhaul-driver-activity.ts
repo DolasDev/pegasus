@@ -80,3 +80,18 @@ export async function activityById(
   })
   return (recordset[0] as DriverActivityRow | undefined) ?? null
 }
+
+/** Every activity on a trip, in schedule order. Throws on a legacy error. */
+export async function tripActivities(
+  connectionString: string,
+  tripId: number,
+): Promise<DriverActivityRow[]> {
+  const { recordset } = await executeSql(
+    connectionString,
+    `${ACTIVITY_SELECT}
+WHERE a.TripMaster_id = @tripId
+ORDER BY COALESCE(a.estimated_date, a.planned_start), a.id`,
+    { params: [{ name: 'tripId', value: tripId }] },
+  )
+  return recordset as DriverActivityRow[]
+}

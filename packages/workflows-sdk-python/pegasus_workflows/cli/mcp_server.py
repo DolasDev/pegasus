@@ -404,7 +404,7 @@ not a snapshot — always re-fetch authoritative state from the Pegasus API.
 
 Built-in event types: ``quote.accepted``, ``move.status_changed``,
 ``invoice.paid``, ``customer.created``, ``pegasus_event.received``,
-``feedback.submitted``, ``sms.received``; plus ``pegii.shipment.opened``,
+``feedback.submitted``, ``sms.received``, ``trip.accepted``; plus ``pegii.shipment.opened``,
 ``pegii.shipment.closed``, ``pegii.sale.saved`` and the tenant's registered
 custom event types.
 
@@ -413,6 +413,12 @@ number (never for outbound, never for a connect-time backfill). Unlike the
 pointer payloads, it carries the text so the Automation can parse it directly:
 ``{messageId, fromNumber, toNumber, body, rcCreationTime, threadId, source,
 externalId, connectionId}``. Reply with ``client.send_sms(to=payload["fromNumber"], ...)``.
+
+``trip.accepted`` fires when a longhaul trip is confirmed for its driver in Pegasus
+(Pending/Offered -> Accepted/In-Progress; not for changes made in the desktop app):
+``{tripId, driverId, fromStatusId, toStatusId, assigned: [{activityId, memberIds}]}``,
+``assigned`` being the driver's "Every job" crew members just put on the trip's
+labor activities.
 
 ## Shape 2 — Manual run
 

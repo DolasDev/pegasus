@@ -114,6 +114,28 @@ export interface LaborPackerInput {
   phone?: string | null
 }
 
+/** Someone on my own My Crew (GET /labor/my-crew) — private to me. */
+export interface MyCrewMember extends LaborPacker {
+  /** Added to my pack, load and delivery jobs whenever a trip of mine is accepted. */
+  everyJob: boolean
+}
+
+export interface MyCrewMemberInput extends LaborPackerInput {
+  everyJob?: boolean
+}
+
+/** A My Crew member on an activity; `selected` = worked it. */
+export interface LaborActivityMember {
+  id: string
+  firstName: string
+  lastName: string
+  phoneDisplay: string | null
+  everyJob: boolean
+  /** In my My Crew now — only these may be newly ticked. */
+  mine: boolean
+  selected: boolean
+}
+
 /** A packer on a crew assigned to an activity; `selected` = worked it. */
 export interface LaborActivityPacker {
   id: string
@@ -149,6 +171,8 @@ export interface LaborActivity {
   actualDate: string | null
   /** True when I'm the activity's driver. */
   editable: boolean
+  /** My crew (ticked where they worked it), plus anyone else's who did. Absent from an older API. */
+  myCrew?: LaborActivityMember[]
   crews: LaborActivityCrew[]
 }
 

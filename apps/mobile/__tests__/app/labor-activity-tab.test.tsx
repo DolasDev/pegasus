@@ -87,9 +87,12 @@ describe('ActivityLaborTab', () => {
     const { findByLabelText, getByLabelText } = render(<ActivityLaborTab orderNum={100} />)
     fireEvent.press(await findByLabelText('Bo Ruiz'))
     await waitFor(() =>
-      expect(svc.setActivityLabor).toHaveBeenCalledWith(11, [
-        { phone: A, packerIds: ['p1', 'p2'] },
-      ]),
+      // No memberIds: a crew change leaves My crew alone.
+      expect(svc.setActivityLabor).toHaveBeenCalledWith(
+        11,
+        [{ phone: A, packerIds: ['p1', 'p2'] }],
+        undefined,
+      ),
     )
     await waitFor(() =>
       expect(getByLabelText('Bo Ruiz').props.accessibilityState.checked).toBe(true),
@@ -115,7 +118,7 @@ describe('ActivityLaborTab', () => {
     const { findByLabelText } = render(<ActivityLaborTab orderNum={100} />)
     fireEvent.press(await findByLabelText('Remove Ace'))
     expect(alert).toHaveBeenCalled()
-    await waitFor(() => expect(svc.setActivityLabor).toHaveBeenCalledWith(11, []))
+    await waitFor(() => expect(svc.setActivityLabor).toHaveBeenCalledWith(11, [], undefined))
   })
 
   it('opens the crew picker and the packer form for the activity', async () => {
@@ -153,6 +156,86 @@ describe('ActivityLaborTab', () => {
     const { findByText, queryByLabelText } = render(<ActivityLaborTab orderNum={100} />)
     expect(await findByText('Pack')).toBeTruthy()
     expect(queryByLabelText('Add packer to Ace')).toBeNull()
+  })
+
+  describe('My crew', () => {
+    const member = (id: string, lastName: string, over: Record<string, unknown> = {}) => ({
+      id,
+      firstName: 'M',
+      lastName,
+      phoneDisplay: null,
+      everyJob: false,
+      mine: true,
+      selected: false,
+      ...over,
+    })
+
+    it('ticks a member, sending the crews as they are plus the member set', async () => {
+      svc.getOrderActivities.mockResolvedValue([
+        pack({
+          myCrew: [member('m1', 'Diaz', { selected: true, everyJob: true }), member('m2', 'Ruiz')],
+        }),
+      ])
+      svc.setActivityLabor.mockResolvedValue(pack())
+      const { findByLabelText, getByLabelText, getByText } = render(
+        <ActivityLaborTab orderNum={100} />,
+      )
+      expect((await findByLabelText('M Diaz')).props.accessibilityState.checked).toBe(true)
+      expect(getByText('Every job')).toBeTruthy()
+      fireEvent.press(getByLabelText('M Ruiz'))
+      await waitFor(() =>
+        expect(svc.setActivityLabor).toHaveBeenCalledWith(
+          11,
+          [{ phone: A, packerIds: ['p1'] }],
+          ['m1', 'm2'],
+        ),
+      )
+    })
+
+    it('lets me untick, but not tick, someone no longer in my crew', async () => {
+      svc.getOrderActivities.mockResolvedValue([
+        pack({
+          myCrew: [
+            member('m1', 'Gone', { mine: false, selected: true }),
+            member('m2', 'Other', { mine: false, selected: false }),
+          ],
+        }),
+      ])
+      const { findByLabelText, getByLabelText } = render(<ActivityLaborTab orderNum={100} />)
+      expect((await findByLabelText('M Gone')).props.accessibilityState.disabled).toBe(false)
+      expect(getByLabelText('M Other').props.accessibilityState.disabled).toBe(true)
+    })
+
+    it('offers Add to my crew on my activity, even with an empty crew', async () => {
+      svc.getOrderActivities.mockResolvedValue([pack({ myCrew: [] })])
+      const { findByText, getByLabelText } = render(<ActivityLaborTab orderNum={100} />)
+      expect(await findByText('No one in your crew yet.')).toBeTruthy()
+      fireEvent.press(getByLabelText('Add to my crew'))
+      expect(router.push).toHaveBeenCalledWith({
+        pathname: '/labor/packer',
+        params: { myCrew: '1', activityId: '11', orderNum: '100' },
+      })
+    })
+
+    it('is hidden from an older API and read-only on an activity not mine', async () => {
+      svc.getOrderActivities.mockResolvedValue([
+        pack(),
+        pack({
+          id: 12,
+          typeName: 'Load',
+          editable: false,
+          myCrew: [member('m1', 'Diaz', { selected: true })],
+        }),
+      ])
+      const { findByText, queryAllByLabelText, getByLabelText, queryByLabelText } = render(
+        <ActivityLaborTab orderNum={100} />,
+      )
+      expect(await findByText('Load')).toBeTruthy()
+      expect(queryAllByLabelText('My crew')).toHaveLength(1)
+      expect(queryByLabelText('Add to my crew')).toBeNull()
+      fireEvent.press(getByLabelText('M Diaz'))
+      expect(svc.setActivityLabor).not.toHaveBeenCalled()
+    })
   })
 
   it('shows an empty state and a load error', async () => {

@@ -1,4 +1,12 @@
-import { LaborService, activityLaborInput, withCrew, withoutCrew, withPacker } from './laborService'
+import {
+  LaborService,
+  activityLaborInput,
+  activityMemberIds,
+  withCrew,
+  withMember,
+  withoutCrew,
+  withPacker,
+} from './laborService'
 import type { LaborActivity } from '../types/labor'
 
 const mockFetch = jest.fn()
@@ -54,6 +62,62 @@ describe('activity-labor set helpers', () => {
   })
 })
 
+describe('My Crew set helpers', () => {
+  const member = (id: string, selected: boolean) => ({
+    id,
+    firstName: 'M',
+    lastName: id,
+    phoneDisplay: null,
+    everyJob: false,
+    mine: true,
+    selected,
+  })
+
+  it('reads the ticked members, and none from an older API', () => {
+    expect(
+      activityMemberIds(activity({ myCrew: [member('m1', true), member('m2', false)] })),
+    ).toEqual(['m1'])
+    expect(activityMemberIds(activity())).toEqual([])
+  })
+
+  it('ticks and unticks one member', () => {
+    expect(withMember(['m1'], 'm2', true)).toEqual(['m1', 'm2'])
+    expect(withMember(['m1', 'm2'], 'm1', false)).toEqual(['m2'])
+    expect(withMember(['m1'], 'm1', true)).toEqual(['m1'])
+  })
+})
+
+describe('LaborService My Crew', () => {
+  it('lists, adds, edits and removes members', async () => {
+    mockFetch.mockResolvedValueOnce(null)
+    expect(await LaborService.getMyCrew()).toEqual([])
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/v1/labor/my-crew')
+
+    mockFetch.mockResolvedValueOnce({ id: 'm1' })
+    await LaborService.addMyCrewMember({
+      firstName: 'A',
+      lastName: 'B',
+      phone: '1',
+      everyJob: true,
+    })
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/v1/labor/my-crew', {
+      method: 'POST',
+      body: JSON.stringify({ firstName: 'A', lastName: 'B', phone: '1', everyJob: true }),
+    })
+
+    mockFetch.mockResolvedValueOnce({ id: 'm1' })
+    await LaborService.updateMyCrewMember('m1', { everyJob: false })
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/v1/labor/my-crew/m1', {
+      method: 'PATCH',
+      body: JSON.stringify({ everyJob: false }),
+    })
+
+    mockFetch.mockResolvedValueOnce(null)
+    await LaborService.removeMyCrewMember('m1')
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/v1/labor/my-crew/m1', { method: 'DELETE' })
+  })
+})
+
 describe('LaborService activity labor', () => {
   it('reads an order and replaces an activity set', async () => {
     mockFetch.mockResolvedValueOnce([activity()])
@@ -66,6 +130,12 @@ describe('LaborService activity labor', () => {
       method: 'PUT',
       body: JSON.stringify({ crews: [{ phone: B, packerIds: [] }] }),
     })
+  })
+
+  it('sends memberIds only when given', async () => {
+    mockFetch.mockResolvedValueOnce(activity())
+    await LaborService.setActivityLabor(11, [], ['m1'])
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ crews: [], memberIds: ['m1'] })
   })
 
   it('read-modify-writes one activity', async () => {

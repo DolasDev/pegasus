@@ -328,6 +328,8 @@ model Tenant {
   activityLaborCrews   ActivityLaborCrew[]
   activityLaborPackers ActivityLaborPacker[]
   companyCrewLinks     CompanyCrewLink[]
+  driverCrewMembers    DriverCrewMember[]
+  activityLaborMembers ActivityLaborMember[]
 
   // Longhaul — archived (rejected/canceled) trip snapshots
   archivedTrips ArchivedTrip[]
@@ -534,17 +536,19 @@ model TenantUser {
   apiClientsActedAs ApiClient[] @relation("ApiClientActsAs")
   crewMember        CrewMember?
 
-  deviceTokens        DeviceToken[]
-  availabilityFilters AvailabilityFilter[]
-  servicesFilters     ServicesFilter[]
-  pushNotifications   PushNotificationOutbox[]
-  chatMessages        ChatMessage[]
-  chatRoomMembers     ChatRoomMember[]
-  companyMemberships  CompanyMembership[]
-  laborCrewLinks      CrewLink[]
-  laborCrewLinkAdds   CrewLinkAdd[]
-  activityLaborCrews  ActivityLaborCrew[]
-  companyCrewLinks    CompanyCrewLink[]
+  deviceTokens                 DeviceToken[]
+  availabilityFilters          AvailabilityFilter[]
+  servicesFilters              ServicesFilter[]
+  pushNotifications            PushNotificationOutbox[]
+  chatMessages                 ChatMessage[]
+  chatRoomMembers              ChatRoomMember[]
+  companyMemberships           CompanyMembership[]
+  laborCrewLinks               CrewLink[]
+  laborCrewLinkAdds            CrewLinkAdd[]
+  activityLaborCrews           ActivityLaborCrew[]
+  companyCrewLinks             CompanyCrewLink[]
+  myCrewMembers                DriverCrewMember[]
+  activityLaborMembersAssigned ActivityLaborMember[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3762,6 +3766,61 @@ model ActivityLaborPacker {
   @@id([activityLaborCrewId, packerId])
   @@index([packerId])
   @@map("activity_labor_packers")
+  @@schema("public")
+}
+
+/// A packer on a driver's own "My Crew" — private to that driver, unlike the
+/// platform-wide `Packer` (it has no `Crew`). Same fields and identity keys as a
+/// packer, unique per owner. `everyJob` members are added to the driver's labor
+/// activities when one of their trips is accepted (lib/labor-auto-assign.ts).
+/// Removal is soft (`removedAt`) so the jobs a member worked keep showing them.
+model DriverCrewMember {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  tenantUserId String    @map("tenant_user_id")
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  email        String?
+  cidNumber    String?   @map("cid_number")
+  cidIssuedOn  DateTime? @map("cid_issued_on") @db.Date
+  phone        String?
+  cidKey       String?   @map("cid_key")
+  emailKey     String?   @map("email_key")
+  everyJob     Boolean   @default(false) @map("every_job")
+  removedAt    DateTime? @map("removed_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user          TenantUser            @relation(fields: [tenantUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  activityLabor ActivityLaborMember[]
+
+  @@unique([tenantUserId, cidKey])
+  @@unique([tenantUserId, emailKey])
+  @@index([tenantId, tenantUserId])
+  @@map("labor_driver_crew_members")
+  @@schema("public")
+}
+
+/// A My Crew member who worked one legacy longhaul activity (no FK — see
+/// ActivityLaborCrew). `assignedByUserId` is null when the trip-accepted
+/// auto-assign added the row.
+model ActivityLaborMember {
+  tenantId         String   @map("tenant_id")
+  activityId       Int      @map("activity_id")
+  orderNum         Int      @map("order_num")
+  memberId         String   @map("member_id")
+  assignedByUserId String?  @map("assigned_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  member     DriverCrewMember @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  assignedBy TenantUser?      @relation(fields: [assignedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@id([tenantId, activityId, memberId])
+  @@index([tenantId, orderNum])
+  @@index([memberId])
+  @@map("activity_labor_members")
   @@schema("public")
 }
 

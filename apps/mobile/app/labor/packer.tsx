@@ -10,18 +10,21 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Switch,
 } from 'react-native'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { ApiError } from '@pegasus/api-http'
 import { DomainError, validatePacker } from '@pegasus/domain'
-import { LaborService, withPacker } from '../../src/services/laborService'
-import type { LaborPackerInput } from '../../src/types/labor'
+import { LaborService, withMember, withPacker } from '../../src/services/laborService'
+import type { LaborPacker, LaborPackerInput, MyCrewMemberInput } from '../../src/types/labor'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 
 // ---------------------------------------------------------------------------
-// Add or edit a packer. The rules are the domain's validatePacker — the same
-// function the API runs — so a form that passes here is accepted there; the
-// only server-side failure left is a duplicate (409 PACKER_DUPLICATE).
+// Add or edit a packer — on a crew (`phone`), or on my own My Crew (`myCrew=1`,
+// which adds the "Every job" switch and a Remove button). The rules are the
+// domain's validatePacker — the same function the API runs — so a form that
+// passes here is accepted there; the only server-side failure left is a
+// duplicate (409 PACKER_DUPLICATE / MEMBER_DUPLICATE).
 //
 //   required: first + last name, and one of email / CID number / phone
 //   CID issue date: required with a CID number, never in the future
@@ -47,14 +50,17 @@ const orNull = (v: string) => (v.trim() ? v.trim() : null)
 export default function PackerScreen() {
   // `activityId` + `orderNum`: opened from the shipment's Labor tab — a new
   // packer is also selected on that activity.
-  const { phone, id, activityId, orderNum } = useLocalSearchParams<{
-    phone: string
+  const { phone, id, activityId, orderNum, myCrew } = useLocalSearchParams<{
+    phone?: string
     id?: string
     activityId?: string
     orderNum?: string
+    myCrew?: string
   }>()
   const router = useRouter()
   const editing = !!id
+  const mine = myCrew === '1'
+  const noun = mine ? 'crew member' : 'packer'
 
   const [loading, setLoading] = useState(editing)
   const [saving, setSaving] = useState(false)
@@ -65,18 +71,23 @@ export default function PackerScreen() {
   const [cidNumber, setCidNumber] = useState('')
   const [cidIssuedOn, setCidIssuedOn] = useState('')
   const [packerPhone, setPackerPhone] = useState('')
+  const [everyJob, setEveryJob] = useState(false)
 
   useEffect(() => {
-    if (!editing || !phone) return
+    if (!editing || (!mine && !phone)) return
     let live = true
-    LaborService.getCrew(phone)
-      .then((crew) => {
+    const load: Promise<Array<LaborPacker & { everyJob?: boolean }>> = mine
+      ? LaborService.getMyCrew()
+      : LaborService.getCrew(phone ?? '').then((crew) => crew.packers)
+    load
+      .then((list) => {
         if (!live) return
-        const p = crew.packers.find((x) => x.id === id)
+        const p = list.find((x) => x.id === id)
         if (!p) {
-          setError('This packer no longer exists.')
+          setError(mine ? 'They are no longer in your crew.' : 'This packer no longer exists.')
           return
         }
+        setEveryJob(p.everyJob === true)
         setFirstName(p.firstName)
         setLastName(p.lastName)
         setEmail(p.email ?? '')
@@ -89,7 +100,7 @@ export default function PackerScreen() {
     return () => {
       live = false
     }
-  }, [editing, phone, id])
+  }, [editing, mine, phone, id])
 
   const save = async () => {
     const input: LaborPackerInput = {
@@ -113,14 +124,17 @@ export default function PackerScreen() {
     setSaving(true)
     setError(null)
     try {
-      if (editing) {
-        await LaborService.updatePacker(phone, id!, input)
+      if (mine) {
+        await saveMember({ ...input, everyJob })
+      } else if (editing) {
+        await LaborService.updatePacker(phone ?? '', id!, input)
       } else {
-        const packer = await LaborService.addPacker(phone, input)
+        const crewPhone = phone ?? ''
+        const packer = await LaborService.addPacker(crewPhone, input)
         if (activityId && orderNum) {
           try {
             await LaborService.updateActivityLabor(orderNum, Number(activityId), (set) =>
-              withPacker(set, phone, packer.id, true),
+              withPacker(set, crewPhone, packer.id, true),
             )
           } catch (err) {
             Alert.alert(
@@ -133,16 +147,61 @@ export default function PackerScreen() {
       router.back()
     } catch (err) {
       setError(
-        err instanceof ApiError && err.code === 'PACKER_DUPLICATE'
-          ? 'This crew already has a packer with that last name and CID or email.'
-          : err instanceof Error
-            ? err.message
-            : 'Couldn’t save the packer.',
+        err instanceof ApiError && err.code === 'MEMBER_DUPLICATE'
+          ? 'Your crew already has someone with that last name and CID or email.'
+          : err instanceof ApiError && err.code === 'PACKER_DUPLICATE'
+            ? 'This crew already has a packer with that last name and CID or email.'
+            : err instanceof Error
+              ? err.message
+              : `Couldn’t save the ${noun}.`,
       )
     } finally {
       setSaving(false)
     }
   }
+
+  /** My Crew: add (and tick on the activity it was opened from) or edit. */
+  async function saveMember(input: MyCrewMemberInput) {
+    if (editing) {
+      await LaborService.updateMyCrewMember(id!, input)
+      return
+    }
+    const member = await LaborService.addMyCrewMember(input)
+    if (activityId && orderNum) {
+      try {
+        await LaborService.updateActivityMembers(orderNum, Number(activityId), (ids) =>
+          withMember(ids, member.id, true),
+        )
+      } catch (err) {
+        Alert.alert(
+          'Added to your crew, not ticked',
+          err instanceof Error ? err.message : 'Tick them on the Labor tab.',
+        )
+      }
+    }
+  }
+
+  const remove = () =>
+    Alert.alert(
+      `Remove ${firstName} ${lastName}?`,
+      'They come off your crew. Jobs they already worked keep them.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            setSaving(true)
+            LaborService.removeMyCrewMember(id!)
+              .then(() => router.back())
+              .catch((err) => {
+                setError(err instanceof Error ? err.message : 'Couldn’t remove them.')
+                setSaving(false)
+              })
+          },
+        },
+      ],
+    )
 
   if (loading) {
     return (
@@ -157,7 +216,7 @@ export default function PackerScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Stack.Screen options={{ title: editing ? 'Edit packer' : 'Add packer' }} />
+      <Stack.Screen options={{ title: editing ? `Edit ${noun}` : `Add ${noun}` }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Field
           label="First name *"
@@ -202,6 +261,23 @@ export default function PackerScreen() {
           keyboardType="phone-pad"
         />
 
+        {mine ? (
+          <View style={styles.switchRow}>
+            <View style={styles.switchText}>
+              <Text style={styles.switchLabel}>Every job</Text>
+              <Text style={styles.switchHint}>
+                Added to your pack, load and delivery jobs when a trip is accepted.
+              </Text>
+            </View>
+            <Switch
+              value={everyJob}
+              onValueChange={setEveryJob}
+              accessibilityLabel="Every job"
+              trackColor={{ true: colors.brand, false: colors.border }}
+            />
+          </View>
+        ) : null}
+
         {error ? (
           <Text style={styles.error} accessibilityRole="alert">
             {error}
@@ -217,9 +293,20 @@ export default function PackerScreen() {
           {saving ? (
             <ActivityIndicator color={colors.textLight} />
           ) : (
-            <Text style={styles.saveText}>{editing ? 'Save packer' : 'Add packer'}</Text>
+            <Text style={styles.saveText}>{editing ? `Save ${noun}` : `Add ${noun}`}</Text>
           )}
         </TouchableOpacity>
+
+        {mine && editing ? (
+          <TouchableOpacity
+            style={styles.remove}
+            onPress={remove}
+            disabled={saving}
+            accessibilityRole="button"
+          >
+            <Text style={styles.removeText}>Remove from my crew</Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   )
@@ -267,4 +354,15 @@ const styles = StyleSheet.create({
   },
   saveDisabled: { opacity: 0.6 },
   saveText: { fontSize: fontSize.medium, fontWeight: '700', color: colors.textLight },
+  switchRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
+  switchText: { flex: 1, marginRight: spacing.md },
+  switchLabel: { fontSize: fontSize.medium, fontWeight: '600', color: colors.textPrimary },
+  switchHint: { fontSize: fontSize.small, color: colors.textSecondary },
+  remove: {
+    minHeight: touchTarget.minHeight,
+    marginTop: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeText: { fontSize: fontSize.medium, fontWeight: '600', color: colors.error },
 })

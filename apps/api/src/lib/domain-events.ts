@@ -35,6 +35,14 @@ export const DOMAIN_EVENT_TYPES = [
   // on-prem forwarding and there is no message read endpoint. The buffer-purge
   // cron nulls payload.body 72h after dispatch (purgeReceivedEventBodies).
   'sms.received',
+  // Emitted when a longhaul trip's status confirms its driver — Pending/Offered
+  // into Accepted/In-Progress — through PATCH /onprem/longhaul/trips/:id/status
+  // (handlers/longhaul-cloud/trips-write.ts → lib/labor-auto-assign.ts). Not
+  // emitted for status changes made in the legacy desktop app, which Pegasus
+  // never sees. Payload: { tripId, driverId, fromStatusId, toStatusId,
+  // assigned: [{ activityId, memberIds }] } — `assigned` is the My Crew members
+  // the same write added to the trip's labor activities.
+  'trip.accepted',
 ] as const
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]

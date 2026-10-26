@@ -6,7 +6,16 @@ import PackerScreen, { formatDateInput, localToday } from '../../app/labor/packe
 import { LaborService } from '../../src/services/laborService'
 
 jest.mock('../../src/services/laborService', () => ({
-  LaborService: { getCrew: jest.fn(), addPacker: jest.fn(), updatePacker: jest.fn() },
+  LaborService: {
+    getCrew: jest.fn(),
+    addPacker: jest.fn(),
+    updatePacker: jest.fn(),
+    getMyCrew: jest.fn(),
+    addMyCrewMember: jest.fn(),
+    updateMyCrewMember: jest.fn(),
+    removeMyCrewMember: jest.fn(),
+    updateActivityMembers: jest.fn(),
+  },
 }))
 
 const svc = LaborService as jest.Mocked<typeof LaborService>
@@ -125,5 +134,97 @@ describe('PackerScreen', () => {
     svc.getCrew.mockResolvedValue({ packers: [] } as never)
     const { findByText } = render(<PackerScreen />)
     expect(await findByText('This packer no longer exists.')).toBeTruthy()
+  })
+})
+
+describe('PackerScreen — My crew', () => {
+  const member = {
+    id: 'm1',
+    firstName: 'Ana',
+    lastName: 'Diaz',
+    email: null,
+    cidNumber: null,
+    cidIssuedOn: null,
+    phone: '+14045557777',
+    phoneDisplay: '(404) 555-7777',
+    everyJob: true,
+    updatedAt: '2026-10-26T00:00:00.000Z',
+  }
+
+  const fill = (getByLabelText: (l: string) => unknown) => {
+    fireEvent.changeText(getByLabelText('First name *') as never, 'Pat')
+    fireEvent.changeText(getByLabelText('Last name *') as never, 'Lee')
+    fireEvent.changeText(getByLabelText('Phone') as never, '404-555-7777')
+  }
+
+  it('adds a member with Every job and ticks them on the activity it came from', async () => {
+    ;(useLocalSearchParams as jest.Mock).mockReturnValue({
+      myCrew: '1',
+      activityId: '11',
+      orderNum: '100',
+    })
+    svc.addMyCrewMember.mockResolvedValue({ ...member, id: 'm9' })
+    svc.updateActivityMembers.mockResolvedValue({} as never)
+    const { getByLabelText, getByText } = render(<PackerScreen />)
+    fill(getByLabelText)
+    fireEvent(getByLabelText('Every job'), 'valueChange', true)
+    fireEvent.press(getByText('Add crew member'))
+    await waitFor(() =>
+      expect(svc.addMyCrewMember).toHaveBeenCalledWith({
+        firstName: 'Pat',
+        lastName: 'Lee',
+        email: null,
+        cidNumber: null,
+        cidIssuedOn: null,
+        phone: '404-555-7777',
+        everyJob: true,
+      }),
+    )
+    await waitFor(() =>
+      expect(svc.updateActivityMembers).toHaveBeenCalledWith('100', 11, expect.any(Function)),
+    )
+    expect(svc.addPacker).not.toHaveBeenCalled()
+    expect(router.back).toHaveBeenCalled()
+  })
+
+  it('loads a member for editing and saves the switch', async () => {
+    ;(useLocalSearchParams as jest.Mock).mockReturnValue({ myCrew: '1', id: 'm1' })
+    svc.getMyCrew.mockResolvedValue([member])
+    svc.updateMyCrewMember.mockResolvedValue(member)
+    const { findByDisplayValue, getByLabelText, getByText } = render(<PackerScreen />)
+    expect(await findByDisplayValue('Diaz')).toBeTruthy()
+    expect(getByLabelText('Every job').props.value).toBe(true)
+    fireEvent(getByLabelText('Every job'), 'valueChange', false)
+    fireEvent.press(getByText('Save crew member'))
+    await waitFor(() =>
+      expect(svc.updateMyCrewMember).toHaveBeenCalledWith(
+        'm1',
+        expect.objectContaining({ lastName: 'Diaz', everyJob: false }),
+      ),
+    )
+  })
+
+  it('removes a member after confirming', async () => {
+    const { Alert } = jest.requireActual('react-native')
+    jest.spyOn(Alert, 'alert').mockImplementation((...args: unknown[]) => {
+      const buttons = args[2] as Array<{ style?: string; onPress?: () => void }>
+      buttons.find((b) => b.style === 'destructive')?.onPress?.()
+    })
+    ;(useLocalSearchParams as jest.Mock).mockReturnValue({ myCrew: '1', id: 'm1' })
+    svc.getMyCrew.mockResolvedValue([member])
+    svc.removeMyCrewMember.mockResolvedValue()
+    const { findByText } = render(<PackerScreen />)
+    fireEvent.press(await findByText('Remove from my crew'))
+    await waitFor(() => expect(svc.removeMyCrewMember).toHaveBeenCalledWith('m1'))
+    await waitFor(() => expect(router.back).toHaveBeenCalled())
+  })
+
+  it('explains a duplicate member', async () => {
+    ;(useLocalSearchParams as jest.Mock).mockReturnValue({ myCrew: '1' })
+    svc.addMyCrewMember.mockRejectedValue(new ApiError('dup', 'MEMBER_DUPLICATE', 409))
+    const { getByLabelText, getByText, findByText } = render(<PackerScreen />)
+    fill(getByLabelText)
+    fireEvent.press(getByText('Add crew member'))
+    expect(await findByText(/Your crew already has someone/)).toBeTruthy()
   })
 })

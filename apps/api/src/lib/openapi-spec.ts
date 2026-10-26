@@ -502,6 +502,7 @@ const LABOR_CREW = { $ref: '#/components/schemas/LaborCrew' }
 const LABOR_CREW_DETAIL = { $ref: '#/components/schemas/LaborCrewDetail' }
 const LABOR_PACKER = { $ref: '#/components/schemas/LaborPacker' }
 const LABOR_ACTIVITY = { $ref: '#/components/schemas/LaborActivity' }
+const LABOR_CREW_MEMBER = { $ref: '#/components/schemas/LaborCrewMember' }
 
 const LABOR_ACTIVITY_ERRORS = {
   '403': {
@@ -772,6 +773,49 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
       data: LABOR_CREW_DETAIL,
     }),
   },
+  '/api/v1/labor/my-crew': {
+    get: laborOp('listMyLaborCrew', 'My Crew — my own packers, A–Z', {
+      description:
+        'Private to the caller: no shared crew stands behind them and nobody else reads them. Members flagged `everyJob` are added to my PACK/LOAD/UNPK/RDEL/XDEL activities when dispatch accepts one of my trips (and the `trip.accepted` domain event fires).',
+      data: { type: 'array', items: LABOR_CREW_MEMBER },
+    }),
+    post: laborOp('addMyLaborCrewMember', 'Add someone to My Crew', {
+      description:
+        'Same fields and rules as a packer, plus `everyJob`. Matching (last name + CID number or email) a member I removed brings that member back. At most 50 (422 MY_CREW_FULL).',
+      body: {
+        ...LABOR_PACKER_BODY,
+        properties: { ...LABOR_PACKER_BODY.properties, everyJob: { type: 'boolean' } },
+      },
+      data: LABOR_CREW_MEMBER,
+      status: '201',
+      extraResponses: {
+        '409': {
+          description:
+            'MEMBER_DUPLICATE — My Crew already has that last name + CID number or email',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/my-crew/{id}': {
+    patch: laborOp('updateMyLaborCrewMember', 'Edit a My Crew member or flip Every job', {
+      packerId: true,
+      body: {
+        ...LABOR_PACKER_BODY,
+        required: [],
+        properties: { ...LABOR_PACKER_BODY.properties, everyJob: { type: 'boolean' } },
+      },
+      data: LABOR_CREW_MEMBER,
+    }),
+    delete: laborOp('removeMyLaborCrewMember', 'Remove someone from My Crew', {
+      description:
+        'Soft: they leave My Crew and are never auto-assigned again, but stay on the activities they worked.',
+      packerId: true,
+      status: '204',
+    }),
+  },
   '/api/v1/labor/places': {
     get: laborOp('searchLaborPlaces', 'City typeahead (US + Canada) for service areas', {
       description:
@@ -800,7 +844,7 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
   '/api/v1/labor/orders/{orderNum}/activities': {
     get: laborOp('listLaborOrderActivities', "An order's activities with their crews and packers", {
       description:
-        'A driver gets only the longhaul activities they own (the assigned driver, or the trip driver when unassigned), `editable: true`; an Operations role (tenant_admin, operations_admin, long_distance_dispatch, central_planning_dispatch) gets every activity on the order, editable only where its own driver mapping owns it. Each assigned crew lists ALL its packers, `selected` marking who worked the activity. 403 DRIVER_NOT_MAPPED for any other login without a longhaul driver; 503 LEGACY_UNAVAILABLE when the order database cannot be read.',
+        'A driver gets only the longhaul activities they own (the assigned driver, or the trip driver when unassigned), `editable: true`; an Operations role (tenant_admin, operations_admin, long_distance_dispatch, central_planning_dispatch) gets every activity on the order, editable only where its own driver mapping owns it. Each assigned crew lists ALL its packers, `selected` marking who worked the activity. `myCrew` is, on an activity I own, my whole My Crew (`selected` where they worked it) plus any other driver’s member who did; otherwise just the members who worked it. 403 DRIVER_NOT_MAPPED for any other login without a longhaul driver; 503 LEGACY_UNAVAILABLE when the order database cannot be read.',
       intParams: [{ name: 'orderNum', description: 'Legacy order number' }],
       data: { type: 'array', items: LABOR_ACTIVITY },
       extraResponses: LABOR_ACTIVITY_ERRORS,
@@ -809,7 +853,7 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
   '/api/v1/labor/activities/{activityId}': {
     put: laborOp('setLaborActivity', "Replace an activity's crews and selected packers", {
       description:
-        "Only the activity's own driver may write. A crew newly added must be in the caller's list (422 CREW_NOT_IN_YOUR_LIST); one already assigned may stay after it is removed from the list. Every packer must be on its crew (422 PACKER_NOT_ON_CREW). At most 10 crews; an empty list clears the activity. An actual date does not lock it.",
+        "Only the activity's own driver may write. A crew newly added must be in the caller's list (422 CREW_NOT_IN_YOUR_LIST); one already assigned may stay after it is removed from the list. Every packer must be on its crew (422 PACKER_NOT_ON_CREW). At most 10 crews; an empty list clears the activity. `memberIds` replaces the activity's My Crew members: one newly ticked must be in the caller's My Crew (422 MEMBER_NOT_YOURS); one already on it may stay after removal. Omit `memberIds` to leave them unchanged. An actual date does not lock it.",
       intParams: [{ name: 'activityId', description: 'Legacy longhaul activity id' }],
       body: {
         type: 'object',
@@ -827,6 +871,12 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
               },
             },
           },
+          memberIds: {
+            type: 'array',
+            maxItems: 50,
+            items: { type: 'string' },
+            description: 'My Crew member ids who worked it; omitted = unchanged',
+          },
         },
       },
       data: LABOR_ACTIVITY,
@@ -839,7 +889,7 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
           },
         },
         '422': {
-          description: 'CREW_NOT_IN_YOUR_LIST or PACKER_NOT_ON_CREW',
+          description: 'CREW_NOT_IN_YOUR_LIST, PACKER_NOT_ON_CREW or MEMBER_NOT_YOURS',
           content: {
             'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
           },
@@ -3615,6 +3665,26 @@ export function getOpenApiSpec() {
             updatedAt: { type: 'string', format: 'date-time' },
           },
         },
+        LaborCrewMember: {
+          type: 'object',
+          description: "A packer on the caller's own My Crew.",
+          required: ['id', 'firstName', 'lastName', 'everyJob'],
+          properties: {
+            id: { type: 'string' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            email: { type: ['string', 'null'] },
+            cidNumber: { type: ['string', 'null'] },
+            cidIssuedOn: { type: ['string', 'null'], format: 'date' },
+            phone: { type: ['string', 'null'] },
+            phoneDisplay: { type: ['string', 'null'] },
+            everyJob: {
+              type: 'boolean',
+              description: 'Added to my labor activities whenever one of my trips is accepted',
+            },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
         LaborActivity: {
           type: 'object',
           description: 'A legacy longhaul activity with the crews and packers that worked it.',
@@ -3631,6 +3701,25 @@ export function getOpenApiSpec() {
             editable: {
               type: 'boolean',
               description: "True when the caller is the activity's driver",
+            },
+            myCrew: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['id', 'firstName', 'lastName', 'everyJob', 'mine', 'selected'],
+                properties: {
+                  id: { type: 'string' },
+                  firstName: { type: 'string' },
+                  lastName: { type: 'string' },
+                  phoneDisplay: { type: ['string', 'null'] },
+                  everyJob: { type: 'boolean' },
+                  mine: {
+                    type: 'boolean',
+                    description: "In the caller's My Crew now — only these may be newly ticked",
+                  },
+                  selected: { type: 'boolean', description: 'Worked this activity' },
+                },
+              },
             },
             crews: {
               type: 'array',

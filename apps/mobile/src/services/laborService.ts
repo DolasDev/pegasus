@@ -13,11 +13,14 @@ import type {
   LaborPlace,
   LaborSearchLocation,
   LaborSearchResult,
+  MyCrewMember,
+  MyCrewMemberInput,
 } from '../types/labor'
 
 // ---------------------------------------------------------------------------
 // Labor service — the driver's private book of cash-labor crews and the
-// company's shared list, over /api/v1/labor. A crew is addressed by its phone
+// company's shared list, plus My Crew (the driver's own packers), over
+// /api/v1/labor. A crew is addressed by its phone
 // number; the API accepts any spelling of it, but the app always sends the
 // E.164 form it was given.
 // ---------------------------------------------------------------------------
@@ -205,6 +208,34 @@ export class LaborService {
     return rows ?? []
   }
 
+  // ── My Crew ───────────────────────────────────────────────────────────────
+
+  static async getMyCrew(): Promise<MyCrewMember[]> {
+    const rows = await getApiClient().fetch<MyCrewMember[]>(`${BASE}/my-crew`)
+    return rows ?? []
+  }
+
+  static async addMyCrewMember(input: MyCrewMemberInput): Promise<MyCrewMember> {
+    return getApiClient().fetch<MyCrewMember>(`${BASE}/my-crew`, json('POST', input))
+  }
+
+  static async updateMyCrewMember(
+    id: string,
+    input: Partial<MyCrewMemberInput>,
+  ): Promise<MyCrewMember> {
+    return getApiClient().fetch<MyCrewMember>(
+      `${BASE}/my-crew/${encodeURIComponent(id)}`,
+      json('PATCH', input),
+    )
+  }
+
+  /** Off My Crew; they stay on the jobs they worked. */
+  static async removeMyCrewMember(id: string): Promise<void> {
+    await getApiClient().fetch<null>(`${BASE}/my-crew/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+  }
+
   // ── Activity labor ────────────────────────────────────────────────────────
 
   /** My activities on an order (every activity, read-only, for an employee). */
@@ -215,14 +246,18 @@ export class LaborService {
     return rows ?? []
   }
 
-  /** Replaces the activity's whole crew + packer set. */
+  /**
+   * Replaces the activity's whole crew + packer set, and its My Crew members
+   * when `memberIds` is given (omitted = left as they are).
+   */
   static async setActivityLabor(
     activityId: number,
     crews: readonly LaborActivityCrewInput[],
+    memberIds?: readonly string[],
   ): Promise<LaborActivity> {
     return getApiClient().fetch<LaborActivity>(
       `${BASE}/activities/${activityId}`,
-      json('PUT', { crews }),
+      json('PUT', memberIds ? { crews, memberIds } : { crews }),
     )
   }
 
@@ -241,6 +276,23 @@ export class LaborService {
     if (!activity) throw new Error('This activity is no longer assigned to you.')
     return LaborService.setActivityLabor(activityId, change(activityLaborInput(activity)))
   }
+
+  /** The same read-modify-write for the activity's My Crew members. */
+  static async updateActivityMembers(
+    orderNum: string | number,
+    activityId: number,
+    change: (memberIds: string[]) => string[],
+  ): Promise<LaborActivity> {
+    const activity = (await LaborService.getOrderActivities(orderNum)).find(
+      (a) => a.id === activityId,
+    )
+    if (!activity) throw new Error('This activity is no longer assigned to you.')
+    return LaborService.setActivityLabor(
+      activityId,
+      activityLaborInput(activity),
+      change(activityMemberIds(activity)),
+    )
+  }
 }
 
 // ── Activity-labor set helpers (pure) ────────────────────────────────────────
@@ -251,6 +303,17 @@ export function activityLaborInput(activity: LaborActivity): LaborActivityCrewIn
     phone: c.phone,
     packerIds: c.packers.filter((p) => p.selected).map((p) => p.id),
   }))
+}
+
+/** The My Crew members who worked `activity`. */
+export function activityMemberIds(activity: LaborActivity): string[] {
+  return (activity.myCrew ?? []).filter((m) => m.selected).map((m) => m.id)
+}
+
+/** Ticks (`on`) or unticks one My Crew member. */
+export function withMember(memberIds: string[], id: string, on: boolean): string[] {
+  const rest = memberIds.filter((x) => x !== id)
+  return on ? [...rest, id] : rest
 }
 
 /** Adds a crew (no packers yet); a crew already on the activity is left as is. */

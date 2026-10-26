@@ -412,6 +412,49 @@ export function validateActivityLabor(
 }
 
 // ---------------------------------------------------------------------------
+// My Crew — a driver's own packers, kept apart from the shared crews, and the
+// "Every job" auto-assign when a trip is accepted
+// ---------------------------------------------------------------------------
+
+export const MAX_CREW_MEMBERS = 50
+
+/**
+ * The legacy activity types (`ActivityType_code`) an "Every job" member is
+ * added to when a trip is accepted: packing, loading, unpacking and delivery.
+ */
+export const LABOR_ACTIVITY_TYPE_CODES: readonly string[] = ['PACK', 'LOAD', 'UNPK', 'RDEL', 'XDEL']
+
+/** True for a labor activity type. Legacy codes are char-padded, so this trims. */
+export function isLaborActivityType(code: string | null | undefined): boolean {
+  return code != null && LABOR_ACTIVITY_TYPE_CODES.includes(code.trim().toUpperCase())
+}
+
+/**
+ * True when a trip status change confirms its driver: Pending (1) or Offered
+ * (2) into Accepted (3) or In-Progress (4). Ids are `MasterTripStatus.status_id`.
+ */
+export function isTripConfirmTransition(from: number, to: number): boolean {
+  return (from === 1 || from === 2) && (to === 3 || to === 4)
+}
+
+/**
+ * Validates the My Crew members ticked on an activity: each at most once, and
+ * no more than a driver can own. Whose members they are is checked by the API.
+ *
+ * @throws {DomainError} `TOO_MANY_ACTIVITY_MEMBERS`
+ */
+export function validateActivityMembers(memberIds: readonly string[]): string[] {
+  const ids = [...new Set(memberIds)]
+  if (ids.length > MAX_CREW_MEMBERS) {
+    throw new DomainError(
+      `An activity can have at most ${MAX_CREW_MEMBERS} of your crew`,
+      'TOO_MANY_ACTIVITY_MEMBERS',
+    )
+  }
+  return ids
+}
+
+// ---------------------------------------------------------------------------
 // Location search
 // ---------------------------------------------------------------------------
 
