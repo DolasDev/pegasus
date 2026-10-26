@@ -25,6 +25,7 @@ import {
   changeActivityQuery,
   clearActivityFilters,
   setActivityQuery,
+  setIncludeLocal,
 } from '../../../../redux/activities'
 import type { RootState } from '../../../../redux/store'
 import { fromSavedQuery, toOptions, toSavedQuery } from '../../services-filter-query'
@@ -56,6 +57,7 @@ const selectStyles = {
 export function ActivityFilters() {
   const dispatch = useDispatch()
   const query = useSelector((state: RootState) => state.activities.query)
+  const includeLocal = useSelector((state: RootState) => state.activities.includeLocal)
   const refs = useServicesReferenceOptions()
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [showFiltersDialog, setShowFiltersDialog] = useState(false)
@@ -176,6 +178,19 @@ export function ActivityFilters() {
             onChange={(value: any) => setFilters({ operations_id: value ?? [] })}
           />
         </div>
+      </div>
+
+      {/* A view choice, not a filter: not counted by Clear and not saved with a
+          filter (redux/activities, `includeLocal`). */}
+      <div className={styles.filter} data-filter="include_local">
+        <label htmlFor="activities-include-local">Local jobs</label>
+        <input
+          id="activities-include-local"
+          type="checkbox"
+          data-testid="activities-include-local"
+          checked={includeLocal}
+          onChange={(e) => dispatch(setIncludeLocal(e.target.checked))}
+        />
       </div>
 
       {activeCount > 0 && (

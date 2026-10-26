@@ -8,8 +8,9 @@
 //
 // Clicking a card opens the shipment detail panel for the activity's order,
 // through the same `selectShipment` thunk a Planning shipment card uses. The
-// trip number links to the trip screen. Otherwise read-only: there is no
-// add-to-trip button.
+// trip number links to the trip screen; a local dispatch job's row shows a
+// "Local" badge there instead. Otherwise read-only: there is no add-to-trip
+// button.
 // ---------------------------------------------------------------------------
 
 import { useSelector } from 'react-redux'
@@ -25,6 +26,14 @@ import { startCase } from '../../../../utils/string'
 import styles from './ActivityCard.module.css'
 
 export interface ActivityRow {
+  /**
+   * Set on every row when the board includes local dispatch jobs
+   * (`include=local`): a job id and an activity id can be the same number.
+   */
+  row_key?: string
+  /** `local` for a local dispatch job's act; absent or `longhaul` otherwise. */
+  source?: 'longhaul' | 'local'
+  /** The activity id — or, for a local row, the local dispatch job id. */
   id: number
   order_num: number | null
   TripMaster_id: number | null
@@ -113,7 +122,12 @@ export function ActivityCard({ activity }: { activity: ActivityRow }) {
       activity.destination_city,
       activity.destination_state,
     )}`,
-    activity.TripMaster_id ? (
+    activity.source === 'local' ? (
+      // A local job has no trip; the badge says why there is no trip link.
+      <span className={styles.localBadge} data-target="activity-local-badge">
+        Local
+      </span>
+    ) : activity.TripMaster_id ? (
       // `/trip/:id` is the legacy path; router-compat rewrites it to
       // /driver-planning/trips/:id. stopPropagation so following the link does
       // not also open the detail panel on the way out.
@@ -146,6 +160,7 @@ export function ActivityCard({ activity }: { activity: ActivityRow }) {
       className={`${styles.activityCard} ${isComplete(activity) ? styles.complete : ''}`}
       data-target="activity-card"
       data-activity-id={String(activity.id)}
+      data-row-key={activity.row_key}
       data-order-num={activity.order_num == null ? undefined : String(activity.order_num)}
     >
       <div className={styles.lines}>

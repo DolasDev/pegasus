@@ -88,6 +88,12 @@ export interface ActivitiesState {
    * dispatcher had set.
    */
   defaultSeeded: boolean
+  /**
+   * Also show local dispatch jobs (one row per act). Off by default while it is
+   * verified on NW, and deliberately NOT part of `query`: a saved filter's
+   * schema is strict (services-filter-query.ts), and this is a view choice.
+   */
+  includeLocal: boolean
 }
 
 const activitiesSlice = createSlice({
@@ -98,6 +104,7 @@ const activitiesSlice = createSlice({
     query: structuredClone(DEFAULT_ACTIVITY_QUERY),
     error: null,
     defaultSeeded: false,
+    includeLocal: false,
   } as ActivitiesState,
   reducers: {
     // Deep-merges `filters` so a partial payload from one control doesn't wipe
@@ -140,6 +147,9 @@ const activitiesSlice = createSlice({
       if (action.payload) state.query = action.payload
       state.defaultSeeded = true
     },
+    setIncludeLocal(state, action: PayloadAction<boolean>) {
+      state.includeLocal = action.payload
+    },
     fetchActivitiesStart(state) {
       state.loading = true
     },
@@ -163,23 +173,26 @@ export const {
   clearActivityFilters,
   setActivityQuery,
   seedActivityQuery,
+  setIncludeLocal,
   fetchActivitiesStart,
   fetchActivitiesSuccess,
   fetchActivitiesFailure,
 } = activitiesSlice.actions
 
-export const fetchActivities = (query: ActivityQuery) => async (dispatch: AppDispatch) => {
-  try {
-    dispatch(fetchActivitiesStart())
-    const activities = await API.fetchActivities(buildActivityRequest(query))
-    dispatch(fetchActivitiesSuccess(activities))
-  } catch (e: any) {
-    console.error('Error fetching activities', e)
-    // The message is rendered in place of the list rather than only toasted:
-    // RESULT_LIMIT_EXCEEDED ("narrow your date range") is a normal, actionable
-    // outcome on this board, not an incident.
-    dispatch(fetchActivitiesFailure(e?.message ?? 'Failed to fetch activities'))
+export const fetchActivities =
+  (query: ActivityQuery, includeLocal = false) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      dispatch(fetchActivitiesStart())
+      const activities = await API.fetchActivities(buildActivityRequest(query), includeLocal)
+      dispatch(fetchActivitiesSuccess(activities))
+    } catch (e: any) {
+      console.error('Error fetching activities', e)
+      // The message is rendered in place of the list rather than only toasted:
+      // RESULT_LIMIT_EXCEEDED ("narrow your date range") is a normal, actionable
+      // outcome on this board, not an incident.
+      dispatch(fetchActivitiesFailure(e?.message ?? 'Failed to fetch activities'))
+    }
   }
-}
 
 export default activitiesSlice.reducer

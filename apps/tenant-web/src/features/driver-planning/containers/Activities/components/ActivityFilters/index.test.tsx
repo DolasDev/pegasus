@@ -156,3 +156,21 @@ describe('ActivityFilters — saved filters', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('ActivityFilters — local jobs toggle', () => {
+  it('turns local dispatch jobs on and off without touching the saved-filter query', () => {
+    const { store } = renderWithStore(<ActivityFilters />, {
+      activities: { query: BOARD },
+      common: COMMON,
+    })
+    const box = screen.getByTestId('activities-include-local') as HTMLInputElement
+    expect(box.checked).toBe(false)
+
+    fireEvent.click(box)
+    expect(store.getState().activities.includeLocal).toBe(true)
+    expect(store.getState().activities.query).toEqual(BOARD)
+
+    fireEvent.click(box)
+    expect(store.getState().activities.includeLocal).toBe(false)
+  })
+})

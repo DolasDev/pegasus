@@ -35,6 +35,12 @@ import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
 import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
+import { CATALOG_SQL, catalogFrom } from '../../lib/itinerary/fetch'
+import {
+  buildLocalBoardSql,
+  localBoardRows,
+  sortBoardRows,
+} from '../../lib/itinerary/services-board-local'
 
 /**
  * Hard cap on returned activities. Mirrors the shipments board's contract: past
@@ -350,13 +356,41 @@ export const longhaulActivitiesListHandler: Handler<AppEnv> = async (c) => {
     }
   }
 
+  // `?include=local` adds local dispatch jobs, one row per act
+  // (lib/itinerary/services-board-local.ts). Operations callers only: a
+  // driver-scoped caller is scoped by their LONGHAUL id here, and their local
+  // work is on /me/itinerary, which knows both ids. Off, the handler is exactly
+  // the longhaul-only query it always was.
+  const includeLocal = c.req.query('include') === 'local' && scope.kind === 'all'
+
   try {
     const bag = new ParamBag()
     const sql = buildActivitiesSql(query, bag, scope.kind === 'driver' ? scope.driverId : undefined)
-    const { recordset } = await executeSql(tenant.mssqlConnectionString, sql, {
-      params: bag.params,
-    })
-    const rows = recordset as unknown[]
+    let rows: unknown[]
+    if (!includeLocal) {
+      const { recordset } = await executeSql(tenant.mssqlConnectionString, sql, {
+        params: bag.params,
+      })
+      rows = recordset as unknown[]
+    } else {
+      // One executor call: activities, the type catalog (to name and sequence
+      // local tokens), and local jobs. The SQL ORDER BY no longer decides the
+      // order of a merged list, so it is re-sorted on the same keys in JS.
+      const filters = query.filters ?? {}
+      const localSql = buildLocalBoardSql(filters, (v) => bag.bind(v))
+      const { recordsets } = await executeSql(
+        tenant.mssqlConnectionString,
+        `${sql};\n${CATALOG_SQL};\n${localSql}`,
+        { params: bag.params },
+      )
+      const activities = ((recordsets[0] ?? []) as Array<Record<string, unknown>>).map((r) => ({
+        ...r,
+        row_key: `longhaul-activity:${String(r['id'])}`,
+        source: 'longhaul',
+      }))
+      const local = localBoardRows(recordsets[2] ?? [], catalogFrom(recordsets[1] ?? []), filters)
+      rows = sortBoardRows([...activities, ...local], query.sortBy)
+    }
 
     if (rows.length > ACTIVITY_RESULT_LIMIT) {
       return c.json(

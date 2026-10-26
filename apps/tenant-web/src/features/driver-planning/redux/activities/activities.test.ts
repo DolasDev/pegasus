@@ -16,6 +16,7 @@ import activitiesReducer, {
   fetchActivitiesFailure,
   fetchActivitiesStart,
   fetchActivitiesSuccess,
+  setIncludeLocal,
   clearActivityFilters,
   seedActivityQuery,
   setActivityQuery,
@@ -34,6 +35,7 @@ function makeStore(
     query: structuredClone(DEFAULT_ACTIVITY_QUERY),
     error: null,
     defaultSeeded: false,
+    includeLocal: false,
   }
   return configureStore({
     reducer: { activities: activitiesReducer },
@@ -262,8 +264,25 @@ describe('fetchActivities thunk', () => {
 
     expect(fetchActivitiesMock).toHaveBeenCalledWith(
       buildActivityRequest(DEFAULT_ACTIVITY_QUERY as any),
+      false,
     )
     expect(store.getState().activities.activityList).toEqual([{ id: 9 }])
+  })
+
+  it('asks for local jobs only when told to, outside the query', async () => {
+    fetchActivitiesMock.mockResolvedValue([])
+    const store = makeStore()
+    store.dispatch(setIncludeLocal(true))
+    expect(store.getState().activities.includeLocal).toBe(true)
+    // The flag never leaks into the query a saved filter is made from.
+    expect(store.getState().activities.query).toEqual(DEFAULT_ACTIVITY_QUERY)
+
+    await store.dispatch(fetchActivities(store.getState().activities.query, true) as any)
+
+    expect(fetchActivitiesMock).toHaveBeenCalledWith(
+      buildActivityRequest(DEFAULT_ACTIVITY_QUERY as any),
+      true,
+    )
   })
 
   it('surfaces the API message so RESULT_LIMIT_EXCEEDED reaches the dispatcher', async () => {

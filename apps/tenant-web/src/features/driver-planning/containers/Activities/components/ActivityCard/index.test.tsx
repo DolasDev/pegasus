@@ -187,6 +187,23 @@ describe('ActivityCard', () => {
     expect(link.getAttribute('data-target')).toBe('activity-trip-link')
   })
 
+  it('badges a local dispatch job where a trip link would be, and carries its row key', () => {
+    render(
+      <ActivityCard
+        activity={makeActivity({
+          source: 'local',
+          row_key: 'local-job-token:7001:PACK',
+          id: 7001,
+          TripMaster_id: null,
+        })}
+      />,
+    )
+    expect(screen.getByText('Local').getAttribute('data-target')).toBe('activity-local-badge')
+    expect(screen.queryByText(/^Trip /)).not.toBeInTheDocument()
+    const card = document.querySelector('[data-target="activity-card"]')!
+    expect(card.getAttribute('data-row-key')).toBe('local-job-token:7001:PACK')
+  })
+
   describe('selection', () => {
     beforeEach(() => {
       fetchShipments.mockReset()
