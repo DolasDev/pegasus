@@ -20,7 +20,7 @@
 // unticked — unless the trip goes back to Offered and is accepted again.
 // A failed lookup or assign still emits the event (assignFailed); there is no
 // retry — the driver ticks members by hand on the Labor tab.
-// Plan: plans/in-progress/my-crew.md.
+// Plan: plans/completed/65abbd34-my-crew.md.
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'

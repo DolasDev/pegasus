@@ -934,7 +934,7 @@ laborHandler.delete('/company/crews/:phone', requirePermission(Actions.WriteLabo
 // soft: a removed member leaves the list and is never assigned again, but stays
 // on the jobs they worked. Adding someone whose identity key (last name + CID
 // number or email) matches a removed member brings that member back.
-// Plan: plans/in-progress/my-crew.md.
+// Plan: plans/completed/65abbd34-my-crew.md.
 // ---------------------------------------------------------------------------
 
 function memberDto(m: DriverCrewMember) {
