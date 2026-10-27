@@ -225,6 +225,7 @@ export const DOMAIN_EVENT_TYPES = [
   'pegasus_event.received',
   'feedback.submitted',
   'sms.received',
+  'trip.accepted',
 ] as const
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]

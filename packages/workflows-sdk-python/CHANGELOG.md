@@ -3,6 +3,18 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.53.1
+
+### Docs — the `trip.accepted` event
+
+- The MCP server's trigger guidance and the README list the new built-in
+  `trip.accepted` domain event: a longhaul trip confirmed for its driver in
+  Pegasus (Pending/Offered → Accepted/In-Progress). Payload
+  `{tripId, driverId, fromStatusId, toStatusId, assigned: [{activityId, memberIds}]}`,
+  `assigned` being the driver's "Every job" My Crew members the platform just put
+  on the trip's PACK/LOAD/UNPK/RDEL/XDEL activities. When that step fails the
+  event still fires, with `assigned: []` and `assignFailed: true`. No code change.
+
 ## 0.53.0
 
 ### Added — order memos and text-message links (NW pulse Phase 7)

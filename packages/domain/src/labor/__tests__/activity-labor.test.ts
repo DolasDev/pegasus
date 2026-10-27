@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { DomainError } from '../../shared/errors'
-import { validateActivityLabor, MAX_ACTIVITY_CREWS } from '../index'
+import {
+  validateActivityLabor,
+  MAX_ACTIVITY_CREWS,
+  MAX_CREW_MEMBERS,
+  isLaborActivityType,
+  isTripConfirmTransition,
+  validateActivityMembers,
+} from '../index'
 
 function codeOf(fn: () => unknown): string | undefined {
   try {
@@ -63,5 +70,42 @@ describe('validateActivityLabor', () => {
     expect(codeOf(() => validateActivityLabor([{ phone: '12', packerIds: [] }]))).toBe(
       'INVALID_PHONE_NUMBER',
     )
+  })
+})
+
+describe('isLaborActivityType', () => {
+  it('matches pack, load, unpack and the deliveries, padded or not', () => {
+    for (const code of ['PACK', 'LOAD', 'UNPK', 'RDEL', 'XDEL', 'PACK  ', 'pack']) {
+      expect(isLaborActivityType(code)).toBe(true)
+    }
+  })
+
+  it('skips every other type and a missing code', () => {
+    for (const code of ['XPU', 'R19I', 'R19O', 'WHSE', 'SITIN', 'SITOUT', '', null, undefined]) {
+      expect(isLaborActivityType(code)).toBe(false)
+    }
+  })
+})
+
+describe('isTripConfirmTransition', () => {
+  it('is Pending/Offered into Accepted/In-Progress, nothing else', () => {
+    const confirms: string[] = []
+    for (let from = 0; from <= 5; from++) {
+      for (let to = 0; to <= 5; to++) {
+        if (isTripConfirmTransition(from, to)) confirms.push(`${from}->${to}`)
+      }
+    }
+    expect(confirms).toEqual(['1->3', '1->4', '2->3', '2->4'])
+  })
+})
+
+describe('validateActivityMembers', () => {
+  it('drops repeats', () => {
+    expect(validateActivityMembers(['m1', 'm2', 'm1'])).toEqual(['m1', 'm2'])
+  })
+
+  it(`rejects more than ${MAX_CREW_MEMBERS}`, () => {
+    const ids = Array.from({ length: MAX_CREW_MEMBERS + 1 }, (_, i) => `m${i}`)
+    expect(codeOf(() => validateActivityMembers(ids))).toBe('TOO_MANY_ACTIVITY_MEMBERS')
   })
 })

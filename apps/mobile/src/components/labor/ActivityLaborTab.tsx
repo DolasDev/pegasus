@@ -12,6 +12,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import {
   LaborService,
   activityLaborInput,
+  withMember,
   withoutCrew,
   withPacker,
 } from '../../services/laborService'
@@ -21,7 +22,9 @@ import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../them
 
 // ---------------------------------------------------------------------------
 // The shipment's Labor tab: one card per activity of mine on the order, each
-// with the crews that worked it and a checklist of their packers. Every change
+// with the crews that worked it and a checklist of their packers, then a
+// checklist of My crew (my own packers — "Every job" ones are ticked for me when
+// a trip is accepted; anyone else's who worked it shows ticked). Every change
 // saves the activity's whole set (PUT /labor/activities/:id); every control on
 // the tab is locked until the save answers, so two saves never race.
 // Assigning a crew, adding a crew and adding a packer happen on pushed screens,
@@ -60,10 +63,23 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
     }, [orderNum]),
   )
 
-  const save = async (activity: LaborActivity, crews: LaborActivityCrewInput[]) => {
+  // A crew-only change sends no memberIds, leaving My crew as it is.
+  const save = (activity: LaborActivity, crews: LaborActivityCrewInput[]) =>
+    run(activity, () => LaborService.setActivityLabor(activity.id, crews, undefined))
+
+  // A member toggle re-reads the activity first: the trip-accepted auto-assign
+  // may have added members since this tab loaded, and the PUT replaces the set.
+  const toggleMember = (activity: LaborActivity, memberId: string, on: boolean) =>
+    run(activity, () =>
+      LaborService.updateActivityMembers(activity.orderNum, activity.id, (ids) =>
+        withMember(ids, memberId, on),
+      ),
+    )
+
+  const run = async (activity: LaborActivity, write: () => Promise<LaborActivity>) => {
     setSavingId(activity.id)
     try {
-      const next = await LaborService.setActivityLabor(activity.id, crews)
+      const next = await write()
       setActivities((list) => list?.map((a) => (a.id === next.id ? next : a)) ?? null)
     } catch (err) {
       Alert.alert('Couldn’t save labor', errText(err))
@@ -202,6 +218,58 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
               )
             })}
 
+            {a.myCrew && (a.myCrew.length > 0 || a.editable) ? (
+              <View style={styles.crew} accessibilityLabel="My crew">
+                <Text style={styles.crewName}>My crew</Text>
+                {a.myCrew.length === 0 ? (
+                  <Text style={styles.none}>No one in your crew yet.</Text>
+                ) : null}
+                {a.myCrew.map((m) => {
+                  // Someone no longer in my crew can only be unticked.
+                  const off = locked || !a.editable || (!m.mine && !m.selected)
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={styles.packer}
+                      disabled={off}
+                      onPress={() => void toggleMember(a, m.id, !m.selected)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: m.selected, disabled: off }}
+                      accessibilityLabel={`${m.firstName} ${m.lastName}`}
+                    >
+                      <View style={[styles.box, m.selected && styles.boxOn]}>
+                        {m.selected ? <Text style={styles.tick}>✓</Text> : null}
+                      </View>
+                      <Text style={styles.packerName}>
+                        {m.firstName} {m.lastName}
+                      </Text>
+                      {m.everyJob ? <Text style={styles.everyJob}>Every job</Text> : null}
+                    </TouchableOpacity>
+                  )
+                })}
+                {a.editable ? (
+                  <TouchableOpacity
+                    style={styles.link}
+                    disabled={locked}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/labor/packer',
+                        params: {
+                          myCrew: '1',
+                          activityId: String(a.id),
+                          orderNum: String(a.orderNum),
+                        },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="Add to my crew"
+                  >
+                    <Text style={styles.linkText}>+ Add to my crew</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
+
             {a.editable ? (
               <TouchableOpacity
                 style={[styles.assign, locked && styles.disabled]}
@@ -297,6 +365,7 @@ const styles = StyleSheet.create({
   boxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   tick: { color: colors.textLight, fontWeight: '700' },
   packerName: { fontSize: fontSize.medium, color: colors.textPrimary },
+  everyJob: { fontSize: fontSize.small, color: colors.textSecondary, marginLeft: 'auto' },
   link: { minHeight: touchTarget.minHeight, justifyContent: 'center' },
   linkText: { fontSize: fontSize.medium, fontWeight: '600', color: colors.primary },
   assign: {

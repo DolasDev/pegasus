@@ -169,7 +169,9 @@ payload alone.
 Built-in event types: `quote.accepted`, `move.status_changed`, `invoice.paid`, `customer.created`,
 `pegasus_event.received`, `feedback.submitted` (see [Soliciting feedback](#soliciting-feedback-magic-link-surveys)),
 and `sms.received` (see [Receiving an SMS](#receiving-an-sms-smsreceived) — its payload carries the
-message text). Integration events `pegii.shipment.opened`, `pegii.shipment.closed`, `pegii.sale.saved`
+message text), and `trip.accepted` — a longhaul trip confirmed for its driver (Pending/Offered →
+Accepted/In-Progress) in Pegasus; payload `{tripId, driverId, fromStatusId, toStatusId, assigned}`, where
+`assigned` lists the driver's "Every job" crew members put on the trip's labor activities. Integration events `pegii.shipment.opened`, `pegii.shipment.closed`, `pegii.sale.saved`
 and your tenant's registered custom event types are also triggerable.
 
 **2. Manual run** — `POST /api/v1/workflows/:id/run` passes:

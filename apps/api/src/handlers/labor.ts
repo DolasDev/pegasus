@@ -30,7 +30,7 @@
 
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { Prisma, type Packer } from '@prisma/client'
+import { Prisma, type DriverCrewMember, type Packer } from '@prisma/client'
 import {
   DomainError,
   aggregateRating,
@@ -40,7 +40,9 @@ import {
   normalizePhoneNumber,
   parseLocationQuery,
   rankCrewsByDistance,
+  MAX_CREW_MEMBERS,
   validateActivityLabor,
+  validateActivityMembers,
   validateCrew,
   validatePacker,
   validateRating,
@@ -925,6 +927,190 @@ laborHandler.delete('/company/crews/:phone', requirePermission(Actions.WriteLabo
 )
 
 // ---------------------------------------------------------------------------
+// My Crew — the caller's own packers (DriverCrewMember), private to their login:
+// no shared Crew stands behind them, so nobody else reads or edits them. A
+// member flagged `everyJob` is added to the driver's labor activities when
+// dispatch accepts one of their trips (lib/labor-auto-assign.ts). Removal is
+// soft: a removed member leaves the list and is never assigned again, but stays
+// on the jobs they worked. Adding someone whose identity key (last name + CID
+// number or email) matches a removed member brings that member back.
+// Plan: plans/completed/65abbd34-my-crew.md.
+// ---------------------------------------------------------------------------
+
+function memberDto(m: DriverCrewMember) {
+  return {
+    id: m.id,
+    firstName: m.firstName,
+    lastName: m.lastName,
+    email: m.email,
+    cidNumber: m.cidNumber,
+    cidIssuedOn: dateOnly(m.cidIssuedOn),
+    phone: m.phone,
+    phoneDisplay: m.phone ? formatPhoneNumber(m.phone) : null,
+    everyJob: m.everyJob,
+    updatedAt: m.updatedAt.toISOString(),
+  }
+}
+
+const MemberBody = PackerBody.extend({ everyJob: z.boolean().optional() })
+
+function memberDuplicate(): LaborHttpError {
+  return new LaborHttpError(
+    409,
+    'MEMBER_DUPLICATE',
+    'Your crew already has someone with that last name and CID number or email',
+  )
+}
+
+function identityKeys(p: { cidKey: string | null; emailKey: string | null }) {
+  return [
+    ...(p.cidKey ? [{ cidKey: p.cidKey }] : []),
+    ...(p.emailKey ? [{ emailKey: p.emailKey }] : []),
+  ]
+}
+
+/**
+ * A removed member keeps its identity keys so adding the same person again
+ * brings them back — until a live member needs one of those keys. Then the
+ * removed row gives it up (it can no longer be restored by that key), so the
+ * unique index never reports a "duplicate" the driver can't see.
+ */
+async function releaseRemovedKeys(
+  c: C,
+  who: Caller,
+  keys: ReturnType<typeof identityKeys>,
+  exceptId: string | undefined,
+): Promise<void> {
+  if (keys.length === 0) return
+  const db = c.get('db')
+  const where = {
+    tenantUserId: who.userId,
+    removedAt: { not: null },
+    ...(exceptId ? { id: { not: exceptId } } : {}),
+  }
+  for (const key of keys) {
+    const field = 'cidKey' in key ? 'cidKey' : 'emailKey'
+    await db.driverCrewMember.updateMany({ where: { ...where, ...key }, data: { [field]: null } })
+  }
+}
+
+async function requireMember(c: C, who: Caller): Promise<DriverCrewMember> {
+  const member = await c.get('db').driverCrewMember.findFirst({
+    where: { id: c.req.param('id') ?? '', tenantUserId: who.userId, removedAt: null },
+  })
+  if (!member) throw new LaborHttpError(404, 'MEMBER_NOT_FOUND', 'Not in your crew')
+  return member
+}
+
+// GET /my-crew — my members, A–Z by last name.
+laborHandler.get('/my-crew', requirePermission(Actions.ReadLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    const rows = await c.get('db').driverCrewMember.findMany({
+      where: { tenantUserId: who.userId, removedAt: null },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    })
+    return c.json({ data: rows.map(memberDto) })
+  }),
+)
+
+// POST /my-crew — add a member (or bring back a removed one with the same key).
+laborHandler.post('/my-crew', requirePermission(Actions.WriteLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    const body = await readBody(c, MemberBody)
+    const p = validatePacker(body, todayIso())
+    const db = c.get('db')
+    const active = await db.driverCrewMember.count({
+      where: { tenantUserId: who.userId, removedAt: null },
+    })
+    if (active >= MAX_CREW_MEMBERS) {
+      throw new LaborHttpError(
+        422,
+        'MY_CREW_FULL',
+        `Your crew can have at most ${MAX_CREW_MEMBERS} people`,
+      )
+    }
+    const keys = identityKeys(p)
+    const removed = keys.length
+      ? await db.driverCrewMember.findFirst({
+          where: { tenantUserId: who.userId, removedAt: { not: null }, OR: keys },
+        })
+      : null
+    const data = { ...p, cidIssuedOn: toDate(p.cidIssuedOn), everyJob: body.everyJob ?? false }
+    try {
+      await releaseRemovedKeys(c, who, keys, removed?.id)
+      const row = removed
+        ? await db.driverCrewMember.update({
+            where: { id: removed.id },
+            data: { ...data, removedAt: null },
+          })
+        : await db.driverCrewMember.create({
+            data: { tenantId: who.tenantId, tenantUserId: who.userId, ...data },
+          })
+      return c.json({ data: memberDto(row) }, 201)
+    } catch (err) {
+      if (isUniqueViolation(err)) throw memberDuplicate()
+      throw err
+    }
+  }),
+)
+
+// PATCH /my-crew/:id — fields omitted keep their value; null clears.
+laborHandler.patch('/my-crew/:id', requirePermission(Actions.WriteLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    const existing = await requireMember(c, who)
+    const input = await readBody(c, MemberBody.partial())
+    const pick = (k: 'email' | 'cidNumber' | 'phone', current: string | null) =>
+      input[k] === undefined ? current : (input[k] ?? null)
+    const p = validatePacker(
+      {
+        firstName: input.firstName ?? existing.firstName,
+        lastName: input.lastName ?? existing.lastName,
+        email: pick('email', existing.email),
+        cidNumber: pick('cidNumber', existing.cidNumber),
+        cidIssuedOn:
+          input.cidIssuedOn === undefined
+            ? dateOnly(existing.cidIssuedOn)
+            : (input.cidIssuedOn ?? null),
+        phone: pick('phone', existing.phone),
+      },
+      todayIso(),
+    )
+    try {
+      await releaseRemovedKeys(c, who, identityKeys(p), existing.id)
+      const row = await c.get('db').driverCrewMember.update({
+        where: { id: existing.id },
+        data: {
+          ...p,
+          cidIssuedOn: toDate(p.cidIssuedOn),
+          everyJob: input.everyJob ?? existing.everyJob,
+        },
+      })
+      return c.json({ data: memberDto(row) })
+    } catch (err) {
+      if (isUniqueViolation(err)) throw memberDuplicate()
+      throw err
+    }
+  }),
+)
+
+// DELETE /my-crew/:id — soft: off the list and out of the auto-assign, but the
+// jobs they worked keep them.
+laborHandler.delete('/my-crew/:id', requirePermission(Actions.WriteLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    const { count } = await c.get('db').driverCrewMember.updateMany({
+      where: { id: c.req.param('id') ?? '', tenantUserId: who.userId, removedAt: null },
+      data: { removedAt: new Date(), everyJob: false },
+    })
+    if (count === 0) throw new LaborHttpError(404, 'MEMBER_NOT_FOUND', 'Not in your crew')
+    return c.body(null, 204)
+  }),
+)
+
+// ---------------------------------------------------------------------------
 // Activity labor — which crews (and which of their packers) worked each of a
 // driver's activities on an order. Unlike the book, this is tenant data: the
 // activity is a row in the tenant's legacy database. A driver sees and edits
@@ -1010,6 +1196,48 @@ async function activityLaborDtos(
   ])
   const nicknames = new Map(links.map((l) => [l.crewPhone, l.nickname]))
   const companyNicknames = new Map(company.map((l) => [l.crewPhone, l.nickname]))
+  const owns = (a: DriverActivityRow) => driverId != null && activityOwnerDriverId(a) === driverId
+  const anyEditable = activities.some(owns)
+  const [members, myCrew] = await Promise.all([
+    db.activityLaborMember.findMany({
+      where: { activityId: { in: activities.map((a) => a.id) } },
+      include: { member: true },
+    }),
+    anyEditable
+      ? db.driverCrewMember.findMany({
+          where: { tenantUserId: who.userId, removedAt: null },
+          orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        })
+      : Promise.resolve([]),
+  ])
+  // Someone else's member shows only as a name on the job they worked — their
+  // contact details and flags stay private to the driver whose crew they are.
+  const memberRow = (m: DriverCrewMember, selected: boolean) => ({
+    id: m.id,
+    firstName: m.firstName,
+    lastName: m.lastName,
+    phoneDisplay: m.phone && m.tenantUserId === who.userId ? formatPhoneNumber(m.phone) : null,
+    everyJob: m.everyJob && m.removedAt === null && m.tenantUserId === who.userId,
+    // In my crew now — the only members that may be newly ticked.
+    mine: m.tenantUserId === who.userId && m.removedAt === null,
+    selected,
+  })
+  /** On an activity I own: my crew (ticked where assigned), then anyone else who worked it. */
+  const membersOf = (activityId: number, editable: boolean) => {
+    const worked = members.filter((x) => x.activityId === activityId).map((x) => x.member)
+    const byName = (a: DriverCrewMember, b: DriverCrewMember) =>
+      a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName)
+    if (!editable) return [...worked].sort(byName).map((m) => memberRow(m, true))
+    const ids = new Set(worked.map((m) => m.id))
+    const mine = new Set(myCrew.map((m) => m.id))
+    return [
+      ...myCrew.map((m) => memberRow(m, ids.has(m.id))),
+      ...worked
+        .filter((m) => !mine.has(m.id))
+        .sort(byName)
+        .map((m) => memberRow(m, true)),
+    ]
+  }
   return activities.map((a) => ({
     id: a.id,
     orderNum: a.order_num,
@@ -1019,7 +1247,8 @@ async function activityLaborDtos(
     plannedStart: legacyDay(a.planned_start),
     estimatedDate: legacyDay(a.estimated_date),
     actualDate: legacyDay(a.actual_date),
-    editable: driverId != null && activityOwnerDriverId(a) === driverId,
+    editable: owns(a),
+    myCrew: membersOf(a.id, owns(a)),
     crews: assigned
       .filter((x) => x.activityId === a.id)
       .map((x) => {
@@ -1066,17 +1295,24 @@ laborHandler.get('/orders/:orderNum/activities', requirePermission(Actions.ReadL
 
 const ActivityLaborBody = z.object({
   crews: z.array(z.object({ phone: z.string(), packerIds: z.array(z.string()) })),
+  memberIds: z.array(z.string()).optional(),
 })
 
-// PUT /activities/:activityId { crews: [{ phone, packerIds }] } — replaces the
-// activity's whole labor set. Only the activity's own driver may write it. A
-// crew newly added must be in the caller's book or on the company list; one
-// already assigned may stay after it leaves both. Every packer must be on its crew.
+// PUT /activities/:activityId { crews: [{ phone, packerIds }], memberIds? } —
+// replaces the activity's whole labor set. Only the activity's own driver may
+// write it. A crew newly added must be in the caller's book or on the company
+// list; one already assigned may stay after it leaves both. Every packer must be
+// on its crew. `memberIds` is My Crew: a member newly ticked must be in the
+// caller's crew; one already on the activity may stay after removal. Omitting
+// `memberIds` leaves the members alone — app builds from before My Crew send
+// only crews and must not wipe what the trip-accepted auto-assign added.
 laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor), (c) =>
   guarded(c, async () => {
     const who = caller(c)
     const activityId = intParam(c, 'activityId')
-    const crews = validateActivityLabor((await readBody(c, ActivityLaborBody)).crews)
+    const body = await readBody(c, ActivityLaborBody)
+    const crews = validateActivityLabor(body.crews)
+    const memberIds = body.memberIds && validateActivityMembers(body.memberIds)
     const driverId = await myDriverId(c, who)
     if (driverId == null) throw driverNotMapped()
     const activity = await legacy(c, who, (cs) => activityById(cs, activityId))
@@ -1116,6 +1352,23 @@ laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor
         throw new LaborHttpError(422, 'PACKER_NOT_ON_CREW', 'A selected packer is not on that crew')
       }
     }
+    let addedMembers: string[] = []
+    if (memberIds) {
+      const worked = await db.activityLaborMember.findMany({
+        where: { activityId },
+        select: { memberId: true },
+      })
+      const on = new Set(worked.map((w) => w.memberId))
+      addedMembers = memberIds.filter((id) => !on.has(id))
+      if (addedMembers.length > 0) {
+        const mine = await db.driverCrewMember.count({
+          where: { id: { in: addedMembers }, tenantUserId: who.userId, removedAt: null },
+        })
+        if (mine !== addedMembers.length) {
+          throw new LaborHttpError(422, 'MEMBER_NOT_YOURS', 'Add them to your crew first')
+        }
+      }
+    }
 
     try {
       await db.$transaction(async (tx) => {
@@ -1148,6 +1401,22 @@ laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor
             })),
           ),
         })
+        if (memberIds) {
+          await tx.activityLaborMember.deleteMany({
+            where: { activityId, memberId: { notIn: memberIds } },
+          })
+          // skipDuplicates: the trip-accepted auto-assign may have added one meanwhile.
+          await tx.activityLaborMember.createMany({
+            data: addedMembers.map((memberId) => ({
+              tenantId: who.tenantId,
+              activityId,
+              orderNum: activity.order_num,
+              memberId,
+              assignedByUserId: who.userId,
+            })),
+            skipDuplicates: true,
+          })
+        }
       })
     } catch (err) {
       // A concurrent save assigned the same crew first.

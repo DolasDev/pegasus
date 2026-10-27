@@ -9,7 +9,12 @@ import { useLaborAccess, type LaborAccess } from '../../../src/auth/laborAccess'
 import type { LaborCrew } from '../../../src/types/labor'
 
 jest.mock('../../../src/services/laborService', () => ({
-  LaborService: { searchCrews: jest.fn(), searchCompanyCrews: jest.fn() },
+  LaborService: {
+    searchCrews: jest.fn(),
+    searchCompanyCrews: jest.fn(),
+    getMyCrew: jest.fn(),
+    updateMyCrewMember: jest.fn(),
+  },
 }))
 jest.mock('../../../src/auth/laborAccess', () => ({ useLaborAccess: jest.fn() }))
 jest.mock('../../../src/services/laborExport', () => ({
@@ -18,6 +23,8 @@ jest.mock('../../../src/services/laborExport', () => ({
 
 const searchCrews = LaborService.searchCrews as jest.Mock
 const searchCompanyCrews = LaborService.searchCompanyCrews as jest.Mock
+const getMyCrew = LaborService.getMyCrew as jest.Mock
+const updateMyCrewMember = LaborService.updateMyCrewMember as jest.Mock
 const access = useLaborAccess as jest.Mock
 
 const DRIVER: LaborAccess = {
@@ -284,6 +291,79 @@ describe('LaborScreen', () => {
       await findByText('Ace Movers')
       fireEvent.press(getByLabelText('Company'))
       expect(await findByText('No company crews yet')).toBeTruthy()
+    })
+  })
+
+  describe('My crew segment', () => {
+    const diaz = {
+      id: 'm1',
+      firstName: 'Ana',
+      lastName: 'Diaz',
+      email: null,
+      cidNumber: 'C1',
+      cidIssuedOn: '2024-01-01',
+      phone: '+14045557777',
+      phoneDisplay: '(404) 555-7777',
+      everyJob: false,
+      updatedAt: '2026-10-26T00:00:00.000Z',
+    }
+
+    const openMyCrew = async () => {
+      searchCrews.mockResolvedValue({ crews: [ace], location: null, locationNotFound: false })
+      const screen = render(<LaborScreen />)
+      await screen.findByText('Ace Movers')
+      fireEvent.press(screen.getByLabelText('My crew'))
+      return screen
+    }
+
+    it('lists my crew without the crew search, and opens a member', async () => {
+      getMyCrew.mockResolvedValue([diaz])
+      const { findByText, getByText, queryByPlaceholderText, queryByText, getByLabelText } =
+        await openMyCrew()
+      expect(await findByText('Ana Diaz')).toBeTruthy()
+      expect(getByText('(404) 555-7777 · CID C1')).toBeTruthy()
+      expect(queryByPlaceholderText('ZIP, city, state, name or phone')).toBeNull()
+      expect(queryByText('Export')).toBeNull()
+      fireEvent.press(getByLabelText('Edit Ana Diaz'))
+      expect(push).toHaveBeenCalledWith({
+        pathname: '/labor/packer',
+        params: { myCrew: '1', id: 'm1' },
+      })
+      fireEvent.press(getByText('+ Add to my crew'))
+      expect(push).toHaveBeenLastCalledWith({ pathname: '/labor/packer', params: { myCrew: '1' } })
+    })
+
+    it('saves Every job straight from the list', async () => {
+      getMyCrew.mockResolvedValue([diaz])
+      updateMyCrewMember.mockResolvedValue({ ...diaz, everyJob: true })
+      const { findByLabelText } = await openMyCrew()
+      fireEvent(await findByLabelText('Every job: Ana Diaz'), 'valueChange', true)
+      await waitFor(() => expect(updateMyCrewMember).toHaveBeenCalledWith('m1', { everyJob: true }))
+      expect((await findByLabelText('Every job: Ana Diaz')).props.value).toBe(true)
+    })
+
+    it('puts the switch back when the save fails', async () => {
+      jest.spyOn(Alert, 'alert').mockImplementation(() => {})
+      getMyCrew.mockResolvedValue([diaz])
+      updateMyCrewMember.mockRejectedValue(new Error('nope'))
+      const { findByLabelText } = await openMyCrew()
+      fireEvent(await findByLabelText('Every job: Ana Diaz'), 'valueChange', true)
+      await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Couldn’t save', 'nope'))
+      expect((await findByLabelText('Every job: Ana Diaz')).props.value).toBe(false)
+    })
+
+    it('says so when my crew is empty', async () => {
+      getMyCrew.mockResolvedValue([])
+      const { findByText } = await openMyCrew()
+      expect(await findByText('No one in your crew yet')).toBeTruthy()
+    })
+
+    it('is not offered to an Operations-only user', async () => {
+      access.mockReturnValue(OPS_ONLY)
+      searchCompanyCrews.mockResolvedValue({ crews: [], location: null, locationNotFound: false })
+      const { findByText, queryByLabelText } = render(<LaborScreen />)
+      await findByText('No company crews yet')
+      expect(queryByLabelText('My crew')).toBeNull()
     })
   })
 })

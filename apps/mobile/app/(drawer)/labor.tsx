@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { SearchBar } from '../../src/components/SearchBar'
 import { CrewCard } from '../../src/components/CrewCard'
+import { MyCrewList } from '../../src/components/labor/MyCrewList'
 import { LaborService } from '../../src/services/laborService'
 import { useLaborAccess } from '../../src/auth/laborAccess'
 import { exportLaborList, type LaborExportFormat } from '../../src/services/laborExport'
@@ -23,8 +24,9 @@ import type { LaborCrew, LaborSearchResult } from '../../src/types/labor'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 
 // ---------------------------------------------------------------------------
-// Labor — the driver's private book of cash-labor crews, and the company's
-// shared list. A driver switches between the two with My list | Company; an
+// Labor — the driver's private book of cash-labor crews, the company's shared
+// list, and My crew (the driver's own packers — src/components/labor/MyCrewList).
+// A driver switches between them with My list | Company | My crew; an
 // Operations user who is not a driver sees only Company, where they alone can
 // create a crew. Import and Export are for my own list.
 //
@@ -33,7 +35,7 @@ import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/
 // distance on each card. A state or province: the crews serving it.
 // ---------------------------------------------------------------------------
 
-type Scope = 'mine' | 'company'
+type Scope = 'mine' | 'company' | 'crew'
 
 const EMPTY: LaborSearchResult = { crews: [], location: null, locationNotFound: false }
 
@@ -57,6 +59,7 @@ export default function LaborScreen() {
   // An Operations user without a driver identity has no book of their own.
   const scope: Scope = operationsOnly ? 'company' : (picked ?? 'mine')
   const isCompany = scope === 'company'
+  const isCrew = scope === 'crew'
   const showSegments = isDriver
   const [query, setQuery] = useState('')
   const q = useDebouncedValue(query, 300)
@@ -70,6 +73,8 @@ export default function LaborScreen() {
   const requestSeq = useRef(0)
 
   const load = useCallback(async (search: string, which: Scope) => {
+    // My crew loads itself (MyCrewList).
+    if (which === 'crew') return
     const seq = ++requestSeq.current
     setError(null)
     try {
@@ -211,40 +216,47 @@ export default function LaborScreen() {
           <View style={styles.segments} accessibilityRole="tablist">
             <Segment label="My list" on={scope === 'mine'} onPress={() => switchScope('mine')} />
             <Segment label="Company" on={isCompany} onPress={() => switchScope('company')} />
+            <Segment label="My crew" on={isCrew} onPress={() => switchScope('crew')} />
           </View>
         ) : null}
-        <SearchBar
-          value={query}
-          onChangeText={setQuery}
-          placeholder="ZIP, city, state, name or phone"
-        />
-        {!isCompany || isOperations ? (
-          <View style={styles.actions}>
-            <TouchableOpacity style={[styles.action, styles.actionPrimary]} onPress={onAddCrew}>
-              <Text style={[styles.actionText, styles.actionPrimaryText]}>+ Add Crew</Text>
-            </TouchableOpacity>
-            {isCompany ? null : (
-              <TouchableOpacity
-                style={styles.action}
-                onPress={onExport}
-                disabled={exporting}
-                accessibilityState={{ disabled: exporting }}
-              >
-                {exporting ? (
-                  <ActivityIndicator color={colors.primary} />
-                ) : (
-                  <Text style={styles.actionText}>Export</Text>
+        {isCrew ? null : (
+          <>
+            <SearchBar
+              value={query}
+              onChangeText={setQuery}
+              placeholder="ZIP, city, state, name or phone"
+            />
+            {!isCompany || isOperations ? (
+              <View style={styles.actions}>
+                <TouchableOpacity style={[styles.action, styles.actionPrimary]} onPress={onAddCrew}>
+                  <Text style={[styles.actionText, styles.actionPrimaryText]}>+ Add Crew</Text>
+                </TouchableOpacity>
+                {isCompany ? null : (
+                  <TouchableOpacity
+                    style={styles.action}
+                    onPress={onExport}
+                    disabled={exporting}
+                    accessibilityState={{ disabled: exporting }}
+                  >
+                    {exporting ? (
+                      <ActivityIndicator color={colors.primary} />
+                    ) : (
+                      <Text style={styles.actionText}>Export</Text>
+                    )}
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
-            )}
-          </View>
-        ) : null}
-        {isLocation ? (
-          <Text style={styles.locationLabel}>Nearest to {result.location!.label}</Text>
-        ) : null}
+              </View>
+            ) : null}
+            {isLocation ? (
+              <Text style={styles.locationLabel}>Nearest to {result.location!.label}</Text>
+            ) : null}
+          </>
+        )}
       </View>
 
-      {loading && !refreshing && result.crews.length === 0 ? (
+      {isCrew ? (
+        <MyCrewList />
+      ) : loading && !refreshing && result.crews.length === 0 ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
