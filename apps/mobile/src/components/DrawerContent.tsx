@@ -31,6 +31,12 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       <View style={styles.items}>
         {operationsOnly ? null : (
           <DrawerItem
+            label={() => <Text style={styles.itemLabel}>My Itinerary</Text>}
+            onPress={() => props.navigation.navigate('itinerary')}
+          />
+        )}
+        {operationsOnly ? null : (
+          <DrawerItem
             label={() => (
               <View style={styles.itemRow}>
                 <Text style={styles.itemLabel}>My Trips</Text>

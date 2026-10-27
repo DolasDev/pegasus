@@ -38,8 +38,10 @@ function renderDrawer(access: Partial<LaborAccess>) {
 }
 
 describe('DrawerContent', () => {
-  it('shows My Trips, Messages and Labor to a driver', () => {
+  it('shows My Itinerary, My Trips, Messages and Labor to a driver', () => {
     const { getByText } = renderDrawer({ isDriver: true, canSeeLabor: true })
+    fireEvent.press(getByText('My Itinerary'))
+    expect(navigate).toHaveBeenCalledWith('itinerary')
     expect(getByText('My Trips')).toBeTruthy()
     expect(getByText('Messages')).toBeTruthy()
     fireEvent.press(getByText('Labor'))
@@ -53,6 +55,7 @@ describe('DrawerContent', () => {
       operationsOnly: true,
     })
     expect(queryByText('My Trips')).toBeNull()
+    expect(queryByText('My Itinerary')).toBeNull()
     expect(getByText('Messages')).toBeTruthy()
     expect(getByText('Labor')).toBeTruthy()
   })
@@ -72,6 +75,6 @@ describe('DrawerContent', () => {
 
   it('renders pressable rows', () => {
     const { UNSAFE_getAllByType } = renderDrawer({ isDriver: true, canSeeLabor: true })
-    expect(UNSAFE_getAllByType(TouchableOpacity)).toHaveLength(3)
+    expect(UNSAFE_getAllByType(TouchableOpacity)).toHaveLength(4)
   })
 })
