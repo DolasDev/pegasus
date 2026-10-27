@@ -20,8 +20,8 @@ export default function DrawerLayout() {
 }
 
 /**
- * An Operations user who is not a driver has no Dashboard or My Trips (both are
- * fed by /me/driver), so they land on Labor. Whether they are a driver can
+ * An Operations user who is not a driver has no Dashboard, My Itinerary or My
+ * Trips (all driver-only), so they land on Labor. Whether they are a driver can
  * depend on the /me/driver call, so for an Operations user without the
  * `driver` role the navigator waits for it rather than flashing the Dashboard
  * and redirecting. If that call fails, nothing is hidden (they may be a
@@ -34,7 +34,8 @@ function DrawerNavigator() {
 
   // `/` is the Dashboard (segments: ['(drawer)']); My Trips is ['(drawer)', 'trips'].
   const onDriverScreen =
-    segments[0] === '(drawer)' && (segments.length === 1 || segments[1] === 'trips')
+    segments[0] === '(drawer)' &&
+    (segments.length === 1 || segments[1] === 'trips' || segments[1] === 'itinerary')
   useEffect(() => {
     if (operationsOnly && onDriverScreen) router.replace('/labor')
   }, [operationsOnly, onDriverScreen, router])
@@ -74,6 +75,7 @@ function DrawerNavigator() {
       })}
     >
       <Drawer.Screen name="index" options={{ title: 'Dashboard' }} />
+      <Drawer.Screen name="itinerary" options={{ title: 'My Itinerary' }} />
       <Drawer.Screen name="trips" options={{ title: 'My Trips' }} />
       <Drawer.Screen name="messages" options={{ title: 'Messages' }} />
       <Drawer.Screen name="labor" options={{ title: 'Labor' }} />

@@ -62,6 +62,11 @@ describe('DrawerLayout', () => {
     expect(replace).toHaveBeenCalledWith('/labor')
   })
 
+  it('sends an Operations-only user from My Itinerary to Labor', () => {
+    setup(OPS_ONLY, ['(drawer)', 'itinerary'])
+    expect(replace).toHaveBeenCalledWith('/labor')
+  })
+
   it('leaves an Operations-only user on Labor and Messages, and on pushed screens', () => {
     setup(OPS_ONLY, ['(drawer)', 'labor'])
     setup(OPS_ONLY, ['(drawer)', 'messages'])

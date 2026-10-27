@@ -3483,3 +3483,16 @@ place has to come from `sales`. There is **no actual date on a job**: `is_final 
 string — so never set `is_final` to complete ONE act. And `STRING_SPLIT` fails with
 `Invalid object name` on NW, QMM and RVS (compatibility level < 130): split in JS. Prod check
 2026-10-25, re-runnable per tenant with `scripts/probe-local-dispatch-jobs.ts`.
+
+## A local-job order is invisible to every other `/onprem/longhaul/*` read the driver makes
+
+`/me/itinerary` (and chat) read a driver's work by BOTH ids, but every other driver-scoped longhaul
+read goes through `resolveLonghaulReadScope` (`apps/api/src/lib/longhaul-read-scope.ts`), which
+knows only `TenantUser.longhaulDriverId` and matches orders through `LongDistanceDispatchActivity`.
+So an order the driver works only as a local dispatch job — and every order for a local-only driver,
+who has scope `none` — is refused by `/onprem/longhaul/shipments`, `/trips`, etc. Don't wire a local
+itinerary item to an existing longhaul screen (mobile `shipment/[orderNum]`); the mobile itinerary
+renders local items from the row itself. Widening the scope changes every longhaul read — a
+deliberate decision, not a fix. Likewise mobile `useTrips().driverId` (from `/me/driver`) is the
+longhaul id only: "no driver linked" for the itinerary must come from its own 403
+`DRIVER_NOT_MAPPED`.
