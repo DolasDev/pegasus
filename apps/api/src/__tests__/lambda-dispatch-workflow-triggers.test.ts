@@ -1082,6 +1082,45 @@ describe('dry-run triggers', () => {
     expect(createArg.data['dryRun']).toBe(false)
   })
 
+  it('a dryRun trigger is capped like a live one, counting dry runs too', async () => {
+    // A manual dry run is exempt from the cap; a dry-run TRIGGER on a busy event
+    // would otherwise launch a runner per event with no ceiling.
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    const where = (mockExecutionCount.mock.calls[0]![0] as { where: Record<string, unknown> }).where
+    expect(where).not.toHaveProperty('dryRun')
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_LIMIT' }],
+      }),
+    )
+  })
+
+  it('a dryRun trigger also consumes the daily quota', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+    mockExecutionCount.mockResolvedValueOnce(0).mockResolvedValueOnce(1_000_000)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DAILY_QUOTA_EXCEEDED' }],
+      }),
+    )
+  })
+
   it('a dryRun trigger on a curated workflow is skipped — never run live', async () => {
     // The API refuses to attach one; this covers a row that predates the check.
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
