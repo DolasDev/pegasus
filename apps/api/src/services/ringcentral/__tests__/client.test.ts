@@ -142,6 +142,37 @@ describe('makeClient', () => {
     const client = makeClient('https://x', 'tok')
     await expect(client.get('/y')).rejects.toBeInstanceOf(RingCentralOAuthError)
   })
+
+  it('carries the rejected parameter name on a 400', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      headers: new Headers(),
+      json: () => Promise.resolve({}),
+      text: () =>
+        Promise.resolve(
+          '{"errorCode":"InvalidParameter","errors":[{"errorCode":"CMN-101","parameterName":"messageType"}],"parameterName":"messageType"}',
+        ),
+    })
+    const client = makeClient('https://x', 'tok')
+    await expect(client.get('/y')).rejects.toMatchObject({
+      status: 400,
+      errorCode: 'InvalidParameter',
+      parameterName: 'messageType',
+    })
+  })
+})
+
+describe('rcParameterName', () => {
+  it('reads a top-level or first nested parameterName, and tolerates non-JSON', async () => {
+    const { rcParameterName } = await import('../client')
+    expect(rcParameterName('{"parameterName":"messageType"}')).toBe('messageType')
+    expect(
+      rcParameterName('{"errors":[{"errorCode":"CMN-101","parameterName":"syncToken"}]}'),
+    ).toBe('syncToken')
+    expect(rcParameterName('{"errorCode":"CMN-428"}')).toBeUndefined()
+    expect(rcParameterName('not json')).toBeUndefined()
+  })
 })
 
 describe('rcErrorCode', () => {
