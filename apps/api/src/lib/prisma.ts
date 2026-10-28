@@ -167,6 +167,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // auto-assign (handed the request's scoped client); creates set tenantId.
   'DriverCrewMember',
   'ActivityLaborMember',
+  // A crew link a driver shares with a crew leader. Minted and revoked through
+  // the scoped client on /labor; the PUBLIC crew-link endpoint uses the root
+  // `db` (it resolves the tenant FROM the presented token), like feedback.
+  // Its OTP/session/audit children carry no tenantId — they hang off the link.
+  'CrewAccessLink',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the

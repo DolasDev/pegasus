@@ -30,7 +30,7 @@
 
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { Prisma, type DriverCrewMember, type Packer } from '@prisma/client'
+import type { DriverCrewMember, Packer } from '@prisma/client'
 import {
   DomainError,
   aggregateRating,
@@ -88,6 +88,20 @@ import {
   type DriverActivityRow,
 } from '../lib/longhaul-driver-activity'
 import { logger } from '../lib/logger'
+import { LINK_TTL_MS, crewLinkAvailable, crewLinkUrl } from '../lib/crew-link'
+import { generateOpaqueToken } from '../lib/opaque-token'
+import {
+  LaborHttpError,
+  PackerBody,
+  createCrewPacker,
+  dateOnly,
+  deleteCrewPacker,
+  isUniqueViolation,
+  packerDto,
+  toDate,
+  todayIso,
+  updateCrewPacker,
+} from '../lib/labor-packers'
 
 /** New crews a user may add per rolling 24 hours. */
 export const LINK_RATE_LIMIT = 100
@@ -96,16 +110,6 @@ export const MAX_IMPORT_ROWS = 200
 const PLACES_LIMIT = 20
 
 type C = Context<AppEnv>
-
-class LaborHttpError extends Error {
-  constructor(
-    readonly status: 400 | 403 | 404 | 409 | 422 | 429 | 503,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 async function guarded(c: C, fn: () => Promise<Response>): Promise<Response> {
   try {
@@ -227,14 +231,6 @@ async function addBudget(c: C, who: Caller): Promise<number> {
   return LINK_RATE_LIMIT - (await countLinksSince(c.get('db'), who.userId, since))
 }
 
-const todayIso = () => new Date().toISOString().slice(0, 10)
-const dateOnly = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null)
-const toDate = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00.000Z`) : null)
-
-function isUniqueViolation(err: unknown): boolean {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
-}
-
 // ---------------------------------------------------------------------------
 // DTOs
 // ---------------------------------------------------------------------------
@@ -272,20 +268,6 @@ function crewDto(view: CrewView, stars: readonly number[] | undefined, who: Call
 }
 
 type CrewDto = ReturnType<typeof crewDto>
-
-function packerDto(p: Packer) {
-  return {
-    id: p.id,
-    firstName: p.firstName,
-    lastName: p.lastName,
-    email: p.email,
-    cidNumber: p.cidNumber,
-    cidIssuedOn: dateOnly(p.cidIssuedOn),
-    phone: p.phone,
-    phoneDisplay: p.phone ? formatPhoneNumber(p.phone) : null,
-    updatedAt: p.updatedAt.toISOString(),
-  }
-}
 
 async function crewDtos(c: C, who: Caller, views: readonly CrewView[]): Promise<CrewDto[]> {
   const stars = await starsByCrew(
@@ -636,25 +618,9 @@ laborHandler.put('/crews/:phone/service-areas', requirePermission(Actions.WriteL
   }),
 )
 
-const PackerBody = z.object({
-  firstName: z.string(),
-  lastName: z.string(),
-  email: z.string().nullish(),
-  cidNumber: z.string().nullish(),
-  cidIssuedOn: z.string().nullish(),
-  phone: z.string().nullish(),
-})
-
-function packerDuplicate(): LaborHttpError {
-  return new LaborHttpError(
-    409,
-    'PACKER_DUPLICATE',
-    'This crew already has a packer with that last name and CID number or email',
-  )
-}
-
 // The service-area and packer routes take any crew the caller can reach — their
 // own book or the company list (drivers edit company crews like their own).
+// The writes themselves are shared with the public crew link (lib/labor-packers).
 
 // POST /crews/:phone/packers — add a packer to the (shared) crew.
 laborHandler.post('/crews/:phone/packers', requirePermission(Actions.WriteLabor), (c) =>
@@ -662,22 +628,9 @@ laborHandler.post('/crews/:phone/packers', requirePermission(Actions.WriteLabor)
     const who = caller(c)
     const phone = phoneParam(c)
     await requireCrewAccess(c, who, phone)
-    const p = validatePacker(await readBody(c, PackerBody), todayIso())
-    try {
-      const row = await c.get('db').packer.create({
-        data: {
-          crewPhone: phone,
-          ...p,
-          cidIssuedOn: toDate(p.cidIssuedOn),
-          createdByUserId: who.userId,
-          updatedByUserId: who.userId,
-        },
-      })
-      return c.json({ data: packerDto(row) }, 201)
-    } catch (err) {
-      if (isUniqueViolation(err)) throw packerDuplicate()
-      throw err
-    }
+    const input = await readBody(c, PackerBody)
+    const row = await createCrewPacker(c.get('db'), phone, input, who.userId)
+    return c.json({ data: packerDto(row) }, 201)
   }),
 )
 
@@ -687,35 +640,15 @@ laborHandler.patch('/crews/:phone/packers/:id', requirePermission(Actions.WriteL
     const who = caller(c)
     const phone = phoneParam(c)
     await requireCrewAccess(c, who, phone)
-    const db = c.get('db')
-    const existing = await db.packer.findFirst({
-      where: { id: c.req.param('id') ?? '', crewPhone: phone },
-    })
-    if (!existing) throw new LaborHttpError(404, 'PACKER_NOT_FOUND', 'Packer not found')
     const input = await readBody(c, PackerBody.partial())
-    const pick = <K extends keyof typeof input>(k: K, current: string | null) =>
-      input[k] === undefined ? current : (input[k] as string | null)
-    const p = validatePacker(
-      {
-        firstName: input.firstName ?? existing.firstName,
-        lastName: input.lastName ?? existing.lastName,
-        email: pick('email', existing.email),
-        cidNumber: pick('cidNumber', existing.cidNumber),
-        cidIssuedOn: pick('cidIssuedOn', dateOnly(existing.cidIssuedOn)),
-        phone: pick('phone', existing.phone),
-      },
-      todayIso(),
+    const row = await updateCrewPacker(
+      c.get('db'),
+      phone,
+      c.req.param('id') ?? '',
+      input,
+      who.userId,
     )
-    try {
-      const row = await db.packer.update({
-        where: { id: existing.id },
-        data: { ...p, cidIssuedOn: toDate(p.cidIssuedOn), updatedByUserId: who.userId },
-      })
-      return c.json({ data: packerDto(row) })
-    } catch (err) {
-      if (isUniqueViolation(err)) throw packerDuplicate()
-      throw err
-    }
+    return c.json({ data: packerDto(row) })
   }),
 )
 
@@ -725,10 +658,7 @@ laborHandler.delete('/crews/:phone/packers/:id', requirePermission(Actions.Write
     const who = caller(c)
     const phone = phoneParam(c)
     await requireCrewAccess(c, who, phone)
-    const { count } = await c
-      .get('db')
-      .packer.deleteMany({ where: { id: c.req.param('id') ?? '', crewPhone: phone } })
-    if (count === 0) throw new LaborHttpError(404, 'PACKER_NOT_FOUND', 'Packer not found')
+    await deleteCrewPacker(c.get('db'), phone, c.req.param('id') ?? '')
     return c.body(null, 204)
   }),
 )
@@ -1432,4 +1362,112 @@ laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor
     const [dto] = await activityLaborDtos(c, who, [activity], driverId)
     return c.json({ data: dto })
   }),
+)
+
+// ---------------------------------------------------------------------------
+// Crew links — a driver shares a link with a crew leader (who has no login) so
+// they can staff the activities the driver assigned their crew on one order.
+// The public side is handlers/crew-link-public.ts; lib/crew-link.ts has the
+// rules. Here: whether this tenant can use them, and mint / revoke.
+// ---------------------------------------------------------------------------
+
+const smsUnavailable = () =>
+  new LaborHttpError(
+    409,
+    'SMS_UNAVAILABLE',
+    "Crew links need your company's texting (RingCentral) to send the crew a code",
+  )
+
+// GET /sharing — whether the share action should show (feature on + a working
+// RingCentral connection to text the code from).
+laborHandler.get('/sharing', requirePermission(Actions.ReadLabor), (c) =>
+  guarded(c, async () => {
+    const who = caller(c)
+    return c.json({ data: { available: await crewLinkAvailable(c.get('db'), who.tenantId) } })
+  }),
+)
+
+/**
+ * The crew must be on an activity of the order, and — unless the caller holds
+ * an Operations role — on one the caller's driver owns (the ETA editor's rule).
+ */
+async function requireShareableCrew(c: C, who: Caller, orderNum: number, phone: string) {
+  const assigned = await c.get('db').activityLaborCrew.findMany({
+    where: { orderNum, crewPhone: phone },
+    select: { activityId: true },
+  })
+  if (assigned.length === 0) {
+    throw new LaborHttpError(
+      404,
+      'CREW_NOT_ON_ORDER',
+      'That crew is not on any activity of this order',
+    )
+  }
+  if (who.operations) return
+  const driverId = await myDriverId(c, who)
+  if (driverId == null) throw driverNotMapped()
+  const rows = await legacy(c, who, (cs) => orderActivities(cs, orderNum))
+  const mine = new Set(rows.filter((a) => activityOwnerDriverId(a) === driverId).map((a) => a.id))
+  if (!assigned.some((a) => mine.has(a.activityId))) {
+    throw new LaborHttpError(403, 'NOT_YOUR_ACTIVITY', 'That crew is not on one of your activities')
+  }
+}
+
+// POST /orders/:orderNum/crews/:phone/link — mint a fresh link (revoking the
+// previous one for this crew and order). The plaintext is returned once.
+laborHandler.post(
+  '/orders/:orderNum/crews/:phone/link',
+  requirePermission(Actions.WriteLabor),
+  (c) =>
+    guarded(c, async () => {
+      const who = caller(c)
+      const orderNum = intParam(c, 'orderNum')
+      const phone = phoneParam(c)
+      const db = c.get('db')
+      if (!(await crewLinkAvailable(db, who.tenantId))) throw smsUnavailable()
+      await requireShareableCrew(c, who, orderNum, phone)
+      const minted = generateOpaqueToken('crl')
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + LINK_TTL_MS)
+      await db.$transaction([
+        db.crewAccessLink.updateMany({
+          where: { orderNum, crewPhone: phone, revokedAt: null },
+          data: { revokedAt: now },
+        }),
+        db.crewAccessLink.create({
+          data: {
+            tenantId: who.tenantId,
+            crewPhone: phone,
+            orderNum,
+            tokenPrefix: minted.tokenPrefix,
+            tokenHash: minted.tokenHash,
+            sharedByUserId: who.userId,
+            expiresAt,
+          },
+        }),
+      ])
+      return c.json(
+        { data: { url: crewLinkUrl(minted.plainToken), expiresAt: expiresAt.toISOString() } },
+        201,
+      )
+    }),
+)
+
+// DELETE /orders/:orderNum/crews/:phone/link — stop sharing: revokes the live
+// link, which also ends every session opened with it.
+laborHandler.delete(
+  '/orders/:orderNum/crews/:phone/link',
+  requirePermission(Actions.WriteLabor),
+  (c) =>
+    guarded(c, async () => {
+      const who = caller(c)
+      const orderNum = intParam(c, 'orderNum')
+      const phone = phoneParam(c)
+      await requireShareableCrew(c, who, orderNum, phone)
+      await c.get('db').crewAccessLink.updateMany({
+        where: { orderNum, crewPhone: phone, revokedAt: null },
+        data: { revokedAt: new Date() },
+      })
+      return c.body(null, 204)
+    }),
 )

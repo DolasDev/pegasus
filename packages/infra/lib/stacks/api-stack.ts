@@ -235,6 +235,19 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly feedbackPublicWebUrl?: string
 
   /**
+   * Master switch for crew-leader links. When true, `CREW_LEADER_LINK_ENABLED=true`
+   * is set on the api Lambda, ungating the public crew-link endpoint and the
+   * driver's share action. `crewLeaderLinkPublicWebUrl` is the tenant SPA origin
+   * the mint uses to build `<url>/c/<token>`. Env vars only — the store is the
+   * shared Neon DB and the code goes out through the existing RingCentral path.
+   * Default off.
+   */
+  readonly crewLeaderLinkEnabled?: boolean
+
+  /** Tenant SPA origin for the crew link. Only consulted when `crewLeaderLinkEnabled`. */
+  readonly crewLeaderLinkPublicWebUrl?: string
+
+  /**
    * `iss` of the cloud-issued pegII tokens (apps/api/src/lib/pegii-token.ts) —
    * the branded API origin, so sites fetch `${issuer}/.well-known/jwks.json`.
    * Unset (dev) ⇒ PEGII_TOKEN_ISSUER is not set and minting refuses with
@@ -557,6 +570,17 @@ export class ApiStack extends cdk.Stack {
       apiFunction.addEnvironment('FEEDBACK_ENABLED', 'true')
       if (props.feedbackPublicWebUrl) {
         apiFunction.addEnvironment('FEEDBACK_PUBLIC_WEB_URL', props.feedbackPublicWebUrl)
+      }
+    }
+
+    // Crew-leader links (lib/crew-link.ts) — env vars only, like feedback above.
+    if (props.crewLeaderLinkEnabled) {
+      apiFunction.addEnvironment('CREW_LEADER_LINK_ENABLED', 'true')
+      if (props.crewLeaderLinkPublicWebUrl) {
+        apiFunction.addEnvironment(
+          'CREW_LEADER_LINK_PUBLIC_WEB_URL',
+          props.crewLeaderLinkPublicWebUrl,
+        )
       }
     }
 
@@ -2068,7 +2092,14 @@ export class ApiStack extends cdk.Stack {
         // authoritative CORS layer in deployed environments.
         allowOrigins: props.corsAllowedOrigins ?? ['*'],
         allowMethods: [apigwv2.CorsHttpMethod.ANY],
-        allowHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'X-Tenant-Slug'],
+        // X-Crew-Session: the crew-link page's session bearer (handlers/crew-link-public.ts).
+        allowHeaders: [
+          'Content-Type',
+          'Authorization',
+          'x-correlation-id',
+          'X-Tenant-Slug',
+          'X-Crew-Session',
+        ],
         exposeHeaders: ['x-correlation-id'],
       },
     })

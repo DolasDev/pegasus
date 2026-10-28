@@ -114,6 +114,7 @@ import { ingressHandler, ingressManagementHandler } from './handlers/ingress'
 import { feedbackFormsHandler } from './handlers/feedback-forms'
 import { feedbackRequestsHandler } from './handlers/feedback-requests'
 import { feedbackPublicHandler } from './handlers/feedback-public'
+import { crewLinkPublicHandler } from './handlers/crew-link-public'
 import { integrationsHandler } from './handlers/integrations/list'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -144,7 +145,13 @@ app.use(
   cors({
     origin: (origin) =>
       allowedOrigins.length === 0 || allowedOrigins.includes(origin) ? origin : '',
-    allowHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'X-Tenant-Slug'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-correlation-id',
+      'X-Tenant-Slug',
+      'X-Crew-Session',
+    ],
     exposeHeaders: ['x-correlation-id'],
   }),
 )
@@ -246,6 +253,11 @@ app.route('/api/ingress/v1', ingressHandler)
 // protected /api/v1 block. See handlers/feedback-public.ts.
 // ---------------------------------------------------------------------------
 app.route('/api/public/v1', feedbackPublicHandler)
+
+// Public crew-link endpoint — pre-tenant, same shape as feedback: a crew leader
+// with no login opens a link a driver shared; the tenant is resolved FROM the
+// token and a texted one-time code gates the session. See handlers/crew-link-public.ts.
+app.route('/api/public/v1/crew-link', crewLinkPublicHandler)
 
 // ---------------------------------------------------------------------------
 // Hub agent API — /api/vpn/**
