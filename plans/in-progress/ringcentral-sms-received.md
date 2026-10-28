@@ -44,7 +44,7 @@ Branch: `fix/ringcentral-sms-received` (worktree `../pegasus-ringcentral-sms-rec
 ## Evidence & implementation notes (2026-10-28)
 
 - **ISync probe (read-only):** the stored NW token with `messageType=SMS` → `400 CMN-101 parameterName=messageType`; the same token without it → `200`, including the missed 17:03:38Z inbound text.
-- **Subscription probe (user-approved; create → DELETE, both 204):** 48-char token → `400 CMN-101 deliveryMode.verificationToken`, with either filter set; 32-char → `200 Active`. With both filters RC returned only ONE filter (it silently drops threads when the feature is off), so `EVENT_FILTERS` is unchanged.
+- **Subscription probe (user-approved; create → DELETE, both 204):** 48-char token → `400 CMN-101 deliveryMode.verificationToken`, with either filter set; 32-char → `200 Active`. With both filters RC returned only ONE filter, and a re-probe printed it: `…/extension/541170017/message-store/instant?type=SMS`. RC silently drops threads when the feature is off and KEEPS the SMS filter, so `EVENT_FILTERS` is unchanged.
 - `RingCentralOAuthError` gains an optional `parameterName` (from `rcParameterName` in `client.ts`). `isSyncTokenInvalid` = 400 whose `parameterName` is absent or `syncToken`.
 - Thread-store CMN-428 is caught in `syncConnection`, so the cron AND the webhook capture worker (SQS → `syncConnection`) both stop failing/retrying on it.
 - Item 4 needed no code: the existing test `resumes a saved backfill on a later incremental run` already pins it; the re-arm only ever happened on the FSync fallback.
@@ -56,6 +56,8 @@ Branch: `fix/ringcentral-sms-received` (worktree `../pegasus-ringcentral-sms-rec
 - [ ] `ringcentral_subscriptions` has 1 ACTIVE row for NW (within ~1 h of deploy); renew log shows `created: 1`.
 - [ ] Send a test text to NW: an `INBOUND` row is captured within seconds (webhook), an `sms.received` row exists with `dispatched_at` set, and a `workflow_executions` row for `nw_pulse_reply` has `trigger_source=EVENT`, `triggered_by_trigger_id=d53b5633…`.
 - [ ] Watch the capture-queue DLQ stays empty.
+- [ ] The first real notification lands: an `inbound_webhook_events` row plus an INBOUND `messages` row with sub-minute `captured_at - rc_creation_time`.
+- [ ] No `v1 sync token invalid` in the sync log. The cron and the webhook capture worker now both ISync the same V1 token for the first time, so a reappearance (now logged with `errorCode`/`parameterName`) points to that race — the next bug, not noise.
 - [ ] Clear NW's leftover backfill window (user decision): `UPDATE ringcentral_sync_cursors SET backfill_from=NULL, backfill_before=NULL WHERE connection_id='f69cac01-0461-43a9-a174-175ab6c3aeee' AND store='V1'`.
 
 ## Out of scope
