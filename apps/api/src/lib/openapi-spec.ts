@@ -897,6 +897,36 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
       },
     }),
   },
+  '/api/v1/labor/sharing': {
+    get: laborOp('getLaborSharing', 'Whether crew links can be shared', {
+      description:
+        'True when crew links are enabled and the tenant has a working RingCentral connection — the crew leader is texted a one-time code to open the link, so without texting there is no crew link.',
+      data: { type: 'object', properties: { available: { type: 'boolean' } } },
+    }),
+  },
+  '/api/v1/labor/orders/{orderNum}/crews/{phone}/link': {
+    post: laborOp('shareLaborCrewLink', 'Share a crew link with a crew leader', {
+      description:
+        'Mints a link (`<tenant web>/c/<token>`) a crew leader with no login opens to tick which of their packers work the activities this crew is assigned to on the order, and to add, edit or remove their packers. Opening it texts a one-time code to the crew’s phone on file. Valid 14 days; minting again revokes the previous link. The crew must be on one of the caller’s own activities on the order (an Operations role: any activity on it). 404 CREW_NOT_ON_ORDER, 403 NOT_YOUR_ACTIVITY, 409 SMS_UNAVAILABLE.',
+      phone: true,
+      intParams: [{ name: 'orderNum', description: 'Legacy order number' }],
+      status: '201',
+      data: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Shown once — only its hash is stored' },
+          expiresAt: { type: 'string', format: 'date-time' },
+        },
+      },
+    }),
+    delete: laborOp('stopLaborCrewLink', 'Stop sharing a crew link', {
+      description:
+        'Revokes the live link for this crew and order, ending every session opened with it.',
+      phone: true,
+      intParams: [{ name: 'orderNum', description: 'Legacy order number' }],
+      status: '204',
+    }),
+  },
 }
 
 export function getOpenApiSpec() {
