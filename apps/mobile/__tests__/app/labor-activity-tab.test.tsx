@@ -267,6 +267,18 @@ describe('ActivityLaborTab', () => {
   })
 })
 
+describe('ActivityLaborTab — removed packers', () => {
+  it('shows someone removed from the crew ticked and locked on a job they worked', async () => {
+    const a = pack()
+    a.crews[0]!.packers[0] = { ...a.crews[0]!.packers[0]!, removed: true }
+    svc.getOrderActivities.mockResolvedValue([a])
+    const { findByLabelText, getByText } = render(<ActivityLaborTab orderNum={100} />)
+    const box = await findByLabelText('Ana Diaz')
+    expect(box.props.accessibilityState).toMatchObject({ checked: true, disabled: true })
+    expect(getByText('Removed')).toBeTruthy()
+  })
+})
+
 describe('ActivityLaborTab — crew links', () => {
   it('hides Share when the company has no texting set up', async () => {
     svc.getOrderActivities.mockResolvedValue([pack()])

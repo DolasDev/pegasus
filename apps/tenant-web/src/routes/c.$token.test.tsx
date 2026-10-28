@@ -61,6 +61,7 @@ const JOB: CrewJob = {
     },
   ],
   packers: [packer('p1', 'Ana', 'Ruiz'), packer('p2', 'Bo', 'Lee')],
+  formerPackers: [],
   linkExpiresAt: '2026-11-11T00:00:00Z',
 }
 
@@ -171,6 +172,20 @@ describe('CrewLinkPage', () => {
     await waitFor(() =>
       expect(api.setActivityPackers).toHaveBeenCalledWith(TOKEN, 'crs_session', 901, ['p1', 'p2']),
     )
+  })
+
+  it('shows someone removed from the crew, ticked and locked, on a job they worked', async () => {
+    api.getCrewJob.mockResolvedValue({
+      ...JOB,
+      activities: [{ ...JOB.activities[0]!, packerIds: ['p1', 'gone'] }],
+      formerPackers: [{ id: 'gone', firstName: 'Cy', lastName: 'Day' }],
+    })
+    await signIn()
+    const box = (await screen.findByRole('checkbox', {
+      name: 'Cy Day (no longer on your crew)',
+    })) as HTMLInputElement
+    expect(box.checked).toBe(true)
+    expect(box.disabled).toBe(true)
   })
 
   it('adds a crew member', async () => {

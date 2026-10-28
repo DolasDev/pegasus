@@ -48,7 +48,8 @@ import {
   LaborHttpError,
   PackerBody,
   createCrewPacker,
-  deleteCrewPacker,
+  crewSelection,
+  removeCrewPacker,
   packerDto,
   updateCrewPacker,
 } from '../lib/labor-packers'
@@ -368,10 +369,24 @@ crewLinkPublicHandler.get('/:token/job', (c) =>
 
     const crew = await rootDb.crew.findUnique({
       where: { phone: link.crewPhone },
-      include: { packers: { orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] } },
+      include: {
+        packers: {
+          where: { removedAt: null },
+          orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        },
+      },
     })
     if (!crew) throw linkInactive()
     const selected = new Map(assignments.map((a) => [a.activityId, a.packerIds]))
+    // People removed from the crew still show, ticked, on the jobs they worked.
+    const former = await rootDb.packer.findMany({
+      where: {
+        id: { in: assignments.flatMap((a) => a.packerIds) },
+        crewPhone: link.crewPhone,
+        removedAt: { not: null },
+      },
+      select: { id: true, firstName: true, lastName: true },
+    })
     return c.json({
       data: {
         orderNum: link.orderNum,
@@ -381,6 +396,7 @@ crewLinkPublicHandler.get('/:token/job', (c) =>
           .filter((r) => selected.has(r.id))
           .map((r) => ({ ...crewJobActivityDto(r), packerIds: selected.get(r.id) ?? [] })),
         packers: crew.packers.map(packerDto),
+        formerPackers: former,
         linkExpiresAt: link.expiresAt.toISOString(),
       },
     })
@@ -397,18 +413,14 @@ crewLinkPublicHandler.put('/:token/activities/:activityId/packers', (c) =>
     if (!Number.isSafeInteger(activityId) || activityId <= 0) {
       throw new LaborHttpError(400, 'VALIDATION_ERROR', 'Invalid activityId')
     }
-    const packerIds = [...new Set((await readBody(c, SelectionBody)).packerIds)]
+    const requested = (await readBody(c, SelectionBody)).packerIds
     // Only an activity the driver assigned this crew to — never a new one.
     const assignment = assignments.find((a) => a.activityId === activityId)
     if (!assignment) {
       throw new LaborHttpError(404, 'ACTIVITY_NOT_FOUND', "Your crew isn't on that activity")
     }
-    const onCrew = await rootDb.packer.count({
-      where: { id: { in: packerIds }, crewPhone: link.crewPhone },
-    })
-    if (onCrew !== packerIds.length) {
-      throw new LaborHttpError(422, 'PACKER_NOT_ON_CREW', 'A selected packer is not on your crew')
-    }
+    // On the crew, newly ticked ones not removed; removed ones on the job stay.
+    const packerIds = await crewSelection(rootDb, link.crewPhone, assignment.id, requested)
     try {
       await rootDb.$transaction([
         rootDb.activityLaborPacker.deleteMany({ where: { activityLaborCrewId: assignment.id } }),
@@ -467,7 +479,7 @@ crewLinkPublicHandler.delete('/:token/packers/:id', (c) =>
   guarded(c, async () => {
     const { link } = await authorised(c)
     const packerId = c.req.param('id') ?? ''
-    await deleteCrewPacker(rootDb, link.crewPhone, packerId)
+    await removeCrewPacker(rootDb, link.crewPhone, packerId, link.sharedByUserId)
     await audit(link.id, 'packer_deleted', { packerId })
     return c.body(null, 204)
   }),

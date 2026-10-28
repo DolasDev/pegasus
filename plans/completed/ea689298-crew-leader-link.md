@@ -188,6 +188,15 @@ the validation.
   - **Web page.** An activity's boxes are locked while its save is in flight, and the job is
     re-read after each save. The page has an "I already have a code" path for after a reload.
 - `/security-review`: no findings at confidence ≥ 8.
+- **Steve, 2026-10-28: "removing a packer should remove it from the crew but not the assigned
+  activity so that history persists."** Packer removal is now soft (third migration,
+  `labor_packer_soft_remove`).
+  - **Where:** it applies to both writers, the crew link and the driver's own DELETE.
+  - **What changes:** removed packers leave the crew's lists, counts and export. They stay ticked on
+    the jobs they worked: mobile shows them locked with a "Removed" tag, and the web page shows them
+    as "(no longer on your crew)".
+  - **Saves:** a save that omits them keeps them, and a removed packer can't be newly ticked.
+  - **Re-adding** by CID number or email restores the same row.
 - Packer writes are shared by both writers through `lib/labor-packers.ts`, extracted from
   `handlers/labor.ts`.
 - The feedback public handler's flag middleware is now scoped to `/feedback/*`. Before, its `'*'`

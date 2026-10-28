@@ -241,17 +241,20 @@ const packerName = (p: CrewPacker) => `${p.firstName} ${p.lastName}`
 function ActivityCard({
   activity,
   packers,
+  formerPackers,
   saving,
   onToggle,
 }: {
   activity: CrewJobActivity
   packers: CrewPacker[]
+  formerPackers: CrewJob['formerPackers']
   saving: boolean
   onToggle: (packerId: string, on: boolean) => void
 }) {
   const day = activityDay(activity)
   const lines = addressLines(activity)
   const selected = new Set(activity.packerIds)
+  const former = formerPackers.filter((p) => selected.has(p.id))
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -287,7 +290,7 @@ function ActivityCard({
       </CardHeader>
       <CardContent>
         <p className="mb-2 text-sm font-medium">Who&rsquo;s working it</p>
-        {packers.length === 0 ? (
+        {packers.length === 0 && former.length === 0 ? (
           <p className="text-sm text-muted-foreground">Add your crew below, then tick them here.</p>
         ) : (
           <ul className="space-y-1">
@@ -302,6 +305,16 @@ function ActivityCard({
                     onChange={(e) => onToggle(p.id, e.target.checked)}
                   />
                   <span className="text-sm">{packerName(p)}</span>
+                </label>
+              </li>
+            ))}
+            {former.map((p) => (
+              <li key={p.id}>
+                <label className="flex min-h-11 items-center gap-3 px-2 text-muted-foreground">
+                  <input type="checkbox" className="h-5 w-5" checked disabled readOnly />
+                  <span className="text-sm">
+                    {p.firstName} {p.lastName} (no longer on your crew)
+                  </span>
                 </label>
               </li>
             ))}
@@ -451,7 +464,10 @@ function CrewList({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Your crew</CardTitle>
-        <CardDescription>Changes here update your crew everywhere it&rsquo;s used.</CardDescription>
+        <CardDescription>
+          Changes here update your crew everywhere it&rsquo;s used. Removing someone keeps them on
+          the jobs they already worked.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {packers.length === 0 && (
@@ -648,6 +664,7 @@ function JobView({
           key={a.id}
           activity={a}
           packers={data.packers}
+          formerPackers={data.formerPackers}
           saving={select.isPending && select.variables?.activityId === a.id}
           onToggle={(packerId, on) =>
             select.mutate({

@@ -116,6 +116,8 @@ export interface CrewJob {
   weight: { estimated: number | null; actual: number | null }
   activities: CrewJobActivity[]
   packers: CrewPacker[]
+  /** Removed from the crew but still on a job they worked — shown ticked, locked. */
+  formerPackers: Array<{ id: string; firstName: string; lastName: string }>
   linkExpiresAt: string
 }
 

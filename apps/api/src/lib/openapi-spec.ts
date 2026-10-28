@@ -749,7 +749,9 @@ const LABOR_PATHS: Record<string, Record<string, unknown>> = {
       data: LABOR_PACKER,
       extraResponses: LABOR_DUPLICATE,
     }),
-    delete: laborOp('deleteLaborPacker', 'Delete a packer', {
+    delete: laborOp('deleteLaborPacker', 'Remove a packer from the crew', {
+      description:
+        'Soft: the packer leaves the crew (every list, count and export) but stays selected on the activities they worked, and cannot be newly selected (422 PACKER_REMOVED). Adding a packer with the same CID number or email restores them.',
       phone: true,
       packerId: true,
       status: '204',
@@ -3775,6 +3777,11 @@ export function getOpenApiSpec() {
                         lastName: { type: 'string' },
                         phoneDisplay: { type: ['string', 'null'] },
                         selected: { type: 'boolean' },
+                        removed: {
+                          type: 'boolean',
+                          description:
+                            'Removed from the crew since — listed only where they worked it, always selected, and kept by a PUT that omits them',
+                        },
                       },
                     },
                   },

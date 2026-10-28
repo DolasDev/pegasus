@@ -143,6 +143,11 @@ export interface LaborActivityPacker {
   lastName: string
   phoneDisplay: string | null
   selected: boolean
+  /**
+   * Removed from the crew since — listed only on jobs they worked, ticked, and
+   * can't be changed (the API keeps them on the job). Absent from older APIs.
+   */
+  removed?: boolean
 }
 
 /** A crew assigned to an activity, with ALL its packers. */

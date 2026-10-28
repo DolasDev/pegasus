@@ -574,6 +574,48 @@ describe.skipIf(!hasDb)('crew links (integration)', () => {
     expect(sel.map((s) => s.packerId)).toEqual([id])
   })
 
+  it('a packer the leader removes stays on the jobs they worked', async () => {
+    const { token, session } = await signIn()
+    const add = async (lastName: string) =>
+      (
+        await data<{ id: string }>(
+          await publicApp().request(
+            `/crew-link/${token}/packers`,
+            send({ firstName: 'P', lastName, phone: '404-555-9997' }, 'POST', session),
+          ),
+        )
+      ).id
+    const ana = await add('Ana')
+    const bo = await add('Bo')
+    const put = (ids: string[]) =>
+      publicApp().request(
+        `/crew-link/${token}/activities/901/packers`,
+        send({ packerIds: ids }, 'PUT', session),
+      )
+    await put([ana])
+    const del = await publicApp().request(`/crew-link/${token}/packers/${ana}`, {
+      method: 'DELETE',
+      headers: { 'x-crew-session': session },
+    })
+    expect(del.status).toBe(204)
+    // A later save that only lists Bo keeps Ana on the job.
+    expect(await data(await put([bo]))).toMatchObject({ packerIds: [bo, ana] })
+    const job = await data<{
+      packers: Array<{ id: string }>
+      formerPackers: Array<{ id: string }>
+      activities: Array<{ id: number; packerIds: string[] }>
+    }>(await getJob(token, session))
+    expect(job.packers.map((p) => p.id)).toEqual([bo])
+    expect(job.formerPackers.map((p) => p.id)).toEqual([ana])
+    expect(job.activities.find((a) => a.id === 901)!.packerIds.sort()).toEqual([ana, bo].sort())
+    // Removed: can't be put on another job.
+    const other = await publicApp().request(
+      `/crew-link/${token}/activities/904/packers`,
+      send({ packerIds: [ana] }, 'PUT', session),
+    )
+    expect(await codeOf(other)).toBe('PACKER_REMOVED')
+  })
+
   // ── Review fixes ───────────────────────────────────────────────────────────
 
   async function jobIds(who: string): Promise<number[]> {

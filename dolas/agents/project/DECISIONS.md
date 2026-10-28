@@ -27,6 +27,11 @@
     - **The driver sends the link** from the mobile native share sheet. The platform texts only the code.
     - **The leader may add, edit and remove** their crew's packers.
     - **The leader assigns packers only on activities the driver already gave this crew.**
+  - **Removing a packer is SOFT, everywhere (Steve, 2026-10-28):**
+    - A removed packer (`Packer.removedAt`) leaves the crew's lists, counts and export, but stays on the activities they worked.
+    - Removal happens through the crew link or the driver's `DELETE /crews/:phone/packers/:id`, which share `lib/labor-packers`.
+    - A PUT that omits a removed packer keeps them (`crewSelection`), so app builds that don't show them can't erase history. A removed packer can't be newly ticked (`PACKER_REMOVED`).
+    - Adding the same CID number or email restores them. Same rule as My Crew.
   - **Attribution:** writes are attributed to the sharing driver, since `createdByUserId` is required, and recorded in `CrewAccessAudit`.
   - **Rollout:** gated by `CREW_LEADER_LINK_ENABLED`, which is on in staging only.
   - Plan: `plans/completed/ea689298-crew-leader-link.md`.

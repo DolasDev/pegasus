@@ -387,16 +387,68 @@ describe.skipIf(!hasDb)('/labor activity labor (integration)', () => {
     expect(await codeOf(dup)).toBe('DUPLICATE_ACTIVITY_CREW')
   })
 
-  it('drops a deleted packer from the selection', async () => {
+  it('a removed packer leaves the crew but stays on the jobs they worked', async () => {
     await addCrew('driver', 1)
     const diaz = await addPacker('driver', 1, 'Diaz')
+    const ruiz = await addPacker('driver', 1, 'Ruiz')
+    await putLabor('driver', 1, [{ phone: num(1), packerIds: [diaz] }])
+    const del = await appAs('driver').request(
+      `/labor/crews/${encodeURIComponent(e164(1))}/packers/${diaz}`,
+      { method: 'DELETE' },
+    )
+    expect(del.status).toBe(204)
+    // Off the crew…
+    const detail = await data<{ packers: Array<{ id: string }> }>(
+      await appAs('driver').request(`/labor/crews/${encodeURIComponent(e164(1))}`),
+    )
+    expect(detail.packers.map((p) => p.id)).toEqual([ruiz])
+    // …still on activity 1, marked removed; not offered on activity 2.
+    await putLabor('driver', 2, [{ phone: num(1), packerIds: [] }])
+    const list = await data<
+      Array<{
+        crews: Array<{ packers: Array<{ id: string; selected: boolean; removed: boolean }> }>
+      }>
+    >(await getOrder('driver'))
+    expect(list[0]!.crews[0]!.packers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: diaz, selected: true, removed: true }),
+        expect.objectContaining({ id: ruiz, selected: false, removed: false }),
+      ]),
+    )
+    expect(list[1]!.crews[0]!.packers.map((p) => p.id)).toEqual([ruiz])
+  })
+
+  it('a save that omits a removed packer keeps them; a removed packer cannot be newly ticked', async () => {
+    await addCrew('driver', 1)
+    const diaz = await addPacker('driver', 1, 'Diaz')
+    const ruiz = await addPacker('driver', 1, 'Ruiz')
     await putLabor('driver', 1, [{ phone: num(1), packerIds: [diaz] }])
     await appAs('driver').request(`/labor/crews/${encodeURIComponent(e164(1))}/packers/${diaz}`, {
       method: 'DELETE',
     })
-    const list = await data<ActivityOut[]>(await getOrder('driver'))
-    expect(list[0]!.crews[0]!.packers).toEqual([])
-    expect(await db.activityLaborPacker.count({ where: { packerId: diaz } })).toBe(0)
+    // An app build that never shows removed packers sends only Ruiz.
+    expect((await putLabor('driver', 1, [{ phone: num(1), packerIds: [ruiz] }])).status).toBe(200)
+    const kept = await db.activityLaborPacker.findMany({ where: { tenantId: tenantA } })
+    expect(kept.map((k) => k.packerId).sort()).toEqual([diaz, ruiz].sort())
+    const res = await putLabor('driver', 2, [{ phone: num(1), packerIds: [diaz] }])
+    expect(res.status).toBe(422)
+    expect(await codeOf(res)).toBe('PACKER_REMOVED')
+  })
+
+  it('re-adding a removed packer by CID restores the same person', async () => {
+    await addCrew('driver', 1)
+    const base = `/labor/crews/${encodeURIComponent(e164(1))}/packers`
+    const body = {
+      firstName: 'Ana',
+      lastName: 'Diaz',
+      cidNumber: 'C-77',
+      cidIssuedOn: '2025-01-02',
+    }
+    const first = await data<{ id: string }>(await appAs('driver').request(base, send(body)))
+    await appAs('driver').request(`${base}/${first.id}`, { method: 'DELETE' })
+    const again = await appAs('driver').request(base, send({ ...body, firstName: 'Anna' }))
+    expect(again.status).toBe(201)
+    expect(await data(again)).toMatchObject({ id: first.id, firstName: 'Anna' })
   })
 
   it('isolates by tenant — the same activity id in another tenant is separate', async () => {

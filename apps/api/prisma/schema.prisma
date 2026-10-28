@@ -3675,6 +3675,9 @@ model Packer {
   emailKey        String?   @map("email_key")
   createdByUserId String    @map("created_by_user_id")
   updatedByUserId String    @map("updated_by_user_id")
+  /// Removal is soft (Steve, 2026-10-28): a removed packer leaves the crew but
+  /// stays on the activities they worked. Re-adding the same identity restores them.
+  removedAt       DateTime? @map("removed_at") @db.Timestamptz(6)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

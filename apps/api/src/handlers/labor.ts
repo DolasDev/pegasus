@@ -95,7 +95,8 @@ import {
   PackerBody,
   createCrewPacker,
   dateOnly,
-  deleteCrewPacker,
+  crewSelection,
+  removeCrewPacker,
   isUniqueViolation,
   packerDto,
   toDate,
@@ -652,13 +653,14 @@ laborHandler.patch('/crews/:phone/packers/:id', requirePermission(Actions.WriteL
   }),
 )
 
-// DELETE /crews/:phone/packers/:id
+// DELETE /crews/:phone/packers/:id — removes them from the crew; they stay on
+// the activities they worked (lib/labor-packers removeCrewPacker).
 laborHandler.delete('/crews/:phone/packers/:id', requirePermission(Actions.WriteLabor), (c) =>
   guarded(c, async () => {
     const who = caller(c)
     const phone = phoneParam(c)
     await requireCrewAccess(c, who, phone)
-    await deleteCrewPacker(c.get('db'), phone, c.req.param('id') ?? '')
+    await removeCrewPacker(c.get('db'), phone, c.req.param('id') ?? '', who.userId)
     return c.body(null, 204)
   }),
 )
@@ -716,7 +718,7 @@ laborHandler.get('/export', requirePermission(Actions.ReadLabor), (c) =>
     const db = c.get('db')
     const links = await listMyLinks(db, who.userId)
     const packers = await db.packer.findMany({
-      where: { crewPhone: { in: links.map((l) => l.crewPhone) } },
+      where: { crewPhone: { in: links.map((l) => l.crewPhone) }, removedAt: null },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     })
     const byCrew = new Map<string, Packer[]>()
@@ -1192,13 +1194,18 @@ async function activityLaborDtos(
           displayName: nickname ?? companyNicknames.get(x.crewPhone) ?? x.crew.name,
           inMyBook: nicknames.has(x.crewPhone),
           inCompanyList: companyNicknames.has(x.crewPhone),
-          packers: x.crew.packers.map((p) => ({
-            id: p.id,
-            firstName: p.firstName,
-            lastName: p.lastName,
-            phoneDisplay: p.phone ? formatPhoneNumber(p.phone) : null,
-            selected: selected.has(p.id),
-          })),
+          // The crew's packers, plus anyone since removed who worked this job
+          // (`removed`: shown ticked, can't be changed).
+          packers: x.crew.packers
+            .filter((p) => p.removedAt === null || selected.has(p.id))
+            .map((p) => ({
+              id: p.id,
+              firstName: p.firstName,
+              lastName: p.lastName,
+              phoneDisplay: p.phone ? formatPhoneNumber(p.phone) : null,
+              selected: selected.has(p.id),
+              removed: p.removedAt !== null,
+            })),
         }
       }),
   }))
@@ -1272,15 +1279,15 @@ laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor
       const reachable = new Set([...mine, ...company].map((l) => l.crewPhone))
       if (added.some((p) => !reachable.has(p))) throw notInYourList()
     }
-    const packers = await db.packer.findMany({
-      where: { id: { in: crews.flatMap((x) => x.packerIds) } },
-      select: { id: true, crewPhone: true },
-    })
-    const packerCrew = new Map(packers.map((p) => [p.id, p.crewPhone]))
+    // Every packer must be on its crew; a removed one already on the job stays
+    // even when the app omits it (lib/labor-packers crewSelection).
+    const assignmentOf = new Map(existing.map((e) => [e.crewPhone, e.id]))
+    const selections = new Map<string, string[]>()
     for (const x of crews) {
-      if (x.packerIds.some((id) => packerCrew.get(id) !== x.phone)) {
-        throw new LaborHttpError(422, 'PACKER_NOT_ON_CREW', 'A selected packer is not on that crew')
-      }
+      selections.set(
+        x.phone,
+        await crewSelection(db, x.phone, assignmentOf.get(x.phone) ?? null, x.packerIds),
+      )
     }
     let addedMembers: string[] = []
     if (memberIds) {
@@ -1324,7 +1331,7 @@ laborHandler.put('/activities/:activityId', requirePermission(Actions.WriteLabor
         })
         await tx.activityLaborPacker.createMany({
           data: crews.flatMap((x) =>
-            x.packerIds.map((packerId) => ({
+            selections.get(x.phone)!.map((packerId) => ({
               activityLaborCrewId: ids.get(x.phone)!,
               tenantId: who.tenantId,
               packerId,

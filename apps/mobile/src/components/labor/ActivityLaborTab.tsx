@@ -229,10 +229,14 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
                     <TouchableOpacity
                       key={p.id}
                       style={styles.packer}
-                      disabled={locked}
+                      // Someone removed from the crew stays on the jobs they worked.
+                      disabled={locked || p.removed === true}
                       onPress={() => void save(a, withPacker(input, crew.phone, p.id, !p.selected))}
                       accessibilityRole="checkbox"
-                      accessibilityState={{ checked: p.selected, disabled: locked }}
+                      accessibilityState={{
+                        checked: p.selected,
+                        disabled: locked || p.removed === true,
+                      }}
                       accessibilityLabel={`${p.firstName} ${p.lastName}`}
                     >
                       <View style={[styles.box, p.selected && styles.boxOn]}>
@@ -241,6 +245,7 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
                       <Text style={styles.packerName}>
                         {p.firstName} {p.lastName}
                       </Text>
+                      {p.removed ? <Text style={styles.everyJob}>Removed</Text> : null}
                     </TouchableOpacity>
                   ))}
 

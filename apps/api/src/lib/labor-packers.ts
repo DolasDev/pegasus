@@ -67,7 +67,42 @@ const packerNotFound = () => new LaborHttpError(404, 'PACKER_NOT_FOUND', 'Packer
 
 type Db = Pick<PrismaClient, 'packer'>
 
-/** Add a packer to the crew at `crewPhone`. */
+/** The identity keys a packer is matched on, as `where` fragments. */
+function identityKeys(p: { cidKey: string | null; emailKey: string | null }) {
+  return [
+    ...(p.cidKey ? [{ cidKey: p.cidKey }] : []),
+    ...(p.emailKey ? [{ emailKey: p.emailKey }] : []),
+  ]
+}
+
+/**
+ * A removed packer keeps its identity keys so adding the same person again
+ * brings them back — until a live packer needs one of those keys. Then the
+ * removed row gives it up (it can no longer be restored by that key), so the
+ * unique index never reports a "duplicate" nobody can see. Same rule as My Crew.
+ */
+async function releaseRemovedKeys(
+  db: Db,
+  crewPhone: string,
+  keys: ReturnType<typeof identityKeys>,
+  exceptId: string | undefined,
+): Promise<void> {
+  const where = {
+    crewPhone,
+    removedAt: { not: null },
+    ...(exceptId ? { id: { not: exceptId } } : {}),
+  }
+  for (const key of keys) {
+    const field = 'cidKey' in key ? 'cidKey' : 'emailKey'
+    await db.packer.updateMany({ where: { ...where, ...key }, data: { [field]: null } })
+  }
+}
+
+/**
+ * Add a packer to the crew at `crewPhone`. Someone removed earlier with the
+ * same CID number or email is restored instead — the same person, with the
+ * jobs they worked still attached.
+ */
 export async function createCrewPacker(
   db: Db,
   crewPhone: string,
@@ -75,23 +110,23 @@ export async function createCrewPacker(
   userId: string,
 ): Promise<Packer> {
   const p = validatePacker(input, todayIso())
+  const keys = identityKeys(p)
+  const removed = keys.length
+    ? await db.packer.findFirst({ where: { crewPhone, removedAt: { not: null }, OR: keys } })
+    : null
+  const data = { ...p, cidIssuedOn: toDate(p.cidIssuedOn), updatedByUserId: userId }
   try {
-    return await db.packer.create({
-      data: {
-        crewPhone,
-        ...p,
-        cidIssuedOn: toDate(p.cidIssuedOn),
-        createdByUserId: userId,
-        updatedByUserId: userId,
-      },
-    })
+    await releaseRemovedKeys(db, crewPhone, keys, removed?.id)
+    return removed
+      ? await db.packer.update({ where: { id: removed.id }, data: { ...data, removedAt: null } })
+      : await db.packer.create({ data: { crewPhone, ...data, createdByUserId: userId } })
   } catch (err) {
     if (isUniqueViolation(err)) throw packerDuplicate()
     throw err
   }
 }
 
-/** Patch a packer of the crew: fields omitted keep their value; null clears. */
+/** Patch a packer on the crew: fields omitted keep their value; null clears. */
 export async function updateCrewPacker(
   db: Db,
   crewPhone: string,
@@ -99,7 +134,9 @@ export async function updateCrewPacker(
   input: { [K in keyof PackerInput]?: PackerInput[K] | undefined },
   userId: string,
 ): Promise<Packer> {
-  const existing = await db.packer.findFirst({ where: { id: packerId, crewPhone } })
+  const existing = await db.packer.findFirst({
+    where: { id: packerId, crewPhone, removedAt: null },
+  })
   if (!existing) throw packerNotFound()
   const pick = <K extends keyof PackerInput>(k: K, current: string | null) =>
     input[k] === undefined ? current : (input[k] as string | null)
@@ -115,6 +152,7 @@ export async function updateCrewPacker(
     todayIso(),
   )
   try {
+    await releaseRemovedKeys(db, crewPhone, identityKeys(p), existing.id)
     return await db.packer.update({
       where: { id: existing.id },
       data: { ...p, cidIssuedOn: toDate(p.cidIssuedOn), updatedByUserId: userId },
@@ -125,8 +163,58 @@ export async function updateCrewPacker(
   }
 }
 
-/** Delete a packer of the crew (its activity selections cascade). */
-export async function deleteCrewPacker(db: Db, crewPhone: string, packerId: string): Promise<void> {
-  const { count } = await db.packer.deleteMany({ where: { id: packerId, crewPhone } })
+/**
+ * Remove a packer from the crew. Soft: they stay ticked on the activities they
+ * worked (see `keepRemovedSelections`), but can't be newly ticked or edited.
+ */
+export async function removeCrewPacker(
+  db: Db,
+  crewPhone: string,
+  packerId: string,
+  userId: string,
+): Promise<void> {
+  const { count } = await db.packer.updateMany({
+    where: { id: packerId, crewPhone, removedAt: null },
+    data: { removedAt: new Date(), updatedByUserId: userId },
+  })
   if (count === 0) throw packerNotFound()
+}
+
+/**
+ * Check a crew's new packer selection on one assignment and complete it.
+ * - Every id must be a packer on `crewPhone`.
+ * - One newly ticked must still be on the crew.
+ * - A removed packer already on the job is kept even when omitted: who worked a
+ *   job is history, and a list that no longer shows them must not drop them.
+ */
+export async function crewSelection(
+  db: Pick<PrismaClient, 'packer' | 'activityLaborPacker'>,
+  crewPhone: string,
+  assignmentId: string | null,
+  packerIds: readonly string[],
+): Promise<string[]> {
+  const current = assignmentId
+    ? await db.activityLaborPacker.findMany({
+        where: { activityLaborCrewId: assignmentId },
+        select: { packerId: true, packer: { select: { removedAt: true } } },
+      })
+    : []
+  const already = new Set(current.map((x) => x.packerId))
+  const ids = [...new Set(packerIds)]
+  const rows = await db.packer.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, crewPhone: true, removedAt: true },
+  })
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  for (const id of ids) {
+    const row = byId.get(id)
+    if (!row || row.crewPhone !== crewPhone) {
+      throw new LaborHttpError(422, 'PACKER_NOT_ON_CREW', 'A selected packer is not on that crew')
+    }
+    if (row.removedAt && !already.has(id)) {
+      throw new LaborHttpError(422, 'PACKER_REMOVED', 'That packer has been removed from the crew')
+    }
+  }
+  const kept = current.filter((x) => x.packer.removedAt !== null).map((x) => x.packerId)
+  return [...new Set([...ids, ...kept])]
 }
