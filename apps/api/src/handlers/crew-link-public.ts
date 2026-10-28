@@ -23,7 +23,7 @@
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { DomainError, formatPhoneNumber } from '@pegasus/domain'
-import type { CrewAccessLink, Prisma } from '@prisma/client'
+import { Prisma, type CrewAccessLink } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { db as rootDb } from '../db'
 import { logger } from '../lib/logger'
@@ -108,8 +108,11 @@ async function readBody<T extends z.ZodType>(c: C, schema: T): Promise<z.infer<T
 
 interface LiveLink {
   link: CrewAccessLink
-  /** The order's activities this crew is assigned to — what the leader may staff. */
-  activityIds: number[]
+  /**
+   * What the leader may staff: this crew's assignments on the order — only those
+   * the sharing driver made, unless an Operations role minted the link.
+   */
+  assignments: Array<{ id: string; activityId: number; packerIds: string[] }>
 }
 
 /** The live link the path token names, or the uniform 404. */
@@ -125,11 +128,28 @@ async function liveLink(c: C): Promise<LiveLink> {
     throw linkInactive()
   }
   const assigned = await rootDb.activityLaborCrew.findMany({
-    where: { tenantId: link.tenantId, orderNum: link.orderNum, crewPhone: link.crewPhone },
-    select: { activityId: true },
+    where: {
+      tenantId: link.tenantId,
+      orderNum: link.orderNum,
+      crewPhone: link.crewPhone,
+      ...(link.allActivities ? {} : { assignedByUserId: link.sharedByUserId }),
+    },
+    select: { id: true, activityId: true, packers: { select: { packerId: true } } },
   })
-  if (assigned.length === 0) throw linkInactive()
-  return { link, activityIds: assigned.map((a) => a.activityId) }
+  if (assigned.length === 0) {
+    // Off the job for good: re-assigning the crew later must not revive an old
+    // link — the driver shares a fresh one.
+    await rootDb.crewAccessLink.update({ where: { id: link.id }, data: { revokedAt: new Date() } })
+    throw linkInactive()
+  }
+  return {
+    link,
+    assignments: assigned.map((a) => ({
+      id: a.id,
+      activityId: a.activityId,
+      packerIds: a.packers.map((x) => x.packerId),
+    })),
+  }
 }
 
 /** The live link plus a valid session for it (X-Crew-Session). */
@@ -174,7 +194,16 @@ crewLinkPublicHandler.post('/:token/otp', (c) =>
         "Texting isn't set up for this company yet, so a code can't be sent.",
       )
     }
+    // Claim the slot FIRST, then count including it: parallel requests each see
+    // the others' rows, so no burst gets past the limits. Over the limit, the
+    // claim is withdrawn.
     const now = Date.now()
+    const code = generateOtpCode()
+    const expiresAt = new Date(now + OTP_TTL_MS)
+    const otp = await rootDb.crewAccessOtp.create({
+      data: { linkId: link.id, codeHash: hashOtp(link.id, code), expiresAt },
+    })
+    const withdraw = () => rootDb.crewAccessOtp.deleteMany({ where: { id: otp.id } })
     const [forLink, forPhone] = await Promise.all([
       rootDb.crewAccessOtp.count({
         where: { linkId: link.id, createdAt: { gt: new Date(now - HOUR_MS) } },
@@ -186,17 +215,14 @@ crewLinkPublicHandler.post('/:token/otp', (c) =>
         },
       }),
     ])
-    if (forLink >= OTP_SENDS_PER_LINK_PER_HOUR || forPhone >= OTP_SENDS_PER_PHONE_PER_DAY) {
+    if (forLink > OTP_SENDS_PER_LINK_PER_HOUR || forPhone > OTP_SENDS_PER_PHONE_PER_DAY) {
+      await withdraw()
       throw new LaborHttpError(429, 'TOO_MANY_CODES', 'Too many codes requested. Try again later.')
     }
 
-    // The row is written before the text goes out, so a failed send still
-    // counts toward the limits — retrying can't be used to spam the phone.
-    const code = generateOtpCode()
-    const expiresAt = new Date(now + OTP_TTL_MS)
-    const otp = await rootDb.crewAccessOtp.create({
-      data: { linkId: link.id, codeHash: hashOtp(link.id, code), expiresAt },
-    })
+    // A code that never went out must not replace the one the leader holds
+    // (verify takes the newest row), so every failure withdraws it. Nothing
+    // reached the phone, so it costs no budget either.
     let result: Awaited<ReturnType<typeof sendTenantSms>>
     try {
       result = await sendTenantSms(rootDb, link.tenantId, {
@@ -205,9 +231,11 @@ crewLinkPublicHandler.post('/:token/otp', (c) =>
         dedupKey: `crew-otp:${otp.id}`,
       })
     } catch (err) {
+      await withdraw()
       logger.warn('crew link code send failed', { tenantId: link.tenantId, error: String(err) })
       throw new HttpError(502, 'SEND_FAILED', "The code couldn't be sent. Try again in a minute.")
     }
+    if (result.kind !== 'sent') await withdraw()
     if (result.kind === 'opted_out') {
       throw new LaborHttpError(
         409,
@@ -225,6 +253,8 @@ crewLinkPublicHandler.post('/:token/otp', (c) =>
     if (result.kind !== 'sent') {
       throw new HttpError(502, 'SEND_FAILED', "The code couldn't be sent. Try again in a minute.")
     }
+    // A fresh code is a fresh start on wrong guesses (still bounded by the send caps).
+    await rootDb.crewAccessLink.update({ where: { id: link.id }, data: { failedAttempts: 0 } })
     await audit(link.id, 'otp_sent')
     return c.json({
       data: {
@@ -318,7 +348,7 @@ crewLinkPublicHandler.post('/:token/verify', (c) =>
 // ── GET /:token/job — the job, this crew's activities and its packers ─────────
 crewLinkPublicHandler.get('/:token/job', (c) =>
   guarded(c, async () => {
-    const { link, activityIds } = await authorised(c)
+    const { link, assignments } = await authorised(c)
     const cs = await legacyConnectionString(link.tenantId)
     let rows: Awaited<ReturnType<typeof crewJobActivities>> | null = null
     if (cs) {
@@ -336,25 +366,19 @@ crewLinkPublicHandler.get('/:token/job', (c) =>
       )
     }
 
-    const [crew, assigned] = await Promise.all([
-      rootDb.crew.findUniqueOrThrow({
-        where: { phone: link.crewPhone },
-        include: { packers: { orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] } },
-      }),
-      rootDb.activityLaborCrew.findMany({
-        where: { tenantId: link.tenantId, orderNum: link.orderNum, crewPhone: link.crewPhone },
-        select: { activityId: true, packers: { select: { packerId: true } } },
-      }),
-    ])
-    const selected = new Map(assigned.map((a) => [a.activityId, a.packers.map((p) => p.packerId)]))
-    const mine = new Set(activityIds)
+    const crew = await rootDb.crew.findUnique({
+      where: { phone: link.crewPhone },
+      include: { packers: { orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] } },
+    })
+    if (!crew) throw linkInactive()
+    const selected = new Map(assignments.map((a) => [a.activityId, a.packerIds]))
     return c.json({
       data: {
         orderNum: link.orderNum,
         crew: { name: crew.name, phoneDisplay: formatPhoneNumber(crew.phone) },
         weight: crewJobWeights(rows),
         activities: rows
-          .filter((r) => mine.has(r.id))
+          .filter((r) => selected.has(r.id))
           .map((r) => ({ ...crewJobActivityDto(r), packerIds: selected.get(r.id) ?? [] })),
         packers: crew.packers.map(packerDto),
         linkExpiresAt: link.expiresAt.toISOString(),
@@ -368,22 +392,14 @@ const SelectionBody = z.object({ packerIds: z.array(z.string()).max(200) })
 // ── PUT /:token/activities/:activityId/packers — who of the crew works it ─────
 crewLinkPublicHandler.put('/:token/activities/:activityId/packers', (c) =>
   guarded(c, async () => {
-    const { link } = await authorised(c)
+    const { link, assignments } = await authorised(c)
     const activityId = Number(c.req.param('activityId'))
     if (!Number.isSafeInteger(activityId) || activityId <= 0) {
       throw new LaborHttpError(400, 'VALIDATION_ERROR', 'Invalid activityId')
     }
     const packerIds = [...new Set((await readBody(c, SelectionBody)).packerIds)]
     // Only an activity the driver assigned this crew to — never a new one.
-    const assignment = await rootDb.activityLaborCrew.findFirst({
-      where: {
-        tenantId: link.tenantId,
-        activityId,
-        orderNum: link.orderNum,
-        crewPhone: link.crewPhone,
-      },
-      select: { id: true },
-    })
+    const assignment = assignments.find((a) => a.activityId === activityId)
     if (!assignment) {
       throw new LaborHttpError(404, 'ACTIVITY_NOT_FOUND', "Your crew isn't on that activity")
     }
@@ -393,16 +409,28 @@ crewLinkPublicHandler.put('/:token/activities/:activityId/packers', (c) =>
     if (onCrew !== packerIds.length) {
       throw new LaborHttpError(422, 'PACKER_NOT_ON_CREW', 'A selected packer is not on your crew')
     }
-    await rootDb.$transaction([
-      rootDb.activityLaborPacker.deleteMany({ where: { activityLaborCrewId: assignment.id } }),
-      rootDb.activityLaborPacker.createMany({
-        data: packerIds.map((packerId) => ({
-          activityLaborCrewId: assignment.id,
-          tenantId: link.tenantId,
-          packerId,
-        })),
-      }),
-    ])
+    try {
+      await rootDb.$transaction([
+        rootDb.activityLaborPacker.deleteMany({ where: { activityLaborCrewId: assignment.id } }),
+        rootDb.activityLaborPacker.createMany({
+          data: packerIds.map((packerId) => ({
+            activityLaborCrewId: assignment.id,
+            tenantId: link.tenantId,
+            packerId,
+          })),
+        }),
+      ])
+    } catch (err) {
+      // A packer was deleted, or the crew taken off the activity, mid-request.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new LaborHttpError(
+          409,
+          'LABOR_CHANGED',
+          'Your crew or this activity just changed — reload and try again',
+        )
+      }
+      throw err
+    }
     await audit(link.id, 'packers_selected', { activityId, detail: { packerIds } })
     return c.json({ data: { activityId, packerIds } })
   }),

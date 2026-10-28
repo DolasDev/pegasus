@@ -92,6 +92,9 @@ function AccessGate({
   onInactive: () => void
 }) {
   const [hint, setHint] = useState<string | null>(null)
+  // A reload (e.g. coming back from Messages) loses `hint`; the code already
+  // texted is still good, so let them enter it without sending another.
+  const [haveCode, setHaveCode] = useState(false)
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -152,11 +155,13 @@ function AccessGate({
           <CardDescription>
             {hint
               ? `We texted a 6-digit code to the crew phone ending ${hint.slice(-4)}.`
-              : "Your driver shared this job with your crew. We'll text a code to the crew phone on file to make sure it's you."}
+              : haveCode
+                ? 'Enter the 6-digit code we texted to the crew phone.'
+                : "Your driver shared this job with your crew. We'll text a code to the crew phone on file to make sure it's you."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {hint ? (
+          {hint || haveCode ? (
             <form onSubmit={(e) => void submit(e)} className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="crew-code">Code</Label>
@@ -186,10 +191,15 @@ function AccessGate({
               </Button>
             </form>
           ) : (
-            <Button className="w-full" disabled={busy} onClick={() => void sendCode()}>
-              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Text me a code
-            </Button>
+            <>
+              <Button className="w-full" disabled={busy} onClick={() => void sendCode()}>
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Text me a code
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={() => setHaveCode(true)}>
+                I already have a code
+              </Button>
+            </>
           )}
           {error && (
             <p className="text-sm text-destructive" role="alert">
@@ -288,6 +298,7 @@ function ActivityCard({
                     type="checkbox"
                     className="h-5 w-5"
                     checked={selected.has(p.id)}
+                    disabled={saving}
                     onChange={(e) => onToggle(p.id, e.target.checked)}
                   />
                   <span className="text-sm">{packerName(p)}</span>
@@ -571,6 +582,8 @@ function JobView({
       )
       return { before }
     },
+    // Re-read after every save so the boxes show what the server kept.
+    onSettled: () => qc.invalidateQueries({ queryKey: key }),
     onError: (err, _v, ctx) => {
       if (ctx?.before) qc.setQueryData(key, ctx.before)
       handle(err)

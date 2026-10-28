@@ -119,6 +119,16 @@ describe('CrewLinkPage', () => {
     expect(screen.getByText(/Start 08:00/)).toBeTruthy()
   })
 
+  it('lets them enter a code they already have without texting another', async () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'I already have a code' }))
+    fireEvent.change(screen.getByLabelText('Code'), { target: { value: '654321' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByText('Peach Crew')).toBeTruthy()
+    expect(api.requestCode).not.toHaveBeenCalled()
+    expect(api.verifyCode).toHaveBeenCalledWith(TOKEN, '654321')
+  })
+
   it('shows how many tries are left after a wrong code', async () => {
     api.verifyCode.mockRejectedValueOnce(
       new CrewLinkError("That code isn't right.", 'CODE_INCORRECT', 400, 3),

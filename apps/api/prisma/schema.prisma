@@ -3845,6 +3845,9 @@ model CrewAccessLink {
   sharedByUserId String    @map("shared_by_user_id")
   /// Wrong codes since the last successful verify; MAX_FAILED_ATTEMPTS burns the link.
   failedAttempts Int       @default(0) @map("failed_attempts")
+  /// Minted by an Operations role: covers every activity the crew is on in the
+  /// order. A driver's link covers only the activities that driver assigned it.
+  allActivities  Boolean   @default(false) @map("all_activities")
   expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
   revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
   burnedAt       DateTime? @map("burned_at") @db.Timestamptz(6)

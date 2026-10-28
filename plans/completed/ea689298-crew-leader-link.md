@@ -172,6 +172,22 @@ the validation.
   `TENANT_SCOPED_MODELS`; its OTP, session and audit children hang off it.
 - Every attempt is counted BEFORE the compare (`ea689298`), so parallel guesses can't overrun the
   limit of 5.
+- After `/code-review high`:
+  - **Link scope.** A driver's link covers only the crew assignments that driver made
+    (`assignedByUserId`). A link minted by an Operations role sets `allActivities` (a second,
+    additive migration) and covers all of them. Re-sharing revokes only the caller's own previous
+    link; stop-sharing revokes the caller's link (Operations: all of them) and needs no live
+    assignment.
+  - **No revival.** A link whose crew is on none of its activities is revoked for good, so
+    re-assigning the crew never brings an old link back.
+  - **Code sends.** The OTP row is claimed before counting, so parallel sends can't pass the caps.
+    A failed or refused send withdraws its row, so it never replaces the code already held. A sent
+    code resets the wrong-guess count.
+  - **Errors.** An FK race in the packer selection returns 409 `LABOR_CHANGED`. A missing crew on
+    `/job` returns the uniform 404.
+  - **Web page.** An activity's boxes are locked while its save is in flight, and the job is
+    re-read after each save. The page has an "I already have a code" path for after a reload.
+- `/security-review`: no findings at confidence ≥ 8.
 - Packer writes are shared by both writers through `lib/labor-packers.ts`, extracted from
   `handlers/labor.ts`.
 - The feedback public handler's flag middleware is now scoped to `/feedback/*`. Before, its `'*'`

@@ -1392,15 +1392,23 @@ laborHandler.get('/sharing', requirePermission(Actions.ReadLabor), (c) =>
  * an Operations role — on one the caller's driver owns (the ETA editor's rule).
  */
 async function requireShareableCrew(c: C, who: Caller, orderNum: number, phone: string) {
+  // A driver's link covers only the assignments they made (the public side
+  // filters the same way), so those are the ones that must exist.
   const assigned = await c.get('db').activityLaborCrew.findMany({
-    where: { orderNum, crewPhone: phone },
+    where: {
+      orderNum,
+      crewPhone: phone,
+      ...(who.operations ? {} : { assignedByUserId: who.userId }),
+    },
     select: { activityId: true },
   })
   if (assigned.length === 0) {
     throw new LaborHttpError(
       404,
       'CREW_NOT_ON_ORDER',
-      'That crew is not on any activity of this order',
+      who.operations
+        ? 'That crew is not on any activity of this order'
+        : 'You have not assigned that crew to any of your activities on this order',
     )
   }
   if (who.operations) return
@@ -1429,9 +1437,11 @@ laborHandler.post(
       const minted = generateOpaqueToken('crl')
       const now = new Date()
       const expiresAt = new Date(now.getTime() + LINK_TTL_MS)
+      // Replaces only the caller's own previous link: another driver sharing
+      // the same crew for their activities keeps theirs.
       await db.$transaction([
         db.crewAccessLink.updateMany({
-          where: { orderNum, crewPhone: phone, revokedAt: null },
+          where: { orderNum, crewPhone: phone, sharedByUserId: who.userId, revokedAt: null },
           data: { revokedAt: now },
         }),
         db.crewAccessLink.create({
@@ -1442,6 +1452,7 @@ laborHandler.post(
             tokenPrefix: minted.tokenPrefix,
             tokenHash: minted.tokenHash,
             sharedByUserId: who.userId,
+            allActivities: who.operations,
             expiresAt,
           },
         }),
@@ -1453,8 +1464,10 @@ laborHandler.post(
     }),
 )
 
-// DELETE /orders/:orderNum/crews/:phone/link — stop sharing: revokes the live
-// link, which also ends every session opened with it.
+// DELETE /orders/:orderNum/crews/:phone/link — stop sharing: revokes the
+// caller's live link (an Operations role: every link for this crew and order),
+// which also ends every session opened with it. No assignment check — a link
+// must stay revocable after its crew comes off the order.
 laborHandler.delete(
   '/orders/:orderNum/crews/:phone/link',
   requirePermission(Actions.WriteLabor),
@@ -1463,9 +1476,13 @@ laborHandler.delete(
       const who = caller(c)
       const orderNum = intParam(c, 'orderNum')
       const phone = phoneParam(c)
-      await requireShareableCrew(c, who, orderNum, phone)
       await c.get('db').crewAccessLink.updateMany({
-        where: { orderNum, crewPhone: phone, revokedAt: null },
+        where: {
+          orderNum,
+          crewPhone: phone,
+          revokedAt: null,
+          ...(who.operations ? {} : { sharedByUserId: who.userId }),
+        },
         data: { revokedAt: new Date() },
       })
       return c.body(null, 204)

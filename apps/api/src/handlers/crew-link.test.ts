@@ -258,21 +258,23 @@ describe.skipIf(!hasDb)('crew links (integration)', () => {
         },
       })
     }
-    const assign = (activityId: number, crewPhone: string) =>
+    const assign = (activityId: number, crewPhone: string, by = 'driver') =>
       db.activityLaborCrew.create({
         data: {
           tenantId: tenantA,
           activityId,
           orderNum: 9100,
           crewPhone,
-          assignedByUserId: U['driver']!.id,
+          assignedByUserId: U[by]!.id,
         },
       })
-    // The crew works driver 7's PACK and SITIN, and driver 8's RDEL — not the LOAD.
+    // The crew works driver 7's PACK and SITIN (assigned by driver 7) and
+    // driver 8's RDEL (assigned by driver 8). OTHER_CREW is on the LOAD, put
+    // there by driver 8 before the LOAD moved to driver 7.
     await assign(901, CREW)
     await assign(904, CREW)
-    await assign(903, CREW)
-    await assign(902, OTHER_CREW)
+    await assign(903, CREW, 'other')
+    await assign(902, OTHER_CREW, 'other')
   })
 
   // ── Sharing (driver side) ──────────────────────────────────────────────────
@@ -310,7 +312,9 @@ describe.skipIf(!hasDb)('crew links (integration)', () => {
     expect(await codeOf(await share())).toBe('SMS_UNAVAILABLE')
     process.env['RINGCENTRAL_ENABLED'] = 'true'
     expect(await codeOf(await share('driver', 9200))).toBe('CREW_NOT_ON_ORDER')
-    // OTHER_CREW is only on the LOAD — driver 7's — so driver 8 can't share it.
+    // Driver 7 never assigned OTHER_CREW.
+    expect(await codeOf(await share('driver', 9100, OTHER_CREW))).toBe('CREW_NOT_ON_ORDER')
+    // Driver 8 did, but the LOAD is driver 7's now.
     const res = await share('other', 9100, OTHER_CREW)
     expect(res.status).toBe(403)
     expect(await codeOf(res)).toBe('NOT_YOUR_ACTIVITY')
@@ -472,7 +476,8 @@ describe.skipIf(!hasDb)('crew links (integration)', () => {
     }>(res)
     expect(job.crew.name).toBe('Peach Crew')
     expect(job.weight).toEqual({ estimated: 8000, actual: null })
-    expect(job.activities.map((a) => a.id)).toEqual([901, 903, 904])
+    // Only driver 7's assignments — not the RDEL driver 8 gave the same crew.
+    expect(job.activities.map((a) => a.id)).toEqual([901, 904])
     expect(job.activities[0]).toMatchObject({
       typeName: 'PACK name',
       plannedStart: '2026-11-02',
@@ -481,7 +486,7 @@ describe.skipIf(!hasDb)('crew links (integration)', () => {
       packerIds: [],
     })
     // Storage work has no customer address.
-    expect(job.activities[2]!.address).toBeNull()
+    expect(job.activities[1]!.address).toBeNull()
     expect(JSON.stringify(job)).not.toContain('Customer Name')
   })
 
@@ -567,5 +572,71 @@ describe.skipIf(!hasDb)('crew links (integration)', () => {
     // The driver sees the same selection on the Labor tab.
     const sel = await db.activityLaborPacker.findMany({ where: { tenantId: tenantA } })
     expect(sel.map((s) => s.packerId)).toEqual([id])
+  })
+
+  // ── Review fixes ───────────────────────────────────────────────────────────
+
+  async function jobIds(who: string): Promise<number[]> {
+    const token = await mint(who)
+    await otp(token)
+    const { session } = await data<{ session: string }>(await verify(token, lastCode()))
+    const job = await data<{ activities: Array<{ id: number }> }>(await getJob(token, session))
+    return job.activities.map((a) => a.id)
+  }
+
+  it("scopes a driver's link to their own assignments; an Operations link sees all", async () => {
+    expect(await jobIds('other')).toEqual([903])
+    expect(await jobIds('ops')).toEqual([901, 903, 904])
+  })
+
+  it("re-sharing replaces only the caller's own link", async () => {
+    const mine = await mint('driver')
+    const theirs = await mint('other')
+    expect((await otp(mine)).status).toBe(200)
+    expect((await otp(theirs)).status).toBe(200)
+  })
+
+  it('a link stays dead after its crew comes off the order and goes back on', async () => {
+    const token = await mint()
+    await db.activityLaborCrew.deleteMany({ where: { tenantId: tenantA, crewPhone: CREW } })
+    expect(await codeOf(await otp(token))).toBe('LINK_INACTIVE')
+    await db.activityLaborCrew.create({
+      data: {
+        tenantId: tenantA,
+        activityId: 901,
+        orderNum: 9100,
+        crewPhone: CREW,
+        assignedByUserId: U['driver']!.id,
+      },
+    })
+    expect(await codeOf(await otp(token))).toBe('LINK_INACTIVE')
+  })
+
+  it('stop sharing works after the crew has come off the order', async () => {
+    const token = await mint()
+    await db.activityLaborCrew.deleteMany({ where: { tenantId: tenantA, crewPhone: CREW } })
+    const res = await appAs('driver').request(linkPath(9100, CREW), { method: 'DELETE' })
+    expect(res.status).toBe(204)
+    const link = await db.crewAccessLink.findFirstOrThrow({ where: { tenantId: tenantA } })
+    expect(link.revokedAt).not.toBeNull()
+    expect(token).toMatch(/^crl_/)
+  })
+
+  it('a failed send keeps the code the leader already holds', async () => {
+    const token = await mint()
+    await otp(token)
+    const held = lastCode()
+    sms.mockRejectedValueOnce(new Error('provider down'))
+    expect((await otp(token)).status).toBe(502)
+    expect((await verify(token, held)).status).toBe(200)
+  })
+
+  it('a burst of parallel code requests sends no more than the hourly cap', async () => {
+    const token = await mint()
+    const statuses = await Promise.all(
+      Array.from({ length: 10 }, async () => (await otp(token)).status),
+    )
+    expect(statuses.filter((s) => s === 200).length).toBeLessThanOrEqual(3)
+    expect(sms.mock.calls.length).toBeLessThanOrEqual(3)
   })
 })
