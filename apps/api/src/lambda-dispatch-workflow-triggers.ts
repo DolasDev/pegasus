@@ -108,6 +108,7 @@ type TriggerSkipReason =
   | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
   | 'MUST_FORK' // defensive: trigger on a cross-tenant GLOBAL workflow (config mistake)
   | 'TENANT_MIGRATING' // Phase 3b.2: tenant's Temporal namespace mid-cutover/rollback
+  | 'DRY_RUN_UNSUPPORTED' // dry-run trigger on a STDLIB workflow (API refuses; legacy/race)
   | 'ERROR' // unexpected per-trigger exception
 
 export { matchesTriggerFilter }
@@ -284,6 +285,8 @@ type FirableTrigger = {
   tenantId: string
   workflowId: string
   createdByUserId: string
+  /** Start every execution in dry-run mode (mutations captured, not performed). */
+  dryRun: boolean
 }
 
 /**
@@ -363,6 +366,7 @@ async function fireTrigger(opts: {
       runtimeAccountCreatedById: trigger.createdByUserId,
     },
     temporalWorkflowId,
+    dryRun: trigger.dryRun,
   })
 
   switch (result.outcome) {
@@ -379,6 +383,20 @@ async function fireTrigger(opts: {
         workflowId: workflow.id,
         executionId: result.execution.id,
         temporalWorkflowId,
+        dryRun: trigger.dryRun,
+        ...logContext,
+      })
+      break
+    case 'DRY_RUN_UNSUPPORTED':
+      // A dry-run trigger on a curated STDLIB workflow, which has no
+      // interception seam. The API refuses to attach one; reaching here means
+      // the workflow became curated after the fact. Never fall back to live.
+      skip('DRY_RUN_UNSUPPORTED')
+      logger.warn('Dry-run trigger skipped — workflow cannot run dry', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
         ...logContext,
       })
       break

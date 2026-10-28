@@ -192,7 +192,8 @@ export type StartWorkflowExecutionOptions = {
    * + envelope). Only supported on the TENANT_RUNNER lane — the STDLIB lane runs
    * real activities with no interception seam, so a dry-run there is rejected
    * (DRY_RUN_UNSUPPORTED) rather than silently performing side effects. Defaults
-   * false. Not threaded through retry/dispatcher — those always run live.
+   * false. The dispatcher passes a trigger's `dryRun` flag; retry always runs
+   * live.
    */
   dryRun?: boolean
 }

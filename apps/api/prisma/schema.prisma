@@ -1929,6 +1929,12 @@ model WorkflowTrigger {
   /// Disabled triggers are kept but never fired.
   enabled Boolean @default(true)
 
+  /// Dry-run triggers fire like any other, but every execution they start runs
+  /// in DRY-RUN mode (reads live, mutations captured, never performed) — for
+  /// validating a trigger's event/filter/cron wiring before letting it act.
+  /// TENANT_RUNNER workflows only; the API refuses it for a STDLIB workflow.
+  dryRun Boolean @default(false) @map("dry_run")
+
   /// TenantUser.id of the creator. Denormalized; not an FK so the row
   /// survives user deletion (matches Workflow.createdByUserId).
   createdByUserId String @map("created_by_user_id")

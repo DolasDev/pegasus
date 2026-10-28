@@ -33,6 +33,8 @@ export type WorkflowTriggerRow = {
   /** SCHEDULE kind: 5-field cron expression. Null for EVENT. */
   cronExpression: string | null
   enabled: boolean
+  /** Every execution this trigger starts runs in dry-run mode. */
+  dryRun: boolean
   createdByUserId: string
   createdAt: Date
   updatedAt: Date
@@ -47,6 +49,7 @@ const TRIGGER_SELECT = {
   filter: true,
   cronExpression: true,
   enabled: true,
+  dryRun: true,
   createdByUserId: true,
   createdAt: true,
   updatedAt: true,
@@ -75,6 +78,7 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
       filter?: Prisma.InputJsonValue | null
       cronExpression?: string | null
       enabled: boolean
+      dryRun?: boolean
       createdByUserId: string
     }): Promise<WorkflowTriggerRow> {
       const data: Prisma.WorkflowTriggerUncheckedCreateInput = {
@@ -84,6 +88,7 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
         eventType: input.eventType ?? null,
         cronExpression: input.cronExpression ?? null,
         enabled: input.enabled,
+        dryRun: input.dryRun ?? false,
         createdByUserId: input.createdByUserId,
       }
       // Omitted filter stays SQL NULL — the column has no default.
@@ -117,6 +122,20 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
     },
 
     /**
+     * Distinct ids of the workflows this tenant has an ENABLED trigger on —
+     * the versions that still run even when a newer one exists. Tenant-scoped
+     * via the extension.
+     */
+    async listEnabledWorkflowIds(): Promise<string[]> {
+      const rows = await db.workflowTrigger.findMany({
+        where: { enabled: true },
+        select: { workflowId: true },
+        distinct: ['workflowId'],
+      })
+      return rows.map((r) => r.workflowId)
+    },
+
+    /**
      * Partial update. Kind changes are rejected at the handler; this method
      * never writes `kind`. `filter` accepts Prisma.JsonNull-style clears only
      * via explicit undefined-skip — pass a value to set it.
@@ -125,6 +144,7 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
       triggerId: string,
       input: {
         enabled?: boolean
+        dryRun?: boolean
         eventType?: string
         filter?: Prisma.InputJsonValue
         cronExpression?: string
@@ -132,6 +152,7 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
     ): Promise<WorkflowTriggerRow> {
       const data: Prisma.WorkflowTriggerUncheckedUpdateInput = {}
       if (input.enabled !== undefined) data.enabled = input.enabled
+      if (input.dryRun !== undefined) data.dryRun = input.dryRun
       if (input.eventType !== undefined) data.eventType = input.eventType
       if (input.filter !== undefined) data.filter = input.filter
       if (input.cronExpression !== undefined) data.cronExpression = input.cronExpression

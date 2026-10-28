@@ -48,6 +48,8 @@ import type { WorkflowExecutionRow } from '../repositories/workflow-execution.re
 import { createWorkflowTriggerRepository } from '../repositories/workflow-trigger.repository'
 import { createTenantEventTypeRepository } from '../repositories/tenant-event-type.repository'
 import { loadPresenceSets, resolveAgainst, countMissing } from '../lib/workflow-secret-requirements'
+import { currentWorkflowIds } from '../lib/workflow-current-version'
+import { resolveWorkflowRoute } from '../lib/workflow-route'
 import { validateFilterExpr } from '../lib/event-filter'
 import type { WorkflowTriggerRow } from '../repositories/workflow-trigger.repository'
 import type { AppEnv } from '../types'
@@ -261,6 +263,20 @@ async function validateTriggerEventType(
   return null
 }
 
+// A dry-run trigger needs a workflow that CAN run dry: interception lives in
+// the tenant-runner subprocess driver, and a curated STDLIB workflow runs real
+// activities with no seam (startWorkflowExecution would refuse every fire with
+// DRY_RUN_UNSUPPORTED). Refused at attach time so the trigger never sits there
+// silently skipping. Returns the 400 body, or null when the workflow is fine.
+function dryRunRefusal(workflow: Parameters<typeof resolveWorkflowRoute>[0]) {
+  if (resolveWorkflowRoute(workflow) !== 'STDLIB') return null
+  return {
+    error:
+      'dryRun triggers need a workflow that runs on the tenant runner; this one is a curated workflow, which cannot run dry',
+    code: 'DRY_RUN_UNSUPPORTED',
+  }
+}
+
 // Trigger create body. Kind-conditional: EVENT rows subscribe to a domain
 // event (eventType required, optional filter, no cron); SCHEDULE rows carry a
 // cron expression (no eventType/filter). Both kinds are fired by the
@@ -274,6 +290,9 @@ const CreateTriggerBody = z
     filter: z.unknown().optional(),
     cronExpression: z.string().optional(),
     enabled: z.boolean().optional().default(true),
+    // Every execution the trigger starts runs dry (mutations captured, never
+    // performed) — validate the wiring before letting it act. TENANT_RUNNER only.
+    dryRun: z.boolean().optional().default(false),
   })
   .superRefine((body, ctx) => {
     if (body.kind === 'EVENT') {
@@ -326,6 +345,7 @@ const CreateTriggerBody = z
 const UpdateTriggerBody = z
   .object({
     enabled: z.boolean().optional(),
+    dryRun: z.boolean().optional(),
     eventType: z.string().optional(),
     filter: z.unknown().optional(),
     cronExpression: z.string().optional(),
@@ -553,6 +573,7 @@ type WorkflowTriggerResponse = {
   filter: WorkflowTriggerRow['filter']
   cronExpression: string | null
   enabled: boolean
+  dryRun: boolean
   createdByUserId: string
   createdAt: string
   updatedAt: string
@@ -568,6 +589,7 @@ function toTriggerResponse(row: WorkflowTriggerRow): WorkflowTriggerResponse {
     filter: row.filter,
     cronExpression: row.cronExpression,
     enabled: row.enabled,
+    dryRun: row.dryRun,
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -999,7 +1021,10 @@ workflowsHandler.post('/:id/retire', requirePermission(Actions.UploadWorkflow), 
 //
 // For every workflow visible to the caller (own tenant ∪ GLOBAL), resolve the
 // secret/config keys its manifest declares against the tenant's store and tag
-// each present/missing. Presence only — never returns values. Powers the
+// each present/missing. Each row carries `current` — the newest version of its
+// (owner, name), or one an enabled trigger of the caller's still runs (see
+// lib/workflow-current-version.ts) — and `totalMissing` counts current rows
+// only, so a superseded version's keys never show as still needed. Presence only — never returns values. Powers the
 // tenant UI's per-workflow badges and the Configs-page "keys still needed"
 // summary from a single request. Registered BEFORE `/:id` so the literal path
 // is not captured by the `:id` param.
@@ -1011,18 +1036,27 @@ workflowsHandler.get(
     const tenantId = c.get('tenantId')
     const db = c.get('db')
     const repo = createWorkflowRepository(db)
-    const [rows, sets] = await Promise.all([repo.listForTenant(tenantId), loadPresenceSets(db)])
+    const [rows, sets, triggered] = await Promise.all([
+      repo.listForTenant(tenantId),
+      loadPresenceSets(db),
+      createWorkflowTriggerRepository(db).listEnabledWorkflowIds(),
+    ])
+    const current = currentWorkflowIds(rows, triggered)
 
     let totalMissing = 0
     const workflows = rows.map((row) => {
       const requirements = resolveAgainst(row.manifest, sets)
       const missingCount = countMissing(requirements)
-      totalMissing += missingCount
+      const isCurrent = current.has(row.id)
+      // Superseded versions stay listed (the per-version detail page reads
+      // them) but don't count toward the tenant's "keys still needed".
+      if (isCurrent) totalMissing += missingCount
       return {
         workflowId: row.id,
         name: row.name,
         version: row.version,
         visibility: row.visibility,
+        current: isCurrent,
         requirements,
         missingCount,
       }
@@ -1489,6 +1523,11 @@ workflowsHandler.post(
       return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
     }
 
+    if (body.dryRun) {
+      const refused = dryRunRefusal(workflow)
+      if (refused) return c.json(refused, 400)
+    }
+
     // EVENT triggers may subscribe to a built-in OR a registered custom event
     // type (Unit 6). The Zod schema only checked presence; the membership check
     // is here because it needs the tenant's event-type registry.
@@ -1508,6 +1547,7 @@ workflowsHandler.post(
       filter: body.filter !== undefined ? (body.filter as Prisma.InputJsonValue) : null,
       cronExpression: body.cronExpression ?? null,
       enabled: body.enabled,
+      dryRun: body.dryRun,
       createdByUserId: userId,
     })
 
@@ -1518,6 +1558,7 @@ workflowsHandler.post(
       kind: row.kind,
       eventType: row.eventType,
       enabled: row.enabled,
+      dryRun: row.dryRun,
     })
     return c.json({ data: toTriggerResponse(row) }, 201)
   },
@@ -1586,6 +1627,11 @@ workflowsHandler.patch(
       return c.json({ error: 'Trigger not found', code: 'NOT_FOUND' }, 404)
     }
 
+    if (body.dryRun) {
+      const refused = dryRunRefusal(workflow)
+      if (refused) return c.json(refused, 400)
+    }
+
     // Kind-conditional field validation against the (immutable) stored kind.
     if (trigger.kind === 'EVENT') {
       if (body.cronExpression !== undefined) {
@@ -1620,11 +1666,13 @@ workflowsHandler.patch(
 
     const updateInput: {
       enabled?: boolean
+      dryRun?: boolean
       eventType?: string
       filter?: Prisma.InputJsonValue
       cronExpression?: string
     } = {}
     if (body.enabled !== undefined) updateInput.enabled = body.enabled
+    if (body.dryRun !== undefined) updateInput.dryRun = body.dryRun
     if (body.eventType !== undefined) updateInput.eventType = body.eventType
     if (body.filter !== undefined) updateInput.filter = body.filter as Prisma.InputJsonValue
     if (body.cronExpression !== undefined) updateInput.cronExpression = body.cronExpression
@@ -1636,6 +1684,7 @@ workflowsHandler.patch(
       workflowId: workflow.id,
       tenantId,
       enabled: updated.enabled,
+      dryRun: updated.dryRun,
     })
     return c.json({ data: toTriggerResponse(updated) })
   },

@@ -24,6 +24,9 @@ export {
   dateRangesOverlap,
 } from './shared/types'
 
+// Semver precedence (workflow versions)
+export { compareSemver } from './shared/semver'
+
 // Domain errors
 export { DomainError } from './shared/errors'
 

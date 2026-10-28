@@ -318,6 +318,23 @@ client.send_email(
 means the server has no SMTP account; 503 `PEGII_CAPABILITY_MISSING` means its
 API build predates email or has no login configured.
 
+**Check a recipient before you send.** `client.check_email_recipients(to, cc=None)`
+asks the same recipient question `send_email` would — allowed domains and the
+10-recipient cap — without sending, recording or counting anything:
+
+```python
+verdict = client.check_email_recipients(coordinator_email, cc=[safety_net_email])
+# → {"ok": True, "reason": None, "disallowed": []}
+# → {"ok": False, "reason": "RECIPIENT_NOT_ALLOWED", "disallowed": ["x@gmail.com"]}
+if not verdict["ok"]:
+    coordinator_email = fallback_email      # or skip the email, or record why
+```
+
+`reason` is `NOT_CONFIGURED` (the tenant allows no domains: email is off),
+`RECIPIENT_NOT_ALLOWED` or `TOO_MANY_RECIPIENTS`. It is side-effect free, so it
+runs **live** under a dry run; offline, serve it from
+`fake_client(reads={"check_email_recipients": {...}})`.
+
 ### Receiving an SMS (`sms.received`)
 
 When a text arrives on the tenant's connected RingCentral number, the platform
@@ -371,11 +388,32 @@ client.create_trigger(
 ```
 
 To change a trigger later, `client.update_trigger(workflow_id, trigger_id, ...)`
-sends only the fields you pass: `enabled`, `event_type`/`filter` (EVENT), or
-`cron_expression` (SCHEDULE). `kind` is immutable. To pause a trigger without
-losing it, use `update_trigger(..., enabled=False)` (or `pegasus-workflows schedule
-disable <wf> <trigger-id>`). A disabled trigger is kept but never fires;
+sends only the fields you pass: `enabled`, `dry_run`, `event_type`/`filter`
+(EVENT), or `cron_expression` (SCHEDULE). `kind` is immutable. To pause a trigger
+without losing it, use `update_trigger(..., enabled=False)` (or `pegasus-workflows
+schedule disable <wf> <trigger-id>`). A disabled trigger is kept but never fires;
 `enabled=True` resumes it.
+
+**Validate a trigger before it acts — `dry_run=True`.** A dry-run trigger fires on
+every matching event (or cron minute) exactly as a live one does, but each
+execution it starts is a **dry run**: reads hit live data, mutations
+(`send_sms`, `send_email`, `close_task`, …) are captured in the execution's trace
+and never performed. So during a rehearsal every real `sms.received` reply flows
+through the reply handler on its own — no hand-feeding — and you read what it
+_would_ have done:
+
+```python
+trigger = client.create_trigger(
+    workflow_id, kind="EVENT", event_type="sms.received", dry_run=True
+)
+# … let real events arrive, then inspect the runs:
+#   pegasus-workflows executions list <wf-id>   (each shows dryRun + its trace)
+client.update_trigger(workflow_id, trigger["id"], dry_run=False)   # go live
+```
+
+From the CLI: `pegasus-workflows schedule dry-run <wf> <trigger-id>` (any kind)
+and `--off` to go live; `schedule create --dry-run` for a new schedule. Tenant-runner
+Automations only — a curated workflow can't run dry (400 `DRY_RUN_UNSUPPORTED`).
 
 Guarantees: only **inbound** texts fire it — the outbound SMS your Automation sends
 with `send_sms` never re-triggers the Automation. Each text fires **at most once**,
@@ -823,6 +861,12 @@ pegasus-workflows requirements --missing-only --token vnd_... --base-url https:/
 or from code, `PegasusClient.requirements_summary()`. Both planes are merged by
 the command; if your token can read only one of them it says so rather than
 reporting a partial answer as complete.
+
+Every published version is its own row, but only each Automation's **current**
+version counts toward what's missing: its newest version, or an older one an
+enabled trigger still runs (the summary's `current` flag). Keys a superseded
+version declared — and the newer one dropped — are not reported as still needed.
+`requirements --all-versions` lists every version anyway, as `name@version`.
 
 **3. Read the values inside an activity** (never in workflow code):
 
@@ -1570,8 +1614,13 @@ visibility = "GLOBAL"
 published_at = "2026-06-29T21:05:48Z"
 ```
 
-- The environment key is derived from the API host, or set explicitly with
-  `push --env NAME`.
+- The environment key is `push --env NAME` when given, else the `--profile` name,
+  else the API host. Use a profile (or `--env`) per environment: two tenants can
+  share one API root (QA and Prod both on `api.pegasus.dolas.dev`), and keyed by
+  host the second push would overwrite the first's record.
+- A ledger written by an older SDK is keyed by host (`["api.pegasus.dolas.dev"]`).
+  A profile-keyed push leaves that table as it is, writes a sibling, and prints a
+  note — rename or delete the old table by hand.
 - Re-publishing to the same env **updates the entry in place** (no duplicates);
   a second env adds a table. A multi-Automation project nests each record under the
   Automation name (`[prod.send_order_saved_sms]`).
@@ -1603,10 +1652,11 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows secrets list` / `secrets delete <key>`                          | List secret keys (no values) / delete a secret.                |
 | `pegasus-workflows config set <key> <value> [-d <desc>]`                           | Publish a config value (idempotent upsert).                    |
 | `pegasus-workflows config list` / `config delete <key>`                            | List config key/values / delete a config entry.                |
-| `pegasus-workflows requirements [--missing-only] [--json]`                         | Which declared secret/config keys are set, and what's missing. |
-| `pegasus-workflows schedule create <wf-id> --cron "<5-field UTC>"`                 | Attach a cron SCHEDULE trigger that runs the Automation.       |
+| `pegasus-workflows requirements [--missing-only] [--all-versions] [--json]`        | Which declared secret/config keys are set, and what's missing. |
+| `pegasus-workflows schedule create <wf-id> --cron "<5-field UTC>" [--dry-run]`     | Attach a cron SCHEDULE trigger that runs the Automation.       |
 | `pegasus-workflows schedule list <wf-id>` / `schedule delete <wf-id> <trigger-id>` | List / remove an Automation's schedule triggers.               |
 | `pegasus-workflows schedule disable <wf-id> <trigger-id>` / `enable …`             | Pause / resume any trigger (EVENT too) without deleting it.    |
+| `pegasus-workflows schedule dry-run <wf-id> <trigger-id> [--off]`                  | Validate any trigger: its runs capture side effects, not act.  |
 | `pegasus-workflows ingress create <id>` / `rotate <id>` / `list <id>`              | Provision / rotate / inspect a partner-ingress bearer.         |
 | `pegasus-workflows feedback-form validate <key> [-d <dir>]`                        | Dry-run a feedback form definition (no write).                 |
 | `pegasus-workflows feedback-form publish <key> [-d <dir>]`                         | Publish a new feedback form version.                           |
@@ -1838,6 +1888,12 @@ assert client.captured == []                 # a read — nothing was sent
 run_activity(send_order_to_partner, order, client=client)
 assert client.captured[0]["capability"] == "SendSms"
 ```
+
+`activity.info()` and `activity.heartbeat()` work here, and identically on the
+platform: the tenant runner runs each activity inside the same
+`ActivityEnvironment`. The values are synthetic in both places — `activity_type`
+is the activity's registered name, `workflow_id`/`workflow_run_id` are
+`"dry-run"`, `attempt` is `1` — so don't key real logic on them.
 
 This retires the `if client is None: return {"stub": True}` pattern: the stub
 logic lives in the harness, not in shipped source, so a test exercises the same
