@@ -49,6 +49,8 @@ export class RingCentralOAuthError extends Error {
     public readonly status?: number,
     /** RingCentral's own `errorCode` from the error body (e.g. `SMS-RC-413`), when present. */
     public readonly errorCode?: string,
+    /** The request parameter RingCentral rejected (`parameterName` on a CMN-101), when present. */
+    public readonly parameterName?: string,
   ) {
     super(message)
     this.name = 'RingCentralOAuthError'

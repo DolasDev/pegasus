@@ -116,9 +116,27 @@ async function handle<T>(res: Response): Promise<T> {
       `RingCentral API ${res.status}: ${text.slice(0, 200)}`,
       res.status,
       rcErrorCode(text),
+      rcParameterName(text),
     )
   }
   return (await res.json()) as T
+}
+
+/**
+ * The request parameter RingCentral rejected — top-level or the first entry of
+ * `errors[]` (an `InvalidParameter`/CMN-101 body). Undefined otherwise.
+ */
+export function rcParameterName(text: string): string | undefined {
+  try {
+    const body = JSON.parse(text) as {
+      parameterName?: unknown
+      errors?: Array<{ parameterName?: unknown }>
+    }
+    const name = body.parameterName ?? body.errors?.[0]?.parameterName
+    return typeof name === 'string' ? name : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /**

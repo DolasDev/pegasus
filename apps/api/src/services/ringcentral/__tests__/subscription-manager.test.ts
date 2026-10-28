@@ -60,6 +60,9 @@ describe('ensureForConnection', () => {
     const [path, body] = client.post.mock.calls[0]!
     expect(path).toBe('/restapi/v1.0/subscription')
     expect(body.deliveryMode).toMatchObject({ transportType: 'WebHook', address: webhookUrl })
+    // RingCentral rejects a 48-char token (CMN-101) and accepts 32 — probed on
+    // prod 2026-10-28; its OpenAPI spec documents no limit.
+    expect(body.deliveryMode.verificationToken).toMatch(/^[0-9a-f]{32}$/)
     expect(body.eventFilters).toEqual([...EVENT_FILTERS])
     expect(h.upsertSubscription).toHaveBeenCalledWith(
       db,

@@ -86,8 +86,23 @@ interface ThreadReadResponse {
  * is treated as a stale token → fall back to FSync. The fallback runs once and
  * is not recursive, so a genuine persistent 400 still surfaces.
  */
-function isSyncTokenInvalid(err: unknown): boolean {
-  return err instanceof RingCentralOAuthError && err.status === 400
+/**
+ * A 400 means the stored sync token is stale — UNLESS RingCentral names some
+ * other request parameter as the problem. That is a malformed request: falling
+ * back would hide it behind a silent full re-read on every run (which is how a
+ * `messageType` on ISync kept sms.received from ever firing).
+ */
+function isSyncTokenInvalid(err: unknown): err is RingCentralOAuthError {
+  return (
+    err instanceof RingCentralOAuthError &&
+    err.status === 400 &&
+    (err.parameterName === undefined || err.parameterName === 'syncToken')
+  )
+}
+
+/** Message Threads is a per-extension feature; RC answers 403 CMN-428 when it is off. */
+function isThreadsFeatureOff(err: unknown): boolean {
+  return err instanceof RingCentralOAuthError && err.errorCode === 'CMN-428'
 }
 
 function isoDaysAgo(days: number, now: number): string {
@@ -119,7 +134,15 @@ export async function syncConnection(
   const now = opts.now ?? Date.now()
 
   const v1 = await syncV1Store(db, client, connection, backfillDays, now)
-  const thread = await syncThreadStore(db, client, connection)
+  let thread = 0
+  try {
+    thread = await syncThreadStore(db, client, connection)
+  } catch (err) {
+    if (!isThreadsFeatureOff(err)) throw err
+    logger.info('Message Threads is off for this extension — skipping the thread store', {
+      connectionId: connection.id,
+    })
+  }
   return { captured: v1 + thread }
 }
 
@@ -136,10 +159,11 @@ async function syncV1Store(
 ): Promise<number> {
   const cursor = await getSyncCursor(db, connection.tenantId, connection.id, 'V1')
 
+  // ISync takes only the token — RingCentral rejects filters such as
+  // `messageType` (400 CMN-101) — so non-SMS records are dropped below instead.
   const isyncParams = (token: string): Record<string, string> => ({
     syncType: 'ISync',
     syncToken: token,
-    messageType: 'SMS',
   })
   const fsyncParams = (): Record<string, string> => ({
     syncType: 'FSync',
@@ -158,13 +182,20 @@ async function syncV1Store(
     )
   } catch (err) {
     if (!isSyncTokenInvalid(err)) throw err
-    logger.warn('v1 sync token invalid — falling back to FSync', { connectionId: connection.id })
+    logger.warn('v1 sync token invalid — falling back to FSync', {
+      connectionId: connection.id,
+      errorCode: err.errorCode,
+      parameterName: err.parameterName,
+    })
     incremental = false
     res = await client.get<MessageSyncResponse>(V1_MESSAGE_SYNC, fsyncParams())
   }
 
   let captured = 0
   for (const record of res.records ?? []) {
+    // An unfiltered ISync also returns voicemail/fax/pager; those aren't ours.
+    // (An untyped record still goes through normalize, which rejects it.)
+    if (record.type !== undefined && record.type !== 'SMS') continue
     if (await captureOne(db, connection, () => normalizeV1Json(record), record.id, incremental)) {
       captured++
     }

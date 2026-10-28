@@ -3496,3 +3496,23 @@ renders local items from the row itself. Widening the scope changes every longha
 deliberate decision, not a fix. Likewise mobile `useTrips().driverId` (from `/me/driver`) is the
 longhaul id only: "no driver linked" for the itinerary must come from its own 403
 `DRIVER_NOT_MAPPED`.
+
+## RingCentral 400s are not all "stale sync token" — and a green deploy is not a fired event
+
+`sms.received` shipped (#730) and deployed green, yet prod had **zero** of them for a month. v1
+`message-sync` ISync was sent with `messageType=SMS`. RingCentral rejects any filter on ISync
+(`400 InvalidParameter / CMN-101`, `parameterName: "messageType"`), and `isSyncTokenInvalid` treated
+every 400 as a stale token. So every run silently fell back to FSync, which by design never emits
+(and re-armed a 90-day backfill each time). Unit tests mocked RC, so the contract error was invisible.
+Now: ISync carries only `syncType` + `syncToken`, non-SMS records are dropped in code, and only a 400
+naming `syncToken` (or naming nothing) counts as stale. Related RC facts, both probed on prod 2026-10-28:
+
+- Webhook `deliveryMode.verificationToken` must be **≤ 32 chars**. 48 is rejected with CMN-101, and
+  RC's OpenAPI spec documents no limit. The renew cron had failed every hour since go-live, so no
+  subscription existed and capture ran only on the 15-min sync.
+- Message Threads can be turned off per extension: `403 CMN-428`. A subscription that includes the
+  threads filter is still created, but RC silently drops that filter.
+- The RC Lambdas log to **custom-named** groups (`pegasus-prod-api-RingCentralSyncLogGroup…`), not
+  `/aws/lambda/<fn>`. Read `LoggingConfig.LogGroup` from `get-function-configuration`.
+
+Verify a new event type by **counting rows in `domain_events`** on prod, not by the deploy going green.
