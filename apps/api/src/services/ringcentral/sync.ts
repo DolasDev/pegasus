@@ -80,17 +80,13 @@ interface ThreadReadResponse {
 }
 
 /**
- * True when an RC error indicates the sync token is no longer valid. RC returns
- * CMN-101 / SYNC_TOKEN_INVALID with a 400. Our sync params are controlled (so a
- * 400 isn't a bad-parameter case we'd cause), so any 400 from the sync endpoint
- * is treated as a stale token → fall back to FSync. The fallback runs once and
- * is not recursive, so a genuine persistent 400 still surfaces.
- */
-/**
- * A 400 means the stored sync token is stale — UNLESS RingCentral names some
- * other request parameter as the problem. That is a malformed request: falling
- * back would hide it behind a silent full re-read on every run (which is how a
- * `messageType` on ISync kept sms.received from ever firing).
+ * True when an RC error indicates the sync token is no longer valid → fall back
+ * to FSync. RC returns CMN-101 / SYNC_TOKEN_INVALID with a 400, so a 400 counts
+ * as stale UNLESS RingCentral names some other request parameter. That is a
+ * malformed request, and falling back would hide it behind a silent full re-read
+ * on every run (which is how a `messageType` on ISync kept sms.received from
+ * ever firing). The fallback runs once and is not recursive, so a genuine
+ * persistent 400 still surfaces.
  */
 function isSyncTokenInvalid(err: unknown): err is RingCentralOAuthError {
   return (
