@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Share,
 } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
 import {
@@ -29,6 +30,11 @@ import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../them
 // the tab is locked until the save answers, so two saves never race.
 // Assigning a crew, adding a crew and adding a packer happen on pushed screens,
 // so the tab reloads whenever it regains focus.
+//
+// "Share" on a crew sends its leader a crew link (the native share sheet — the
+// driver's own messages app). The leader opens it, gets a texted code on the
+// crew's phone, and ticks who works the activities this crew is on. It shows
+// only when the company has texting set up (GET /labor/sharing).
 // ---------------------------------------------------------------------------
 
 const errText = (err: unknown) => (err instanceof Error ? err.message : 'Please try again.')
@@ -46,10 +52,15 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
   const [activities, setActivities] = useState<LaborActivity[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<number | null>(null)
+  const [sharing, setSharing] = useState(false)
 
   useFocusEffect(
     useCallback(() => {
       let live = true
+      // A failed check hides the action — it never blocks the tab.
+      LaborService.getSharing()
+        .then((on) => live && setSharing(on))
+        .catch(() => live && setSharing(false))
       LaborService.getOrderActivities(orderNum)
         .then((rows) => {
           if (!live) return
@@ -87,6 +98,38 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
       setSavingId(null)
     }
   }
+
+  const sendLink = async (crew: LaborActivityCrew) => {
+    try {
+      const { url } = await LaborService.shareCrewLink(orderNum, crew.phone)
+      await Share.share({
+        message: `Pick who's working order ${orderNum} for ${crew.displayName}: ${url}`,
+      })
+    } catch (err) {
+      Alert.alert('Couldn’t share the link', errText(err))
+    }
+  }
+
+  const stopSharing = async (crew: LaborActivityCrew) => {
+    try {
+      await LaborService.stopSharingCrewLink(orderNum, crew.phone)
+      Alert.alert('Link stopped', `${crew.displayName}’s link no longer works.`)
+    } catch (err) {
+      Alert.alert('Couldn’t stop the link', errText(err))
+    }
+  }
+
+  const shareCrew = (crew: LaborActivityCrew) =>
+    Alert.alert(
+      `Share with ${crew.displayName}`,
+      'Send the crew leader a link to pick who works their activities on this order. ' +
+        'Opening it texts a code to the crew’s phone. Sending a new link stops the old one.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Stop sharing', style: 'destructive', onPress: () => void stopSharing(crew) },
+        { text: 'Send link', onPress: () => void sendLink(crew) },
+      ],
+    )
 
   const removeCrew = (activity: LaborActivity, crew: LaborActivityCrew) =>
     Alert.alert(`Remove ${crew.displayName}?`, 'Its packers come off this activity too.', [
@@ -162,6 +205,13 @@ export function ActivityLaborTab({ orderNum }: { orderNum: string | number }) {
                       label="Call"
                       onPress={() => void Linking.openURL(`tel:${crew.phone}`)}
                     />
+                    {sharing && a.editable ? (
+                      <SmallButton
+                        label="Share"
+                        accessibilityLabel={`Share link with ${crew.displayName}`}
+                        onPress={() => shareCrew(crew)}
+                      />
+                    ) : null}
                     {a.editable ? (
                       <SmallButton
                         label="Remove"
