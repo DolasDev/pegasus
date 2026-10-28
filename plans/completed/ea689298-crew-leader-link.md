@@ -158,7 +158,27 @@ the validation.
 
 ## Status
 
-- [ ] Phase 1: migration + models + public API + authenticated mint/revoke + tests
-- [ ] Phase 2: tenant-web `/c/$token` page + tests
-- [ ] Phase 3: mobile share action + tests
-- [ ] Phase 4: CDK flag wiring, DECISIONS, code-review + security-review, archive the plan
+- [x] Phase 1: migration + models + public API + authenticated mint/revoke + tests (`c5bf3874`)
+- [x] Phase 2: tenant-web `/c/$token` page + tests (`8226365c`)
+- [x] Phase 3: mobile share action + tests (`d4da9f0b`)
+- [x] Phase 4: CDK flag wiring (staging ON, prod OFF), OpenAPI, DECISIONS, archive the plan
+- [ ] `/code-review high` + `/security-review`, then `/workstream-finish`
+
+**What differs from the plan above (as built):**
+
+- The audit table is `CrewAccessAudit`, not `CrewLinkAudit`, so it doesn't read as part of
+  `CrewLink`. The wrong-code count is `CrewAccessLink.failedAttempts`, reset on success, not an
+  `attempts` column per OTP. Only `CrewAccessLink` carries `tenantId`, which makes it
+  `TENANT_SCOPED_MODELS`; its OTP, session and audit children hang off it.
+- Every attempt is counted BEFORE the compare (`ea689298`), so parallel guesses can't overrun the
+  limit of 5.
+- Packer writes are shared by both writers through `lib/labor-packers.ts`, extracted from
+  `handlers/labor.ts`.
+- The feedback public handler's flag middleware is now scoped to `/feedback/*`. Before, its `'*'`
+  would have 404'd the crew-link routes on the shared `/api/public/v1` mount whenever feedback was off.
+- CORS: `X-Crew-Session` was added to both the Hono `cors()` and API Gateway's `corsPreflight`.
+- The flag is `CREW_LEADER_LINK_ENABLED`, plus `CREW_LEADER_LINK_PUBLIC_WEB_URL`, which is the same
+  origin as the feedback link. It is **staging only**; for prod, add `'prod'` to
+  `crewLeaderLinkEnabled` in `packages/infra/bin/app.ts`.
+- tenant-web's crew page uses its own fetch client, not `apiFetch`, so a signed-in user's Cognito
+  bearer is never sent to the public endpoint.
