@@ -252,26 +252,31 @@ crewLinkPublicHandler.post('/:token/verify', (c) =>
       throw new LaborHttpError(400, 'CODE_EXPIRED', 'That code has expired. Request a new one.')
     }
 
-    if (!otpMatches(link.id, code, otp.codeHash)) {
-      // Increment-then-read is atomic, so parallel guesses can't share a count.
-      const { failedAttempts } = await rootDb.crewAccessLink.update({
+    // Every attempt is counted BEFORE the compare (increment-then-read is
+    // atomic), so a burst of parallel guesses can't all land inside the limit.
+    // A correct code resets the count below.
+    const { failedAttempts } = await rootDb.crewAccessLink.update({
+      where: { id: link.id },
+      data: { failedAttempts: { increment: 1 } },
+      select: { failedAttempts: true },
+    })
+    const burn = async () => {
+      await rootDb.crewAccessLink.update({
         where: { id: link.id },
-        data: { failedAttempts: { increment: 1 } },
-        select: { failedAttempts: true },
+        data: { burnedAt: new Date(now) },
       })
-      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-        await rootDb.crewAccessLink.update({
-          where: { id: link.id },
-          data: { burnedAt: new Date(now) },
-        })
-        await audit(link.id, 'burned')
-        logger.warn('crew link burned after too many wrong codes', {
-          tenantId: link.tenantId,
-          orderNum: link.orderNum,
-          linkId: link.id,
-        })
-        throw linkInactive()
-      }
+      await audit(link.id, 'burned')
+      logger.warn('crew link burned after too many wrong codes', {
+        tenantId: link.tenantId,
+        orderNum: link.orderNum,
+        linkId: link.id,
+      })
+      return linkInactive()
+    }
+    if (failedAttempts > MAX_FAILED_ATTEMPTS) throw await burn()
+
+    if (!otpMatches(link.id, code, otp.codeHash)) {
+      if (failedAttempts >= MAX_FAILED_ATTEMPTS) throw await burn()
       return c.json(
         {
           error: "That code isn't right.",

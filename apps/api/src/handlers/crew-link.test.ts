@@ -426,6 +426,20 @@ describe.skipIf(!hasDb)('crew links (integration)', () => {
     expect(audit).toHaveLength(1)
   })
 
+  it('a burst of parallel guesses gets no more than the limit', async () => {
+    const token = await mint()
+    await otp(token)
+    const wrong = lastCode() === '000000' ? '111111' : '000000'
+    const codes = await Promise.all(
+      Array.from({ length: 12 }, async () => codeOf(await verify(token, wrong))),
+    )
+    // At most 4 come back "incorrect"; every other guess is refused as inactive.
+    expect(codes.filter((c) => c === 'CODE_INCORRECT').length).toBeLessThanOrEqual(4)
+    expect(codes.filter((c) => c === 'LINK_INACTIVE').length).toBeGreaterThanOrEqual(8)
+    const link = await db.crewAccessLink.findFirstOrThrow({ where: { tenantId: tenantA } })
+    expect(link.burnedAt).not.toBeNull()
+  })
+
   // ── The job page ───────────────────────────────────────────────────────────
 
   it('needs a session for the job', async () => {
