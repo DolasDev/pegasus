@@ -117,9 +117,10 @@ const METRIC_NAMESPACE = 'Pegasus/Workflows'
 const BATCH_SIZE = 100
 
 /** How long an EVENT trigger's event may wait behind the concurrency cap
- * before it is stamped as dropped. Must stay well under the RingCentral buffer
- * purge's 72h body retention (lambda-ringcentral-buffer-purge.ts), or a parked
- * `sms.received` would fire with its body already nulled. */
+ * before it is stamped as dropped. Must stay well under the RingCentral 72h
+ * body retention: a parked event keeps its own payload body (the purge skips
+ * undispatched events), but `messages.body`, which a reply workflow may re-read
+ * through the API, is purged at 72h regardless. */
 const CONCURRENCY_DEFER_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 /** Event-query passes per tick. A pass repeats only when the batch was full

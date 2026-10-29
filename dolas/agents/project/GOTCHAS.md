@@ -2233,7 +2233,8 @@ uses both guards from that entry:
 - **Query-level exclusion.** `findTenantsAtRunnerConcurrencyCap` returns the tenants at the cap,
   and the query leaves out their events younger than 24 h.
 - **A bound.** An event still capped after 24 h is stamped as dropped (`CONCURRENCY_DROPPED`,
-  error log). The bound sits under the 72 h purge that blanks the SMS body.
+  error log). The bound sits under the 72 h purge of `messages.body`. The event's own payload copy
+  is safe while parked, because the purge only touches dispatched events.
 
 Query exclusion alone wasn't enough. A tenant one run _under_ the cap isn't excluded, so its 100
 oldest parked events filled the batch, one fired, and every other tenant waited that tick. The
