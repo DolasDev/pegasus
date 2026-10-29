@@ -57,3 +57,46 @@ def test_send_email_dry_run_captures_without_network() -> None:
     )
     assert client.send_email("a@nwmovers.test", "s", "b")["dryRun"] is True
     assert client.captured[-1]["capability"] == "SendEmail"
+
+
+def test_check_email_recipients_posts_to_and_cc_and_returns_the_verdict() -> None:
+    captured: dict = {}
+    verdict = {"ok": False, "reason": "RECIPIENT_NOT_ALLOWED", "disallowed": ["x@gmail.test"]}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(200, json={"data": verdict})
+
+    out = _client_with(handler).check_email_recipients("x@gmail.test", cc=["a@nwmovers.test"])
+    assert captured["path"] == "/api/v1/email/check-recipients"
+    assert captured["json"] == {"to": "x@gmail.test", "cc": ["a@nwmovers.test"]}
+    assert out == verdict
+
+
+def test_check_email_recipients_runs_live_under_dry_run() -> None:
+    # A check performs nothing, so a dry run still asks the server and captures nothing.
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"data": {"ok": True, "reason": None, "disallowed": []}})
+
+    client = PegasusClient(
+        base_url="https://api.test",
+        token="vnd_test",
+        dry_run=True,
+        transport=httpx.MockTransport(handler),
+    )
+    assert client.check_email_recipients("a@nwmovers.test")["ok"] is True
+    assert calls == ["/api/v1/email/check-recipients"]
+    assert client.captured == []
+
+
+def test_check_email_recipients_is_a_fake_client_read() -> None:
+    from pegasus_workflows.testing import fake_client
+
+    verdict = {"ok": True, "reason": None, "disallowed": []}
+    fake = fake_client(reads={"check_email_recipients": verdict})
+    assert fake.check_email_recipients("a@nwmovers.test") == verdict
+    assert fake.captured == []

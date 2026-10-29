@@ -49,12 +49,24 @@ class _FakeClient:
                     "name": "nightly-sync",
                     "version": "1.0.0",
                     "visibility": "TENANT",
+                    "current": True,
                     "requirements": [
                         _req("SECRET", "STRIPE_API_KEY", present=True, group="billing"),
                         _req("CONFIG", "DEFAULT_REGION", present=False),
                     ],
                     "missingCount": 1,
-                }
+                },
+                {
+                    # Superseded: a newer nightly-sync exists and no enabled
+                    # trigger runs this one, so its key is not still needed.
+                    "workflowId": "wf0",
+                    "name": "nightly-sync",
+                    "version": "0.9.0",
+                    "visibility": "TENANT",
+                    "current": False,
+                    "requirements": [_req("SECRET", "LEGACY_SEND_URL", present=False)],
+                    "missingCount": 1,
+                },
             ],
             "totalMissing": 1,
         }
@@ -154,3 +166,17 @@ def test_exits_nonzero_when_neither_plane_is_readable() -> None:
     result = _run()
     assert result.exit_code == 1
     assert "could not read" in result.output
+
+
+def test_skips_superseded_versions_by_default() -> None:
+    result = _run()
+    assert result.exit_code == 0, result.output
+    assert "LEGACY_SEND_URL" not in result.output
+
+
+def test_all_versions_lists_superseded_versions_by_name_at_version() -> None:
+    result = _run("--all-versions")
+    assert result.exit_code == 0, result.output
+    assert "workflow:nightly-sync@0.9.0" in result.output
+    assert "LEGACY_SEND_URL" in result.output
+    assert "workflow:nightly-sync@1.0.0" in result.output

@@ -29,7 +29,7 @@
 // so no gRPC connection is opened. The CloudWatch SDK is mocked.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import type { Client } from '@temporalio/client'
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client'
 import { _setTemporalClientForTesting } from '../lib/temporal-client'
@@ -158,6 +158,7 @@ function triggerRow(overrides: Record<string, unknown> = {}) {
     filter: null,
     cronExpression: null,
     enabled: true,
+    dryRun: false,
     createdByUserId: 'user-1',
     createdAt: now,
     updatedAt: now,
@@ -1060,6 +1061,99 @@ describe('kill-switch (WORKFLOWS_DISABLED) skip reason (Unit 11)', () => {
 
     expect(out.fired).toBe(1)
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── Dry-run triggers ─────────────────────────────────────────────────────────
+
+describe('dry-run triggers', () => {
+  it('a dryRun trigger starts its execution in dry-run mode', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(1)
+    const createArg = mockExecutionCreate.mock.calls[0]![0] as { data: Record<string, unknown> }
+    expect(createArg.data).toMatchObject({ triggerSource: 'EVENT', dryRun: true })
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('a live trigger (the default) still starts a live execution', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+
+    await handler()
+
+    const createArg = mockExecutionCreate.mock.calls[0]![0] as { data: Record<string, unknown> }
+    expect(createArg.data['dryRun']).toBe(false)
+  })
+
+  it('a dryRun trigger is capped like a live one, counting dry runs too', async () => {
+    // A manual dry run is exempt from the cap; a dry-run TRIGGER on a busy event
+    // would otherwise launch a runner per event with no ceiling.
+    // Clock pinned to the event's time, so it is young enough to park.
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    const where = (mockExecutionCount.mock.calls[0]![0] as { where: Record<string, unknown> }).where
+    expect(where).not.toHaveProperty('dryRun')
+    // Back-pressure applies to dry triggers too: the event waits, not dropped.
+    expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_DEFERRED' }],
+      }),
+    )
+  })
+
+  it('a dryRun trigger also consumes the daily quota', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+    mockExecutionCount.mockResolvedValueOnce(0).mockResolvedValueOnce(1_000_000)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DAILY_QUOTA_EXCEEDED' }],
+      }),
+    )
+  })
+
+  it('a dryRun trigger on a curated workflow is skipped — never run live', async () => {
+    // The API refuses to attach one; this covers a row that predates the check.
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DRY_RUN_UNSUPPORTED' }],
+      }),
+    )
   })
 })
 

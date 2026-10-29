@@ -56,12 +56,12 @@ A deferral emits a new skip reason, `CONCURRENCY_DEFERRED`. It fires about once 
 ### 4. Docs / surfaces
 
 - [x] `dolas/agents/project/GOTCHAS.md`: a short entry on this incident, cross-referenced to the infinite-park entry ("a retry-later state needs query-level exclusion + a bound").
-- [x] SDK discoverability (CLAUDE.md rule). Done: README + OpenAPI sentence, SDK bumped to **0.53.2** (docs-only). The SDK README's reply-automation section (~"within about a minute of the text arriving") and `openapi-spec.ts`'s limits description gain one sentence: _EVENT-trigger runs over the 5-run cap are delayed until a slot frees (up to 24 h), not dropped; the daily quota still drops._
+- [x] SDK discoverability (CLAUDE.md rule). Done: README + OpenAPI sentence, SDK bumped to **0.54.1** (docs-only; was 0.53.2 until #896 published 0.54.0). The SDK README's reply-automation section (~"within about a minute of the text arriving") and `openapi-spec.ts`'s limits description gain one sentence: _EVENT-trigger runs over the 5-run cap are delayed until a slot frees (up to 24 h), not dropped; the daily quota still drops._
 - [ ] Memory `project_sms_received_event.md`: mark the drop as fixed (after merge).
 
 ## Verification after deploy (prod, read-only)
 
-- [ ] Publish SDK 0.53.2: tag `sdk-python-v0.53.2` on the merge commit.
+- [ ] Publish SDK 0.54.1: tag `sdk-python-v0.54.1` on the merge commit.
 - [ ] Dispatcher logs show no `CONCURRENCY_DROPPED` errors. Any `CONCURRENCY_DEFERRED` skip is followed, within minutes, by an execution whose temporal id carries that event id.
 - [ ] On the next NW burst of more than 5 texts (or a deliberate one: 6+ test texts from a test phone to NW's number, _only with user OK_), every `sms.received` gets an `nw_pulse_reply` execution, and `dispatched_at` stays null until its run starts.
 - [ ] `d7003e2a` itself is NOT replayed. It is already stamped, and re-processing a 1-day-old reply is the user's call (a one-row `UPDATE … SET dispatched_at = NULL` would redeliver it).
@@ -76,6 +76,8 @@ A deferral emits a new skip reason, `CONCURRENCY_DEFERRED`. It fires about once 
 
 - **Cap and quota at once.** The run path checks the cap BEFORE the daily quota. An event arriving while its tenant is at both parks instead of dropping, and may fire after the quota resets at midnight UTC. It releases in batches of at most 5, so there is no herd.
 - **Curated triggers wait with the event.** The query exclusion holds the whole event, so a curated (STDLIB) trigger on a capped tenant's event waits too. Only the in-tick short-circuit is curated-aware. The same holds for a capped tenant's events that match no trigger at all: Unit 8 derivation of custom events from them waits until the tenant drops under the cap (at most 24 h). They are delayed, never dropped, because the drop path only stamps events that had a capped trigger.
+
+- **Dry-run triggers (#896, merged mid-flight).** A trigger-fired dry start counts dry runs against the cap; a live start doesn't. The query-level `findTenantsAtRunnerConcurrencyCap` counts live runs only, which is sound for both kinds: at 5 live runs, every runner start is rejected. But when dry runs alone cap a dry trigger, the in-tick set marks the whole tenant capped, so its live triggers wait until the next tick. That costs about one event per tick while dry runs fill the cap. The precise fix is a separate `dryCappedTenants` set, left as a follow-up.
 
 ## Out of scope
 

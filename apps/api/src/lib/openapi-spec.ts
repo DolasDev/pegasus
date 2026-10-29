@@ -91,7 +91,8 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     "For each visible automation, its manifest-declared secret/config keys tagged present/missing against the tenant's store (presence only, no values) (ReadWorkflow)",
     {
       tags: ['Workflows'],
-      responseDescription: '{data: {workflows: [...], totalMissing: number}}',
+      responseDescription:
+        '{data: {workflows: [{workflowId, name, version, visibility, current, requirements: [{kind, key, group, description, present}], missingCount}], totalMissing: number}}. Every published version is its own row. current is true for the newest version (semver) of each (owner, name) and for any older version an enabled trigger of this tenant still runs; totalMissing counts current rows only, so keys a superseded version declared are not reported as still needed. SDK: requirements_summary; CLI: requirements [--all-versions].',
     },
   ),
   '/api/v1/workflows/{id}': apiKeyGet('getWorkflow', 'Get an automation by id', {
@@ -917,13 +918,51 @@ export function getOpenApiSpec() {
     ],
     paths: {
       ...OPERATIONAL_READ_PATHS,
+      '/api/v1/email/check-recipients': {
+        post: {
+          operationId: 'checkEmailRecipients',
+          summary: 'Would /email/send accept these recipients? No send, no record (SendEmail)',
+          description:
+            'Body { to (address or list), cc? }. Applies exactly the recipient rules /email/send does — the tenant’s allowed domains (Settings → App → Operations) and the 10-recipient cap — and returns a verdict without sending, recording or counting anything, so an automation can pick a recipient before composing instead of catching RECIPIENT_NOT_ALLOWED. Always 200 for a well-formed body. Side-effect free: the SDK runs it live under a dry run. Not metered. SDK: check_email_recipients.',
+          tags: ['Email'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['to'],
+                  additionalProperties: false,
+                  properties: {
+                    to: {
+                      oneOf: [
+                        { type: 'string', format: 'email' },
+                        { type: 'array', items: { type: 'string', format: 'email' }, minItems: 1 },
+                      ],
+                    },
+                    cc: { type: 'array', items: { type: 'string', format: 'email' } },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description:
+                '{data: {ok, reason, disallowed}} — ok:true, reason:null when every recipient would be accepted; else reason is NOT_CONFIGURED (no allowed domains: email is off) | RECIPIENT_NOT_ALLOWED (disallowed lists the refused addresses) | TOO_MANY_RECIPIENTS',
+            },
+            '400': { description: 'VALIDATION_ERROR — malformed address or body' },
+          },
+        },
+      },
       '/api/v1/email/send': {
         post: {
           operationId: 'sendEmail',
           summary:
             'Send an internal email through the tenant’s pegII API / SMTP account (SendEmail)',
           description:
-            'Body { to (address or list), cc?, subject (single line, ≤300), body, bodyType? (text | html, default text), dedupKey? }. Recipients must be on the tenant’s allowed domains (Settings → App → Operations; unset ⇒ 409 EMAIL_RECIPIENTS_NOT_CONFIGURED, outside ⇒ 400 RECIPIENT_NOT_ALLOWED); ≤10 recipients (400 TOO_MANY_RECIPIENTS); body ≤100 KB (413); a per-tenant daily limit (429 EMAIL_DAILY_LIMIT). With dedupKey a retry returns the first send (200, alreadySent:true); 409 EMAIL_SEND_IN_PROGRESS / EMAIL_SEND_IN_DOUBT / IDEMPOTENCY_KEY_REUSED as for /sms/send. The From address is the site’s configured default. 503 EMAIL_NOT_CONFIGURED when the site has no SMTP account, 503 PEGII_CAPABILITY_MISSING when its pegII API predates email or lacks auth, 502 EMAIL_SEND_FAILED when SMTP refuses.',
+            'Body { to (address or list), cc?, subject (single line, ≤300), body, bodyType? (text | html, default text), dedupKey? }. Recipients must be on the tenant’s allowed domains (Settings → App → Operations; unset ⇒ 409 EMAIL_RECIPIENTS_NOT_CONFIGURED, outside ⇒ 400 RECIPIENT_NOT_ALLOWED — ask first with POST /email/check-recipients); ≤10 recipients (400 TOO_MANY_RECIPIENTS); body ≤100 KB (413); a per-tenant daily limit (429 EMAIL_DAILY_LIMIT). With dedupKey a retry returns the first send (200, alreadySent:true); 409 EMAIL_SEND_IN_PROGRESS / EMAIL_SEND_IN_DOUBT / IDEMPOTENCY_KEY_REUSED as for /sms/send. The From address is the site’s configured default. 503 EMAIL_NOT_CONFIGURED when the site has no SMTP account, 503 PEGII_CAPABILITY_MISSING when its pegII API predates email or lacks auth, 502 EMAIL_SEND_FAILED when SMTP refuses.',
           tags: ['Email'],
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
@@ -2744,12 +2783,56 @@ export function getOpenApiSpec() {
           },
         },
       },
+      // Re-declared here (after the OPERATIONAL_READ_PATHS spread) to add the
+      // write beside the read: keep `get` from the read table.
+      '/api/v1/workflows/{id}/triggers': {
+        ...OPERATIONAL_READ_PATHS['/api/v1/workflows/{id}/triggers'],
+        post: {
+          operationId: 'createWorkflowTrigger',
+          summary: 'Attach an EVENT or SCHEDULE trigger to an automation (ManageWorkflowTriggers)',
+          description:
+            'Body { kind: EVENT | SCHEDULE, eventType? (EVENT: a built-in or registered custom event type), filter? (EVENT: payload match), cronExpression? (SCHEDULE: 5-field UTC cron), enabled? (default true), dryRun? (default false) }. The trigger row belongs to the caller’s tenant, even on a GLOBAL automation. dryRun: the trigger fires on every matching event / cron minute, but every execution it starts is a dry run — reads live, mutations (send_sms, send_email, …) captured in the execution trace, never performed — so the wiring can be validated before it acts; PATCH dryRun:false to go live. Tenant-runner automations only: 400 DRY_RUN_UNSUPPORTED for a curated workflow. SDK: create_trigger; CLI: schedule create [--dry-run].',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['kind'],
+                  properties: {
+                    kind: { type: 'string', enum: ['EVENT', 'SCHEDULE'] },
+                    eventType: { type: 'string' },
+                    filter: { type: 'object' },
+                    cronExpression: { type: 'string' },
+                    enabled: { type: 'boolean', default: true },
+                    dryRun: { type: 'boolean', default: false },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description:
+                '{data: {id, tenantId, workflowId, kind, eventType, filter, cronExpression, enabled, dryRun, createdByUserId, createdAt, updatedAt}}',
+            },
+            '400': {
+              description:
+                'VALIDATION_ERROR (shape, unknown event type, invalid cron or filter) | DRY_RUN_UNSUPPORTED',
+            },
+            '404': { description: 'NOT_FOUND — no such automation visible to this tenant' },
+          },
+        },
+      },
       '/api/v1/workflows/{id}/triggers/{triggerId}': {
         patch: {
           operationId: 'updateWorkflowTrigger',
           summary: 'Partially update a trigger — pause/resume, re-target (ManageWorkflowTriggers)',
           description:
-            'Body (all optional, at least one): { enabled, eventType, filter, cronExpression }. enabled applies to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. SDK: update_trigger; CLI: schedule disable|enable.',
+            'Body (all optional, at least one): { enabled, dryRun, eventType, filter, cronExpression }. enabled and dryRun apply to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. A dryRun trigger keeps firing, but every execution it starts is a dry run (reads live, mutations captured in the trace, never performed) — validate the wiring, then set dryRun:false; 400 DRY_RUN_UNSUPPORTED turning it on for a curated workflow. SDK: update_trigger; CLI: schedule disable|enable|dry-run [--off].',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [
@@ -2765,6 +2848,7 @@ export function getOpenApiSpec() {
                   additionalProperties: false,
                   properties: {
                     enabled: { type: 'boolean' },
+                    dryRun: { type: 'boolean' },
                     eventType: { type: 'string' },
                     filter: { type: 'object' },
                     cronExpression: { type: 'string' },

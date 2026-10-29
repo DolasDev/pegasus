@@ -3,7 +3,7 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
-## 0.53.2
+## 0.54.1
 
 ### Docs — event triggers wait behind the concurrency cap
 
@@ -12,6 +12,50 @@ follows [Semantic Versioning](https://semver.org/).
   event and fires it as earlier runs finish; an event still waiting after 24
   hours is dropped. The daily quota still drops events. The platform behaviour
   changed (before, events past the cap were lost); the SDK has no code change.
+
+## 0.54.0
+
+### Added — dry-run triggers
+
+- `create_trigger(..., dry_run=True)` / `update_trigger(..., dry_run=...)`: a
+  dry-run trigger fires on every matching event or cron minute, but each
+  execution it starts is a dry run — reads live, mutations captured in the
+  execution trace, never performed. Validate a trigger's wiring (e.g. every real
+  `sms.received` reply reaching the reply handler) before letting it act.
+  Tenant-runner Automations only: 400 `DRY_RUN_UNSUPPORTED` for a curated one.
+- CLI: `schedule dry-run <wf> <trigger-id> [--off]` (EVENT or SCHEDULE),
+  `schedule create --dry-run`; `schedule list` shows live / dry-run.
+
+### Added — email recipient pre-check
+
+- `PegasusClient.check_email_recipients(to, *, cc=None)` → `{ok, reason,
+disallowed}`: the same allowed-domain + recipient-cap check `send_email`
+  applies, without sending or recording anything. Side-effect free, so it runs
+  live under a dry run; offline it is a `fake_client` read
+  (`reads={"check_email_recipients": {...}}`). Needs `SendEmail`.
+
+### Changed — `deployments.toml` keyed by profile
+
+- `push` now records under `--env`, else the **`--profile` name**, else the API
+  host (previously `--env`, else host). QA and Prod tenants share one API root,
+  so a host-keyed Prod push overwrote the QA record. An existing host-keyed
+  table is left as is; the push writes a sibling and prints a note.
+
+### Changed — requirements count current versions only
+
+- `requirements_summary()` rows carry `current` (the newest version of its
+  owner + name, or an older one an enabled trigger still runs) and
+  `totalMissing` counts current rows only. `pegasus-workflows requirements`
+  skips superseded versions by default; `--all-versions` lists them as
+  `name@version`. A superseded version's keys (e.g. a curated workflow's
+  long-removed `SEND_*` secrets) no longer show as still needed.
+
+### Fixed — `activity.info()` on the tenant runner
+
+- The runner now runs each activity inside `temporalio.testing.ActivityEnvironment`,
+  as the offline harness does, so `activity.info()` / `activity.heartbeat()` no
+  longer raise "Not in activity context" on the first dry run after tests pass.
+  The values are synthetic. (Runner-side; no SDK code change needed.)
 
 ## 0.53.1
 
