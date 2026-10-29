@@ -3,6 +3,16 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.53.2
+
+### Docs — event triggers wait behind the concurrency cap
+
+- The README's text-reply section now says an event-triggered run over the
+  5-run tenant concurrency cap is delayed, not dropped. The platform holds the
+  event and fires it as earlier runs finish; an event still waiting after 24
+  hours is dropped. The daily quota still drops events. The platform behaviour
+  changed (before, events past the cap were lost); the SDK has no code change.
+
 ## 0.53.1
 
 ### Docs — the `trip.accepted` event

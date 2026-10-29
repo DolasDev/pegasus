@@ -2803,6 +2803,7 @@ export function getOpenApiSpec() {
           description:
             'Body { input?: object, mode?: "dry_run" }. Starts a server-side execution and returns it (RUNNING once Temporal accepted the start). A dry run reads live but captures every mutation instead of performing it; only tenant-runner automations support it (422 DRY_RUN_UNSUPPORTED otherwise). ' +
             'Limits on tenant-runner automations: 429 CONCURRENCY_LIMIT (5 queued/running) and 429 DAILY_QUOTA_EXCEEDED (resets at midnight UTC); dry runs count toward neither. ' +
+            'Event-triggered runs over the concurrency cap are delayed, not dropped: the event fires once a run finishes (an event still waiting after 24 hours is dropped). Over the daily quota, event-triggered runs are dropped. ' +
             '409 TENANT_MIGRATING (with Retry-After) while the platform moves the tenant’s automations to or from their own isolated Temporal namespace: new runs, dry runs included, are refused until in-flight runs finish (at most ~15 minutes); nothing was started, so retry. Event triggers lose nothing during a move; their events fire after it.',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
