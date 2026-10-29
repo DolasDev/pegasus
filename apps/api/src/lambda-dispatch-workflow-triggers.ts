@@ -34,12 +34,19 @@
 // BACK-PRESSURE (concurrency cap): an EVENT trigger that hits the tenant's
 // TENANT_RUNNER concurrency cap leaves its event undispatched, so it fires once
 // a run finishes — the cap delays a burst, it doesn't drop it (until 2026-10-29
-// the event was stamped and the run lost). Two guards keep a parked tenant from
-// becoming an outage: its young events are excluded AT THE QUERY while it is at
-// the cap (like a migrating tenant's), so they can't fill the oldest-first
-// batch; and an event still capped CONCURRENCY_DEFER_MAX_AGE_MS after it
-// occurred is stamped as dropped, so the park always exhausts. A SCHEDULE
-// trigger at the cap stays a skipped minute; the daily quota still drops.
+// the event was stamped and the run lost). Three guards keep a parked tenant
+// from becoming an outage:
+//   - its young events are excluded AT THE QUERY while it is at the cap (like
+//     a migrating tenant's), so they can't fill the oldest-first batch — the
+//     WHOLE event waits, so its curated (STDLIB) triggers wait with it;
+//   - a full pass that newly parks a tenant re-queries without it (at most
+//     MAX_EVENT_PASSES per tick), for a tenant that dipped one run under the cap;
+//   - an event still capped CONCURRENCY_DEFER_MAX_AGE_MS after it occurred is
+//     stamped as dropped (CONCURRENCY_DROPPED), so the park always exhausts.
+// A SCHEDULE trigger at the cap stays a skipped minute; the daily quota still
+// drops. One gap: the run path checks the cap BEFORE the quota, so an event
+// that arrives while its tenant is at both parks rather than drops, and may
+// fire after the quota resets at midnight UTC.
 //
 // Idempotency (crash-safety) is layered identically for both phases:
 //   1. The Temporal workflow id is deterministic per (trigger, occurrence):
@@ -60,7 +67,8 @@
 // Failure isolation: one trigger's failure (non-executable workflow, Temporal
 // down for one start) never poisons the event, the schedule sweep, or the
 // batch — per-trigger work is wrapped in try/catch and events are stamped
-// regardless. A trigger pointing at a non-executable workflow (e.g.
+// regardless of a failed trigger (only a migrating or capped tenant parks one,
+// see above). A trigger pointing at a non-executable workflow (e.g.
 // tenant-uploaded, pre-Track-A) is a logged skip, not an error. A SCHEDULE
 // row whose cron expression predates the Unit-4 parser-backed validation and
 // no longer parses is an INVALID_CRON skip, never a crash.
@@ -114,6 +122,10 @@ const BATCH_SIZE = 100
  * `sms.received` would fire with its body already nulled. */
 const CONCURRENCY_DEFER_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
+/** Event-query passes per tick. A pass repeats only when the batch was full
+ * AND it newly excluded a tenant (see the pass loop in the handler). */
+const MAX_EVENT_PASSES = 3
+
 /** Why a matching trigger did not fire — the `Reason` metric dimension. */
 type TriggerSkipReason =
   | 'NOT_EXECUTABLE' // workflow not executable (non-curated, no valid artifact)
@@ -123,8 +135,9 @@ type TriggerSkipReason =
   | 'START_FAILED' // Temporal start threw; FAILED row records the error
   | 'INVALID_CRON' // SCHEDULE row's expression no longer parses (pre-Unit-4 row)
   | 'OVERLAP' // SCHEDULE overlap policy: a previous run of this trigger is still in-flight
-  | 'CONCURRENCY_LIMIT' // tenant concurrency cap: SCHEDULE minute skipped, or an EVENT parked past the max age and dropped
+  | 'CONCURRENCY_LIMIT' // tenant concurrency cap: SCHEDULE fire-minute skipped
   | 'CONCURRENCY_DEFERRED' // tenant concurrency cap: EVENT left undispatched to fire once a run finishes
+  | 'CONCURRENCY_DROPPED' // tenant concurrency cap: EVENT still capped past the max park age, stamped
   | 'DAILY_QUOTA_EXCEEDED' // Phase 3 Unit 10: tenant daily execution quota reached
   | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
   | 'MUST_FORK' // defensive: trigger on a cross-tenant GLOBAL workflow (config mistake)
@@ -324,7 +337,8 @@ type FirableTrigger = {
  * knows it and the workflow routes to the runner, so the start (and its count
  * query, rejection metric and warn log) is skipped. The caller decides
  * defer-vs-drop by the event's age. Curated (STDLIB) workflows are never
- * capped, so `tenantAtCap` never stops them.
+ * capped, so `tenantAtCap` never stops their start — though a capped sibling
+ * trigger still parks the whole event, and the query exclusion holds it too.
  */
 async function fireTrigger(opts: {
   workflowRepo: ReturnType<typeof createWorkflowRepository>
@@ -592,153 +606,182 @@ export async function handler(): Promise<{
   // grown by the first CAPPED start, so a burst costs one rejected start, not
   // one per event.
   const cappedTenants = new Set(cappedTenantIds)
+  // Excluded at the query at every age: migrating at the start of the tick,
+  // plus any tenant that began migrating mid-tick.
+  const migratingTenants = new Set(migratingTenantIds)
+  let scanned = 0
 
-  const events = await db.domainEvent.findMany({
-    where: {
-      dispatchedAt: null,
-      ...(migratingTenantIds.length > 0 ? { tenantId: { notIn: migratingTenantIds } } : {}),
-      ...(cappedTenantIds.length > 0
-        ? { NOT: { tenantId: { in: cappedTenantIds }, occurredAt: { gt: parkCutoff } } }
-        : {}),
-    },
-    orderBy: { occurredAt: 'asc' },
-    take: BATCH_SIZE,
-  })
+  // Fairness WITHIN the tick: a tenant one run under the cap isn't excluded,
+  // so a deep park can fill the whole batch while only one of its events
+  // fires and the rest park again. When a FULL pass parked a tenant the query
+  // didn't already exclude, re-query without it so other tenants' events still
+  // drain this tick. Bounded; whatever is left waits for the next tick.
+  for (let pass = 0; pass < MAX_EVENT_PASSES; pass++) {
+    const excludedCapped = [...cappedTenants]
+    const excludedMigrating = [...migratingTenants]
+    const events = await db.domainEvent.findMany({
+      where: {
+        dispatchedAt: null,
+        ...(excludedMigrating.length > 0 ? { tenantId: { notIn: excludedMigrating } } : {}),
+        ...(excludedCapped.length > 0
+          ? { NOT: { tenantId: { in: excludedCapped }, occurredAt: { gt: parkCutoff } } }
+          : {}),
+      },
+      orderBy: { occurredAt: 'asc' },
+      take: BATCH_SIZE,
+    })
+    scanned += events.length
 
-  logger.info('Scanned for undispatched domain events', { scanned: events.length })
+    logger.info('Scanned for undispatched domain events', { scanned: events.length, pass })
 
-  counts.backlog = events.length === BATCH_SIZE
+    await dispatchEvents(events)
+
+    counts.backlog = events.length === BATCH_SIZE
+    const newlyExcluded =
+      cappedTenants.size > excludedCapped.length || migratingTenants.size > excludedMigrating.length
+    if (!counts.backlog || !newlyExcluded) break
+  }
+
   if (counts.backlog) {
     logger.warn('Domain-event dispatch backlog — hit batch cap; next tick will continue', {
       batchSize: BATCH_SIZE,
     })
   }
 
-  for (const event of events) {
-    try {
-      // The Unit-2 (kind, enabled, eventType) index covers this; tenantId
-      // keeps one tenant's events from ever firing another tenant's triggers.
-      const triggers = await db.workflowTrigger.findMany({
-        where: {
-          kind: 'EVENT',
-          enabled: true,
-          eventType: event.eventType,
-          tenantId: event.tenantId,
-        },
-        orderBy: { createdAt: 'asc' },
-      })
-
-      let deferred = false
-      // Parked behind the concurrency cap: true leaves the event undispatched
-      // unless it has waited past the max age, when it is stamped as dropped.
-      let capped = false
-      const parkExpired = event.occurredAt <= parkCutoff
-      for (const trigger of triggers) {
-        // Failure isolation: one trigger's failure must not poison the event
-        // (its other triggers, the dispatchedAt stamp) or the batch.
-        try {
-          if (!matchesTriggerFilter(trigger.filter, event.payload)) {
-            continue
-          }
-          const fired = await fireTrigger({
-            workflowRepo,
-            trigger,
-            triggerSource: 'EVENT',
-            dedupeKey: event.id,
-            // The execution input is the event envelope. The payload is a
-            // pointer (entity ids + minimal context) — workflows refetch
-            // authoritative state via the API.
-            input: {
-              domainEventId: event.id,
-              eventType: event.eventType,
-              occurredAt: event.occurredAt.toISOString(),
-              payload: event.payload,
-            },
-            counts,
-            skip,
-            logContext: { domainEventId: event.id },
-            tenantAtCap: cappedTenants.has(event.tenantId),
-          })
-          if (fired === 'DEFERRED') deferred = true
-          if (fired === 'CAPPED') {
-            cappedTenants.add(event.tenantId)
-            capped = true
-            if (parkExpired) {
-              skip('CONCURRENCY_LIMIT')
-              logger.error('Trigger dropped — event parked behind the concurrency cap too long', {
-                triggerId: trigger.id,
-                tenantId: trigger.tenantId,
-                domainEventId: event.id,
-                occurredAt: event.occurredAt.toISOString(),
-                maxAgeHours: CONCURRENCY_DEFER_MAX_AGE_MS / 3_600_000,
-              })
-            } else {
-              skip('CONCURRENCY_DEFERRED')
-              logger.info('Trigger deferred — TENANT_RUNNER concurrency cap reached', {
-                triggerId: trigger.id,
-                tenantId: trigger.tenantId,
-                domainEventId: event.id,
-              })
-            }
-          }
-        } catch (err) {
-          skip('ERROR')
-          logger.error('Trigger dispatch failed', {
-            triggerId: trigger.id,
-            domainEventId: event.id,
-            tenantId: trigger.tenantId,
-            error: err instanceof Error ? err.message : String(err),
-          })
-        }
-      }
-
-      // A deferred trigger means the tenant began migrating mid-tick: leave
-      // the WHOLE event undispatched. The next ticks exclude the tenant at the
-      // query; once it settles the event is redelivered, and the triggers that
-      // did fire now are absorbed by the deterministic-id pre-check.
-      if (deferred) continue
-
-      // A capped trigger parks the WHOLE event the same way: the next ticks
-      // exclude the tenant at the query while it stays at the cap, then the
-      // event is redelivered — triggers that fired now hit the DUPLICATE
-      // pre-check. Past the max age it falls through and is stamped (dropped).
-      if (capped && !parkExpired) continue
-
-      // Stamp AFTER the event's triggers are processed. Conditional on
-      // dispatchedAt still being null so a concurrent tick can't double-count
-      // — and a crash before this line means redelivery, which the
-      // deterministic-id layers absorb.
-      const { count } = await db.domainEvent.updateMany({
-        where: { id: event.id, dispatchedAt: null },
-        data: { dispatchedAt: new Date() },
-      })
-      if (count > 0) {
-        counts.dispatched += 1
-      }
-
-      // Domain-condition derivation (Unit 8): only BUILT-IN events can be a
-      // derivation source (cycle-safety). Isolated from the stamp above — a
-      // derivation failure never un-stamps the event or aborts the batch.
-      if (DOMAIN_EVENT_TYPES_SET.has(event.eventType)) {
-        try {
-          await deriveTenantEvents(event, counts)
-        } catch (err) {
-          logger.error('Domain-condition derivation query failed', {
-            domainEventId: event.id,
+  async function dispatchEvents(events: Awaited<ReturnType<typeof db.domainEvent.findMany>>) {
+    for (const event of events) {
+      try {
+        // The Unit-2 (kind, enabled, eventType) index covers this; tenantId
+        // keeps one tenant's events from ever firing another tenant's triggers.
+        const triggers = await db.workflowTrigger.findMany({
+          where: {
+            kind: 'EVENT',
+            enabled: true,
+            eventType: event.eventType,
             tenantId: event.tenantId,
-            error: err instanceof Error ? err.message : String(err),
-          })
+          },
+          orderBy: { createdAt: 'asc' },
+        })
+
+        let deferred = false
+        // Parked behind the concurrency cap: true leaves the event undispatched
+        // unless it has waited past the max age, when it is stamped as dropped.
+        let capped = false
+        const parkExpired = event.occurredAt <= parkCutoff
+        for (const trigger of triggers) {
+          // Failure isolation: one trigger's failure must not poison the event
+          // (its other triggers, the dispatchedAt stamp) or the batch.
+          try {
+            if (!matchesTriggerFilter(trigger.filter, event.payload)) {
+              continue
+            }
+            const fired = await fireTrigger({
+              workflowRepo,
+              trigger,
+              triggerSource: 'EVENT',
+              dedupeKey: event.id,
+              // The execution input is the event envelope. The payload is a
+              // pointer (entity ids + minimal context) — workflows refetch
+              // authoritative state via the API.
+              input: {
+                domainEventId: event.id,
+                eventType: event.eventType,
+                occurredAt: event.occurredAt.toISOString(),
+                payload: event.payload,
+              },
+              counts,
+              skip,
+              logContext: { domainEventId: event.id },
+              tenantAtCap: cappedTenants.has(event.tenantId),
+            })
+            if (fired === 'DEFERRED') {
+              deferred = true
+              migratingTenants.add(event.tenantId)
+            }
+            if (fired === 'CAPPED') {
+              capped = true
+              if (parkExpired) {
+                skip('CONCURRENCY_DROPPED')
+                logger.error('Trigger dropped — event parked behind the concurrency cap too long', {
+                  triggerId: trigger.id,
+                  tenantId: trigger.tenantId,
+                  domainEventId: event.id,
+                  occurredAt: event.occurredAt.toISOString(),
+                  maxAgeHours: CONCURRENCY_DEFER_MAX_AGE_MS / 3_600_000,
+                })
+              } else {
+                skip('CONCURRENCY_DEFERRED')
+                // Once per tenant per tick — a deep park would otherwise log a
+                // line per parked event (the metric still counts each one).
+                if (!cappedTenants.has(event.tenantId)) {
+                  logger.info('Trigger deferred — TENANT_RUNNER concurrency cap reached', {
+                    triggerId: trigger.id,
+                    tenantId: trigger.tenantId,
+                    domainEventId: event.id,
+                  })
+                }
+              }
+              cappedTenants.add(event.tenantId)
+            }
+          } catch (err) {
+            skip('ERROR')
+            logger.error('Trigger dispatch failed', {
+              triggerId: trigger.id,
+              domainEventId: event.id,
+              tenantId: trigger.tenantId,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          }
         }
+
+        // A deferred trigger means the tenant began migrating mid-tick: leave
+        // the WHOLE event undispatched. The next ticks exclude the tenant at the
+        // query; once it settles the event is redelivered, and the triggers that
+        // did fire now are absorbed by the deterministic-id pre-check.
+        if (deferred) continue
+
+        // A capped trigger parks the WHOLE event the same way: the next ticks
+        // exclude the tenant at the query while it stays at the cap, then the
+        // event is redelivered — triggers that fired now hit the DUPLICATE
+        // pre-check. Past the max age it falls through and is stamped (dropped).
+        if (capped && !parkExpired) continue
+
+        // Stamp AFTER the event's triggers are processed. Conditional on
+        // dispatchedAt still being null so a concurrent tick can't double-count
+        // — and a crash before this line means redelivery, which the
+        // deterministic-id layers absorb.
+        const { count } = await db.domainEvent.updateMany({
+          where: { id: event.id, dispatchedAt: null },
+          data: { dispatchedAt: new Date() },
+        })
+        if (count > 0) {
+          counts.dispatched += 1
+        }
+
+        // Domain-condition derivation (Unit 8): only BUILT-IN events can be a
+        // derivation source (cycle-safety). Isolated from the stamp above — a
+        // derivation failure never un-stamps the event or aborts the batch.
+        if (DOMAIN_EVENT_TYPES_SET.has(event.eventType)) {
+          try {
+            await deriveTenantEvents(event, counts)
+          } catch (err) {
+            logger.error('Domain-condition derivation query failed', {
+              domainEventId: event.id,
+              tenantId: event.tenantId,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }
+      } catch (err) {
+        // Trigger lookup / stamping failed — leave the event undispatched for
+        // the next tick rather than abort the batch.
+        logger.error('Failed to dispatch domain event — will retry next tick', {
+          domainEventId: event.id,
+          tenantId: event.tenantId,
+          eventType: event.eventType,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
-    } catch (err) {
-      // Trigger lookup / stamping failed — leave the event undispatched for
-      // the next tick rather than abort the batch.
-      logger.error('Failed to dispatch domain event — will retry next tick', {
-        domainEventId: event.id,
-        tenantId: event.tenantId,
-        eventType: event.eventType,
-        error: err instanceof Error ? err.message : String(err),
-      })
     }
   }
 
@@ -864,7 +907,7 @@ export async function handler(): Promise<{
   await flushMetrics(counts)
 
   logger.info('Dispatch tick finished', {
-    scanned: events.length,
+    scanned,
     dispatched: counts.dispatched,
     fired: counts.fired,
     derived: counts.derived,
@@ -873,7 +916,7 @@ export async function handler(): Promise<{
     runnersLaunched,
   })
   return {
-    scanned: events.length,
+    scanned,
     dispatched: counts.dispatched,
     fired: counts.fired,
     derived: counts.derived,

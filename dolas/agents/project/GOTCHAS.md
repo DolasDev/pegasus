@@ -2232,10 +2232,14 @@ uses both guards from that entry:
 
 - **Query-level exclusion.** `findTenantsAtRunnerConcurrencyCap` returns the tenants at the cap,
   and the query leaves out their events younger than 24 h.
-- **A bound.** An event still capped after 24 h is stamped as dropped (`CONCURRENCY_LIMIT`, error
-  log). The bound sits under the 72 h purge that blanks the SMS body.
+- **A bound.** An event still capped after 24 h is stamped as dropped (`CONCURRENCY_DROPPED`,
+  error log). The bound sits under the 72 h purge that blanks the SMS body.
 
-An in-tick set also keeps a burst to one rejected start. **General rule:** for each outbox skip
+Query exclusion alone wasn't enough. A tenant one run _under_ the cap isn't excluded, so its 100
+oldest parked events filled the batch, one fired, and every other tenant waited that tick. The
+dispatcher also tripped the `pegasus-domain-event-dispatch-backlog` alarm. So a full pass that newly
+parks a tenant re-queries without it, up to 3 passes per tick. An in-tick set also keeps a burst to
+one rejected start. **General rule:** for each outbox skip
 reason, ask "is this _failed_ or _not yet_?" A stamp is only right for _failed_.
 
 ## RingCentral FSync silently caps at 250 records

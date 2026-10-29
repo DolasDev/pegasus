@@ -17,7 +17,7 @@ Two guards keep that from becoming a new outage:
 1. **Fairness (GOTCHAS: "A global oldest-first outbox drain + an infinite park").** The drain takes the 100 globally oldest undispatched events. If a capped tenant's parked events are loaded, 100 of them would fill every batch and starve every other tenant. So capped tenants are excluded **at the query**, exactly like `migratingTenantIds`:
    - Before the event query, one `groupBy` over `workflow_executions` finds the tenants at or over the cap. It uses the same lane filter as `countTenantRunnerActiveExecutions`: QUEUED/RUNNING, `dryRun: false`, executable, not curated.
    - Mid-tick, the first `CONCURRENCY_LIMIT` adds the tenant to an in-tick `Set`. Its later events in the same batch defer without calling `startWorkflowExecution`. That saves 1 count query, 1 rejection metric and 1 warn log per event.
-2. **A bounded park (it must exhaust).** An event parked longer than `CONCURRENCY_DEFER_MAX_AGE` (**proposed 24 h**, measured from `occurredAt`) is stamped as dropped. It logs an error and emits `WorkflowTriggerSkipped{Reason=CONCURRENCY_LIMIT}`, which keeps that series meaning "lost to the cap". The bound must stay under the buffer purge's 72 h `EVENT_BODY_RETENTION_HOURS`, or a parked `sms.received` would fire with its body already nulled. The query excludes a capped tenant's events only while they are younger than the bound, so expired ones still load and get stamped. A tenant with 5 runs stuck RUNNING therefore can't park its events forever.
+2. **A bounded park (it must exhaust).** An event parked longer than `CONCURRENCY_DEFER_MAX_AGE` (**proposed 24 h**, measured from `occurredAt`) is stamped as dropped. It logs an error and emits `WorkflowTriggerSkipped{Reason=CONCURRENCY_DROPPED}` (as built, a reason of its own, so `CONCURRENCY_LIMIT` stays SCHEDULE-only). The bound must stay under the buffer purge's 72 h `EVENT_BODY_RETENTION_HOURS`, or a parked `sms.received` would fire with its body already nulled. The query excludes a capped tenant's events only while they are younger than the bound, so expired ones still load and get stamped. A tenant with 5 runs stuck RUNNING therefore can't park its events forever.
 
 A deferral emits a new skip reason, `CONCURRENCY_DEFERRED`. It fires about once per event per cap episode: the query exclusion stops repeats across ticks, and the in-tick set stops repeats within one.
 
@@ -39,7 +39,7 @@ A deferral emits a new skip reason, `CONCURRENCY_DEFERRED`. It fires about once 
 
 - [x] `fireTrigger`: `CONCURRENCY_LIMIT` returns `'CAPPED'`, with no skip metric there. The EVENT caller decides defer vs drop by event age. SCHEDULE keeps today's `skip('CONCURRENCY_LIMIT')`.
 - [x] Event query: add `NOT: { tenantId: { in: capped }, occurredAt: { gt: now − MAX_AGE } }` next to the migrating exclusion.
-- [x] Event loop: the in-tick `cappedTenants` set. If a matching trigger is capped and the event is younger than `MAX_AGE`, skip `CONCURRENCY_DEFERRED`, mark the event deferred and leave it unstamped. If it is older, skip `CONCURRENCY_LIMIT`, `logger.error('…dropped after parking …')` and stamp it.
+- [x] Event loop: the in-tick `cappedTenants` set. If a matching trigger is capped and the event is younger than `MAX_AGE`, skip `CONCURRENCY_DEFERRED`, mark the event deferred and leave it unstamped. If it is older, skip `CONCURRENCY_DROPPED` (a separate reason, so `CONCURRENCY_LIMIT` keeps meaning SCHEDULE skipped-minutes only), log an error and stamp it.
 - [x] Add `'CONCURRENCY_DEFERRED'` to `TriggerSkipReason`. Update the `case` comment and the module header (the "never lost" claim, plus a back-pressure paragraph next to the 3b.2 one).
 
 ### 3. Tests — `apps/api/src/__tests__/lambda-dispatch-workflow-triggers.test.ts`
@@ -48,19 +48,21 @@ A deferral emits a new skip reason, `CONCURRENCY_DEFERRED`. It fires about once 
 - [x] Burst: 7 same-tenant events with 4 active means 1 start, 6 events unstamped and exactly one rejected `startWorkflowExecution` (the in-tick set).
 - [x] An event with two triggers where one fires and one is capped is unstamped. On redelivery the fired trigger hits `DUPLICATE` and the capped one fires.
 - [x] The query excludes the capped tenant's young events but still loads another tenant's. Assert on the `findMany` `where` (the harness needs a `groupBy` mock).
-- [x] An event older than `MAX_AGE` that is still capped gets stamped, an error log and `CONCURRENCY_LIMIT`.
+- [x] An event older than `MAX_AGE` that is still capped gets stamped, an error log and `CONCURRENCY_DROPPED`.
 - [x] Derivation (Unit 8) does not run for a deferred event, and runs once it is finally stamped.
 - [x] SCHEDULE at the cap behaves as before.
+- [x] **Added in self-review:** multi-pass fairness. A tenant one run under the cap isn't excluded, so its 100 parked events could fill a batch (1 fires, 99 re-park, other tenants wait, and the `pegasus-domain-event-dispatch-backlog` alarm, threshold > 0, fires). A full pass that newly parks a tenant re-queries without it (`MAX_EVENT_PASSES = 3`). Tested both ways: a re-query when a full pass parks someone, and none when it parks no one.
 
 ### 4. Docs / surfaces
 
 - [x] `dolas/agents/project/GOTCHAS.md`: a short entry on this incident, cross-referenced to the infinite-park entry ("a retry-later state needs query-level exclusion + a bound").
-- [x] SDK discoverability (CLAUDE.md rule). The SDK README's reply-automation section (~"within about a minute of the text arriving") and `openapi-spec.ts`'s limits description gain one sentence: _EVENT-trigger runs over the 5-run cap are delayed until a slot frees (up to 24 h), not dropped; the daily quota still drops._ That is a docs-only SDK patch bump plus a publish after merge (memory: always publish after a bump merges).
-- [x] Memory `project_sms_received_event.md`: mark the drop as fixed.
+- [x] SDK discoverability (CLAUDE.md rule). Done: README + OpenAPI sentence, SDK bumped to **0.53.2** (docs-only). The SDK README's reply-automation section (~"within about a minute of the text arriving") and `openapi-spec.ts`'s limits description gain one sentence: _EVENT-trigger runs over the 5-run cap are delayed until a slot frees (up to 24 h), not dropped; the daily quota still drops._
+- [ ] Memory `project_sms_received_event.md`: mark the drop as fixed (after merge).
 
 ## Verification after deploy (prod, read-only)
 
-- [ ] Dispatcher logs show no `CONCURRENCY_LIMIT` "dropped" errors. Any `CONCURRENCY_DEFERRED` skip is followed, within minutes, by an execution whose temporal id carries that event id.
+- [ ] Publish SDK 0.53.2: tag `sdk-python-v0.53.2` on the merge commit.
+- [ ] Dispatcher logs show no `CONCURRENCY_DROPPED` errors. Any `CONCURRENCY_DEFERRED` skip is followed, within minutes, by an execution whose temporal id carries that event id.
 - [ ] On the next NW burst of more than 5 texts (or a deliberate one: 6+ test texts from a test phone to NW's number, _only with user OK_), every `sms.received` gets an `nw_pulse_reply` execution, and `dispatched_at` stays null until its run starts.
 - [ ] `d7003e2a` itself is NOT replayed. It is already stamped, and re-processing a 1-day-old reply is the user's call (a one-row `UPDATE … SET dispatched_at = NULL` would redeliver it).
 
@@ -70,7 +72,12 @@ A deferral emits a new skip reason, `CONCURRENCY_DEFERRED`. It fires about once 
 2. **Daily quota:** keep dropping.
 3. **Replay `d7003e2a`:** no.
 
+## Known gaps (documented in the module header)
+
+- **Cap and quota at once.** The run path checks the cap BEFORE the daily quota. An event arriving while its tenant is at both parks instead of dropping, and may fire after the quota resets at midnight UTC. It releases in batches of at most 5, so there is no herd.
+- **Curated triggers wait with the event.** The query exclusion holds the whole event, so a curated (STDLIB) trigger on a capped tenant's event waits too. Only the in-tick short-circuit is curated-aware.
+
 ## Out of scope
 
 - Raising or per-tenant-configuring the cap.
-- Alarming on `CONCURRENCY_LIMIT` drops. Today it is dashboard-only (`monitoring-stack.ts` Workflows dashboard); an alarm can follow once the drop path is rare.
+- Alarming on `CONCURRENCY_DROPPED`. Today it is dashboard-only (`monitoring-stack.ts` Workflows dashboard); an alarm can follow once the drop path is rare.

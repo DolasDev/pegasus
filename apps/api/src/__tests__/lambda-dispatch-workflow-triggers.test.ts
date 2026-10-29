@@ -1343,7 +1343,7 @@ describe('concurrency-cap back-pressure', () => {
     )
   })
 
-  it('an event parked past 24h is stamped as dropped with CONCURRENCY_LIMIT', async () => {
+  it('an event parked past 24h is stamped as dropped with CONCURRENCY_DROPPED', async () => {
     mockExecutionGroupBy.mockResolvedValue([{ tenantId: 'tenant-1', _count: { _all: 5 } }])
     mockDomainEventFindMany.mockResolvedValue([
       eventRow({ occurredAt: new Date(now.getTime() - DAY_MS - 60_000) }),
@@ -1359,9 +1359,61 @@ describe('concurrency-cap back-pressure', () => {
     expect(emittedMetrics()).toContainEqual(
       expect.objectContaining({
         MetricName: 'WorkflowTriggerSkipped',
-        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_LIMIT' }],
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_DROPPED' }],
       }),
     )
+  })
+
+  it('a full batch that newly parks a tenant re-queries without it, so other tenants drain this tick', async () => {
+    // Pass 1: tenant-1 is one run under the cap, so its 100 parked events load
+    // and fill the batch. Pass 2 excludes it and finds tenant-2's event.
+    mockDomainEventFindMany
+      .mockResolvedValueOnce(
+        Array.from({ length: 100 }, (_, i) => eventRow({ id: `evt-${i + 1}` })),
+      )
+      .mockResolvedValueOnce([eventRow({ id: 'evt-other', tenantId: 'tenant-2' })])
+    mockTriggerFindMany.mockImplementation((args: { where: { tenantId?: string } }) =>
+      Promise.resolve(
+        args.where.tenantId === 'tenant-2'
+          ? [triggerRow({ id: 'trg-other', tenantId: 'tenant-2', workflowId: 'wf-curated' })]
+          : args.where.tenantId === 'tenant-1'
+            ? [triggerRow({ workflowId: 'wf-custom' })]
+            : [],
+      ),
+    )
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(mockDomainEventFindMany).toHaveBeenCalledTimes(2)
+    expect(mockDomainEventFindMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          dispatchedAt: null,
+          NOT: {
+            tenantId: { in: ['tenant-1'] },
+            occurredAt: { gt: new Date(now.getTime() - DAY_MS) },
+          },
+        },
+      }),
+    )
+    expect(out.scanned).toBe(101)
+    // tenant-2's event fired and was stamped; tenant-1's 100 stayed parked.
+    expect(out.fired).toBe(1)
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    // Pass 2 was not full: no backlog alarm.
+    expect(emittedMetrics().map((m) => m.MetricName)).not.toContain('DomainEventDispatchBacklog')
+  })
+
+  it('a full batch that parks nothing new does not re-query', async () => {
+    mockDomainEventFindMany.mockResolvedValueOnce(
+      Array.from({ length: 100 }, (_, i) => eventRow({ id: `evt-${i + 1}` })),
+    )
+
+    await handler()
+
+    expect(mockDomainEventFindMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics().map((m) => m.MetricName)).toContain('DomainEventDispatchBacklog')
   })
 
   it('a parked built-in event derives no custom events until it is stamped', async () => {
