@@ -91,6 +91,33 @@ WORKFLOW_MODULE = textwrap.dedent(
             return {"ran": True, "workflow_id": info.workflow_id}
 
 
+    @activity.defn(name="read_info")
+    async def read_info_activity() -> dict:
+        # activity.info() needs an activity context; the offline harness runs
+        # activities inside ActivityEnvironment, so the runner must as well.
+        info = activity.info()
+        activity.heartbeat("still going")
+        return {"activity_type": info.activity_type, "workflow_id": info.workflow_id}
+
+
+    @activity.defn
+    def read_info_sync() -> str:
+        return activity.info().activity_type
+
+
+    @pegasus_workflow(name="activity_info_wf", version="1.0.0")
+    class ActivityInfoWorkflow:
+        @workflow.run
+        async def run(self, payload: dict) -> dict:
+            info = await workflow.execute_activity(
+                read_info_activity, start_to_close_timeout=None,
+            )
+            sync_type = await workflow.execute_activity(
+                read_info_sync, start_to_close_timeout=None,
+            )
+            return {**info, "sync_type": sync_type}
+
+
     @pegasus_workflow(name="waiter_wf", version="1.0.0")
     class WaiterWorkflow:
         @workflow.run
@@ -232,6 +259,27 @@ def test_driver_dry_run_workflow_using_logger_and_info(tmp_path: Path) -> None:
     assert verdict is not None and verdict["ok"] is True
     assert verdict["result"]["dryRun"] is True
     assert verdict["result"]["return"] == {"ran": True, "workflow_id": "dry-run"}
+
+
+def test_driver_runs_activities_inside_an_activity_context(tmp_path: Path) -> None:
+    # activity.info() raised RuntimeError("Not in activity context") in the
+    # runner while the SDK harness (ActivityEnvironment) let it pass — tests
+    # green, first dry run red. Both async and sync activities now get a context.
+    for dry_run in (False, True):
+        proc, verdict = _run_driver(
+            tmp_path,
+            entry_point="fixture_wf.workflow:ActivityInfoWorkflow",
+            payload={"executionId": "e1", "input": {}},
+            dry_run=dry_run,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert verdict is not None and verdict["ok"] is True, verdict
+        result = verdict["result"]["return"] if dry_run else verdict["result"]
+        assert result == {
+            "activity_type": "read_info",
+            "workflow_id": "dry-run",
+            "sync_type": "read_info_sync",
+        }
 
 
 def test_driver_reports_wait_condition_as_unsupported(tmp_path: Path) -> None:

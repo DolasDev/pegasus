@@ -13,8 +13,11 @@ import { registerTestErrorHandler } from '../test-helpers'
 import { seedPrincipal } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
 
-const { mockSend } = vi.hoisted(() => ({ mockSend: vi.fn() }))
-vi.mock('../services/email/outbound', () => ({ sendTenantEmail: mockSend }))
+const { mockSend, mockCheck } = vi.hoisted(() => ({ mockSend: vi.fn(), mockCheck: vi.fn() }))
+vi.mock('../services/email/outbound', () => ({
+  sendTenantEmail: mockSend,
+  checkEmailRecipients: mockCheck,
+}))
 vi.mock('../gateways/pegii-email.gateway', () => ({ resolveEmailGateway: vi.fn() }))
 vi.mock('../middleware/dual-auth', () => ({
   dualAuthMiddleware: vi.fn(async (_c, next) => {
@@ -133,6 +136,59 @@ describe('POST /email/send', () => {
 
   it('403 for a persona without SendEmail', async () => {
     const res = await buildApp(['workflow_developer']).request('/email/send', post(MAIL))
+    expect(res.status).toBe(403)
+  })
+})
+
+describe('POST /email/check-recipients', () => {
+  it('200 ok when every recipient would be accepted; to + cc are checked together', async () => {
+    mockCheck.mockResolvedValue({ kind: 'ok' })
+    const res = await buildApp().request(
+      '/email/check-recipients',
+      post({ to: 'coord@nwmovers.test', cc: ['lead@nwmovers.test'] }),
+    )
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual({ ok: true, reason: null, disallowed: [] })
+    expect(mockCheck.mock.calls[0]![2]).toEqual(['coord@nwmovers.test', 'lead@nwmovers.test'])
+    // A check never sends.
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it('200 with the reason and the refused addresses — a verdict, not an error', async () => {
+    mockCheck.mockResolvedValueOnce({ kind: 'recipient_not_allowed', recipients: ['x@gmail.test'] })
+    let res = await buildApp().request('/email/check-recipients', post({ to: ['x@gmail.test'] }))
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual({
+      ok: false,
+      reason: 'RECIPIENT_NOT_ALLOWED',
+      disallowed: ['x@gmail.test'],
+    })
+
+    mockCheck.mockResolvedValueOnce({ kind: 'not_configured' })
+    res = await buildApp().request('/email/check-recipients', post({ to: 'a@nwmovers.test' }))
+    expect((await json(res))['data']).toEqual({
+      ok: false,
+      reason: 'NOT_CONFIGURED',
+      disallowed: [],
+    })
+
+    mockCheck.mockResolvedValueOnce({ kind: 'too_many_recipients' })
+    res = await buildApp().request('/email/check-recipients', post({ to: 'a@nwmovers.test' }))
+    expect(((await json(res))['data'] as JsonBody)['reason']).toBe('TOO_MANY_RECIPIENTS')
+  })
+
+  it('400 on a malformed body', async () => {
+    for (const bad of [{}, { to: 'not-an-address' }, { to: 'a@b.test', subject: 'x' }]) {
+      expect((await buildApp().request('/email/check-recipients', post(bad))).status).toBe(400)
+    }
+    expect(mockCheck).not.toHaveBeenCalled()
+  })
+
+  it('403 for a persona without SendEmail', async () => {
+    const res = await buildApp(['workflow_developer']).request(
+      '/email/check-recipients',
+      post({ to: 'a@nwmovers.test' }),
+    )
     expect(res.status).toBe(403)
   })
 })

@@ -24,7 +24,7 @@ function config(key: string, over: Partial<Req> = {}): Req {
 }
 
 function workflows(
-  ...rows: Array<{ id: string; name: string; requirements: Req[] }>
+  ...rows: Array<{ id: string; name: string; requirements: Req[]; current?: boolean }>
 ): WorkflowRequirementsSummary {
   return {
     workflows: rows.map((r) => ({
@@ -32,6 +32,7 @@ function workflows(
       name: r.name,
       version: '1.0.0',
       visibility: 'TENANT' as const,
+      current: r.current,
       requirements: r.requirements,
       missingCount: r.requirements.filter((x) => !x.present).length,
     })),
@@ -64,6 +65,34 @@ describe('buildVariableUsageIndex', () => {
       { type: 'workflow', id: 'wf1', name: 'nightly-sync' },
       { type: 'integration', id: 'sirva', name: 'Sirva ADE' },
     ])
+  })
+
+  it("skips a superseded version's keys — they are not still needed", () => {
+    // weichert v0.4.0 (still published) declared SEND_API_KEY in `global`; the
+    // current v0.7.0 declares a `weichert`-group key the tenant has set.
+    const index = buildVariableUsageIndex(
+      workflows(
+        {
+          id: 'w070',
+          name: 'weichert',
+          current: true,
+          requirements: [secret('WEICHERT_ID', { group: 'weichert', present: true })],
+        },
+        { id: 'w040', name: 'weichert', current: false, requirements: [secret('SEND_API_KEY')] },
+      ),
+    )
+    expect(missingVariables(index)).toEqual([])
+    expect(consumersOf(index, 'SECRET', 'global', 'SEND_API_KEY')).toEqual([])
+    expect(consumersOf(index, 'SECRET', 'weichert', 'WEICHERT_ID')).toEqual([
+      { type: 'workflow', id: 'w070', name: 'weichert' },
+    ])
+  })
+
+  it('treats a row with no `current` field (older API) as current', () => {
+    const index = buildVariableUsageIndex(
+      workflows({ id: 'wf1', name: 'a', requirements: [secret('K')] }),
+    )
+    expect(missingVariables(index).map((u) => u.key)).toEqual(['K'])
   })
 
   it('dedupes a workflow that appears once per published version', () => {

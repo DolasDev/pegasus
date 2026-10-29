@@ -192,7 +192,8 @@ export type StartWorkflowExecutionOptions = {
    * + envelope). Only supported on the TENANT_RUNNER lane — the STDLIB lane runs
    * real activities with no interception seam, so a dry-run there is rejected
    * (DRY_RUN_UNSUPPORTED) rather than silently performing side effects. Defaults
-   * false. Not threaded through retry/dispatcher — those always run live.
+   * false. The dispatcher passes a trigger's `dryRun` flag; retry always runs
+   * live.
    */
   dryRun?: boolean
 }
@@ -345,13 +346,15 @@ export async function provisionRuntimeServiceAccount(
 async function countTenantRunnerActiveExecutions(
   db: PrismaClient,
   tenantId: string,
+  includeDryRuns = false,
 ): Promise<number> {
   return db.workflowExecution.count({
     where: {
       tenantId,
       status: { in: ['QUEUED', 'RUNNING'] },
-      // Dry-runs are benign rehearsals and never count against the cap.
-      dryRun: false,
+      // A manual dry run never counts against a LIVE start's cap. A
+      // trigger-fired dry start counts every run (see the call site).
+      ...(includeDryRuns ? {} : { dryRun: false }),
       workflow: {
         executable: true,
         name: { notIn: [...CURATED_WORKFLOW_NAMES] },
@@ -381,13 +384,15 @@ async function countTenantRunnerDailyExecutions(
   db: PrismaClient,
   tenantId: string,
   now: Date,
+  includeDryRuns = false,
 ): Promise<number> {
   return db.workflowExecution.count({
     where: {
       tenantId,
       createdAt: { gte: utcDayStart(now) },
-      // Dry-runs are benign rehearsals and never consume daily quota.
-      dryRun: false,
+      // A manual dry run never consumes a LIVE start's quota. A trigger-fired
+      // dry start counts every run (see the call site).
+      ...(includeDryRuns ? {} : { dryRun: false }),
       workflow: {
         executable: true,
         name: { notIn: [...CURATED_WORKFLOW_NAMES] },
@@ -525,14 +530,20 @@ export async function startWorkflowExecution(
     }
     if (namespaceRow?.status === 'ACTIVE') temporalNamespace = namespaceRow.namespace
 
-    // Dry-runs are benign rehearsals: never capped or quota-limited (and they
-    // don't count toward either — see the count helpers' dryRun:false filter),
-    // so a tenant can always rehearse even at the real-run ceiling.
-    if (!opts.dryRun) {
+    // A MANUAL dry run is a one-off rehearsal: never capped or quota-limited,
+    // and never counted toward either for live starts (the count helpers'
+    // dryRun:false filter), so a tenant can always rehearse at the ceiling.
+    // A TRIGGER-fired dry run is different — a dry-run trigger on a busy event
+    // starts a runner per event — so it is capped like a live start, counting
+    // live AND dry runs, and the dispatcher sees CONCURRENCY_LIMIT /
+    // DAILY_QUOTA_EXCEEDED for it as for any trigger.
+    const manualDryRun = opts.dryRun === true && provenance.triggerSource === 'USER'
+    if (!manualDryRun) {
       const now = new Date()
+      const includeDryRuns = opts.dryRun === true
 
       // (b) Concurrency cap
-      const activeConcurrent = await countTenantRunnerActiveExecutions(db, tenantId)
+      const activeConcurrent = await countTenantRunnerActiveExecutions(db, tenantId, includeDryRuns)
       if (activeConcurrent >= TENANT_RUNNER_CONCURRENCY_CAP) {
         logger.warn('TENANT_RUNNER concurrency cap reached', {
           tenantId,
@@ -546,7 +557,7 @@ export async function startWorkflowExecution(
       }
 
       // (c) Daily quota
-      const dailyCount = await countTenantRunnerDailyExecutions(db, tenantId, now)
+      const dailyCount = await countTenantRunnerDailyExecutions(db, tenantId, now, includeDryRuns)
       const quota = dailyQuotaLimit()
       if (dailyCount >= quota) {
         logger.warn('TENANT_RUNNER daily quota reached', {

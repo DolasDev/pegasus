@@ -3516,3 +3516,21 @@ naming `syncToken` (or naming nothing) counts as stale. Related RC facts, both p
   `/aws/lambda/<fn>`. Read `LoggingConfig.LogGroup` from `get-function-configuration`.
 
 Verify a new event type by **counting rows in `domain_events`** on prod, not by the deploy going green.
+
+## The offline harness and the tenant runner must give activities the same context
+
+`pegasus_workflows.testing.run_activity` runs an activity inside Temporal's `ActivityEnvironment`.
+The tenant runner's subprocess driver called the activity bare. So `activity.info()` passed every
+test, then raised `RuntimeError: Not in activity context` on the first dry run (external authoring
+feedback, 2026-10-28). The driver now uses the same `ActivityEnvironment`
+(`subprocess_driver._activity_environment`), with the same synthetic ids as its `workflow.info()`
+stand-in. Whenever the driver patches or stubs a Temporal primitive, the harness has to match it, or
+a green test means nothing about the runner.
+
+## Every published version is its own workflow row — count the current one
+
+`listForTenant` returns every non-retired `(name, version)` row, GLOBAL included. Anything that sums
+across them (the requirements summary, the Configs page "keys still needed") reports what a
+**superseded** version declared: NW saw weichert v0.4.0's `SEND_*` secrets as missing long after
+v0.5.0 dropped them. Use `lib/workflow-current-version.ts`. A row is current if it is the newest
+semver of its `(owner tenant, name)`, or if one of the caller's enabled triggers still runs it.
