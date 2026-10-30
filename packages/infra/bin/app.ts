@@ -142,14 +142,15 @@ const FEEDBACK_PUBLIC_WEB_URL: Record<Exclude<EnvName, 'dev'>, string> = {
 const feedbackEnabled = envName === 'staging' || envName === 'prod'
 const feedbackPublicWebUrl = envName === 'dev' ? undefined : FEEDBACK_PUBLIC_WEB_URL[envName]
 
-// ── Crew-leader links (staging only, for now) ────────────────────────────────
+// ── Crew-leader links (staging + prod) ───────────────────────────────────────
 // Ungates CREW_LEADER_LINK_ENABLED on the api Lambda: the public
 // /api/public/v1/crew-link surface and the driver's share action (both 404 /
 // hidden when off). The link URL is `<tenant SPA origin>/c/<token>` — the same
 // origin as the feedback link. Also needs the tenant's RingCentral connection
-// to text the code, so it is inert for a tenant without one. Prod follows once
-// staging is checked: add 'prod' here.
-const crewLeaderLinkEnabled = envName === 'staging'
+// to text the code, so it is inert for a tenant without one (in prod today,
+// every tenant but NW). Prod turned on at Steve's request once #900 deployed
+// green (2026-10-30).
+const crewLeaderLinkEnabled = envName === 'staging' || envName === 'prod'
 const crewLeaderLinkPublicWebUrl = feedbackPublicWebUrl
 
 // ── Cloud-issued pegII tokens (cloud identity I1) ────────────────────────────
