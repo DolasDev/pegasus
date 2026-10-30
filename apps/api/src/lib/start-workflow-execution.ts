@@ -333,7 +333,8 @@ export async function provisionRuntimeServiceAccount(
 // ---------------------------------------------------------------------------
 
 /**
- * Count of this tenant's QUEUED and RUNNING TENANT_RUNNER-lane executions.
+ * The executions that count against the concurrency cap: QUEUED and RUNNING
+ * TENANT_RUNNER-lane runs.
  *
  * "TENANT_RUNNER-lane" means the workflow was non-curated + executable.
  * Both conditions are checked explicitly:
@@ -343,24 +344,46 @@ export async function provisionRuntimeServiceAccount(
  *     own finalize, so omitting this filter would count STDLIB runs against
  *     the TENANT_RUNNER cap (false throttle).
  */
+function tenantRunnerActiveWhere(includeDryRuns = false): Prisma.WorkflowExecutionWhereInput {
+  return {
+    status: { in: ['QUEUED', 'RUNNING'] },
+    // A manual dry run never counts against a LIVE start's cap. A
+    // trigger-fired dry start counts every run (see the call site).
+    ...(includeDryRuns ? {} : { dryRun: false }),
+    workflow: {
+      executable: true,
+      name: { notIn: [...CURATED_WORKFLOW_NAMES] },
+    },
+  }
+}
+
+/** Count of this tenant's executions counting against the concurrency cap. */
 async function countTenantRunnerActiveExecutions(
   db: PrismaClient,
   tenantId: string,
   includeDryRuns = false,
 ): Promise<number> {
   return db.workflowExecution.count({
-    where: {
-      tenantId,
-      status: { in: ['QUEUED', 'RUNNING'] },
-      // A manual dry run never counts against a LIVE start's cap. A
-      // trigger-fired dry start counts every run (see the call site).
-      ...(includeDryRuns ? {} : { dryRun: false }),
-      workflow: {
-        executable: true,
-        name: { notIn: [...CURATED_WORKFLOW_NAMES] },
-      },
-    },
+    where: { tenantId, ...tenantRunnerActiveWhere(includeDryRuns) },
   })
+}
+
+/**
+ * Every tenant currently at (or over) the TENANT_RUNNER concurrency cap — one
+ * groupBy, same filter as the per-start check. The trigger dispatcher excludes
+ * these tenants' young events at its query, so events parked behind the cap
+ * never fill its global oldest-first batch (GOTCHAS: "A global oldest-first
+ * outbox drain + an infinite park"). Counts LIVE runs only: a tenant at the
+ * live cap rejects every runner start, live or dry (a dry trigger's start
+ * counts live runs too).
+ */
+export async function findTenantsAtRunnerConcurrencyCap(db: PrismaClient): Promise<string[]> {
+  const rows = await db.workflowExecution.groupBy({
+    by: ['tenantId'],
+    where: tenantRunnerActiveWhere(),
+    _count: { _all: true },
+  })
+  return rows.filter((r) => r._count._all >= TENANT_RUNNER_CONCURRENCY_CAP).map((r) => r.tenantId)
 }
 
 /**
