@@ -43,6 +43,8 @@ function job(overrides: Partial<LocalJobRow> = {}): LocalJobRow {
     is_confirmed: 'Y',
     eta_minimum: null,
     eta_maximum: null,
+    start_time: null,
+    end_time: null,
     service_at_orig: 'Y',
     service_at_dest: 'N',
     OriginLocation1: null,
@@ -158,6 +160,71 @@ describe('localJobItems', () => {
       CATALOG,
     )
     expect(i?.arrivalWindow).toEqual({ start: '08:00', end: '10:30', tz: null })
+  })
+
+  // Legacy stores every job time on 1900-01-01; "not set" is midnight, never NULL.
+  const T = (hhmm: string) => `1900-01-01T${hhmm}:00.000Z`
+
+  it('prefers a set ETA over the crew start time', () => {
+    const [i] = localJobItems(
+      job({
+        eta_minimum: T('10:00'),
+        eta_maximum: T('12:00'),
+        start_time: T('08:00'),
+        end_time: T('08:00'),
+      }),
+      PLACES,
+      CATALOG,
+    )
+    expect(i?.arrivalWindow).toEqual({ start: '10:00', end: '12:00', tz: null })
+  })
+
+  it('treats a midnight ETA as unset and falls back to the crew start time', () => {
+    // NW live check 2026-10-28: eta 00:00–01:00 is "no ETA", not a window.
+    const [single] = localJobItems(
+      job({
+        eta_minimum: T('00:00'),
+        eta_maximum: T('01:00'),
+        start_time: T('09:00'),
+        end_time: T('09:00'),
+      }),
+      PLACES,
+      CATALOG,
+    )
+    expect(single?.arrivalWindow).toEqual({ start: '09:00', end: '09:00', tz: null })
+
+    const [range] = localJobItems(
+      job({
+        eta_minimum: T('00:00'),
+        eta_maximum: T('01:00'),
+        start_time: T('07:00'),
+        end_time: T('09:30'),
+      }),
+      PLACES,
+      CATALOG,
+    )
+    expect(range?.arrivalWindow).toEqual({ start: '07:00', end: '09:30', tz: null })
+  })
+
+  it('never ends a window before it starts, and has none when both times are unset', () => {
+    const [backwards] = localJobItems(
+      job({ start_time: T('09:00'), end_time: T('08:00') }),
+      PLACES,
+      CATALOG,
+    )
+    expect(backwards?.arrivalWindow).toEqual({ start: '09:00', end: '09:00', tz: null })
+
+    const [none] = localJobItems(
+      job({
+        eta_minimum: T('00:00'),
+        eta_maximum: T('01:00'),
+        start_time: T('00:00'),
+        end_time: T('00:00'),
+      }),
+      PLACES,
+      CATALOG,
+    )
+    expect(none?.arrivalWindow).toBeNull()
   })
 
   it('lists both driver slots in the crew numbering space, never the longhaul one', () => {
