@@ -2243,6 +2243,26 @@ parks a tenant re-queries without it, up to 3 passes per tick. An in-tick set al
 one rejected start. **General rule:** for each outbox skip
 reason, ask "is this _failed_ or _not yet_?" A stamp is only right for _failed_.
 
+## The concurrency cap is only correct with ONE trigger dispatcher
+
+`startWorkflowExecution` checks the 5-run TENANT_RUNNER cap by **counting** QUEUED/RUNNING runs,
+then inserts. Nothing reserves the slot, so two dispatchers running at once can each count 4,
+each start one, and leave the tenant at 6. While the dispatcher ran only on the 1-minute
+EventBridge rule this never came up. Once capture and finished runs started **kicking** it
+asynchronously (`lib/trigger-dispatch-kick.ts`), overlap became normal.
+
+The fix is `reservedConcurrentExecutions: 1` on `DispatchWorkflowTriggersFunction` (`api-stack.ts`).
+A kick that lands mid-tick is throttled, and Lambda's async retry redelivers it moments later.
+Its `EventInvokeConfig` (`retryAttempts: 0`, `maxEventAge: 60 s`) drops a kick that waited a whole
+minute: the next scheduled tick does the same work. **Don't remove the reservation** without
+first making the cap check atomic, for example with a reservation row or an advisory lock taken
+around the count and insert. The manual `POST /workflows/:id/run` path still has the old small
+race, which is unchanged.
+
+Also: **await** a fire-and-forget invoke on Lambda. An un-awaited promise is frozen when the handler
+returns, so the `InvokeCommand` may never be sent. Bound it with a timeout instead (the kick helper
+races a 2 s timer and aborts the SDK call).
+
 ## RingCentral FSync silently caps at 250 records
 
 **Symptom (prod 2026-09-25):** a tenant connected with a 90-day backfill window; exactly 250 messages

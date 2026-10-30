@@ -3,6 +3,18 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.54.2
+
+### Docs — event triggers start in seconds
+
+- The README's text-reply section now says an Automation triggered by
+  `sms.received` typically starts within about 10–15 seconds of the text
+  arriving (at most about a minute), not "within about a minute". When a burst
+  waits behind the 5-run concurrency cap, the next text fires within seconds of
+  a run finishing. The platform now dispatches as soon as a text is captured or
+  a run finishes, with the once-a-minute sweep as the fallback. The SDK has no
+  code change.
+
 ## 0.54.1
 
 ### Docs — event triggers wait behind the concurrency cap

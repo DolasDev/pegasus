@@ -130,7 +130,22 @@ vi.mock('../db', () => {
   return { db }
 })
 
+// Pass-through spies: the real phases run, but a kicked tick can be shown to
+// skip them.
+vi.mock('../lib/temporal-namespace-cutover', async (importOriginal) => {
+  const actual = await importOriginal<typeof CutoverModule>()
+  return { ...actual, advanceNamespaceMigrations: vi.fn(actual.advanceNamespaceMigrations) }
+})
+vi.mock('../lib/tenant-runner', async (importOriginal) => {
+  const actual = await importOriginal<typeof TenantRunnerModule>()
+  return { ...actual, sweepTenantRunners: vi.fn(actual.sweepTenantRunners) }
+})
+
 import { handler, matchesTriggerFilter } from '../lambda-dispatch-workflow-triggers'
+import { advanceNamespaceMigrations } from '../lib/temporal-namespace-cutover'
+import { sweepTenantRunners } from '../lib/tenant-runner'
+import type * as CutoverModule from '../lib/temporal-namespace-cutover'
+import type * as TenantRunnerModule from '../lib/tenant-runner'
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -311,6 +326,30 @@ describe('lambda-dispatch-workflow-triggers', () => {
       orderBy: { occurredAt: 'asc' },
       take: 100,
     })
+  })
+
+  it('a kicked tick dispatches events only: no schedule sweep, no drains, no runner sweep', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    setTriggers({ event: [triggerRow()] })
+
+    const out = await handler({ source: 'kick', reason: 'sms_received' })
+
+    expect(out.fired).toBe(1)
+    expect(out.dispatched).toBe(1)
+    expect(mockTriggerFindMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { kind: 'SCHEDULE', enabled: true } }),
+    )
+    expect(advanceNamespaceMigrations).not.toHaveBeenCalled()
+    expect(sweepTenantRunners).not.toHaveBeenCalled()
+  })
+
+  it('a scheduled (EventBridge) tick runs every phase', async () => {
+    await handler({ source: 'aws.events', 'detail-type': 'Scheduled Event' })
+    expect(mockTriggerFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { kind: 'SCHEDULE', enabled: true } }),
+    )
+    expect(advanceNamespaceMigrations).toHaveBeenCalledTimes(1)
+    expect(sweepTenantRunners).toHaveBeenCalledTimes(1)
   })
 
   it('an idle tick only sweeps SCHEDULE triggers and emits no metrics', async () => {

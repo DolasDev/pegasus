@@ -11,6 +11,7 @@ const h = vi.hoisted(() => {
     readOAuthConfig: vi.fn(),
     syncConnection: vi.fn(),
     listActiveConnections: vi.fn(),
+    kickTriggerDispatcher: vi.fn(),
     RateLimitError,
   }
 })
@@ -22,6 +23,10 @@ vi.mock('../services/ringcentral/sync', () => ({ syncConnection: h.syncConnectio
 vi.mock('../services/ringcentral/client', () => ({ RateLimitError: h.RateLimitError }))
 vi.mock('../repositories/messaging.repository', () => ({
   listActiveConnections: h.listActiveConnections,
+}))
+
+vi.mock('../lib/trigger-dispatch-kick', () => ({
+  kickTriggerDispatcher: h.kickTriggerDispatcher,
 }))
 
 import { handler } from '../lambda-ringcentral-sync'
@@ -71,5 +76,25 @@ describe('lambda-ringcentral-sync', () => {
     h.syncConnection.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({ captured: 0 })
     await handler()
     expect(h.syncConnection).toHaveBeenCalledTimes(2)
+  })
+
+  it('kicks the trigger dispatcher once when any connection emitted sms.received', async () => {
+    h.readOAuthConfig.mockReturnValue(CONFIG)
+    h.listActiveConnections.mockResolvedValue([{ id: 'a' }, { id: 'b' }])
+    h.syncConnection
+      .mockResolvedValueOnce({ captured: 1, emitted: 1 })
+      .mockResolvedValueOnce({ captured: 2, emitted: 1 })
+    h.kickTriggerDispatcher.mockResolvedValue(true)
+    await handler()
+    expect(h.kickTriggerDispatcher).toHaveBeenCalledTimes(1)
+    expect(h.kickTriggerDispatcher).toHaveBeenCalledWith('sms_received')
+  })
+
+  it('does not kick when no connection emitted', async () => {
+    h.readOAuthConfig.mockReturnValue(CONFIG)
+    h.listActiveConnections.mockResolvedValue([{ id: 'a' }])
+    h.syncConnection.mockResolvedValue({ captured: 5, emitted: 0 })
+    await handler()
+    expect(h.kickTriggerDispatcher).not.toHaveBeenCalled()
   })
 })

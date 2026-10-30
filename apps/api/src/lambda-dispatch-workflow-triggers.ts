@@ -31,6 +31,22 @@
 // skipped — the next tick evaluates ITS OWN minute only. Domain events, by
 // contrast, are durable outbox rows and are never lost to a missed tick.
 //
+// KICKS (latency): EventBridge runs the full tick every minute, the safety
+// net. Between ticks, callers that just made trigger work possible invoke this
+// Lambda asynchronously with `{ source: 'kick' }` (lib/trigger-dispatch-kick.ts):
+// RingCentral capture after committing a new `sms.received`, and the broker
+// PATCH when a TENANT_RUNNER run finishes while its tenant has events waiting.
+// A kicked invocation runs PHASE 1 only — no namespace drains, no SCHEDULE
+// sweep (a kick never evaluates a fire-minute), no runner sweep — so an event
+// fires seconds after capture instead of up to a minute later.
+//
+// ONE DISPATCHER AT A TIME: CDK gives this function reserved concurrency 1.
+// The concurrency cap is counted before a start, not reserved, so two
+// overlapping dispatchers could each see the same free slots and together
+// exceed the cap. With one at a time, a kick that lands mid-tick is throttled
+// and Lambda's async retry redelivers it moments later. Don't lift the
+// reservation without making the cap check atomic (GOTCHAS).
+//
 // BACK-PRESSURE (concurrency cap): an EVENT trigger that hits the tenant's
 // TENANT_RUNNER concurrency cap leaves its event undispatched, so it fires once
 // a run finishes — the cap delays a burst, it doesn't drop it (until 2026-10-29
@@ -553,7 +569,15 @@ async function fireTrigger(opts: {
   }
 }
 
-export async function handler(): Promise<{
+/** A kick (lib/trigger-dispatch-kick.ts) vs anything else — EventBridge's
+ * scheduled event, or no payload — which runs the full tick. */
+function isKick(event: unknown): boolean {
+  return (
+    typeof event === 'object' && event !== null && (event as { source?: unknown }).source === 'kick'
+  )
+}
+
+export async function handler(event?: unknown): Promise<{
   scanned: number
   dispatched: number
   fired: number
@@ -574,6 +598,11 @@ export async function handler(): Promise<{
     counts.skipped.set(reason, (counts.skipped.get(reason) ?? 0) + 1)
   }
   const workflowRepo = createWorkflowRepository(db)
+  // KICKED: capture or a finished run asked for an immediate drain. Only the
+  // domain-event phase runs — the namespace drains, the SCHEDULE sweep (a kick
+  // must never evaluate a fire-minute) and the runner sweep stay on the minute
+  // tick, which still runs every phase as the safety net.
+  const kicked = isKick(event)
 
   // ONE fire-minute for the whole tick, fixed BEFORE the event phase: the
   // invocation time truncated to the UTC minute. Computing it up front keeps
@@ -589,15 +618,17 @@ export async function handler(): Promise<{
   // Before the event query, so a tenant that settles now gets its waiting
   // events dispatched this tick. Failure-isolated: a broken pass leaves every
   // migrating tenant migrating (its events wait), never breaks the tick.
-  try {
-    const migration = await advanceNamespaceMigrations(db)
-    if (migration.advanced.length > 0 || migration.waiting.length > 0) {
-      logger.info('Temporal namespace migrations checked', { ...migration })
+  if (!kicked) {
+    try {
+      const migration = await advanceNamespaceMigrations(db)
+      if (migration.advanced.length > 0 || migration.waiting.length > 0) {
+        logger.info('Temporal namespace migrations checked', { ...migration })
+      }
+    } catch (err) {
+      logger.error('Temporal namespace migration pass failed — next tick retries', {
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
-  } catch (err) {
-    logger.error('Temporal namespace migration pass failed — next tick retries', {
-      error: err instanceof Error ? err.message : String(err),
-    })
   }
 
   // Phase 3b.2: a tenant mid-cutover or mid-rollback takes no new runner work,
@@ -815,93 +846,97 @@ export async function handler(): Promise<{
   const fireMinuteIso = fireMinute.toISOString()
   let schedulesEvaluated = 0
 
-  try {
-    // Cross-tenant, like the event phase: every tenant's enabled SCHEDULE
-    // triggers in one sweep. Disabled rows are filtered at the query.
-    const scheduleTriggers = await db.workflowTrigger.findMany({
-      where: { kind: 'SCHEDULE', enabled: true },
-      orderBy: { createdAt: 'asc' },
-    })
-    schedulesEvaluated = scheduleTriggers.length
+  if (!kicked) {
+    try {
+      // Cross-tenant, like the event phase: every tenant's enabled SCHEDULE
+      // triggers in one sweep. Disabled rows are filtered at the query.
+      const scheduleTriggers = await db.workflowTrigger.findMany({
+        where: { kind: 'SCHEDULE', enabled: true },
+        orderBy: { createdAt: 'asc' },
+      })
+      schedulesEvaluated = scheduleTriggers.length
 
-    for (const trigger of scheduleTriggers) {
-      // Same per-trigger failure isolation as the event phase.
-      try {
-        const schedule = trigger.cronExpression ? parseCronExpression(trigger.cronExpression) : null
-        if (!schedule) {
-          // Rows predating the Unit-4 parser-backed create/update validation
-          // may hold expressions the old charset regex allowed — they must
-          // never crash the tick.
-          skip('INVALID_CRON')
-          logger.warn('Trigger cron expression is unparseable — skipping', {
-            triggerId: trigger.id,
-            tenantId: trigger.tenantId,
-            cronExpression: trigger.cronExpression,
+      for (const trigger of scheduleTriggers) {
+        // Same per-trigger failure isolation as the event phase.
+        try {
+          const schedule = trigger.cronExpression
+            ? parseCronExpression(trigger.cronExpression)
+            : null
+          if (!schedule) {
+            // Rows predating the Unit-4 parser-backed create/update validation
+            // may hold expressions the old charset regex allowed — they must
+            // never crash the tick.
+            skip('INVALID_CRON')
+            logger.warn('Trigger cron expression is unparseable — skipping', {
+              triggerId: trigger.id,
+              tenantId: trigger.tenantId,
+              cronExpression: trigger.cronExpression,
+            })
+            continue
+          }
+
+          // Not due this minute — the overwhelmingly common case; no metric.
+          if (!cronMatchesMinute(schedule, fireMinute)) {
+            continue
+          }
+
+          // Overlap policy: skip this tick if a prior run of THIS trigger is still
+          // in-flight (QUEUED/RUNNING), rather than piling up concurrent duplicates
+          // when a run exceeds the interval. The deterministic-id dedup below only
+          // guards the SAME fire-minute; this guards across minutes. The [status]
+          // index keeps it selective (non-terminal executions are few).
+          const inFlight = await db.workflowExecution.findFirst({
+            where: { triggeredByTriggerId: trigger.id, status: { in: ['QUEUED', 'RUNNING'] } },
+            select: { id: true },
           })
-          continue
-        }
+          if (inFlight) {
+            skip('OVERLAP')
+            logger.info('Scheduled trigger skipped — previous run still in-flight', {
+              triggerId: trigger.id,
+              tenantId: trigger.tenantId,
+              inFlightExecutionId: inFlight.id,
+              fireMinute: fireMinuteIso,
+            })
+            continue
+          }
 
-        // Not due this minute — the overwhelmingly common case; no metric.
-        if (!cronMatchesMinute(schedule, fireMinute)) {
-          continue
-        }
-
-        // Overlap policy: skip this tick if a prior run of THIS trigger is still
-        // in-flight (QUEUED/RUNNING), rather than piling up concurrent duplicates
-        // when a run exceeds the interval. The deterministic-id dedup below only
-        // guards the SAME fire-minute; this guards across minutes. The [status]
-        // index keeps it selective (non-terminal executions are few).
-        const inFlight = await db.workflowExecution.findFirst({
-          where: { triggeredByTriggerId: trigger.id, status: { in: ['QUEUED', 'RUNNING'] } },
-          select: { id: true },
-        })
-        if (inFlight) {
-          skip('OVERLAP')
-          logger.info('Scheduled trigger skipped — previous run still in-flight', {
+          await fireTrigger({
+            workflowRepo,
+            trigger,
+            triggerSource: 'SCHEDULE',
+            dedupeKey: compactUtcMinute(fireMinute),
+            // The scheduled-tick input envelope (sdk-feedback/0023): a documented
+            // shape distinct from EVENT (has `payload`) and manual (has user input)
+            // — a workflow's resolver keys on `scheduledAt`. `schedule` echoes the
+            // cron so the run self-describes its cadence. Lands at `arg["input"]`.
+            input: {
+              scheduledAt: fireMinuteIso,
+              schedule: trigger.cronExpression,
+              triggerId: trigger.id,
+            },
+            counts,
+            skip,
+            logContext: { fireMinute: fireMinuteIso },
+          })
+        } catch (err) {
+          skip('ERROR')
+          logger.error('Scheduled trigger dispatch failed', {
             triggerId: trigger.id,
             tenantId: trigger.tenantId,
-            inFlightExecutionId: inFlight.id,
             fireMinute: fireMinuteIso,
+            error: err instanceof Error ? err.message : String(err),
           })
-          continue
         }
-
-        await fireTrigger({
-          workflowRepo,
-          trigger,
-          triggerSource: 'SCHEDULE',
-          dedupeKey: compactUtcMinute(fireMinute),
-          // The scheduled-tick input envelope (sdk-feedback/0023): a documented
-          // shape distinct from EVENT (has `payload`) and manual (has user input)
-          // — a workflow's resolver keys on `scheduledAt`. `schedule` echoes the
-          // cron so the run self-describes its cadence. Lands at `arg["input"]`.
-          input: {
-            scheduledAt: fireMinuteIso,
-            schedule: trigger.cronExpression,
-            triggerId: trigger.id,
-          },
-          counts,
-          skip,
-          logContext: { fireMinute: fireMinuteIso },
-        })
-      } catch (err) {
-        skip('ERROR')
-        logger.error('Scheduled trigger dispatch failed', {
-          triggerId: trigger.id,
-          tenantId: trigger.tenantId,
-          fireMinute: fireMinuteIso,
-          error: err instanceof Error ? err.message : String(err),
-        })
       }
+    } catch (err) {
+      // SCHEDULE sweep failed to even load — log and let the next tick retry
+      // (its own minute; this fire-minute is forfeit per the no-catch-up
+      // contract). The event phase's results are unaffected.
+      logger.error('Failed to load SCHEDULE triggers — skipping schedule phase this tick', {
+        fireMinute: fireMinuteIso,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
-  } catch (err) {
-    // SCHEDULE sweep failed to even load — log and let the next tick retry
-    // (its own minute; this fire-minute is forfeit per the no-catch-up
-    // contract). The event phase's results are unaffected.
-    logger.error('Failed to load SCHEDULE triggers — skipping schedule phase this tick', {
-      fireMinute: fireMinuteIso,
-      error: err instanceof Error ? err.message : String(err),
-    })
   }
 
   // ── Phase 3: tenant-runner sweep (Phase 3 Unit 9) ─────────────────────────
@@ -914,21 +949,24 @@ export async function handler(): Promise<{
   // construction. Failure-isolated like the phases above: a broken sweep
   // never poisons event dispatch or schedule evaluation.
   let runnersLaunched = 0
-  try {
-    const sweep = await sweepTenantRunners(db)
-    runnersLaunched = sweep.launched
-    if (sweep.tenantsNeedingRunner > 0) {
-      logger.info('Tenant-runner sweep finished', { ...sweep })
+  if (!kicked) {
+    try {
+      const sweep = await sweepTenantRunners(db)
+      runnersLaunched = sweep.launched
+      if (sweep.tenantsNeedingRunner > 0) {
+        logger.info('Tenant-runner sweep finished', { ...sweep })
+      }
+    } catch (err) {
+      logger.error('Tenant-runner sweep failed — next tick retries', {
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
-  } catch (err) {
-    logger.error('Tenant-runner sweep failed — next tick retries', {
-      error: err instanceof Error ? err.message : String(err),
-    })
   }
 
   await flushMetrics(counts)
 
   logger.info('Dispatch tick finished', {
+    source: kicked ? 'kick' : 'schedule',
     scanned,
     dispatched: counts.dispatched,
     fired: counts.fired,

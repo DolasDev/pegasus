@@ -116,30 +116,36 @@ export interface SyncOptions {
 }
 
 /**
- * Syncs both stores for a connection. Returns the number of messages captured.
+ * Syncs both stores for a connection. Returns the number of messages captured,
+ * and how many of them emitted `sms.received` (committed) — the caller kicks
+ * the trigger dispatcher only when that is non-zero.
  * Throws RateLimitError up to the caller (the cron decides whether to back off).
  */
 export async function syncConnection(
   db: PrismaClient,
   connection: SyncConnection,
   opts: SyncOptions = {},
-): Promise<{ captured: number }> {
+): Promise<{ captured: number; emitted: number }> {
   const { accessToken, apiBase } = await acquireAccessToken(connection)
   const client = makeClient(apiBase, accessToken)
   const backfillDays = opts.backfillDays ?? DEFAULT_BACKFILL_DAYS
   const now = opts.now ?? Date.now()
 
-  const v1 = await syncV1Store(db, client, connection, backfillDays, now)
+  let emitted = 0
+  const onEmitted = () => {
+    emitted++
+  }
+  const v1 = await syncV1Store(db, client, connection, backfillDays, now, onEmitted)
   let thread = 0
   try {
-    thread = await syncThreadStore(db, client, connection)
+    thread = await syncThreadStore(db, client, connection, onEmitted)
   } catch (err) {
     if (!isThreadsFeatureOff(err)) throw err
     logger.info('Message Threads is off for this extension — skipping the thread store', {
       connectionId: connection.id,
     })
   }
-  return { captured: v1 + thread }
+  return { captured: v1 + thread, emitted }
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +158,7 @@ async function syncV1Store(
   connection: SyncConnection,
   backfillDays: number,
   now: number,
+  onEmitted: () => void,
 ): Promise<number> {
   const cursor = await getSyncCursor(db, connection.tenantId, connection.id, 'V1')
 
@@ -192,7 +199,16 @@ async function syncV1Store(
     // An unfiltered ISync also returns voicemail/fax/pager; those aren't ours.
     // (An untyped record still goes through normalize, which rejects it.)
     if (record.type !== undefined && record.type !== 'SMS') continue
-    if (await captureOne(db, connection, () => normalizeV1Json(record), record.id, incremental)) {
+    if (
+      await captureOne(
+        db,
+        connection,
+        () => normalizeV1Json(record),
+        record.id,
+        incremental,
+        onEmitted,
+      )
+    ) {
       captured++
     }
   }
@@ -285,6 +301,7 @@ async function syncThreadStore(
   db: PrismaClient,
   client: RingCentralClient,
   connection: SyncConnection,
+  onEmitted: () => void,
 ): Promise<number> {
   const cursor = await getSyncCursor(db, connection.tenantId, connection.id, 'THREAD')
 
@@ -336,6 +353,7 @@ async function syncThreadStore(
         () => normalizeThreadJson(entry, threadId, phones),
         entry.id,
         incremental && entry.direction != null,
+        onEmitted,
       )
     ) {
       captured++
@@ -379,11 +397,13 @@ async function captureOne(
   normalize: () => ReturnType<typeof normalizeV1Json>,
   rawId: string | number,
   emitReceivedEvent: boolean,
+  onReceivedEventEmitted?: () => void,
 ): Promise<boolean> {
   try {
     const normalized = normalize()
     const message = await captureMessage(db, connection.tenantId, normalized, connection.id, {
       emitReceivedEvent,
+      ...(onReceivedEventEmitted ? { onReceivedEventEmitted } : {}),
     })
     // Opt-out keywords apply in EVERY sync mode (not only when sms.received
     // fires). Non-fatal: a failure here must never abort capture.
