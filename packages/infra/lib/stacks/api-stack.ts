@@ -307,6 +307,9 @@ export class ApiStack extends cdk.Stack {
 
   /** The RingCentral capture DLQ name — used by MonitoringStack to alarm on depth. */
   public readonly ringcentralCaptureDlqName: string
+  /** The workflow trigger dispatcher, when Temporal is configured (monitoring
+   * excludes its by-design throttles). */
+  public readonly triggerDispatcherFunctionName?: string
 
   /**
    * Main API Lambda log-group name — passed to MonitoringStack for the
@@ -2199,6 +2202,9 @@ export class ApiStack extends cdk.Stack {
 
     this.apiUrl = httpApi.apiEndpoint
     this.lambdaFunctionName = apiFunction.functionName
+    if (dispatchTriggersFunction) {
+      this.triggerDispatcherFunctionName = dispatchTriggersFunction.functionName
+    }
     this.httpApiId = httpApi.apiId
 
     // ---------------------------------------------------------------------------

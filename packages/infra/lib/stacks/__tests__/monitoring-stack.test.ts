@@ -497,6 +497,36 @@ describe('MonitoringStack — account-wide Lambda Throttles alarm (Phase 1)', ()
       OKActions: Match.arrayWith([Match.objectLike({})]),
     })
   })
+
+  // The trigger dispatcher runs one-at-a-time (reserved concurrency 1): a kick
+  // landing mid-tick is THROTTLED by design and redelivered by Lambda. Those
+  // throttles are the guard working — they must not page.
+  it('excludes the trigger dispatcher’s by-design throttles when its name is given', () => {
+    const app = new cdk.App()
+    const stack = new MonitoringStack(app, 'TestMonitoringDispatcher', {
+      lambdaFunctionName: 'test-api-function',
+      httpApiId: 'abc123def4',
+      httpApiStage: '$default',
+      triggerDispatcherFunctionName: 'test-dispatcher',
+    })
+    const template = Template.fromStack(stack)
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-lambda-throttles-account',
+      Threshold: 0,
+      Metrics: Match.arrayWith([
+        Match.objectLike({ Expression: 'account - FILL(dispatcher, 0)' }),
+        Match.objectLike({
+          Id: 'dispatcher',
+          MetricStat: Match.objectLike({
+            Metric: Match.objectLike({
+              MetricName: 'Throttles',
+              Dimensions: [{ Name: 'FunctionName', Value: 'test-dispatcher' }],
+            }),
+          }),
+        }),
+      ]),
+    })
+  })
 })
 
 describe('MonitoringStack — account-wide Lambda Errors alarm (Phase 1)', () => {
