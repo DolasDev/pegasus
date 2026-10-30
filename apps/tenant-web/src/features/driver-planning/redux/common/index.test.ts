@@ -383,8 +383,8 @@ describe('common slice — thunks', () => {
     // Every option list the filter panel reads must be cleared, not just
     // moveType — a tenant with no legacy MSSQL has no activity-type catalog
     // either, and a stale one would leave the Last Activity filter offering
-    // values nothing can match.
-    expect(s.filterOptions).toEqual({ moveType: [], activityType: [] })
+    // values nothing can match. The same goes for the Services board's offices.
+    expect(s.filterOptions).toEqual({ moveType: [], activityType: [], office: [] })
     expect(s.loading).toBe(false)
     expect(errSpy).not.toHaveBeenCalled()
   })

@@ -84,10 +84,6 @@ const SCHEDULED_DATE = `COALESCE(${A}.estimated_date, ${A}.planned_start)`
  * The multi-selects arrive as react-select option objects (`{ label, value }`),
  * matching every other longhaul list endpoint. `date_range` is the exception:
  * it is a plain `[from, to]` pair of `YYYY-MM-DD` strings.
- *
- * NOTE the absence of `office`. The board renders an Office control, but there
- * is no office/branch dimension anywhere in the legacy schema — it is mocked in
- * the UI and deliberately sends nothing. When a real one lands, it joins here.
  */
 interface ActivityFilters {
   /** Inclusive `[from, to]` of `YYYY-MM-DD` date-only strings. */
@@ -111,6 +107,13 @@ interface ActivityFilters {
   short_haul?: Array<{ value: string }>
   /** `v_longhaul_shipments_v2.operations_id` — the dispatcher's salesman code. */
   operations_id?: Array<{ value: string }>
+  /**
+   * `branches.branch_id` codes, matched against the ORDER's branch
+   * (`v_longhaul_shipments_v2.branch`, i.e. `sales.branch`) — the dimension the
+   * legacy longhaul/CPnD browse filters with `Branch(xx)`. Local jobs match
+   * their SERVICE branch instead; see services-board-local.ts.
+   */
+  office?: Array<{ value: string }>
 }
 
 interface ActivityQuery {
@@ -287,6 +290,13 @@ function buildActivitiesSql(query: ActivityQuery, bag: ParamBag, scopeDriverId?:
     const vals = f.operations_id.map((o) => o.value).filter(Boolean)
     if (vals.length) {
       where.push(`${S}.operations_id IN (${vals.map((v) => bag.bind(v)).join(', ')})`)
+    }
+  }
+
+  if (f.office?.length) {
+    const vals = f.office.map((o) => o.value).filter(Boolean)
+    if (vals.length) {
+      where.push(`${S}.branch IN (${vals.map((v) => bag.bind(v)).join(', ')})`)
     }
   }
 

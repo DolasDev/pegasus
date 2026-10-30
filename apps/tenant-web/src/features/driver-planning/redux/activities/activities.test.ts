@@ -113,7 +113,7 @@ describe('activities query', () => {
           activity_type: [{ label: 'Pack', value: 'PACK' }],
           short_haul: [{ label: 'Yes', value: 'Y' }],
           operations_id: [{ label: 'A B', value: '1196' }],
-          office: [{ label: 'Chicago', value: 'chicago' }],
+          office: [{ label: '03 — NW of New Jersey', value: '03' }],
         },
         sortBy: { value: 'order_num', order: 'asc' },
       },
@@ -173,26 +173,14 @@ describe('saved filters', () => {
 })
 
 describe('buildActivityRequest', () => {
-  it('never sends office — the filter is mocked, and a silently-ignored key lies', () => {
-    const request = buildActivityRequest({
-      ...DEFAULT_ACTIVITY_QUERY,
-      filters: {
-        ...DEFAULT_ACTIVITY_QUERY.filters,
-        office: [{ label: 'Chicago', value: 'chicago' }],
-      },
-    }) as any
-
-    expect(request.filters).not.toHaveProperty('office')
-  })
-
-  it('sends every wired filter through untouched', () => {
+  it('sends every filter through untouched, office included', () => {
     const request = buildActivityRequest({
       filters: {
         date_range: ['2026-09-10', '2026-09-17'],
         activity_type: [{ label: 'Pack', value: 'PACK' }],
         short_haul: [{ label: 'Yes', value: 'Y' }],
         operations_id: [{ label: 'A B', value: '1196' }],
-        office: [],
+        office: [{ label: '03 — NW of New Jersey', value: '03' }],
       },
       sortBy: { value: 'order_num', order: 'desc' },
     }) as any
@@ -203,6 +191,7 @@ describe('buildActivityRequest', () => {
         activity_type: [{ label: 'Pack', value: 'PACK' }],
         short_haul: [{ label: 'Yes', value: 'Y' }],
         operations_id: [{ label: 'A B', value: '1196' }],
+        office: [{ label: '03 — NW of New Jersey', value: '03' }],
       },
       sortBy: { value: 'order_num', order: 'desc' },
     })

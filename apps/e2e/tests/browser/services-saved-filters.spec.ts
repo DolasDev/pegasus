@@ -153,6 +153,7 @@ test.describe('Services board saved filters @local-only', () => {
         activityTypes: [],
         shortHaul: [],
         dispatchers: [],
+        offices: [],
         sortBy: null,
       },
     })

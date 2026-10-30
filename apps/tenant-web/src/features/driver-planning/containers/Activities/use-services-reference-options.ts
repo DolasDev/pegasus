@@ -21,6 +21,8 @@ export function useServicesReferenceOptions(): ServicesReferenceOptions {
         label: `${d.first_name} ${d.last_name}`,
         value: String(d.code),
       })),
+      // `branches` rows, shaped server-side (reference-data.ts).
+      offices: filterOptions?.office ?? [],
     }),
     [filterOptions, dispatcherList],
   )

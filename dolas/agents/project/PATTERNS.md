@@ -378,8 +378,9 @@ second instance. It shows how to add the next one:
   on mount: mounting first fetches the built-in range and then re-fetches the
   saved one. The flag means coming Back from a trip keeps the user's edits.
 - **Absolute dates on screen, offsets in the saved form.** Services filters on
-  absolute dates, but a saved preset still stores offsets. Unwired controls
-  (Services' `office`) are never persisted.
+  absolute dates, but a saved preset still stores offsets. A key added to the
+  saved shape after v1 rows exist (Services' `offices`) is `.optional()` and
+  read as `[]` at both ends, so older rows stay valid without a version bump.
 - **The saved sort enum is pinned by a test to the list handler's sort
   whitelist** (`ACTIVITY_SORT_KEYS`). Without the pin, a stale key would save
   without error and then silently fail to sort.

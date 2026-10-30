@@ -33,22 +33,6 @@ import { useServicesReferenceOptions } from '../../use-services-reference-option
 import { SaveServicesFilterDialog, ServicesFiltersDialog } from '../SavedServicesFilters'
 import styles from './ActivityFilters.module.css'
 
-/**
- * Placeholder office list.
- *
- * There is no office/branch dimension in the legacy schema — not on
- * `LongDistanceDispatchActivity`, not on `v_longhaul_shipments_v2`, nowhere in
- * the API. The control is rendered DISABLED so the eventual shape of the screen
- * is visible without implying a filter that works: a live-looking control that
- * silently changes nothing is worse than an obviously inert one.
- */
-const OFFICE_PLACEHOLDER_OPTIONS = [
-  { label: 'All offices', value: '' },
-  { label: 'Chicago', value: 'chicago' },
-  { label: 'Atlanta', value: 'atlanta' },
-  { label: 'Dallas', value: 'dallas' },
-]
-
 const selectStyles = {
   control: (s: any) => ({ ...s, minHeight: 30, boxShadow: '0 2px 4px 0 rgba(0,0,0,0.2)' }),
   input: (s: any) => ({ ...s, minWidth: 80 }),
@@ -74,6 +58,7 @@ export function ActivityFilters() {
   // extra request.
   const activityTypeOptions = refs.activityTypes
   const dispatcherOptions = refs.dispatchers
+  const officeOptions = refs.offices
 
   // A saved filter can be applied before the dispatcher list loads, leaving
   // code-labelled options; relabel from the list whenever it's there.
@@ -81,10 +66,15 @@ export function ActivityFilters() {
     query.filters.operations_id.map((o) => o.value),
     dispatcherOptions,
   )
+  // Same for offices.
+  const officeValue = toOptions(
+    query.filters.office.map((o) => o.value),
+    officeOptions,
+  )
 
   // Counted for the Clear affordance: the date range always has a value, so it
   // is excluded — otherwise "Clear" would offer itself on an untouched board.
-  const activeCount = (['activity_type', 'short_haul', 'operations_id'] as const).filter(
+  const activeCount = (['activity_type', 'short_haul', 'operations_id', 'office'] as const).filter(
     (k) => query.filters[k]?.length,
   ).length
 
@@ -115,19 +105,15 @@ export function ActivityFilters() {
       <div className={styles.filter} data-filter="office">
         <label id="activities-filter-office-label">Office</label>
         <div className={styles.control} data-testid="activities-filter-office">
-          {/* Unwired — see OFFICE_PLACEHOLDER_OPTIONS. Remove `isDisabled` and
-              add `office` to buildActivityRequest once a real office dimension
-              exists in the schema. */}
           <Select
             isMulti
-            isDisabled
             aria-labelledby="activities-filter-office-label"
-            placeholder="Coming soon"
-            options={OFFICE_PLACEHOLDER_OPTIONS}
+            placeholder="All offices"
+            options={officeOptions}
             styles={selectStyles}
             isClearable={false}
-            value={[]}
-            onChange={() => {}}
+            value={officeValue}
+            onChange={(value: any) => setFilters({ office: value ?? [] })}
           />
         </div>
       </div>

@@ -3,7 +3,7 @@
 //
 // The API module is mocked so the debounced effect never reaches the network;
 // what these assert is the board's own contract: what it renders, what the
-// controls dispatch, and that the mocked Office control stays inert.
+// controls dispatch.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -51,7 +51,10 @@ function makeActivity(overrides: Record<string, unknown> = {}) {
 }
 
 const commonState = {
-  filterOptions: { activityType: [{ label: 'Packing', value: 'PACK' }] },
+  filterOptions: {
+    activityType: [{ label: 'Packing', value: 'PACK' }],
+    office: [{ label: '03 — NW of New Jersey', value: '03' }],
+  },
   dispatcherList: [{ code: '1196', first_name: 'Ada', last_name: 'Nguyen' }],
 }
 
@@ -199,17 +202,45 @@ describe('ActivitiesDashboard', () => {
       ])
     })
 
-    it('renders the Office control DISABLED — there is no office dimension yet', () => {
+    it('renders a live Office control offering the branches', () => {
       renderWithStore(<ActivitiesDashboard />, {
         activities: { activityList: [] },
         common: commonState,
       })
 
       const office = screen.getByTestId('activities-filter-office')
-      expect(office).toBeInTheDocument()
-      // react-select renders a disabled control with no focusable input. An
-      // enabled-looking control that filters nothing is worse than an inert one.
-      expect(office.querySelector('input:not([disabled])')).toBeNull()
+      expect(office.querySelector('input:not([disabled])')).not.toBeNull()
+      expect(screen.getByText('All offices')).toBeInTheDocument()
+    })
+
+    it('labels a code-only office selection from the branch list', () => {
+      // A saved filter can apply before reference data loads, leaving `{03, 03}`.
+      renderWithStore(<ActivitiesDashboard />, {
+        activities: {
+          activityList: [],
+          query: {
+            ...DEFAULT_ACTIVITY_QUERY,
+            filters: { ...DEFAULT_ACTIVITY_QUERY.filters, office: [{ label: '03', value: '03' }] },
+          },
+        },
+        common: commonState,
+      })
+
+      expect(screen.getByText('03 — NW of New Jersey')).toBeInTheDocument()
+    })
+
+    it('counts an office selection as a filter Clear can reset', () => {
+      const { store, rerender } = renderWithStore(<ActivitiesDashboard />, {
+        activities: { activityList: [] },
+        common: commonState,
+      })
+      store.dispatch({
+        type: 'activities/changeActivityQuery',
+        payload: { filters: { office: [{ label: '03 — NW of New Jersey', value: '03' }] } },
+      })
+      rerender(<ActivitiesDashboard />)
+
+      expect(document.querySelector('[data-target="clear-activity-filters"]')).not.toBeNull()
     })
 
     it('offers the activity types the reference-data bootstrap already loaded', () => {

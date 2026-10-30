@@ -40,9 +40,8 @@ export interface ActivityFilters {
   short_haul: Array<{ label: string; value: string }>
   operations_id: Array<{ label: string; value: string }>
   /**
-   * Mocked. There is no office/branch dimension in the legacy schema, so this
-   * is carried in state (the control is a real, if disabled, select) but never
-   * sent — see buildActivityRequest.
+   * `branches.branch_id` codes. The API matches longhaul activities on the
+   * order's branch and local jobs on their service branch.
    */
   office: Array<{ label: string; value: string }>
 }
@@ -64,16 +63,9 @@ export const DEFAULT_ACTIVITY_QUERY: ActivityQuery = {
   sortBy: null,
 }
 
-/**
- * Strip the client-only fields before the query goes on the wire.
- *
- * `office` is unwired: sending it would have the API silently ignore an
- * unknown key, which reads as "the filter works" right up until someone
- * believes a filtered result.
- */
+/** The query as it goes on the wire. */
 export function buildActivityRequest(query: ActivityQuery): unknown {
-  const { office: _office, ...filters } = query.filters
-  return { filters, sortBy: query.sortBy }
+  return { filters: query.filters, sortBy: query.sortBy }
 }
 
 export interface ActivitiesState {

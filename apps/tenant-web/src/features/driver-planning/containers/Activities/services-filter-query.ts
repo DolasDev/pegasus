@@ -8,11 +8,12 @@
 // Selections are stored as bare values and rehydrated to labelled options:
 //   - activity types from filterOptions.activityType;
 //   - dispatchers from dispatcherList;
+//   - offices from filterOptions.office;
 //   - short haul from SHAUL_LIST.
 // A value missing from its list keeps a code-labelled option, so it still
 // filters. This covers a list that hasn't loaded yet or an entry since
-// retired. The disabled `office` control is never saved, and loading a filter
-// clears it.
+// retired. A filter saved before offices existed has no `offices`, which loads
+// as "all offices".
 // ---------------------------------------------------------------------------
 
 import type { SavedServicesQuery } from '@/api/queries/services-filters'
@@ -32,6 +33,7 @@ export interface Option {
 export interface ServicesReferenceOptions {
   activityTypes: Option[]
   dispatchers: Option[]
+  offices: Option[]
 }
 
 export function toSavedQuery(
@@ -50,6 +52,7 @@ export function toSavedQuery(
       .map((o) => o.value)
       .filter((v): v is 'Y' | 'N' => v === 'Y' || v === 'N'),
     dispatchers: query.filters.operations_id.map((o) => String(o.value)),
+    offices: query.filters.office.map((o) => String(o.value)),
     sortBy: query.sortBy ? { value: query.sortBy.value, order: query.sortBy.order } : null,
   }
 }
@@ -81,7 +84,7 @@ export function fromSavedQuery(
       activity_type: toOptions(saved.activityTypes, refs.activityTypes),
       short_haul: toOptions(saved.shortHaul, SHAUL_LIST),
       operations_id: toOptions(saved.dispatchers, refs.dispatchers),
-      office: [],
+      office: toOptions(saved.offices ?? [], refs.offices),
     },
     sortBy: saved.sortBy,
   }

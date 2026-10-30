@@ -12,10 +12,11 @@
 // selection is stored as its VALUE only:
 //   - activityTypes: Longhaul_ActivityType abbreviations;
 //   - shortHaul: 'Y' / 'N';
-//   - dispatchers: salesman codes.
-// tenant-web rehydrates the labels from reference data on load. The board's
-// `office` control is unwired, so it is not persisted: a saved filter must not
-// carry a selection that filters nothing.
+//   - dispatchers: salesman codes;
+//   - offices: `branches.branch_id` codes. These are OPTIONAL because they
+//     arrived after v1 rows already existed. A row without them means "all
+//     offices", and both ends read a missing value as [].
+// tenant-web rehydrates the labels from reference data on load.
 // ---------------------------------------------------------------------------
 
 import { z } from 'zod'
@@ -50,6 +51,7 @@ export const ServicesFilterQuery = z.strictObject({
   activityTypes: z.array(Code).max(100),
   shortHaul: z.array(z.enum(['Y', 'N'])).max(2),
   dispatchers: z.array(Code).max(200),
+  offices: z.array(Code).max(100).optional(),
   sortBy: z
     .strictObject({ value: z.enum(SERVICES_SORT_KEYS), order: z.enum(['asc', 'desc']) })
     .nullable(),

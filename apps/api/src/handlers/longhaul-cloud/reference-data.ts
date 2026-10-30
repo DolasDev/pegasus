@@ -52,10 +52,11 @@ type Row = Record<string, unknown>
 // recordsets[3] = zones        (v_longhaul_zones)
 // recordsets[4] = planners     (active v_longhaul_salesman filtered to TripMaster.created_by_id)
 // recordsets[5] = activityTypes (Longhaul_ActivityType — reshaped to filterOptions.activityType)
+// recordsets[6] = branches      (reshaped to filterOptions.office)
 //
 // When the tenant has a longhaulClient configured the next two are appended:
-// recordsets[6] = dispatchers   (active v_longhaul_salesman filtered by per-client SQL fragment)
-// recordsets[7] = MoveType rows (reshaped to filterOptions.moveType server-side)
+// recordsets[7] = dispatchers   (active v_longhaul_salesman filtered by per-client SQL fragment)
+// recordsets[8] = MoveType rows (reshaped to filterOptions.moveType server-side)
 const COMMON_BATCH_SQL = `
 SELECT
   DRIVER_ID AS driver_id,
@@ -78,6 +79,12 @@ AND [v_longhaul_salesman].code IN
   (SELECT DISTINCT created_by_id FROM TripMaster WHERE created_by_id IS NOT NULL);
 
 SELECT code, name, abbreviation FROM Longhaul_ActivityType;
+
+IF OBJECT_ID('branches') IS NOT NULL
+  SELECT branch_id, branch_name, branch_active FROM branches ORDER BY branch_id;
+ELSE
+  SELECT CAST(NULL AS nvarchar(3)) AS branch_id, CAST(NULL AS nvarchar(40)) AS branch_name,
+    CAST(NULL AS nvarchar(1)) AS branch_active WHERE 1 = 0;
 `
 
 interface MoveTypeRow {
@@ -114,6 +121,39 @@ function toActivityTypeOptions(rows: ActivityTypeRow[]): Array<{ value: string; 
     if (abbr) abbrs.add(abbr)
   }
   return [...abbrs].sort().map((abbr) => ({ value: abbr, label: abbr }))
+}
+
+interface BranchRow {
+  branch_id: string | null
+  branch_name: string | null
+  branch_active: string | null
+}
+
+/**
+ * Reshape the `branches` table into the Services board's Office options.
+ *
+ * The value is `branch_id`, the code that `sales.branch` (the view's `branch`)
+ * and `LocalDispatchJobs.service_branch_id` hold. Names are space-padded on
+ * some tenants (NW, RVS), so everything is trimmed. Inactive branches stay in
+ * the list, marked, because historical orders still carry their code.
+ *
+ * The statement is guarded by OBJECT_ID: a tenant without the table gets an
+ * empty list rather than a failed bootstrap, since one failing statement fails
+ * the whole batch.
+ */
+function toOfficeOptions(rows: BranchRow[]): Array<{ value: string; label: string }> {
+  return rows.flatMap(({ branch_id, branch_name, branch_active }) => {
+    const id = String(branch_id ?? '').trim()
+    if (!id) return []
+    const name = String(branch_name ?? '').trim()
+    const inactive =
+      String(branch_active ?? '')
+        .trim()
+        .toUpperCase() !== 'Y'
+    return [
+      { value: id, label: `${name ? `${id} — ${name}` : id}${inactive ? ' (inactive)' : ''}` },
+    ]
+  })
 }
 
 function buildBatchSql(client: LonghaulClientConfig | null): string {
@@ -182,21 +222,25 @@ export const longhaulReferenceDataHandler: Handler<AppEnv> = async (c) => {
     // Activity filter works on a tenant with no longhaulClient, where only the
     // two genuinely client-scoped lookups degrade to empty.
     const activityTypeOptions = toActivityTypeOptions((recordsets[5] ?? []) as ActivityTypeRow[])
+    // Client-independent too, for the same reason.
+    const officeOptions = toOfficeOptions((recordsets[6] ?? []) as BranchRow[])
 
     let dispatchers: Row[] = []
     let filterOptions: {
       moveType: Array<{ value: string; label: string }>
       activityType: Array<{ value: string; label: string }>
-    } = { moveType: [], activityType: activityTypeOptions }
+      office: Array<{ value: string; label: string }>
+    } = { moveType: [], activityType: activityTypeOptions, office: officeOptions }
     if (clientConfig) {
-      dispatchers = (recordsets[6] ?? []) as Row[]
-      const moveTypeRows = (recordsets[7] ?? []) as MoveTypeRow[]
+      dispatchers = (recordsets[7] ?? []) as Row[]
+      const moveTypeRows = (recordsets[8] ?? []) as MoveTypeRow[]
       filterOptions = {
         moveType: moveTypeRows.map(({ move_type, move_type_desc }) => ({
           value: move_type,
           label: move_type_desc,
         })),
         activityType: activityTypeOptions,
+        office: officeOptions,
       }
     }
 

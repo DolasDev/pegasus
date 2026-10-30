@@ -65,6 +65,16 @@ const activityTypeOptions = [
   { value: 'PK', label: 'PK' },
   { value: 'SIT', label: 'SIT' },
 ]
+// The `branches` table backing the Services board's Office filter — also
+// client-independent. String codes, exactly as the nvarchar column holds them.
+const branches = [
+  { branch_id: '02', branch_name: 'Nelson Westerberg of Illinois', branch_active: 'Y' },
+  { branch_id: '03', branch_name: 'Nelson Westerberg of New Jersey', branch_active: 'Y' },
+]
+const officeOptions = [
+  { value: '02', label: '02 — Nelson Westerberg of Illinois' },
+  { value: '03', label: '03 — Nelson Westerberg of New Jersey' },
+]
 
 describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
   beforeEach(() => {
@@ -85,6 +95,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
         zones,
         planners,
         activityTypes,
+        branches,
         dispatchers,
         moveTypes,
       ],
@@ -108,6 +119,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
           { value: 'N', label: 'National' },
         ],
         activityType: activityTypeOptions,
+        office: officeOptions,
       },
     })
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
@@ -126,6 +138,9 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     expect(sql).toContain('MoveType')
     expect(sql).toContain('1=1')
     expect(sql).toContain('Longhaul_ActivityType')
+    // Guarded, so a tenant without the table degrades to no options instead
+    // of failing the whole batch.
+    expect(sql).toContain("IF OBJECT_ID('branches') IS NOT NULL")
     // Both v_longhaul_salesman statements (planners + dispatchers) must be
     // restricted to active staff, and the per-client fragment must stay
     // parenthesised so its OR can't escape the AND. Lowercase `active` is
@@ -145,7 +160,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     })
     executeSqlMock.mockResolvedValue({
       recordset: drivers,
-      recordsets: [drivers, tripStatuses, states, zones, planners, activityTypes],
+      recordsets: [drivers, tripStatuses, states, zones, planners, activityTypes, branches],
       rowsAffected: [],
     })
 
@@ -163,7 +178,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
       zones,
       planners,
       dispatchers: [],
-      filterOptions: { moveType: [], activityType: activityTypeOptions },
+      filterOptions: { moveType: [], activityType: activityTypeOptions, office: officeOptions },
     })
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
     const sql = executeSqlMock.mock.calls[0]![1] as string
@@ -191,6 +206,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
         zones,
         planners,
         activityTypes,
+        branches,
         dispatchers,
         moveTypes,
       ],
@@ -234,6 +250,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
           { code: 'MYST', name: 'Mystery', abbreviation: null },
           { code: 'BLANK', name: 'Blank', abbreviation: '   ' },
         ],
+        branches,
         dispatchers,
         moveTypes,
       ],
@@ -249,6 +266,49 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
       { value: 'LD', label: 'LD' },
       { value: 'PK', label: 'PK' },
       { value: 'SIT', label: 'SIT' },
+    ])
+  })
+
+  it('shapes office options from branches: trimmed, inactive marked, blank ids dropped', async () => {
+    findUnique.mockResolvedValue({
+      mssqlConnectionString: 'Server=a,1433',
+      longhaulClient: 'nwi',
+    })
+    executeSqlMock.mockResolvedValue({
+      recordset: drivers,
+      recordsets: [
+        drivers,
+        tripStatuses,
+        states,
+        zones,
+        planners,
+        activityTypes,
+        [
+          // Padded exactly as NW's nvarchar columns store them.
+          {
+            branch_id: '03',
+            branch_name: 'NELSON WESTERBERG OF NEW JERSEY         ',
+            branch_active: 'Y',
+          },
+          { branch_id: '09', branch_name: 'Nelson Westerberg Of Virginia', branch_active: 'N' },
+          { branch_id: '16', branch_name: null, branch_active: 'Y' },
+          { branch_id: '  ', branch_name: 'Nameless', branch_active: 'Y' },
+        ],
+        dispatchers,
+        moveTypes,
+      ],
+      rowsAffected: [],
+    })
+
+    const res = await buildApp().request('/onprem/longhaul/reference-data')
+
+    const body = (await res.json()) as {
+      data: { filterOptions: { office: Array<{ value: string; label: string }> } }
+    }
+    expect(body.data.filterOptions.office).toEqual([
+      { value: '03', label: '03 — NELSON WESTERBERG OF NEW JERSEY' },
+      { value: '09', label: '09 — Nelson Westerberg Of Virginia (inactive)' },
+      { value: '16', label: '16' },
     ])
   })
 

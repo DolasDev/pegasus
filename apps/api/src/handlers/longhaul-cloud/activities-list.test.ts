@@ -447,15 +447,18 @@ describe('GET longhaul/activities (cloud-direct LIST)', () => {
       expect(sentSql()).not.toContain('WHERE')
     })
 
-    it('sends nothing for office — there is no such dimension in the schema', async () => {
+    it("filters office on the ORDER's branch through the shipments view, bound", async () => {
       withRows([])
 
       await buildApp().request(
-        '/onprem/longhaul/activities' + filtersQs({ office: [{ value: 'chicago' }] }),
+        '/onprem/longhaul/activities' +
+          filtersQs({ office: [{ value: '03' }, { value: '08' }, { value: '' }] }),
       )
 
-      expect(sentSql()).not.toContain('WHERE')
-      expect(sentSql()).not.toContain('office')
+      const sql = sentSql()
+      expect(sql).toContain('s.branch IN (@p0, @p1)')
+      expect(sentParams().map((p) => p.value)).toEqual(['03', '08'])
+      expect(sql).not.toContain("'03'")
     })
   })
 
