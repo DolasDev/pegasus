@@ -104,6 +104,18 @@ Both still succeed whatever the kick does; the minute tick covers anything a fai
 - [x] `dolas/agents/project/GOTCHAS.md`: a short entry. The cap is counted before starting, not reserved, so it is only correct with a single dispatcher; `reservedConcurrentExecutions: 1` is what guarantees that. Don't remove it without making the cap count atomic.
 - [ ] Memory: `project_sms_received_event.md` latency note (after merge).
 
+### 7. Added in self-review: the account-wide Throttles alarm
+
+- [x] `pegasus-lambda-throttles-account` fires on **any** throttle in the account (threshold > 0, 1 min). With reserved concurrency 1, every kick that lands mid-tick throttles on purpose, so an ordinary burst would page. `ApiStack` now exposes `triggerDispatcherFunctionName`. `MonitoringStack` alarms on `account - FILL(dispatcher, 0)`, and other functions still page. The stale "10-concurrent-execution cap" text is corrected to 1,000. Commit `d8d645b2`.
+
+### Review notes (for the PR's `## Review`)
+
+- The reconcile poller (`lambda-reconcile-workflow-executions.ts`) also marks runs terminal but doesn't kick. It's the orphaned-run slow path, so the minute tick covers it. Accepted.
+- A finished **dry** run kicks too: the check is on the route, not `dryRun`. That's a harmless extra kick. Accepted.
+- The manual `POST /workflows/:id/run` keeps its existing cap race, unchanged.
+- `retryAttempts: 0` removes the two automatic retries a crashed tick used to get. Accepted, because the next tick is the retry.
+- After deploy the dispatcher's own `Throttles` metric will be non-zero as a matter of course. That's the one-at-a-time guard working, not a fault.
+
 ## Verification after deploy (prod, read-only)
 
 - [ ] Publish SDK 0.54.2: tag `sdk-python-v0.54.2` on the merge commit.
