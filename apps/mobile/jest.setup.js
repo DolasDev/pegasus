@@ -10,6 +10,13 @@ process.env.EXPO_PUBLIC_COGNITO_CLIENT_ID = 'test-mobile-client-id'
 process.env.EXPO_PUBLIC_COGNITO_DOMAIN = 'https://pegasus-test.auth.us-east-1.amazoncognito.com'
 process.env.EXPO_PUBLIC_COGNITO_REDIRECT_URI = 'movingapp://auth/callback'
 
+// RNTL's waitFor/findBy give up after 1s by default — the async twin of Jest's 5s testTimeout,
+// and starved by the same CI load (see testTimeout in jest.config.js). On 2026-10-30
+// labor-crew.test.tsx "saves a new rating and comment" took 156s for the file in CI and its
+// waitFor for a resolved mock's re-render ran out of its 1s. A real failure still fails, just
+// later; this only stops a slow runner from reading as a broken screen.
+require('@testing-library/react-native').configure({ asyncUtilTimeout: 10000 })
+
 // Global cleanup after each test
 afterEach(() => {
   jest.clearAllMocks();
