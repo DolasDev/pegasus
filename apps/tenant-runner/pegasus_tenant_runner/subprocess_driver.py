@@ -33,7 +33,11 @@ patches the ``temporalio.workflow`` primitives that need the workflow event
 loop to direct equivalents and runs the workflow body as plain asyncio:
 
 * ``execute_activity`` / ``execute_local_activity`` → call the activity
-  callable in-process (``@activity.defn`` returns the original callable).
+  callable in-process (``@activity.defn`` returns the original callable),
+  inside ``temporalio.testing.ActivityEnvironment`` — the same activity
+  context the SDK's offline harness uses — so ``activity.info()`` and
+  ``activity.heartbeat()`` work. ``info()`` values are synthetic (``dry-run``
+  ids, the activity's registered name as ``activity_type``, ``attempt=1``).
 * ``sleep`` → ``asyncio.sleep``; ``now`` → ``datetime.now(UTC)``;
   ``uuid4`` → ``uuid.uuid4``.
 * ``logger`` → a plain stdlib logger; ``info()`` → a synthetic ``Info``.
@@ -87,6 +91,31 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _activity_environment(activity: Any) -> Any:
+    """A Temporal ActivityEnvironment whose ``info()`` describes this run.
+
+    The defaults (``activity_type="unknown"``, ``workflow_id="test"``) are
+    replaced so ``activity.info()`` matches the synthetic ``workflow.info()``
+    below: the activity's registered name, and ``dry-run`` ids. Imported
+    lazily so a workflow with no activities never loads ``temporalio.testing``.
+    """
+    import dataclasses
+
+    from temporalio.testing import ActivityEnvironment
+
+    env = ActivityEnvironment()
+    defn = getattr(activity, "__temporal_activity_definition", None)
+    env.info = dataclasses.replace(
+        env.info,
+        activity_type=getattr(defn, "name", None) or getattr(activity, "__name__", "unknown"),
+        task_queue="pegasus-tenant-runner",
+        workflow_id="dry-run",
+        workflow_run_id="dry-run",
+        workflow_type="pegasus-tenant-workflow",
+    )
+    return env
+
+
 def _install_direct_execution_patches(trace: list[dict[str, Any]] | None = None) -> None:
     """Replace Temporal orchestration primitives with direct equivalents.
 
@@ -124,7 +153,11 @@ def _install_direct_execution_patches(trace: list[dict[str, Any]] | None = None)
             call_args = list(args)
         elif arg is not _UNSET:
             call_args = [arg]
-        result = activity(*call_args)
+        # Run inside a real activity context — the same ActivityEnvironment the
+        # SDK's offline harness (pegasus_workflows.testing.run_activity) uses —
+        # so activity.info() / heartbeat() / is_cancelled() work here exactly as
+        # they do in tests, instead of raising "Not in activity context".
+        result = _activity_environment(activity).run(activity, *call_args)
         if inspect.isawaitable(result):
             result = await result
         if trace is not None:

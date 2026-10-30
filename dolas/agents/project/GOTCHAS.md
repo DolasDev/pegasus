@@ -2217,6 +2217,32 @@ cap the drain per tenant, and stop calling a tenant's executor once it is unreac
 **General rule:** any outbox whose "retry later" state never exhausts needs per-tenant fairness —
 a green cron with `sent: 0` is the tell.
 
+## A rate limit that stamps the outbox row is a silent drop
+
+**Symptom (prod 2026-10-28):** six inbound texts arrived in one sync. `nw_pulse_reply` ran for five.
+The sixth `sms.received` event showed `dispatched_at` set, with no execution and no alert.
+
+**Cause:** the trigger dispatcher treated `CONCURRENCY_LIMIT` (5 tenant-runner runs active) like a
+failed start: skip the run, stamp the event. That made the cap a hard limit on events per tick, not a
+delay. Any burst over 5 lost its tail.
+
+**Fix (`fix/trigger-concurrency-defer`):** the cap now returns `CAPPED` and the event stays
+undispatched (`CONCURRENCY_DEFERRED`). The park must not reintroduce the starvation above, so it
+uses both guards from that entry:
+
+- **Query-level exclusion.** `findTenantsAtRunnerConcurrencyCap` returns the tenants at the cap,
+  and the query leaves out their events younger than 24 h.
+- **A bound.** An event still capped after 24 h is stamped as dropped (`CONCURRENCY_DROPPED`,
+  error log). The bound sits under the 72 h purge of `messages.body`. The event's own payload copy
+  is safe while parked, because the purge only touches dispatched events.
+
+Query exclusion alone wasn't enough. A tenant one run _under_ the cap isn't excluded, so its 100
+oldest parked events filled the batch, one fired, and every other tenant waited that tick. The
+dispatcher also tripped the `pegasus-domain-event-dispatch-backlog` alarm. So a full pass that newly
+parks a tenant re-queries without it, up to 3 passes per tick. An in-tick set also keeps a burst to
+one rejected start. **General rule:** for each outbox skip
+reason, ask "is this _failed_ or _not yet_?" A stamp is only right for _failed_.
+
 ## RingCentral FSync silently caps at 250 records
 
 **Symptom (prod 2026-09-25):** a tenant connected with a 90-day backfill window; exactly 250 messages
@@ -3516,3 +3542,21 @@ naming `syncToken` (or naming nothing) counts as stale. Related RC facts, both p
   `/aws/lambda/<fn>`. Read `LoggingConfig.LogGroup` from `get-function-configuration`.
 
 Verify a new event type by **counting rows in `domain_events`** on prod, not by the deploy going green.
+
+## The offline harness and the tenant runner must give activities the same context
+
+`pegasus_workflows.testing.run_activity` runs an activity inside Temporal's `ActivityEnvironment`.
+The tenant runner's subprocess driver called the activity bare. So `activity.info()` passed every
+test, then raised `RuntimeError: Not in activity context` on the first dry run (external authoring
+feedback, 2026-10-28). The driver now uses the same `ActivityEnvironment`
+(`subprocess_driver._activity_environment`), with the same synthetic ids as its `workflow.info()`
+stand-in. Whenever the driver patches or stubs a Temporal primitive, the harness has to match it, or
+a green test means nothing about the runner.
+
+## Every published version is its own workflow row — count the current one
+
+`listForTenant` returns every non-retired `(name, version)` row, GLOBAL included. Anything that sums
+across them (the requirements summary, the Configs page "keys still needed") reports what a
+**superseded** version declared: NW saw weichert v0.4.0's `SEND_*` secrets as missing long after
+v0.5.0 dropped them. Use `lib/workflow-current-version.ts`. A row is current if it is the newest
+semver of its `(owner tenant, name)`, or if one of the caller's enabled triggers still runs it.

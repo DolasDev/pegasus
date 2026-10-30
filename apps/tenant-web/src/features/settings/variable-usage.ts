@@ -94,6 +94,10 @@ export function buildVariableUsageIndex(
   }
 
   for (const workflow of workflowSummary?.workflows ?? []) {
+    // A superseded version (not current: a newer one exists and no enabled
+    // trigger runs it) doesn't need its keys any more — counting it listed
+    // keys only a long-replaced manifest declared as missing.
+    if (workflow.current === false) continue
     const consumer: VariableConsumer = {
       type: 'workflow',
       id: workflow.workflowId,

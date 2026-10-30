@@ -848,6 +848,7 @@ class PegasusClient:
         event_type: str | None = None,
         filter: dict[str, Any] | None = None,
         enabled: bool = True,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
         """Attach a trigger to a workflow. Requires ``ManageWorkflowTriggers``.
 
@@ -858,16 +859,28 @@ class PegasusClient:
             event_type: Domain/custom event name (EVENT only).
             filter: Optional payload-match object (EVENT only).
             enabled: Whether the trigger fires (default ``True``).
+            dry_run: Validate the trigger without letting it act (default
+                ``False``). It still fires on every matching event / cron
+                minute, but each execution it starts runs in **dry-run** mode:
+                reads run live, mutations (``send_sms``, ``send_email``, …) are
+                captured in the execution's trace and never performed. Read the
+                trace with ``pegasus-workflows executions``. Turn it off with
+                :meth:`update_trigger` once the wiring is right. Tenant-runner
+                Automations only — a curated workflow can't run dry (400
+                ``DRY_RUN_UNSUPPORTED``).
 
         Returns:
             The created trigger row ``{id, workflowId, kind, cronExpression,
-            eventType, filter, enabled, ...}``.
+            eventType, filter, enabled, dryRun, ...}``.
 
         Raises:
-            PegasusApiError: On 400 (invalid cron / shape), 403 (missing action),
-                404 (unknown workflow).
+            PegasusApiError: On 400 (invalid cron / shape, or
+                ``DRY_RUN_UNSUPPORTED``), 403 (missing action), 404 (unknown
+                workflow).
         """
         body: dict[str, Any] = {"kind": kind, "enabled": enabled}
+        if dry_run:
+            body["dryRun"] = True
         if cron_expression is not None:
             body["cronExpression"] = cron_expression
         if event_type is not None:
@@ -900,6 +913,7 @@ class PegasusClient:
         event_type: str | None = None,
         filter: dict[str, Any] | None = None,
         cron_expression: str | None = None,
+        dry_run: bool | None = None,
     ) -> dict[str, Any]:
         """Partially update one of a workflow's triggers. Requires ``ManageWorkflowTriggers``.
 
@@ -917,10 +931,13 @@ class PegasusClient:
             event_type: New domain/custom event name (EVENT triggers only).
             filter: New payload-match object (EVENT triggers only).
             cron_expression: New 5-field UTC cron (SCHEDULE triggers only).
+            dry_run: ``True`` makes every execution the trigger starts run in
+                dry-run mode (mutations captured, never performed) — see
+                :meth:`create_trigger`; ``False`` lets it act for real.
 
         Returns:
             The updated trigger row ``{id, workflowId, kind, cronExpression,
-            eventType, filter, enabled, ...}``.
+            eventType, filter, enabled, dryRun, ...}``.
 
         Raises:
             ValueError: If no field is given (nothing to update).
@@ -938,9 +955,12 @@ class PegasusClient:
             body["filter"] = filter
         if cron_expression is not None:
             body["cronExpression"] = cron_expression
+        if dry_run is not None:
+            body["dryRun"] = dry_run
         if not body:
             raise ValueError(
-                "update_trigger needs at least one of enabled, event_type, filter, cron_expression"
+                "update_trigger needs at least one of enabled, event_type, filter, "
+                "cron_expression, dry_run"
             )
         with self._client() as client:
             response = client.patch(
@@ -1238,7 +1258,8 @@ class PegasusClient:
         disables email (409 ``EMAIL_RECIPIENTS_NOT_CONFIGURED``) and any other
         address is refused (400 ``RECIPIENT_NOT_ALLOWED``). At most 10
         recipients and a 100 KB body; a per-tenant daily limit applies (429
-        ``EMAIL_DAILY_LIMIT``).
+        ``EMAIL_DAILY_LIMIT``). To learn whether an address would be accepted
+        BEFORE composing, call :meth:`check_email_recipients`.
 
         **Pass ``dedup_key`` for any email you must not send twice** — a retry
         with the same key returns the first send (``alreadySent: True``); 409
@@ -1285,6 +1306,43 @@ class PegasusClient:
             return captured
         with self._client() as client:
             response = client.post("/api/v1/email/send", json=payload)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def check_email_recipients(
+        self, to: str | list[str], *, cc: list[str] | None = None
+    ) -> dict[str, Any]:
+        """Would :meth:`send_email` accept these recipients? Requires ``SendEmail``.
+
+        Asks the exact recipient question ``send_email`` applies — the tenant's
+        allowed-domain list and the 10-recipient cap — without sending,
+        recording or counting anything. Use it to pick a fallback recipient (or
+        skip the email) up front instead of catching ``RECIPIENT_NOT_ALLOWED``.
+
+        Side-effect free, so it runs **live** under a dry run (it is a read, not
+        a captured mutation). Offline, serve it from
+        ``fake_client(reads={"check_email_recipients": {...}})``.
+
+        Args:
+            to: One address or a list.
+            cc: Optional list of addresses (checked together with ``to``).
+
+        Returns:
+            ``{"ok": bool, "reason": str | None, "disallowed": [address, ...]}``
+            — ``reason`` is ``None`` when ``ok``, else ``"NOT_CONFIGURED"`` (the
+            tenant allows no domains, so email is off), ``"RECIPIENT_NOT_ALLOWED"``
+            (``disallowed`` lists the refused addresses) or
+            ``"TOO_MANY_RECIPIENTS"``.
+
+        Raises:
+            PegasusApiError: 400 ``VALIDATION_ERROR`` for a malformed address,
+                403 without ``SendEmail``.
+        """
+        payload: dict[str, Any] = {"to": to}
+        if cc is not None:
+            payload["cc"] = cc
+        with self._client() as client:
+            response = client.post("/api/v1/email/check-recipients", json=payload)
         _raise_for_status(response)
         return response.json()["data"]
 
@@ -3557,10 +3615,14 @@ class PegasusClient:
         ``ReadWorkflow``.
 
         Returns:
-            ``{"workflows": [{workflowId, name, version, visibility,
+            ``{"workflows": [{workflowId, name, version, visibility, current,
             requirements: [{kind, key, group, description, present}],
             missingCount}], "totalMissing": int}``. ``kind`` is ``"SECRET"`` or
             ``"CONFIG"``; ``present`` says whether the tenant has set it.
+            Every published version is its own row; ``current`` is true for
+            the newest version of each (owner, name) and for any older one an
+            enabled trigger of this tenant still runs. ``totalMissing`` counts
+            current rows only — a superseded version's keys are not needed.
 
         Note:
             **Presence only — values are never returned.** Provision what is

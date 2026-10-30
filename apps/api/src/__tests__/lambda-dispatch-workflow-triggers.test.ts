@@ -29,7 +29,7 @@
 // so no gRPC connection is opened. The CloudWatch SDK is mocked.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import type { Client } from '@temporalio/client'
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client'
 import { _setTemporalClientForTesting } from '../lib/temporal-client'
@@ -45,6 +45,7 @@ const {
   mockExecutionCreate,
   mockExecutionUpdate,
   mockExecutionCount,
+  mockExecutionGroupBy,
   mockTenantFindUnique,
   mockEventTypeFindMany,
   mockDomainEventCreate,
@@ -65,6 +66,8 @@ const {
   mockExecutionCreate: vi.fn(),
   mockExecutionUpdate: vi.fn(),
   mockExecutionCount: vi.fn(),
+  // Tenants at the concurrency cap (the dispatcher's query exclusion).
+  mockExecutionGroupBy: vi.fn(),
   // Used by the kill-switch check in start-workflow-execution.ts.
   // Default: workflowsDisabled=false (kill switch off).
   mockTenantFindUnique: vi.fn(),
@@ -107,6 +110,7 @@ vi.mock('../db', () => {
       create: mockExecutionCreate,
       update: mockExecutionUpdate,
       count: mockExecutionCount,
+      groupBy: mockExecutionGroupBy,
     },
     // Kill-switch check in start-workflow-execution.ts.
     tenant: {
@@ -154,6 +158,7 @@ function triggerRow(overrides: Record<string, unknown> = {}) {
     filter: null,
     cronExpression: null,
     enabled: true,
+    dryRun: false,
     createdByUserId: 'user-1',
     createdAt: now,
     updatedAt: now,
@@ -258,6 +263,8 @@ beforeEach(() => {
   mockExecutionUpdate.mockResolvedValue(queuedExecution({ status: 'RUNNING', startedAt: now }))
   // Default: 0 active/daily executions (below any limit)
   mockExecutionCount.mockResolvedValue(0)
+  // Default: no tenant at the concurrency cap
+  mockExecutionGroupBy.mockResolvedValue([])
   // Default: kill switch OFF (workflowsDisabled=false)
   mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
   const start = vi.fn().mockResolvedValue({
@@ -905,10 +912,12 @@ describe('scheduled triggers', () => {
 // ── Dispatcher: limit-rejection skip reasons (Phase 3 Unit 10) ────────────
 //
 // These tests verify that TENANT_RUNNER-lane limit rejections produce the
-// right WorkflowTriggerSkipped{Reason=...} metrics and still stamp the
-// domain event (no redelivery semantics — the tenant is over-capacity, not
-// failing). Per the spec, the dispatcher treats limit outcomes the same as
-// START_FAILED: logged skip, event stamped, tick continues.
+// right WorkflowTriggerSkipped{Reason=...} metrics. The two limits differ:
+//   - the concurrency cap is back-pressure: the event is left undispatched
+//     (CONCURRENCY_DEFERRED) and fires once a run finishes — see the
+//     'concurrency-cap back-pressure' suite below for the full contract;
+//   - the daily quota is a logged skip with the event stamped (no redelivery —
+//     parking until midnight UTC would release a herd at 00:00).
 
 describe('limit-rejection skip reasons (Unit 10)', () => {
   beforeEach(() => {
@@ -920,7 +929,7 @@ describe('limit-rejection skip reasons (Unit 10)', () => {
     vi.useRealTimers()
   })
 
-  it('CONCURRENCY_LIMIT: trigger skipped, WorkflowTriggerSkipped{CONCURRENCY_LIMIT} emitted, event stamped', async () => {
+  it('CONCURRENCY_LIMIT: trigger deferred, WorkflowTriggerSkipped{CONCURRENCY_DEFERRED} emitted, event NOT stamped', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
     // Executable tenant workflow (routes TENANT_RUNNER).
     mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
@@ -931,13 +940,14 @@ describe('limit-rejection skip reasons (Unit 10)', () => {
     const out = await handler()
 
     expect(out.fired).toBe(0)
+    expect(out.dispatched).toBe(0)
     expect(mockExecutionCreate).not.toHaveBeenCalled()
-    // Event is still stamped — no redelivery.
-    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    // Left undispatched — it fires once a run finishes (back-pressure).
+    expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
     expect(emittedMetrics()).toContainEqual(
       expect.objectContaining({
         MetricName: 'WorkflowTriggerSkipped',
-        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_LIMIT' }],
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_DEFERRED' }],
       }),
     )
   })
@@ -1051,6 +1061,99 @@ describe('kill-switch (WORKFLOWS_DISABLED) skip reason (Unit 11)', () => {
 
     expect(out.fired).toBe(1)
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── Dry-run triggers ─────────────────────────────────────────────────────────
+
+describe('dry-run triggers', () => {
+  it('a dryRun trigger starts its execution in dry-run mode', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(1)
+    const createArg = mockExecutionCreate.mock.calls[0]![0] as { data: Record<string, unknown> }
+    expect(createArg.data).toMatchObject({ triggerSource: 'EVENT', dryRun: true })
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('a live trigger (the default) still starts a live execution', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+
+    await handler()
+
+    const createArg = mockExecutionCreate.mock.calls[0]![0] as { data: Record<string, unknown> }
+    expect(createArg.data['dryRun']).toBe(false)
+  })
+
+  it('a dryRun trigger is capped like a live one, counting dry runs too', async () => {
+    // A manual dry run is exempt from the cap; a dry-run TRIGGER on a busy event
+    // would otherwise launch a runner per event with no ceiling.
+    // Clock pinned to the event's time, so it is young enough to park.
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    const where = (mockExecutionCount.mock.calls[0]![0] as { where: Record<string, unknown> }).where
+    expect(where).not.toHaveProperty('dryRun')
+    // Back-pressure applies to dry triggers too: the event waits, not dropped.
+    expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_DEFERRED' }],
+      }),
+    )
+  })
+
+  it('a dryRun trigger also consumes the daily quota', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+    mockExecutionCount.mockResolvedValueOnce(0).mockResolvedValueOnce(1_000_000)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DAILY_QUOTA_EXCEEDED' }],
+      }),
+    )
+  })
+
+  it('a dryRun trigger on a curated workflow is skipped — never run live', async () => {
+    // The API refuses to attach one; this covers a row that predates the check.
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    setTriggers({ event: [triggerRow({ dryRun: true })] })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DRY_RUN_UNSUPPORTED' }],
+      }),
+    )
   })
 })
 
@@ -1223,6 +1326,223 @@ describe('tenant namespace migrations (3b.2)', () => {
         MetricName: 'WorkflowTriggerSkipped',
         Dimensions: [{ Name: 'Reason', Value: 'TENANT_MIGRATING' }],
       }),
+    )
+  })
+})
+
+// ── Dispatcher: concurrency-cap back-pressure ─────────────────────────────
+//
+// An EVENT trigger that hits the TENANT_RUNNER concurrency cap parks its event
+// (undispatched) instead of dropping it — prod 2026-10-28 lost the 6th of 6
+// inbound texts to the old stamp-and-skip contract. Guards under test:
+//   - a capped tenant's young events are excluded AT THE QUERY (fairness);
+//   - one rejected start per tenant per tick, not one per event (in-tick set);
+//   - an event parked past 24h is stamped as dropped (the park exhausts);
+//   - curated (STDLIB) triggers are never held back by the cap.
+
+describe('concurrency-cap back-pressure', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000
+  const customWorkflow = workflowRow({ id: 'wf-custom', name: 'my_custom_wf', executable: true })
+  const curatedWorkflow = workflowRow({ id: 'wf-curated', name: 'send_quote_followup' })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    mockWorkflowFindFirst.mockImplementation((args: { where: { id: string } }) =>
+      Promise.resolve(args.where.id === 'wf-curated' ? curatedWorkflow : customWorkflow),
+    )
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('excludes a capped tenant’s events younger than 24h AT THE QUERY', async () => {
+    mockExecutionGroupBy.mockResolvedValue([{ tenantId: 'tenant-1', _count: { _all: 5 } }])
+
+    await handler()
+
+    expect(mockDomainEventFindMany).toHaveBeenCalledWith({
+      where: {
+        dispatchedAt: null,
+        NOT: {
+          tenantId: { in: ['tenant-1'] },
+          occurredAt: { gt: new Date(now.getTime() - DAY_MS) },
+        },
+      },
+      orderBy: { occurredAt: 'asc' },
+      take: 100,
+    })
+  })
+
+  it('a burst of 7 events costs ONE rejected start; none is stamped', async () => {
+    mockDomainEventFindMany.mockResolvedValue(
+      Array.from({ length: 7 }, (_, i) => eventRow({ id: `evt-${i + 1}` })),
+    )
+    setTriggers({ event: [triggerRow({ workflowId: 'wf-custom' })] })
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(out.dispatched).toBe(0)
+    // The first event's start saw the cap; the other six never called it.
+    expect(mockExecutionCount).toHaveBeenCalledTimes(1)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Value: 7,
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_DEFERRED' }],
+      }),
+    )
+  })
+
+  it('a curated trigger still fires for a capped tenant; its capped sibling parks the event', async () => {
+    mockExecutionGroupBy.mockResolvedValue([{ tenantId: 'tenant-1', _count: { _all: 5 } }])
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    setTriggers({
+      event: [
+        triggerRow({ id: 'trg-curated', workflowId: 'wf-curated' }),
+        triggerRow({ id: 'trg-custom', workflowId: 'wf-custom' }),
+      ],
+    })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(1)
+    // The tenant was known capped from the query: no start for the custom one.
+    expect(mockExecutionCount).not.toHaveBeenCalled()
+    expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
+    expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it('on redelivery the already-fired sibling is a DUPLICATE and the event is stamped', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    setTriggers({ event: [triggerRow({ id: 'trg-curated', workflowId: 'wf-curated' })] })
+    // The curated sibling already ran on the tick that parked the event.
+    mockExecutionFindFirst.mockResolvedValueOnce({ id: 'exec-earlier' })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DUPLICATE' }],
+      }),
+    )
+  })
+
+  it('an event parked past 24h is stamped as dropped with CONCURRENCY_DROPPED', async () => {
+    mockExecutionGroupBy.mockResolvedValue([{ tenantId: 'tenant-1', _count: { _all: 5 } }])
+    mockDomainEventFindMany.mockResolvedValue([
+      eventRow({ occurredAt: new Date(now.getTime() - DAY_MS - 60_000) }),
+    ])
+    setTriggers({ event: [triggerRow({ workflowId: 'wf-custom' })] })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(out.dispatched).toBe(1)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_DROPPED' }],
+      }),
+    )
+  })
+
+  it('a full batch that newly parks a tenant re-queries without it, so other tenants drain this tick', async () => {
+    // Pass 1: tenant-1 is one run under the cap, so its 100 parked events load
+    // and fill the batch. Pass 2 excludes it and finds tenant-2's event.
+    mockDomainEventFindMany
+      .mockResolvedValueOnce(
+        Array.from({ length: 100 }, (_, i) => eventRow({ id: `evt-${i + 1}` })),
+      )
+      .mockResolvedValueOnce([eventRow({ id: 'evt-other', tenantId: 'tenant-2' })])
+    mockTriggerFindMany.mockImplementation((args: { where: { tenantId?: string } }) =>
+      Promise.resolve(
+        args.where.tenantId === 'tenant-2'
+          ? [triggerRow({ id: 'trg-other', tenantId: 'tenant-2', workflowId: 'wf-curated' })]
+          : args.where.tenantId === 'tenant-1'
+            ? [triggerRow({ workflowId: 'wf-custom' })]
+            : [],
+      ),
+    )
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(mockDomainEventFindMany).toHaveBeenCalledTimes(2)
+    expect(mockDomainEventFindMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          dispatchedAt: null,
+          NOT: {
+            tenantId: { in: ['tenant-1'] },
+            occurredAt: { gt: new Date(now.getTime() - DAY_MS) },
+          },
+        },
+      }),
+    )
+    expect(out.scanned).toBe(101)
+    // tenant-2's event fired and was stamped; tenant-1's 100 stayed parked.
+    expect(out.fired).toBe(1)
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    // Pass 2 was not full: no backlog alarm.
+    expect(emittedMetrics().map((m) => m.MetricName)).not.toContain('DomainEventDispatchBacklog')
+  })
+
+  it('a full batch that parks nothing new does not re-query', async () => {
+    mockDomainEventFindMany.mockResolvedValueOnce(
+      Array.from({ length: 100 }, (_, i) => eventRow({ id: `evt-${i + 1}` })),
+    )
+
+    await handler()
+
+    expect(mockDomainEventFindMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics().map((m) => m.MetricName)).toContain('DomainEventDispatchBacklog')
+  })
+
+  it('a parked built-in event derives no custom events until it is stamped', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    setTriggers({ event: [triggerRow({ workflowId: 'wf-custom' })] })
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    await handler()
+
+    expect(mockEventTypeFindMany).not.toHaveBeenCalled()
+  })
+
+  it('a SCHEDULE trigger at the cap is still a skipped minute (CONCURRENCY_LIMIT)', async () => {
+    vi.setSystemTime(new Date('2026-06-10T16:04:23.456Z'))
+    setTriggers({ schedule: [scheduleTriggerRow({ workflowId: 'wf-custom' })] })
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(out.scheduleFired).toBe(0)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_LIMIT' }],
+      }),
+    )
+  })
+
+  it('a failed cap lookup leaves the query unfiltered and the tick running', async () => {
+    mockExecutionGroupBy.mockRejectedValue(new Error('db hiccup'))
+
+    await handler()
+
+    expect(mockDomainEventFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { dispatchedAt: null } }),
     )
   })
 })

@@ -29,6 +29,12 @@ export interface WorkflowRequirements {
   name: string
   version: string
   visibility: WorkflowVisibility
+  /**
+   * The newest version of its (owner, name), or one an enabled trigger still
+   * runs. A superseded version's keys are not "still needed" — `totalMissing`
+   * already excludes them. Absent from an API that predates the field.
+   */
+  current?: boolean
   requirements: ResolvedWorkflowRequirement[]
   missingCount: number
 }
@@ -258,6 +264,9 @@ export interface WorkflowTrigger {
   /** 5-field UTC cron expression (SCHEDULE triggers), else null. */
   cronExpression: string | null
   enabled: boolean
+  /** Every run this trigger starts is a dry run — side effects captured, not
+   * performed. For validating a trigger before letting it act. */
+  dryRun: boolean
   createdByUserId: string
   createdAt: string
   updatedAt: string
@@ -272,12 +281,15 @@ export interface CreateWorkflowTriggerInput {
   /** Required for SCHEDULE triggers; rejected for EVENT. */
   cronExpression?: string
   enabled?: boolean
+  /** Tenant-runner automations only (400 DRY_RUN_UNSUPPORTED otherwise). */
+  dryRun?: boolean
 }
 
 /** PATCH body — all fields optional; `kind` is immutable (delete + recreate).
- * The v1 UI only ever sends `{ enabled }`. */
+ * The UI sends `{ enabled }` or `{ dryRun }`. */
 export interface UpdateWorkflowTriggerInput {
   enabled?: boolean
+  dryRun?: boolean
   eventType?: string
   filter?: Record<string, unknown>
   cronExpression?: string
