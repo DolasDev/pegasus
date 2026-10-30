@@ -3583,3 +3583,14 @@ Before calling a legacy dimension absent, query `INFORMATION_SCHEMA.COLUMNS`
 on a prod tenant through the MssqlExecutor (the recipe is in
 `scripts/verify-longhaul-view-columns.ts`). Grepping this repo is not enough:
 the views are provisioned from movemanager.
+
+## A local job's times are never NULL — midnight is "not set", and there are two windows
+
+Every `LocalDispatchJobs` time column is a `datetime2` on `1900-01-01`, and an unset one is stored as
+**`00:00`**, not NULL: `eta_minimum = 00:00` with `eta_maximum = 00:00 + eta_win_minutes` means "no
+ETA" (NW 195/1952 jobs, QMM 523/1407, RVS 3/686 in −90..+30 days; no ETA anywhere falls 1–5 am).
+Reading it as a time shows drivers "Arrive 00:00 – 01:00". A job also carries TWO windows
+(movemanager `LocalDispatchJobMaster.vb` Schedule): the dispatcher **ETA** (`eta_minimum` →
+`eta_maximum`, emailed to the customer as "Arrival Time") and the crew **job window** (`start_time`
+→ `end_time` = start + `minutes`, a single time on almost every job). The itinerary uses the ETA when
+set and the job window otherwise (`lib/itinerary/local-job-tokens.ts` `localArrivalWindow`).

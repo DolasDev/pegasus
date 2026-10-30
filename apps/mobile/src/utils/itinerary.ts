@@ -106,11 +106,13 @@ export function groupItinerary(items: readonly ItineraryItem[]): ItineraryDay[] 
 }
 
 /**
- * "08:00 – 10:00", plus the zone when the source has one (longhaul windows are
- * in the stop's zone, not necessarily the device's; local jobs carry none).
+ * "08:00 – 10:00", or "08:00" when it is one time (a local crew start), plus the
+ * zone when the source has one (longhaul windows are in the stop's zone, not
+ * necessarily the device's; local jobs carry none).
  */
 export function formatWindow(w: ItineraryArrivalWindow): string {
-  return `${w.start} – ${w.end}${w.tz ? ` (${w.tz})` : ''}`
+  const time = w.end && w.end !== w.start ? `${w.start} – ${w.end}` : w.start
+  return `${time}${w.tz ? ` (${w.tz})` : ''}`
 }
 
 /** "123 Main St, Unit 4" / "Austin, TX 78701" — either line may be empty. */

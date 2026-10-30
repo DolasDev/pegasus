@@ -19,7 +19,13 @@
 //     service date.
 // ---------------------------------------------------------------------------
 
-import type { ActivityTypeEntry, ItineraryItem, ItinerarySide, OrderPlaces } from './types'
+import type {
+  ActivityTypeEntry,
+  ItineraryArrivalWindow,
+  ItineraryItem,
+  ItinerarySide,
+  OrderPlaces,
+} from './types'
 import { STORAGE_CODES, UNKNOWN_SEQUENCE, day, flag, realId, text, wallClock } from './values'
 
 /** The `LocalDispatchJobs` columns the itinerary reads. */
@@ -33,6 +39,8 @@ export interface LocalJobRow {
   is_confirmed: unknown
   eta_minimum: unknown
   eta_maximum: unknown
+  start_time: unknown
+  end_time: unknown
   service_at_orig: unknown
   service_at_dest: unknown
   OriginLocation1: unknown
@@ -109,6 +117,28 @@ function resolveAct(
   return { name: token, known: false, side: flagSide(row), sequence: UNKNOWN_SEQUENCE }
 }
 
+/** Legacy's "not set" for a job's times: `1900-01-01 00:00`, never NULL. */
+const UNSET_TIME = '00:00'
+
+/**
+ * A local job carries two windows (movemanager's Schedule): the dispatcher's
+ * ETA (`eta_minimum` → `eta_maximum`, sent to the customer as the arrival time)
+ * and the crew's job window (`start_time` → `end_time`, almost always one time).
+ * The ETA is the arrival window when it is set; an unset ETA is stored as
+ * midnight, and then the job window stands in. Midnight on both ⇒ no window.
+ */
+function localArrivalWindow(row: LocalJobRow): ItineraryArrivalWindow | null {
+  const etaStart = wallClock(row.eta_minimum)
+  const etaEnd = wallClock(row.eta_maximum)
+  if (etaStart && etaStart !== UNSET_TIME) {
+    return { start: etaStart, end: etaEnd && etaEnd >= etaStart ? etaEnd : etaStart, tz: null }
+  }
+  const jobStart = wallClock(row.start_time)
+  if (!jobStart || jobStart === UNSET_TIME) return null
+  const jobEnd = wallClock(row.end_time)
+  return { start: jobStart, end: jobEnd && jobEnd >= jobStart ? jobEnd : jobStart, tz: null }
+}
+
 /**
  * The itinerary items for one local job. Empty for an inactive job or one with
  * no service date — the SQL already excludes both; this holds the rule here too.
@@ -124,8 +154,7 @@ export function localJobItems(
 
   const tokens = splitServices(row.services)
   const final = flag(row.is_final)
-  const start = wallClock(row.eta_minimum)
-  const end = wallClock(row.eta_maximum)
+  const arrivalWindow = localArrivalWindow(row)
   const drivers = [realId(row.driver_id1), realId(row.driver_id2)].filter(
     (id): id is number => id !== null,
   )
@@ -156,7 +185,7 @@ export function localJobItems(
       plannedEnd: serviceDay,
       estimated: null,
       actual: final ? serviceDay : null,
-      arrivalWindow: start && end ? { start, end, tz: null } : null,
+      arrivalWindow,
       committed: false,
       confirmed: flag(row.is_confirmed),
       sequence: act.sequence,

@@ -67,7 +67,7 @@ export function buildLocalBoardSql(
 
   return (
     `SELECT TOP (${LOCAL_JOB_ROW_CAP}) j.id, j.order_num, j.service_date, j.services,` +
-    ' j.active, j.is_final, j.is_confirmed, j.eta_minimum, j.eta_maximum,' +
+    ' j.active, j.is_final, j.is_confirmed, j.eta_minimum, j.eta_maximum, j.start_time, j.end_time,' +
     ' j.service_at_orig, j.service_at_dest, j.OriginLocation1, j.DestinationLocation1,' +
     ' j.driver_id1, j.driver_id2,' +
     " LTRIM(RTRIM(ISNULL(c1.employee_first, '') + ' ' + ISNULL(c1.employee_last, ''))) AS it_driver1_name," +
