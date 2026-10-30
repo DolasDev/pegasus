@@ -10,6 +10,8 @@ const REFS = {
     { label: 'LD', value: 'LD' },
   ],
   dispatchers: [{ label: 'Ann Bee', value: '1196' }],
+  // String branch codes, as `branches.branch_id` holds them.
+  offices: [{ label: '03 — NW of New Jersey', value: '03' }],
 }
 
 const BOARD: ActivityQuery = {
@@ -18,7 +20,7 @@ const BOARD: ActivityQuery = {
     activity_type: [{ label: 'PK', value: 'PK' }],
     short_haul: [{ label: 'Yes', value: 'Y' }],
     operations_id: [{ label: 'Ann Bee', value: '1196' }],
-    office: [{ label: 'Chicago', value: 'chicago' }],
+    office: [{ label: '03 — NW of New Jersey', value: '03' }],
   },
   sortBy: { value: 'scheduled_date', order: 'desc' },
 }
@@ -32,12 +34,9 @@ describe('toSavedQuery', () => {
       activityTypes: ['PK'],
       shortHaul: ['Y'],
       dispatchers: ['1196'],
+      offices: ['03'],
       sortBy: { value: 'scheduled_date', order: 'desc' },
     })
-  })
-
-  it('never saves the unwired office selection', () => {
-    expect(toSavedQuery(BOARD, TODAY)).not.toHaveProperty('office')
   })
 
   it('saves a cleared date input as today rather than an open bound', () => {
@@ -55,9 +54,14 @@ describe('toSavedQuery', () => {
 })
 
 describe('fromSavedQuery', () => {
-  it('round-trips the board query, minus office', () => {
+  it('round-trips the board query, office included', () => {
     const back = fromSavedQuery(toSavedQuery(BOARD, TODAY), REFS, TODAY)
-    expect(back).toEqual({ ...BOARD, filters: { ...BOARD.filters, office: [] } })
+    expect(back).toEqual(BOARD)
+  })
+
+  it('loads a filter saved before offices existed as all offices', () => {
+    const { offices: _offices, ...legacy } = toSavedQuery(BOARD, TODAY)
+    expect(fromSavedQuery(legacy, REFS, TODAY).filters.office).toEqual([])
   })
 
   it('re-anchors the window on the day it is loaded', () => {

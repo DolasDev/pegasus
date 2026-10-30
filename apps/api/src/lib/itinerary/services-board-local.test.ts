@@ -103,6 +103,14 @@ describe('buildLocalBoardSql', () => {
     expect(params).toEqual(['Y', '17', '22'])
   })
 
+  it("filters office on the job's SERVICE branch, not the order's", () => {
+    const { sql, params } = build({ office: [{ value: '03' }, { value: '08' }] })
+    expect(sql).toContain('j.service_branch_id IN (@p0, @p1)')
+    expect(sql).not.toContain('s.branch')
+    expect(sql).not.toContain('managing_branch_id')
+    expect(params).toEqual(['03', '08'])
+  })
+
   it('never interpolates a filter value', () => {
     const { sql } = build({ operations_id: [{ value: "1'; DROP TABLE sales --" }] })
     expect(sql).not.toContain('DROP TABLE')

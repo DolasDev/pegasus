@@ -21,7 +21,7 @@ const BOARD: ActivityQuery = {
     activity_type: [{ label: 'PK', value: 'PK' }],
     short_haul: [],
     operations_id: [],
-    office: [],
+    office: [{ label: '03 — NW of New Jersey', value: '03' }],
   },
   sortBy: { value: 'order_num', order: 'asc' },
 }
@@ -79,6 +79,7 @@ describe('ActivityFilters — saved filters', () => {
         activityTypes: ['PK'],
         shortHaul: [],
         dispatchers: [],
+        offices: ['03'],
         sortBy: { value: 'order_num', order: 'asc' },
       },
     })

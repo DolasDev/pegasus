@@ -18,6 +18,11 @@ describe('ServicesFilterQuery', () => {
     expect(ServicesFilterQuery.safeParse({ ...VALID, sortBy: null }).success).toBe(true)
   })
 
+  it('accepts office codes, and a v1 row saved before offices existed', () => {
+    expect(ServicesFilterQuery.safeParse({ ...VALID, offices: ['03', '08'] }).success).toBe(true)
+    expect(ServicesFilterQuery.safeParse(VALID).success).toBe(true)
+  })
+
   it('offers exactly the sort keys the activities handler whitelists', () => {
     // A key the handler doesn't know silently falls back to the default order,
     // so a saved sort on it would quietly not apply.
@@ -29,7 +34,8 @@ describe('ServicesFilterQuery', () => {
     ['a fractional offset', { dateFromOffsetDays: 0.5 }],
     ['an unknown short-haul value', { shortHaul: ['maybe'] }],
     ['an unknown sort key', { sortBy: { value: 'constructor', order: 'asc' } }],
-    ['an office selection (unwired)', { office: ['chicago'] }],
+    ['the board-side `office` key (the saved key is `offices`)', { office: ['03'] }],
+    ['a non-array offices', { offices: '03' }],
     ['a future version', { v: 2 }],
   ])('rejects %s', (_label, patch) => {
     expect(ServicesFilterQuery.safeParse({ ...VALID, ...patch }).success).toBe(false)

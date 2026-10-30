@@ -17,6 +17,8 @@ export interface SavedServicesQuery {
   activityTypes: string[]
   shortHaul: ('Y' | 'N')[]
   dispatchers: string[]
+  /** Branch codes. Absent on rows saved before offices existed; read as []. */
+  offices?: string[]
   sortBy: { value: string; order: 'asc' | 'desc' } | null
 }
 

@@ -3560,3 +3560,26 @@ across them (the requirements summary, the Configs page "keys still needed") rep
 **superseded** version declared: NW saw weichert v0.4.0's `SEND_*` secrets as missing long after
 v0.5.0 dropped them. Use `lib/workflow-current-version.ts`. A row is current if it is the newest
 semver of its `(owner tenant, name)`, or if one of the caller's enabled triggers still runs it.
+
+## "Office" is `branches.branch_id`, and a local job has TWO of them
+
+The legacy schema DOES have an office dimension. #688 shipped a disabled Office
+placeholder on a "no branch anywhere" claim that was never checked against a
+live DB. `v_longhaul_shipments_v2.branch` is `sales.branch`, the order's managing
+branch: nvarchar(2), filled on all but 41 of about 199k NW orders. Every tenant
+has a `branches` table (`branch_id`, `branch_name`, `branch_active`; names are
+space-padded on NW/RVS; NW `09` is inactive).
+
+`LocalDispatchJobs` carries `managing_branch_id` AND `service_branch_id`. They
+differ on about half the jobs (NW 1,132 of 2,093; QMM 1,184 of 2,096 over 90
+days). The Services board matches local jobs on the SERVICE branch, which is
+what legacy Local Dispatch filters on, and longhaul activities on the order's
+branch, which is what the legacy CPnD Sales browse filters on. NW's
+`service_branch_id` is nvarchar(3) where QMM/RVS have (2). The bound-string
+`IN` works because MSSQL ignores trailing spaces, but a JS `===` against it
+would not.
+
+Before calling a legacy dimension absent, query `INFORMATION_SCHEMA.COLUMNS`
+on a prod tenant through the MssqlExecutor (the recipe is in
+`scripts/verify-longhaul-view-columns.ts`). Grepping this repo is not enough:
+the views are provisioned from movemanager.

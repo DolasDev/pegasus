@@ -12,6 +12,10 @@
 //   • short haul / dispatcher — through the same `v_longhaul_shipments_v2`
 //     join, so a local-only order that is not in the view drops out when one
 //     of them is set (it has no dispatcher or haul mode to match);
+//   • office — on the job's own `service_branch_id`, the office sending the
+//     crew (what legacy Local Dispatch filters on). It differs from the
+//     managing branch on about half of NW/QMM jobs, so this is a choice, not
+//     an equivalent of the longhaul rows' order-branch match;
 //   • activity type — the board sends ABBREVIATIONS (see activities-list.ts),
 //     and a token's abbreviation is only known after the split, so this one is
 //     applied in JS.
@@ -28,6 +32,7 @@ export interface LocalBoardFilters {
   date_range?: [string | null, string | null]
   short_haul?: Array<{ value: string }>
   operations_id?: Array<{ value: string }>
+  office?: Array<{ value: string }>
   activity_type?: Array<{ value: string }>
 }
 
@@ -57,6 +62,8 @@ export function buildLocalBoardSql(
   if (shortHaul.length) where.push(`s.haul_mode IN (${shortHaul.map(bind).join(', ')})`)
   const ops = (filters.operations_id ?? []).map((v) => v.value).filter(Boolean)
   if (ops.length) where.push(`s.operations_id IN (${ops.map(bind).join(', ')})`)
+  const offices = (filters.office ?? []).map((v) => v.value).filter(Boolean)
+  if (offices.length) where.push(`j.service_branch_id IN (${offices.map(bind).join(', ')})`)
 
   return (
     `SELECT TOP (${LOCAL_JOB_ROW_CAP}) j.id, j.order_num, j.service_date, j.services,` +
