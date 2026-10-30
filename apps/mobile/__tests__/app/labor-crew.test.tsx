@@ -160,11 +160,11 @@ describe('CrewScreen', () => {
     })
   })
 
-  it('deletes a packer after confirming', async () => {
+  it('removes a packer after confirming', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {})
     const { findByLabelText } = render(<CrewScreen />)
     fireEvent(await findByLabelText('Packer Pat Lee'), 'longPress')
-    const del = alert.mock.calls[0]![2]!.find((b) => b.text === 'Delete')!
+    const del = alert.mock.calls[0]![2]!.find((b) => b.text === 'Remove')!
     del.onPress!()
     await waitFor(() => expect(svc.deletePacker).toHaveBeenCalledWith(PHONE, 'p1'))
   })

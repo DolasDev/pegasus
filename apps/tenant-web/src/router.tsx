@@ -40,6 +40,7 @@ import { WorkflowDetailPage } from '@/routes/settings.workflows.$workflowId'
 import { EventTypesSettingsPage } from '@/routes/settings.event-types'
 import { FeedbackFormsSettingsPage } from '@/routes/settings.feedback-forms'
 import { PublicFeedbackPage } from '@/routes/f.$token'
+import { CrewLinkPage } from '@/routes/c.$token'
 import { RingCentralIntegrationPage } from '@/routes/settings.integrations.ringcentral'
 import { AppSettingsLayout } from '@/features/settings/app/AppSettingsLayout'
 import { AppSettingsIndexPage } from '@/routes/settings.app.index'
@@ -125,6 +126,15 @@ const publicFeedbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/f/$token',
   component: PublicFeedbackPage,
+})
+
+// Crew link — a crew leader (no login) opens a link their driver shared
+// (`/c/<token>`). No auth, like `/f`: the API resolves the tenant from the token
+// and a texted one-time code gates the session. See handlers/crew-link-public.ts.
+const crewLinkRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/c/$token',
+  component: CrewLinkPage,
 })
 
 // ---------------------------------------------------------------------------
@@ -509,6 +519,7 @@ const routeTree = rootRoute.addChildren([
   loginCallbackRoute,
   loginSignedOutRoute,
   publicFeedbackRoute,
+  crewLinkRoute,
   authLayout.addChildren([
     indexRoute,
     movesIndexRoute,

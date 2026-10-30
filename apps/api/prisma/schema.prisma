@@ -330,6 +330,7 @@ model Tenant {
   companyCrewLinks     CompanyCrewLink[]
   driverCrewMembers    DriverCrewMember[]
   activityLaborMembers ActivityLaborMember[]
+  crewAccessLinks      CrewAccessLink[]
 
   // Longhaul — archived (rejected/canceled) trip snapshots
   archivedTrips ArchivedTrip[]
@@ -549,6 +550,7 @@ model TenantUser {
   companyCrewLinks             CompanyCrewLink[]
   myCrewMembers                DriverCrewMember[]
   activityLaborMembersAssigned ActivityLaborMember[]
+  crewAccessLinksShared        CrewAccessLink[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3593,6 +3595,7 @@ model Crew {
   packers       Packer[]
   activityLabor ActivityLaborCrew[]
   companyLinks  CompanyCrewLink[]
+  accessLinks   CrewAccessLink[]
 
   @@map("labor_crews")
   @@schema("public")
@@ -3678,6 +3681,9 @@ model Packer {
   emailKey        String?   @map("email_key")
   createdByUserId String    @map("created_by_user_id")
   updatedByUserId String    @map("updated_by_user_id")
+  /// Removal is soft (Steve, 2026-10-28): a removed packer leaves the crew but
+  /// stays on the activities they worked. Re-adding the same identity restores them.
+  removedAt       DateTime? @map("removed_at") @db.Timestamptz(6)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -3827,6 +3833,98 @@ model ActivityLaborMember {
   @@index([tenantId, orderNum])
   @@index([memberId])
   @@map("activity_labor_members")
+  @@schema("public")
+}
+
+/// A crew link: the capability a driver shares with a crew leader (who has no
+/// login) to staff the activities the driver assigned their crew on one order.
+/// The token only lets the holder ask for a one-time code, which is texted to
+/// `Crew.phone` — never to a number the holder supplies. Only the token's
+/// SHA-256 hash is stored (lib/opaque-token). The public endpoint
+/// (handlers/crew-link-public.ts) resolves the tenant FROM the token with the
+/// root client. Writes made through the link are attributed to `sharedByUserId`
+/// and recorded in CrewAccessAudit.
+model CrewAccessLink {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  crewPhone      String    @map("crew_phone")
+  orderNum       Int       @map("order_num")
+  tokenPrefix    String    @map("token_prefix")
+  tokenHash      String    @map("token_hash")
+  sharedByUserId String    @map("shared_by_user_id")
+  /// Wrong codes since the last successful verify; MAX_FAILED_ATTEMPTS burns the link.
+  failedAttempts Int       @default(0) @map("failed_attempts")
+  /// Minted by an Operations role: covers every activity the crew is on in the
+  /// order. A driver's link covers only the activities that driver assigned it.
+  allActivities  Boolean   @default(false) @map("all_activities")
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  burnedAt       DateTime? @map("burned_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crew     Crew                @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  sharedBy TenantUser          @relation(fields: [sharedByUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  otps     CrewAccessOtp[]
+  sessions CrewAccessSession[]
+  audit    CrewAccessAudit[]
+
+  @@index([tokenPrefix])
+  @@index([tenantId, orderNum, crewPhone])
+  @@map("labor_crew_access_links")
+  @@schema("public")
+}
+
+/// A one-time code texted for a crew link. Append-only: the rows are also the
+/// send-rate counter. Only the newest unconsumed code of a link is accepted.
+model CrewAccessOtp {
+  id         String    @id @default(uuid())
+  linkId     String    @map("link_id")
+  codeHash   String    @map("code_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  link CrewAccessLink @relation(fields: [linkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([linkId, createdAt])
+  @@map("labor_crew_access_otps")
+  @@schema("public")
+}
+
+/// A verified crew-link session — an opaque bearer (hash only) sent in the
+/// X-Crew-Session header, never a cookie. Dies with its link.
+model CrewAccessSession {
+  id          String   @id @default(uuid())
+  linkId      String   @map("link_id")
+  tokenPrefix String   @map("token_prefix")
+  tokenHash   String   @map("token_hash")
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  link CrewAccessLink @relation(fields: [linkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([tokenPrefix])
+  @@index([linkId])
+  @@map("labor_crew_access_sessions")
+  @@schema("public")
+}
+
+/// What was done through a crew link — the record that a write came from the
+/// crew leader, not from the driver it is attributed to.
+model CrewAccessAudit {
+  id         String   @id @default(uuid())
+  linkId     String   @map("link_id")
+  action     String
+  packerId   String?  @map("packer_id")
+  activityId Int?     @map("activity_id")
+  detail     Json?
+  at         DateTime @default(now()) @db.Timestamptz(6)
+
+  link CrewAccessLink @relation(fields: [linkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([linkId, at])
+  @@map("labor_crew_access_audit")
   @@schema("public")
 }
 

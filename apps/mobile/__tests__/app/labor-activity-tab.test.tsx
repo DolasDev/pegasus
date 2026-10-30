@@ -1,5 +1,5 @@
 import React from 'react'
-import { Alert } from 'react-native'
+import { Alert, Share } from 'react-native'
 import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import { useRouter } from 'expo-router'
 import { ActivityLaborTab, activityDateLabel } from '../../src/components/labor/ActivityLaborTab'
@@ -14,6 +14,9 @@ jest.mock('../../src/services/laborService', () => {
       getOrderActivities: jest.fn(),
       setActivityLabor: jest.fn(),
       updateActivityMembers: jest.fn(),
+      getSharing: jest.fn(),
+      shareCrewLink: jest.fn(),
+      stopSharingCrewLink: jest.fn(),
     },
   }
 })
@@ -52,6 +55,7 @@ const pack = (over: Partial<LaborActivity> = {}): LaborActivity => ({
 beforeEach(() => {
   jest.clearAllMocks()
   ;(useRouter as jest.Mock).mockReturnValue(router)
+  svc.getSharing.mockResolvedValue(false)
 })
 
 describe('activityDateLabel', () => {
@@ -260,5 +264,84 @@ describe('ActivityLaborTab', () => {
     svc.getOrderActivities.mockRejectedValueOnce(new Error('The order database is unavailable'))
     const failed = render(<ActivityLaborTab orderNum={100} />)
     expect(await failed.findByText('The order database is unavailable')).toBeTruthy()
+  })
+})
+
+describe('ActivityLaborTab — removed packers', () => {
+  it('shows someone removed from the crew ticked and locked on a job they worked', async () => {
+    const a = pack()
+    a.crews[0]!.packers[0] = { ...a.crews[0]!.packers[0]!, removed: true }
+    svc.getOrderActivities.mockResolvedValue([a])
+    const { findByLabelText, getByText } = render(<ActivityLaborTab orderNum={100} />)
+    const box = await findByLabelText('Ana Diaz')
+    expect(box.props.accessibilityState).toMatchObject({ checked: true, disabled: true })
+    expect(getByText('Removed')).toBeTruthy()
+  })
+})
+
+describe('ActivityLaborTab — crew links', () => {
+  it('hides Share when the company has no texting set up', async () => {
+    svc.getOrderActivities.mockResolvedValue([pack()])
+    const { findByText, queryByLabelText } = render(<ActivityLaborTab orderNum={100} />)
+    expect(await findByText('Pack')).toBeTruthy()
+    await waitFor(() => expect(svc.getSharing).toHaveBeenCalled())
+    expect(queryByLabelText('Share link with Ace')).toBeNull()
+  })
+
+  it('hides Share on an activity that is not mine', async () => {
+    svc.getSharing.mockResolvedValue(true)
+    svc.getOrderActivities.mockResolvedValue([pack({ editable: false })])
+    const { findByText, queryByLabelText } = render(<ActivityLaborTab orderNum={100} />)
+    expect(await findByText('Pack')).toBeTruthy()
+    await waitFor(() => expect(svc.getSharing).toHaveBeenCalled())
+    expect(queryByLabelText('Share link with Ace')).toBeNull()
+  })
+
+  it('mints a link and opens the share sheet with it', async () => {
+    svc.getSharing.mockResolvedValue(true)
+    svc.getOrderActivities.mockResolvedValue([pack()])
+    svc.shareCrewLink.mockResolvedValue({
+      url: 'https://tenant.example/c/crl_abc',
+      expiresAt: '2026-11-11T00:00:00Z',
+    })
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' })
+    jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
+      buttons?.find((b) => b.text === 'Send link')?.onPress?.()
+    })
+    const { findByLabelText } = render(<ActivityLaborTab orderNum={100} />)
+    fireEvent.press(await findByLabelText('Share link with Ace'))
+    await waitFor(() => expect(svc.shareCrewLink).toHaveBeenCalledWith(100, A))
+    await waitFor(() =>
+      expect(share).toHaveBeenCalledWith({
+        message: expect.stringContaining('https://tenant.example/c/crl_abc'),
+      }),
+    )
+  })
+
+  it('stops sharing', async () => {
+    svc.getSharing.mockResolvedValue(true)
+    svc.getOrderActivities.mockResolvedValue([pack()])
+    svc.stopSharingCrewLink.mockResolvedValue(undefined)
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
+      buttons?.find((b) => b.text === 'Stop sharing')?.onPress?.()
+    })
+    const { findByLabelText } = render(<ActivityLaborTab orderNum={100} />)
+    fireEvent.press(await findByLabelText('Share link with Ace'))
+    await waitFor(() => expect(svc.stopSharingCrewLink).toHaveBeenCalledWith(100, A))
+    await waitFor(() =>
+      expect(alert).toHaveBeenCalledWith('Link stopped', 'Ace’s link no longer works.'),
+    )
+  })
+
+  it('alerts when the link cannot be minted', async () => {
+    svc.getSharing.mockResolvedValue(true)
+    svc.getOrderActivities.mockResolvedValue([pack()])
+    svc.shareCrewLink.mockRejectedValue(new Error('no texting'))
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((title, _m, buttons) => {
+      if (title === 'Share with Ace') buttons?.find((b) => b.text === 'Send link')?.onPress?.()
+    })
+    const { findByLabelText } = render(<ActivityLaborTab orderNum={100} />)
+    fireEvent.press(await findByLabelText('Share link with Ace'))
+    await waitFor(() => expect(alert).toHaveBeenCalledWith('Couldn’t share the link', 'no texting'))
   })
 })

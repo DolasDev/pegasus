@@ -1699,3 +1699,53 @@ describe('ApiStack — move chat kicks the push forwarder', () => {
     })
   })
 })
+
+describe('ApiStack — crew-leader link switch (crewLeaderLinkEnabled)', () => {
+  function synthEnabled() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiCrewLinkEnabled', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      crewLeaderLinkEnabled: true,
+      crewLeaderLinkPublicWebUrl: 'https://pegasus-qa.dolas.dev',
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('leaves CREW_LEADER_LINK_ENABLED unset on every Lambda by default', () => {
+    const template = synthApiStack()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const withFlag = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.CREW_LEADER_LINK_ENABLED !== undefined,
+    )
+    if (withFlag.length !== 0) {
+      throw new Error(
+        `expected no Lambda to carry CREW_LEADER_LINK_ENABLED, found ${withFlag.length}`,
+      )
+    }
+  })
+
+  it('sets CREW_LEADER_LINK_ENABLED + its web URL only on the api Lambda when enabled', () => {
+    const template = synthEnabled()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const enabled = Object.values(fns).filter(
+      (fn) =>
+        fn.Properties?.Environment?.Variables?.CREW_LEADER_LINK_ENABLED === 'true' &&
+        fn.Properties?.Environment?.Variables?.CREW_LEADER_LINK_PUBLIC_WEB_URL ===
+          'https://pegasus-qa.dolas.dev',
+    )
+    if (enabled.length !== 1) {
+      throw new Error(
+        `expected exactly 1 Lambda with the crew-link flag + URL, found ${enabled.length}`,
+      )
+    }
+  })
+
+  it('lets the browser send the X-Crew-Session header', () => {
+    const template = synthApiStack()
+    const apis = Object.values(template.findResources('AWS::ApiGatewayV2::Api'))
+    const headers: string[] = apis[0]?.Properties?.CorsConfiguration?.AllowHeaders ?? []
+    if (!headers.includes('X-Crew-Session')) {
+      throw new Error(`expected CORS AllowHeaders to include X-Crew-Session, got ${headers}`)
+    }
+  })
+})

@@ -142,6 +142,16 @@ const FEEDBACK_PUBLIC_WEB_URL: Record<Exclude<EnvName, 'dev'>, string> = {
 const feedbackEnabled = envName === 'staging' || envName === 'prod'
 const feedbackPublicWebUrl = envName === 'dev' ? undefined : FEEDBACK_PUBLIC_WEB_URL[envName]
 
+// ── Crew-leader links (staging only, for now) ────────────────────────────────
+// Ungates CREW_LEADER_LINK_ENABLED on the api Lambda: the public
+// /api/public/v1/crew-link surface and the driver's share action (both 404 /
+// hidden when off). The link URL is `<tenant SPA origin>/c/<token>` — the same
+// origin as the feedback link. Also needs the tenant's RingCentral connection
+// to text the code, so it is inert for a tenant without one. Prod follows once
+// staging is checked: add 'prod' here.
+const crewLeaderLinkEnabled = envName === 'staging'
+const crewLeaderLinkPublicWebUrl = feedbackPublicWebUrl
+
 // ── Cloud-issued pegII tokens (cloud identity I1) ────────────────────────────
 // `iss` of the ES256 tokens the API mints for on-prem pegII sites; sites verify
 // against `${issuer}/.well-known/jwks.json`. The branded API origin, so the
@@ -448,6 +458,8 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   outboundOAuthSharedCacheEnabled,
   feedbackEnabled,
   feedbackPublicWebUrl,
+  crewLeaderLinkEnabled,
+  ...(crewLeaderLinkPublicWebUrl ? { crewLeaderLinkPublicWebUrl } : {}),
   ...(pegiiTokenIssuer ? { pegiiTokenIssuer } : {}),
   reportingEnabled,
   corsAllowedOrigins,

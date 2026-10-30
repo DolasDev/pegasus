@@ -229,15 +229,15 @@ export default function CrewScreen() {
 
   const confirmDeletePacker = (p: LaborPacker) =>
     Alert.alert(
-      `Delete ${p.firstName} ${p.lastName}?`,
-      'Every driver with this crew will lose this packer.',
+      `Remove ${p.firstName} ${p.lastName}?`,
+      'They come off this crew for every driver, but stay on the jobs they already worked.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Remove',
           style: 'destructive',
           onPress: () =>
-            void run('Couldn’t delete packer', async () => {
+            void run('Couldn’t remove packer', async () => {
               await LaborService.deletePacker(crew.phone, p.id)
               return LaborService.getCrew(crew.phone)
             }),

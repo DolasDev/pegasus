@@ -293,7 +293,35 @@ export class LaborService {
       change(activityMemberIds(activity)),
     )
   }
+
+  /**
+   * Whether crew links can be shared: the feature is on and the company has
+   * texting set up (the crew leader is texted a code to open the link).
+   */
+  static async getSharing(): Promise<boolean> {
+    const res = await getApiClient().fetch<{ available: boolean }>(`${BASE}/sharing`)
+    return res?.available === true
+  }
+
+  /**
+   * Mint a fresh crew link for one crew on one order (the previous one stops
+   * working). The crew leader opens it to pick who works their activities.
+   */
+  static async shareCrewLink(
+    orderNum: string | number,
+    phone: string,
+  ): Promise<{ url: string; expiresAt: string }> {
+    return getApiClient().fetch(crewLinkPath(orderNum, phone), { method: 'POST' })
+  }
+
+  /** Stop sharing: the crew's link for this order stops working. */
+  static async stopSharingCrewLink(orderNum: string | number, phone: string): Promise<void> {
+    await getApiClient().fetch<null>(crewLinkPath(orderNum, phone), { method: 'DELETE' })
+  }
 }
+
+const crewLinkPath = (orderNum: string | number, phone: string) =>
+  `${BASE}/orders/${encodeURIComponent(String(orderNum))}/crews/${encodeURIComponent(phone)}/link`
 
 // ── Activity-labor set helpers (pure) ────────────────────────────────────────
 

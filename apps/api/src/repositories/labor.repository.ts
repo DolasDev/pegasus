@@ -19,7 +19,8 @@ type Db = PrismaClient | Prisma.TransactionClient
 const CREW_INCLUDE = {
   include: {
     serviceAreas: { orderBy: [{ region: 'asc' }, { city: 'asc' }] },
-    _count: { select: { packers: true } },
+    // Removed packers stay on old jobs, not in the crew's count.
+    _count: { select: { packers: { where: { removedAt: null } } } },
   },
 } as const satisfies Prisma.CrewDefaultArgs
 
@@ -175,9 +176,10 @@ export async function crewNames(db: Db, phones: readonly string[]): Promise<Map<
   return new Map(rows.map((r) => [r.phone, r.name]))
 }
 
+/** The crew's packers — those removed only show on the jobs they worked. */
 export function listPackers(db: Db, crewPhone: string) {
   return db.packer.findMany({
-    where: { crewPhone },
+    where: { crewPhone, removedAt: null },
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
   })
 }
