@@ -1,6 +1,6 @@
 # Office filter for Operations → Services
 
-**Status:** implemented · **Branch:** `feat/services-office-filter` · **Date:** 2026-10-30
+**Status:** completed · **Branch:** `feat/services-office-filter` · **Date:** 2026-10-30
 
 ## Goal
 
