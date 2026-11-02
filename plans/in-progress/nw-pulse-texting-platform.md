@@ -463,6 +463,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 | System employee (`companies.system_employee_code`) | NELSON-WESTERBERG = **1001** | done |
 | RingCentral capture | connection ACTIVE, `V1` cursor synced minutes before the probe | done |
 | `operations.emailAllowedRecipientDomains` | `["nelsonwesterberg.com"]` (set 2026-10-21 in tenant-web Settings → App → Operations; empty ⇒ 409 `EMAIL_RECIPIENTS_NOT_CONFIGURED`, D2) | done |
+| Live `send_email` through NW's bridge | 2026-11-02, with a probe `workflow_runtime` key (deleted after): `check-recipients` for steved@nelsonwesterberg.com → 200 `ok: true`; `send` → 202, `email_sends` row `819fdc80-f52c-4295-af9f-306e6e21d800` `SENT` with no error ~4.5 s later (site SMTP relay accepted it). The one `SendEmail` usage event was deleted so the test doesn't count against NW's STARTER pool. Inbox delivery is for Steve to confirm. | done (relay) |
 | Automation plan (`tenant_automation_plans`) | `STARTER`, term 2026-11-01 → 2027-11-01 | done |
 | Pulse workflow | **none published** (NW has only `weichert-milestone-update`, `demo-pack-call*`, `send_order_to_partner`) | Blue Signal (we never publish workflows or configs) |
 | Triggers | **none** for pulse (only `demo-pack-call-ack` on `feedback.submitted`) | the workflow's publisher |
