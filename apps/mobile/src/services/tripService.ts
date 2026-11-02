@@ -24,14 +24,21 @@ export const OFFERED_STATUS = 'offered'
 
 export class TripService {
   /**
-   * Resolve the longhaul driver id mapped to the logged-in user (set by a
-   * tenant admin). Returns null when unmapped — the UI then shows an
-   * onboarding empty state instead of an arbitrary tenant-wide trip list.
+   * Resolve the driver ids mapped to the logged-in user (set by a tenant
+   * admin): the longhaul driver id, which My Trips needs (null ⇒ the onboarding
+   * empty state, never a tenant-wide trip list), and the local crew id, which
+   * alone still makes the login a driver (My Itinerary).
    */
-  static async getDriverId(): Promise<number | null> {
+  static async getDriverMapping(): Promise<{
+    longhaulDriverId: number | null
+    localDriverEmployeeId: number | null
+  }> {
     const client = getApiClient()
     const res = await client.fetch<DriverMapping>('/api/v1/me/driver')
-    return res?.longhaulDriverId ?? null
+    return {
+      longhaulDriverId: res?.longhaulDriverId ?? null,
+      localDriverEmployeeId: res?.localDriverEmployeeId ?? null,
+    }
   }
 
   /**

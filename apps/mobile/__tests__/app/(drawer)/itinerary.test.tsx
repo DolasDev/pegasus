@@ -77,7 +77,7 @@ describe('ItineraryScreen', () => {
     expect(getByText('Trip 55')).toBeTruthy()
   })
 
-  it('opens the shipment for a trip act, the trip from its chip, and a local job in place', async () => {
+  it('opens the shipment for a trip act and a local job alike, and the trip from its chip', async () => {
     mockGet.mockResolvedValue(
       ok([
         item({ key: 'a', actName: 'Pack', orderNum: 100, tripId: 55 }),
@@ -86,7 +86,6 @@ describe('ItineraryScreen', () => {
           actName: 'Load',
           orderNum: 200,
           source: { kind: 'local-job-token', jobId: 9, token: 'LOAD' },
-          placeNote: 'Gate code 1234',
         }),
       ]),
     )
@@ -99,9 +98,7 @@ describe('ItineraryScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/trip/55')
 
     fireEvent.press(getByText('Load'))
-    expect(mockPush).toHaveBeenCalledTimes(2) // never the shipment screen for a local job
-    expect(getByText('Local job')).toBeTruthy()
-    expect(getByText('Gate code 1234')).toBeTruthy()
+    expect(mockPush).toHaveBeenLastCalledWith('/shipment/200')
   })
 
   it('pages to the next week', async () => {

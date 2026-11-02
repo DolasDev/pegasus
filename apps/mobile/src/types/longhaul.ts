@@ -138,6 +138,8 @@ export interface LonghaulShipment {
 /** The /api/v1/me/driver response payload (after the `{ data }` unwrap). */
 export interface DriverMapping {
   longhaulDriverId: number | null
+  /** The local crew id (`crews` numbering space — never the longhaul one). Older APIs omit it. */
+  localDriverEmployeeId?: number | null
   /** The caller's TenantUser id (null for service accounts). Older APIs omit it. */
   userId?: string | null
 }

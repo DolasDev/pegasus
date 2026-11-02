@@ -1,35 +1,36 @@
 # Driver itinerary — remaining: dispatcher view, act facts, order-assigned source
 
-**Status:** not started; **blocked on Steve's decisions below.** Shipped so far: Phases 0–1 (probe,
-`/me/itinerary` + `/drivers/itinerary` API, Services board `include=local`) —
+**Status:** decisions made 2026-11-02 (below); being built as separate workstreams. Shipped so far:
+Phases 0–1 (probe, `/me/itinerary` + `/drivers/itinerary` API, Services board `include=local`) —
 `plans/completed/19ad9517-driver-itinerary.md`; Phase 2 mobile "My Itinerary" —
-`plans/completed/64dc360b-itinerary-mobile.md`. Read both before starting.
+`plans/completed/64dc360b-itinerary-mobile.md`; local arrival window (#905) —
+`plans/completed/baa570a6-local-job-window.md`; local driver scope (decisions 2 + 5) —
+`plans/completed/*-local-driver-scope.md`. Read them before starting.
 
 **Goal:** dispatchers see a driver's itinerary in tenant-web, and drivers can post ETA / done on
 local items too.
 
-## Open decisions for Steve
+## Decisions (Steve, 2026-11-02)
 
-1. **Local completion write-back (Phase 3):** may a local token's "done" ever write back to legacy?
-   `is_final` completes EVERY token on the job via `TriggerLocalDispatchUpdate` (GOTCHAS).
-2. **Local items → shipment detail:** should `resolveLonghaulReadScope` (every `/onprem/longhaul/*`
-   read) also admit orders on the caller's local jobs (`localDriverEmployeeId` vs
-   `LocalDispatchJobs.driver_id1/2`)? Today a local item opens an in-app read-only detail
-   (GOTCHAS "A local-job order is invisible to every other `/onprem/longhaul/*` read").
-3. **Dispatcher picker:** only `tenant_admin` holds `ListUsers`, so a dispatcher can't load a
-   TenantUser picker. Either a new Operations-gated roster route (hot `app.ts`), or pick a longhaul
-   driver and a crew separately — `GET /drivers/itinerary` already takes both ids.
-4. **Phase 4 audit:** go-ahead for the read-only prod data audit of `sales.driver_id`.
-5. **Mobile edge:** `laborAccess.isDriver` = `driver` role OR a longhaul id, so a local-only driver
-   with an Operations role but no `driver` role is treated as Operations-only (no itinerary).
+1. **Local "done" (Phase 3): a Pegasus-only fact.** Record it as an `ItineraryActFact` and show it in
+   the itinerary; **never** write `is_final` (it completes every act on the job). Dispatch still
+   finalizes the job in legacy. Local **ETA** write-back to legacy was NOT asked — ask at Phase 3's
+   start, after reading the `TriggerLocalDispatchUpdate` / `TriggerSalesUpdate` bodies.
+2. **Widen the driver read scope — DONE** (local-driver-scope): order reads admit orders on the
+   caller's local jobs; local items open the shipment screen.
+3. **Dispatcher picker: pick a longhaul driver and a crew separately.** Longhaul drivers from the
+   existing `/onprem/longhaul/drivers`; crews from a NEW Operations-gated sibling read (do not relax
+   `/local-drivers`' `UpdateUser` gate), reusing `listLocalDrivers` from `chat-access.ts`.
+4. **Phase 4 audit: go.** Read-only, through the prod executor; record a go/no-go here.
+5. **Mobile edge — DONE** (local-driver-scope): a local crew id alone makes a login a driver.
 
 ## Checklist
 
 ### Tenant-web driver itinerary view
 
 - [ ] `apps/tenant-web/src/features/driver-planning/containers/DriverItinerary/` on
-      `GET /onprem/longhaul/drivers/itinerary` — picker per decision 3; list unmapped drivers
-      separately. Revisit once labor-crews' phone-keyed people can link a driver to a crew.
+      `GET /onprem/longhaul/drivers/itinerary` — picker per decision 3 (driver + crew, each
+      optional, at least one). Revisit once labor-crews' phone-keyed people can link a driver to a crew.
 
 ### Phase 3 — act facts for driver-posted ETA / arrival / completion
 
@@ -39,10 +40,12 @@ local items too.
       (tenant, order, actCode, driver, day) — **not** on a legacy row id, so Phase 4 items can carry
       facts without a row. Append-only; current value = latest non-superseded.
 - [ ] `PATCH /onprem/longhaul/me/itinerary/:key/eta` and `/complete` — write the fact, then write
-      through to legacy: activity ⇒ existing columns; local job ⇒ `eta_win_*` only for ETA.
-      **Completion of a local token does NOT set `is_final`** — decision 1.
+      through to legacy: activity ⇒ existing columns; local job ETA ⇒ `eta_minimum` /
+      `eta_maximum` / `eta_win_minutes` ONLY if Steve agrees (decision 1 note); local completion
+      ⇒ fact only, never `is_final` (decision 1).
 - [ ] Itinerary read overlays facts on the legacy dates (fact wins when newer).
-- [ ] Mobile: ETA + "done" on local items (`ItineraryItemDetail` is where they go).
+- [ ] Mobile: ETA + "done" on local items (the read-only `ItineraryItemDetail` sheet was removed
+      when local items started opening the shipment screen — design the controls fresh).
 
 ### Phase 4 — deferred: order-assigned source
 

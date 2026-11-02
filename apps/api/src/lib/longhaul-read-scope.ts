@@ -58,3 +58,49 @@ export async function resolveLonghaulReadScope(c: Context<AppEnv>): Promise<Long
   })
   return scopeForDriverId(user?.longhaulDriverId)
 }
+
+// ---------------------------------------------------------------------------
+// Order-level reads (the shipment screen: shipment detail, its Labor tab).
+//
+// A driver works an order either as a longhaul activity (their
+// TenantUser.longhaulDriverId) or as a local dispatch job (their
+// localDriverEmployeeId, the `crews` numbering space). An order read admits
+// both; the trip reads above stay longhaul-only, because a local job has no
+// trip. The two ids are separate fields and are never compared to each other
+// (GOTCHAS, "Crew number ≠ driver number").
+// ---------------------------------------------------------------------------
+
+export type OrderReadScope =
+  | { kind: 'all' }
+  /** At least one id is set; a null id grants nothing in its space. */
+  | { kind: 'driver'; longhaulDriverId: number | null; localDriverEmployeeId: number | null }
+  | { kind: 'none' }
+
+/** 0 is the legacy "unassigned" id in both spaces — it never grants a row. */
+function realDriverId(id: number | null | undefined): number | null {
+  return id == null || id === 0 ? null : id
+}
+
+export function orderScopeForIds(
+  longhaulDriverId: number | null | undefined,
+  localDriverEmployeeId: number | null | undefined,
+): OrderReadScope {
+  const lh = realDriverId(longhaulDriverId)
+  const ld = realDriverId(localDriverEmployeeId)
+  return lh === null && ld === null
+    ? { kind: 'none' }
+    : { kind: 'driver', longhaulDriverId: lh, localDriverEmployeeId: ld }
+}
+
+export async function resolveOrderReadScope(c: Context<AppEnv>): Promise<OrderReadScope> {
+  const roleNames = c.get('principal')?.roleNames ?? []
+  if (hasOperationsRole(roleNames)) return { kind: 'all' }
+
+  const userId = c.get('userId')
+  if (!userId) return { kind: 'none' }
+  const user = await c.get('db').tenantUser.findUnique({
+    where: { id: userId },
+    select: { longhaulDriverId: true, localDriverEmployeeId: true },
+  })
+  return orderScopeForIds(user?.longhaulDriverId, user?.localDriverEmployeeId)
+}

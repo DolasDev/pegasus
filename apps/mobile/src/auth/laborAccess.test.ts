@@ -19,6 +19,18 @@ describe('laborAccessFor', () => {
     expect(access(['dispatcher'], 42, true)).toMatchObject({ isDriver: true, canSeeLabor: true })
   })
 
+  it('treats a local crew id alone as a driver — not operations-only', () => {
+    // A local-only driver who also holds an Operations role keeps My Itinerary.
+    expect(
+      laborAccessFor({
+        roleNames: ['operations_admin'],
+        driverId: null,
+        localDriverId: 3097,
+        mappingResolved: true,
+      }),
+    ).toMatchObject({ isDriver: true, operationsOnly: false })
+  })
+
   it('is operations-only for an Operations role with no driver identity', () => {
     expect(access(['operations_admin'], null, true)).toMatchObject({
       isDriver: false,

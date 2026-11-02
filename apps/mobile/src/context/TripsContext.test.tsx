@@ -6,12 +6,14 @@ import type { LonghaulTrip } from '../types/longhaul'
 
 jest.mock('../services/tripService', () => ({
   ...jest.requireActual('../services/tripService'),
-  TripService: { getDriverId: jest.fn(), getMyTrips: jest.fn() },
+  TripService: { getDriverMapping: jest.fn(), getMyTrips: jest.fn() },
 }))
 
-const mockGetDriverId = TripService.getDriverId as jest.MockedFunction<
-  typeof TripService.getDriverId
+const mockGetDriverMapping = TripService.getDriverMapping as jest.MockedFunction<
+  typeof TripService.getDriverMapping
 >
+/** /me/driver's answer with only a longhaul id (or none). */
+const ids = (longhaulDriverId: number | null) => ({ longhaulDriverId, localDriverEmployeeId: null })
 const mockGetMyTrips = TripService.getMyTrips as jest.MockedFunction<typeof TripService.getMyTrips>
 
 function TestConsumer({
@@ -37,12 +39,12 @@ const trip = { id: 1, status_status: 'Offered' } as LonghaulTrip
 
 describe('TripsProvider', () => {
   beforeEach(() => {
-    mockGetDriverId.mockReset()
+    mockGetDriverMapping.mockReset()
     mockGetMyTrips.mockReset()
   })
 
   it('loads the driver mapping then the trips', async () => {
-    mockGetDriverId.mockResolvedValue(42)
+    mockGetDriverMapping.mockResolvedValue(ids(42))
     mockGetMyTrips.mockResolvedValue([trip])
 
     const ctxRef = renderProvider()
@@ -56,10 +58,22 @@ describe('TripsProvider', () => {
     expect(ctxRef.current!.loading).toBe(false)
   })
 
+  it('exposes a local-only crew id without fetching trips (a local job has none)', async () => {
+    mockGetDriverMapping.mockResolvedValue({ longhaulDriverId: null, localDriverEmployeeId: 3097 })
+
+    const ctxRef = renderProvider()
+    await act(async () => {})
+
+    expect(ctxRef.current!.driverId).toBeNull()
+    expect(ctxRef.current!.localDriverId).toBe(3097)
+    expect(mockGetMyTrips).not.toHaveBeenCalled()
+    expect(ctxRef.current!.trips).toEqual([])
+  })
+
   it('reports a failed mapping lookup as an error, not as "no driver"', async () => {
     // driverId stays null AND error is set — the pair the trips screen uses to
     // tell a broken request apart from an unmapped account.
-    mockGetDriverId.mockRejectedValue(new Error('Unauthorized'))
+    mockGetDriverMapping.mockRejectedValue(new Error('Unauthorized'))
 
     const ctxRef = renderProvider()
     await act(async () => {})
@@ -70,7 +84,7 @@ describe('TripsProvider', () => {
   })
 
   it('resolves with no driver and no error when the account is genuinely unmapped', async () => {
-    mockGetDriverId.mockResolvedValue(null)
+    mockGetDriverMapping.mockResolvedValue(ids(null))
 
     const ctxRef = renderProvider()
     await act(async () => {})
@@ -82,13 +96,13 @@ describe('TripsProvider', () => {
   })
 
   it('refresh() clears a prior error and recovers', async () => {
-    mockGetDriverId.mockRejectedValueOnce(new Error('Network request failed'))
+    mockGetDriverMapping.mockRejectedValueOnce(new Error('Network request failed'))
 
     const ctxRef = renderProvider()
     await act(async () => {})
     expect(ctxRef.current!.error).toBe('Network request failed')
 
-    mockGetDriverId.mockResolvedValueOnce(7)
+    mockGetDriverMapping.mockResolvedValueOnce(ids(7))
     mockGetMyTrips.mockResolvedValueOnce([trip])
     await act(async () => {
       await ctxRef.current!.refresh()

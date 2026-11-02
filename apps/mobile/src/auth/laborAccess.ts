@@ -5,7 +5,8 @@ import { useTrips } from '../context/TripsContext'
 // ---------------------------------------------------------------------------
 // Who sees what in the drawer and on the Labor tab.
 //
-//   driver      role `driver`, or a /me/driver mapping (a longhaul driver id)
+//   driver      role `driver`, or a /me/driver mapping (a longhaul driver id or
+//               a local crew id — a local-only driver works local jobs)
 //   operations  any OPERATIONS_ROLES role (shared with the API and tenant-web)
 //
 // A driver sees Dashboard / My Trips / Labor (My list | Company). An Operations
@@ -31,11 +32,12 @@ export interface LaborAccess {
 export function laborAccessFor(input: {
   roleNames: readonly string[] | null | undefined
   driverId: number | null
+  localDriverId?: number | null
   mappingResolved: boolean
   mappingFailed?: boolean
 }): LaborAccess {
   const hasDriverRole = (input.roleNames ?? []).includes('driver')
-  const isDriver = hasDriverRole || input.driverId != null
+  const isDriver = hasDriverRole || input.driverId != null || input.localDriverId != null
   const isOperations = hasOperationsRole(input.roleNames)
   // The role alone already answers "is a driver"; otherwise trust only a
   // mapping call that succeeded.
@@ -52,10 +54,11 @@ export function laborAccessFor(input: {
 
 export function useLaborAccess(): LaborAccess {
   const { session } = useAuth()
-  const { driverId, mappingResolved, mappingFailed } = useTrips()
+  const { driverId, localDriverId, mappingResolved, mappingFailed } = useTrips()
   return laborAccessFor({
     roleNames: session?.roleNames,
     driverId,
+    localDriverId,
     mappingResolved,
     mappingFailed,
   })

@@ -1271,6 +1271,48 @@ describe('GET longhaul/shipments — driver read scoping', () => {
     expect(sqlOf()).toContain('@scopeDriverId')
   })
 
+  const LOCAL_EXISTS =
+    'EXISTS (SELECT 1 FROM LocalDispatchJobs j' +
+    " WHERE j.order_num = v_longhaul_shipments_v2.order_num AND ISNULL(j.active, 'Y') <> 'N'" +
+    ' AND (j.driver_id1 = @scopeLocalDriverId OR j.driver_id2 = @scopeLocalDriverId))'
+
+  it('a longhaul-only driver gets no local-job predicate', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5, localDriverEmployeeId: null })
+    await buildApp(DRIVER).request('/onprem/longhaul/shipments')
+    expect(sqlOf()).not.toContain('LocalDispatchJobs')
+    expect(paramsOf().map((p) => p.name)).not.toContain('scopeLocalDriverId')
+  })
+
+  it('a local-only driver is scoped to orders on their active local jobs, crew id bound alone', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: null, localDriverEmployeeId: 3097 })
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/shipments?searchTerm=4931')
+    expect(res.status).toBe(200)
+    expect(sqlOf()).toContain(LOCAL_EXISTS)
+    expect(sqlOf()).not.toContain('@scopeDriverId')
+    expect(paramsOf()).toContainEqual({ name: 'scopeLocalDriverId', value: 3097 })
+    expect(paramsOf().map((p) => p.name)).not.toContain('scopeDriverId')
+  })
+
+  it('a driver with both ids sees either kind of order — ORed, each id in its own space', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 5, localDriverEmployeeId: 3097 })
+    await buildApp(DRIVER).request('/onprem/longhaul/shipments')
+    expect(sqlOf()).toContain(
+      '(EXISTS (SELECT 1 FROM LongDistanceDispatchActivity a LEFT JOIN TripMaster t ON a.TripMaster_id = t.id' +
+        ' WHERE a.order_num = v_longhaul_shipments_v2.order_num' +
+        ' AND (a.assigned_driver_id = @scopeDriverId OR t.driver_id = @scopeDriverId))' +
+        ` OR ${LOCAL_EXISTS})`,
+    )
+    expect(paramsOf()).toContainEqual({ name: 'scopeDriverId', value: 5 })
+    expect(paramsOf()).toContainEqual({ name: 'scopeLocalDriverId', value: 3097 })
+  })
+
+  it('a placeholder 0 local id grants nothing', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: null, localDriverEmployeeId: 0 })
+    const res = await buildApp(DRIVER).request('/onprem/longhaul/shipments')
+    expect(await res.json()).toEqual({ data: [], meta: { count: 0 } })
+    expect(executeSqlMock).not.toHaveBeenCalled()
+  })
+
   it('unmapped non-ops user gets an empty list and no MSSQL query', async () => {
     tenantUserFind.mockResolvedValue({ longhaulDriverId: null })
     const res = await buildApp(DRIVER).request('/onprem/longhaul/shipments')

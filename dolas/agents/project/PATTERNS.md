@@ -439,11 +439,14 @@ Precedents: `tests/conformance/documents.test.ts` (prose ↔ vocabulary) and
 
 ## A driver-scoped write on the legacy longhaul tables
 
-The `/onprem/longhaul/*` driver-data reads (trips, trip detail, shipments, activities, rejected trips,
-driver planning) are scoped **server-side** by `lib/longhaul-read-scope.ts`: an Operations role
-(`OPERATIONS_ROLES`) reads everything; anyone else reads only their own `TenantUser.longhaulDriverId`'s
-rows, and nothing without a mapping. A client `driver_id` never widens that. A new driver-data read
-must call `resolveLonghaulReadScope` too — the route has no Cedar gate to fall back on.
+The `/onprem/longhaul/*` driver-data reads are scoped **server-side** by `lib/longhaul-read-scope.ts`:
+an Operations role (`OPERATIONS_ROLES`) reads everything; anyone else reads only their own rows, and
+nothing without a mapping. A client `driver_id` never widens that. Pick the resolver by what the read
+is about: a TRIP read (trips, trip detail, activities, rejected trips, driver planning) calls
+`resolveLonghaulReadScope` (`TenantUser.longhaulDriverId` only); an ORDER read behind the shipment
+screen (shipments, the order's labor activities) calls `resolveOrderReadScope`, which also admits
+orders on the caller's local dispatch jobs (`localDriverEmployeeId`, bound separately — GOTCHAS "Two
+driver read scopes"). The route has no Cedar gate to fall back on.
 
 Writes are a separate check. A route that lets a _driver_ write must check ownership itself. It
 must not reuse the dispatcher save (`POST /activities/:id`), which needs a `v_longhaul_salesman`
