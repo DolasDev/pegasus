@@ -994,7 +994,7 @@ export function getOpenApiSpec() {
           summary:
             'Send an internal email through the tenant’s pegII API / SMTP account (SendEmail)',
           description:
-            'Body { to (address or list), cc?, subject (single line, ≤300), body, bodyType? (text | html, default text), dedupKey? }. Recipients must be on the tenant’s allowed domains (Settings → App → Operations; unset ⇒ 409 EMAIL_RECIPIENTS_NOT_CONFIGURED, outside ⇒ 400 RECIPIENT_NOT_ALLOWED — ask first with POST /email/check-recipients); ≤10 recipients (400 TOO_MANY_RECIPIENTS); body ≤100 KB (413); a per-tenant daily limit (429 EMAIL_DAILY_LIMIT). With dedupKey a retry returns the first send (200, alreadySent:true); 409 EMAIL_SEND_IN_PROGRESS / EMAIL_SEND_IN_DOUBT / IDEMPOTENCY_KEY_REUSED as for /sms/send. The From address is the site’s configured default. 503 EMAIL_NOT_CONFIGURED when the site has no SMTP account, 503 PEGII_CAPABILITY_MISSING when its pegII API predates email or lacks auth, 502 EMAIL_SEND_FAILED when SMTP refuses.',
+            'Body { to (address or list), cc?, subject (single line, ≤300), body, bodyType? (text | html, default text), dedupKey? }. Recipients must be on the tenant’s allowed domains (Settings → App → Operations; unset ⇒ 409 EMAIL_RECIPIENTS_NOT_CONFIGURED, outside ⇒ 400 RECIPIENT_NOT_ALLOWED — ask first with POST /email/check-recipients); ≤10 recipients (400 TOO_MANY_RECIPIENTS); body ≤100 KB (413); a per-tenant daily limit (429 EMAIL_DAILY_LIMIT). With dedupKey a retry returns the first send (200, alreadySent:true); 409 EMAIL_SEND_IN_PROGRESS / EMAIL_SEND_IN_DOUBT / IDEMPOTENCY_KEY_REUSED as for /sms/send. The From address is the site’s configured default. 503 EMAIL_NOT_CONFIGURED when the site has no SMTP account, 503 PEGII_CAPABILITY_MISSING when its pegII API predates email or cannot take a cloud-issued token, 502 EMAIL_SEND_FAILED when SMTP refuses.',
           tags: ['Email'],
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
@@ -1041,8 +1041,7 @@ export function getOpenApiSpec() {
                 'EMAIL_SEND_FAILED | PEGII_SOURCE_UNREACHABLE | PEGII_SOURCE_AUTH_FAILED',
             },
             '503': {
-              description:
-                'EMAIL_NOT_CONFIGURED | PEGII_CAPABILITY_MISSING | PEGII_AUTH_UNAVAILABLE',
+              description: 'EMAIL_NOT_CONFIGURED | PEGII_CAPABILITY_MISSING',
             },
           },
         },

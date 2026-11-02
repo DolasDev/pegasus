@@ -8,8 +8,8 @@
 //   - a Cognito call acts as the signed-in TenantUser (`userId`).
 // Either may be unresolved (a legacy ApiClient row with no acts-as user, a
 // first-login race); the caller still resolves, and minting refuses later with
-// PEGII_PRINCIPAL_UNRESOLVED — so a site that doesn't verify cloud tokens yet
-// keeps working through the legacy credential path.
+// PEGII_PRINCIPAL_UNRESOLVED. There is no other credential: a site that doesn't
+// verify cloud tokens is refused with PEGII_API_CAPABILITY_MISSING.
 //
 // The company is the tenant's default company unless the caller names one
 // (`opts.companyId` — the I3 membership sync, which reads each company's

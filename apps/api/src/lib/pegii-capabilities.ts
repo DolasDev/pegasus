@@ -2,11 +2,11 @@
 // pegII capability probe — what a tenant's on-prem pegII API build supports.
 //
 // Sites auto-update on their own cadence, and features that need auth are only
-// mapped when the site has JWT configured, so "the route 404'd" is ambiguous:
-// an old build, an unconfigured site, or a real not-found. `GET
+// mapped when the site has cloud auth configured, so "the route 404'd" is
+// ambiguous: an old build, an unconfigured site, or a real not-found. `GET
 // /api/v1/pegii/version` (deliberately unauthenticated on the pegII side)
 // resolves it: it lists the capabilities this site serves right now, e.g.
-// `pegii.auth.v1`, `pegii.email.v1`. A bridge call that needs a capability
+// `pegii.cloud-auth.v1`, `pegii.email.v1`. A bridge call that needs a capability
 // asks here first and fails with PEGII_API_CAPABILITY_MISSING (→ 503) instead of
 // a confusing 404.
 //
@@ -21,7 +21,6 @@ import { PegiiApiError } from './pegii-api-error'
 export const PegiiCapabilities = {
   Version: 'pegii.version.v1',
   Idempotency: 'pegii.idempotency.v1',
-  Auth: 'pegii.auth.v1',
   Email: 'pegii.email.v1',
   /** The site verifies cloud-issued tokens (lib/pegii-token.ts) and routes by `cid`. */
   CloudAuth: 'pegii.cloud-auth.v1',
@@ -34,7 +33,7 @@ export const PegiiCapabilities = {
   /**
    * `GET /api/v1/pegii/drivers/{driverId}/financials` — a driver's running balance,
    * escrow held, last month-end and pending settlement (driver dashboard). Service-only
-   * auth on the site: cloud token with no `scp`, or the configured bridge hub user.
+   * auth on the site: a cloud token with no `scp`.
    */
   DriversFinancials: 'pegii.drivers.financials.v1',
   /**

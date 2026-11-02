@@ -21,7 +21,7 @@ describe('resolveSalesmanGateway', () => {
   it('builds a pegII salesman gateway from the resolved overlay target', async () => {
     resolvePegiiOverlayTarget.mockResolvedValue({
       ok: true,
-      target: { base: 'https://10.200.7.1:8443', apiKey: 'secret-ref' },
+      target: { base: 'https://10.200.7.1:8443' },
     } satisfies ResolvePegiiOverlayResult)
     const sentinel = { findSalesmanById: vi.fn() }
     createPegiiSalesmanGateway.mockReturnValue(sentinel)
@@ -31,8 +31,9 @@ describe('resolveSalesmanGateway', () => {
     expect(createPegiiSalesmanGateway).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       baseUrl: 'https://10.200.7.1:8443',
-      apiKey: 'secret-ref',
     })
+    // The retired hub credential is never threaded to the gateway.
+    expect(vi.mocked(createPegiiSalesmanGateway).mock.calls[0]![0]).not.toHaveProperty('apiKey')
     expect(gateway).toBe(sentinel)
   })
 

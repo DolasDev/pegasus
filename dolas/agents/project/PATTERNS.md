@@ -496,7 +496,8 @@ start from trips, or local work is invisible.
 Most cloud-facing Pegasus.Api routes `RequireAuthorization()` and leave _which_ principal may read to the
 cloud (Cedar). That is only safe when the route is not a per-person secret. `GET /api/v1/pegii/drivers/{id}/financials`
 returns any driver's money by id, and desktop-session tokens (`scp=desktop`) live on users' machines — so it uses
-`AuthPolicies.DriverFinancials`: cloud tokens **without** `scp`, or the configured bridge hub user, and nothing else.
+`AuthPolicies.DriverFinancials`: cloud tokens **without** `scp`, and nothing else (the configured bridge hub user
+was retired with hub auth, 2026-10-30).
 The cloud side resolves the id from the caller (`TenantUser.longhaulDriverId`), never from the request.
 
 ## Mobile tests: mock a service class, keep the module's pure helpers

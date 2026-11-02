@@ -40,7 +40,7 @@ function createPrismaCustomerGateway(db: PrismaClient): CustomerGateway {
 
 /**
  * Resolve the CustomerGateway for a tenant. Reads Tenant.customerSource; when
- * 'pegii', resolves the on-prem base URL + credential and returns the
+ * 'pegii', resolves the on-prem base URL and returns the
  * pegII-backed gateway. Throws PegiiApiError('PEGII_API_NOT_CONFIGURED', ...)
  * if a tenant is flagged 'pegii' but has no reachable target, so the caller can
  * surface a stable error rather than silently degrading.
@@ -76,7 +76,6 @@ export async function resolveCustomerGateway(
   return createPegiiCustomerGateway({
     tenantId,
     baseUrl: resolved.target.base,
-    apiKey: resolved.target.apiKey,
     ...(callerOf ? { caller: await callerOf() } : {}),
   })
 }

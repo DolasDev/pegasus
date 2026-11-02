@@ -3,11 +3,11 @@
 // (`POST /api/v1/pegii/email/send`), which relays it over the site's own SMTP
 // account from the site's configured default address.
 //
-// The endpoint is JWT-protected and only mapped on sites with auth configured,
-// so the call first checks the site advertises `pegii.auth.v1` and
-// `pegii.email.v1`; a site that doesn't gets PEGII_API_CAPABILITY_MISSING
-// (→ 503) rather than an ambiguous 404. The service-user login itself lives
-// in the client (lib/pegii-auth.ts).
+// The endpoint takes a cloud-issued token and is only mapped on sites with cloud
+// auth configured, so the call first checks the site advertises
+// `pegii.cloud-auth.v1` and `pegii.email.v1`; a site that doesn't gets
+// PEGII_API_CAPABILITY_MISSING (→ 503) rather than an ambiguous 404. The token
+// itself is minted by the client (lib/pegii-token.ts).
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
@@ -31,12 +31,16 @@ export interface EmailGateway {
 export function createPegiiEmailGateway(opts: {
   baseUrl: string
   client: PegiiApiClient
+  /** Who is calling; its correlation id is forwarded on the /version probe. */
+  caller?: PegiiCaller
   requireCapabilities?: typeof requirePegiiCapabilities
 }): EmailGateway {
   const requireCaps = opts.requireCapabilities ?? requirePegiiCapabilities
   return {
     async send(email) {
-      await requireCaps(opts.baseUrl, [PegiiCapabilities.Auth, PegiiCapabilities.Email])
+      await requireCaps(opts.baseUrl, [PegiiCapabilities.CloudAuth, PegiiCapabilities.Email], {
+        ...(opts.caller ? { correlationId: opts.caller.correlationId } : {}),
+      })
       await opts.client.post('/api/v1/pegii/email/send', {
         to: email.to,
         cc: email.cc,
@@ -62,13 +66,14 @@ export async function resolveEmailGateway(
       `tenant ${tenantId} has no reachable pegII email source: ${resolved.message}`,
     )
   }
+  const caller = callerOf ? await callerOf() : undefined
   return createPegiiEmailGateway({
     baseUrl: resolved.target.base,
     client: createPegiiApiClient({
       tenantId,
       baseUrl: resolved.target.base,
-      apiKey: resolved.target.apiKey,
-      ...(callerOf ? { caller: await callerOf() } : {}),
+      ...(caller ? { caller } : {}),
     }),
+    ...(caller ? { caller } : {}),
   })
 }

@@ -1,6 +1,5 @@
 // ---------------------------------------------------------------------------
-// pegII overlay-target resolver — turns a tenant into a base URL + credential
-// for the pegII team's on-prem domain API reached over the WireGuard tunnel.
+// pegII overlay-target resolver — turns a tenant into a base URL for the pegII team's on-prem domain API reached over the WireGuard tunnel.
 //
 // Mirrors the resolveOverlayTarget() helper from the (deleted) /onprem proxy
 // handler, but points at the pegII team's NEW API rather than this repo's own
@@ -13,9 +12,9 @@
 //   3. VpnPeer overlay IP            — http(s)://10.200.<o1>.<o2>:<port>
 //                                       (defaults http :65274, overridable).
 //
-// The credential (Tenant.pegiiApiKeyRef) is returned alongside the base so the
-// caller can build a PegiiApiClient. It is stored by reference (a Secrets
-// Manager ARN) and is NEVER logged or returned to clients.
+// No credential is resolved here: every call carries a cloud-issued token for
+// the calling principal (lib/pegii-token.ts). The retired hub service-user
+// credential (Tenant.pegiiApiKeyRef) is no longer read.
 // ---------------------------------------------------------------------------
 
 /** Minimal Prisma surface this resolver needs — keeps it unit-testable. */
@@ -23,8 +22,8 @@ export interface PegiiOverlayDb {
   tenant: {
     findUnique: (args: {
       where: { id: string }
-      select: { pegiiApiBaseUrl: true; pegiiApiKeyRef: true }
-    }) => Promise<{ pegiiApiBaseUrl: string | null; pegiiApiKeyRef: string | null } | null>
+      select: { pegiiApiBaseUrl: true }
+    }) => Promise<{ pegiiApiBaseUrl: string | null } | null>
   }
   vpnPeer: {
     findUnique: (args: {
@@ -37,8 +36,6 @@ export interface PegiiOverlayDb {
 export interface PegiiOverlayTarget {
   /** Fully-resolved base URL, no trailing slash. */
   base: string
-  /** Bearer credential reference, or null when unconfigured. */
-  apiKey: string | null
 }
 
 export type ResolvePegiiOverlayResult =
@@ -46,7 +43,7 @@ export type ResolvePegiiOverlayResult =
   | { ok: false; code: 'PEGII_API_NO_PEER' | 'PEGII_API_PEER_INACTIVE'; message: string }
 
 /**
- * Resolve the pegII API base URL + credential for a tenant. Returns a
+ * Resolve the pegII API base URL for a tenant. Returns a
  * discriminated result so callers can map the failure modes onto stable
  * response codes without try/catch.
  */
@@ -56,19 +53,18 @@ export async function resolvePegiiOverlayTarget(
 ): Promise<ResolvePegiiOverlayResult> {
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
-    select: { pegiiApiBaseUrl: true, pegiiApiKeyRef: true },
+    select: { pegiiApiBaseUrl: true },
   })
-  const apiKey = tenant?.pegiiApiKeyRef ?? null
 
   // 1. Explicit per-tenant base URL wins.
   if (tenant?.pegiiApiBaseUrl) {
-    return { ok: true, target: { base: tenant.pegiiApiBaseUrl.replace(/\/$/, ''), apiKey } }
+    return { ok: true, target: { base: tenant.pegiiApiBaseUrl.replace(/\/$/, '') } }
   }
 
   // 2. Global override (single-tenant smoke testing).
   const override = process.env['PEGII_API_TUNNEL_BASE_OVERRIDE']
   if (override) {
-    return { ok: true, target: { base: override.replace(/\/$/, ''), apiKey } }
+    return { ok: true, target: { base: override.replace(/\/$/, '') } }
   }
 
   // 3. Derive from the tenant's WireGuard overlay IP.
@@ -96,7 +92,6 @@ export async function resolvePegiiOverlayTarget(
     ok: true,
     target: {
       base: `${scheme}://10.200.${peer.assignedOctet1}.${peer.assignedOctet2}:${port}`,
-      apiKey,
     },
   }
 }

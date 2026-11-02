@@ -28,7 +28,6 @@ const SERIALIZED_ORDER_ENTITY = 'orders'
 export interface PegiiOrderGatewayOptions {
   tenantId: string
   baseUrl: string
-  apiKey?: string | null
   /** Test seam: inject a stub PegiiApiClient instead of the tunnel-backed one. */
   client?: PegiiApiClient
   /** Who is calling (cloud-issued token + x-correlation-id); see lib/pegii-request-context.ts. */
@@ -43,7 +42,6 @@ export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGa
     createPegiiApiClient({
       tenantId: opts.tenantId,
       baseUrl: opts.baseUrl,
-      ...(opts.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
       ...(opts.caller ? { caller: opts.caller } : {}),
     })
 
