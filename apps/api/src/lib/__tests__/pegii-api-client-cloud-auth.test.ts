@@ -1,5 +1,6 @@
-// The pegII client's choice between a cloud-issued token and the legacy credential
-// path, plus x-correlation-id forwarding (cloud identity I1).
+// The pegII client's cloud-issued token path — and its fail-fast refusal when a
+// site can't take one (the hub/legacy credential path is retired) — plus
+// x-correlation-id forwarding (cloud identity I1).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { generateKeyPairSync } from 'node:crypto'
@@ -81,12 +82,7 @@ afterEach(() => {
 describe('cloud-issued token selection', () => {
   it('sends a cloud token for the caller when the site advertises pegii.cloud-auth.v1', async () => {
     const sent = stubTunnel({ version: versionWith(['pegii.cloud-auth.v1']), data: [] })
-    const client = createPegiiApiClient({
-      tenantId: 'tenant-1',
-      baseUrl: BASE,
-      apiKey: 'legacy-raw-key',
-      caller: caller(),
-    })
+    const client = createPegiiApiClient({ tenantId: 'tenant-1', baseUrl: BASE, caller: caller() })
 
     await client.get('/api/v1/pegii/orders/search')
 
@@ -101,59 +97,67 @@ describe('cloud-issued token selection', () => {
     expect(claims).not.toHaveProperty('cid')
   })
 
-  it('keeps the legacy credential when the site lacks cloud-auth', async () => {
-    const sent = stubTunnel({ version: versionWith(['pegii.auth.v1']), data: [] })
-    const client = createPegiiApiClient({
-      tenantId: 'tenant-1',
-      baseUrl: BASE,
-      apiKey: 'legacy-raw-key',
-      caller: caller(),
+  /** Calling must refuse with 503 PEGII_CAPABILITY_MISSING and send no data request. */
+  async function expectFailFast(
+    client: ReturnType<typeof createPegiiApiClient>,
+    sent: Sent[],
+  ): Promise<void> {
+    const err = await client.get('/x').catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(PegiiApiError)
+    expect(err).toMatchObject({ code: 'PEGII_API_CAPABILITY_MISSING' })
+    expect(pegiiApiErrorToHttp(err as PegiiApiError)).toMatchObject({
+      status: 503,
+      code: 'PEGII_CAPABILITY_MISSING',
     })
+    expect(dataCalls(sent)).toHaveLength(0)
+  }
 
-    await client.get('/x')
+  it('fails fast, sending nothing, when the site lacks cloud-auth', async () => {
+    const sent = stubTunnel({ version: versionWith(['pegii.email.v1']), data: [] })
+    const client = createPegiiApiClient({ tenantId: 'tenant-1', baseUrl: BASE, caller: caller() })
 
-    expect(bearer(dataCalls(sent)[0]!)).toBe('legacy-raw-key')
+    await expectFailFast(client, sent)
   })
 
-  it('never probes or mints while the site operator switch is off, even if /version would advertise cloud-auth', async () => {
+  it('fails fast without probing while the site operator switch is off, even if /version would advertise cloud-auth', async () => {
     // A spoofed or stale /version must not be able to initiate the cloud path.
     const sent = stubTunnel({ version: versionWith(['pegii.cloud-auth.v1']), data: [] })
     const client = createPegiiApiClient({
       tenantId: 'tenant-1',
       baseUrl: BASE,
-      apiKey: 'legacy-raw-key',
       caller: caller({ site: { id: 'site-1', cloudAuthEnabled: false } }),
     })
 
-    await client.get('/x')
-
-    expect(sent.map((s) => s.url)).toEqual([`${BASE}/x`])
-    expect(bearer(sent[0]!)).toBe('legacy-raw-key')
-    expect(sent[0]!.headers['x-correlation-id']).toBe('cloud-req-123')
+    await expectFailFast(client, sent)
+    expect(sent).toHaveLength(0)
   })
 
-  it('falls back to the legacy credential when the /version probe fails', async () => {
+  it('propagates a failed /version probe and sends no data request', async () => {
     const sent = stubTunnel({ version: 'throw', data: [] })
-    const client = createPegiiApiClient({
-      tenantId: 'tenant-1',
-      baseUrl: BASE,
-      apiKey: 'legacy-raw-key',
-      caller: caller(),
-    })
+    const client = createPegiiApiClient({ tenantId: 'tenant-1', baseUrl: BASE, caller: caller() })
 
-    await client.get('/x')
-
-    expect(bearer(dataCalls(sent)[0]!)).toBe('legacy-raw-key')
+    await expect(client.get('/x')).rejects.toThrow('tunnel down')
+    expect(dataCalls(sent)).toHaveLength(0)
   })
 
-  it('does not probe /version at all without a caller (unchanged legacy behaviour)', async () => {
+  it('fails fast without a caller, never probing /version', async () => {
     const sent = stubTunnel({ version: versionWith(['pegii.cloud-auth.v1']), data: [] })
-    const client = createPegiiApiClient({ tenantId: 't', baseUrl: BASE, apiKey: 'k' })
+    const client = createPegiiApiClient({ tenantId: 't', baseUrl: BASE })
 
-    await client.get('/x')
+    await expectFailFast(client, sent)
+    expect(sent).toHaveLength(0)
+  })
 
-    expect(sent.map((s) => s.url)).toEqual([`${BASE}/x`])
-    expect(sent[0]!.headers).not.toHaveProperty('x-correlation-id')
+  it('keeps getHealth unauthenticated and callable without a caller', async () => {
+    const sent = stubTunnel({
+      version: versionWith([]),
+      data: [{ status: 200, body: { status: 'healthy' } }],
+    })
+    const client = createPegiiApiClient({ tenantId: 't', baseUrl: BASE })
+
+    expect(await client.getHealth()).toEqual({ status: 'healthy' })
+    expect(sent.map((s) => s.url)).toEqual([`${BASE}/health`])
+    expect(sent[0]!.headers).not.toHaveProperty('authorization')
   })
 
   it('re-mints once on a 401, then reports auth failure', async () => {
@@ -211,7 +215,7 @@ describe('cloud-issued token selection', () => {
 
 describe('x-correlation-id', () => {
   it('is forwarded on /version, data calls and /health', async () => {
-    const sent = stubTunnel({ version: versionWith([]), data: [] })
+    const sent = stubTunnel({ version: versionWith(['pegii.cloud-auth.v1']), data: [] })
     const client = createPegiiApiClient({ tenantId: 't', baseUrl: BASE, caller: caller() })
 
     await client.get('/x')

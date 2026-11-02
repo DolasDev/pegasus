@@ -2,18 +2,19 @@
 // pegII settings handler — /api/v1/settings/pegii
 //
 // Lets tenant administrators configure the pegII on-prem domain API binding:
-// the per-entity data source flag (customerSource), the pegII API base URL, and
-// a credential reference. Mounted alongside settingsHandler on /settings.
+// the per-entity data source flag (customerSource) and the pegII API base URL.
+// Mounted alongside settingsHandler on /settings.
 //
 // Endpoints:
-//   GET   /pegii       — current config (credential presence only, never value)
-//   PATCH /pegii       — update customerSource / base URL / credential ref
+//   GET   /pegii       — current config
+//   PATCH /pegii       — update customerSource / base URL
 //   POST  /pegii/test  — connectivity probe over the tunnel (open GET /health,
 //                        expects a bare {"status":"healthy"} body)
 //
-// The credential (pegiiApiKeyRef) is a Secrets Manager ARN, stored by
-// reference. It is NEVER returned by any response — GET/PATCH only report
-// whether one is configured.
+// There is no per-tenant credential: bridge calls carry cloud-issued tokens
+// (lib/pegii-token.ts). The retired hub service-user reference
+// (Tenant.pegiiApiKeyRef) is neither read nor written; the column remains only
+// until a later migration drops it.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -36,7 +37,6 @@ const PatchPegiiBody = z
   .object({
     customerSource: z.enum(['prisma', 'pegii']).nullable().optional(),
     pegiiApiBaseUrl: z.string().url().nullable().optional(),
-    pegiiApiKeyRef: z.string().min(1).nullable().optional(),
   })
   .strict()
 
@@ -45,12 +45,7 @@ const PatchPegiiBody = z
 // ---------------------------------------------------------------------------
 
 export type PegiiTestCode =
-  | 'OK'
-  | 'NOT_CONFIGURED'
-  | 'PEER_INACTIVE'
-  | 'TUNNEL_ERROR'
-  | 'HTTP_ERROR'
-  | 'BAD_ENVELOPE'
+  'OK' | 'NOT_CONFIGURED' | 'PEER_INACTIVE' | 'TUNNEL_ERROR' | 'HTTP_ERROR' | 'BAD_ENVELOPE'
 
 export interface PegiiTestResult {
   ok: boolean
@@ -92,12 +87,12 @@ function classifyPegiiError(err: unknown): { code: PegiiTestCode; detail: string
 
 export const settingsPegiiHandler = new Hono<AppEnv>()
 
-// GET /pegii — current config. Credential is reported as a boolean only.
+// GET /pegii — current config.
 settingsPegiiHandler.get('/pegii', requirePermission(Actions.ReadSettings), async (c) => {
   const tenantId = c.get('tenantId')
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
-    select: { customerSource: true, pegiiApiBaseUrl: true, pegiiApiKeyRef: true },
+    select: { customerSource: true, pegiiApiBaseUrl: true },
   })
   if (!tenant) return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
 
@@ -105,12 +100,11 @@ settingsPegiiHandler.get('/pegii', requirePermission(Actions.ReadSettings), asyn
     data: {
       customerSource: normalizeCustomerSource(tenant.customerSource),
       pegiiApiBaseUrl: tenant.pegiiApiBaseUrl,
-      pegiiApiKeyConfigured: tenant.pegiiApiKeyRef != null,
     },
   })
 })
 
-// PATCH /pegii — sparse update of the three fields. Pass null to clear a field.
+// PATCH /pegii — sparse update of the two fields. Pass null to clear a field.
 settingsPegiiHandler.patch(
   '/pegii',
   requirePermission(Actions.UpdateSettings),
@@ -128,9 +122,8 @@ settingsPegiiHandler.patch(
       data: {
         ...(body.customerSource !== undefined ? { customerSource: body.customerSource } : {}),
         ...(body.pegiiApiBaseUrl !== undefined ? { pegiiApiBaseUrl: body.pegiiApiBaseUrl } : {}),
-        ...(body.pegiiApiKeyRef !== undefined ? { pegiiApiKeyRef: body.pegiiApiKeyRef } : {}),
       },
-      select: { customerSource: true, pegiiApiBaseUrl: true, pegiiApiKeyRef: true },
+      select: { customerSource: true, pegiiApiBaseUrl: true },
     })
 
     logger.info('pegII settings updated', {
@@ -142,7 +135,6 @@ settingsPegiiHandler.patch(
       data: {
         customerSource: normalizeCustomerSource(tenant.customerSource),
         pegiiApiBaseUrl: tenant.pegiiApiBaseUrl,
-        pegiiApiKeyConfigured: tenant.pegiiApiKeyRef != null,
       },
     })
   },
@@ -164,7 +156,6 @@ settingsPegiiHandler.post('/pegii/test', requirePermission(Actions.ReadSettings)
   const client = createPegiiApiClient({
     tenantId,
     baseUrl: resolved.target.base,
-    apiKey: resolved.target.apiKey,
     timeoutMs: 10_000,
   })
 

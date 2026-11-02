@@ -36,7 +36,6 @@ export async function resolveMemoGateway(
   return createPegiiMemoGateway({
     tenantId,
     baseUrl: resolved.target.base,
-    apiKey: resolved.target.apiKey,
     ...(callerOf ? { caller: await callerOf() } : {}),
   })
 }

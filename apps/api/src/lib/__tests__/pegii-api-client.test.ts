@@ -8,6 +8,9 @@ import {
   pegiiApiErrorToHttp,
 } from '../pegii-api-client'
 
+/** A fixed bearer for request-shape tests; data calls refuse to go out without one. */
+const tokenAuth = () => ({ getToken: async () => 'tok', invalidate: () => undefined })
+
 function fakeInvokePayload(obj: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(obj))
 }
@@ -41,7 +44,11 @@ afterEach(() => {
 describe('createPegiiApiClient.get', () => {
   it('builds the URL with query params and unwraps the { data } envelope', async () => {
     const send = stubUpstream({ status: 200, body: JSON.stringify({ data: { id: '42' } }) })
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://10.200.7.1:8443' })
+    const client = createPegiiApiClient({
+      tenantId: 't1',
+      baseUrl: 'https://10.200.7.1:8443',
+      auth: tokenAuth(),
+    })
 
     const data = await client.get<{ id: string }>('/customers', {
       limit: 50,
@@ -60,22 +67,6 @@ describe('createPegiiApiClient.get', () => {
     expect(payload['method']).toBe('GET')
   })
 
-  it('sends a Bearer header only when an apiKey is configured', async () => {
-    const send = stubUpstream({ status: 200, body: JSON.stringify({ data: null }) })
-    const client = createPegiiApiClient({
-      tenantId: 't1',
-      baseUrl: 'https://h',
-      apiKey: 'secret-token',
-    })
-    await client.get('/x')
-
-    const cmd = send.mock.calls[0]![0] as { input: { Payload: Uint8Array } }
-    const payload = JSON.parse(new TextDecoder().decode(cmd.input.Payload)) as {
-      headers: Record<string, string>
-    }
-    expect(payload.headers['authorization']).toBe('Bearer secret-token')
-  })
-
   it('fails fast with PEGII_API_NOT_CONFIGURED when baseUrl is empty (no tunnel hop)', async () => {
     const send = stubUpstream({ status: 200, body: '{"data":1}' })
     const client = createPegiiApiClient({ tenantId: 't1', baseUrl: '' })
@@ -86,7 +77,7 @@ describe('createPegiiApiClient.get', () => {
 
   it('maps a non-2xx { error, code } response to PEGII_API_HTTP_ERROR with status', async () => {
     stubUpstream({ status: 404, body: JSON.stringify({ error: 'gone', code: 'NOT_FOUND' }) })
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://h' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://h', auth: tokenAuth() })
 
     const err = await client.get('/customers/nope').catch((e: unknown) => e)
     expect(err).toBeInstanceOf(PegiiApiError)
@@ -96,20 +87,20 @@ describe('createPegiiApiClient.get', () => {
 
   it('throws PEGII_API_BAD_ENVELOPE on a non-JSON body', async () => {
     stubUpstream({ status: 200, body: '<html>not json</html>' })
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://h' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://h', auth: tokenAuth() })
     await expect(client.get('/x')).rejects.toMatchObject({ code: 'PEGII_API_BAD_ENVELOPE' })
   })
 
   it('throws PEGII_API_BAD_ENVELOPE when a 2xx body lacks a data field', async () => {
     stubUpstream({ status: 200, body: JSON.stringify({ notData: true }) })
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://h' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://h', auth: tokenAuth() })
     await expect(client.get('/x')).rejects.toMatchObject({ code: 'PEGII_API_BAD_ENVELOPE' })
   })
 
   it('translates a TunnelError into PEGII_API_TUNNEL_ERROR', async () => {
     // No TUNNEL_PROXY_FUNCTION_NAME ⇒ tunnelFetch throws TunnelError.
     delete process.env['TUNNEL_PROXY_FUNCTION_NAME']
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://h' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'https://h', auth: tokenAuth() })
     await expect(client.get('/x')).rejects.toMatchObject({ code: 'PEGII_API_TUNNEL_ERROR' })
   })
 })
@@ -131,13 +122,9 @@ describe('createPegiiApiClient.getHealth', () => {
     expect(payload.method).toBe('GET')
   })
 
-  it('never sends an Authorization header even when an apiKey is configured (open endpoint)', async () => {
+  it('never sends an Authorization header even when a token provider is configured (open endpoint)', async () => {
     const send = stubUpstream({ status: 200, body: JSON.stringify({ status: 'healthy' }) })
-    const client = createPegiiApiClient({
-      tenantId: 't1',
-      baseUrl: 'http://h',
-      apiKey: 'secret-token',
-    })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://h', auth: tokenAuth() })
     await client.getHealth()
 
     const cmd = send.mock.calls[0]![0] as { input: { Payload: Uint8Array } }
@@ -252,7 +239,11 @@ const sentPayload = (send: ReturnType<typeof vi.fn>, i: number) => {
 describe('createPegiiApiClient.post / put', () => {
   it('POSTs a JSON body and unwraps { data }', async () => {
     const send = stubSequence([{ status: 200, body: JSON.stringify({ data: { sent: true } }) }])
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://10.200.7.1:65274' })
+    const client = createPegiiApiClient({
+      tenantId: 't1',
+      baseUrl: 'http://10.200.7.1:65274',
+      auth: tokenAuth(),
+    })
     expect(await client.post('/api/v1/pegii/email/send', { to: ['a@b.test'] })).toEqual({
       sent: true,
     })
@@ -264,7 +255,7 @@ describe('createPegiiApiClient.post / put', () => {
 
   it('PUTs with the same contract', async () => {
     const send = stubSequence([{ status: 200, body: JSON.stringify({ data: 1 }) }])
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x', auth: tokenAuth() })
     await client.put('/p', { a: 1 })
     expect(sentPayload(send, 0).method).toBe('PUT')
   })
@@ -275,7 +266,7 @@ describe('createPegiiApiClient.post / put', () => {
       headers: { 'X-Pegasus-Applied': 'true', 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: { Id: 490317 } }),
     })
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x', auth: tokenAuth() })
 
     const res = await client.patch('/api/v1/pegii/orders/490317', {
       Survey: { SerivceStatus: 'x' },
@@ -292,7 +283,7 @@ describe('createPegiiApiClient.post / put', () => {
     stubSequence([
       { status: 409, body: JSON.stringify({ error: 'dup', code: 'IDEMPOTENCY_KEY_REUSED' }) },
     ])
-    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://x', auth: tokenAuth() })
     await expect(client.post('/p', {})).rejects.toMatchObject({
       code: 'PEGII_API_HTTP_ERROR',
       status: 409,
@@ -301,7 +292,7 @@ describe('createPegiiApiClient.post / put', () => {
   })
 })
 
-describe('createPegiiApiClient with a service-user token provider', () => {
+describe('createPegiiApiClient with a token provider', () => {
   const provider = () => {
     let n = 0
     return { getToken: vi.fn(async () => `tok-${++n}`), invalidate: vi.fn() }
@@ -359,12 +350,6 @@ describe('pegiiApiErrorToHttp — new cases', () => {
       status: 502,
       code: 'PEGII_SOURCE_AUTH_FAILED',
     })
-    expect(pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_AUTH_UNAVAILABLE', 'x'))).toMatchObject(
-      {
-        status: 503,
-        code: 'PEGII_AUTH_UNAVAILABLE',
-      },
-    )
     expect(
       pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_CAPABILITY_MISSING', 'x')),
     ).toMatchObject({ status: 503, code: 'PEGII_CAPABILITY_MISSING' })

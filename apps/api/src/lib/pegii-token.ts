@@ -15,7 +15,14 @@
 import { randomUUID } from 'node:crypto'
 import { PegiiApiError } from './pegii-api-error'
 import { createKmsSigner, type Signer } from './pegii-signer'
-import type { PegiiTokenProvider } from './pegii-auth'
+
+/** The pegII client's auth seam: a bearer for each call, dropped after a 401. */
+export interface PegiiTokenProvider {
+  /** A valid bearer token, minting one when none is cached (or it is near expiry). */
+  getToken(): Promise<string>
+  /** Drop the cached token, e.g. after the API rejected it with 401. */
+  invalidate(): void
+}
 
 /** Token lifetime. The contract caps `exp` at `iat + 300`. */
 export const PEGII_TOKEN_TTL_SECONDS = 300

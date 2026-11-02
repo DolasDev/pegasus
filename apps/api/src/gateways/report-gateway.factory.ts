@@ -4,7 +4,7 @@
 // Like orders, there is no cloud alternative: the report definitions and the
 // data joins behind them live only in the legacy pegII system, so there is
 // exactly one source. The factory's job is to resolve the tenant's on-prem base
-// URL + credential (via resolvePegiiOverlayTarget) and build the gateway.
+// URL (via resolvePegiiOverlayTarget) and build the gateway.
 //
 // A tenant with no reachable pegII target is a HARD ERROR — the factory throws
 // PegiiApiError('PEGII_API_NOT_CONFIGURED', ...), which the route's error
@@ -49,7 +49,6 @@ export async function resolveReportGateway(
   return createPegiiReportGateway({
     tenantId,
     baseUrl: resolved.target.base,
-    apiKey: resolved.target.apiKey,
     ...(callerOf ? { caller: await callerOf() } : {}),
   })
 }

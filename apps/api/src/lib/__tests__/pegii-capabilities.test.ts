@@ -61,10 +61,14 @@ describe('getPegiiVersionInfo', () => {
 
 describe('requirePegiiCapabilities', () => {
   it('passes when every capability is advertised', async () => {
-    stub(200, versionBody([PegiiCapabilities.Auth, PegiiCapabilities.Email]))
+    stub(200, versionBody([PegiiCapabilities.CloudAuth, PegiiCapabilities.Email]))
     await expect(
-      requirePegiiCapabilities(BASE, [PegiiCapabilities.Auth, PegiiCapabilities.Email]),
+      requirePegiiCapabilities(BASE, [PegiiCapabilities.CloudAuth, PegiiCapabilities.Email]),
     ).resolves.toBeUndefined()
+  })
+
+  it('no longer knows the retired hub login capability (pegii.auth.v1)', () => {
+    expect(Object.values(PegiiCapabilities)).not.toContain('pegii.auth.v1')
   })
 
   it('names the missing capabilities', async () => {

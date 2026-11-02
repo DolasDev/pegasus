@@ -16,7 +16,6 @@ import { requirePegiiCapabilities, PegiiCapabilities } from '../lib/pegii-capabi
 export interface PegiiDriverGatewayOptions {
   tenantId: string
   baseUrl: string
-  apiKey?: string | null
   /** Test seam: inject a stub PegiiApiClient instead of the tunnel-backed one. */
   client?: PegiiApiClient
   /** Who is calling (cloud-issued token + x-correlation-id). */
@@ -31,7 +30,6 @@ export function createPegiiDriverGateway(opts: PegiiDriverGatewayOptions): Drive
     createPegiiApiClient({
       tenantId: opts.tenantId,
       baseUrl: opts.baseUrl,
-      ...(opts.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
       ...(opts.caller ? { caller: opts.caller } : {}),
     })
   const requireCaps = opts.requireCapabilities ?? requirePegiiCapabilities

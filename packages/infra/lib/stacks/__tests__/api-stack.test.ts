@@ -201,26 +201,12 @@ describe('ApiStack — IAM permissions', () => {
     })
   })
 
-  // pegII service-user credentials: read-only, and only under the env's own
-  // pegasus/<env>/pegii/ prefix — never a wildcard over every secret.
-  it('grants read-only sm:GetSecretValue on the pegII credential prefix', () => {
+  // pegII calls carry cloud-issued tokens only; the retired hub service-user
+  // credential secrets (pegasus/<env>/pegii/*) must no longer be readable.
+  it('grants no access to the retired pegII credential prefix', () => {
     const template = synthApiStack()
-    template.hasResourceProperties('AWS::IAM::Policy', {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Action: 'secretsmanager:GetSecretValue',
-            Effect: 'Allow',
-            Resource: {
-              'Fn::Join': [
-                '',
-                Match.arrayWith([Match.stringLikeRegexp(':secret:pegasus/[a-z]+/pegii/\\*$')]),
-              ],
-            },
-          }),
-        ]),
-      },
-    })
+    const policies = template.findResources('AWS::IAM::Policy')
+    expect(JSON.stringify(policies)).not.toMatch(/:secret:pegasus\/[a-z]+\/pegii\//)
   })
 
   // Regression: the AWS-RunShellScript document is AWS-managed and its ARN

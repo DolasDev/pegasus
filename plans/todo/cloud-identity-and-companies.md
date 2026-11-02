@@ -267,7 +267,7 @@ Two repos implement opposite ends of one token, so the contract lives here, plus
 
 - **Phase 5:** the movemanager commit `149c4c82` stays unpushed until I2. Its routes are unchanged, but they gain the cloud scheme and company routing, and NW's rollout becomes "set the site id + issuer" instead of provisioning a hub service user and a secret.
 - **Phases 6–7 (tasks, memos):** writes take `created_by`/`who_called` from the token's `emp`, falling back to the company's system employee for service accounts. This replaces the fixed 1001 assumption.
-- The Phase 4 hub-service-user path (`lib/pegii-auth.ts`, `pegiiApiKeyRef`) **stays as the fallback** until I5, then is removed.
+- The Phase 4 hub-service-user path (`lib/pegii-auth.ts`, `pegiiApiKeyRef`) stayed as the fallback until I5. **Removed 2026-10-30** (cloud side: branch `chore/retire-pegii-hub-auth`; site side: movemanager `plans/in-progress/retire-hub-auth.md`). There is no fallback: a site that can't take a cloud token gets 503 `PEGII_CAPABILITY_MISSING` before any request is sent.
 
 ## Risks
 

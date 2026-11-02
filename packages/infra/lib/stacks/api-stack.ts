@@ -1162,19 +1162,9 @@ export class ApiStack extends cdk.Stack {
     // above; no new Lambda invoke grant is needed. PEGII_API_TUNNEL_BASE_OVERRIDE
     // is intentionally left unset (opt-in smoke-test escape hatch).
     // ---------------------------------------------------------------------------
-    // pegII service-user credentials: one Secrets Manager secret per tenant,
-    // `{username, password}` under `pegasus/<env>/pegii/`, whose ARN is stored on
-    // the tenant (Tenant.pegiiApiKeyRef). apps/api/src/lib/pegii-auth.ts reads it
-    // to log in to the tenant's pegII API. Read-only — secrets are provisioned
-    // out of band (see the NW pulse-texting plan, Phase 8).
-    apiFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['secretsmanager:GetSecretValue'],
-        resources: [
-          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:pegasus/${envName}/pegii/*`,
-        ],
-      }),
-    )
+    // No pegII credential secrets: every bridge call carries a cloud-issued token
+    // (apps/api/src/lib/pegii-token.ts, KMS-signed). The retired hub service-user
+    // secrets under `pegasus/<env>/pegii/` are deliberately NOT readable.
     apiFunction.addEnvironment('PEGII_API_TUNNEL_SCHEME', 'http')
     apiFunction.addEnvironment('PEGII_API_TUNNEL_PORT', '65274')
 

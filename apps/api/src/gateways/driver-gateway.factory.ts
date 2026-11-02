@@ -4,7 +4,7 @@
 //
 // Like the OrderGateway factory, there is no cloud/Postgres alternative:
 // driver financials live only in the legacy pegII system, so there is exactly one source.
-// The factory's job is to resolve the tenant's on-prem base URL + credential
+// The factory's job is to resolve the tenant's on-prem base URL
 // (via resolvePegiiOverlayTarget) and build the gateway.
 //
 // A tenant with no reachable pegII target is a HARD ERROR — the factory throws
@@ -51,7 +51,6 @@ export async function resolveDriverGateway(
   return createPegiiDriverGateway({
     tenantId,
     baseUrl: resolved.target.base,
-    apiKey: resolved.target.apiKey,
     ...(callerOf ? { caller: await callerOf() } : {}),
   })
 }
