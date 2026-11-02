@@ -468,7 +468,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 | Pulse workflow | **none published** (NW has only `weichert-milestone-update`, `demo-pack-call*`, `send_order_to_partner`) | Blue Signal (we never publish workflows or configs) |
 | Triggers | **none** for pulse (only `demo-pack-call-ack` on `feedback.submitted`) | the workflow's publisher |
 | `nw_pulse` CONFIG group | **absent** (only the `weichert` groups exist) | NW tenant admin / Blue Signal |
-| Desktop MSIX with the Phase 6 guard fix (D20) | not visible from the cloud (no client version is recorded, S1) | Steve, on site |
+| Desktop MSIX with the Phase 6 guard fix (D20) | confirmed by Steve 2026-11-02: NW's desktop app has the task fix (not visible from the cloud; no client version is recorded, S1) | done |
 
 The live 0009 AC3 run is done (2026-10-22; see Phase 6: grants confirmed on prod, and "undeclared → 403" is not how the platform works). S5 is answered (yes); its follow-on (`get_activity_arrival_window`) is a separate plan after the pilot, which keeps the fixed 4–7 PM window.
 
