@@ -1263,6 +1263,64 @@ describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', 
       throw new Error(`expected exactly 1 dispatcher Lambda, found ${dispatchers.length}`)
     }
   })
+
+  // ── Dispatcher kicks: one dispatcher at a time, async-invoked by its callers ──
+
+  function dispatcherLogicalId(template: Template): string {
+    const id = Object.keys(template.findResources('AWS::Lambda::Function')).find((k) =>
+      k.startsWith('DispatchWorkflowTriggersFunction'),
+    )
+    if (!id) throw new Error('dispatcher Lambda not found')
+    return id
+  }
+
+  it('runs one dispatcher at a time (reserved concurrency 1) — the cap check relies on it', () => {
+    const template = synthTemporal()
+    const fn = template.findResources('AWS::Lambda::Function')[dispatcherLogicalId(template)]
+    expect(fn?.Properties?.ReservedConcurrentExecutions).toBe(1)
+  })
+
+  it('drops a stale or failed async invoke instead of retrying — the next tick is the retry', () => {
+    const template = synthTemporal()
+    template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
+      FunctionName: { Ref: dispatcherLogicalId(template) },
+      MaximumRetryAttempts: 0,
+      MaximumEventAgeInSeconds: 60,
+    })
+  })
+
+  it('lets the api, RingCentral capture and RingCentral sync Lambdas kick the dispatcher', () => {
+    const template = synthTemporal()
+    const dispatcher = dispatcherLogicalId(template)
+    const fns = template.findResources('AWS::Lambda::Function')
+    const policies = Object.values(template.findResources('AWS::IAM::Policy'))
+    for (const prefix of ['ApiFunction', 'RingCentralCaptureFunction', 'RingCentralSyncFunction']) {
+      const [, fn] =
+        Object.entries(fns).find(([id]) => id.startsWith(prefix) && !id.includes('LogRetention')) ??
+        []
+      if (!fn) throw new Error(`${prefix} not found`)
+      expect(fn.Properties?.Environment?.Variables?.TRIGGER_DISPATCHER_FUNCTION_NAME).toEqual({
+        Ref: dispatcher,
+      })
+      const roleRef = (fn.Properties?.Role as { 'Fn::GetAtt'?: string[] })['Fn::GetAtt']?.[0]
+      const docs = JSON.stringify(
+        policies
+          .filter((p) => JSON.stringify(p.Properties?.Roles ?? []).includes(String(roleRef)))
+          .map((p) => p.Properties?.PolicyDocument),
+      )
+      expect(docs).toContain('lambda:InvokeFunction')
+      expect(docs).toContain(dispatcher)
+    }
+  })
+
+  it('without Temporal there is no dispatcher, so nothing is told to kick one', () => {
+    const template = synthApiStack()
+    const fns = Object.values(template.findResources('AWS::Lambda::Function'))
+    const withVar = fns.filter(
+      (fn) => fn.Properties?.Environment?.Variables?.TRIGGER_DISPATCHER_FUNCTION_NAME !== undefined,
+    )
+    expect(withVar).toHaveLength(0)
+  })
 })
 
 // ---------------------------------------------------------------------------

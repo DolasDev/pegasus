@@ -88,7 +88,7 @@ describe('syncConnection — v1 store', () => {
       'tnt-1',
       expect.objectContaining({ source: 'V1_STORE', externalId: '1' }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
     expect(h.saveSyncCursor).toHaveBeenCalledWith(db, 'tnt-1', 'conn-1', 'V1', 'v1-tok')
   })
@@ -117,7 +117,7 @@ describe('syncConnection — v1 store', () => {
       'tnt-1',
       expect.objectContaining({ externalId: '4' }),
       'conn-1',
-      { emitReceivedEvent: true },
+      expect.objectContaining({ emitReceivedEvent: true }),
     )
   })
 
@@ -148,7 +148,7 @@ describe('syncConnection — v1 store', () => {
       'tnt-1',
       expect.objectContaining({ externalId: '2' }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
   })
 
@@ -196,7 +196,7 @@ describe('syncConnection — v1 store', () => {
       'tnt-1',
       expect.objectContaining({ externalId: '5' }),
       'conn-1',
-      { emitReceivedEvent: true },
+      expect.objectContaining({ emitReceivedEvent: true }),
     )
     // Unfiltered ISync returns voicemail/fax as a matter of course — not a
     // malformed record worth a warning on every run.
@@ -204,6 +204,36 @@ describe('syncConnection — v1 store', () => {
       'skipping un-normalizable RingCentral record',
       expect.anything(),
     )
+  })
+
+  it('counts only the captures that actually emitted sms.received', async () => {
+    h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
+      Promise.resolve(store === 'V1' ? { syncToken: 'prev' } : null),
+    )
+    // Three inbound SMS on ISync; the repository emits for two (the third is
+    // a re-capture the outbox insert dedupes).
+    let calls = 0
+    h.captureMessage.mockImplementation(
+      (_db: unknown, _t: string, _n: unknown, _c: string, opts: Record<string, unknown>) => {
+        calls++
+        if (opts['emitReceivedEvent'] && calls <= 2) {
+          ;(opts['onReceivedEventEmitted'] as () => void)()
+        }
+        return Promise.resolve({})
+      },
+    )
+    getMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === V1_PATH
+          ? {
+              records: [1, 2, 3].map((id) => ({ ...v1Sms(id), direction: 'Inbound' })),
+              syncInfo: { syncToken: 'x' },
+            }
+          : { records: [], syncInfo: { syncToken: 'x' } },
+      ),
+    )
+
+    await expect(syncConnection(db, connection)).resolves.toEqual({ captured: 3, emitted: 2 })
   })
 
   it('falls back to FSync when RingCentral names the syncToken as the bad parameter', async () => {
@@ -305,7 +335,7 @@ describe('syncConnection — v1 backfill beyond the FSync cap', () => {
     expect(listCalls[1]![1]).toMatchObject({ page: '2' })
     // History never fires workflows.
     for (const call of h.captureMessage.mock.calls) {
-      expect(call[4]).toEqual({ emitReceivedEvent: false })
+      expect(call[4]).toMatchObject({ emitReceivedEvent: false })
     }
     expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
   })
@@ -403,7 +433,7 @@ describe('syncConnection — v1 backfill beyond the FSync cap', () => {
       'tnt-1',
       expect.objectContaining({ externalId: '200' }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
     expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
   })
@@ -460,7 +490,7 @@ describe('syncConnection — thread store', () => {
         toNumber: '+19085760908',
       }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
     // Outbound: from company, to external.
     expect(h.captureMessage).toHaveBeenCalledWith(
@@ -473,7 +503,7 @@ describe('syncConnection — thread store', () => {
         toNumber: '+12015550123',
       }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
     expect(h.saveSyncCursor).toHaveBeenCalledWith(db, 'tnt-1', 'conn-1', 'THREAD', 'thr-tok')
   })
@@ -517,9 +547,9 @@ describe('syncConnection — thread store', () => {
       h.captureMessage.mock.calls.find(
         (c) => (c[2] as { externalId: string }).externalId === externalId,
       )![4]
-    expect(flagFor('200')).toEqual({ emitReceivedEvent: true })
+    expect(flagFor('200')).toMatchObject({ emitReceivedEvent: true })
     // Still captured (and forwarded), but a missing direction never fires a workflow.
-    expect(flagFor('201')).toEqual({ emitReceivedEvent: false })
+    expect(flagFor('201')).toMatchObject({ emitReceivedEvent: false })
   })
 
   it('skips the store when Message Threads is turned off for the extension (CMN-428)', async () => {
@@ -532,7 +562,7 @@ describe('syncConnection — thread store', () => {
     })
 
     // Not a connection failure: the v1 store still syncs and counts.
-    await expect(syncConnection(db, connection)).resolves.toEqual({ captured: 1 })
+    await expect(syncConnection(db, connection)).resolves.toEqual({ captured: 1, emitted: 0 })
     expect(h.saveSyncCursor).not.toHaveBeenCalledWith(
       db,
       'tnt-1',
@@ -571,9 +601,13 @@ describe('syncConnection — opt-out keywords', () => {
 
     await syncConnection(db, connection)
 
-    expect(h.captureMessage).toHaveBeenCalledWith(db, 'tnt-1', expect.anything(), 'conn-1', {
-      emitReceivedEvent: false,
-    })
+    expect(h.captureMessage).toHaveBeenCalledWith(
+      db,
+      'tnt-1',
+      expect.anything(),
+      'conn-1',
+      expect.objectContaining({ emitReceivedEvent: false }),
+    )
     expect(h.applyInboundKeyword).toHaveBeenCalledWith(db, 'tnt-1', captured)
   })
 

@@ -543,6 +543,10 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   httpApiId: apiStack.httpApiId,
   httpApiStage: apiStack.httpApiStage,
   ringcentralCaptureDlqName: apiStack.ringcentralCaptureDlqName,
+  // Reserved-concurrency-1 dispatcher: its throttles are by design (kicks).
+  ...(apiStack.triggerDispatcherFunctionName
+    ? { triggerDispatcherFunctionName: apiStack.triggerDispatcherFunctionName }
+    : {}),
   // Integration-event buffer (OutboxRelayStack) queue/dlq names for the two
   // mapper-pipeline alarms. Staging/prod only; dev leaves them undefined.
   integrationBufferQueueName: outboxConfig?.bufferQueueName,

@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   findConnectionById: vi.fn(),
   markWebhookEventProcessed: vi.fn(),
   markWebhookEventFailed: vi.fn(),
+  kickTriggerDispatcher: vi.fn(),
 }))
 
 vi.mock('../db', () => ({ db: {} }))
@@ -17,6 +18,10 @@ vi.mock('../repositories/messaging.repository', () => ({
   findConnectionById: h.findConnectionById,
   markWebhookEventProcessed: h.markWebhookEventProcessed,
   markWebhookEventFailed: h.markWebhookEventFailed,
+}))
+
+vi.mock('../lib/trigger-dispatch-kick', () => ({
+  kickTriggerDispatcher: h.kickTriggerDispatcher,
 }))
 
 import { handler } from '../lambda-ringcentral-capture'
@@ -40,6 +45,7 @@ beforeEach(() => {
   h.readOAuthConfig.mockReturnValue(CONFIG)
   h.markWebhookEventProcessed.mockResolvedValue({})
   h.markWebhookEventFailed.mockResolvedValue({})
+  h.kickTriggerDispatcher.mockResolvedValue(true)
 })
 
 describe('lambda-ringcentral-capture', () => {
@@ -141,5 +147,45 @@ describe('lambda-ringcentral-capture', () => {
       'connection not found',
     )
     expect(res.batchItemFailures).toEqual([]) // dropped, not retried
+  })
+
+  describe('trigger dispatcher kick', () => {
+    beforeEach(() => {
+      h.findConnectionById.mockResolvedValue({ id: 'conn-1', tenantId: 't-1' })
+    })
+
+    it('kicks once per batch when the batch emitted sms.received', async () => {
+      h.syncConnection
+        .mockResolvedValueOnce({ captured: 2, emitted: 1 })
+        .mockResolvedValueOnce({ captured: 3, emitted: 2 })
+      await handler(
+        sqsEvent([
+          { webhookEventId: 'w-1', connectionId: 'conn-1' },
+          { webhookEventId: 'w-2', connectionId: 'conn-1' },
+        ]),
+      )
+      expect(h.kickTriggerDispatcher).toHaveBeenCalledTimes(1)
+      expect(h.kickTriggerDispatcher).toHaveBeenCalledWith('sms_received')
+    })
+
+    it('does not kick when nothing was emitted (re-captures, outbound only)', async () => {
+      h.syncConnection.mockResolvedValue({ captured: 4, emitted: 0 })
+      await handler(sqsEvent([{ webhookEventId: 'w-1', connectionId: 'conn-1' }]))
+      expect(h.kickTriggerDispatcher).not.toHaveBeenCalled()
+    })
+
+    it('still kicks for the records that emitted when another record failed', async () => {
+      h.syncConnection
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce({ captured: 1, emitted: 1 })
+      const out = await handler(
+        sqsEvent([
+          { webhookEventId: 'w-1', connectionId: 'conn-1' },
+          { webhookEventId: 'w-2', connectionId: 'conn-1' },
+        ]),
+      )
+      expect(out.batchItemFailures).toEqual([{ itemIdentifier: 'm-0' }])
+      expect(h.kickTriggerDispatcher).toHaveBeenCalledTimes(1)
+    })
   })
 })

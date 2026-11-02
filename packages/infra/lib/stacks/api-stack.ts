@@ -307,6 +307,9 @@ export class ApiStack extends cdk.Stack {
 
   /** The RingCentral capture DLQ name — used by MonitoringStack to alarm on depth. */
   public readonly ringcentralCaptureDlqName: string
+  /** The workflow trigger dispatcher, when Temporal is configured (monitoring
+   * excludes its by-design throttles). */
+  public readonly triggerDispatcherFunctionName?: string
 
   /**
    * Main API Lambda log-group name — passed to MonitoringStack for the
@@ -678,6 +681,9 @@ export class ApiStack extends cdk.Stack {
     // a pre-Phase-2 environment) — the client falls through to a localhost
     // dev-server connect when TEMPORAL_ADDRESS is unset.
     // ---------------------------------------------------------------------------
+    // Set inside the branch below; the RingCentral capture + sync Lambdas
+    // (defined later) kick it when it exists — see grantDispatchKick.
+    let dispatchTriggersFunction: nodejs.NodejsFunction | undefined
     if (
       props.temporalAddress &&
       props.temporalNamespace &&
@@ -813,7 +819,7 @@ export class ApiStack extends cdk.Stack {
       })
       cronLogGroupNames.push(dispatchTriggersLogGroup.logGroupName)
 
-      const dispatchTriggersFunction = new nodejs.NodejsFunction(
+      dispatchTriggersFunction = new nodejs.NodejsFunction(
         this,
         'DispatchWorkflowTriggersFunction',
         {
@@ -844,7 +850,26 @@ export class ApiStack extends cdk.Stack {
           // can't truncate the batch.
           timeout: cdk.Duration.minutes(2),
           logGroup: dispatchTriggersLogGroup,
+          // ONE dispatcher at a time. The concurrency cap is counted before a
+          // start, not reserved, so overlapping ticks/kicks could both start
+          // runs into the same free slots. A kick that lands mid-tick is
+          // throttled and redelivered by Lambda's async retry (GOTCHAS).
+          reservedConcurrentExecutions: 1,
         },
+      )
+      // Kicks and ticks are both async invokes. A failed tick is re-run by the
+      // next one, and a kick queued behind a running tick for a minute is
+      // redundant with it — don't retry, drop stale.
+      dispatchTriggersFunction.configureAsyncInvoke({
+        retryAttempts: 0,
+        maxEventAge: cdk.Duration.seconds(60),
+      })
+      // A finished TENANT_RUNNER run (broker PATCH) kicks the dispatcher to
+      // fill the freed concurrency-cap slot now (lib/trigger-dispatch-kick.ts).
+      dispatchTriggersFunction.grantInvoke(apiFunction)
+      apiFunction.addEnvironment(
+        'TRIGGER_DISPATCHER_FUNCTION_NAME',
+        dispatchTriggersFunction.functionName,
       )
 
       dbSecret.grantRead(dispatchTriggersFunction)
@@ -1566,6 +1591,16 @@ export class ApiStack extends cdk.Stack {
       targets: [new eventsTargets.LambdaFunction(ringcentralTokenRefreshFunction)],
     })
 
+    // Capture that commits a new `sms.received` kicks the trigger dispatcher so
+    // reply workflows start in seconds (lib/trigger-dispatch-kick.ts). No-op
+    // where the dispatcher doesn't exist (no Temporal) — the env stays unset
+    // and the kick helper does nothing.
+    const grantDispatchKick = (fn: lambda.Function) => {
+      if (!dispatchTriggersFunction) return
+      dispatchTriggersFunction.grantInvoke(fn)
+      fn.addEnvironment('TRIGGER_DISPATCHER_FUNCTION_NAME', dispatchTriggersFunction.functionName)
+    }
+
     // ---------------------------------------------------------------------------
     // RingCentral reconciliation-sync cron
     //
@@ -1603,6 +1638,7 @@ export class ApiStack extends cdk.Stack {
 
     dbSecret.grantRead(ringcentralSyncFunction)
     ringcentralSyncFunction.addToRolePolicy(ringcentralSecretPolicy)
+    grantDispatchKick(ringcentralSyncFunction)
 
     new events.Rule(this, 'RingCentralSyncSchedule', {
       // Safety-net cadence — near-real-time comes from the webhook (Phase 2).
@@ -1705,6 +1741,7 @@ export class ApiStack extends cdk.Stack {
 
     dbSecret.grantRead(ringcentralCaptureFunction)
     ringcentralCaptureFunction.addToRolePolicy(ringcentralSecretPolicy)
+    grantDispatchKick(ringcentralCaptureFunction)
     ringcentralCaptureFunction.addEventSource(
       new lambdaEventSources.SqsEventSource(ringcentralCaptureQueue, {
         batchSize: 5,
@@ -2165,6 +2202,9 @@ export class ApiStack extends cdk.Stack {
 
     this.apiUrl = httpApi.apiEndpoint
     this.lambdaFunctionName = apiFunction.functionName
+    if (dispatchTriggersFunction) {
+      this.triggerDispatcherFunctionName = dispatchTriggersFunction.functionName
+    }
     this.httpApiId = httpApi.apiId
 
     // ---------------------------------------------------------------------------

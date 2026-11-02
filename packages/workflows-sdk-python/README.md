@@ -420,11 +420,13 @@ with `send_sms` never re-triggers the Automation. Each text fires **at most once
 even though the platform receives it via both the webhook and a safety-net sync.
 History is not replayed: texts pulled in when a number is first connected (the
 initial backfill) do not fire the event. Latency: the Automation typically starts
-within about a minute of the text arriving (the trigger dispatcher runs every
-minute); if RingCentral's webhook is missed, the 15-minute safety-net sync picks
-the text up and the event fires then. A burst of texts is never dropped by the
-5-run concurrency cap: texts past the cap wait and fire as earlier runs finish
-(a text still waiting after 24 hours is dropped). The daily run quota still drops
+within about 10–15 seconds of the text arriving, and at most about a minute later
+(the platform dispatches as soon as the text is captured, with a once-a-minute
+sweep as the fallback). If RingCentral's webhook is missed, the 15-minute
+safety-net sync picks the text up and the event fires then. A burst of texts is
+never dropped by the 5-run concurrency cap: texts past the cap wait and fire as
+earlier runs finish, within seconds of a slot freeing (a text still waiting after
+24 hours is dropped). The daily run quota still drops
 events once it is reached.
 
 ### Soliciting feedback (magic-link surveys)
