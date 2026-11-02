@@ -70,6 +70,7 @@ describe('day arithmetic', () => {
 describe('formatWindow', () => {
   it('names the zone only when the source has one', () => {
     expect(formatWindow({ start: '08:00', end: '10:00', tz: null })).toBe('08:00 – 10:00')
+    expect(formatWindow({ start: '08:00', end: '08:00', tz: null })).toBe('08:00')
     expect(formatWindow({ start: '08:00', end: '10:00', tz: 'America/Chicago' })).toBe(
       '08:00 – 10:00 (America/Chicago)',
     )

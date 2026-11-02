@@ -45,6 +45,8 @@ const JOB = {
   is_confirmed: 'Y',
   eta_minimum: null,
   eta_maximum: null,
+  start_time: null,
+  end_time: null,
   service_at_orig: 'Y',
   service_at_dest: 'N',
   OriginLocation1: null,
