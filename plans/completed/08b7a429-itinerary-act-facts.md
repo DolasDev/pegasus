@@ -47,4 +47,12 @@ and the dispatcher sees it in Operations → Itinerary — without Pegasus writi
       done, ETA / Change ETA — a trip activity's ETA opens its trip; no buttons on a legacy-done
       act); `ItineraryEtaModal` (day stepper, optional 30-min window); an alert on a failed write.
 - [x] tenant-web: types; `driverAssertionLabel` badge ("Driver: done …" / "Driver ETA …").
-- [ ] `/security-review` (writes + ownership); GOTCHAS / PATTERNS; `plans/todo/driver-itinerary-mobile.md` closed out.
+- [x] `/security-review` (writes + ownership): no HIGH/MEDIUM. Checked: ownership (ids only from the
+      caller's TenantUser; exact key match in the caller-scoped fetch; a chosen `day` only picks which
+      of the caller's own days to search; fail closed), tenant scoping (`middleware/tenant.ts` sets the
+      scoped client; the model is in `TENANT_SCOPED_MODELS`; `tenantId` from auth), mass assignment
+      (zod strips; `capturedBy` / `assertedById` server-set), injection (Prisma + the existing
+      parameterised read). Noted, by design: co-drivers on one local job share a key, so either may
+      overwrite the other's fact, and `byUserId` then shows the co-driver's opaque id.
+- [x] GOTCHAS ("`TriggerLocalDispatchUpdate` fires on EVERY job update…"), PATTERNS ("A driver's word
+      on legacy work is an attached fact…"); the todo plan is COMPLETE and archived with this PR.

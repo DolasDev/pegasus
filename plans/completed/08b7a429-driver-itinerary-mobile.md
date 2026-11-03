@@ -39,7 +39,7 @@ local items too.
 
 - [x] `ItineraryActFact` + `PUT /onprem/longhaul/me/itinerary/acts/{eta,done}` (ownership re-derived
       per write), attached as `assertion` on both itinerary reads; mobile Done / ETA controls;
-      the dispatcher view shows the driver's word — `plans/completed/*-itinerary-act-facts.md`.
+      the dispatcher view shows the driver's word — `plans/completed/08b7a429-itinerary-act-facts.md`.
 
 ### Phase 4 — order-assigned source — DONE
 
