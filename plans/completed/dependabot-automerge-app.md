@@ -1,5 +1,23 @@
 # Give the `enqueue` job a non-`GITHUB_TOKEN` identity (GitHub App — owner setup)
 
+> ## ✅ DONE 2026-11-03 — the App is live and verified end to end.
+>
+> The owner created the App, installed it on `pegasus`, and set the secret + variable.
+> Both verification stages passed, and two Dependabot PRs (**#906**, **#885**) went
+> from green to **merged** through the queue with no human touch — the first time that
+> has ever happened in this repo. Measurements and logs are in
+> **"What actually happened"** below. The recipe is kept because it is the only record
+> of how the App is configured, and because it is the recovery procedure if the key is
+> rotated or the App is uninstalled.
+>
+> **The App is named `pegasus-dependabot`, not `pegasus-merge-queue`.** The identity
+> string to grep for in logs is `pegasus-dependabot[bot]`. The old name survives below
+> only where it is quoted as the original instruction.
+>
+> Moved `plans/todo/dependabot-automerge-pat.md` → here on 2026-11-03. The workflow's
+> warning message was updated in the same PR to point at this path, so the pointer the
+> old filename existed to preserve is intact.
+
 > Split out of `plans/completed/security-backlog-and-sort-hardening.md` on 2026-09-29, which
 > closed every engineering item in that plan. This is the one thing engineering cannot do:
 > it needs the repo owner's credentials.
@@ -71,15 +89,24 @@ key_. A `.pem` downloads. Treat it as a credential.
 **3. Install it.** App settings → **Install App** → `DolasDev` → **Only select repositories** →
 `pegasus`.
 
-**4. Set the variable and the secret.** Both live in **Actions**, not the Dependabot store — the
+**4. Set the secret FIRST, then the variable.** Both live in **Actions**, not the Dependabot store — the
 `enqueue` job is triggered by `workflow_run` / `workflow_dispatch`, neither of which is a Dependabot
 event, so it reads Actions secrets. (A secret filed under _Dependabot_ would be invisible here and
 the `||` chain would fall through with no error.)
 
 ```
-gh variable set DEPENDABOT_AUTOMERGE_APP_CLIENT_ID --repo DolasDev/pegasus --body '<Client ID>'
 gh secret   set DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY --repo DolasDev/pegasus < /path/to/key.pem
+gh variable set DEPENDABOT_AUTOMERGE_APP_CLIENT_ID --repo DolasDev/pegasus --body '<Client ID>'
 ```
+
+> ⚠️ **Order matters, and an earlier revision of this file had it backwards.** The
+> variable is the **switch**: the mint step is gated on
+> `if: vars.DEPENDABOT_AUTOMERGE_APP_CLIENT_ID != ''` and has **deliberately no
+> `continue-on-error`** (see the note under stage 1 — that is on purpose). So setting the
+> variable while the secret is still absent makes the mint step run, fail, and turn
+> **every `enqueue` run red** until the secret lands. Secret first means there is never a
+> window where that is true. Done in the correct order on 2026-11-03: secret at
+> `20:04:01Z`, variable at `20:04:11Z`.
 
 > ⚠️ **Client ID, not App ID.** The App settings page shows both, adjacent, and `app-id` is
 > **deprecated** in `create-github-app-token@v3`. The deprecated one is the one that reads as
@@ -107,7 +134,7 @@ Read the identity line that #826 added — it is the first thing the step prints
 
 | what you see                                                            | meaning                                                                                                         |
 | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `Acting as pegasus-merge-queue[bot] (GitHub App …)`                     | ✅ configured correctly                                                                                         |
+| `Acting as pegasus-dependabot[bot] (GitHub App …)`                      | ✅ configured correctly — this is what 2026-11-03 printed                                                       |
 | **the `Mint a GitHub App token` step is RED**                           | var set, mint failed — bad/rotated key, App uninstalled, or permission not granted. Read that step's own error. |
 | the Mint step shows **skipped** + `::warning::Acting as GITHUB_TOKEN …` | nothing configured yet — the pre-#826 status quo                                                                |
 
@@ -130,9 +157,55 @@ gh run list --limit 40 --json createdAt,event,status,conclusion,headBranch \
   -q '.[]|select(.event=="merge_group")|"\(.createdAt) \(.status)/\(.conclusion) \(.headBranch)"'
 ```
 
-Look for `gh-readonly-queue/main/pr-<N>-*`. Client-side filter deliberately —
-`gh run list --event merge_group` returns stale data in this repo. You are looking for **~20 s**
-instead of 18–21 minutes.
+Look for `gh-readonly-queue/main/pr-<N>-*`. You are looking for **~20 s** instead of 18–21 minutes.
+
+> **Correction 2026-11-03:** this section used to insist on a client-side filter because
+> "`gh run list --event merge_group` returns stale data in this repo". That did **not**
+> reproduce — `gh run list --event merge_group --limit 8` returned the fresh `pr-906` and
+> `pr-885` entries within seconds of their creation, repeatedly. Either filter works; the
+> server-side one is less typing. The original claim is left recorded here rather than
+> deleted, because it may have been true of an older `gh`.
+
+## What actually happened (2026-11-03)
+
+**Stage 1 — run `41709300303`**, `workflow_dispatch` with `pr=145`:
+
+```
+APP_SLUG: pegasus-dependabot
+Acting as pegasus-dependabot[bot] (GitHub App installation token) — enqueues WILL trigger merge_group checks.
+Manual dispatch for PR #145
+PR #145 author is 'steve-dolo', not Dependabot — refusing.
+```
+
+Three things in one run: the token minted (so Client ID, private key and installation are
+all correct), the identity resolved to an App installation rather than falling through, and
+the author guard still refused a human PR.
+
+**Stage 2 — run `41720599900` on PR #906**, the real thing, triggered by CI completion:
+
+| time (UTC) | event                                                               |
+| ---------- | ------------------------------------------------------------------- |
+| `21:18:30` | `enqueue` dispatched by `workflow_run`                              |
+| `21:18:39` | `Acting as pegasus-dependabot[bot] (GitHub App installation token)` |
+| `21:18:42` | `Resolved 9acec68b -> PR #906`                                      |
+| `21:18:43` | `PR #906 is CLEAN but not queued — re-asserting auto-merge`         |
+| `21:19:01` | `PR #906 isInMergeQueue=true` — **+31 s**                           |
+| `21:19:08` | `merge_group` run `41720701908` **created** — **+38 s**             |
+| `21:27:17` | **#906 MERGED**                                                     |
+
+**#885 independently reproduced it**: `merge_group` run `41720792180` at `21:19:45`, merged
+`21:27:34`. Two data points, not one. Against the pre-App baseline of a queue entry that
+produced no run at all and was dropped at the 60-minute timeout, this closes the item.
+
+**The `--disable-auto` → `--auto` pair works as intended.** Both PRs had auto-merge enabled
+long before by `github-actions` (the `GITHUB_TOKEN` identity), and the enqueue step's
+`--disable-auto` (line 128) then `--auto` (line 130) replaced it — #906 was observed at
+`enabledBy=NONE` mid-flight and then entered the queue under the App. No manual disable was
+needed, so a stale requester from the pre-App era is **not** something to clean up by hand.
+
+> `enabledBy=NONE` on an already-queued PR is expected, not a fault: auto-merge **converts
+> into** the queue entry and clears `autoMergeRequest`. Do not read it as "auto-merge got
+> turned off".
 
 > ⚠️ **Do NOT predict the batch day from `.github/dependabot.yml`.** An earlier revision of this
 > file reasoned "`interval: weekly` with no `day`, so Dependabot defaults to Monday" and named
@@ -196,9 +269,11 @@ tested without a live Dependabot PR. Stage 2 covers it: if a `merge_group` run a
 trigger behaviour and the mutations worked. If stage 1 is green and stage 2 is not, suspect the
 mutation, not the token.
 
-## Until it exists
+## Until it exists — ~~current~~ **HISTORICAL as of 2026-11-03**
 
-Every Dependabot PR needs a manual nudge:
+No longer needed; the App enqueues on its own. Kept as the recovery procedure for a PR
+already stalled at the queue head (e.g. if the App is uninstalled and the fallback
+warning returns). Every Dependabot PR used to need a manual nudge:
 
 ```
 gh api graphql -f query='mutation($id:ID!){dequeuePullRequest(input:{id:$id}){mergeQueueEntry{position}}}' -F id="$(gh pr view <N> --json id -q .id)"
