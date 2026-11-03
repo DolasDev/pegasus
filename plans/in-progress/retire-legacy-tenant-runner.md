@@ -11,6 +11,28 @@
   Read its "Design" first: state machine, runner families, per-row namespace.
 - **Written:** 2026-11-03 against `main` @ `bfd4294b`.
 
+## Resume here (2026-11-03)
+
+- **Code: DONE and verified locally** (see the checklist's "Local" line). Branch
+  `chore/retire-legacy-tenant-runner`, worktree
+  `../pegasus-retire-legacy-tenant-runner`. PR: see the branch (opened
+  2026-11-03; auto-merge deliberately NOT armed).
+- **Merge is blocked by the pre-merge gate.** Re-checked 2026-11-03: staging 0
+  blockers / 0 open shared rows / 0 READY; prod 0 open shared rows / 0 READY but
+  **1 blocker: Nelson Westerberg Test** (`32dd89be-…`, 2 Automations, no
+  namespace row, no Provision/Cut over in `platform.audit_logs`). The user
+  reported cutting it over, but nothing reached prod. Either the user provisions
+  and cuts it over in prod admin-web, or the user relaxes gate 1 for it (it has
+  no enabled triggers and no open runs; after this PR its next run would request
+  a namespace automatically). That is the user's call.
+- **Then:** re-run gate queries 1-3 on both envs, paste them into the PR, arm
+  auto-merge (`gh pr merge <N> --auto`), and watch Deploy.
+- **Post-merge owed:** tag `sdk-python-v0.55.0` (only once the PR's
+  `mergeCommit` is non-empty); add the `TenantNamespaceProvisioning` /
+  `TenantNamespaceUnavailable` line to `~/repos/pegasus-workflows/CLAUDE.md`
+  next to the `TenantMigrating` note; the staging acceptance below; archive this
+  plan.
+
 ## Decisions (user, 2026-11-03)
 
 1. **A:** an ACTIVE namespace is a prerequisite of running an Automation; the
@@ -240,7 +262,7 @@ until it's wired into CDK"). Name mirrored in `packages/infra/lib/metrics.ts`.
 ### Acceptance (staging, after deploy; burns 1 of the 100 namespaces)
 
 - [ ] `pegasus-tenant-runner-staging` is gone and the runner image digest is this merge's.
-- [ ] **AVP Smoke** (no namespace, no Automations): fork or push `smoke_canary` → the response says provisioning started → a `run` gets 409 `TENANT_NAMESPACE_PROVISIONING` (SDK raises the typed error) → the row goes PROVISIONING → READY → ACTIVE on its own → the run completes in `pg-staging-4b2e0267c597.chgel` on a scoped runner.
+- [ ] **AVP Smoke** (no namespace, no Automations; its `smoke_canary` fork was retired 2026-11-03, so there is nothing to fork): `push` a small canary Automation from the authoring repo with the `avp-smoke` profile → the push says provisioning started → a `run` gets 409 `TENANT_NAMESPACE_PROVISIONING` (SDK raises the typed error) → the row goes PROVISIONING → READY → ACTIVE on its own → the run completes in `pg-staging-4b2e0267c597.chgel` on a scoped runner.
 - [ ] An EVENT trigger fired during PROVISIONING fires after ACTIVE.
 - [ ] Prod: the next NW run still completes (scoped, unchanged).
 - [ ] Post-merge: SDK tag; authoring-repo line.
