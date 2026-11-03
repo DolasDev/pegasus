@@ -99,7 +99,13 @@ describe('orderAssignedTo — the shared rule', () => {
     // The view's `LAST, FIRST (id)` is cut at " (", the order's `LAST, FIRST # phone` at " #".
     expect(sql).toContain("CHARINDEX(' (', ISNULL(oa_d.DRIVER_NAME, ''))")
     expect(sql).toContain("CHARINDEX(' #', ISNULL(v.driver_name, ''))")
-    expect(sql.match(/REPLACE\(UPPER\(/g)).toHaveLength(2)
+    expect(sql.match(/REPLACE\(UPPER\(/g)).toHaveLength(3)
+  })
+
+  it('never matches on a blank name (both sides would normalize to empty)', () => {
+    expect(sql).toMatch(
+      /REPLACE\(UPPER\(CASE WHEN CHARINDEX\(' #', ISNULL\(v\.driver_name, ''\)\).*\) <> '' AND EXISTS/,
+    )
   })
 
   it('reads the view, by act day, with the cap', () => {

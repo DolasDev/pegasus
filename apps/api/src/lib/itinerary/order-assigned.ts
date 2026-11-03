@@ -52,6 +52,8 @@ export function orderAssignedTo(v: string, param: string): string {
     // Rule 2 — the deliberate cross-space comparison: detects the trigger's copy.
     ` AND NOT EXISTS (SELECT 1 FROM LocalDispatchJobs oa_j WHERE oa_j.order_num = ${v}.order_num` +
     `   AND (oa_j.driver_id1 = ${v}.driver_id OR oa_j.driver_id2 = ${v}.driver_id))` +
+    // A blank name on both sides is not a match: the guard must name someone.
+    ` AND ${nameCore(`${v}.driver_name`, ' #')} <> ''` +
     ` AND EXISTS (SELECT 1 FROM v_longhaul_drivers oa_d WHERE oa_d.DRIVER_ID = ${v}.driver_id` +
     `   AND ${nameCore('oa_d.DRIVER_NAME', ' (')} = ${nameCore(`${v}.driver_name`, ' #')}))`
   )
