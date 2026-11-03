@@ -25,6 +25,7 @@ import { settingsCompaniesHandler } from './handlers/settings-companies'
 import { documentsHandler } from './handlers/documents'
 import { chatHandler } from './handlers/chat'
 import { laborHandler } from './handlers/labor'
+import { operationsLocalDriversHandler } from './handlers/longhaul-cloud/local-drivers'
 import { localDriversHandler } from './handlers/local-drivers'
 import { availabilityFiltersHandler } from './handlers/availability-filters'
 import { servicesFiltersHandler } from './handlers/services-filters'
@@ -566,6 +567,7 @@ v1.get('/onprem/longhaul/activities', longhaulActivitiesListHandler)
 // handlers/longhaul-cloud/itinerary.ts.
 v1.get('/onprem/longhaul/me/itinerary', myItineraryHandler)
 v1.get('/onprem/longhaul/drivers/itinerary', driverItineraryHandler)
+v1.get('/onprem/longhaul/local-drivers', operationsLocalDriversHandler)
 // Phase 3: /filter-options and /dispatchers are served cloud-direct. Their
 // per-client query config (MoveType filter, dispatcher SQL) is resolved from
 // the tenant's longhaulClient column — see lib/longhaul-client-config.ts.

@@ -57,6 +57,7 @@ const OPERATIONS_CHILDREN = [
   { to: '/driver-planning/trips' as const, label: 'Trips', exact: false },
   { to: '/driver-planning/shipments' as const, label: 'Shipments', exact: false },
   { to: '/driver-planning/activities' as const, label: 'Services', exact: false },
+  { to: '/driver-planning/itinerary' as const, label: 'Itinerary', exact: false },
   { to: '/driver-planning/labor' as const, label: 'Labor', exact: false },
 ] as const
 
