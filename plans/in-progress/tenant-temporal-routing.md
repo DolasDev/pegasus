@@ -1,8 +1,78 @@
 # 3b.2: route tenant Automations to their own Temporal namespace
 
 - **Status:** MERGED #855 (`76a51b68`, deployed 2026-10-15). **Staging
-  acceptance PASSED 2026-10-19/22** (results under "Acceptance"). NEXT: the
-  prod rollout (runbook at the bottom), then archive.
+  acceptance PASSED 2026-10-19/22.** **Prod rollout DONE 2026-11-03**: every
+  needed tenant is ACTIVE. What is left is follow-up only; see **"Resume
+  here"** directly below.
+
+## Resume here (written 2026-11-03, for a fresh session)
+
+**State.** 3b.2 is live in prod. These five tenants run their Automations in
+their own Temporal namespace (`TenantTemporalNamespace.status = ACTIVE`):
+
+| Tenant                    | Tenant id                              | Namespace                    |
+| ------------------------- | -------------------------------------- | ---------------------------- |
+| Dolios                    | `a90b22bc-4393-4e6e-8fe4-4ca01a13aba8` | `pg-prod-a90b22bc4393.chgel` |
+| Hermes Moving and Storage | `fd4005f4-b593-4e1e-bb2b-30d67f3dbb29` | `pg-prod-fd4005f4b593.chgel` |
+| Nelson Westerberg         | `9d869236-518f-4fe4-90d3-274a1b957c38` | `pg-prod-9d869236518f.chgel` |
+| Quality Move Management   | `e911f357-c41b-4e18-9509-ebab33210b5c` | `pg-prod-e911f357c41b.chgel` |
+| Reliable Van and Storage  | `2b916653-df32-438d-a885-e9aedae40286` | `pg-prod-2b916653df32.chgel` |
+
+- Staging: AVP Smoke (`4b2e0267-…`) is provisioned and **READY** (rolled back
+  after acceptance), and has a `smoke_canary` fork (`ad780834`).
+- **Not migrated, by the user's choice:** **Nelson Westerberg Test**
+  (`32dd89be-72b3-4038-a54e-9c520ca4547e`). It still has 2 executable
+  Automations and runs in the shared namespace on the legacy runner.
+
+**Next actions, in order:**
+
+1. **Authoring-repo docs (small, any time).** Add the `TenantMigrating` note
+   to `~/repos/pegasus-workflows/CLAUDE.md` (a separate repo; commit there).
+   The SDK side already shipped: `TenantMigrating` is on PyPI in **0.51.0**.
+   0.50.0 was never tagged; don't tag it now.
+2. **Legacy-runner removal (its own PR; the plan's "Later, separate PR").**
+   This removes the legacy task definition `pegasus-tenant-runner-<env>` and
+   the shared `TEMPORAL_CLOUD_API_KEY` from runners, which completes 3a's
+   "no Admin key in runners". **Blocked until every tenant with executable
+   Automations is ACTIVE.** Today that is not true: **NW Test** still runs
+   legacy. Before starting, re-run this query on prod (and on staging, where
+   other tenants have Automations too):
+   ```sql
+   select t.name, count(distinct w.name) from workflows w join tenants t on t.id = w.tenant_id
+   where w.executable and w.status = 'ACTIVE' and w.name <> 'send_quote_followup'
+     and w.tenant_id not in (select tenant_id from tenant_temporal_namespaces where status = 'ACTIVE')
+   group by 1;
+   ```
+   Every row it returns must be cut over (or its Automations retired) first.
+   Then decide what happens to a tenant **without** a namespace. Options: make
+   provisioning plus cutover a prerequisite of publishing an Automation, or
+   keep the legacy family. Removal also changes `ensureTenantRunner` (the
+   `legacy` family goes away), the sweep's family logic, the infra stacks and
+   tests, and the runner's env mode (local dev still needs it).
+3. **Archive this plan** (`git mv` to `plans/completed/<hash>-tenant-temporal-routing.md`)
+   once 1 is done and 2 is either done or carved into its own plan.
+
+**Gotchas for whoever resumes:**
+
+- **AWS SSO** for staging and prod expires within days. The user runs
+  `aws sso login --profile dolas-pegasus-<env> --use-device-code`.
+  `dolas-pegasus-prod-ro` is enough for every prod check; only `-staging`
+  (read-write) is needed for staging writes.
+- **DB access recipe:** read `DATABASE_URL` from the reconcile Lambda's config
+  into an env var, never print it.
+  - prod: `pegasus-prod-api-ReconcileWorkflowExecutionsFuncti-3c9x3zD5oD0N`
+  - staging: `pegasus-staging-api-ReconcileWorkflowExecutionsFun-wdwJvHTDuNiP`
+- **CLI profiles** in `~/.pegasus/credentials`: `nw` (prod NW), `qa` (staging
+  E2E tenant `b40b082e`), `avp-smoke` (staging AVP Smoke, a `workflow_developer`
+  key the user created; revoke it if it isn't wanted). Run the CLI from
+  `packages/workflows-sdk-python/.venv`.
+- **The NW `sms.received` trigger was deleted ON PURPOSE** by the user on
+  2026-11-03, to be re-added when pulse testing resumes (`nw_pulse_reply` 0.3.4
+  has no trigger). Don't flag it as a defect.
+- **CloudWatch `filter-log-events`:** several quoted terms in one pattern are
+  an AND. Use one term per call.
+- **A full local `apps/api` test run raises the coverage floors** in
+  `apps/api/vitest.config.ts` (`autoUpdate`). Revert that before committing.
 - **Branch:** `feat/tenant-temporal-routing` (merged, torn down); one PR
   (Decision 1).
 - **Goal:** TENANT_RUNNER executions for a cut-over tenant run in that tenant's
@@ -459,9 +529,18 @@ Created: `FakeTemporal` and tests alongside each change.
 
 ## Prod rollout runbook (after staging acceptance)
 
-- [ ] Dolios `a90b22bc-4393-4e6e-8fe4-4ca01a13aba8`: Provision → Cut over →
-      ACTIVE; run one of its Automations by hand + a dry run.
-- [ ] NW Test `32dd89be-72b3-4038-a54e-9c520ca4547e`: same.
-- [ ] NW `9d869236-518f-4fe4-90d3-274a1b957c38`: same; confirm the
-      `feedback.submitted` trigger fires into the tenant namespace on its next
-      event.
+- [x] **Done 2026-11-03, in the user's own order (not the list originally
+      planned here).** NW, Quality Move Management and Reliable Van were cut
+      over first; each moved to ACTIVE at 17:41:34 on the first dispatcher
+      tick, with nothing open and no events held. Dolios and Hermes followed.
+      **NW Test was not migrated** (by choice).
+- [x] **NW verified in prod.** A dry run of `nw_pulse_daily_check` 0.2.3
+      (execution `808d1564`) completed in about 32 s: - its row has `temporal_namespace = pg-prod-9d869236518f.chgel`; - it was served by a scoped runner (log stream `runner-scoped/`) that
+      logged `runner.temporal_credentials_fetched` and connected to the
+      tenant namespace; - API history works (11 events), and the runner logs hold no key; - nothing was captured: the Automation stopped at its own
+      5 PM-Central gate.
+- [ ] Quality Move Management and Reliable Van have **no executable
+      Automations**, so there was nothing to run. Their first publish will
+      run in their own namespace.
+- [ ] Dolios and Hermes: verify with their first run after cutover (not done
+      in this session).
