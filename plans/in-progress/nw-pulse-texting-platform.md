@@ -28,6 +28,7 @@
   - movemanager landed on `dev` 2026-10-20 (`3a476558`, plan archived `a240eeb-api-memos-and-text-read.md`). Item 0 (prod reads) passed 2026-10-19; item 5 (Windows round trip on the PegNW clone, `e8ed24e3`) passed 2026-10-20: integration 2/2, net48 memo-type parity 4/4. Net8 suites on the merged `dev`: `Pegasus.Api.Tests` 304/304, `Pegasus.Infrastructure.Tests` 475/475.
   - Live for NW only once its site runs that build. Probed 2026-10-20 over the tunnel: NW's `/version` is `2026.10.19.2` and lists `pegii.tasks.v1` and `pegii.orders.search.v1` but not yet `pegii.memos.v1` / `pegii.text-messages.v1`.
 - [ ] **Phase 8** — NW enablement + end-to-end test on **NW Prod in dry-run** (NW QA's site tunnel is not connected yet)
+  - Readiness probed 2026-10-20 (read-only; see "Readiness" under Phase 8). Blocked on NW's site update, tenant settings and the workflow, none of which is pegasus code.
 
 **Metering rule (added 2026-09-30):** every new outward-mutating action in Phases 6 and 7 (`CreateTask`, `WriteOrderMemo`) must be metered in the same PR: add it to `apps/api/src/lib/usage/billable-actions.ts` (whose test pins the list), put `meterUsage(Actions.X)` after `requirePermission` on its route, and add it to the SDK README's billable list. `SendEmail` (Phase 3) is already metered. See `plans/completed/usage-metering.md` Phase 5. The meter, plans and Usage pages shipped together (Phases 1–4), so NW billing can start once NW has a plan assigned in admin-web. **SDK 0.43.0 was taken by `get_usage_summary`**, so this plan's SDK version numbers shift up by one from Phase 5 on.
 
@@ -158,7 +159,7 @@ Also required by the scope, though absent from the proposals:
   - **Is the cloud connection's extension the same one the desktop reconciles?** Read state is per extension, which decides whether the Phase 2 RingCentral PUT is visible to coordinators.
 - [x] **S3 SES prod readiness.** _Result: domain + DKIM verified, but production access was DENIED. Phase 3 re-routed through the pegII API's SMTP email endpoint._ Is the account out of the sandbox? Is `pegasus.dolas.dev` DKIM-verified? What is the state of `plans/todo/ses-dmarc-records.md`? Which From display name?
 - [x] **S4 NW QA tunnel.** _Result: the NW QA site's tunnel has never connected — an on-site ops task, not code. Testing uses NW Prod in dry-run until it's fixed._ Diagnose the 502 "tunnel proxy fetch failed".
-- [ ] **S5 Arrival window.** Is #668's longhaul activity window what was described at the 09.25 review?
+- [x] **S5 Arrival window.** _Result (Steve, 2026-10-21): yes, #668's longhaul activity window is the arrival window from the 09.25 review. NW already has the columns (`LongDistanceDispatchActivity.arrival_window_start/_end/_tz`, lazily added) and one saved window (prod read 2026-10-21), so #668's provisioning has worked on NW. The follow-on below is owed; it does not block Phase 8._ Is #668's longhaul activity window what was described at the 09.25 review?
   - If yes, add a follow-on: a read-only pegII API endpoint plus `get_activity_arrival_window`. #668 deferred its SDK surface "to the workflow that consumes it".
   - Either way, the pilot keeps the fixed 4–7 PM window.
 - [x] **S6 Desktop task hazard exposure.** _Result: 0 of 36 active COD orders have zero task rows today, so the D3 fallback is a safety net. "DEL ACTUAL ENTERED" comes from the `sales` update trigger, confirming the live-read requirement._ How many NW COD orders reach pack day with **zero** `Tasks` rows? That sizes hazard (a) until the Phase 6 desktop guard fix ships.
@@ -360,7 +361,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 - [x] **Desktop guard fix** (hazard a): `GetTasksForOrder` counts only non-API rows (`… AND id NOT IN (SELECT task_id FROM pegasus_api_task_meta)`). _(As built: counts only `created_by_api = 1` rows; a cloud-closed desktop task has a `created_by_api = 0` sidecar row.)_
   - This is a desktop change, so it ships on the **MSIX** cadence. Until NW's client has it, S6 measures the exposure.
   - ~~Until then (D3): the API returns 409 `ORDER_TASKS_NOT_INITIALIZED` when the order has zero task rows, and the reply workflow falls back to email-only escalation.~~ **Withdrawn (D18, Steve 2026-10-16):** create is allowed on a task-less order. Until NW's desktop has the guard fix, such a task suppresses that order's master-task generation (recover with "Clear And Rebuild Tasks"). Measured exposure: S6, 0 of 36.
-- [ ] Tests: unit (rules); integration (a row written by the API round-trips through the VB `IO.Task.ReadList` + `UpdateTasks` without throwing; idempotent create; close). _(Unit + Linux SQL Server done; the VB round-trip on the PegNW clone is owed — movemanager item 6, Windows.)_
+- [x] Tests: unit (rules); integration (a row written by the API round-trips through the VB `IO.Task.ReadList` + `UpdateTasks` without throwing; idempotent create; close). _(Unit + Linux SQL Server done; the VB round trip on the PegNW clone passed 2026-10-19, movemanager item 6.)_
 
 **pegasus:**
 
@@ -368,7 +369,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
   - Routes: `POST /pegii/tasks` (`CreateTask`, new action); existing `GET /pegii/tasks[/:id]` and `POST /pegii/tasks/close` (`ReadTask`, `CloseTask`).
   - Close is additive: `taskId` or `orderId+taskType`.
 - [x] SDK `create_task(...)` with `dedup_key` → pegII `idempotencyKey`; `list_tasks` gains filters; `close_task(task_id=…)`.
-- [ ] Discoverability checklist. _(Items 1–7 done; item 8, the authoring `CLAUDE.md`, after merge.)_
+- [x] Discoverability checklist. _(Items 1–7 in #858; item 8, the authoring `CLAUDE.md`, `7756560`.)_
 
 **Acceptance criteria from sdk-feedback 0046** (folded in 2026-10-07 by `plans/in-progress/sdk-feedback-open-set.md`; the interim stub fixes shipped in its Phase 5, SDK 0.48.1):
 
@@ -377,7 +378,7 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 - [x] Metering: a refused close (404 or 409) and an `alreadyClosed` replay don't meter. Only a real close does. The usage-meter integration test already pins the 404 case.
 - [x] `list_tasks` for a nonexistent order → `404` (or `502 PEGII_SOURCE_*`). An order with no tasks → `[]`. Nothing is minted at read time, and `createdAt` is stable and earlier than the read.
 - [x] Drop `stub: true` from `toTaskResponse` (`handlers/pegii-runtime.ts`) when the stub is replaced.
-- [ ] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`. _(403 pinned by real-Cedar handler tests for both actions; the live 0009 AC3 run is still owed.)_
+- [x] `create_task` without `CreateTask` → 403. Also run 0009's still-unvalidated AC3 for `CloseTask`. _(403 pinned by real-Cedar handler tests for both actions, for a persona without them. Live run 2026-10-22 on NW prod (order 492819) with a probe `workflow_runtime` key, minted the way `provisionRuntimeServiceAccount` mints one and hard-deleted after: `GET /pegii/tasks` → 200, `POST /pegii/tasks {}` → 400 `VALIDATION_ERROR` (authorization runs before validation, so `CreateTask` is granted), `POST /pegii/tasks/close` with an unknown type → 404 `TASK_NOT_FOUND` (so `CloseTask` is granted). 0 usage events, the order's tasks unchanged (13 open, 17 completed). The "undeclared → 403" half of the criterion is **not achievable by design**: `required_actions` is only checked for unknown ids at publish (and prefills the Configs page). Every `wf-runtime-*` key acts as a `workflow_runtime` service account, and that persona (`workflow-runtime.cedar`) grants every runtime action whatever the manifest declares. The only 403 is per persona (`workflow_developer`), pinned by the real-Cedar handler tests. Making `required_actions` narrow a key's grants would be a new feature, not part of this plan.)_
 - [x] `create_task` is in `testing._MUTATIONS` and captured under `--dry-run`.
 - [x] OpenAPI documents the create route; `closePegiiTask` gains the `taskId` form and the 409. The MCP `pegasus://reference/api` resource lists `create_task` and the new `close_task` signature.
 
@@ -453,16 +454,37 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 
 ## Phase 8 — NW enablement + end-to-end test move (ops)
 
-- [ ] **Test on NW Prod in dry-run** (decided 2026-09-29; NW QA's tunnel isn't connected). NW Prod's pegII API on a `dev`-derived release containing Phases 4–7, with JWT + the hub DB configured, the service user provisioned, and `/version` capabilities confirmed. All workflow runs stay `--dry-run` (every mutation captured, nothing sent) until NW signs off on a live test. Live steps, when approved, use `TEST_PHONES` only.
-- [ ] NW desktop on the MSIX build with the Phase 6 guard fix (D20). There is no 409 fallback to lift: D3 was withdrawn (D18).
-- [ ] Tenant config:
+**Readiness (probed 2026-10-20, re-probed 2026-10-21; read-only: prod Postgres and NW's `/version` through the prod tunnel proxy):**
+
+| Prerequisite | State | Who |
+| --- | --- | --- |
+| NW site build / capabilities | **`2026.10.20.5`** (2026-10-21): lists every capability Phases 4–7 need (`pegii.email.v1`, `pegii.orders.search.v1`, `pegii.orders.write.v1`, `pegii.tasks.v1`, `pegii.memos.v1`, `pegii.text-messages.v1`, `pegii.cloud-auth.v1`). On 2026-10-20 it was `2026.10.19.2`, without memos/text-messages. | done |
+| NW tunnel peer | ACTIVE, `http://10.200.0.3:65274`, `/version` answers 200 | done |
+| System employee (`companies.system_employee_code`) | NELSON-WESTERBERG = **1001** | done |
+| RingCentral capture | connection ACTIVE, `V1` cursor synced minutes before the probe | done |
+| `operations.emailAllowedRecipientDomains` | `["nelsonwesterberg.com"]` (set 2026-10-21 in tenant-web Settings → App → Operations; empty ⇒ 409 `EMAIL_RECIPIENTS_NOT_CONFIGURED`, D2) | done |
+| Live `send_email` through NW's bridge | 2026-11-02, with a probe `workflow_runtime` key (deleted after): `check-recipients` for steved@nelsonwesterberg.com → 200 `ok: true`; `send` → 202, `email_sends` row `819fdc80-f52c-4295-af9f-306e6e21d800` `SENT` with no error ~4.5 s later (site SMTP relay accepted it). The one `SendEmail` usage event was deleted so the test doesn't count against NW's STARTER pool. Inbox delivery is for Steve to confirm. | done (relay) |
+| Automation plan (`tenant_automation_plans`) | `STARTER`, term 2026-11-01 → 2027-11-01 | done |
+| Pulse workflow | **none published** (NW has only `weichert-milestone-update`, `demo-pack-call*`, `send_order_to_partner`) | Blue Signal (we never publish workflows or configs) |
+| Triggers | **none** for pulse (only `demo-pack-call-ack` on `feedback.submitted`) | the workflow's publisher |
+| `nw_pulse` CONFIG group | **absent** (only the `weichert` groups exist) | NW tenant admin / Blue Signal |
+| Desktop MSIX with the Phase 6 guard fix (D20) | confirmed by Steve 2026-11-02: NW's desktop app has the task fix (not visible from the cloud; no client version is recorded, S1) | done |
+
+The live 0009 AC3 run is done (2026-10-22; see Phase 6: grants confirmed on prod, and "undeclared → 403" is not how the platform works). S5 is answered (yes); its follow-on (`get_activity_arrival_window`) is a separate plan after the pilot, which keeps the fixed 4–7 PM window.
+
+
+- [x] **Test on NW Prod in dry-run** (decided 2026-09-29; NW QA's tunnel isn't connected). _(Ready 2026-11-03: NW site `2026.11.2.1` advertises every capability, including `pegii.email.v1`; Blue Signal has run dry and `TEST_PHONES`-only live tests since 2026-10-24.)_ NW Prod's pegII API on a `dev`-derived release containing Phases 4–7, with JWT + the hub DB configured, the service user provisioned, and `/version` capabilities confirmed. All workflow runs stay `--dry-run` (every mutation captured, nothing sent) until NW signs off on a live test. Live steps, when approved, use `TEST_PHONES` only.
+- [x] NW desktop on the MSIX build with the Phase 6 guard fix (D20). _(Steve, 2026-11-02. Also seen in the data: the pulse-created task 2545916 on order 493115 was completed in the desktop on 2026-10-28.)_ There is no 409 fallback to lift: D3 was withdrawn (D18).
+- [x] Tenant config:
   - `nw_pulse` CONFIG group: `PILOT_COORDINATORS`, `CS_PHONE`, `SAFETY_NET_EMAIL`, `HOLIDAYS`, `HELP_REPLY`, per-phase on/off.
   - Allowed email domains.
+  - _(2026-11-03: all 11 `nw_pulse` keys set by Blue Signal, including `TEST_PHONES` and `REPLY_TEST_ONLY=on`; only `PULSE_PACK` is on; `HELP_REPLY=off`. Domains: `nelsonwesterberg.com`.)_
 - [ ] Triggers:
   - SCHEDULE `*/15 * * * *`.
   - The daily check at the UTC equivalent of 17:00 Central. The dispatcher has **no catch-up** and DST shifts the UTC hour, so the workflow must re-check local time.
   - EVENT on `sms.received`.
-- [ ] Hand the workflow author the shipped surface:
+  - _(2026-11-03: **no SCHEDULE triggers yet**; send and daily check have only been run by hand. The `sms.received` trigger ran live on `nw_pulse_reply` 0.3.3 from 2026-10-30, but Blue Signal published 0.3.4 on 2026-11-03 and removed 0.3.3's trigger, so no reply trigger is enabled. Add the schedules as dry-run triggers first (`schedule create … --dry-run`). DST ended 2026-11-01, so 17:00 Central is now 23:00 UTC.)_
+- [x] Hand the workflow author the shipped surface: _(Hand-off doc "NW Pulse — Platform Hand-off for Blue Signal", 2026-10-21.)_
   - names: `sms.received`, `get_text_message` + `get_text_message_links`, `search_orders`, `expected_version`, `dedup_key`
   - the S-spike field answers, including "the salesman has `extension`+`email` but **no direct phone** ⇒ `[Coordinator Phone]` always takes the CS-number + extension fallback"
   - **We do not publish their workflows or configs** (standing rule).
@@ -471,6 +493,12 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
   2. load → reply "2" → task in the desktop + email + memo
   3. STOP → opt-out → next send 409
   4. daily check → reminder, then a forced 90-day close
+
+  **Run review (2026-11-03, prod `workflow_executions` for NW, 158 runs):** Every live run that acted came from a test phone (+14049156526, then `TEST_PHONES` +16308868537) on order 493115. The 126 live `sms.received` runs from other numbers all stopped at `no_message` or `reply_test_only_number_not_on_test_phones`, so no customer got a reply.
+  - Scenario 1: partly shown. Live 2026-10-30, load phase, "5" → `positive_recorded`, ack sent. Dry runs captured `add_order_memo` and `mark_text_message_read`. Still owed: a live pack "5" with the memo and read state checked in the desktop and RingCentral.
+  - Scenario 2: partly shown. Live 2026-10-28, pack phase, "2" → `negative_escalated`; the desktop task (2545916) was created and closed by the coordinator. The safety-net email failed with `PEGII_CAPABILITY_MISSING` (the site build at the time); email through the bridge has worked since (2026-11-02 test). Still owed: a live "2" with the email arriving.
+  - Scenario 3 (STOP): no run yet.
+  - Scenario 4 (daily check): two forced dry runs found nothing to remind or close. Still owed: a run with a real unanswered pulse, and a forced 90-day close.
 
 ---
 

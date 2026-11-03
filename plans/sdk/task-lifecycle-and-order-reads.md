@@ -107,9 +107,10 @@ Backward-compatible: purely additive methods + new Cedar actions.
       call for an already-closed task returns success, not an error. Verified by
       a real call against a QA tenant: close once (task transitions to closed),
       close again (still success).
-- [ ] The actions are real Cedar action ids: a workflow declaring
+- [x] The actions are real Cedar action ids: a workflow declaring
       `required_actions = ["CloseTask"]` is granted the capability; calling
       `close_task` **without** declaring it raises `PegasusApiError` (403).
+      _(Revised 2026-10-22. The grant half holds. Live run 2026-10-22 on NW prod (order 492819) with a probe `workflow_runtime` key, minted the way `provisionRuntimeServiceAccount` mints one and hard-deleted after: `GET /pegii/tasks` → 200, `POST /pegii/tasks {}` → 400 `VALIDATION_ERROR` (authorization runs before validation, so `CreateTask` is granted), `POST /pegii/tasks/close` with an unknown type → 404 `TASK_NOT_FOUND` (so `CloseTask` is granted). 0 usage events, the order's tasks unchanged (13 open, 17 completed). The "undeclared → 403" half of the criterion is **not achievable by design**: `required_actions` is only checked for unknown ids at publish (and prefills the Configs page). Every `wf-runtime-*` key acts as a `workflow_runtime` service account, and that persona (`workflow-runtime.cedar`) grants every runtime action whatever the manifest declares. The only 403 is per persona (`workflow_developer`), pinned by the real-Cedar handler tests. Making `required_actions` narrow a key's grants would be a new feature, not part of this plan.)_
 - [ ] `nw/order_lifecycle`'s `close_date_confirmation_task` activity is
       un-stubbed to call `client.close_task(order_id=..., task_type="date_confirmation", ...)`,
       and a live run (per the long-running-event-correlated-workflows spec,
