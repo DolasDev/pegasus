@@ -36,6 +36,7 @@ import {
 import { loadTenantRunnerConfig } from '../../lib/tenant-runner'
 import { keyAuthorizedOnNamespace } from '../../lib/temporal-namespace-readiness'
 import { countOpenTenantRunnerExecutions } from '../../lib/temporal-namespace-cutover'
+import { CURATED_WORKFLOW_NAMES } from '../../lib/curated-workflows'
 
 export const adminTemporalNamespaceRouter = new Hono<AdminEnv>()
 
@@ -140,6 +141,29 @@ function scopedRunnerConfigured(): boolean {
   return loadTenantRunnerConfig()?.scopedTaskDefinition != null
 }
 
+/**
+ * What keeps an ACTIVE namespace in use: open tenant-runner executions in it,
+ * and the tenant's live executable non-curated Automations (each would need
+ * the namespace on its next run).
+ */
+async function activeDeprovisionBlockers(
+  tenantId: string,
+  namespace: string,
+): Promise<{ openExecutions: number; automations: number }> {
+  const [openExecutions, automations] = await Promise.all([
+    countOpenTenantRunnerExecutions(db, tenantId, namespace),
+    db.workflow.count({
+      where: {
+        tenantId,
+        executable: true,
+        status: 'ACTIVE',
+        name: { notIn: [...CURATED_WORKFLOW_NAMES] },
+      },
+    }),
+  ])
+  return { openExecutions, automations }
+}
+
 async function tenantExists(tenantId: string): Promise<boolean> {
   return (await db.tenant.findUnique({ where: { id: tenantId }, select: { id: true } })) !== null
 }
@@ -231,9 +255,12 @@ adminTemporalNamespaceRouter.post('/rotate-key', async (c) => {
 })
 
 // ---------------------------------------------------------------------------
-// POST /deprovision — READY or FAILED only. A routed (ACTIVE) or migrating
-// (DRAINING / REVERTING) tenant must be rolled back to READY first: its
-// executions live, or are about to live, in the namespace.
+// POST /deprovision — READY, FAILED, or an ACTIVE tenant with nothing left to
+// run there (no open tenant-runner executions, no live executable
+// Automations). There is no rollback to the shared namespace any more (the
+// legacy runner is retired), and READY lasts only until the dispatcher's next
+// tick advances it. A migrating row (DRAINING / REVERTING) is refused. A
+// tenant that publishes again afterwards gets a new namespace automatically.
 // ---------------------------------------------------------------------------
 adminTemporalNamespaceRouter.post('/deprovision', async (c) => {
   const tenantId = c.req.param('tenantId')!
@@ -251,10 +278,23 @@ adminTemporalNamespaceRouter.post('/deprovision', async (c) => {
     await audit(c, 'DEPROVISION_TEMPORAL_NAMESPACE', tenantId, current, current)
     return start(c, 'deprovision', tenantId, current)
   }
-  if (current.status !== 'READY' && current.status !== 'FAILED') {
+  if (current.status === 'ACTIVE') {
+    const blockers = await activeDeprovisionBlockers(tenantId, current.namespace)
+    if (blockers.openExecutions > 0 || blockers.automations > 0) {
+      return c.json(
+        {
+          error:
+            'Cannot deprovision while the tenant still has Automations or runs in its namespace. Retire its Automations and let open runs finish first.',
+          code: 'CONFLICT',
+          data: { ...toDto(current), ...blockers },
+        },
+        409,
+      )
+    }
+  } else if (current.status !== 'READY' && current.status !== 'FAILED') {
     return conflict(c, current, 'deprovision')
   }
-  if (!(await repo.transition(tenantId, ['READY', 'FAILED'], 'DEPROVISIONING'))) {
+  if (!(await repo.transition(tenantId, ['READY', 'FAILED', 'ACTIVE'], 'DEPROVISIONING'))) {
     return conflict(c, current, 'deprovision')
   }
   const next = (await repo.findByTenant(tenantId))!
@@ -346,44 +386,6 @@ adminTemporalNamespaceRouter.post('/cutover', async (c) => {
     audit: true,
     tenantId,
     namespace: next.namespace,
-  })
-  return c.json({ data: toDto(next) })
-})
-
-// ---------------------------------------------------------------------------
-// POST /rollback — back to the shared namespace (Phase 3b.2)
-//
-//   ACTIVE   → REVERTING: starts refused while the tenant's open executions in
-//                         its own namespace finish; the dispatcher then moves
-//                         the row to READY.
-//   DRAINING → READY:     cancels a cutover still draining. Nothing has run in
-//                         the tenant namespace yet, so no drain is needed.
-// Idempotent: REVERTING answers 200 with itself.
-// ---------------------------------------------------------------------------
-adminTemporalNamespaceRouter.post('/rollback', async (c) => {
-  const tenantId = c.req.param('tenantId')!
-  if (!(await tenantExists(tenantId))) {
-    return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
-  }
-  const current = await repo.findByTenant(tenantId)
-  if (!current)
-    return c.json({ error: 'No Temporal namespace for this tenant', code: 'NOT_FOUND' }, 404)
-  if (current.status === 'REVERTING') return c.json({ data: toDto(current) })
-
-  const to =
-    current.status === 'ACTIVE' ? 'REVERTING' : current.status === 'DRAINING' ? 'READY' : null
-  if (!to) return conflict(c, current, 'roll back')
-  if (!(await repo.transition(tenantId, [current.status], to))) {
-    return conflict(c, (await repo.findByTenant(tenantId)) ?? current, 'roll back')
-  }
-  const next = (await repo.findByTenant(tenantId))!
-  await audit(c, 'ROLLBACK_TEMPORAL_NAMESPACE', tenantId, current, next)
-  logger.info('admin.temporal_namespace.rollback_started', {
-    audit: true,
-    tenantId,
-    namespace: next.namespace,
-    from: current.status,
-    to,
   })
   return c.json({ data: toDto(next) })
 })

@@ -105,6 +105,19 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
+  async function findInStatuses(
+    statuses: TenantTemporalNamespaceStatus[],
+    tenantIds?: string[],
+  ): Promise<TenantTemporalNamespaceRow[]> {
+    return db.tenantTemporalNamespace.findMany({
+      where: {
+        status: { in: statuses },
+        ...(tenantIds ? { tenantId: { in: tenantIds } } : {}),
+      },
+      select: SELECT,
+    })
+  }
+
   return {
     async findByTenant(tenantId: string): Promise<TenantTemporalNamespaceRow | null> {
       return db.tenantTemporalNamespace.findUnique({ where: { tenantId }, select: SELECT })
@@ -316,14 +329,11 @@ export function createTenantTemporalNamespaceRepository(db: PrismaClient) {
      * narrows it (tests share one database; production passes nothing).
      */
     async findMigrating(tenantIds?: string[]): Promise<TenantTemporalNamespaceRow[]> {
-      return db.tenantTemporalNamespace.findMany({
-        where: {
-          status: { in: [...MIGRATING_STATUSES] },
-          ...(tenantIds ? { tenantId: { in: tenantIds } } : {}),
-        },
-        select: SELECT,
-      })
+      return findInStatuses([...MIGRATING_STATUSES], tenantIds)
     },
+
+    /** Rows in any of `statuses`; `tenantIds` narrows it (tests share one database). */
+    findInStatuses,
 
     /**
      * Key-holding rows (KEY_HOLDING_STATUSES) whose current key expires

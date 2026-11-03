@@ -19,6 +19,7 @@ const {
 } = vi.hoisted(() => ({
   mockDb: {
     tenant: { findUnique: vi.fn() },
+    workflow: { count: vi.fn() },
     $transaction: vi.fn(),
   },
   mockRepo: {
@@ -360,7 +361,7 @@ describe('POST /tenants/:tenantId/temporal-namespace/deprovision', () => {
     expect(res.status).toBe(202)
     expect(mockRepo.transition).toHaveBeenCalledWith(
       TENANT_ID,
-      ['READY', 'FAILED'],
+      ['READY', 'FAILED', 'ACTIVE'],
       'DEPROVISIONING',
     )
     expect(mockAudit.mock.calls[0]![3]).toBe('DEPROVISION_TEMPORAL_NAMESPACE')
@@ -388,15 +389,42 @@ describe('POST /tenants/:tenantId/temporal-namespace/deprovision', () => {
     expect(mockInvoke).toHaveBeenCalledWith({ action: 'deprovision', tenantId: TENANT_ID })
   })
 
-  it.each(['DRAINING', 'ACTIVE', 'REVERTING'])(
-    'refuses a routed or migrating (%s) namespace: roll back to READY first',
-    async (status) => {
-      mockRepo.findByTenant.mockResolvedValue(row({ status }))
-      expect((await req('/deprovision')).status).toBe(409)
+  it('deprovisions an ACTIVE namespace with nothing left to run there', async () => {
+    mockRepo.findByTenant
+      .mockResolvedValueOnce(row({ status: 'ACTIVE' }))
+      .mockResolvedValueOnce(row({ status: 'DEPROVISIONING' }))
+    mockRepo.transition.mockResolvedValue(true)
+    mockCountOpen.mockResolvedValue(0)
+    mockDb.workflow.count.mockResolvedValue(0)
+    const res = await req('/deprovision')
+    expect(res.status).toBe(202)
+    expect(mockCountOpen).toHaveBeenCalledWith(mockDb, TENANT_ID, NS)
+    expect(mockInvoke).toHaveBeenCalledWith({ action: 'deprovision', tenantId: TENANT_ID })
+  })
+
+  it.each([
+    [1, 0],
+    [0, 2],
+  ])(
+    'refuses an ACTIVE namespace with %i open run(s) / %i live Automation(s), naming them',
+    async (openExecutions, automations) => {
+      mockRepo.findByTenant.mockResolvedValue(row({ status: 'ACTIVE' }))
+      mockCountOpen.mockResolvedValue(openExecutions)
+      mockDb.workflow.count.mockResolvedValue(automations)
+      const res = await req('/deprovision')
+      expect(res.status).toBe(409)
+      expect((await res.json()).data).toMatchObject({ openExecutions, automations })
       expect(mockRepo.transition).not.toHaveBeenCalled()
       expect(mockInvoke).not.toHaveBeenCalled()
     },
   )
+
+  it.each(['DRAINING', 'REVERTING'])('refuses a migrating (%s) namespace', async (status) => {
+    mockRepo.findByTenant.mockResolvedValue(row({ status }))
+    expect((await req('/deprovision')).status).toBe(409)
+    expect(mockRepo.transition).not.toHaveBeenCalled()
+    expect(mockInvoke).not.toHaveBeenCalled()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -518,43 +546,10 @@ describe('POST /tenants/:tenantId/temporal-namespace/cutover', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// POST /rollback (3b.2)
-// ---------------------------------------------------------------------------
-
 describe('POST /tenants/:tenantId/temporal-namespace/rollback', () => {
-  it('ACTIVE → REVERTING (its open executions drain in the tenant namespace); audited', async () => {
-    mockRepo.findByTenant
-      .mockResolvedValueOnce(row({ status: 'ACTIVE' }))
-      .mockResolvedValueOnce(row({ status: 'REVERTING' }))
-    const res = await req('/rollback')
-    expect(res.status).toBe(200)
-    expect(mockRepo.transition).toHaveBeenCalledWith(TENANT_ID, ['ACTIVE'], 'REVERTING')
-    expect(mockAudit.mock.calls[0]![3]).toBe('ROLLBACK_TEMPORAL_NAMESPACE')
-  })
-
-  it('DRAINING → READY cancels a cutover still draining (nothing ran in the namespace)', async () => {
-    mockRepo.findByTenant.mockResolvedValue(row({ status: 'DRAINING' }))
-    expect((await req('/rollback')).status).toBe(200)
-    expect(mockRepo.transition).toHaveBeenCalledWith(TENANT_ID, ['DRAINING'], 'READY')
-  })
-
-  it('is idempotent from REVERTING', async () => {
-    mockRepo.findByTenant.mockResolvedValue(row({ status: 'REVERTING' }))
-    expect((await req('/rollback')).status).toBe(200)
-    expect(mockRepo.transition).not.toHaveBeenCalled()
-  })
-
-  it.each(['READY', 'PROVISIONING', 'FAILED', 'DEPROVISIONING'])('409s from %s', async (status) => {
-    mockRepo.findByTenant.mockResolvedValue(row({ status }))
-    expect((await req('/rollback')).status).toBe(409)
-    expect(mockRepo.transition).not.toHaveBeenCalled()
-  })
-
-  it('409s on a lost compare-and-set', async () => {
+  it('is gone: there is no shared namespace to roll back to (legacy runner retired)', async () => {
     mockRepo.findByTenant.mockResolvedValue(row({ status: 'ACTIVE' }))
-    mockRepo.transition.mockResolvedValue(false)
-    expect((await req('/rollback')).status).toBe(409)
-    expect(mockAudit).not.toHaveBeenCalled()
+    expect((await req('/rollback')).status).toBe(404)
+    expect(mockRepo.transition).not.toHaveBeenCalled()
   })
 })

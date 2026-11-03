@@ -98,8 +98,3 @@ export function deprovisionTemporalNamespace(
 export function cutoverTemporalNamespace(tenantId: string): Promise<{ data: TemporalNamespace }> {
   return call(tenantId, '/cutover', 'POST')
 }
-
-/** ACTIVE → REVERTING (back to shared), or DRAINING → READY (cancel a cutover). */
-export function rollbackTemporalNamespace(tenantId: string): Promise<{ data: TemporalNamespace }> {
-  return call(tenantId, '/rollback', 'POST')
-}

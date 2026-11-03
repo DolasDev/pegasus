@@ -1369,6 +1369,73 @@ describe('tenant namespace migrations (3b.2)', () => {
   })
 })
 
+// ── Legacy-runner retirement: where tenant namespaces are provisioned ────
+
+describe('tenant namespaces provisioned (no shared runner)', () => {
+  const failedRow = {
+    tenantId: 'tenant-1',
+    namespace: 'pg-test-tenant1.acct',
+    status: 'FAILED',
+    leaseExpiresAt: null,
+    // Fresh: not yet due for the 15-minute retry.
+    updatedAt: new Date(),
+  }
+
+  beforeEach(() => {
+    process.env['TEMPORAL_PROVISIONER_FUNCTION_NAME'] = 'pegasus-test-temporal-provisioner'
+  })
+  afterEach(() => {
+    delete process.env['TEMPORAL_PROVISIONER_FUNCTION_NAME']
+    mockNamespaceFindMany.mockResolvedValue([])
+    mockNamespaceFindUnique.mockResolvedValue(null)
+  })
+
+  it('holds PROVISIONING and READY tenants’ events at the query, alongside a drain (never FAILED)', async () => {
+    await handler()
+    const statusSets = mockNamespaceFindMany.mock.calls.map(
+      (call) => (call as unknown[] as [{ where: { status: { in: string[] } } }])[0].where.status.in,
+    )
+    // Phase 0 reads the provisioning-side rows too; the event exclusion is the last read.
+    expect(statusSets[0]).toEqual(
+      expect.arrayContaining(['DRAINING', 'REVERTING', 'READY', 'PROVISIONING', 'FAILED']),
+    )
+    expect(statusSets.at(-1)).toEqual(['DRAINING', 'REVERTING', 'PROVISIONING', 'READY'])
+  })
+
+  it('a FAILED tenant: its tenant-runner trigger is skipped and the event still stamped; gauge 1', async () => {
+    mockNamespaceFindMany
+      .mockResolvedValueOnce([failedRow]) // phase 0: counted unhealthy, not yet retried
+      .mockResolvedValueOnce([]) // event exclusion: FAILED is not held
+    mockNamespaceFindUnique.mockResolvedValue(failedRow)
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    // Stamped: an unbounded hold would also hold the tenant's curated triggers.
+    expect(mockDomainEventUpdateMany).toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'TENANT_NAMESPACE_UNAVAILABLE' }],
+      }),
+    )
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({ MetricName: 'TenantTemporalNamespacesUnhealthy', Value: 1 }),
+    )
+  })
+
+  it('publishes the unhealthy gauge as 0 on a healthy tick', async () => {
+    await handler()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({ MetricName: 'TenantTemporalNamespacesUnhealthy', Value: 0 }),
+    )
+  })
+})
+
 // ── Dispatcher: concurrency-cap back-pressure ─────────────────────────────
 //
 // An EVENT trigger that hits the TENANT_RUNNER concurrency cap parks its event

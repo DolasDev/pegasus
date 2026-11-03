@@ -10,7 +10,6 @@ vi.mock('@/api/temporal-namespace', () => ({
   rotateTemporalNamespaceKey: vi.fn(),
   deprovisionTemporalNamespace: vi.fn(),
   cutoverTemporalNamespace: vi.fn(),
-  rollbackTemporalNamespace: vi.fn(),
 }))
 vi.mock('@/auth/cognito', () => ({ getAccessToken: () => 'tok-123' }))
 vi.mock('@/config', () => ({ getConfig: () => ({ apiUrl: 'https://api.test' }) }))
@@ -21,7 +20,6 @@ import {
   rotateTemporalNamespaceKey,
   deprovisionTemporalNamespace,
   cutoverTemporalNamespace,
-  rollbackTemporalNamespace,
 } from '@/api/temporal-namespace'
 
 const TENANT = 'a90b22bc-4393-4ccc-8ddd-eeeeeeeeffff'
@@ -172,12 +170,12 @@ describe('TenantTemporalNamespaceSection — routing (3b.2)', () => {
     scopedRunnerConfigured,
   })
 
-  it('READY says Automations still run in the shared namespace, and cuts over after a confirm', async () => {
+  it('READY says it becomes Active on its own, and still cuts over now after a confirm', async () => {
     vi.mocked(getTemporalNamespace).mockResolvedValue(state({}))
     vi.mocked(cutoverTemporalNamespace).mockResolvedValue({ data: ns({ status: 'DRAINING' }) })
     renderSection()
     expect(await screen.findByTestId('temporal-namespace-routing')).toHaveTextContent(
-      'shared platform namespace',
+      'becomes Active on the dispatcher’s next tick',
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Cut over' }))
@@ -195,35 +193,35 @@ describe('TenantTemporalNamespaceSection — routing (3b.2)', () => {
     expect(screen.getByTestId('temporal-namespace-no-scoped-runner')).toBeInTheDocument()
   })
 
-  it('DRAINING shows what it is waiting for, offers Cancel cutover, and no Deprovision', async () => {
+  it('DRAINING shows what it is waiting for, with no Cancel cutover and no Deprovision', async () => {
     vi.mocked(getTemporalNamespace).mockResolvedValue(
       state({ status: 'DRAINING', openExecutions: 2 }),
     )
-    vi.mocked(rollbackTemporalNamespace).mockResolvedValue({ data: ns() })
     renderSection()
     expect(await screen.findByTestId('temporal-namespace-status')).toHaveTextContent('Cutting over')
     expect(screen.getByTestId('temporal-namespace-routing')).toHaveTextContent(
       'Waiting for 2 open runs to finish',
     )
     expect(screen.queryByRole('button', { name: 'Deprovision' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel cutover' }))
-    await waitFor(() => expect(rollbackTemporalNamespace).toHaveBeenCalledWith(TENANT))
+    expect(screen.queryByRole('button', { name: 'Cancel cutover' })).toBeNull()
   })
 
-  it('ACTIVE runs here, still rotates, and rolls back after a confirm; no Deprovision', async () => {
+  it('ACTIVE runs here, still rotates, offers Deprovision (confirmed), and no Roll back', async () => {
     vi.mocked(getTemporalNamespace).mockResolvedValue(state({ status: 'ACTIVE' }))
-    vi.mocked(rollbackTemporalNamespace).mockResolvedValue({ data: ns({ status: 'REVERTING' }) })
+    vi.mocked(deprovisionTemporalNamespace).mockResolvedValue({
+      data: ns({ status: 'DEPROVISIONING' }),
+    })
     renderSection()
     expect(await screen.findByTestId('temporal-namespace-routing')).toHaveTextContent(
       'Automations run in this namespace',
     )
     expect(screen.getByRole('button', { name: 'Rotate key' })).toBeEnabled()
-    expect(screen.queryByRole('button', { name: 'Deprovision' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Roll back' })).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Roll back' }))
-    expect(rollbackTemporalNamespace).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Yes, roll back' }))
-    await waitFor(() => expect(rollbackTemporalNamespace).toHaveBeenCalledWith(TENANT))
+    fireEvent.click(screen.getByRole('button', { name: 'Deprovision' }))
+    expect(deprovisionTemporalNamespace).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, deprovision' }))
+    await waitFor(() => expect(deprovisionTemporalNamespace).toHaveBeenCalledWith(TENANT))
   })
 
   it('REVERTING shows the drain and offers neither cutover nor rollback', async () => {

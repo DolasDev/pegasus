@@ -14,6 +14,7 @@ import {
   TEMPORAL_KEY_CLASSES,
   TEMPORAL_KEY_DAYS_TO_EXPIRY_METRIC_NAME,
   TEMPORAL_KEY_ROTATION_FAILED_METRIC_NAME,
+  TENANT_TEMPORAL_NAMESPACES_UNHEALTHY_METRIC_NAME,
   PEGASUS_USAGE_METRIC_NAMESPACE,
   USAGE_METER_WRITE_FAILED_METRIC_NAME,
   RC_OUTBOX_PENDING_METRIC_NAME,
@@ -439,6 +440,36 @@ export class MonitoringStack extends cdk.Stack {
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       })
       wire(rotationFailedAlarm)
+
+      // Gauge from the trigger dispatcher's phase 0 (every minute). Three
+      // consecutive minutes > 0 filters a READY row that advances on the next
+      // tick. NOT_BREACHING: a kick-only tick doesn't publish it, and a
+      // stopped dispatcher has its own alarms.
+      const namespacesUnhealthyAlarm = new cloudwatch.Alarm(
+        this,
+        'TenantTemporalNamespacesUnhealthyAlarm',
+        {
+          alarmName: 'pegasus-tenant-temporal-namespaces-unhealthy',
+          alarmDescription:
+            'A tenant’s own Temporal namespace is FAILED, or stuck READY / PROVISIONING for ' +
+            '20+ minutes, so that tenant’s Automations can’t run (there is no shared runner ' +
+            'to fall back to). The dispatcher retries a FAILED provision every 15 minutes. ' +
+            'See `lastError` on the tenant_temporal_namespaces rows, the temporal-provisioner’s ' +
+            'logs, and the dispatcher’s `temporal_namespace.*` logs. Common causes: the ' +
+            '100-namespace account cap, or a key that stopped authorizing (Rotate key).',
+          metric: new cloudwatch.Metric({
+            namespace: PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
+            metricName: TENANT_TEMPORAL_NAMESPACES_UNHEALTHY_METRIC_NAME,
+            statistic: 'Maximum',
+            period: cdk.Duration.minutes(1),
+          }),
+          threshold: 0,
+          evaluationPeriods: 3,
+          comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        },
+      )
+      wire(namespacesUnhealthyAlarm)
     }
 
     // ── RingCentral capture-health alarms ──────────────────────────────────────

@@ -26,6 +26,21 @@
 //     REJECT_DUPLICATE start QUEUED forever), not work in flight; counting it
 //     would wedge the drain.
 //
+// Legacy-runner retirement: where tenant namespaces are provisioned (staging,
+// prod) there is no shared runner, so a READY row is only a waypoint. Each
+// pass also
+//
+//   READY        → DRAINING  (then on to ACTIVE in the SAME pass) once the
+//                            tenant's current key still passes the readiness
+//                            check: the automatic version of the admin's
+//                            Cut over, with nobody to press it
+//   PROVISIONING (lease expired) → re-invoke the provisioner (a killed run;
+//                            nothing else would resume it: the tenant's
+//                            events are held and its starts refused)
+//   FAILED (untouched 15 min)    → retry the provision
+//
+// and reports how many rows look unhealthy (TenantTemporalNamespacesUnhealthy).
+//
 // A start that read READY just before the flip to DRAINING can still insert a
 // shared-namespace row after this count reached zero. That's safe: the row
 // recorded its namespace, so the runner sweep (lib/tenant-runner.ts) still
@@ -34,9 +49,40 @@
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient, TenantTemporalNamespaceStatus } from '@prisma/client'
-import { createTenantTemporalNamespaceRepository } from '../repositories/tenant-temporal-namespace.repository'
+import {
+  createTenantTemporalNamespaceRepository,
+  MIGRATING_STATUSES,
+  type TenantTemporalNamespaceRow,
+} from '../repositories/tenant-temporal-namespace.repository'
 import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
+import { keyAuthorizedOnNamespace } from './temporal-namespace-readiness'
+import { requestTenantNamespace, tenantNamespacesConfigured } from './tenant-namespace-request'
 import { logger } from './logger'
+
+/** A FAILED row untouched this long is retried by the next pass. */
+export const FAILED_RETRY_AFTER_MS = 15 * 60 * 1000
+
+/**
+ * A READY or PROVISIONING row untouched this long counts as unhealthy: a key
+ * that stopped authorizing (READY never advances) or a provisioner that keeps
+ * dying. A healthy provision updates its row at every step and finishes in
+ * well under 15 minutes (the Lambda timeout).
+ */
+export const STUCK_AFTER_MS = 20 * 60 * 1000
+
+export type AdvanceNamespaceMigrationsDeps = {
+  /** Default: tenantNamespacesConfigured(). False = 3b.2 behavior (drains only). */
+  configured?: boolean
+  /** Whether the tenant's current key still passes the readiness check. */
+  keyAuthorized?: (db: PrismaClient, tenantId: string) => Promise<boolean>
+  /** Default: requestTenantNamespace. */
+  request?: typeof requestTenantNamespace
+}
+
+async function currentKeyAuthorized(db: PrismaClient, tenantId: string): Promise<boolean> {
+  const key = await createTenantTemporalNamespaceRepository(db).getDecryptedKey(tenantId)
+  return key !== null && (await keyAuthorizedOnNamespace(key))
+}
 
 /**
  * A QUEUED row older than this is an orphan, not work in flight: a real start
@@ -56,6 +102,10 @@ export type AdvanceNamespaceMigrationsResult = {
   waiting: Array<{ tenantId: string; status: TenantTemporalNamespaceStatus; open: number }>
   /** Rows that moved on this pass. */
   advanced: NamespaceMigrationStep[]
+  /** Tenants whose provision was (re)requested this pass. */
+  retried: string[]
+  /** FAILED rows, plus READY/PROVISIONING rows untouched for STUCK_AFTER_MS. */
+  unhealthy: number
 }
 
 /**
@@ -82,20 +132,68 @@ export async function countOpenTenantRunnerExecutions(
 }
 
 /**
- * One pass over every DRAINING / REVERTING row (or only `opts.tenantIds`'
- * rows: tests share one database). Each row is isolated: a failure on one is
- * logged and leaves it for the next tick.
+ * One pass over every row that needs moving (see the module header), or only
+ * `opts.tenantIds`' rows: tests share one database. Each row is isolated: a
+ * failure on one is logged and leaves it for the next tick.
  */
 export async function advanceNamespaceMigrations(
   db: PrismaClient,
   now: Date = new Date(),
-  opts: { tenantIds?: string[] } = {},
+  opts: { tenantIds?: string[] } & AdvanceNamespaceMigrationsDeps = {},
 ): Promise<AdvanceNamespaceMigrationsResult> {
   const repo = createTenantTemporalNamespaceRepository(db)
-  const result: AdvanceNamespaceMigrationsResult = { waiting: [], advanced: [] }
+  const configured = opts.configured ?? tenantNamespacesConfigured()
+  const keyAuthorized = opts.keyAuthorized ?? currentKeyAuthorized
+  const request = opts.request ?? requestTenantNamespace
+  const result: AdvanceNamespaceMigrationsResult = {
+    waiting: [],
+    advanced: [],
+    retried: [],
+    unhealthy: 0,
+  }
 
-  for (const row of await repo.findMigrating(opts.tenantIds)) {
+  const statuses: TenantTemporalNamespaceStatus[] = configured
+    ? [...MIGRATING_STATUSES, 'READY', 'PROVISIONING', 'FAILED']
+    : [...MIGRATING_STATUSES]
+  for (const found of await repo.findInStatuses(statuses, opts.tenantIds)) {
     try {
+      let row: TenantTemporalNamespaceRow = found
+      // Only for the provisioning-side statuses: a drain never reads it.
+      const untouched = () => now.getTime() - row.updatedAt.getTime()
+
+      if (row.status === 'FAILED') {
+        result.unhealthy += 1
+        if (untouched() >= FAILED_RETRY_AFTER_MS) await retry(row)
+        continue
+      }
+      if (row.status === 'PROVISIONING') {
+        if (untouched() >= STUCK_AFTER_MS) result.unhealthy += 1
+        // A run holding the lease is on it; an expired lease means it was killed.
+        if (row.leaseExpiresAt === null || row.leaseExpiresAt <= now) await retry(row)
+        continue
+      }
+      if (row.status === 'READY') {
+        if (!(await keyAuthorized(db, row.tenantId))) {
+          if (untouched() >= STUCK_AFTER_MS) result.unhealthy += 1
+          logger.warn('temporal_namespace.auto_cutover_key_not_ready', {
+            tenantId: row.tenantId,
+            namespace: row.namespace,
+          })
+          continue
+        }
+        if (!(await repo.transition(row.tenantId, ['READY'], 'DRAINING'))) continue
+        result.advanced.push({ tenantId: row.tenantId, from: 'READY', to: 'DRAINING' })
+        logger.info('temporal_namespace.migration_advanced', {
+          audit: true,
+          tenantId: row.tenantId,
+          namespace: row.namespace,
+          from: 'READY',
+          to: 'DRAINING',
+          automatic: true,
+        })
+        row = { ...row, status: 'DRAINING' }
+      }
+
       // DRAINING leaves the shared namespace; REVERTING leaves the tenant's.
       const leaving = row.status === 'DRAINING' ? null : row.namespace
       const to: TenantTemporalNamespaceStatus = row.status === 'DRAINING' ? 'ACTIVE' : 'READY'
@@ -117,11 +215,18 @@ export async function advanceNamespaceMigrations(
       }
     } catch (err) {
       logger.error('temporal_namespace.migration_advance_failed', {
-        tenantId: row.tenantId,
-        status: row.status,
+        tenantId: found.tenantId,
+        status: found.status,
         error: err instanceof Error ? err.message : String(err),
       })
     }
   }
   return result
+
+  async function retry(row: TenantTemporalNamespaceRow): Promise<void> {
+    const requested = await request(db, row.tenantId, { cause: 'retry', now })
+    if (requested.outcome === 'REQUESTED' || requested.outcome === 'INVOKE_FAILED') {
+      result.retried.push(row.tenantId)
+    }
+  }
 }
