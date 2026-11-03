@@ -79,7 +79,7 @@ import {
   type CrewRow,
 } from '../repositories/labor.repository'
 import { legacyConnectionString } from '../lib/chat-access'
-import { hasOperationsRole, resolveLonghaulReadScope } from '../lib/longhaul-read-scope'
+import { hasOperationsRole, resolveOrderReadScope } from '../lib/longhaul-read-scope'
 import {
   activityById,
   activityOwnerDriverId,
@@ -1218,14 +1218,19 @@ laborHandler.get('/orders/:orderNum/activities', requirePermission(Actions.ReadL
   guarded(c, async () => {
     const who = caller(c)
     const orderNum = intParam(c, 'orderNum')
-    // The longhaul driver-data read scope (PATTERNS): an Operations role reads
-    // every activity; anyone else only those their driver mapping owns.
-    const scope = await resolveLonghaulReadScope(c)
+    // The order read scope (PATTERNS): an Operations role reads every activity;
+    // a driver only those their longhaul mapping owns. A driver who works the
+    // order only as a local job (crew id) may open it but owns no activity on
+    // it, so they get an empty list — never an unowned activity (`null` owner).
+    const scope = await resolveOrderReadScope(c)
     if (scope.kind === 'none') throw driverNotMapped()
+    if (scope.kind === 'driver' && scope.longhaulDriverId === null) return c.json({ data: [] })
     const driverId = await myDriverId(c, who)
     const rows = await legacy(c, who, (cs) => orderActivities(cs, orderNum))
     const visible =
-      scope.kind === 'all' ? rows : rows.filter((a) => activityOwnerDriverId(a) === scope.driverId)
+      scope.kind === 'all'
+        ? rows
+        : rows.filter((a) => activityOwnerDriverId(a) === scope.longhaulDriverId)
     return c.json({ data: await activityLaborDtos(c, who, visible, driverId) })
   }),
 )

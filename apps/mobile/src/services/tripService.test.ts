@@ -53,16 +53,22 @@ describe('trip visibility helpers', () => {
 describe('TripService', () => {
   beforeEach(() => jest.clearAllMocks())
 
-  describe('getDriverId', () => {
-    it('returns the mapped driver id', async () => {
-      mockFetch.mockResolvedValueOnce({ longhaulDriverId: 4231 })
-      await expect(TripService.getDriverId()).resolves.toBe(4231)
+  describe('getDriverMapping', () => {
+    it('returns both mapped ids', async () => {
+      mockFetch.mockResolvedValueOnce({ longhaulDriverId: 4231, localDriverEmployeeId: 3097 })
+      await expect(TripService.getDriverMapping()).resolves.toEqual({
+        longhaulDriverId: 4231,
+        localDriverEmployeeId: 3097,
+      })
       expect(mockFetch).toHaveBeenCalledWith('/api/v1/me/driver')
     })
 
-    it('returns null when unmapped', async () => {
+    it('returns nulls when unmapped, and from an older API with no local id', async () => {
       mockFetch.mockResolvedValueOnce({ longhaulDriverId: null })
-      await expect(TripService.getDriverId()).resolves.toBeNull()
+      await expect(TripService.getDriverMapping()).resolves.toEqual({
+        longhaulDriverId: null,
+        localDriverEmployeeId: null,
+      })
     })
   })
 

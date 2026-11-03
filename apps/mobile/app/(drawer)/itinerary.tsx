@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { ApiError } from '@pegasus/api-http'
 import { ItineraryService } from '../../src/services/itineraryService'
-import { ItineraryItemDetail } from '../../src/components/ItineraryItemDetail'
 import { TripStatusBadge } from '../../src/components/TripStatusBadge'
 import type { ItineraryItem, ItinerarySourceName } from '../../src/types/itinerary'
 import {
@@ -36,11 +35,11 @@ import { colors, fontSize, spacing, borderRadius } from '../../src/theme/colors'
 // ---------------------------------------------------------------------------
 // My Itinerary — every act assigned to the driver, longhaul trip activities and
 // local dispatch jobs alike, as one list: day → stop (same day + same place) →
-// act. The trip is a chip on the act, not the way in.
+// act. The trip is a chip on the act, not the way in. Any act opens its order's
+// shipment screen: the order read scope admits orders on the driver's local
+// jobs as well as their longhaul activities.
 //
-// The driver mapping is the itinerary's own: /me/driver knows only the longhaul
-// id, so a local-only driver would look unmapped there. The API's 403
-// DRIVER_NOT_MAPPED is the onboarding state.
+// The API's 403 DRIVER_NOT_MAPPED (neither id mapped) is the onboarding state.
 //
 // Read-only. Delivery ETAs are still set from the trip screen; local acts get
 // ETA / done in Phase 3.
@@ -61,7 +60,6 @@ export default function ItineraryScreen() {
   const [loading, setLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<LoadError | null>(null)
-  const [selected, setSelected] = useState<ItineraryItem | null>(null)
 
   // Only the newest request may write state: paging weeks while a retry or a
   // pull-to-refresh is in flight must not land the old week under the new one.
@@ -125,10 +123,7 @@ export default function ItineraryScreen() {
 
   const today = localDay()
 
-  const openItem = (item: ItineraryItem) => {
-    if (isLocalItem(item)) setSelected(item)
-    else router.push(`/shipment/${item.orderNum}`)
-  }
+  const openItem = (item: ItineraryItem) => router.push(`/shipment/${item.orderNum}`)
 
   const rangeBar = (
     <View style={styles.rangeBar}>
@@ -253,8 +248,6 @@ export default function ItineraryScreen() {
           />
         }
       />
-
-      <ItineraryItemDetail item={selected} onClose={() => setSelected(null)} />
     </SafeAreaView>
   )
 }
