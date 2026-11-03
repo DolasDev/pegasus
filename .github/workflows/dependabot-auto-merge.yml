@@ -267,7 +267,7 @@ jobs:
           elif [[ "${HAS_PAT:-false}" == "true" ]]; then
             echo "Acting as DEPENDABOT_AUTOMERGE_PAT (fallback) — enqueues will trigger merge_group checks."
           else
-            echo "::warning::Acting as GITHUB_TOKEN — this enqueue will NOT trigger merge_group checks, so the PR will enter the queue and stall at its head until dropped at the 60-minute timeout. Configure the GitHub App: see plans/todo/dependabot-automerge-pat.md."
+            echo "::warning::Acting as GITHUB_TOKEN — this enqueue will NOT trigger merge_group checks, so the PR will enter the queue and stall at its head until dropped at the 60-minute timeout. Configure the GitHub App: see plans/completed/dependabot-automerge-app.md."
           fi
 
           # --- Resolve the PR -------------------------------------------------

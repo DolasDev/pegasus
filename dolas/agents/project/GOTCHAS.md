@@ -3058,6 +3058,90 @@ daily audit stayed green while four alerts sat open. They are visible only via
 `gh api repos/DolasDev/pegasus/dependabot/alerts?state=open` — worth running by hand periodically,
 because no job does it for you.
 
+### Addendum 2026-11-03: `@dependabot recreate` does NOT fix an `npm ci` lockfile desync — and this repo already knew
+
+Three Dependabot PRs were failing with four jobs each dying inside
+`.github/actions/setup`. The install log gives the class away:
+
+```
+npm error code EUSAGE
+`npm ci` can only install packages when your package.json and package-lock.json ... are in sync.
+npm error Missing: aws-cdk@2.1147.0 from lock file
+```
+
+`@dependabot recreate` was fired at #884, #886 and #907 to clear it. **It did not
+work, and the repo's own notes say so in as many words** — the lockfile-rejection
+write-up has carried "**`@dependabot recreate` does NOT fix this class**" since #786,
+because recreate re-runs the _same_ resolution and lands the _same_ lockfile. #886 and
+#907 came back with the identical `Missing:` error on new heads. The lesson is not
+about Dependabot; it is that a remembered **diagnosis** was reused while the
+accompanying **prescription** went unread. Read both halves of a known finding.
+
+The documented fix is to regenerate locally with the npm CI actually runs (plain `npm`
+on Node 24, i.e. npm 11.x — **not** the declarative `packageManager` pin, which is a
+false green) and push onto the Dependabot branch:
+
+```
+npm ci --dry-run                 # must FAIL first, reproducing CI
+npm install --package-lock-only
+npm ci --dry-run                 # must exit 0
+```
+
+Then check for nested `<workspace>/node_modules/<pkg>` entries that shadow a
+workspace's own declared range — `--dry-run` cannot see that second defect.
+
+**#884 is a separate, real failure, not this class.** Its recreate _did_ clear the
+EUSAGE, and exposed:
+
+```
+npm error path .../apps/api
+npm error command sh -c prisma generate
+npm error sh: 1: prisma: not found
+```
+
+`apps/api`'s `postinstall` is a bare `prisma generate` that relies on PATH. A
+7.10.0 → 7.10.1 **patch** forked the tree: the lockfile ends up with
+`node_modules/prisma@7.10.0` (required by nothing) _plus_
+`apps/api/node_modules/prisma@7.10.1`. That is the tree-reshuffle shape
+`.github/dependabot.yml`'s own comments document for the prisma group (#383, #665).
+It is **not** the `.bin`-by-path/root-ownership class of #762/#779 — that one is
+_permission denied_, this one is _not found_. Different symptom, different cause;
+resist filing it under the nearest familiar heading.
+
+### Addendum 2026-11-03: a `@dependabot recreate` comment can be silently dropped
+
+#886's first `@dependabot recreate` produced **no `Dependabot Updates` run at all**,
+while the prisma, hono and cedar comments posted in the same batch all ran within
+seconds. No error, no reply, no run — the PR head simply never moved. Re-issuing the
+identical comment ~9 minutes later worked. So after commenting, verify a run actually
+appeared rather than assuming the comment took:
+
+```
+gh run list --workflow "Dependabot Updates" --limit 10 \
+  --json createdAt,status,conclusion,displayTitle
+```
+
+Related: a long-running recreate is **not** a zombie. `updatedAt` on an `in_progress`
+run does not tick — it is written on completion — so a start timestamp that looks
+hours old proves nothing. A 24-package group recreate legitimately takes 10–20
+minutes, and posting a second `recreate` over a running one is the thing most likely
+to actually confuse it.
+
+### Addendum 2026-11-03: `gh run view --log` can return ZERO lines; the raw API still works
+
+Reading a failed job with `gh run view --job <id> --log` (and `--log-failed`) returned
+an **empty result, exit code 0** for several runs from 1–2 days earlier — not an
+error, just nothing. Read as "no errors in the log", that is a false green of exactly
+the kind `feedback_poll_filter_empty_output_false_green` warns about. The REST
+endpoint served the same logs fine:
+
+```
+gh api repos/DolasDev/pegasus/actions/jobs/<job-id>/logs
+```
+
+Treat an empty log as a failed read, not a clean one, and retry via the API before
+concluding anything about the job.
+
 ## NW's own database already runs a Weichert integration over the fields `update_order` writes
 
 `update_order` (`PATCH /api/v1/pegii/orders/:id`, SDK 0.49.0) writes `Survey.SerivceStatus` →

@@ -326,7 +326,7 @@ records is the same one that recurred on 10-20:**
   expires and degrades _silently_ back to `GITHUB_TOKEN`. What is left is creating the App,
   installing it on `pegasus`, and setting one Actions variable + one Actions secret. Steps and the
   two traps (**Actions** store not Dependabot; **Client ID** not App ID) live in
-  `plans/todo/dependabot-automerge-pat.md`. An agent cannot do it; **ask rather than work around
+  `plans/completed/dependabot-automerge-app.md`. An agent cannot do it; **ask rather than work around
   it.**
 - **The stage-2 verification is owed and its window is OPEN.** Confirm a real Dependabot PR produces
   a `gh-readonly-queue/main/pr-<N>-*` run within ~a minute. That is the only thing that proves the
@@ -534,10 +534,16 @@ on 2026-10-07 with reasons (see "Don't redo these"). Unverified at the time of w
 job share `scripts/audit-ci.sh`, so the gate (and its npm-endpoint-error pass-through) cannot drift.
 **When that issue is open, fix `main` before enqueuing anything** — every queued PR will be ejected.
 
-### [ ] `enqueue` needs a non-`GITHUB_TOKEN` identity — **wiring MERGED (#826), owner setup STILL pending; 12 reproductions**
+### [x] `enqueue` needs a non-`GITHUB_TOKEN` identity — **DONE 2026-11-03: App live, verified, two PRs merged autonomously**
 
-See `plans/todo/dependabot-automerge-pat.md` (filename kept; the workflow's warning message points
-at that path). **Re-scoped 2026-10-09 from a PAT to a GitHub App**, because a fine-grained PAT
+**CLOSED 2026-11-03.** The owner created and installed the App (`pegasus-dependabot`) and set
+the secret then the variable. Stage 1 (run `41709300303`) printed
+`Acting as pegasus-dependabot[bot] (GitHub App installation token)`; stage 2 (run `41720599900`,
+PR #906) produced `merge_group` run `41720701908` **38 seconds** after dispatch, and #906 + #885
+both **merged** through the queue with no human touch. Twelve reproductions of the stall, then
+two clean passes. Full log in `plans/completed/dependabot-automerge-app.md`.
+
+**Re-scoped 2026-10-09 from a PAT to a GitHub App**, because a fine-grained PAT
 expires and degrades _silently_ back to `GITHUB_TOKEN`, while an App does not expire and is not
 tied to a person's account.
 
