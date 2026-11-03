@@ -3514,7 +3514,7 @@ string — so never set `is_final` to complete ONE act. And `STRING_SPLIT` fails
 
 `apps/api/src/lib/longhaul-read-scope.ts` has two resolvers. `resolveLonghaulReadScope` (one
 longhaul id) scopes the TRIP reads — trips list/detail, driver planning, rejected trips, the
-activities list — so a local-only driver gets `none` there: a local job has no trip. Since #NNN,
+activities list — so a local-only driver gets `none` there: a local job has no trip. Since 2026-11,
 `resolveOrderReadScope` (both ids, each nullable) scopes the ORDER reads behind the mobile shipment
 screen — `/onprem/longhaul/shipments` (EXISTS on a longhaul activity OR an active `LocalDispatchJobs`
 row) and labor `GET /orders/:orderNum/activities` (local-only ⇒ `[]`). A new order-level read must

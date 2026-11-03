@@ -1,6 +1,6 @@
 # Itinerary: a local crew id is a driver identity — order read scope + mobile
 
-**Status:** in progress. **Branch:** `fix/local-driver-scope` (worktree `../pegasus-local-driver-scope`).
+**Status:** SHIPPED (this PR). **Branch:** `fix/local-driver-scope` (worktree `../pegasus-local-driver-scope`).
 Part of `plans/todo/driver-itinerary-mobile.md` (decisions recorded there in this PR).
 
 **Goal:** a driver whose work on an order is a LOCAL dispatch job can open that order's shipment
@@ -34,14 +34,19 @@ screen from My Itinerary, and a local-only driver is treated as a driver by the 
 
 ## Checklist
 
-- [ ] `lib/longhaul-read-scope.ts` `resolveOrderReadScope` + tests (all / longhaul-only / local-only /
+- [x] `lib/longhaul-read-scope.ts` `resolveOrderReadScope` + tests (all / longhaul-only / local-only /
       both / neither / 0 ids ⇒ none).
-- [ ] `shipments-list.ts` uses it; SQL-pinning tests for longhaul-only, local-only, both.
-- [ ] `labor.ts` order activities uses it; local-only ⇒ `[]`.
-- [ ] `me.ts` `/me/driver` + test.
-- [ ] Mobile: `DriverMapping` type, `TripService.getDriverMapping`, `TripsContext.localDriverId`,
+- [x] `shipments-list.ts` uses it; SQL-pinning tests for longhaul-only, local-only, both.
+- [x] `labor.ts` order activities uses it; local-only ⇒ `[]`.
+- [x] `me.ts` `/me/driver` + test.
+- [x] Mobile: `DriverMapping` type, `TripService.getDriverMapping`, `TripsContext.localDriverId`,
       `laborAccessFor`, itinerary routing, remove `ItineraryItemDetail`; tests.
-- [ ] Live check (read-only, prod): local-only NW crew orders appear in `v_longhaul_shipments_v2`
-      (else the Details tab is empty for them).
-- [ ] `/security-review` (row-scoping authz) before the PR.
-- [ ] GOTCHAS / PATTERNS updated.
+- [x] Live check (read-only, prod, 2026-11-03): every order on an active local job with a driver
+      (−30..+30 days) is in `v_longhaul_shipments_v2` — NW 411/411 (312 local-only), QMM 242/242,
+      RVS 135/135 (all local-only). The new predicate run verbatim on NW: crew 3097 sees 767 orders;
+      crew **0 would see 38,501** — why `0 ⇒ none` is load-bearing (pinned by tests).
+- [x] `/security-review` (row-scoping authz): no findings. Checked: unscoped query paths (none;
+      both-null ⇒ `none` before MSSQL, empty predicate ⇒ `1 = 0`), injection (ids bound), id-space
+      and tenant crossing (separate params; connection per tenant), self-assignment of the crew id
+      (admin-only `UpdateUser`), the labor `null === null` trap (short-circuited), trip reads unchanged.
+- [x] GOTCHAS / PATTERNS updated.

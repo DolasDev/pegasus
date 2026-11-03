@@ -5,7 +5,7 @@ Phases 0–1 (probe, `/me/itinerary` + `/drivers/itinerary` API, Services board 
 `plans/completed/19ad9517-driver-itinerary.md`; Phase 2 mobile "My Itinerary" —
 `plans/completed/64dc360b-itinerary-mobile.md`; local arrival window (#905) —
 `plans/completed/baa570a6-local-job-window.md`; local driver scope (decisions 2 + 5) —
-`plans/completed/*-local-driver-scope.md`. Read them before starting.
+`plans/completed/2f8541ab-local-driver-scope.md`. Read them before starting.
 
 **Goal:** dispatchers see a driver's itinerary in tenant-web, and drivers can post ETA / done on
 local items too.
