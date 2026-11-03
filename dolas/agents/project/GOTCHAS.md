@@ -3536,8 +3536,8 @@ string — so never set `is_final` to complete ONE act. And `STRING_SPLIT` fails
 longhaul id) scopes the TRIP reads — trips list/detail, driver planning, rejected trips, the
 activities list — so a local-only driver gets `none` there: a local job has no trip. Since 2026-11,
 `resolveOrderReadScope` (both ids, each nullable) scopes the ORDER reads behind the mobile shipment
-screen — `/onprem/longhaul/shipments` (EXISTS on a longhaul activity OR an active `LocalDispatchJobs`
-row) and labor `GET /orders/:orderNum/activities` (local-only ⇒ `[]`). A new order-level read must
+screen — `/onprem/longhaul/shipments` (EXISTS on a longhaul activity, OR the order-assigned rule
+`orderAssignedTo` from `lib/itinerary/order-assigned.ts`, OR an active `LocalDispatchJobs` row) and labor `GET /orders/:orderNum/activities` (local-only ⇒ `[]`). A new order-level read must
 use the order scope or a local item's shipment screen breaks; a new trip read must NOT. Two traps:
 a `null` longhaul id compared with `activityOwnerDriverId()` (also `null` for an unowned activity)
 matches — guard it; and an empty predicate list must become `1 = 0`, never "no filter". Mobile
@@ -3615,3 +3615,16 @@ Reading it as a time shows drivers "Arrive 00:00 – 01:00". A job also carries 
 `eta_maximum`, emailed to the customer as "Arrival Time") and the crew **job window** (`start_time`
 → `end_time` = start + `minutes`, a single time on almost every job). The itinerary uses the ETA when
 set and the job window otherwise (`lib/itinerary/local-job-tokens.ts` `localArrivalWindow`).
+
+## `sales.driver_id` is a longhaul id, a crew-id COPY, or nothing — the name says which
+
+QMM and RVS never write `LongDistanceDispatchActivity`; for QMM the order's own `sales.driver_id`
+is the ONLY record of the longhaul driver (1,229 of 1,505 orders with one, −180..+60 days). But
+`TriggerLocalDispatchUpdate` copies a confirmed local job's `driver_id1` (CREW space) into that same
+column, and ids collide across the two spaces (NW: 3,127 of 3,471 valid in both). The itinerary's
+order-assigned source (`lib/itinerary/order-assigned.ts`) therefore reads it only when the order has
+no activity rows, it is not a local job's driver on the order, AND `sales.driver_name`
+(`LAST, FIRST # phone`) matches that id's `v_longhaul_drivers` name (`LAST, FIRST` / `LAST, FIRST
+(id)`), compared upper-case without spaces. The view's `driver_name` / `driver_id` are sales' own
+(checked: 420/420 QMM, 964/964 NW). QMM's id 66666 is "Tor Crew, Local Toronto" — a crew-pool
+pseudo-driver, not a person. Full audit: `plans/completed/*-order-assigned-source.md`.

@@ -16,10 +16,12 @@
 // Plan: plans/in-progress/driver-itinerary.md.
 // ---------------------------------------------------------------------------
 
-/** Where an item was read from. Open by design: a third source is planned. */
+/** Where an item was read from. */
 export type ItinerarySource =
   | { kind: 'longhaul-activity'; activityId: number }
   | { kind: 'local-job-token'; jobId: number; token: string | null }
+  /** The order's own driver, on an order with no activity rows (order-assigned.ts). */
+  | { kind: 'order-assigned'; orderNum: number; actCode: string }
 
 export type ItinerarySide = 'origin' | 'destination' | 'neither'
 

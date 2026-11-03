@@ -52,6 +52,7 @@ import {
   type ExtraLocationRow,
 } from '../../lib/longhaul-shipment-enrich'
 import { buildShipmentActivities } from '../../lib/longhaul-build-activities'
+import { orderAssignedTo } from '../../lib/itinerary/order-assigned'
 // The view's column manifest — typing the sort whitelist against it makes a
 // typo a compile error instead of a silently dead sort header.
 import type { LonghaulShipmentViewColumn } from '@pegasus/longhaul-contracts'
@@ -153,9 +154,11 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, scope?: DriverOrderSc
   // Restricted (driver-scoped) caller: always applied, independent of
   // searchTerm / filters, so a restricted list is never an unfiltered dump.
   // An order is the driver's when they own a longhaul activity on it
-  // (activity-based so a multi-leg / SIT shipment on their trip stays visible)
+  // (activity-based so a multi-leg / SIT shipment on their trip stays visible),
+  // OR it is assigned to them on the order itself with no activity rows (the
+  // itinerary's order-assigned rule, shared SQL — lib/itinerary/order-assigned),
   // OR they are a driver on one of its active local dispatch jobs — the
-  // itinerary's two sources. Each id binds its own parameter: the longhaul and
+  // itinerary's three sources. Each id binds its own parameter: the longhaul and
   // crew numbering spaces are never compared.
   if (scope !== undefined) {
     const owns: string[] = []
@@ -166,6 +169,7 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, scope?: DriverOrderSc
           ` LEFT JOIN TripMaster t ON a.TripMaster_id = t.id` +
           ` WHERE a.order_num = ${S}.order_num` +
           ` AND (a.assigned_driver_id = @scopeDriverId OR t.driver_id = @scopeDriverId))`,
+        orderAssignedTo(S, '@scopeDriverId'),
       )
     }
     if (scope.localDriverEmployeeId !== null) {

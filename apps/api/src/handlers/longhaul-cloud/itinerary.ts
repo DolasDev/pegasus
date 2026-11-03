@@ -91,7 +91,8 @@ async function respond(c: Context<AppEnv>, q: ItineraryQuery) {
   }
 
   const result = await fetchItinerary(connectionString, q)
-  const asked = (q.longhaulDriverId !== null ? 1 : 0) + (q.localDriverEmployeeId !== null ? 1 : 0)
+  // A longhaul id asks two sources (its activities, and orders assigned to it).
+  const asked = (q.longhaulDriverId !== null ? 2 : 0) + (q.localDriverEmployeeId !== null ? 1 : 0)
   if (asked > 0 && result.failed.length === asked) {
     logger.error('itinerary: every source failed', { failed: result.failed })
     return c.json(

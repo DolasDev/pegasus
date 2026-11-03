@@ -21,7 +21,9 @@ local items too.
 3. **Dispatcher picker: pick a longhaul driver and a crew separately.** Longhaul drivers from the
    existing `/onprem/longhaul/drivers`; crews from a NEW Operations-gated sibling read (do not relax
    `/local-drivers`' `UpdateUser` gate), reusing `listLocalDrivers` from `chat-access.ts`.
-4. **Phase 4 audit: go.** Read-only, through the prod executor; record a go/no-go here.
+4. **Phase 4: go, tenant-agnostic, with a name guard — DONE** (order-assigned-source): an order
+   with no activity rows whose `sales.driver_id` is not a local-job copy and whose `driver_name`
+   names that longhaul driver.
 5. **Mobile edge — DONE** (local-driver-scope): a local crew id alone makes a login a driver.
 
 ## Checklist
@@ -47,10 +49,10 @@ local items too.
 - [ ] Mobile: ETA + "done" on local items (the read-only `ItineraryItemDetail` sheet was removed
       when local items started opening the shipment screen — design the controls fresh).
 
-### Phase 4 — deferred: order-assigned source
+### Phase 4 — order-assigned source — DONE
 
-- [ ] Data audit per tenant: does `sales.driver_id` match `v_longhaul_drivers` or `crews`; how often
-      is it just a copy of a local job's `driver_id1`. Go/no-go recorded here before any code.
+- [x] Audit + go (tenant-agnostic, with the name guard) and the source itself —
+      `plans/completed/*-order-assigned-source.md`.
 
 ## Risks
 

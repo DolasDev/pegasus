@@ -126,12 +126,23 @@ describe('GET /me/itinerary', () => {
   })
 
   it('answers 503 when every source it asked for failed', async () => {
-    fetchMock.mockResolvedValue({ items: [], failed: ['longhaul', 'local'], overCap: [] })
+    fetchMock.mockResolvedValue({ items: [], failed: ['longhaul', 'order', 'local'], overCap: [] })
     const { status, body } = await get(
       '/onprem/longhaul/me/itinerary?from=2026-10-19&to=2026-10-25',
     )
     expect(status).toBe(503)
     expect(body['code']).toBe('LEGACY_UNAVAILABLE')
+  })
+
+  it('counts a longhaul id as two sources: 503 only when both fail', async () => {
+    tenantUserFind.mockResolvedValue({ longhaulDriverId: 1203, localDriverEmployeeId: null })
+    fetchMock.mockResolvedValue({ items: [ITEM], failed: ['order'], overCap: [] })
+    const partial = await get('/onprem/longhaul/me/itinerary?from=2026-10-19&to=2026-10-25')
+    expect(partial.status).toBe(200)
+
+    fetchMock.mockResolvedValue({ items: [], failed: ['longhaul', 'order'], overCap: [] })
+    const down = await get('/onprem/longhaul/me/itinerary?from=2026-10-19&to=2026-10-25')
+    expect(down.status).toBe(503)
   })
 
   it('answers 400 rather than a truncated list when a source hit the cap', async () => {

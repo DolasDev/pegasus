@@ -110,7 +110,7 @@ describe('fetchItinerary', () => {
   it('reads both sources in ONE executor call and merges them by day', async () => {
     exec.mockResolvedValue({
       recordset: [],
-      recordsets: [[ACTIVITY], CATALOG, [JOB]],
+      recordsets: [CATALOG, [ACTIVITY], [], [JOB]],
       rowsAffected: [],
     })
     const r = await fetchItinerary(CS, {
@@ -133,7 +133,7 @@ describe('fetchItinerary', () => {
     const sameDayActivity = { ...ACTIVITY, planned_start: '2026-10-20T00:00:00.000Z' }
     exec.mockResolvedValue({
       recordset: [],
-      recordsets: [[sameDayActivity], CATALOG, [JOB]],
+      recordsets: [CATALOG, [sameDayActivity], [], [JOB]],
       rowsAffected: [],
     })
     const r = await fetchItinerary(CS, {
@@ -208,8 +208,9 @@ describe('fetchItinerary', () => {
   it('isolates a failing source by retrying statement by statement', async () => {
     exec
       .mockRejectedValueOnce(new Error("Invalid object name 'LocalDispatchJobs'"))
-      .mockResolvedValueOnce({ recordset: [ACTIVITY], recordsets: [[ACTIVITY]], rowsAffected: [] })
       .mockResolvedValueOnce({ recordset: CATALOG, recordsets: [CATALOG], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [ACTIVITY], recordsets: [[ACTIVITY]], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [] })
       .mockRejectedValueOnce(new Error("Invalid object name 'LocalDispatchJobs'"))
     const r = await fetchItinerary(CS, {
       ...RANGE,
@@ -241,7 +242,7 @@ describe('fetchItinerary', () => {
       ...ACTIVITY,
       id: i + 1,
     }))
-    exec.mockResolvedValue({ recordset: [], recordsets: [many], rowsAffected: [] })
+    exec.mockResolvedValue({ recordset: [], recordsets: [[], many, []], rowsAffected: [] })
     const r = await fetchItinerary(CS, {
       ...RANGE,
       longhaulDriverId: 1203,
