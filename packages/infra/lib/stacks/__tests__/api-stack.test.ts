@@ -1391,11 +1391,12 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
       ) {
         throw new Error(`unexpected cluster ARN: ${JSON.stringify(vars.TENANT_RUNNER_CLUSTER_ARN)}`)
       }
-      if (vars.TENANT_RUNNER_SCOPED_TASK_DEFINITION !== 'pegasus-tenant-runner-scoped-staging') {
-        throw new Error('TENANT_RUNNER_SCOPED_TASK_DEFINITION must be the scoped bare family name')
+      // The scoped family is the only one (legacy shared-key runner retired).
+      if (vars.TENANT_RUNNER_TASK_DEFINITION !== 'pegasus-tenant-runner-scoped-staging') {
+        throw new Error('TENANT_RUNNER_TASK_DEFINITION must be the scoped bare family name')
       }
-      if (vars.TENANT_RUNNER_TASK_DEFINITION !== 'pegasus-tenant-runner-staging') {
-        throw new Error('TENANT_RUNNER_TASK_DEFINITION must be the bare family name')
+      if ('TENANT_RUNNER_SCOPED_TASK_DEFINITION' in vars) {
+        throw new Error('TENANT_RUNNER_SCOPED_TASK_DEFINITION is retired')
       }
       if (vars.TENANT_RUNNER_CONTAINER_NAME !== 'tenant-runner') {
         throw new Error('TENANT_RUNNER_CONTAINER_NAME mismatch')
@@ -1421,9 +1422,7 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
             // revision) + the bare-family form, belt-and-braces — see the
             // statement comment in api-stack.ts.
             Resource: [
-              'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging:*',
-              'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging',
-              // Phase 3b.2: the scoped family, for tenants on their own namespace.
+              // The scoped family only: the legacy family is retired.
               'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-scoped-staging:*',
               'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-scoped-staging',
             ],

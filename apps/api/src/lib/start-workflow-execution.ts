@@ -670,12 +670,13 @@ export async function startWorkflowExecution(
   // sweep (lib/tenant-runner.ts sweepTenantRunners) retries while QUEUED
   // work exists — degraded latency, never a lost run. ensureTenantRunner
   // never throws for the failures it models and logs/metrics internally.
-  if (route === 'TENANT_RUNNER') {
-    // A run in the tenant's own namespace needs the scoped runner (no shared
-    // Temporal key; fetches the tenant's key from the broker).
-    await ensureTenantRunner(db, tenantId, {
-      family: temporalNamespace === null ? 'legacy' : 'scoped',
-    })
+  //
+  // Only for a run in the tenant's own namespace: the only runner family
+  // polls that namespace (the legacy shared-key runner is retired). A
+  // shared-namespace run reaches here only where tenant namespaces aren't
+  // provisioned (local dev, tests), and those have no runner plane either.
+  if (route === 'TENANT_RUNNER' && temporalNamespace !== null) {
+    await ensureTenantRunner(db, tenantId)
   }
 
   // Single transaction: lazy-mint the runtime account if needed, then

@@ -413,7 +413,10 @@ describe('POST /tenants/:tenantId/temporal-namespace/deprovision', () => {
       mockDb.workflow.count.mockResolvedValue(automations)
       const res = await req('/deprovision')
       expect(res.status).toBe(409)
-      expect((await res.json()).data).toMatchObject({ openExecutions, automations })
+      expect(((await res.json()) as { data: unknown }).data).toMatchObject({
+        openExecutions,
+        automations,
+      })
       expect(mockRepo.transition).not.toHaveBeenCalled()
       expect(mockInvoke).not.toHaveBeenCalled()
     },
@@ -490,8 +493,8 @@ describe('POST /tenants/:tenantId/temporal-namespace/cutover', () => {
     expect(await (await req('/cutover')).text()).not.toContain('SECRET-KEY')
   })
 
-  it('503s, writing nothing, when the scoped runner task definition is not deployed', async () => {
-    mockRunnerConfig.mockReturnValue({ scopedTaskDefinition: null })
+  it('503s, writing nothing, when the runner plane is not deployed', async () => {
+    mockRunnerConfig.mockReturnValue(null)
     mockRepo.findByTenant.mockResolvedValue(row())
     const res = await req('/cutover')
     expect(res.status).toBe(503)

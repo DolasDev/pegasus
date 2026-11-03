@@ -92,11 +92,11 @@ single activity (`maximum_attempts=1`) under the proxy workflow.
 | ---------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TENANT_ID`                        | ✓        | lowercase UUID                                                                                                                                       |
 | `ENV_NAME`                         | ✓        | `staging` / `prod` / `dev`                                                                                                                           |
-| `TEMPORAL_NAMESPACE`               | ✓        | `default` for local dev                                                                                                                              |
-| `TEMPORAL_ADDRESS`                 | ✓        | gRPC `host:port`                                                                                                                                     |
+| `TEMPORAL_NAMESPACE`               |          | env mode (local dev) only, `default` there. Deployed runners omit every `TEMPORAL_*` var and fetch their tenant's namespace + key from the broker    |
+| `TEMPORAL_ADDRESS`                 |          | env mode (local dev) only: gRPC `host:port`. Its absence is broker mode                                                                              |
 | `PEGASUS_API_BASE_URL`             | ✓        | broker base URL                                                                                                                                      |
 | `WORKFLOW_BROKER_TOKEN`            | ✓        | per-tenant `wbk_` token. The runner refuses anything else (notably the shared broker secret) and refuses a token whose embedded tenant ≠ `TENANT_ID` |
-| `TEMPORAL_CLOUD_API_KEY`           |          | empty → local dev server (no TLS/auth)                                                                                                               |
+| `TEMPORAL_CLOUD_API_KEY`           |          | env mode only; empty → local dev server (no TLS/auth). Never set on a deployed runner                                                                |
 | `RUNNER_IDLE_TIMEOUT_SECONDS`      |          | default 600                                                                                                                                          |
 | `RUNNER_EXECUTION_TIMEOUT_SECONDS` |          | default 900                                                                                                                                          |
 | `RUNNER_MAX_UNPACKED_BYTES`        |          | default 104857600 (100 MiB)                                                                                                                          |

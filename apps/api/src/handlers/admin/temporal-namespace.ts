@@ -136,9 +136,10 @@ async function start(
   return c.json({ data: toDto(row) }, 202)
 }
 
-/** The scoped runner task definition is deployed here (3b.2 cutover prerequisite). */
+/** The runner plane is deployed here (cutover prerequisite). Its only task
+ * definition is the scoped one: no shared Temporal key. */
 function scopedRunnerConfigured(): boolean {
-  return loadTenantRunnerConfig()?.scopedTaskDefinition != null
+  return loadTenantRunnerConfig() !== null
 }
 
 /**
