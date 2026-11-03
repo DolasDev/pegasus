@@ -993,6 +993,16 @@ export class ApiStack extends cdk.Stack {
           'TEMPORAL_PROVISIONER_FUNCTION_NAME',
           provisionerFunction.functionName,
         )
+        // The dispatcher requests a tenant's namespace too (a trigger-fired
+        // start for a tenant with none; phase 0 re-invokes a killed provision
+        // and retries a FAILED one), and its start path gates on the variable.
+        if (dispatchTriggersFunction) {
+          provisionerFunction.grantInvoke(dispatchTriggersFunction)
+          dispatchTriggersFunction.addEnvironment(
+            'TEMPORAL_PROVISIONER_FUNCTION_NAME',
+            provisionerFunction.functionName,
+          )
+        }
 
         // The construct id predates daily-maintenance; renaming it would
         // replace the rule.

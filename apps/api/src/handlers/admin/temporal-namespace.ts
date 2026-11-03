@@ -22,8 +22,7 @@ import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { writeAuditLog } from './audit'
 import { logger } from '../../lib/logger'
-import { tenantNamespaceName } from '../../lib/temporal-cloud-ops'
-import { tenantTaskQueueEnv } from '../../lib/workflow-route'
+import { requestTenantNamespace } from '../../lib/tenant-namespace-request'
 import {
   invokeTemporalProvisioner,
   temporalProvisionerFunctionName,
@@ -64,21 +63,6 @@ function toDto(row: TenantTemporalNamespaceRow) {
 /** Audit snapshots: the DTO, which never carries key material. */
 function snapshot(row: TenantTemporalNamespaceRow | null): Prisma.InputJsonValue | null {
   return row ? toDto(row) : null
-}
-
-/**
- * The tenant's full namespace id and gRPC address, from the platform
- * namespace's account suffix (`pegasus-<env>.<account>`). Null when the API
- * has no Temporal Cloud namespace configured.
- */
-function tenantNamespaceTarget(
-  tenantId: string,
-): { namespace: string; grpcAddress: string } | null {
-  const platform = process.env['TEMPORAL_NAMESPACE'] ?? ''
-  const account = platform.split('.')[1]
-  if (!account) return null
-  const namespace = `${tenantNamespaceName(tenantTaskQueueEnv(), tenantId)}.${account}`
-  return { namespace, grpcAddress: `${namespace}.tmprl.cloud:7233` }
 }
 
 const notConfigured = (c: Context<AdminEnv>) =>
@@ -193,40 +177,34 @@ adminTemporalNamespaceRouter.post('/', async (c) => {
   if (!(await tenantExists(tenantId))) {
     return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
   }
-  if (!temporalProvisionerFunctionName()) return notConfigured(c)
-
-  const current = await repo.findByTenant(tenantId)
-
-  if (!current) {
-    const target = tenantNamespaceTarget(tenantId)
-    if (!target) return notConfigured(c)
-    const { row } = await repo.createProvisioning({ tenantId, ...target })
-    await audit(c, 'PROVISION_TEMPORAL_NAMESPACE', tenantId, null, row)
-    return start(c, 'provision', tenantId, row)
-  }
-
-  switch (current.status) {
-    case 'READY':
-    case 'DRAINING':
-    case 'ACTIVE':
-    case 'REVERTING':
+  // The same request the platform makes on a tenant's first publish
+  // (lib/tenant-namespace-request.ts); here it is audited.
+  const result = await requestTenantNamespace(db, tenantId, {
+    cause: 'admin',
+    beforeInvoke: (before, row) => audit(c, 'PROVISION_TEMPORAL_NAMESPACE', tenantId, before, row),
+  })
+  switch (result.outcome) {
+    case 'NOT_CONFIGURED':
+      return notConfigured(c)
+    case 'EXISTS':
       // Already provisioned (and possibly routed): nothing to do.
-      return c.json({ data: toDto(current) })
-    case 'DEPROVISIONING':
-      return conflict(c, current, 'provision')
-    case 'PROVISIONING':
-      // A live run is on it; an expired lease means the run was killed.
-      if (leaseHeld(current)) return c.json({ data: toDto(current) }, 202)
-      await audit(c, 'PROVISION_TEMPORAL_NAMESPACE', tenantId, current, current)
-      return start(c, 'provision', tenantId, current)
-    case 'FAILED': {
-      if (!(await repo.transition(tenantId, ['FAILED'], 'PROVISIONING'))) {
-        return conflict(c, current, 'provision')
-      }
-      const resumed = (await repo.findByTenant(tenantId))!
-      await audit(c, 'PROVISION_TEMPORAL_NAMESPACE', tenantId, current, resumed)
-      return start(c, 'provision', tenantId, resumed)
-    }
+      return c.json({ data: toDto(result.row) })
+    case 'IN_PROGRESS':
+      return c.json({ data: toDto(result.row) }, 202)
+    case 'CONFLICT':
+      return conflict(c, result.row, 'provision')
+    case 'INVOKE_FAILED':
+      logger.error('admin.temporal_namespace.invoke_failed', {
+        tenantId,
+        action: 'provision',
+        error: result.message,
+      })
+      return c.json(
+        { error: 'Could not start the Temporal provisioner', code: 'PROVISIONER_INVOKE_FAILED' },
+        502,
+      )
+    case 'REQUESTED':
+      return c.json({ data: toDto(result.row) }, 202)
   }
 })
 

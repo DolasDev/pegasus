@@ -14,7 +14,10 @@
 //   3. TENANT_RUNNER only: daily quota         — count before insert, 429 if over
 //      (and, before both, Phase 3b.2's namespace check: a DRAINING/REVERTING
 //      tenant is refused 409 TENANT_MIGRATING; an ACTIVE one starts in its
-//      own namespace, recorded on the row at insert)
+//      own namespace, recorded on the row at insert; where namespaces are
+//      provisioned, any other tenant is refused 409
+//      TENANT_NAMESPACE_PROVISIONING / 503 TENANT_NAMESPACE_UNAVAILABLE, and
+//      one with no namespace yet gets it requested)
 //   4. ensureTenantRunner (per-tenant runner)  — kick off before Temporal start
 //   5. lazy runtime-service-account mint       — same transaction as insert
 //   6. insert the QUEUED WorkflowExecution row with provenance
@@ -68,6 +71,7 @@ import {
 import { temporalTaskQueue, withTemporalClient } from './temporal-client'
 import { resolveWorkflowRoute, tenantTaskQueue } from './workflow-route'
 import { ensureTenantRunner } from './tenant-runner'
+import { requestTenantNamespace, tenantNamespacesConfigured } from './tenant-namespace-request'
 import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
 import { logger } from './logger'
 
@@ -109,10 +113,35 @@ const METRIC_NAMESPACE = 'Pegasus/Workflows'
 
 const cloudwatch = new CloudWatchClient({})
 
-type RejectionReason = 'CONCURRENCY_LIMIT' | 'DAILY_QUOTA_EXCEEDED' | 'TENANT_MIGRATING'
+type RejectionReason =
+  | 'CONCURRENCY_LIMIT'
+  | 'DAILY_QUOTA_EXCEEDED'
+  | 'TENANT_MIGRATING'
+  | 'TENANT_NAMESPACE_PROVISIONING'
+  | 'TENANT_NAMESPACE_UNAVAILABLE'
 
 function isMigratingStatus(status: string): boolean {
   return (MIGRATING_STATUSES as readonly string[]).includes(status)
+}
+
+/**
+ * Why a TENANT_RUNNER start can't run yet, for a tenant whose namespace row is
+ * not ACTIVE (and not migrating). A tenant with no row gets one requested.
+ */
+async function namespaceNotReadyOutcome(
+  db: PrismaClient,
+  tenantId: string,
+  row: { status: string } | null,
+): Promise<'TENANT_NAMESPACE_PROVISIONING' | 'TENANT_NAMESPACE_UNAVAILABLE'> {
+  if (!row) {
+    const requested = await requestTenantNamespace(db, tenantId, { cause: 'start' })
+    return requested.outcome === 'INVOKE_FAILED'
+      ? 'TENANT_NAMESPACE_UNAVAILABLE'
+      : 'TENANT_NAMESPACE_PROVISIONING'
+  }
+  return row.status === 'PROVISIONING' || row.status === 'READY'
+    ? 'TENANT_NAMESPACE_PROVISIONING'
+    : 'TENANT_NAMESPACE_UNAVAILABLE'
 }
 
 /**
@@ -234,6 +263,23 @@ export type StartWorkflowExecutionResult =
    * handler maps this to 409 TENANT_MIGRATING with a retry hint.
    */
   | { outcome: 'TENANT_MIGRATING' }
+  /**
+   * TENANT_RUNNER: the tenant has no ACTIVE namespace yet and one is being
+   * provisioned (requested by this start if it had none). Only where tenant
+   * namespaces are provisioned (staging, prod): there is no shared runner to
+   * fall back to. Nothing written, no runner launched. Transient (minutes);
+   * the handler maps this to 409 TENANT_NAMESPACE_PROVISIONING with a retry
+   * hint, and the dispatcher defers the occurrence like TENANT_MIGRATING.
+   */
+  | { outcome: 'TENANT_NAMESPACE_PROVISIONING' }
+  /**
+   * TENANT_RUNNER: the tenant's namespace failed to provision (FAILED) or is
+   * being deleted (DEPROVISIONING). Not transient on a client's timescale: the
+   * dispatcher retries a FAILED row every 15 minutes and an alarm fires. The
+   * handler maps this to 503 TENANT_NAMESPACE_UNAVAILABLE; the dispatcher
+   * skips the occurrence.
+   */
+  | { outcome: 'TENANT_NAMESPACE_UNAVAILABLE' }
   /**
    * TENANT_RUNNER: the caller tried to directly run a non-curated GLOBAL
    * workflow it does not own (workflow.tenantId !== caller's tenantId). Nothing
@@ -539,7 +585,9 @@ export async function startWorkflowExecution(
     // runner work until its open executions drain — dry runs included, since
     // they run on the runner too. Refused here, BEFORE ensureTenantRunner, so
     // a refused start never launches a runner. A cut-over (ACTIVE) tenant's
-    // run goes to its own namespace; every other state, the shared one.
+    // run goes to its own namespace. Any other state runs in the shared
+    // namespace only where tenant namespaces aren't provisioned (local dev,
+    // tests); in staging and prod it is refused (below).
     const namespaceRow = await createTenantTemporalNamespaceRepository(db).findByTenant(tenantId)
     if (namespaceRow && isMigratingStatus(namespaceRow.status)) {
       logger.warn('Workflow start refused — tenant Temporal namespace migrating', {
@@ -551,7 +599,23 @@ export async function startWorkflowExecution(
       await emitRejectionMetric('TENANT_MIGRATING')
       return { outcome: 'TENANT_MIGRATING' }
     }
-    if (namespaceRow?.status === 'ACTIVE') temporalNamespace = namespaceRow.namespace
+    if (namespaceRow?.status === 'ACTIVE') {
+      temporalNamespace = namespaceRow.namespace
+    } else if (tenantNamespacesConfigured()) {
+      // No shared runner exists where namespaces are provisioned: a tenant
+      // without an ACTIVE namespace can't run yet. One with no row at all
+      // gets it requested now (usually publish already did).
+      const blocked = await namespaceNotReadyOutcome(db, tenantId, namespaceRow)
+      logger.warn('Workflow start refused — tenant Temporal namespace not ready', {
+        tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        namespaceStatus: namespaceRow?.status ?? null,
+        outcome: blocked,
+      })
+      await emitRejectionMetric(blocked)
+      return { outcome: blocked }
+    }
 
     // A MANUAL dry run is a one-off rehearsal: never capped or quota-limited,
     // and never counted toward either for live starts (the count helpers'

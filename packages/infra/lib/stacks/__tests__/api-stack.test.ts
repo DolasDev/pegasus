@@ -1590,16 +1590,21 @@ describe('ApiStack — Temporal namespace provisioner (Phase 3b)', () => {
       expect(provisionerId).toBeTruthy()
     })
 
-    it('gives the API the function name and invoke on the provisioner only', () => {
+    it('gives the API and the trigger dispatcher (only) the function name and invoke on the provisioner', () => {
       const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
       const [provisionerId] = provisionerFns(template)[0]!
-      const withName = Object.values(template.findResources('AWS::Lambda::Function')).filter(
-        (fn) => vars(fn)['TEMPORAL_PROVISIONER_FUNCTION_NAME'] !== undefined,
+      const withName = Object.entries(template.findResources('AWS::Lambda::Function')).filter(
+        ([, fn]) => vars(fn)['TEMPORAL_PROVISIONER_FUNCTION_NAME'] !== undefined,
       )
-      expect(withName).toHaveLength(1)
-      expect(vars(withName[0]!)['TEMPORAL_PROVISIONER_FUNCTION_NAME']).toEqual({
-        Ref: provisionerId,
-      })
+      // The dispatcher requests a namespace for a trigger-fired start and
+      // retries failed provisions (legacy-runner retirement).
+      expect(withName.map(([id]) => id.replace(/[0-9A-F]{8}$/, '')).sort()).toEqual([
+        'ApiFunction',
+        'DispatchWorkflowTriggersFunction',
+      ])
+      for (const [, fn] of withName) {
+        expect(vars(fn)['TEMPORAL_PROVISIONER_FUNCTION_NAME']).toEqual({ Ref: provisionerId })
+      }
       template.hasResourceProperties('AWS::IAM::Policy', {
         PolicyDocument: {
           Statement: Match.arrayWith([

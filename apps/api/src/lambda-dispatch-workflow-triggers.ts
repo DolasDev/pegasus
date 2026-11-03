@@ -162,6 +162,8 @@ type TriggerSkipReason =
   | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
   | 'MUST_FORK' // defensive: trigger on a cross-tenant GLOBAL workflow (config mistake)
   | 'TENANT_MIGRATING' // Phase 3b.2: tenant's Temporal namespace mid-cutover/rollback
+  | 'TENANT_NAMESPACE_PROVISIONING' // tenant's own namespace being created: deferred like TENANT_MIGRATING
+  | 'TENANT_NAMESPACE_UNAVAILABLE' // tenant's namespace FAILED / DEPROVISIONING: the run is lost (alarmed)
   | 'DRY_RUN_UNSUPPORTED' // dry-run trigger on a STDLIB workflow (API refuses; legacy/race)
   | 'ERROR' // unexpected per-trigger exception
 
@@ -541,6 +543,34 @@ async function fireTrigger(opts: {
         ...logContext,
       })
       return 'DEFERRED'
+    case 'TENANT_NAMESPACE_PROVISIONING':
+      // The tenant had no namespace when this tick loaded its events (the
+      // start just requested one), or it began provisioning mid-tick. Same
+      // contract as TENANT_MIGRATING: nothing written, the event waits, and
+      // the next ticks exclude the tenant at the query until it is ACTIVE.
+      skip('TENANT_NAMESPACE_PROVISIONING')
+      logger.info('Trigger deferred — tenant Temporal namespace provisioning', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        triggerSource,
+        ...logContext,
+      })
+      return 'DEFERRED'
+    case 'TENANT_NAMESPACE_UNAVAILABLE':
+      // FAILED (or DEPROVISIONING) is not excluded at the query: it has no
+      // bound, and holding the tenant's events would also hold its curated
+      // triggers. So this tenant-runner occurrence is lost, loudly; phase 0
+      // retries the provision and TenantTemporalNamespacesUnhealthy alarms.
+      skip('TENANT_NAMESPACE_UNAVAILABLE')
+      logger.error('Trigger skipped — tenant Temporal namespace unavailable', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        triggerSource,
+        ...logContext,
+      })
+      break
     case 'ALREADY_STARTED':
       // The pre-check raced a concurrent start; Temporal's REJECT_DUPLICATE
       // guarantees the run exists exactly once. Success-already-handled: no
