@@ -229,7 +229,8 @@ until it's wired into CDK"). Name mirrored in `packages/infra/lib/metrics.ts`.
 
 - [x] SDK error + `push` message + README/CHANGELOG/MCP/`--help`; OpenAPI (run + retry; finalize and fork are not in the spec, so `data.namespace` is described on the run route); tenant-web message.
 - [x] DECISIONS.md (A, auto-onboarding, no rollback), GOTCHAS.md; tick 3a's item in `durable-workflow-worker.md`.
-- [ ] Local: `npm run typecheck`, `npm run lint`, api (revert the coverage-floor autoUpdate), infra, tenant-web, admin-web, SDK pytest + ruff, tenant-runner pytest.
+- [x] Local: `npm run typecheck`, `npm run lint`, api (revert the coverage-floor autoUpdate), infra, tenant-web, admin-web, SDK pytest + ruff, tenant-runner pytest.
+      Verified 2026-11-03: typecheck 15/15, lint 10/10; api 315 files / 4,781 tests (coverage on; floors reverted), infra 438 (incl. the bundle guard), tenant-web 1,710, admin-web 63; SDK pytest 539 + ruff; tenant-runner pytest 122 + ruff.
 
 ### Pre-merge (ops)
 
