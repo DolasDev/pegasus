@@ -77,6 +77,24 @@ describe('ItineraryScreen', () => {
     expect(getByText('Trip 55')).toBeTruthy()
   })
 
+  it('tags an order-assigned act and opens its shipment', async () => {
+    mockGet.mockResolvedValue(
+      ok([
+        item({
+          key: 'order-assigned:300:RDEL',
+          actName: 'Del',
+          orderNum: 300,
+          source: { kind: 'order-assigned', orderNum: 300, actCode: 'RDEL' },
+        }),
+      ]),
+    )
+    const { findByText, getByText } = render(<ItineraryScreen />)
+
+    fireEvent.press(await findByText('Del'))
+    expect(getByText('Order')).toBeTruthy()
+    expect(mockPush).toHaveBeenLastCalledWith('/shipment/300')
+  })
+
   it('opens the shipment for a trip act and a local job alike, and the trip from its chip', async () => {
     mockGet.mockResolvedValue(
       ok([

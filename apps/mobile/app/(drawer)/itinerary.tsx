@@ -49,6 +49,7 @@ type LoadError = { kind: 'unmapped' } | { kind: 'failed'; message: string }
 
 const SOURCE_LABEL: Record<ItinerarySourceName, string> = {
   longhaul: 'trip activities',
+  order: 'order assignments',
   local: 'local jobs',
 }
 
@@ -315,6 +316,11 @@ function ItemRow({
         {isLocalItem(item) ? (
           <View style={styles.tag}>
             <Text style={styles.tagText}>Local</Text>
+          </View>
+        ) : null}
+        {item.source.kind === 'order-assigned' ? (
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>Order</Text>
           </View>
         ) : null}
         {item.kind === 'storage' ? (

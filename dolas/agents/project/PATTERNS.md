@@ -445,7 +445,8 @@ nothing without a mapping. A client `driver_id` never widens that. Pick the reso
 is about: a TRIP read (trips, trip detail, activities, rejected trips, driver planning) calls
 `resolveLonghaulReadScope` (`TenantUser.longhaulDriverId` only); an ORDER read behind the shipment
 screen (shipments, the order's labor activities) calls `resolveOrderReadScope`, which also admits
-orders on the caller's local dispatch jobs (`localDriverEmployeeId`, bound separately — GOTCHAS "Two
+orders assigned to the caller on the order itself (`orderAssignedTo`, the SAME SQL the itinerary's
+order-assigned source uses) and orders on the caller's local dispatch jobs (`localDriverEmployeeId`, bound separately — GOTCHAS "Two
 driver read scopes"). The route has no Cedar gate to fall back on.
 
 Writes are a separate check. A route that lets a _driver_ write must check ownership itself. It

@@ -2,7 +2,8 @@
 // Driver itinerary — the legacy reads.
 //
 // ONE executor round trip in the common case: the catalog, the driver's
-// longhaul activities and their local jobs go as one multi-statement batch and
+// longhaul activities, the orders assigned to them on the order itself
+// (order-assigned.ts) and their local jobs go as one multi-statement batch and
 // come back as `recordsets`. Every executor call holds a Lambda slot, and both
 // accounts cap concurrency at 10 (project memory, "Lambda concurrency throttle
 // = 10"), so three parallel invokes per screen load is a cost worth avoiding.
@@ -29,13 +30,14 @@ import { executeSql, type SqlParam } from '../mssql-executor-client'
 import { logger } from '../logger'
 import { localJobItems, type LocalJobRow } from './local-job-tokens'
 import { longhaulActivityItem, type LonghaulActivityRow } from './longhaul-activity-rows'
+import { orderAssignedItems, orderAssignedSql, type OrderAssignedRow } from './order-assigned'
 import type { ActivityTypeEntry, ItineraryItem, OrderPlaces } from './types'
 import { flag, realId, text } from './values'
 
 /** Per source. One driver over the longest range the API allows is far below it. */
 export const ITINERARY_ROW_CAP = 1000
 
-export type ItinerarySourceName = 'longhaul' | 'local'
+export type ItinerarySourceName = 'longhaul' | 'order' | 'local'
 
 export interface ItineraryQuery {
   /** Inclusive `YYYY-MM-DD` bounds. */
@@ -109,6 +111,8 @@ const LOCAL_JOBS_SQL =
   ' AND (j.driver_id1 = @ld OR j.driver_id2 = @ld)' +
   ' AND j.service_date >= @from AND j.service_date <= @to' +
   ' ORDER BY j.service_date, j.id'
+
+const ORDER_ASSIGNED_SQL = orderAssignedSql(ITINERARY_ROW_CAP + 1)
 
 type LocalJobWithOrder = LocalJobRow & Record<string, unknown>
 
@@ -201,7 +205,7 @@ export function compareItems(a: ItineraryItem, b: ItineraryItem): number {
   return a.orderNum - b.orderNum
 }
 
-/** A driver's itinerary over `[from, to]`, both sources merged. */
+/** A driver's itinerary over `[from, to]`, every source merged. */
 export async function fetchItinerary(
   connectionString: string,
   q: ItineraryQuery,
@@ -215,18 +219,24 @@ export async function fetchItinerary(
     { name: 'from', value: q.from },
     { name: 'to', value: q.to },
   ]
-  const statements: Statement[] = []
+  // The catalog names and sequences local tokens and order-assigned acts;
+  // activities join it in SQL.
+  const statements: Statement[] = [{ name: 'catalog', sql: CATALOG_SQL }]
   if (lh !== null) {
     params.push({ name: 'lh', value: lh })
-    statements.push({ name: 'longhaul', sql: ACTIVITIES_SQL })
+    statements.push(
+      { name: 'longhaul', sql: ACTIVITIES_SQL },
+      { name: 'order', sql: ORDER_ASSIGNED_SQL },
+    )
   }
   if (ld !== null) {
     params.push({ name: 'ld', value: ld })
-    // The catalog names and sequences local tokens; activities join it in SQL.
-    statements.push({ name: 'catalog', sql: CATALOG_SQL }, { name: 'local', sql: LOCAL_JOBS_SQL })
+    statements.push({ name: 'local', sql: LOCAL_JOBS_SQL })
   }
 
   const rows = await runBatch(connectionString, statements, params)
+  // A failed catalog only costs names and sequences; the items still show.
+  const catalog = catalogFrom(rows.get('catalog') ?? [])
 
   const activityRows = rows.get('longhaul')
   if (lh !== null) {
@@ -238,6 +248,14 @@ export async function fetchItinerary(
         if (item) result.items.push(item)
       }
     }
+    const orderRows = rows.get('order')
+    if (orderRows == null) result.failed.push('order')
+    else {
+      if (orderRows.length > ITINERARY_ROW_CAP) result.overCap.push('order')
+      for (const r of orderRows as OrderAssignedRow[]) {
+        result.items.push(...orderAssignedItems(r, lh, catalog, q.from, q.to))
+      }
+    }
   }
 
   const jobRows = rows.get('local')
@@ -245,8 +263,6 @@ export async function fetchItinerary(
     if (jobRows == null) result.failed.push('local')
     else {
       if (jobRows.length > ITINERARY_ROW_CAP) result.overCap.push('local')
-      // A failed catalog only costs names and sequences; the jobs still show.
-      const catalog = catalogFrom(rows.get('catalog') ?? [])
       for (const r of jobRows as LocalJobWithOrder[]) {
         result.items.push(...localJobItems(r, orderPlaces(r), catalog))
       }

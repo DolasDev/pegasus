@@ -10,6 +10,8 @@
 export type ItinerarySource =
   | { kind: 'longhaul-activity'; activityId: number }
   | { kind: 'local-job-token'; jobId: number; token: string | null }
+  /** Assigned on the order itself (no activity rows) — the order's own dates. */
+  | { kind: 'order-assigned'; orderNum: number; actCode: string }
 
 export interface ItineraryPlace {
   street: string | null
@@ -54,7 +56,7 @@ export interface ItineraryItem {
   drivers: { longhaul: number[]; local: number[] }
 }
 
-export type ItinerarySourceName = 'longhaul' | 'local'
+export type ItinerarySourceName = 'longhaul' | 'order' | 'local'
 
 export interface ItineraryMeta {
   count: number
