@@ -2,8 +2,10 @@
 
 - **Status:** MERGED #855 (`76a51b68`, deployed 2026-10-15). **Staging
   acceptance PASSED 2026-10-19/22.** **Prod rollout DONE 2026-11-03**: every
-  needed tenant is ACTIVE. What is left is follow-up only; see **"Resume
-  here"** directly below.
+  needed tenant is ACTIVE. **ARCHIVED 2026-11-03.** The follow-ups are done
+  or carried: the authoring-repo note landed (`pegasus-workflows` `5a3908d`),
+  and legacy-runner removal plus the open Dolios check moved to
+  `plans/todo/retire-legacy-tenant-runner.md`.
 
 ## Resume here (written 2026-11-03, for a fresh session)
 
@@ -18,19 +20,22 @@ their own Temporal namespace (`TenantTemporalNamespace.status = ACTIVE`):
 | Quality Move Management   | `e911f357-c41b-4e18-9509-ebab33210b5c` | `pg-prod-e911f357c41b.chgel` |
 | Reliable Van and Storage  | `2b916653-df32-438d-a885-e9aedae40286` | `pg-prod-2b916653df32.chgel` |
 
-- Staging: AVP Smoke (`4b2e0267-…`) is provisioned and **READY** (rolled back
-  after acceptance), and has a `smoke_canary` fork (`ad780834`).
+- Staging: AVP Smoke (`4b2e0267-…`) has a `smoke_canary` fork (`ad780834`).
+  Its namespace was **deprovisioned** after acceptance (re-checked
+  2026-11-03: staging has no `tenant_temporal_namespaces` rows).
 - **Not migrated, by the user's choice:** **Nelson Westerberg Test**
   (`32dd89be-72b3-4038-a54e-9c520ca4547e`). It still has 2 executable
   Automations and runs in the shared namespace on the legacy runner.
 
 **Next actions, in order:**
 
-1. **Authoring-repo docs (small, any time).** Add the `TenantMigrating` note
+1. **DONE 2026-11-03** (`pegasus-workflows` `5a3908d`, under the `run` CLI bullet). **Authoring-repo docs (small, any time).** Add the `TenantMigrating` note
    to `~/repos/pegasus-workflows/CLAUDE.md` (a separate repo; commit there).
    The SDK side already shipped: `TenantMigrating` is on PyPI in **0.51.0**.
    0.50.0 was never tagged; don't tag it now.
-2. **Legacy-runner removal (its own PR; the plan's "Later, separate PR").**
+2. **CARVED 2026-11-03 into `plans/todo/retire-legacy-tenant-runner.md`**
+   (blockers re-checked that day: prod NW Test 2; staging AVP Smoke 1 and the
+   E2E tenant `b40b082e` 2). **Legacy-runner removal (its own PR; the plan's "Later, separate PR").**
    This removes the legacy task definition `pegasus-tenant-runner-<env>` and
    the shared `TEMPORAL_CLOUD_API_KEY` from runners, which completes 3a's
    "no Admin key in runners". **Blocked until every tenant with executable
@@ -49,7 +54,7 @@ their own Temporal namespace (`TenantTemporalNamespace.status = ACTIVE`):
    keep the legacy family. Removal also changes `ensureTenantRunner` (the
    `legacy` family goes away), the sweep's family logic, the infra stacks and
    tests, and the runner's env mode (local dev still needs it).
-3. **Archive this plan** (`git mv` to `plans/completed/<hash>-tenant-temporal-routing.md`)
+3. **DONE 2026-11-03.** **Archive this plan** (`git mv` to `plans/completed/<hash>-tenant-temporal-routing.md`)
    once 1 is done and 2 is either done or carved into its own plan.
 
 **Gotchas for whoever resumes:**
@@ -407,7 +412,7 @@ pytest 469 + ruff.
 - [x] Create a domain event during DRAINING; it fires after ACTIVE.
 - [x] Force a rotation **while a runner is live**: the runner's refresh swaps the key (log line) and the run continues; after the previous key retires, history through the API still works (cache evict path).
 - [x] Roll back: ACTIVE → REVERTING → READY; the next run lands in shared.
-- [ ] Archive this plan — after the prod rollout below.
+- [x] Archive this plan — after the prod rollout below.
 
 **Results (staging, 2026-10-19, rollback 2026-10-22). PASSED, no defects.**
 
@@ -469,15 +474,15 @@ pytest 469 + ruff.
   `REVERTING → READY` (20:40:03). The next run (`14ccc173`) completed in the
   **shared** namespace on a legacy runner. History of a tenant-namespace run
   still works after the rollback, because it is read from the row's namespace.
-- **Left in place:** the namespace is READY with key `vxxTFT…`. Deprovision it
-  from admin-web if it isn't wanted for anything else.
+- **Left in place:** the namespace was READY with key `vxxTFT…`. (It has since
+  been deprovisioned; staging had no namespace rows on 2026-11-03.)
 - **Tooling lesson:** a CloudWatch `filter-log-events` pattern with several
   quoted terms is an **AND**, not an OR. A watcher built that way never fires.
   Match one term per call, or filter client-side.
 
 ### Later, separate PR (after every tenant with Automations is ACTIVE)
 
-- [ ] Remove the legacy runner task def and the shared key from runners (completes 3a's "no Admin key in runners").
+- [ ] Remove the legacy runner task def and the shared key from runners (completes 3a's "no Admin key in runners"). **Carried to `plans/todo/retire-legacy-tenant-runner.md`.**
 
 ## Files
 
@@ -539,8 +544,10 @@ Created: `FakeTemporal` and tests alongside each change.
       logged `runner.temporal_credentials_fetched` and connected to the
       tenant namespace; - API history works (11 events), and the runner logs hold no key; - nothing was captured: the Automation stopped at its own
       5 PM-Central gate.
-- [ ] Quality Move Management and Reliable Van have **no executable
+- [x] Quality Move Management and Reliable Van (and Hermes) have **no executable
       Automations**, so there was nothing to run. Their first publish will
       run in their own namespace.
-- [ ] Dolios and Hermes: verify with their first run after cutover (not done
-      in this session).
+- [ ] Dolios and Hermes: verify with their first run after cutover. As of
+      2026-11-03 neither had run since cutover; Hermes has no executable
+      Automations, and Dolios (11, no enabled triggers) is **carried to
+      `plans/todo/retire-legacy-tenant-runner.md`**.
