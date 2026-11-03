@@ -82,4 +82,8 @@ to it).
       duplicate (order, act); NW 17698 (mapped logins) unchanged at 18. No failed source, no cap.
       Also: the batch now always carries the catalog (order-assigned acts need names/sides), and
       the handler counts a longhaul id as TWO sources for its 503 rule.
-- [x] `/security-review` (scope change); GOTCHAS / PATTERNS.
+- [x] `/security-review` (scope change): no HIGH/MEDIUM findings. It noted that a blank
+      `driver_name` and a blank driver row both normalize to `''` and satisfy the name guard (still
+      bound to the caller's own id; no blank names in the audit) — fixed anyway: the order's name
+      core must be non-empty. Live re-check identical.
+- [x] GOTCHAS ("`sales.driver_id` is a longhaul id, a crew-id COPY, or nothing") / PATTERNS.

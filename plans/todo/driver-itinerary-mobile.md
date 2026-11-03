@@ -52,7 +52,7 @@ local items too.
 ### Phase 4 — order-assigned source — DONE
 
 - [x] Audit + go (tenant-agnostic, with the name guard) and the source itself —
-      `plans/completed/*-order-assigned-source.md`.
+      `plans/completed/af79576b-order-assigned-source.md`.
 
 ## Risks
 

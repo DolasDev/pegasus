@@ -4,7 +4,7 @@
 //
 // QMM and RVS never write LongDistanceDispatchActivity, so for them the order's
 // own driver is the only record of the longhaul driver; NW has a few hundred
-// such orders too (audit, plans/completed/*-order-assigned-source.md). The rule
+// such orders too (audit, plans/completed/af79576b-order-assigned-source.md). The rule
 // (Steve, 2026-11-03) — an order is order-assigned to longhaul driver D when:
 //
 //   1. it has NO LongDistanceDispatchActivity rows (where it has them, the

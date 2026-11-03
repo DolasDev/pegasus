@@ -3627,4 +3627,4 @@ no activity rows, it is not a local job's driver on the order, AND `sales.driver
 (`LAST, FIRST # phone`) matches that id's `v_longhaul_drivers` name (`LAST, FIRST` / `LAST, FIRST
 (id)`), compared upper-case without spaces. The view's `driver_name` / `driver_id` are sales' own
 (checked: 420/420 QMM, 964/964 NW). QMM's id 66666 is "Tor Crew, Local Toronto" — a crew-pool
-pseudo-driver, not a person. Full audit: `plans/completed/*-order-assigned-source.md`.
+pseudo-driver, not a person. Full audit: `plans/completed/af79576b-order-assigned-source.md`.
