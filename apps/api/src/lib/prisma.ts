@@ -158,6 +158,10 @@ export const TENANT_SCOPED_MODELS = new Set([
   // tenant-owned even though the crews and packers they point at are not.
   // Served only through the scoped client on /labor; creates set tenantId.
   'ActivityLaborCrew',
+  // Itinerary act facts — a driver's ETA / done on one itinerary act, keyed by
+  // the item's key. Tenant-owned; read and written only through the scoped
+  // client on the /onprem/longhaul itinerary routes. Creates set tenantId.
+  'ItineraryActFact',
   'ActivityLaborPacker',
   // The company crew list — the tenant's grant to shared crews. Served only
   // through the scoped client on /labor/company; creates set tenantId.

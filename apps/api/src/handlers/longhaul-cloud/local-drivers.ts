@@ -5,8 +5,8 @@
 // Operations roles only, like `GET /onprem/longhaul/drivers/itinerary` it
 // feeds. The same list is served to tenant admins at `/local-drivers` (gated
 // by UpdateUser for the Settings → Users mapping); that gate is NOT relaxed —
-// this is a separate read for a separate audience (plans/todo/
-// driver-itinerary-mobile.md, decision 3). The ids are the crew numbering
+// this is a separate read for a separate audience (plans/completed/
+// 08b7a429-driver-itinerary-mobile.md, decision 3). The ids are the crew numbering
 // space; the client never pairs one with a longhaul driver id.
 // ---------------------------------------------------------------------------
 

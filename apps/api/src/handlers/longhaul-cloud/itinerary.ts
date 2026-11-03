@@ -28,6 +28,8 @@ import { logger } from '../../lib/logger'
 import { hasOperationsRole } from '../../lib/longhaul-read-scope'
 import { fetchItinerary, type ItineraryQuery } from '../../lib/itinerary/fetch'
 import { realId } from '../../lib/itinerary/values'
+import { attachAssertions, recordFact, type FactBasis } from '../../lib/itinerary/act-facts'
+import type { ItineraryItem } from '../../lib/itinerary/types'
 
 /** The longest range one request may ask for — a month either side of a screen. */
 export const ITINERARY_MAX_DAYS = 31
@@ -110,16 +112,24 @@ async function respond(c: Context<AppEnv>, q: ItineraryQuery) {
       400,
     )
   }
+  // The driver's own ETA / done (act-facts.ts). A failed fact read must not
+  // cost the dispatcher or the driver the itinerary itself.
+  let items = result.items
+  try {
+    items = await attachAssertions(c.get('db'), result.items)
+  } catch (err) {
+    logger.warn('itinerary: act facts unavailable', { error: String(err) })
+  }
   return c.json({
-    data: result.items,
-    meta: { count: result.items.length, from: q.from, to: q.to, failedSources: result.failed },
+    data: items,
+    meta: { count: items.length, from: q.from, to: q.to, failedSources: result.failed },
   })
 }
 
-export const myItineraryHandler: Handler<AppEnv> = async (c) => {
-  const parsed = RangeQuery.safeParse(c.req.query())
-  if (!parsed.success) return validationError(c, parsed.error)
-
+/** The caller's own two driver ids, each in its own space; null when neither is mapped. */
+async function callerDriverIds(
+  c: Context<AppEnv>,
+): Promise<{ longhaulDriverId: number | null; localDriverEmployeeId: number | null } | null> {
   const userId = c.get('userId')
   const user = userId
     ? await c.get('db').tenantUser.findUnique({
@@ -129,18 +139,142 @@ export const myItineraryHandler: Handler<AppEnv> = async (c) => {
     : null
   const longhaulDriverId = realId(user?.longhaulDriverId)
   const localDriverEmployeeId = realId(user?.localDriverEmployeeId)
-  if (longhaulDriverId === null && localDriverEmployeeId === null) {
+  return longhaulDriverId === null && localDriverEmployeeId === null
+    ? null
+    : { longhaulDriverId, localDriverEmployeeId }
+}
+
+const driverNotMapped = (c: Context<AppEnv>) =>
+  c.json(
+    {
+      error:
+        'This login is not linked to a driver. Ask a tenant administrator to set the driver on the Users settings page.',
+      code: 'DRIVER_NOT_MAPPED',
+      correlationId: c.get('correlationId'),
+    },
+    403,
+  )
+
+export const myItineraryHandler: Handler<AppEnv> = async (c) => {
+  const parsed = RangeQuery.safeParse(c.req.query())
+  if (!parsed.success) return validationError(c, parsed.error)
+
+  const ids = await callerDriverIds(c)
+  if (!ids) return driverNotMapped(c)
+  return respond(c, { ...parsed.data, ...ids })
+}
+
+// ---------------------------------------------------------------------------
+// The driver's own ETA / done on one act (act-facts.ts — Pegasus only, never
+// legacy). The item is named by its key and its CURRENT legacy day; the
+// handler re-reads the caller's own itinerary for that day and refuses unless
+// the key is in it, so a driver can only ever assert about their own work.
+// ---------------------------------------------------------------------------
+
+const wallTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:mm')
+
+const ItemRef = z.object({
+  key: z.string().min(1).max(120),
+  /** The item's day as the itinerary listed it (its legacy day). */
+  day: isoDay,
+})
+
+const EtaBody = ItemRef.extend({
+  eta: z
+    .object({
+      day: isoDay,
+      window: z
+        .object({ start: wallTime, end: wallTime })
+        .refine((w) => w.start <= w.end, { message: 'window ends before it starts' })
+        .nullable()
+        .optional(),
+    })
+    .nullable(),
+})
+
+const DoneBody = ItemRef.extend({ done: isoDay.nullable() })
+
+async function assertOnOwnItem(
+  c: Context<AppEnv>,
+  ref: { key: string; day: string },
+  basis: FactBasis,
+  value: { day: string | null; window: { start: string; end: string } | null },
+) {
+  const correlationId = c.get('correlationId')
+  const ids = await callerDriverIds(c)
+  if (!ids) return driverNotMapped(c)
+  const cs = await legacyConnectionString(c.get('tenantId'))
+  if (!cs) {
     return c.json(
       {
-        error:
-          'This login is not linked to a driver. Ask a tenant administrator to set the driver on the Users settings page.',
-        code: 'DRIVER_NOT_MAPPED',
-        correlationId: c.get('correlationId'),
+        error: 'Legacy database not configured for this tenant',
+        code: 'MSSQL_NOT_CONFIGURED',
+        correlationId,
       },
-      403,
+      422,
     )
   }
-  return respond(c, { ...parsed.data, longhaulDriverId, localDriverEmployeeId })
+
+  const result = await fetchItinerary(cs, { from: ref.day, to: ref.day, ...ids })
+  const item: ItineraryItem | undefined = result.items.find((i) => i.key === ref.key)
+  if (!item) {
+    // Not in the caller's own work that day — or its source could not be read.
+    // Either way nothing is recorded (fail closed).
+    if (result.failed.length > 0) {
+      return c.json(
+        {
+          error: 'The order database could not be read',
+          code: 'LEGACY_UNAVAILABLE',
+          correlationId,
+        },
+        503,
+      )
+    }
+    return c.json(
+      { error: 'That act is not on your itinerary for that day', code: 'NOT_FOUND', correlationId },
+      404,
+    )
+  }
+  if (basis === 'ETA' && item.source.kind === 'longhaul-activity') {
+    // An activity's ETA already has a legacy editor; a second store would split it.
+    return c.json(
+      {
+        error: "Set a trip activity's ETA from the trip screen",
+        code: 'USE_ACTIVITY_ETA',
+        correlationId,
+      },
+      409,
+    )
+  }
+
+  const db = c.get('db')
+  await recordFact(db, {
+    tenantId: c.get('tenantId'),
+    item,
+    basis,
+    day: value.day,
+    window: value.window,
+    userId: c.get('userId') ?? null,
+    capturedBy: 'driver-app',
+  })
+  const [updated] = await attachAssertions(db, [item])
+  return c.json({ data: updated })
+}
+
+export const myItineraryEtaHandler: Handler<AppEnv> = async (c) => {
+  const parsed = EtaBody.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return validationError(c, parsed.error)
+  const { eta } = parsed.data
+  return assertOnOwnItem(c, parsed.data, 'ETA', {
+    day: eta?.day ?? null,
+    window: eta?.window ?? null,
+  })
+}
+
+export const myItineraryDoneHandler: Handler<AppEnv> = async (c) => {
+  const parsed = DoneBody.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return validationError(c, parsed.error)
+  return assertOnOwnItem(c, parsed.data, 'DONE', { day: parsed.data.done, window: null })
 }
 
 export const driverItineraryHandler: Handler<AppEnv> = async (c) => {

@@ -188,6 +188,7 @@ export function orderAssignedItems(
       tripId: null,
       tripStatus: null,
       drivers: { longhaul: [longhaulDriverId], local: [] },
+      assertion: null,
     })
   }
   return items

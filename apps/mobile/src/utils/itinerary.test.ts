@@ -39,6 +39,7 @@ function item(partial: Partial<ItineraryItem>): ItineraryItem {
     tripId: null,
     tripStatus: null,
     drivers: { longhaul: [], local: [] },
+    assertion: null,
     ...partial,
   }
 }

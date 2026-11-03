@@ -58,6 +58,7 @@ function item(over: Partial<ItineraryItem>): ItineraryItem {
     tripId: 55,
     tripStatus: 'Accepted',
     drivers: { longhaul: [134], local: [] },
+    assertion: null,
     ...over,
   }
 }
@@ -95,6 +96,7 @@ beforeEach(() => {
         source: { kind: 'order-assigned', orderNum: 300, actCode: 'RDEL' },
         place: { street: '9 Oak Ave', unit: null, city: 'Waco', state: 'TX', zip: null },
         arrivalWindow: { start: '08:00', end: '08:00', tz: null },
+        assertion: { eta: null, done: '2026-11-02', assertedAt: 'x', byUserId: 'u1' },
       }),
     ],
     meta: { count: 2, failedSources: [] },
@@ -132,6 +134,8 @@ describe('ItineraryModule', () => {
     expect(screen.getByText('Trip 55')).toBeInTheDocument()
     expect(screen.getByText('Order')).toBeInTheDocument()
     expect(screen.getByText(/Arrive 08:00$/)).toBeInTheDocument()
+    // The driver's own word from the app, beside the legacy values.
+    expect(screen.getByText('Driver: done Mon Nov 2')).toBeInTheDocument()
   })
 
   it('sends a crew in its own parameter, and both when both are picked', async () => {

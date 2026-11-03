@@ -1,6 +1,6 @@
 # Driver itinerary — remaining: dispatcher view, act facts, order-assigned source
 
-**Status:** decisions made 2026-11-02 (below); being built as separate workstreams. Shipped so far:
+**Status:** COMPLETE — every phase and decision below shipped (2026-11-03). Shipped so far:
 Phases 0–1 (probe, `/me/itinerary` + `/drivers/itinerary` API, Services board `include=local`) —
 `plans/completed/19ad9517-driver-itinerary.md`; Phase 2 mobile "My Itinerary" —
 `plans/completed/64dc360b-itinerary-mobile.md`; local arrival window (#905) —
@@ -12,10 +12,11 @@ local items too.
 
 ## Decisions (Steve, 2026-11-02)
 
-1. **Local "done" (Phase 3): a Pegasus-only fact.** Record it as an `ItineraryActFact` and show it in
+1. **Local "done" (Phase 3): a Pegasus-only fact — DONE.** Record it as an `ItineraryActFact` and show it in
    the itinerary; **never** write `is_final` (it completes every act on the job). Dispatch still
-   finalizes the job in legacy. Local **ETA** write-back to legacy was NOT asked — ask at Phase 3's
-   start, after reading the `TriggerLocalDispatchUpdate` / `TriggerSalesUpdate` bodies.
+   finalizes the job in legacy. Local ETA (2026-11-03): also a fact only — after reading the
+   trigger bodies (an ETA-only write would have been safe; the answer was product). Activity done
+   (2026-11-03): a fact only; activity ETA keeps its existing legacy editor.
 2. **Widen the driver read scope — DONE** (local-driver-scope): order reads admit orders on the
    caller's local jobs; local items open the shipment screen.
 3. **Dispatcher picker: pick a longhaul driver and a crew separately — DONE** (dispatcher-itinerary). Longhaul drivers from the
@@ -34,20 +35,11 @@ local items too.
       `GET /onprem/longhaul/drivers/itinerary`, a longhaul-driver picker and a separate crew picker
       (`GET /onprem/longhaul/local-drivers`, Operations-gated) — `plans/completed/52d2f914-dispatcher-itinerary.md`.
 
-### Phase 3 — act facts for driver-posted ETA / arrival / completion
+### Phase 3 — act facts for driver-posted ETA / done — DONE
 
-- [ ] Prisma model `ItineraryActFact` (tenant-scoped): `tenantId`, `orderNum`, `actCode`, `day`,
-      `sourceKind`, `sourceRef`, `basis` (ESTIMATED | ACTUAL), `value`, arrival window,
-      `assertedByUserId`, `capturedBy`, `assertedAt`, `supersedesId`. Keyed on
-      (tenant, order, actCode, driver, day) — **not** on a legacy row id, so Phase 4 items can carry
-      facts without a row. Append-only; current value = latest non-superseded.
-- [ ] `PATCH /onprem/longhaul/me/itinerary/:key/eta` and `/complete` — write the fact, then write
-      through to legacy: activity ⇒ existing columns; local job ETA ⇒ `eta_minimum` /
-      `eta_maximum` / `eta_win_minutes` ONLY if Steve agrees (decision 1 note); local completion
-      ⇒ fact only, never `is_final` (decision 1).
-- [ ] Itinerary read overlays facts on the legacy dates (fact wins when newer).
-- [ ] Mobile: ETA + "done" on local items (the read-only `ItineraryItemDetail` sheet was removed
-      when local items started opening the shipment screen — design the controls fresh).
+- [x] `ItineraryActFact` + `PUT /onprem/longhaul/me/itinerary/acts/{eta,done}` (ownership re-derived
+      per write), attached as `assertion` on both itinerary reads; mobile Done / ETA controls;
+      the dispatcher view shows the driver's word — `plans/completed/08b7a429-itinerary-act-facts.md`.
 
 ### Phase 4 — order-assigned source — DONE
 
