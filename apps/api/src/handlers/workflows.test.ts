@@ -76,6 +76,7 @@ const {
       create: vi.fn(),
       findById: vi.fn(),
       listByWorkflow: vi.fn(),
+      listEnabledWorkflowIds: vi.fn(async () => [] as string[]),
       update: vi.fn(),
       deleteById: vi.fn(),
     },
@@ -516,6 +517,74 @@ describe('workflows handler', () => {
       ])
       const b = data.workflows.find((w) => w.workflowId === 'wf-b')!
       expect(b.requirements).toEqual([])
+    })
+
+    it("lists superseded versions but doesn't count their keys as still needed", async () => {
+      // weichert v0.4.0 declared SEND_API_KEY in `global`; v0.7.0 declares only
+      // `weichert`-group keys. The tenant has set the 0.7.0 keys.
+      const at = (day: number) => new Date(Date.UTC(2026, 7, day))
+      mockRepo.listForTenant.mockResolvedValue([
+        {
+          ...mockRow,
+          id: 'wf-new',
+          name: 'weichert',
+          version: '0.7.0',
+          tenantId: 'platform',
+          visibility: 'GLOBAL',
+          createdAt: at(12),
+          manifest: {
+            ...validManifest,
+            requiredSecrets: [{ key: 'WEICHERT_ID', group: 'weichert' }],
+          },
+        },
+        {
+          ...mockRow,
+          id: 'wf-old',
+          name: 'weichert',
+          version: '0.4.0',
+          tenantId: 'platform',
+          visibility: 'GLOBAL',
+          createdAt: at(1),
+          manifest: { ...validManifest, requiredSecrets: [{ key: 'SEND_API_KEY' }] },
+        },
+      ])
+      mockSecretConfigRepo.listByKind.mockImplementation((kind: string) =>
+        Promise.resolve(kind === 'SECRET' ? [{ group: 'weichert', key: 'WEICHERT_ID' }] : []),
+      )
+
+      const res = await buildApp(['viewer']).request('/requirements-summary')
+      expect(res.status).toBe(200)
+      const data = (await json(res)).data as {
+        totalMissing: number
+        workflows: Array<{ workflowId: string; current: boolean; missingCount: number }>
+      }
+      expect(data.totalMissing).toBe(0)
+      const byId = Object.fromEntries(data.workflows.map((w) => [w.workflowId, w]))
+      expect(byId['wf-new']).toMatchObject({ current: true, missingCount: 0 })
+      // Still listed (the per-version detail page reads it), just not current.
+      expect(byId['wf-old']).toMatchObject({ current: false, missingCount: 1 })
+    })
+
+    it('keeps an older version current while an enabled trigger still runs it', async () => {
+      mockRepo.listForTenant.mockResolvedValue([
+        { ...mockRow, id: 'wf-2', version: '2.0.0', manifest: validManifest },
+        {
+          ...mockRow,
+          id: 'wf-1',
+          version: '1.0.0',
+          manifest: { ...validManifest, requiredConfigs: [{ key: 'OLD_CONFIG' }] },
+        },
+      ])
+      mockSecretConfigRepo.listByKind.mockResolvedValue([])
+      mockTriggerRepo.listEnabledWorkflowIds.mockResolvedValueOnce(['wf-1'])
+
+      const res = await buildApp(['viewer']).request('/requirements-summary')
+      const data = (await json(res)).data as {
+        totalMissing: number
+        workflows: Array<{ workflowId: string; current: boolean }>
+      }
+      expect(data.totalMissing).toBe(1)
+      expect(data.workflows.every((w) => w.current)).toBe(true)
     })
 
     it('is the literal path, not captured by GET /:id', async () => {
@@ -1616,6 +1685,7 @@ describe('workflows handler', () => {
       filter: null,
       cronExpression: null,
       enabled: true,
+      dryRun: false,
       createdByUserId: 'user-1',
       createdAt: now,
       updatedAt: now,
@@ -1666,8 +1736,36 @@ describe('workflows handler', () => {
         filter: { quoteId: 'q-1' },
         cronExpression: null,
         enabled: true,
+        dryRun: false,
         createdByUserId: 'user-1',
       })
+      expect(data['dryRun']).toBe(false)
+    })
+
+    it('creates a dry-run trigger on a tenant-runner workflow', async () => {
+      // A non-curated, executable name routes TENANT_RUNNER — it can run dry.
+      mockRepo.findByIdForTenant.mockResolvedValue({ ...provisionedRow, name: 'custom_tool' })
+      mockTriggerRepo.create.mockResolvedValue({ ...eventTriggerRow, dryRun: true })
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted', dryRun: true }),
+      )
+      expect(res.status).toBe(201)
+      expect(((await json(res)).data as JsonBody)['dryRun']).toBe(true)
+      expect(mockTriggerRepo.create).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }))
+    })
+
+    it('400 DRY_RUN_UNSUPPORTED — a dry-run trigger on a curated (STDLIB) workflow', async () => {
+      // send_quote_followup is curated: it runs real activities with no
+      // interception seam, so every dry fire would be refused. Refuse up front.
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted', dryRun: true }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('DRY_RUN_UNSUPPORTED')
+      expect(mockTriggerRepo.create).not.toHaveBeenCalled()
     })
 
     it('creates a SCHEDULE trigger on the happy path (201)', async () => {
@@ -1910,6 +2008,7 @@ describe('workflows handler', () => {
       filter: null,
       cronExpression: null,
       enabled: true,
+      dryRun: false,
       createdByUserId: 'user-1',
       createdAt: now,
       updatedAt: now,
@@ -1945,6 +2044,31 @@ describe('workflows handler', () => {
         'trig-1',
         expect.objectContaining({ enabled: false }),
       )
+    })
+
+    it('toggles dryRun on a tenant-runner workflow', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue({ ...provisionedRow, name: 'custom_tool' })
+      mockTriggerRepo.findById.mockResolvedValue(eventTriggerRow)
+      mockTriggerRepo.update.mockResolvedValue({ ...eventTriggerRow, dryRun: true })
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ dryRun: true }))
+      expect(res.status).toBe(200)
+      expect(((await json(res)).data as JsonBody)['dryRun']).toBe(true)
+      expect(mockTriggerRepo.update).toHaveBeenCalledWith('trig-1', { dryRun: true })
+    })
+
+    it('400 DRY_RUN_UNSUPPORTED — turning dryRun on for a curated workflow', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ dryRun: true }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('DRY_RUN_UNSUPPORTED')
+      expect(mockTriggerRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('allows turning dryRun OFF on a curated workflow', async () => {
+      mockTriggerRepo.findById.mockResolvedValue({ ...eventTriggerRow, dryRun: true })
+      mockTriggerRepo.update.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ dryRun: false }))
+      expect(res.status).toBe(200)
     })
 
     it("returns 404 when the trigger is not the caller-tenant's (scoped findById → null)", async () => {

@@ -9,31 +9,29 @@
 // FilterTabs stores day OFFSETS from today (`daysBetween`) and reconstitutes
 // dates later. Here the dispatcher picks absolute dates, because "the 14th"
 // must still mean the 14th on a board left open overnight.
+//
+// Saved Filters / Save Filter use the same dialogs as Availability. A saved
+// filter stores the dates as day offsets (see services-filter-query.ts), so it
+// is the one place this board's dates are relative.
 // ---------------------------------------------------------------------------
 
+import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { Button } from '@/components/ui/button'
 import { Select } from '../../../../components/Select'
 import { InputField } from '../../../../components/InputField'
 import { SHAUL_LIST } from '../../../../utils/shaul-list'
-import { changeActivityQuery, clearActivityFilters } from '../../../../redux/activities'
+import {
+  changeActivityQuery,
+  clearActivityFilters,
+  setActivityQuery,
+  setIncludeLocal,
+} from '../../../../redux/activities'
 import type { RootState } from '../../../../redux/store'
+import { fromSavedQuery, toOptions, toSavedQuery } from '../../services-filter-query'
+import { useServicesReferenceOptions } from '../../use-services-reference-options'
+import { SaveServicesFilterDialog, ServicesFiltersDialog } from '../SavedServicesFilters'
 import styles from './ActivityFilters.module.css'
-
-/**
- * Placeholder office list.
- *
- * There is no office/branch dimension in the legacy schema — not on
- * `LongDistanceDispatchActivity`, not on `v_longhaul_shipments_v2`, nowhere in
- * the API. The control is rendered DISABLED so the eventual shape of the screen
- * is visible without implying a filter that works: a live-looking control that
- * silently changes nothing is worse than an obviously inert one.
- */
-const OFFICE_PLACEHOLDER_OPTIONS = [
-  { label: 'All offices', value: '' },
-  { label: 'Chicago', value: 'chicago' },
-  { label: 'Atlanta', value: 'atlanta' },
-  { label: 'Dallas', value: 'dallas' },
-]
 
 const selectStyles = {
   control: (s: any) => ({ ...s, minHeight: 30, boxShadow: '0 2px 4px 0 rgba(0,0,0,0.2)' }),
@@ -43,8 +41,10 @@ const selectStyles = {
 export function ActivityFilters() {
   const dispatch = useDispatch()
   const query = useSelector((state: RootState) => state.activities.query)
-  const filterOptions = useSelector((state: RootState) => state.common.filterOptions)
-  const dispatcherList = useSelector((state: RootState) => state.common.dispatcherList)
+  const includeLocal = useSelector((state: RootState) => state.activities.includeLocal)
+  const refs = useServicesReferenceOptions()
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [showFiltersDialog, setShowFiltersDialog] = useState(false)
 
   const setFilters = (patch: Record<string, unknown>) =>
     dispatch(changeActivityQuery({ filters: patch }))
@@ -54,18 +54,27 @@ export function ActivityFilters() {
     setFilters({ date_range: index === 0 ? [value, to] : [from, value] })
   }
 
-  // The same catalog the shipments board's Last Activity filter uses — the
-  // reference-data bootstrap already loads it, so this costs no extra request.
-  const activityTypeOptions = filterOptions?.activityType ?? []
+  // The reference-data bootstrap already loads both lists, so this costs no
+  // extra request.
+  const activityTypeOptions = refs.activityTypes
+  const dispatcherOptions = refs.dispatchers
+  const officeOptions = refs.offices
 
-  const dispatcherOptions = (dispatcherList ?? []).map((d: any) => ({
-    label: `${d.first_name} ${d.last_name}`,
-    value: d.code,
-  }))
+  // A saved filter can be applied before the dispatcher list loads, leaving
+  // code-labelled options; relabel from the list whenever it's there.
+  const dispatcherValue = toOptions(
+    query.filters.operations_id.map((o) => o.value),
+    dispatcherOptions,
+  )
+  // Same for offices.
+  const officeValue = toOptions(
+    query.filters.office.map((o) => o.value),
+    officeOptions,
+  )
 
   // Counted for the Clear affordance: the date range always has a value, so it
   // is excluded — otherwise "Clear" would offer itself on an untouched board.
-  const activeCount = (['activity_type', 'short_haul', 'operations_id'] as const).filter(
+  const activeCount = (['activity_type', 'short_haul', 'operations_id', 'office'] as const).filter(
     (k) => query.filters[k]?.length,
   ).length
 
@@ -96,19 +105,15 @@ export function ActivityFilters() {
       <div className={styles.filter} data-filter="office">
         <label id="activities-filter-office-label">Office</label>
         <div className={styles.control} data-testid="activities-filter-office">
-          {/* Unwired — see OFFICE_PLACEHOLDER_OPTIONS. Remove `isDisabled` and
-              add `office` to buildActivityRequest once a real office dimension
-              exists in the schema. */}
           <Select
             isMulti
-            isDisabled
             aria-labelledby="activities-filter-office-label"
-            placeholder="Coming soon"
-            options={OFFICE_PLACEHOLDER_OPTIONS}
+            placeholder="All offices"
+            options={officeOptions}
             styles={selectStyles}
             isClearable={false}
-            value={[]}
-            onChange={() => {}}
+            value={officeValue}
+            onChange={(value: any) => setFilters({ office: value ?? [] })}
           />
         </div>
       </div>
@@ -155,10 +160,23 @@ export function ActivityFilters() {
             options={dispatcherOptions}
             styles={selectStyles}
             isClearable={false}
-            value={query.filters.operations_id}
+            value={dispatcherValue}
             onChange={(value: any) => setFilters({ operations_id: value ?? [] })}
           />
         </div>
+      </div>
+
+      {/* A view choice, not a filter: not counted by Clear and not saved with a
+          filter (redux/activities, `includeLocal`). */}
+      <div className={styles.filter} data-filter="include_local">
+        <label htmlFor="activities-include-local">Local jobs</label>
+        <input
+          id="activities-include-local"
+          type="checkbox"
+          data-testid="activities-include-local"
+          checked={includeLocal}
+          onChange={(e) => dispatch(setIncludeLocal(e.target.checked))}
+        />
       </div>
 
       {activeCount > 0 && (
@@ -170,6 +188,37 @@ export function ActivityFilters() {
           Clear ({activeCount})
         </a>
       )}
+
+      <div className={styles.savedFilters}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="open-services-filters"
+          onClick={() => setShowFiltersDialog(true)}
+        >
+          Saved Filters
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="save-services-filter"
+          onClick={() => setShowSaveDialog(true)}
+        >
+          Save Filter
+        </Button>
+      </div>
+      <SaveServicesFilterDialog
+        open={showSaveDialog}
+        onOpenChange={setShowSaveDialog}
+        query={toSavedQuery(query)}
+      />
+      <ServicesFiltersDialog
+        open={showFiltersDialog}
+        onOpenChange={setShowFiltersDialog}
+        onLoad={(saved) => dispatch(setActivityQuery(fromSavedQuery(saved.query, refs)))}
+      />
     </div>
   )
 }

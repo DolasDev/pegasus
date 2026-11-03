@@ -52,8 +52,13 @@ interface RcSubscriptionResponse {
   expirationTime?: string
 }
 
+/**
+ * 32 hex chars (128 bits). RingCentral rejects a longer token with CMN-101
+ * "deliveryMode.verificationToken value is invalid" — its OpenAPI spec states
+ * no limit, but a prod probe (2026-10-28) accepted 32 and rejected 48.
+ */
 function newVerificationToken(): string {
-  return randomBytes(24).toString('hex')
+  return randomBytes(16).toString('hex')
 }
 
 function expiryFrom(res: RcSubscriptionResponse, now: number): Date {

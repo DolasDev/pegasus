@@ -46,6 +46,35 @@ export type OutboundEmailResult =
 
 const domainOf = (address: string) => address.slice(address.lastIndexOf('@') + 1).toLowerCase()
 
+export type RecipientCheck =
+  | { kind: 'ok' }
+  | { kind: 'not_configured' }
+  | { kind: 'recipient_not_allowed'; recipients: string[] }
+  | { kind: 'too_many_recipients' }
+
+/**
+ * Policies 1 and the recipient half of 2: would these recipients be accepted?
+ * The one check `sendTenantEmail` applies, exposed on its own so a workflow
+ * can ask before it sends (POST /email/check-recipients) instead of learning
+ * from a RECIPIENT_NOT_ALLOWED. Reads settings only — no row, no send.
+ */
+export async function checkEmailRecipients(
+  db: PrismaClient,
+  tenantId: string,
+  recipients: string[],
+): Promise<RecipientCheck> {
+  if (recipients.length > MAX_RECIPIENTS) return { kind: 'too_many_recipients' }
+  const allowed = new Set(
+    ((await getAppSettings(db, tenantId)).operations.emailAllowedRecipientDomains ?? []).map((d) =>
+      d.toLowerCase(),
+    ),
+  )
+  if (allowed.size === 0) return { kind: 'not_configured' }
+  const disallowed = recipients.filter((r) => !allowed.has(domainOf(r)))
+  if (disallowed.length > 0) return { kind: 'recipient_not_allowed', recipients: disallowed }
+  return { kind: 'ok' }
+}
+
 export async function sendTenantEmail(
   db: PrismaClient,
   tenantId: string,
@@ -57,14 +86,8 @@ export async function sendTenantEmail(
   if (recipients.length > MAX_RECIPIENTS) return { kind: 'too_many_recipients' }
   if (Buffer.byteLength(input.body, 'utf8') > MAX_BODY_BYTES) return { kind: 'body_too_large' }
 
-  const allowed = new Set(
-    ((await getAppSettings(db, tenantId)).operations.emailAllowedRecipientDomains ?? []).map((d) =>
-      d.toLowerCase(),
-    ),
-  )
-  if (allowed.size === 0) return { kind: 'not_configured' }
-  const disallowed = recipients.filter((r) => !allowed.has(domainOf(r)))
-  if (disallowed.length > 0) return { kind: 'recipient_not_allowed', recipients: disallowed }
+  const check = await checkEmailRecipients(db, tenantId, recipients)
+  if (check.kind !== 'ok') return check
 
   const sends = createEmailSendRepository(db)
   const requestHash = createHash('sha256')

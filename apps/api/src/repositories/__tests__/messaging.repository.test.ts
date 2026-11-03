@@ -7,7 +7,7 @@
  * To run locally:
  *   DATABASE_URL=postgresql://pegasus:pegasus@localhost:5432/pegasus npm test
  */
-import { describe, it, expect, afterAll, beforeAll } from 'vitest'
+import { describe, it, expect, vi, afterAll, beforeAll } from 'vitest'
 import { db } from '../../db'
 import {
   upsertConnection,
@@ -389,6 +389,22 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
           body: 'YES confirm Tuesday',
           rcCreationTime: '2026-06-02T10:00:00.000Z',
         })
+      })
+
+      it('reports an emission to the caller after commit, only when it emitted', async () => {
+        const onReceivedEventEmitted = vi.fn()
+        const opts = { ...EMIT, onReceivedEventEmitted }
+        const msg = normalized({ externalId: 'evt-cb' })
+        await captureMessage(db, tenantId, msg, undefined, opts)
+        await captureMessage(db, tenantId, msg, undefined, opts) // re-capture: no emit
+        await captureMessage(
+          db,
+          tenantId,
+          normalized({ externalId: 'evt-cb-out', direction: 'OUTBOUND' }),
+          undefined,
+          opts,
+        )
+        expect(onReceivedEventEmitted).toHaveBeenCalledTimes(1)
       })
 
       it('emits once when two captures of the same message race', async () => {

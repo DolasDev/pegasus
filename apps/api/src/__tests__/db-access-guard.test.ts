@@ -190,6 +190,11 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   // is known. Isolation is enforced by the token→tenant resolution itself, and
   // the pinned form lookup passes tenantId explicitly (findVersionForTenant).
   'feedback-public.ts',
+  // Public crew-link endpoint: pre-tenant, like feedback-public — it resolves
+  // the tenant FROM the link token in the path (prefix lookup + hash compare)
+  // before any tenant is known. Every later query names that link's tenantId
+  // (activity labor) or its crew phone (the platform-wide crew and packers).
+  'crew-link-public.ts',
   // Same rationale as every longhaul-cloud entry below: the handler reads
   // `Tenant.mssqlConnectionString` to reach the tenant's own legacy MSSQL. The
   // Tenant model is not tenant-scoped, and no tenant data flows through Prisma
@@ -215,8 +220,8 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'longhaul-cloud/version.ts',
   'longhaul-cloud/zones.ts',
   'settings.ts',
-  // pegII config lives on the Tenant row (customerSource / pegiiApiBaseUrl /
-  // pegiiApiKeyRef) — read/written via the base client exactly like settings.ts,
+  // pegII config lives on the Tenant row (customerSource / pegiiApiBaseUrl) —
+  // read/written via the base client exactly like settings.ts,
   // since Tenant is not a tenant-scoped model. No tenant data flows here.
   'settings-pegii.ts',
   'vpn-agent.ts',

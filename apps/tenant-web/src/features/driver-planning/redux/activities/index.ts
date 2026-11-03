@@ -40,9 +40,8 @@ export interface ActivityFilters {
   short_haul: Array<{ label: string; value: string }>
   operations_id: Array<{ label: string; value: string }>
   /**
-   * Mocked. There is no office/branch dimension in the legacy schema, so this
-   * is carried in state (the control is a real, if disabled, select) but never
-   * sent — see buildActivityRequest.
+   * `branches.branch_id` codes. The API matches longhaul activities on the
+   * order's branch and local jobs on their service branch.
    */
   office: Array<{ label: string; value: string }>
 }
@@ -64,16 +63,9 @@ export const DEFAULT_ACTIVITY_QUERY: ActivityQuery = {
   sortBy: null,
 }
 
-/**
- * Strip the client-only fields before the query goes on the wire.
- *
- * `office` is unwired: sending it would have the API silently ignore an
- * unknown key, which reads as "the filter works" right up until someone
- * believes a filtered result.
- */
+/** The query as it goes on the wire. */
 export function buildActivityRequest(query: ActivityQuery): unknown {
-  const { office: _office, ...filters } = query.filters
-  return { filters, sortBy: query.sortBy }
+  return { filters: query.filters, sortBy: query.sortBy }
 }
 
 export interface ActivitiesState {
@@ -81,6 +73,19 @@ export interface ActivitiesState {
   activityList: any[]
   query: ActivityQuery
   error: string | null
+  /**
+   * Whether the user's saved default filter has been applied this session.
+   * The query lives in the global store and outlives the route, so the
+   * default is applied ONCE: coming Back from a trip keeps whatever the
+   * dispatcher had set.
+   */
+  defaultSeeded: boolean
+  /**
+   * Also show local dispatch jobs (one row per act). Off by default while it is
+   * verified on NW, and deliberately NOT part of `query`: a saved filter's
+   * schema is strict (services-filter-query.ts), and this is a view choice.
+   */
+  includeLocal: boolean
 }
 
 const activitiesSlice = createSlice({
@@ -90,6 +95,8 @@ const activitiesSlice = createSlice({
     activityList: [],
     query: structuredClone(DEFAULT_ACTIVITY_QUERY),
     error: null,
+    defaultSeeded: false,
+    includeLocal: false,
   } as ActivitiesState,
   reducers: {
     // Deep-merges `filters` so a partial payload from one control doesn't wipe
@@ -120,6 +127,21 @@ const activitiesSlice = createSlice({
       state.query.filters.operations_id = []
       state.query.filters.office = []
     },
+    /** Replace the whole query. Used when a saved filter is loaded. */
+    setActivityQuery(state, action: PayloadAction<ActivityQuery>) {
+      state.query = action.payload
+    },
+    /**
+     * Mark the default as applied, replacing the query when there is one. A
+     * null payload (no default, or the read failed) keeps the built-in query.
+     */
+    seedActivityQuery(state, action: PayloadAction<ActivityQuery | null>) {
+      if (action.payload) state.query = action.payload
+      state.defaultSeeded = true
+    },
+    setIncludeLocal(state, action: PayloadAction<boolean>) {
+      state.includeLocal = action.payload
+    },
     fetchActivitiesStart(state) {
       state.loading = true
     },
@@ -141,23 +163,28 @@ const activitiesSlice = createSlice({
 export const {
   changeActivityQuery,
   clearActivityFilters,
+  setActivityQuery,
+  seedActivityQuery,
+  setIncludeLocal,
   fetchActivitiesStart,
   fetchActivitiesSuccess,
   fetchActivitiesFailure,
 } = activitiesSlice.actions
 
-export const fetchActivities = (query: ActivityQuery) => async (dispatch: AppDispatch) => {
-  try {
-    dispatch(fetchActivitiesStart())
-    const activities = await API.fetchActivities(buildActivityRequest(query))
-    dispatch(fetchActivitiesSuccess(activities))
-  } catch (e: any) {
-    console.error('Error fetching activities', e)
-    // The message is rendered in place of the list rather than only toasted:
-    // RESULT_LIMIT_EXCEEDED ("narrow your date range") is a normal, actionable
-    // outcome on this board, not an incident.
-    dispatch(fetchActivitiesFailure(e?.message ?? 'Failed to fetch activities'))
+export const fetchActivities =
+  (query: ActivityQuery, includeLocal = false) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      dispatch(fetchActivitiesStart())
+      const activities = await API.fetchActivities(buildActivityRequest(query), includeLocal)
+      dispatch(fetchActivitiesSuccess(activities))
+    } catch (e: any) {
+      console.error('Error fetching activities', e)
+      // The message is rendered in place of the list rather than only toasted:
+      // RESULT_LIMIT_EXCEEDED ("narrow your date range") is a normal, actionable
+      // outcome on this board, not an incident.
+      dispatch(fetchActivitiesFailure(e?.message ?? 'Failed to fetch activities'))
+    }
   }
-}
 
 export default activitiesSlice.reducer

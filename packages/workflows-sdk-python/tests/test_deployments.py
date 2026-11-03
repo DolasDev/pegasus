@@ -183,3 +183,10 @@ def test_promote_single_to_multi_preserves_comments(tmp_path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert "#   prod 0.1.0 = f8077342-2e58-4dc1-a47a-797ca394ef72" in text
     assert data["qa"]["workflow_id"] == "wf-qa-1"
+
+
+def test_ledger_env_key_precedence() -> None:
+    url = "https://api.pegasus.dolas.dev"
+    assert dp.ledger_env_key("staging", "qa", url) == "staging"
+    assert dp.ledger_env_key(None, "qa", url) == "qa"
+    assert dp.ledger_env_key(None, None, url) == "api.pegasus.dolas.dev"

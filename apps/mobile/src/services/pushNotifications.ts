@@ -273,6 +273,15 @@ export function setupNotificationTapHandler(navigate: (path: string) => void): {
       // a longhaul trip id, so route assignment taps to the trips list.
       case 'move.assigned':
         return '/(drawer)/trips'
+      // A move chat message — open that move's conversation. Not the shipment
+      // screen's Chat tab: that screen loads through the longhaul view, which
+      // has no local-only orders, so a local driver's tap would dead-end.
+      case 'chat.message': {
+        const orderNum = data['orderNum']
+        if (typeof orderNum !== 'number' && typeof orderNum !== 'string')
+          return '/(drawer)/messages'
+        return `/chat/${orderNum}`
+      }
       default:
         return null
     }

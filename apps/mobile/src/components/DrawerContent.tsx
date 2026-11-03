@@ -7,11 +7,15 @@ import {
 } from '@react-navigation/drawer'
 import { useAuth } from '../context/AuthContext'
 import { useTrips } from '../context/TripsContext'
+import { useChat } from '../chat/ChatContext'
+import { useLaborAccess } from '../auth/laborAccess'
 import { colors, fontSize, spacing } from '../theme/colors'
 
 export function DrawerContent(props: DrawerContentComponentProps) {
   const { session } = useAuth()
   const { offeredCount } = useTrips()
+  const { unreadTotal } = useChat()
+  const { canSeeLabor, operationsOnly } = useLaborAccess()
 
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={styles.container}>
@@ -25,19 +29,51 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       </View>
 
       <View style={styles.items}>
+        {operationsOnly ? null : (
+          <DrawerItem
+            label={() => <Text style={styles.itemLabel}>My Itinerary</Text>}
+            onPress={() => props.navigation.navigate('itinerary')}
+          />
+        )}
+        {operationsOnly ? null : (
+          <DrawerItem
+            label={() => (
+              <View style={styles.itemRow}>
+                <Text style={styles.itemLabel}>My Trips</Text>
+                {offeredCount > 0 ? (
+                  <View style={styles.badge} accessibilityLabel={`${offeredCount} offered trips`}>
+                    <Text style={styles.badgeText}>{offeredCount}</Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+            onPress={() => props.navigation.navigate('trips')}
+          />
+        )}
         <DrawerItem
           label={() => (
             <View style={styles.itemRow}>
-              <Text style={styles.itemLabel}>My Trips</Text>
-              {offeredCount > 0 ? (
-                <View style={styles.badge} accessibilityLabel={`${offeredCount} offered trips`}>
-                  <Text style={styles.badgeText}>{offeredCount}</Text>
+              <Text style={styles.itemLabel}>Messages</Text>
+              {unreadTotal > 0 ? (
+                <View
+                  style={[styles.badge, styles.badgeUnread]}
+                  accessibilityLabel={`${unreadTotal} unread messages`}
+                >
+                  <Text style={[styles.badgeText, styles.badgeTextUnread]}>
+                    {unreadTotal > 99 ? '99+' : unreadTotal}
+                  </Text>
                 </View>
               ) : null}
             </View>
           )}
-          onPress={() => props.navigation.navigate('trips')}
+          onPress={() => props.navigation.navigate('messages')}
         />
+        {canSeeLabor ? (
+          <DrawerItem
+            label={() => <Text style={styles.itemLabel}>Labor</Text>}
+            onPress={() => props.navigation.navigate('labor')}
+          />
+        ) : null}
       </View>
     </DrawerContentScrollView>
   )
@@ -85,6 +121,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warning,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badgeUnread: {
+    backgroundColor: colors.info,
+  },
+  badgeTextUnread: {
+    color: colors.textLight,
   },
   badgeText: {
     fontSize: fontSize.small,

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // PegiiApiError — the typed failure every pegII bridge call throws. Its own
-// module so the client (pegii-api-client.ts) and the service-user login
-// (pegii-auth.ts) can share it without importing each other.
+// module so the client (pegii-api-client.ts), the capability probe and the
+// token minter (pegii-token.ts) can share it without importing each other.
 // ---------------------------------------------------------------------------
 
 export type PegiiApiErrorCode =
@@ -9,11 +9,12 @@ export type PegiiApiErrorCode =
   | 'PEGII_API_TUNNEL_ERROR'
   | 'PEGII_API_HTTP_ERROR'
   | 'PEGII_API_BAD_ENVELOPE'
-  /** The site rejected the service user's credentials, or a fresh token. */
+  /** The site rejected a freshly minted cloud token. */
   | 'PEGII_API_AUTH_FAILED'
-  /** The site has no login (no Api:Jwt / hub DB, or an API build without auth). */
-  | 'PEGII_API_AUTH_UNAVAILABLE'
-  /** The site's /version does not advertise a capability this call needs. */
+  /**
+   * The site's /version does not advertise a capability this call needs —
+   * including `pegii.cloud-auth.v1`, or a site whose cloudAuthEnabled switch is off.
+   */
   | 'PEGII_API_CAPABILITY_MISSING'
   /** No TenantUser could be resolved to act as for a cloud-issued pegII token. */
   | 'PEGII_PRINCIPAL_UNRESOLVED'

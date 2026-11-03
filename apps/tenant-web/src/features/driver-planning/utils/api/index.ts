@@ -51,7 +51,8 @@ export const API = {
   // The Dispatch Activities board. No reshape: the handler projects an explicit
   // column list with flat aliases, so the row arrives in the shape the card
   // renders — unlike shipments/trips, which carry legacy nested relations.
-  fetchActivities: (query: any) => fetchHelper('fetchActivities', query),
+  fetchActivities: (query: any, includeLocal = false) =>
+    fetchHelper('fetchActivities', query, includeLocal),
   fetchTrips: async (query: any) => reshapeTripList(await fetchHelper('fetchTrips', query)),
   fetchTrip: async (tripId: number) => reshapeTrip(await fetchHelper('fetchTrip', tripId)),
   saveTrip: (trip: any) => fetchHelper('saveTrip', trip),

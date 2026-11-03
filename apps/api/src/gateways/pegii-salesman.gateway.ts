@@ -27,7 +27,6 @@ const LIST_MAX_PAGES = 50
 export interface PegiiSalesmanGatewayOptions {
   tenantId: string
   baseUrl: string
-  apiKey?: string | null
   /** Test seam: inject a stub PegiiApiClient instead of the tunnel-backed one. */
   client?: PegiiApiClient
   /** Who is calling (cloud-issued token + x-correlation-id); see lib/pegii-request-context.ts. */
@@ -42,7 +41,6 @@ export function createPegiiSalesmanGateway(opts: PegiiSalesmanGatewayOptions): S
     createPegiiApiClient({
       tenantId: opts.tenantId,
       baseUrl: opts.baseUrl,
-      ...(opts.apiKey !== undefined ? { apiKey: opts.apiKey } : {}),
       ...(opts.caller ? { caller: opts.caller } : {}),
     })
 

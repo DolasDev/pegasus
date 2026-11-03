@@ -78,11 +78,13 @@ describe('GET /permissions', () => {
         Actions.RateShipment.permission,
         Actions.ReadTariff.permission,
         Actions.ReadReportingDataset.permission,
-        // Document read/upload and move chat are granted to every authenticated user.
+        // Document read/upload, move chat and labor are granted to every authenticated user.
         Actions.ReadDocument.permission,
         Actions.UploadDocument.permission,
         Actions.ReadChat.permission,
         Actions.PostChat.permission,
+        Actions.ReadLabor.permission,
+        Actions.WriteLabor.permission,
       ]),
     )
   })
@@ -98,6 +100,8 @@ describe('GET /permissions', () => {
         Actions.UploadDocument.permission,
         Actions.ReadChat.permission,
         Actions.PostChat.permission,
+        Actions.ReadLabor.permission,
+        Actions.WriteLabor.permission,
       ]),
     )
   })
@@ -152,26 +156,32 @@ describe('GET /driver', () => {
   beforeEach(() => mockFindUnique.mockReset())
 
   it('returns the mapped longhaul driver id for the calling user', async () => {
-    mockFindUnique.mockResolvedValue({ longhaulDriverId: 4231 })
+    mockFindUnique.mockResolvedValue({ longhaulDriverId: 4231, localDriverEmployeeId: 3097 })
     const res = await buildDriverApp('user-1').request('/driver')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ data: { longhaulDriverId: 4231 } })
+    expect(await res.json()).toEqual({
+      data: { longhaulDriverId: 4231, localDriverEmployeeId: 3097, userId: 'user-1' },
+    })
     expect(mockFindUnique).toHaveBeenCalledWith({
       where: { id: 'user-1' },
-      select: { longhaulDriverId: true },
+      select: { longhaulDriverId: true, localDriverEmployeeId: true },
     })
   })
 
   it('returns null when the user has no driver mapping', async () => {
-    mockFindUnique.mockResolvedValue({ longhaulDriverId: null })
+    mockFindUnique.mockResolvedValue({ longhaulDriverId: null, localDriverEmployeeId: null })
     const res = await buildDriverApp('user-1').request('/driver')
-    expect(await res.json()).toEqual({ data: { longhaulDriverId: null } })
+    expect(await res.json()).toEqual({
+      data: { longhaulDriverId: null, localDriverEmployeeId: null, userId: 'user-1' },
+    })
   })
 
   it('returns null without a DB lookup for an unresolved user (M2M / service account)', async () => {
     const res = await buildDriverApp(undefined).request('/driver')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ data: { longhaulDriverId: null } })
+    expect(await res.json()).toEqual({
+      data: { longhaulDriverId: null, localDriverEmployeeId: null, userId: null },
+    })
     expect(mockFindUnique).not.toHaveBeenCalled()
   })
 })

@@ -375,6 +375,7 @@ function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClos
   const [eventType, setEventType] = useState<string>(DOMAIN_EVENT_TYPES[0])
   const [filterText, setFilterText] = useState('')
   const [cronExpression, setCronExpression] = useState('')
+  const [dryRun, setDryRun] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const createMutation = useCreateTrigger()
   // Custom event types the tenant has registered — selectable alongside the
@@ -408,6 +409,7 @@ function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClos
       }
       input = { kind, cronExpression: expr }
     }
+    if (dryRun) input.dryRun = true
     createMutation.mutate({ workflowId: workflow.id, input }, { onSuccess: () => onClose() })
   }
 
@@ -539,6 +541,21 @@ function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClos
             <CronPreview expression={cronExpression} />
           </>
         )}
+
+        <label className="mt-4 flex cursor-pointer items-start gap-2 text-xs text-foreground">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={dryRun}
+            onChange={(e) => setDryRun(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Dry run</span> — fire as normal, but every run{' '}
+            <span className="font-medium">captures</span> its side effects instead of performing
+            them. Use it to check the trigger fires when it should, then turn it off. Only
+            tenant-runner automations support this.
+          </span>
+        </label>
 
         {formError && (
           <p className="mt-2 text-xs text-destructive" role="alert">
@@ -674,13 +691,13 @@ function TriggerRow({
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const updateMutation = useUpdateTrigger()
+  // Separate instance so each button shows its own pending spinner.
+  const dryRunMutation = useUpdateTrigger()
 
   let updateError: string | null = null
-  if (updateMutation.error) {
-    updateError =
-      updateMutation.error instanceof ApiError
-        ? updateMutation.error.message
-        : 'Failed to update trigger.'
+  const failed = updateMutation.error ?? dryRunMutation.error
+  if (failed) {
+    updateError = failed instanceof ApiError ? failed.message : 'Failed to update trigger.'
   }
 
   return (
@@ -689,6 +706,11 @@ function TriggerRow({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <TriggerKindBadge kind={trigger.kind} />
           {!trigger.enabled && <Badge variant="muted">Disabled</Badge>}
+          {trigger.dryRun && (
+            <Badge variant="warning" title="Runs capture their side effects instead of acting">
+              Dry run
+            </Badge>
+          )}
           <TriggerSummary trigger={trigger} />
           <span className="text-xs text-muted-foreground">
             · Created {new Date(trigger.createdAt).toLocaleDateString()}
@@ -710,6 +732,21 @@ function TriggerRow({
             >
               {updateMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
               {trigger.enabled ? 'Disable' : 'Enable'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                dryRunMutation.mutate({
+                  workflowId,
+                  triggerId: trigger.id,
+                  input: { dryRun: !trigger.dryRun },
+                })
+              }
+              disabled={dryRunMutation.isPending}
+            >
+              {dryRunMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              {trigger.dryRun ? 'Go live' : 'Dry run'}
             </Button>
             <Button
               variant="outline"

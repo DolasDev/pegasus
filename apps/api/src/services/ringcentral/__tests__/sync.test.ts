@@ -23,6 +23,9 @@ vi.mock('../../../repositories/messaging.repository', () => ({
 
 vi.mock('../../sms/opt-out-keywords', () => ({ applyInboundKeyword: h.applyInboundKeyword }))
 
+const log = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }))
+vi.mock('../../../lib/logger', () => ({ createLogger: () => log }))
+
 import { syncConnection } from '../sync'
 import { RingCentralOAuthError } from '../oauth'
 import type * as ClientModule from '../client'
@@ -43,6 +46,7 @@ let getMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   Object.values(h).forEach((fn) => fn.mockReset())
+  Object.values(log).forEach((fn) => fn.mockReset())
   h.acquireAccessToken.mockResolvedValue({
     accessToken: 'at',
     apiBase: 'https://platform.devtest.ringcentral.com',
@@ -84,7 +88,7 @@ describe('syncConnection — v1 store', () => {
       'tnt-1',
       expect.objectContaining({ source: 'V1_STORE', externalId: '1' }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
     expect(h.saveSyncCursor).toHaveBeenCalledWith(db, 'tnt-1', 'conn-1', 'V1', 'v1-tok')
   })
@@ -104,14 +108,16 @@ describe('syncConnection — v1 store', () => {
     await syncConnection(db, connection)
 
     const v1Call = getMock.mock.calls.find((c) => c[0] === V1_PATH)!
-    expect(v1Call[1]).toMatchObject({ syncType: 'ISync', syncToken: 'prev' })
+    // ISync takes ONLY the token: RingCentral 400s (CMN-101) on any filter such
+    // as messageType, which once turned every run into an FSync fallback.
+    expect(v1Call[1]).toEqual({ syncType: 'ISync', syncToken: 'prev' })
     // Incremental pull ⇒ a first-time inbound capture announces sms.received.
     expect(h.captureMessage).toHaveBeenCalledWith(
       db,
       'tnt-1',
       expect.objectContaining({ externalId: '4' }),
       'conn-1',
-      { emitReceivedEvent: true },
+      expect.objectContaining({ emitReceivedEvent: true }),
     )
   })
 
@@ -142,7 +148,7 @@ describe('syncConnection — v1 store', () => {
       'tnt-1',
       expect.objectContaining({ externalId: '2' }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
   })
 
@@ -159,6 +165,128 @@ describe('syncConnection — v1 store', () => {
     const { captured } = await syncConnection(db, connection)
     expect(captured).toBe(1) // only the SMS
     expect(h.captureMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('on ISync, skips non-SMS records quietly and still announces the inbound SMS', async () => {
+    h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
+      Promise.resolve(store === 'V1' ? { syncToken: 'prev' } : null),
+    )
+    const inbound = { ...v1Sms(5), direction: 'Inbound' }
+    getMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === V1_PATH
+          ? {
+              records: [
+                { id: 7, type: 'VoiceMail', creationTime: '2026-05-31T08:00:00.000Z' },
+                { id: 8, type: 'Fax', creationTime: '2026-05-31T08:00:00.000Z' },
+                inbound,
+              ],
+              syncInfo: { syncToken: 'x' },
+            }
+          : { records: [], syncInfo: { syncToken: 'x' } },
+      ),
+    )
+
+    const { captured } = await syncConnection(db, connection)
+
+    expect(captured).toBe(1)
+    expect(h.captureMessage).toHaveBeenCalledTimes(1)
+    expect(h.captureMessage).toHaveBeenCalledWith(
+      db,
+      'tnt-1',
+      expect.objectContaining({ externalId: '5' }),
+      'conn-1',
+      expect.objectContaining({ emitReceivedEvent: true }),
+    )
+    // Unfiltered ISync returns voicemail/fax as a matter of course — not a
+    // malformed record worth a warning on every run.
+    expect(log.warn).not.toHaveBeenCalledWith(
+      'skipping un-normalizable RingCentral record',
+      expect.anything(),
+    )
+  })
+
+  it('counts only the captures that actually emitted sms.received', async () => {
+    h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
+      Promise.resolve(store === 'V1' ? { syncToken: 'prev' } : null),
+    )
+    // Three inbound SMS on ISync; the repository emits for two (the third is
+    // a re-capture the outbox insert dedupes).
+    let calls = 0
+    h.captureMessage.mockImplementation(
+      (_db: unknown, _t: string, _n: unknown, _c: string, opts: Record<string, unknown>) => {
+        calls++
+        if (opts['emitReceivedEvent'] && calls <= 2) {
+          ;(opts['onReceivedEventEmitted'] as () => void)()
+        }
+        return Promise.resolve({})
+      },
+    )
+    getMock.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === V1_PATH
+          ? {
+              records: [1, 2, 3].map((id) => ({ ...v1Sms(id), direction: 'Inbound' })),
+              syncInfo: { syncToken: 'x' },
+            }
+          : { records: [], syncInfo: { syncToken: 'x' } },
+      ),
+    )
+
+    await expect(syncConnection(db, connection)).resolves.toEqual({ captured: 3, emitted: 2 })
+  })
+
+  it('falls back to FSync when RingCentral names the syncToken as the bad parameter', async () => {
+    h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
+      Promise.resolve(store === 'V1' ? { syncToken: 'stale' } : null),
+    )
+    let v1Calls = 0
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH) {
+        v1Calls++
+        if (v1Calls === 1)
+          return Promise.reject(
+            new RingCentralOAuthError('RingCentral API 400', 400, 'CMN-101', 'syncToken'),
+          )
+        return Promise.resolve({ records: [], syncInfo: { syncToken: 'fresh' } })
+      }
+      return Promise.resolve({ records: [], syncInfo: { syncToken: 't' } })
+    })
+
+    await syncConnection(db, connection)
+
+    expect(v1Calls).toBe(2)
+    // The reason is logged, so a fallback on every run is visible in the logs.
+    expect(log.warn).toHaveBeenCalledWith(
+      'v1 sync token invalid — falling back to FSync',
+      expect.objectContaining({ errorCode: 'CMN-101', parameterName: 'syncToken' }),
+    )
+  })
+
+  it('does NOT fall back to FSync when RingCentral rejects a different parameter', async () => {
+    h.getSyncCursor.mockImplementation((_db: unknown, _t: string, _c: string, store: string) =>
+      Promise.resolve(store === 'V1' ? { syncToken: 'good' } : null),
+    )
+    getMock.mockImplementation((path: string) =>
+      path === V1_PATH
+        ? Promise.reject(
+            new RingCentralOAuthError(
+              'RingCentral API 400',
+              400,
+              'InvalidParameter',
+              'messageType',
+            ),
+          )
+        : Promise.resolve({ records: [], syncInfo: { syncToken: 't' } }),
+    )
+
+    // A malformed request is a bug to surface, not a stale token to paper over
+    // with a silent full re-read (which never announces sms.received).
+    await expect(syncConnection(db, connection)).rejects.toMatchObject({
+      parameterName: 'messageType',
+    })
+    expect(getMock.mock.calls.filter((c) => c[0] === V1_PATH)).toHaveLength(1)
+    expect(h.captureMessage).not.toHaveBeenCalled()
   })
 })
 
@@ -207,7 +335,7 @@ describe('syncConnection — v1 backfill beyond the FSync cap', () => {
     expect(listCalls[1]![1]).toMatchObject({ page: '2' })
     // History never fires workflows.
     for (const call of h.captureMessage.mock.calls) {
-      expect(call[4]).toEqual({ emitReceivedEvent: false })
+      expect(call[4]).toMatchObject({ emitReceivedEvent: false })
     }
     expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
   })
@@ -305,7 +433,7 @@ describe('syncConnection — v1 backfill beyond the FSync cap', () => {
       'tnt-1',
       expect.objectContaining({ externalId: '200' }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
     expect(h.saveBackfillProgress).toHaveBeenLastCalledWith(db, 'tnt-1', 'conn-1', 'V1', null)
   })
@@ -362,7 +490,7 @@ describe('syncConnection — thread store', () => {
         toNumber: '+19085760908',
       }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
     // Outbound: from company, to external.
     expect(h.captureMessage).toHaveBeenCalledWith(
@@ -375,7 +503,7 @@ describe('syncConnection — thread store', () => {
         toNumber: '+12015550123',
       }),
       'conn-1',
-      { emitReceivedEvent: false },
+      expect.objectContaining({ emitReceivedEvent: false }),
     )
     expect(h.saveSyncCursor).toHaveBeenCalledWith(db, 'tnt-1', 'conn-1', 'THREAD', 'thr-tok')
   })
@@ -419,9 +547,42 @@ describe('syncConnection — thread store', () => {
       h.captureMessage.mock.calls.find(
         (c) => (c[2] as { externalId: string }).externalId === externalId,
       )![4]
-    expect(flagFor('200')).toEqual({ emitReceivedEvent: true })
+    expect(flagFor('200')).toMatchObject({ emitReceivedEvent: true })
     // Still captured (and forwarded), but a missing direction never fires a workflow.
-    expect(flagFor('201')).toEqual({ emitReceivedEvent: false })
+    expect(flagFor('201')).toMatchObject({ emitReceivedEvent: false })
+  })
+
+  it('skips the store when Message Threads is turned off for the extension (CMN-428)', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH)
+        return Promise.resolve({ records: [v1Sms(1)], syncInfo: { syncToken: 'v1' } })
+      if (path === THREAD_PATH)
+        return Promise.reject(new RingCentralOAuthError('RingCentral API 403', 403, 'CMN-428'))
+      return Promise.reject(new Error(`unexpected path ${path}`))
+    })
+
+    // Not a connection failure: the v1 store still syncs and counts.
+    await expect(syncConnection(db, connection)).resolves.toEqual({ captured: 1, emitted: 0 })
+    expect(h.saveSyncCursor).not.toHaveBeenCalledWith(
+      db,
+      'tnt-1',
+      'conn-1',
+      'THREAD',
+      expect.anything(),
+    )
+    expect(log.info).toHaveBeenCalledWith(
+      'Message Threads is off for this extension — skipping the thread store',
+      expect.objectContaining({ connectionId: 'conn-1' }),
+    )
+  })
+
+  it('still fails the sync on any other thread-store error', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path === V1_PATH) return Promise.resolve({ records: [], syncInfo: { syncToken: 'v1' } })
+      return Promise.reject(new RingCentralOAuthError('RingCentral API 403', 403, 'CMN-408'))
+    })
+
+    await expect(syncConnection(db, connection)).rejects.toMatchObject({ errorCode: 'CMN-408' })
   })
 })
 
@@ -440,9 +601,13 @@ describe('syncConnection — opt-out keywords', () => {
 
     await syncConnection(db, connection)
 
-    expect(h.captureMessage).toHaveBeenCalledWith(db, 'tnt-1', expect.anything(), 'conn-1', {
-      emitReceivedEvent: false,
-    })
+    expect(h.captureMessage).toHaveBeenCalledWith(
+      db,
+      'tnt-1',
+      expect.anything(),
+      'conn-1',
+      expect.objectContaining({ emitReceivedEvent: false }),
+    )
     expect(h.applyInboundKeyword).toHaveBeenCalledWith(db, 'tnt-1', captured)
   })
 

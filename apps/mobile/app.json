@@ -18,7 +18,8 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "This app uses the camera to scan shipment documents.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to attach shipment documents."
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to attach shipment documents.",
+        "NSContactsUsageDescription": "Pegasus reads your contacts only when you choose crews to import into your Labor list."
       }
     },
     "android": {
@@ -31,8 +32,10 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.READ_CONTACTS"
       ],
+      "blockedPermissions": ["android.permission.WRITE_CONTACTS"],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -60,6 +63,12 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-notifications",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Pegasus reads your contacts only when you choose crews to import into your Labor list."
+        }
+      ],
       [
         "react-native-document-scanner-plugin",
         {

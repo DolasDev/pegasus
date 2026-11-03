@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
 // /api/v1/email — platform email, delivered through the tenant's pegII API.
 //
-//   POST /send   SendEmail   { to, cc?, subject, body, bodyType?, dedupKey? }
+//   POST /send               SendEmail   { to, cc?, subject, body, bodyType?, dedupKey? }
+//   POST /check-recipients   SendEmail   { to, cc? }
 //
 // Policy lives in services/email/outbound.ts: recipients must be on the
 // tenant's allowed-domain list (internal only), ≤ 10 recipients, ≤ 100 KB
@@ -14,6 +15,15 @@
 //       EMAIL_SEND_IN_DOUBT | IDEMPOTENCY_KEY_REUSED
 //   413 BODY_TOO_LARGE          429 EMAIL_DAILY_LIMIT
 //   502/503 pegII failures (unreachable, auth, capability, SMTP)
+//
+// /check-recipients asks the same recipient question /send would, without
+// sending: a workflow checks an address BEFORE composing, instead of learning
+// from a RECIPIENT_NOT_ALLOWED. Always 200 with a verdict (400 only for a
+// malformed body); reads settings, writes nothing, not metered.
+//
+//   200 { data: { ok: true,  reason: null,  disallowed: [] } }
+//   200 { data: { ok: false, reason: 'NOT_CONFIGURED' | 'RECIPIENT_NOT_ALLOWED'
+//                 | 'TOO_MANY_RECIPIENTS', disallowed: [...] } }
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -25,7 +35,7 @@ import { meterUsage } from '../middleware/meter-usage'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
-import { sendTenantEmail } from '../services/email/outbound'
+import { checkEmailRecipients, sendTenantEmail } from '../services/email/outbound'
 import { resolveEmailGateway } from '../gateways/pegii-email.gateway'
 import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 
@@ -52,9 +62,45 @@ const SendEmailBody = z
   })
   .strict()
 
+const CheckRecipientsBody = z
+  .object({
+    to: z.union([address, z.array(address).min(1)]),
+    cc: z.array(address).optional(),
+  })
+  .strict()
+
+const CHECK_REASON = {
+  not_configured: 'NOT_CONFIGURED',
+  recipient_not_allowed: 'RECIPIENT_NOT_ALLOWED',
+  too_many_recipients: 'TOO_MANY_RECIPIENTS',
+} as const
+
 export const emailHandler = new Hono<AppEnv>()
 
 emailHandler.use('*', dualAuthMiddleware)
+
+emailHandler.post(
+  '/check-recipients',
+  requirePermission(Actions.SendEmail),
+  validator('json', (value, c) => {
+    const r = CheckRecipientsBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const body = c.req.valid('json')
+    const recipients = [...(Array.isArray(body.to) ? body.to : [body.to]), ...(body.cc ?? [])]
+    const check = await checkEmailRecipients(c.get('db'), c.get('tenantId'), recipients)
+    if (check.kind === 'ok') return c.json({ data: { ok: true, reason: null, disallowed: [] } })
+    return c.json({
+      data: {
+        ok: false,
+        reason: CHECK_REASON[check.kind],
+        disallowed: check.kind === 'recipient_not_allowed' ? check.recipients : [],
+      },
+    })
+  },
+)
 
 emailHandler.post(
   '/send',

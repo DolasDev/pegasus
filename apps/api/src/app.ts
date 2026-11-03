@@ -24,8 +24,11 @@ import { jwksHandler } from './handlers/jwks'
 import { settingsCompaniesHandler } from './handlers/settings-companies'
 import { documentsHandler } from './handlers/documents'
 import { chatHandler } from './handlers/chat'
+import { laborHandler } from './handlers/labor'
+import { operationsLocalDriversHandler } from './handlers/longhaul-cloud/local-drivers'
 import { localDriversHandler } from './handlers/local-drivers'
 import { availabilityFiltersHandler } from './handlers/availability-filters'
+import { servicesFiltersHandler } from './handlers/services-filters'
 import { workflowsHandler } from './handlers/workflows'
 import { workflowInternalHandler } from './handlers/workflow-internal'
 import { eventsHandler } from './handlers/events'
@@ -71,6 +74,7 @@ import {
 } from './handlers/longhaul-cloud/trip-notes'
 import { longhaulSaveActivityHandler } from './handlers/longhaul-cloud/activities-write'
 import { driverActivityEtaHandler } from './handlers/longhaul-cloud/driver-activity-eta'
+import { myItineraryHandler, driverItineraryHandler } from './handlers/longhaul-cloud/itinerary'
 import {
   longhaulTripStatusHandler,
   longhaulTripCancelHandler,
@@ -111,6 +115,7 @@ import { ingressHandler, ingressManagementHandler } from './handlers/ingress'
 import { feedbackFormsHandler } from './handlers/feedback-forms'
 import { feedbackRequestsHandler } from './handlers/feedback-requests'
 import { feedbackPublicHandler } from './handlers/feedback-public'
+import { crewLinkPublicHandler } from './handlers/crew-link-public'
 import { integrationsHandler } from './handlers/integrations/list'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -141,7 +146,13 @@ app.use(
   cors({
     origin: (origin) =>
       allowedOrigins.length === 0 || allowedOrigins.includes(origin) ? origin : '',
-    allowHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'X-Tenant-Slug'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-correlation-id',
+      'X-Tenant-Slug',
+      'X-Crew-Session',
+    ],
     exposeHeaders: ['x-correlation-id'],
   }),
 )
@@ -243,6 +254,11 @@ app.route('/api/ingress/v1', ingressHandler)
 // protected /api/v1 block. See handlers/feedback-public.ts.
 // ---------------------------------------------------------------------------
 app.route('/api/public/v1', feedbackPublicHandler)
+
+// Public crew-link endpoint — pre-tenant, same shape as feedback: a crew leader
+// with no login opens a link a driver shared; the tenant is resolved FROM the
+// token and a texted one-time code gates the session. See handlers/crew-link-public.ts.
+app.route('/api/public/v1/crew-link', crewLinkPublicHandler)
 
 // ---------------------------------------------------------------------------
 // Hub agent API — /api/vpn/**
@@ -451,6 +467,9 @@ v1.route('/local-drivers', localDriversHandler)
 // Move chat: a room per move for employees + the move's assigned drivers. On the
 // Cognito-only router on purpose — no API client or service account reaches it.
 v1.route('/chat', chatHandler)
+// Labor: a driver's private book of cash-labor crews (mobile Labor module).
+// Cognito-only for the same reason; access is the caller's own crew links.
+v1.route('/labor', laborHandler)
 v1.route('/customers', customersHandler)
 v1.route('/quotes', quotesHandler)
 v1.route('/rating', ratingHandler)
@@ -481,6 +500,8 @@ v1.route('/documents', documentsHandler)
 // page's own /onprem/longhaul/driver-planning read; ownership is enforced in
 // the handler. See handlers/availability-filters.ts.
 v1.route('/availability-filters', availabilityFiltersHandler)
+// The Operations → Services counterpart — same shape, its own table.
+v1.route('/services-filters', servicesFiltersHandler)
 // PegII dashboard: served cloud-direct from three on-prem MSSQL views
 // (v_dashboard1/2/3) via the in-VPC mssql-executor Lambda. Same pattern as the
 // longhaul-cloud reference handlers; powers the tenant dashboard's "Use PegII
@@ -539,6 +560,14 @@ v1.get('/onprem/longhaul/activity-types', longhaulActivityTypesHandler)
 // on an activity list. Registered here for the same route-precedence reason as
 // every other cloud-direct GET.
 v1.get('/onprem/longhaul/activities', longhaulActivitiesListHandler)
+// Driver itinerary: a driver's work over a date range — longhaul activities AND
+// local dispatch jobs — as one list of acts, the trip a grouping on each item
+// rather than the way in. /me is the caller's own (their TenantUser driver
+// ids); /drivers is any driver's, Operations roles only. See
+// handlers/longhaul-cloud/itinerary.ts.
+v1.get('/onprem/longhaul/me/itinerary', myItineraryHandler)
+v1.get('/onprem/longhaul/drivers/itinerary', driverItineraryHandler)
+v1.get('/onprem/longhaul/local-drivers', operationsLocalDriversHandler)
 // Phase 3: /filter-options and /dispatchers are served cloud-direct. Their
 // per-client query config (MoveType filter, dispatcher SQL) is resolved from
 // the tenant's longhaulClient column — see lib/longhaul-client-config.ts.

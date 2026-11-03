@@ -121,6 +121,29 @@ def test_update_trigger_maps_every_field_to_its_wire_name() -> None:
     _client_with(handler).update_trigger("wf-1", "trg-2", cron_expression="0 6 * * 1-5")
     assert captured["json"] == {"cronExpression": "0 6 * * 1-5"}
 
+    # dry_run=False is a real value (turn dry-run off), not "omitted".
+    _client_with(handler).update_trigger("wf-1", "trg-3", dry_run=False)
+    assert captured["json"] == {"dryRun": False}
+
+
+def test_create_trigger_dry_run_is_sent_only_when_set() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(201, json={"data": {"id": "trg-3", "dryRun": True}})
+
+    row = _client_with(handler).create_trigger(
+        "wf-1", kind="EVENT", event_type="sms.received", dry_run=True
+    )
+    assert row["dryRun"] is True
+    assert captured["json"] == {
+        "kind": "EVENT",
+        "enabled": True,
+        "dryRun": True,
+        "eventType": "sms.received",
+    }
+
 
 def test_update_trigger_with_no_fields_is_refused_locally() -> None:
     client = _client_with(lambda r: pytest.fail("an empty update must not call the API"))

@@ -235,6 +235,19 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly feedbackPublicWebUrl?: string
 
   /**
+   * Master switch for crew-leader links. When true, `CREW_LEADER_LINK_ENABLED=true`
+   * is set on the api Lambda, ungating the public crew-link endpoint and the
+   * driver's share action. `crewLeaderLinkPublicWebUrl` is the tenant SPA origin
+   * the mint uses to build `<url>/c/<token>`. Env vars only — the store is the
+   * shared Neon DB and the code goes out through the existing RingCentral path.
+   * Default off.
+   */
+  readonly crewLeaderLinkEnabled?: boolean
+
+  /** Tenant SPA origin for the crew link. Only consulted when `crewLeaderLinkEnabled`. */
+  readonly crewLeaderLinkPublicWebUrl?: string
+
+  /**
    * `iss` of the cloud-issued pegII tokens (apps/api/src/lib/pegii-token.ts) —
    * the branded API origin, so sites fetch `${issuer}/.well-known/jwks.json`.
    * Unset (dev) ⇒ PEGII_TOKEN_ISSUER is not set and minting refuses with
@@ -294,6 +307,9 @@ export class ApiStack extends cdk.Stack {
 
   /** The RingCentral capture DLQ name — used by MonitoringStack to alarm on depth. */
   public readonly ringcentralCaptureDlqName: string
+  /** The workflow trigger dispatcher, when Temporal is configured (monitoring
+   * excludes its by-design throttles). */
+  public readonly triggerDispatcherFunctionName?: string
 
   /**
    * Main API Lambda log-group name — passed to MonitoringStack for the
@@ -560,6 +576,17 @@ export class ApiStack extends cdk.Stack {
       }
     }
 
+    // Crew-leader links (lib/crew-link.ts) — env vars only, like feedback above.
+    if (props.crewLeaderLinkEnabled) {
+      apiFunction.addEnvironment('CREW_LEADER_LINK_ENABLED', 'true')
+      if (props.crewLeaderLinkPublicWebUrl) {
+        apiFunction.addEnvironment(
+          'CREW_LEADER_LINK_PUBLIC_WEB_URL',
+          props.crewLeaderLinkPublicWebUrl,
+        )
+      }
+    }
+
     // ---------------------------------------------------------------------------
     // Reporting / customizable-dashboards master switch. Like the flags above,
     // only the env var is set: both stores are the shared Neon DB (dashboard
@@ -654,6 +681,9 @@ export class ApiStack extends cdk.Stack {
     // a pre-Phase-2 environment) — the client falls through to a localhost
     // dev-server connect when TEMPORAL_ADDRESS is unset.
     // ---------------------------------------------------------------------------
+    // Set inside the branch below; the RingCentral capture + sync Lambdas
+    // (defined later) kick it when it exists — see grantDispatchKick.
+    let dispatchTriggersFunction: nodejs.NodejsFunction | undefined
     if (
       props.temporalAddress &&
       props.temporalNamespace &&
@@ -789,7 +819,7 @@ export class ApiStack extends cdk.Stack {
       })
       cronLogGroupNames.push(dispatchTriggersLogGroup.logGroupName)
 
-      const dispatchTriggersFunction = new nodejs.NodejsFunction(
+      dispatchTriggersFunction = new nodejs.NodejsFunction(
         this,
         'DispatchWorkflowTriggersFunction',
         {
@@ -820,7 +850,26 @@ export class ApiStack extends cdk.Stack {
           // can't truncate the batch.
           timeout: cdk.Duration.minutes(2),
           logGroup: dispatchTriggersLogGroup,
+          // ONE dispatcher at a time. The concurrency cap is counted before a
+          // start, not reserved, so overlapping ticks/kicks could both start
+          // runs into the same free slots. A kick that lands mid-tick is
+          // throttled and redelivered by Lambda's async retry (GOTCHAS).
+          reservedConcurrentExecutions: 1,
         },
+      )
+      // Kicks and ticks are both async invokes. A failed tick is re-run by the
+      // next one, and a kick queued behind a running tick for a minute is
+      // redundant with it — don't retry, drop stale.
+      dispatchTriggersFunction.configureAsyncInvoke({
+        retryAttempts: 0,
+        maxEventAge: cdk.Duration.seconds(60),
+      })
+      // A finished TENANT_RUNNER run (broker PATCH) kicks the dispatcher to
+      // fill the freed concurrency-cap slot now (lib/trigger-dispatch-kick.ts).
+      dispatchTriggersFunction.grantInvoke(apiFunction)
+      apiFunction.addEnvironment(
+        'TRIGGER_DISPATCHER_FUNCTION_NAME',
+        dispatchTriggersFunction.functionName,
       )
 
       dbSecret.grantRead(dispatchTriggersFunction)
@@ -1113,19 +1162,9 @@ export class ApiStack extends cdk.Stack {
     // above; no new Lambda invoke grant is needed. PEGII_API_TUNNEL_BASE_OVERRIDE
     // is intentionally left unset (opt-in smoke-test escape hatch).
     // ---------------------------------------------------------------------------
-    // pegII service-user credentials: one Secrets Manager secret per tenant,
-    // `{username, password}` under `pegasus/<env>/pegii/`, whose ARN is stored on
-    // the tenant (Tenant.pegiiApiKeyRef). apps/api/src/lib/pegii-auth.ts reads it
-    // to log in to the tenant's pegII API. Read-only — secrets are provisioned
-    // out of band (see the NW pulse-texting plan, Phase 8).
-    apiFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['secretsmanager:GetSecretValue'],
-        resources: [
-          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:pegasus/${envName}/pegii/*`,
-        ],
-      }),
-    )
+    // No pegII credential secrets: every bridge call carries a cloud-issued token
+    // (apps/api/src/lib/pegii-token.ts, KMS-signed). The retired hub service-user
+    // secrets under `pegasus/<env>/pegii/` are deliberately NOT readable.
     apiFunction.addEnvironment('PEGII_API_TUNNEL_SCHEME', 'http')
     apiFunction.addEnvironment('PEGII_API_TUNNEL_PORT', '65274')
 
@@ -1542,6 +1581,16 @@ export class ApiStack extends cdk.Stack {
       targets: [new eventsTargets.LambdaFunction(ringcentralTokenRefreshFunction)],
     })
 
+    // Capture that commits a new `sms.received` kicks the trigger dispatcher so
+    // reply workflows start in seconds (lib/trigger-dispatch-kick.ts). No-op
+    // where the dispatcher doesn't exist (no Temporal) — the env stays unset
+    // and the kick helper does nothing.
+    const grantDispatchKick = (fn: lambda.Function) => {
+      if (!dispatchTriggersFunction) return
+      dispatchTriggersFunction.grantInvoke(fn)
+      fn.addEnvironment('TRIGGER_DISPATCHER_FUNCTION_NAME', dispatchTriggersFunction.functionName)
+    }
+
     // ---------------------------------------------------------------------------
     // RingCentral reconciliation-sync cron
     //
@@ -1579,6 +1628,7 @@ export class ApiStack extends cdk.Stack {
 
     dbSecret.grantRead(ringcentralSyncFunction)
     ringcentralSyncFunction.addToRolePolicy(ringcentralSecretPolicy)
+    grantDispatchKick(ringcentralSyncFunction)
 
     new events.Rule(this, 'RingCentralSyncSchedule', {
       // Safety-net cadence — near-real-time comes from the webhook (Phase 2).
@@ -1681,6 +1731,7 @@ export class ApiStack extends cdk.Stack {
 
     dbSecret.grantRead(ringcentralCaptureFunction)
     ringcentralCaptureFunction.addToRolePolicy(ringcentralSecretPolicy)
+    grantDispatchKick(ringcentralCaptureFunction)
     ringcentralCaptureFunction.addEventSource(
       new lambdaEventSources.SqsEventSource(ringcentralCaptureQueue, {
         batchSize: 5,
@@ -2068,7 +2119,14 @@ export class ApiStack extends cdk.Stack {
         // authoritative CORS layer in deployed environments.
         allowOrigins: props.corsAllowedOrigins ?? ['*'],
         allowMethods: [apigwv2.CorsHttpMethod.ANY],
-        allowHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'X-Tenant-Slug'],
+        // X-Crew-Session: the crew-link page's session bearer (handlers/crew-link-public.ts).
+        allowHeaders: [
+          'Content-Type',
+          'Authorization',
+          'x-correlation-id',
+          'X-Tenant-Slug',
+          'X-Crew-Session',
+        ],
         exposeHeaders: ['x-correlation-id'],
       },
     })
@@ -2134,6 +2192,9 @@ export class ApiStack extends cdk.Stack {
 
     this.apiUrl = httpApi.apiEndpoint
     this.lambdaFunctionName = apiFunction.functionName
+    if (dispatchTriggersFunction) {
+      this.triggerDispatcherFunctionName = dispatchTriggersFunction.functionName
+    }
     this.httpApiId = httpApi.apiId
 
     // ---------------------------------------------------------------------------

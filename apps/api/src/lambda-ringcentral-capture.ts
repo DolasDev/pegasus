@@ -10,11 +10,16 @@
 // (tenantId, source, externalId) upsert, so a webhook + a sync seeing the same
 // message produce one row. Uses partial-batch-response so only failed records
 // are retried (and eventually dead-lettered) by SQS.
+//
+// When the batch emitted any `sms.received`, the worker kicks the trigger
+// dispatcher once (lib/trigger-dispatch-kick.ts) so reply workflows start in
+// seconds instead of at the next minute tick.
 // ---------------------------------------------------------------------------
 
 import type { SQSEvent, SQSBatchResponse, SQSRecord } from 'aws-lambda'
 import { db } from './db'
 import { createLogger } from './lib/logger'
+import { kickTriggerDispatcher } from './lib/trigger-dispatch-kick'
 import { readOAuthConfig } from './services/ringcentral/oauth'
 import { syncConnection } from './services/ringcentral/sync'
 import {
@@ -26,12 +31,13 @@ import type { CaptureJob } from './lib/ringcentral-queue'
 
 const logger = createLogger('pegasus-ringcentral-capture')
 
-async function processRecord(record: SQSRecord): Promise<void> {
+/** Returns how many `sms.received` events the record's sync emitted. */
+async function processRecord(record: SQSRecord): Promise<number> {
   const config = readOAuthConfig()
   if (!config) {
     // Flag off — drop the job (don't fail the record into the DLQ).
     logger.warn('RingCentral disabled — dropping capture job')
-    return
+    return 0
   }
 
   const job = JSON.parse(record.body) as CaptureJob
@@ -39,7 +45,7 @@ async function processRecord(record: SQSRecord): Promise<void> {
     logger.warn('capture job without a connectionId — dropping', {
       webhookEventId: job.webhookEventId,
     })
-    return
+    return 0
   }
 
   // Backfill-on-connect jobs (Unit 15) have no originating webhook event, so the
@@ -52,9 +58,9 @@ async function processRecord(record: SQSRecord): Promise<void> {
         connectionId: job.connectionId,
       })
       if (webhookEventId) await markWebhookEventFailed(db, webhookEventId, 'connection not found')
-      return
+      return 0
     }
-    const { captured } = await syncConnection(
+    const { captured, emitted } = await syncConnection(
       db,
       connection,
       job.backfillDays != null ? { backfillDays: job.backfillDays } : {},
@@ -65,7 +71,9 @@ async function processRecord(record: SQSRecord): Promise<void> {
       connectionId: job.connectionId,
       backfill: job.backfillDays != null,
       captured,
+      emitted,
     })
+    return emitted
   } catch (err) {
     // Record the failure on the event (if any), then rethrow so SQS retries / DLQs it.
     if (webhookEventId) {
@@ -81,9 +89,10 @@ async function processRecord(record: SQSRecord): Promise<void> {
 
 export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
   const batchItemFailures: { itemIdentifier: string }[] = []
+  let emitted = 0
   for (const record of event.Records) {
     try {
-      await processRecord(record)
+      emitted += await processRecord(record)
     } catch (err) {
       logger.error('capture record failed — will retry', {
         messageId: record.messageId,
@@ -92,5 +101,8 @@ export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
       batchItemFailures.push({ itemIdentifier: record.messageId })
     }
   }
+  // Awaited: an un-awaited invoke is frozen when the handler returns. Never
+  // throws, and is time-bounded, so it can't fail or stall the batch.
+  if (emitted > 0) await kickTriggerDispatcher('sms_received')
   return { batchItemFailures }
 }

@@ -10,6 +10,10 @@ calling ``pegasus-workflows run`` (sdk-feedback/0023).
 * ``schedule delete <workflow> <trigger-id>`` — remove one.
 * ``schedule disable|enable <workflow> <trigger-id>`` — pause / resume a trigger
   without deleting it (any kind, EVENT included).
+* ``schedule dry-run <workflow> <trigger-id> [--off]`` — validate a trigger
+  (any kind, EVENT included) without letting it act: it keeps firing, but each
+  execution runs dry — mutations captured in the trace, never performed.
+  ``schedule create --dry-run`` attaches a schedule that way from the start.
 
 Each firing passes a ``{"scheduledAt": "<ISO8601>", "schedule": "<cron>",
 "triggerId": "..."}`` envelope (at ``arg["input"]``) — a documented input shape
@@ -67,6 +71,14 @@ def schedule_create_command(
     disabled: bool = typer.Option(
         False, "--disabled", help="Create the schedule disabled (attach now, enable later)."
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help=(
+            "Every run the schedule fires is a dry run (mutations captured, never "
+            "performed). Turn off with `schedule dry-run <workflow> <id> --off`."
+        ),
+    ),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
@@ -76,13 +88,19 @@ def schedule_create_command(
     try:
         row = _resolve_workflow(client, workflow)
         trigger = client.create_trigger(
-            row["id"], kind="SCHEDULE", cron_expression=cron, enabled=not disabled
+            row["id"],
+            kind="SCHEDULE",
+            cron_expression=cron,
+            enabled=not disabled,
+            dry_run=dry_run,
         )
     except PegasusApiError as exc:
         typer.secho(f"error: {exc.message or exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
     state = "enabled" if trigger.get("enabled") else "disabled"
+    if trigger.get("dryRun"):
+        state += ", dry run"
     typer.secho(
         f"scheduled {row['name']}@{row['version']} on '{cron}' "
         f"({state}) — trigger {trigger['id']}",
@@ -113,7 +131,8 @@ def schedule_list_command(
     typer.echo(f"schedules on {row['name']}@{row['version']}:")
     for t in schedules:
         state = "enabled" if t.get("enabled") else "disabled"
-        typer.echo(f"  {_fmt(t.get('cronExpression'))}  {state}  {t['id']}")
+        mode = "dry-run" if t.get("dryRun") else "live"
+        typer.echo(f"  {_fmt(t.get('cronExpression'))}  {state}  {mode}  {t['id']}")
 
 
 @schedule_app.command("delete")
@@ -187,3 +206,38 @@ def schedule_enable_command(
 ) -> None:
     """Resume a paused trigger. Works for EVENT as well as SCHEDULE triggers."""
     _set_enabled(workflow, trigger_id, True, token, base_url, profile)
+
+
+@schedule_app.command("dry-run")
+def schedule_dry_run_command(
+    workflow: str = typer.Argument(..., help="Automation name or name@version."),
+    trigger_id: str = typer.Argument(..., help="The trigger id (EVENT or SCHEDULE)."),
+    off: bool = typer.Option(
+        False, "--off", help="Turn dry-run OFF — the trigger's runs act for real again."
+    ),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
+) -> None:
+    """Validate a trigger without letting it act (EVENT or SCHEDULE).
+
+    The trigger keeps firing on every matching event / cron minute, but each run
+    it starts is a dry run: reads go live, mutations (send_sms, send_email, ...)
+    are captured in the run's trace and never performed. Read the traces with
+    `pegasus-workflows executions list <workflow>`; once the wiring is right,
+    `--off` lets the runs act for real. Tenant-runner Automations only — a
+    curated workflow can't run dry (DRY_RUN_UNSUPPORTED).
+    """
+    client = _client(token, base_url, profile)
+    try:
+        row = _resolve_workflow(client, workflow)
+        client.update_trigger(row["id"], trigger_id, dry_run=not off)
+    except PegasusApiError as exc:
+        typer.secho(f"error: {exc.message or exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    mode = "live (runs act for real)" if off else "dry-run (runs captured, nothing performed)"
+    typer.secho(
+        f"trigger {trigger_id} on {row['name']}@{row['version']} is now {mode}",
+        fg=typer.colors.GREEN,
+    )

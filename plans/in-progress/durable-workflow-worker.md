@@ -16,8 +16,11 @@
   `plans/completed/f0d47ffb-tenant-temporal-namespaces.md`): the
   per-env provisioner is live (#797, #835), keys rotate themselves with
   expiry alarms (#838), and staging acceptance passed after fixes #844/#845.
-  Nothing routes to tenant namespaces yet. **Next: 3b.2 (routing)**, seeded in
-  `plans/todo/tenant-temporal-routing-3b2.md`. This file stays in
+  **3b.2 (routing) is COMPLETE** (#855, prod rollout 2026-11-03: 5 tenants
+  ACTIVE; plan archived at
+  `plans/completed/00dc33f0-tenant-temporal-routing.md`). Still owed from 3b:
+  removing the legacy runner and its shared key, which is **blocked** and planned
+  in `plans/todo/retire-legacy-tenant-runner.md`. This file stays in
   `plans/in-progress/` until 3c lands; each part's PR updates it. (The
   "Approved outline" section at the bottom is the original checklist, copied
   verbatim from the master plan; the detailed plan above supersedes it.)

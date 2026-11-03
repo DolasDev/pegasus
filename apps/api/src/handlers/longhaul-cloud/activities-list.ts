@@ -35,6 +35,12 @@ import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
 import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
+import { CATALOG_SQL, catalogFrom } from '../../lib/itinerary/fetch'
+import {
+  buildLocalBoardSql,
+  localBoardRows,
+  sortBoardRows,
+} from '../../lib/itinerary/services-board-local'
 
 /**
  * Hard cap on returned activities. Mirrors the shipments board's contract: past
@@ -78,10 +84,6 @@ const SCHEDULED_DATE = `COALESCE(${A}.estimated_date, ${A}.planned_start)`
  * The multi-selects arrive as react-select option objects (`{ label, value }`),
  * matching every other longhaul list endpoint. `date_range` is the exception:
  * it is a plain `[from, to]` pair of `YYYY-MM-DD` strings.
- *
- * NOTE the absence of `office`. The board renders an Office control, but there
- * is no office/branch dimension anywhere in the legacy schema — it is mocked in
- * the UI and deliberately sends nothing. When a real one lands, it joins here.
  */
 interface ActivityFilters {
   /** Inclusive `[from, to]` of `YYYY-MM-DD` date-only strings. */
@@ -105,6 +107,13 @@ interface ActivityFilters {
   short_haul?: Array<{ value: string }>
   /** `v_longhaul_shipments_v2.operations_id` — the dispatcher's salesman code. */
   operations_id?: Array<{ value: string }>
+  /**
+   * `branches.branch_id` codes, matched against the ORDER's branch
+   * (`v_longhaul_shipments_v2.branch`, i.e. `sales.branch`) — the dimension the
+   * legacy longhaul/CPnD browse filters with `Branch(xx)`. Local jobs match
+   * their SERVICE branch instead; see services-board-local.ts.
+   */
+  office?: Array<{ value: string }>
 }
 
 interface ActivityQuery {
@@ -129,6 +138,9 @@ const SORTABLE_COLUMNS: Record<string, string> = {
   shipper_name: `${S}.shipper_name`,
   dispatcher: `${S}.last_name`,
 }
+
+/** For the saved-filter schema's sort enum (lib/services-filter-query.ts), which a test pins to this. */
+export const ACTIVITY_SORT_KEYS = Object.keys(SORTABLE_COLUMNS)
 
 /**
  * Default ordering: the board is a work queue, so the soonest-dated activity
@@ -281,6 +293,13 @@ function buildActivitiesSql(query: ActivityQuery, bag: ParamBag, scopeDriverId?:
     }
   }
 
+  if (f.office?.length) {
+    const vals = f.office.map((o) => o.value).filter(Boolean)
+    if (vals.length) {
+      where.push(`${S}.branch IN (${vals.map((v) => bag.bind(v)).join(', ')})`)
+    }
+  }
+
   // Object.hasOwn, not a bare index: a plain object literal inherits from
   // Object.prototype, so `sortBy.value = 'constructor'` (or toString/valueOf/
   // hasOwnProperty) returns a truthy *function* and would sail past the
@@ -347,13 +366,41 @@ export const longhaulActivitiesListHandler: Handler<AppEnv> = async (c) => {
     }
   }
 
+  // `?include=local` adds local dispatch jobs, one row per act
+  // (lib/itinerary/services-board-local.ts). Operations callers only: a
+  // driver-scoped caller is scoped by their LONGHAUL id here, and their local
+  // work is on /me/itinerary, which knows both ids. Off, the handler is exactly
+  // the longhaul-only query it always was.
+  const includeLocal = c.req.query('include') === 'local' && scope.kind === 'all'
+
   try {
     const bag = new ParamBag()
     const sql = buildActivitiesSql(query, bag, scope.kind === 'driver' ? scope.driverId : undefined)
-    const { recordset } = await executeSql(tenant.mssqlConnectionString, sql, {
-      params: bag.params,
-    })
-    const rows = recordset as unknown[]
+    let rows: unknown[]
+    if (!includeLocal) {
+      const { recordset } = await executeSql(tenant.mssqlConnectionString, sql, {
+        params: bag.params,
+      })
+      rows = recordset as unknown[]
+    } else {
+      // One executor call: activities, the type catalog (to name and sequence
+      // local tokens), and local jobs. The SQL ORDER BY no longer decides the
+      // order of a merged list, so it is re-sorted on the same keys in JS.
+      const filters = query.filters ?? {}
+      const localSql = buildLocalBoardSql(filters, (v) => bag.bind(v))
+      const { recordsets } = await executeSql(
+        tenant.mssqlConnectionString,
+        `${sql};\n${CATALOG_SQL};\n${localSql}`,
+        { params: bag.params },
+      )
+      const activities = ((recordsets[0] ?? []) as Array<Record<string, unknown>>).map((r) => ({
+        ...r,
+        row_key: `longhaul-activity:${String(r['id'])}`,
+        source: 'longhaul',
+      }))
+      const local = localBoardRows(recordsets[2] ?? [], catalogFrom(recordsets[1] ?? []), filters)
+      rows = sortBoardRows([...activities, ...local], query.sortBy)
+    }
 
     if (rows.length > ACTIVITY_RESULT_LIMIT) {
       return c.json(

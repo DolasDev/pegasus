@@ -362,6 +362,29 @@ Postgres. Operations → Availability (`AvailabilityFilter`,
 - The page seeds from the default **during render**, behind its loading state,
   so the table never paints the built-in filters and then jumps.
 
+Operations → Services (`ServicesFilter`, `/api/v1/services-filters`, #876) is the
+second instance. It shows how to add the next one:
+
+- **A parallel table per screen**, not a `screen` column on the first one.
+  Adding the column would migrate a live table for a rename. A separate table
+  makes it impossible for one screen's rows to show up in the other's dialog.
+  Each screen's default gets its own key under `preferences.operations`.
+- **The dialogs are shared**: `components/saved-filters/SavedFilterDialogs.tsx`,
+  namespaced by a `screen` prop for ids and test ids. Each screen writes a
+  thin wrapper that binds its own query hooks to the dialogs.
+- **A board whose query lives in Redux** (Services, unlike Availability's local
+  state) seeds once per session behind a `defaultSeeded` flag. The route module
+  doesn't mount the board until the default settles, because the board fetches
+  on mount: mounting first fetches the built-in range and then re-fetches the
+  saved one. The flag means coming Back from a trip keeps the user's edits.
+- **Absolute dates on screen, offsets in the saved form.** Services filters on
+  absolute dates, but a saved preset still stores offsets. A key added to the
+  saved shape after v1 rows exist (Services' `offices`) is `.optional()` and
+  read as `[]` at both ends, so older rows stay valid without a version bump.
+- **The saved sort enum is pinned by a test to the list handler's sort
+  whitelist** (`ACTIVITY_SORT_KEYS`). Without the pin, a stale key would save
+  without error and then silently fail to sort.
+
 ## Gating a hand-maintained restatement of a code list
 
 Some artefacts have to restate a list that lives in code: an Alloy spec transcribing a table of fact
@@ -416,11 +439,15 @@ Precedents: `tests/conformance/documents.test.ts` (prose ↔ vocabulary) and
 
 ## A driver-scoped write on the legacy longhaul tables
 
-The `/onprem/longhaul/*` driver-data reads (trips, trip detail, shipments, activities, rejected trips,
-driver planning) are scoped **server-side** by `lib/longhaul-read-scope.ts`: an Operations role
-(`OPERATIONS_ROLES`) reads everything; anyone else reads only their own `TenantUser.longhaulDriverId`'s
-rows, and nothing without a mapping. A client `driver_id` never widens that. A new driver-data read
-must call `resolveLonghaulReadScope` too — the route has no Cedar gate to fall back on.
+The `/onprem/longhaul/*` driver-data reads are scoped **server-side** by `lib/longhaul-read-scope.ts`:
+an Operations role (`OPERATIONS_ROLES`) reads everything; anyone else reads only their own rows, and
+nothing without a mapping. A client `driver_id` never widens that. Pick the resolver by what the read
+is about: a TRIP read (trips, trip detail, activities, rejected trips, driver planning) calls
+`resolveLonghaulReadScope` (`TenantUser.longhaulDriverId` only); an ORDER read behind the shipment
+screen (shipments, the order's labor activities) calls `resolveOrderReadScope`, which also admits
+orders assigned to the caller on the order itself (`orderAssignedTo`, the SAME SQL the itinerary's
+order-assigned source uses) and orders on the caller's local dispatch jobs (`localDriverEmployeeId`, bound separately — GOTCHAS "Two
+driver read scopes"). The route has no Cedar gate to fall back on.
 
 Writes are a separate check. A route that lets a _driver_ write must check ownership itself. It
 must not reuse the dispatcher save (`POST /activities/:id`), which needs a `v_longhaul_salesman`
@@ -439,10 +466,54 @@ mapping that drivers don't have and accepts every column. Precedent:
 - **Audit.** `modified_by` is a salesman code, so a driver write stamps NULL (as the M2M path does)
   and logs the driver id.
 
+## A driver's work across longhaul and local — the itinerary, not the trip
+
+A driver's work lives in two legacy places: `LongDistanceDispatchActivity` (one row per act, on a
+longhaul trip) and `LocalDispatchJobs` (one row per order per service day, its acts packed into a
+space-separated `services` string). `lib/itinerary/` reads both into ONE row shape,
+`ItineraryItem` (one act × one order × one day — the domain reference's `stopAction`), and the trip
+is a grouping on the item (`tripId`, `tripStatus`), never the way in. New driver-facing screens
+should read the itinerary (`GET /onprem/longhaul/me/itinerary`, `/drivers/itinerary`) rather than
+start from trips, or local work is invisible.
+
+- **Two ids, two numbering spaces, bound separately.** `TenantUser.longhaulDriverId`
+  (`v_longhaul_drivers.driver_id`) and `TenantUser.localDriverEmployeeId` (`crews.employee_id`).
+  Never match one number against both (GOTCHAS, "Crew number ≠ driver number").
+- **Ownership** is the ETA editor's rule for activities (assigned driver, else the trip driver when
+  unassigned) and either driver slot for local jobs. Chat's broader "any activity on the order"
+  rule is deliberately NOT reused.
+- **One date rule:** `actual ?? estimated ?? planned_start` for an activity; `service_date` for a
+  local job (and `actual = service_date` once `is_final = 'Y'`).
+- **Pending and cancelled trips are excluded, Offered kept** — the driver app's own visibility rule.
+- **One executor call per read** (a multi-statement batch read through `recordsets`; the account's
+  Lambda concurrency is 10), retried statement-by-statement on failure so one bad source degrades
+  to `failedSources` instead of an empty list.
+- **Local tokens → acts:** `splitServices` (whitespace, de-duplicated); the tenant's
+  `Longhaul_ActivityType` names and sequences shared codes, `LOCAL_ONLY_CODES` the rest, and an
+  unknown hand-typed token is shown `known: false`, never dropped. Place comes from the ORDER
+  (`sales` origin/destination by the act's side), not the job's free-text location.
+- The Services board shows local rows only behind `?include=local`, a top-level flag rather than a
+  filter, so the strict saved-filter schema never carries it.
+
 ## A pegII route keyed by an arbitrary entity id needs a policy narrower than "any valid token"
 
 Most cloud-facing Pegasus.Api routes `RequireAuthorization()` and leave _which_ principal may read to the
 cloud (Cedar). That is only safe when the route is not a per-person secret. `GET /api/v1/pegii/drivers/{id}/financials`
 returns any driver's money by id, and desktop-session tokens (`scp=desktop`) live on users' machines — so it uses
-`AuthPolicies.DriverFinancials`: cloud tokens **without** `scp`, or the configured bridge hub user, and nothing else.
+`AuthPolicies.DriverFinancials`: cloud tokens **without** `scp`, and nothing else (the configured bridge hub user
+was retired with hub auth, 2026-10-30).
 The cloud side resolves the id from the caller (`TenantUser.longhaulDriverId`), never from the request.
+
+## Mobile tests: mock a service class, keep the module's pure helpers
+
+`jest.mock('../../src/services/laborService', () => ({ LaborService: { … } }))` replaces the WHOLE
+module, so its other named exports (`withCrew`, `withPacker`, `activityLaborInput`) become
+`undefined`. A screen that calls one fails only on the path that reaches it, and older tests that
+never hit that path keep passing. Spread the real module and replace only the class:
+
+```ts
+jest.mock('../../src/services/laborService', () => ({
+  ...jest.requireActual('../../src/services/laborService'),
+  LaborService: { getOrderActivities: jest.fn(), setActivityLabor: jest.fn() },
+}))
+```

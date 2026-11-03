@@ -201,26 +201,12 @@ describe('ApiStack — IAM permissions', () => {
     })
   })
 
-  // pegII service-user credentials: read-only, and only under the env's own
-  // pegasus/<env>/pegii/ prefix — never a wildcard over every secret.
-  it('grants read-only sm:GetSecretValue on the pegII credential prefix', () => {
+  // pegII calls carry cloud-issued tokens only; the retired hub service-user
+  // credential secrets (pegasus/<env>/pegii/*) must no longer be readable.
+  it('grants no access to the retired pegII credential prefix', () => {
     const template = synthApiStack()
-    template.hasResourceProperties('AWS::IAM::Policy', {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Action: 'secretsmanager:GetSecretValue',
-            Effect: 'Allow',
-            Resource: {
-              'Fn::Join': [
-                '',
-                Match.arrayWith([Match.stringLikeRegexp(':secret:pegasus/[a-z]+/pegii/\\*$')]),
-              ],
-            },
-          }),
-        ]),
-      },
-    })
+    const policies = template.findResources('AWS::IAM::Policy')
+    expect(JSON.stringify(policies)).not.toMatch(/:secret:pegasus\/[a-z]+\/pegii\//)
   })
 
   // Regression: the AWS-RunShellScript document is AWS-managed and its ARN
@@ -1263,6 +1249,64 @@ describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', 
       throw new Error(`expected exactly 1 dispatcher Lambda, found ${dispatchers.length}`)
     }
   })
+
+  // ── Dispatcher kicks: one dispatcher at a time, async-invoked by its callers ──
+
+  function dispatcherLogicalId(template: Template): string {
+    const id = Object.keys(template.findResources('AWS::Lambda::Function')).find((k) =>
+      k.startsWith('DispatchWorkflowTriggersFunction'),
+    )
+    if (!id) throw new Error('dispatcher Lambda not found')
+    return id
+  }
+
+  it('runs one dispatcher at a time (reserved concurrency 1) — the cap check relies on it', () => {
+    const template = synthTemporal()
+    const fn = template.findResources('AWS::Lambda::Function')[dispatcherLogicalId(template)]
+    expect(fn?.Properties?.ReservedConcurrentExecutions).toBe(1)
+  })
+
+  it('drops a stale or failed async invoke instead of retrying — the next tick is the retry', () => {
+    const template = synthTemporal()
+    template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
+      FunctionName: { Ref: dispatcherLogicalId(template) },
+      MaximumRetryAttempts: 0,
+      MaximumEventAgeInSeconds: 60,
+    })
+  })
+
+  it('lets the api, RingCentral capture and RingCentral sync Lambdas kick the dispatcher', () => {
+    const template = synthTemporal()
+    const dispatcher = dispatcherLogicalId(template)
+    const fns = template.findResources('AWS::Lambda::Function')
+    const policies = Object.values(template.findResources('AWS::IAM::Policy'))
+    for (const prefix of ['ApiFunction', 'RingCentralCaptureFunction', 'RingCentralSyncFunction']) {
+      const [, fn] =
+        Object.entries(fns).find(([id]) => id.startsWith(prefix) && !id.includes('LogRetention')) ??
+        []
+      if (!fn) throw new Error(`${prefix} not found`)
+      expect(fn.Properties?.Environment?.Variables?.TRIGGER_DISPATCHER_FUNCTION_NAME).toEqual({
+        Ref: dispatcher,
+      })
+      const roleRef = (fn.Properties?.Role as { 'Fn::GetAtt'?: string[] })['Fn::GetAtt']?.[0]
+      const docs = JSON.stringify(
+        policies
+          .filter((p) => JSON.stringify(p.Properties?.Roles ?? []).includes(String(roleRef)))
+          .map((p) => p.Properties?.PolicyDocument),
+      )
+      expect(docs).toContain('lambda:InvokeFunction')
+      expect(docs).toContain(dispatcher)
+    }
+  })
+
+  it('without Temporal there is no dispatcher, so nothing is told to kick one', () => {
+    const template = synthApiStack()
+    const fns = Object.values(template.findResources('AWS::Lambda::Function'))
+    const withVar = fns.filter(
+      (fn) => fn.Properties?.Environment?.Variables?.TRIGGER_DISPATCHER_FUNCTION_NAME !== undefined,
+    )
+    expect(withVar).toHaveLength(0)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1697,5 +1741,55 @@ describe('ApiStack — move chat kicks the push forwarder', () => {
         ]),
       },
     })
+  })
+})
+
+describe('ApiStack — crew-leader link switch (crewLeaderLinkEnabled)', () => {
+  function synthEnabled() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiCrewLinkEnabled', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      crewLeaderLinkEnabled: true,
+      crewLeaderLinkPublicWebUrl: 'https://pegasus-qa.dolas.dev',
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('leaves CREW_LEADER_LINK_ENABLED unset on every Lambda by default', () => {
+    const template = synthApiStack()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const withFlag = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.CREW_LEADER_LINK_ENABLED !== undefined,
+    )
+    if (withFlag.length !== 0) {
+      throw new Error(
+        `expected no Lambda to carry CREW_LEADER_LINK_ENABLED, found ${withFlag.length}`,
+      )
+    }
+  })
+
+  it('sets CREW_LEADER_LINK_ENABLED + its web URL only on the api Lambda when enabled', () => {
+    const template = synthEnabled()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const enabled = Object.values(fns).filter(
+      (fn) =>
+        fn.Properties?.Environment?.Variables?.CREW_LEADER_LINK_ENABLED === 'true' &&
+        fn.Properties?.Environment?.Variables?.CREW_LEADER_LINK_PUBLIC_WEB_URL ===
+          'https://pegasus-qa.dolas.dev',
+    )
+    if (enabled.length !== 1) {
+      throw new Error(
+        `expected exactly 1 Lambda with the crew-link flag + URL, found ${enabled.length}`,
+      )
+    }
+  })
+
+  it('lets the browser send the X-Crew-Session header', () => {
+    const template = synthApiStack()
+    const apis = Object.values(template.findResources('AWS::ApiGatewayV2::Api'))
+    const headers: string[] = apis[0]?.Properties?.CorsConfiguration?.AllowHeaders ?? []
+    if (!headers.includes('X-Crew-Session')) {
+      throw new Error(`expected CORS AllowHeaders to include X-Crew-Session, got ${headers}`)
+    }
   })
 })

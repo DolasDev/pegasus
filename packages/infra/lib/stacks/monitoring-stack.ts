@@ -59,6 +59,14 @@ export interface MonitoringStackProps extends cdk.StackProps {
   readonly ringcentralCaptureDlqName?: string
 
   /**
+   * The workflow trigger dispatcher's function name (Temporal-configured
+   * stacks). It runs with reserved concurrency 1, so a kick that lands
+   * mid-tick is throttled BY DESIGN; the account-wide Throttles alarm
+   * subtracts its throttles. Optional — absent where the dispatcher isn't.
+   */
+  readonly triggerDispatcherFunctionName?: string
+
+  /**
    * Integration-event buffer (OutboxRelayStack) queue / DLQ names — the
    * EventBridge mapper's SQS pipeline. When provided, two alarms are created:
    * DLQ depth (poison / unknown-tenant messages) and oldest-message age (mapper
@@ -846,22 +854,45 @@ export class MonitoringStack extends cdk.Stack {
 
     // ── Account-wide Lambda Throttles alarm (Phase 1) ─────────────────────────
     // Undimensioned → aggregates across ALL Lambda functions in the account/region.
-    // One alarm covers every current and future function — critical given the
-    // account-wide 10-concurrent-execution cap (Service Quotas L-B99A9384) that
-    // already caused the AppGuard incident.
+    // One alarm covers every current and future function. Born of the AppGuard
+    // incident, when the account cap was 10; it has been 1,000 since
+    // 2026-05-29 (Service Quotas L-B99A9384), so a throttle now means a
+    // function's own reserved concurrency or a runaway burst.
+    //
+    // EXCEPT the trigger dispatcher: reserved concurrency 1 makes a kick that
+    // lands mid-tick throttle on purpose (Lambda redelivers it), so its
+    // throttles are subtracted rather than paged on.
     const accountThrottlesMetric = new cloudwatch.Metric({
       namespace: 'AWS/Lambda',
       metricName: 'Throttles', // no dimensionsMap → account-wide
       statistic: 'Sum',
       period: cdk.Duration.minutes(1),
     })
+    const alarmedThrottles: cloudwatch.IMetric = props.triggerDispatcherFunctionName
+      ? new cloudwatch.MathExpression({
+          expression: 'account - FILL(dispatcher, 0)',
+          usingMetrics: {
+            account: accountThrottlesMetric,
+            dispatcher: new cloudwatch.Metric({
+              namespace: 'AWS/Lambda',
+              metricName: 'Throttles',
+              dimensionsMap: { FunctionName: props.triggerDispatcherFunctionName },
+              statistic: 'Sum',
+              period: cdk.Duration.minutes(1),
+            }),
+          },
+          label: 'Throttles (all functions except the trigger dispatcher)',
+          period: cdk.Duration.minutes(1),
+        })
+      : accountThrottlesMetric
 
     const accountThrottlesAlarm = new cloudwatch.Alarm(this, 'AccountLambdaThrottlesAlarm', {
       alarmName: 'pegasus-lambda-throttles-account',
       alarmDescription:
-        'Any Lambda in the account is being throttled — likely the 10-concurrent-execution ' +
-        'account cap (Service Quotas L-B99A9384). Symptoms cascade as 5xx (AppGuard incident).',
-      metric: accountThrottlesMetric,
+        'A Lambda in the account is being throttled (the trigger dispatcher, throttled by ' +
+        'design, excluded). Check the function’s reserved concurrency and the account ' +
+        'quota (L-B99A9384, 1000). Symptoms cascade as 5xx (AppGuard incident).',
+      metric: alarmedThrottles,
       threshold: 0,
       evaluationPeriods: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,

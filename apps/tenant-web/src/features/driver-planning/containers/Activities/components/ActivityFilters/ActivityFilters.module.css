@@ -46,6 +46,13 @@
   color: var(--blue-700);
 }
 
+/* Pushed to the row's right edge, as on Availability. */
+.savedFilters {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .clear {
   color: var(--blue);
   font-size: 12px;

@@ -367,6 +367,12 @@ export type CaptureOptions = {
    * history and must not fire a workflow per historical text.
    */
   emitReceivedEvent?: boolean
+  /**
+   * Called once, after the transaction COMMITS, when this capture emitted
+   * `sms.received` — so the caller can kick the trigger dispatcher for a
+   * committed event, and only for a real emission (not a re-capture).
+   */
+  onReceivedEventEmitted?: () => void
 }
 
 /**
@@ -402,6 +408,7 @@ export async function captureMessage(
     ...(connectionId != null ? { connectionId } : {}),
   }
 
+  let emitted = false
   const row = await db.$transaction(async (tx) => {
     const message = await tx.message.upsert({
       where: {
@@ -489,12 +496,14 @@ export async function captureMessage(
             connectionId: message.connectionId,
           },
         })
+        emitted = true
       }
     }
 
     return message
   })
 
+  if (emitted) opts.onReceivedEventEmitted?.()
   return mapMessage(row)
 }
 

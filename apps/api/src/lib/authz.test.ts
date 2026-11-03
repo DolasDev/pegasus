@@ -90,7 +90,8 @@ describe('authorize — offline (cedar-wasm)', () => {
 
   // Every authenticated principal — regardless of role — may read and upload
   // documents (50-documents-shared.cedar) and read and post in move chat
-  // (55-chat-shared.cedar); both are unconstrained permits. This shared
+  // (55-chat-shared.cedar) and keep a labor-crew book (56-labor-shared.cedar);
+  // all are unconstrained permits. This shared
   // baseline therefore shows up in every persona's allowed set below — and a
   // stray persona permit still shows up as an extra id.
   const SHARED_BASELINE = [
@@ -98,6 +99,8 @@ describe('authorize — offline (cedar-wasm)', () => {
     Actions.UploadDocument.id,
     Actions.ReadChat.id,
     Actions.PostChat.id,
+    Actions.ReadLabor.id,
+    Actions.WriteLabor.id,
   ]
 
   it('sales matches its persona policy (invariant c)', async () => {
@@ -266,6 +269,8 @@ describe('listAllowedPermissions — offline', () => {
         Actions.UploadDocument.permission,
         Actions.ReadChat.permission,
         Actions.PostChat.permission,
+        Actions.ReadLabor.permission,
+        Actions.WriteLabor.permission,
       ]),
     )
   })
@@ -278,6 +283,8 @@ describe('listAllowedPermissions — offline', () => {
         Actions.UploadDocument.permission,
         Actions.ReadChat.permission,
         Actions.PostChat.permission,
+        Actions.ReadLabor.permission,
+        Actions.WriteLabor.permission,
       ]),
     )
   })

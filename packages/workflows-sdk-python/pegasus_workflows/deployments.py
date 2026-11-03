@@ -20,6 +20,11 @@ published_at = "2026-06-26T21:05:48Z"
 
 Multi-workflow projects namespace each entry by workflow name under the env table
 (``[prod.send_order_saved_sms]``).
+
+The env key is ``--env`` when given, else the ``--profile`` name, else the API
+host (:func:`ledger_env_key`). The profile beats the host because two tenants
+(QA and Prod) can share one API root — keyed by host, the second push would
+overwrite the first one's record.
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from ._toml import update_table as _toml_update_table
 __all__ = [
     "DEPLOYMENTS_FILENAME",
     "derive_env",
+    "ledger_env_key",
     "read_deployments",
     "record_deployment",
 ]
@@ -51,6 +57,16 @@ def derive_env(base_url: str) -> str:
     """
     host = urlsplit(base_url).hostname
     return host or "default"
+
+
+def ledger_env_key(env: str | None, profile: str | None, base_url: str) -> str:
+    """The ``deployments.toml`` table a push records under.
+
+    ``--env`` wins; otherwise an explicitly named ``--profile`` (the
+    discriminator the author already chose: QA and Prod tenants share an API
+    root, so the host alone can't tell them apart); otherwise the API host.
+    """
+    return env or profile or derive_env(base_url)
 
 
 def read_deployments(project_dir: Path) -> dict[str, Any]:

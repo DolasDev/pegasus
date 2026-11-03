@@ -11,6 +11,7 @@ import type * as MssqlClient from '../../lib/mssql-executor-client'
 
 vi.mock('../../lib/longhaul-cloud-user', () => ({ resolveLonghaulUser: vi.fn() }))
 vi.mock('../../lib/longhaul-cloud-trip-summary', () => ({ recomputeTripSummaryCloud: vi.fn() }))
+vi.mock('../../lib/labor-auto-assign', () => ({ autoAssignOnTripAccepted: vi.fn() }))
 vi.mock('../../lib/mssql-executor-client', async (orig) => ({
   ...(await orig<typeof MssqlClient>()),
   executeSql: vi.fn(),
@@ -24,10 +25,13 @@ import {
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { recomputeTripSummaryCloud } from '../../lib/longhaul-cloud-trip-summary'
+import { autoAssignOnTripAccepted } from '../../lib/labor-auto-assign'
 
 const resolveMock = resolveLonghaulUser as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
 const recomputeMock = recomputeTripSummaryCloud as unknown as Mock
+const autoAssignMock = autoAssignOnTripAccepted as unknown as Mock
+const db = { marker: 'tenant-db' }
 
 function buildApp() {
   const app = new Hono<AppEnv>()
@@ -36,6 +40,7 @@ function buildApp() {
     c.set('tenantId', 'tenant-1')
     c.set('correlationId', 'corr-1')
     c.set('userId', 'user-1')
+    c.set('db', db as never)
     await next()
   })
   app.patch('/onprem/longhaul/trips/:id/status', longhaulTripStatusHandler)
@@ -68,6 +73,7 @@ function readResult(
 beforeEach(() => {
   vi.clearAllMocks()
   resolveMock.mockResolvedValue({ ok: true, connectionString: 'Server=a,1433', code: 7, user: {} })
+  autoAssignMock.mockResolvedValue([])
 })
 
 describe('PATCH /trips/:id/status (cloud-direct)', () => {
@@ -149,6 +155,62 @@ describe('PATCH /trips/:id/status (cloud-direct)', () => {
       name: 'clearReady',
       value: 0,
     })
+  })
+
+  // My Crew: a confirm transition auto-assigns "Every job" members + emits trip.accepted.
+  it.each([
+    [2, 3],
+    [1, 3],
+    [2, 4],
+    [1, 4],
+  ])('auto-assigns My Crew after the write on %i -> %i', async (from, to) => {
+    executeSqlMock
+      .mockResolvedValueOnce(readResult([{ driver_id: 9, TripStatus_id: from }]))
+      .mockResolvedValueOnce({ recordset: [{ id: 55 }], recordsets: [], rowsAffected: [1] })
+
+    const res = await req('/onprem/longhaul/trips/55/status', 'PATCH', { statusId: to })
+
+    expect(res.status).toBe(200)
+    expect(autoAssignMock).toHaveBeenCalledWith(db, {
+      tenantId: 'tenant-1',
+      connectionString: 'Server=a,1433',
+      tripId: 55,
+      driverId: 9,
+      fromStatusId: from,
+      toStatusId: to,
+    })
+    // After the on-prem commit, never before it.
+    expect(autoAssignMock.mock.invocationCallOrder[0]).toBeGreaterThan(
+      executeSqlMock.mock.invocationCallOrder[1]!,
+    )
+  })
+
+  it.each([
+    [1, 2],
+    [3, 4],
+    [4, 5],
+    [3, 3],
+  ])('does NOT auto-assign on %i -> %i', async (from, to) => {
+    executeSqlMock
+      .mockResolvedValueOnce(readResult([{ driver_id: 9, TripStatus_id: from }]))
+      .mockResolvedValueOnce({ recordset: [{ id: 55 }], recordsets: [], rowsAffected: [1] })
+
+    const res = await req('/onprem/longhaul/trips/55/status', 'PATCH', { statusId: to })
+
+    expect(res.status).toBe(200)
+    expect(autoAssignMock).not.toHaveBeenCalled()
+  })
+
+  it('still returns 200 when the auto-assign fails (the status is committed)', async () => {
+    executeSqlMock
+      .mockResolvedValueOnce(readResult([{ driver_id: 9, TripStatus_id: 2 }]))
+      .mockResolvedValueOnce({ recordset: [{ id: 55 }], recordsets: [], rowsAffected: [1] })
+    autoAssignMock.mockRejectedValueOnce(new Error('postgres down'))
+
+    const res = await req('/onprem/longhaul/trips/55/status', 'PATCH', { statusId: 3 })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ data: { id: 55 } })
   })
 
   it('returns 404 when the trip is missing', async () => {

@@ -91,7 +91,8 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     "For each visible automation, its manifest-declared secret/config keys tagged present/missing against the tenant's store (presence only, no values) (ReadWorkflow)",
     {
       tags: ['Workflows'],
-      responseDescription: '{data: {workflows: [...], totalMissing: number}}',
+      responseDescription:
+        '{data: {workflows: [{workflowId, name, version, visibility, current, requirements: [{kind, key, group, description, present}], missingCount}], totalMissing: number}}. Every published version is its own row. current is true for the newest version (semver) of each (owner, name) and for any older version an enabled trigger of this tenant still runs; totalMissing counts current rows only, so keys a superseded version declared are not reported as still needed. SDK: requirements_summary; CLI: requirements [--all-versions].',
     },
   ),
   '/api/v1/workflows/{id}': apiKeyGet('getWorkflow', 'Get an automation by id', {
@@ -403,6 +404,534 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
   ),
 }
 
+// ── Labor (Cognito users only; see handlers/labor.ts) ────────────────────────
+// A driver's private book of cash-labor crews, plus the tenant's company list.
+// Every crew route answers 404 for a crew that is in neither the caller's book
+// nor their company list — one of those links is the access.
+
+const LABOR_PHONE_PARAM = {
+  name: 'phone',
+  in: 'path',
+  required: true,
+  schema: { type: 'string' },
+  description:
+    "The crew's phone number, URL-encoded. Any spelling is accepted (`+14045551212`, `(404) 555-1212`); it is normalised to E.164.",
+}
+
+const LABOR_ERRORS = {
+  '400': { $ref: '#/components/responses/ValidationError' },
+  '404': {
+    description: 'Crew (or packer) not in your list',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+  },
+}
+
+/** One labor operation: a JSON body (optional) and a `{data}` response. */
+function laborOp(
+  operationId: string,
+  summary: string,
+  opts: {
+    description?: string
+    phone?: boolean
+    packerId?: boolean
+    /** Integer path params (legacy order / activity ids). */
+    intParams?: Array<{ name: string; description: string }>
+    query?: Array<{ name: string; description: string }>
+    body?: Record<string, unknown>
+    data?: Record<string, unknown>
+    status?: '200' | '201' | '204'
+    extraResponses?: Record<string, unknown>
+  } = {},
+): Record<string, unknown> {
+  const status = opts.status ?? '200'
+  return {
+    operationId,
+    summary,
+    tags: ['Labor'],
+    ...(opts.description ? { description: opts.description } : {}),
+    parameters: [
+      ...(opts.phone ? [LABOR_PHONE_PARAM] : []),
+      ...(opts.packerId
+        ? [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }]
+        : []),
+      ...(opts.intParams ?? []).map((p) => ({
+        name: p.name,
+        in: 'path',
+        required: true,
+        schema: { type: 'integer', minimum: 1 },
+        description: p.description,
+      })),
+      ...(opts.query ?? []).map((q) => ({
+        name: q.name,
+        in: 'query',
+        required: false,
+        schema: { type: 'string' },
+        description: q.description,
+      })),
+    ],
+    ...(opts.body
+      ? {
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: opts.body } },
+          },
+        }
+      : {}),
+    responses: {
+      [status]:
+        status === '204'
+          ? { description: 'Done' }
+          : {
+              description: 'OK',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: opts.data ?? { type: 'object' } },
+                  },
+                },
+              },
+            },
+      ...LABOR_ERRORS,
+      ...(opts.extraResponses ?? {}),
+    },
+  }
+}
+
+const LABOR_CREW = { $ref: '#/components/schemas/LaborCrew' }
+const LABOR_CREW_DETAIL = { $ref: '#/components/schemas/LaborCrewDetail' }
+const LABOR_PACKER = { $ref: '#/components/schemas/LaborPacker' }
+const LABOR_ACTIVITY = { $ref: '#/components/schemas/LaborActivity' }
+const LABOR_CREW_MEMBER = { $ref: '#/components/schemas/LaborCrewMember' }
+
+const LABOR_ACTIVITY_ERRORS = {
+  '403': {
+    description: 'DRIVER_NOT_MAPPED, or NOT_YOUR_ACTIVITY on a write',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+  },
+  '503': {
+    description: 'LEGACY_UNAVAILABLE — the order database is not configured or failed',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+  },
+}
+
+const LABOR_PACKER_BODY = {
+  type: 'object',
+  required: ['firstName', 'lastName'],
+  description:
+    'First and last name plus at least one of email, cidNumber or phone. cidIssuedOn (YYYY-MM-DD, not in the future) is required with a cidNumber.',
+  properties: {
+    firstName: { type: 'string' },
+    lastName: { type: 'string' },
+    email: { type: ['string', 'null'] },
+    cidNumber: { type: ['string', 'null'], description: 'Candidate ID (certification number)' },
+    cidIssuedOn: { type: ['string', 'null'], format: 'date' },
+    phone: { type: ['string', 'null'] },
+  },
+}
+
+const LABOR_DUPLICATE = {
+  '409': {
+    description:
+      'PACKER_DUPLICATE — the crew already has a packer with that last name + CID number or last name + email',
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+  },
+}
+
+const LABOR_PATHS: Record<string, Record<string, unknown>> = {
+  '/api/v1/labor/crews': {
+    get: laborOp('listLaborCrews', 'My crews, A–Z or nearest first', {
+      description:
+        'No q: A–Z. A US ZIP, a Canadian postal code / FSA, or "City, ST": every crew, nearest first on its closest service area (`distanceMiles`, null = no geocoded area; `meta.location` is the point used, `meta.locationNotFound` when the place is unknown). A state/province code: crews serving it, A–Z. Other text: crews whose name, nickname or phone matches — else, if the text is a city name, nearest first from it.',
+      query: [{ name: 'q', description: 'Search text (see description)' }],
+      data: { type: 'array', items: LABOR_CREW },
+    }),
+    post: laborOp('addLaborCrew', 'Add a crew to my list', {
+      description:
+        'Idempotent. A number already added by another driver links you to their crew (its shared name stands; yours becomes your nickname when it differs). `meta.outcome`: added | linkedExisting | alreadyInList. Rate-limited to 100 new crews per user per 24h (429 LINK_RATE_LIMITED).',
+      body: {
+        type: 'object',
+        required: ['phone', 'name'],
+        properties: {
+          phone: { type: 'string' },
+          name: { type: 'string' },
+          email: { type: ['string', 'null'] },
+          nickname: { type: ['string', 'null'] },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+      status: '201',
+      extraResponses: {
+        '429': {
+          description: 'LINK_RATE_LIMITED',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/company/crews': {
+    get: laborOp('listCompanyLaborCrews', "My company's crew list, A–Z or nearest first", {
+      description: 'The tenant-wide company list, with the same search as GET /labor/crews.',
+      query: [{ name: 'q', description: 'Search text (see GET /labor/crews)' }],
+      data: { type: 'array', items: LABOR_CREW },
+    }),
+    post: laborOp('addCompanyLaborCrew', 'Put a crew on the company list', {
+      description:
+        'Idempotent. A crew in your own list goes on as-is (`meta.outcome`: addedFromMyList). Any other number needs an Operations role and a name, like POST /labor/crews (added | linkedExisting — the shared name stands; yours becomes the company nickname when it differs) and spends your add budget (429 LINK_RATE_LIMITED). A non-Operations caller adding a crew not in their list gets 422 CREW_NOT_IN_YOUR_LIST. alreadyInList answers 200.',
+      body: {
+        type: 'object',
+        required: ['phone'],
+        properties: {
+          phone: { type: 'string' },
+          name: { type: 'string', description: 'Required unless the crew is in your own list' },
+          email: { type: ['string', 'null'] },
+          nickname: { type: ['string', 'null'], description: 'Company display name' },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+      status: '201',
+      extraResponses: {
+        '422': {
+          description: 'CREW_NOT_IN_YOUR_LIST',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+        '429': {
+          description: 'LINK_RATE_LIMITED',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/company/crews/{phone}': {
+    patch: laborOp(
+      'updateCompanyLaborCrew',
+      "Edit a company crew's shared name/email or company nickname",
+      {
+        phone: true,
+        body: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Shared with every linked driver' },
+            email: { type: ['string', 'null'], description: 'Shared' },
+            nickname: {
+              type: ['string', 'null'],
+              description: 'Company display name; null clears',
+            },
+          },
+        },
+        data: LABOR_CREW_DETAIL,
+      },
+    ),
+    delete: laborOp('removeCompanyLaborCrew', 'Remove a crew from the company list', {
+      description:
+        'Operations roles only (403 OPERATIONS_ONLY). The crew, every driver’s own link to it and past activity labor all stay.',
+      phone: true,
+      status: '204',
+      extraResponses: {
+        '403': {
+          description: 'OPERATIONS_ONLY',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/crews/import': {
+    post: laborOp('importLaborCrews', 'Add many crews (phone-contacts import)', {
+      description:
+        'Up to 200 rows. One result per row, in order — `outcome`: added | linkedExisting | alreadyInList | invalid (with code/error) | rateLimited. A bad row never fails the batch.',
+      body: {
+        type: 'object',
+        required: ['crews'],
+        properties: {
+          crews: {
+            type: 'array',
+            maxItems: 200,
+            items: {
+              type: 'object',
+              required: ['phone', 'name'],
+              properties: {
+                phone: { type: 'string' },
+                name: { type: 'string' },
+                email: { type: ['string', 'null'] },
+              },
+            },
+          },
+        },
+      },
+      data: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['phone', 'outcome'],
+          properties: {
+            phone: { type: 'string' },
+            outcome: {
+              type: 'string',
+              enum: ['added', 'linkedExisting', 'alreadyInList', 'invalid', 'rateLimited'],
+            },
+            code: { type: 'string' },
+            error: { type: 'string' },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/crews/{phone}': {
+    get: laborOp('getLaborCrew', 'A crew with its packers', {
+      phone: true,
+      data: LABOR_CREW_DETAIL,
+    }),
+    patch: laborOp('updateLaborCrew', "Edit a crew's shared name/email or my nickname", {
+      phone: true,
+      body: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Shared with every linked driver' },
+          email: { type: ['string', 'null'], description: 'Shared' },
+          nickname: { type: ['string', 'null'], description: 'Private; null clears' },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+    }),
+    delete: laborOp('removeLaborCrew', 'Remove a crew from MY list (and my rating)', {
+      description: 'The crew itself stays for every other driver who has it.',
+      phone: true,
+      status: '204',
+    }),
+  },
+  '/api/v1/labor/crews/{phone}/service-areas': {
+    put: laborOp('setLaborCrewServiceAreas', "Replace a crew's (shared) service areas", {
+      description:
+        'US states and Canadian provinces; at most 50, de-duplicated. A city found in the geo reference data is geocoded for distance search; one that is not is kept with `geocoded: false`.',
+      phone: true,
+      body: {
+        type: 'object',
+        required: ['serviceAreas'],
+        properties: {
+          serviceAreas: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['city', 'region'],
+              properties: {
+                city: { type: 'string' },
+                region: { type: 'string', description: 'Two-letter state/province code' },
+              },
+            },
+          },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+    }),
+  },
+  '/api/v1/labor/crews/{phone}/packers': {
+    post: laborOp('addLaborPacker', 'Add a packer to a crew', {
+      phone: true,
+      body: LABOR_PACKER_BODY,
+      data: LABOR_PACKER,
+      status: '201',
+      extraResponses: LABOR_DUPLICATE,
+    }),
+  },
+  '/api/v1/labor/crews/{phone}/packers/{id}': {
+    patch: laborOp('updateLaborPacker', 'Edit a packer (omitted fields keep their value)', {
+      phone: true,
+      packerId: true,
+      body: { ...LABOR_PACKER_BODY, required: [] },
+      data: LABOR_PACKER,
+      extraResponses: LABOR_DUPLICATE,
+    }),
+    delete: laborOp('deleteLaborPacker', 'Remove a packer from the crew', {
+      description:
+        'Soft: the packer leaves the crew (every list, count and export) but stays selected on the activities they worked, and cannot be newly selected (422 PACKER_REMOVED). Adding a packer with the same CID number or email restores them.',
+      phone: true,
+      packerId: true,
+      status: '204',
+    }),
+  },
+  '/api/v1/labor/crews/{phone}/rating': {
+    put: laborOp('rateLaborCrew', 'Set my private 1–5 star rating and comment', {
+      phone: true,
+      body: {
+        type: 'object',
+        required: ['stars'],
+        properties: {
+          stars: { type: 'integer', minimum: 1, maximum: 5 },
+          comment: { type: ['string', 'null'], maxLength: 1000 },
+        },
+      },
+      data: LABOR_CREW_DETAIL,
+    }),
+    delete: laborOp('clearLaborCrewRating', 'Clear my rating', {
+      phone: true,
+      data: LABOR_CREW_DETAIL,
+    }),
+  },
+  '/api/v1/labor/my-crew': {
+    get: laborOp('listMyLaborCrew', 'My Crew — my own packers, A–Z', {
+      description:
+        'Private to the caller: no shared crew stands behind them and nobody else reads them. Members flagged `everyJob` are added to my PACK/LOAD/UNPK/RDEL/XDEL activities when dispatch accepts one of my trips (and the `trip.accepted` domain event fires).',
+      data: { type: 'array', items: LABOR_CREW_MEMBER },
+    }),
+    post: laborOp('addMyLaborCrewMember', 'Add someone to My Crew', {
+      description:
+        'Same fields and rules as a packer, plus `everyJob`. Matching (last name + CID number or email) a member I removed brings that member back. At most 50 (422 MY_CREW_FULL).',
+      body: {
+        ...LABOR_PACKER_BODY,
+        properties: { ...LABOR_PACKER_BODY.properties, everyJob: { type: 'boolean' } },
+      },
+      data: LABOR_CREW_MEMBER,
+      status: '201',
+      extraResponses: {
+        '409': {
+          description:
+            'MEMBER_DUPLICATE — My Crew already has that last name + CID number or email',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/my-crew/{id}': {
+    patch: laborOp('updateMyLaborCrewMember', 'Edit a My Crew member or flip Every job', {
+      packerId: true,
+      body: {
+        ...LABOR_PACKER_BODY,
+        required: [],
+        properties: { ...LABOR_PACKER_BODY.properties, everyJob: { type: 'boolean' } },
+      },
+      data: LABOR_CREW_MEMBER,
+    }),
+    delete: laborOp('removeMyLaborCrewMember', 'Remove someone from My Crew', {
+      description:
+        'Soft: they leave My Crew and are never auto-assigned again, but stay on the activities they worked.',
+      packerId: true,
+      status: '204',
+    }),
+  },
+  '/api/v1/labor/places': {
+    get: laborOp('searchLaborPlaces', 'City typeahead (US + Canada) for service areas', {
+      description:
+        'Name-prefix match, most populous first, at most 20. "spring" or "spring, mo" to narrow to a state/province. Fewer than two letters answers [].',
+      query: [{ name: 'q', description: 'City name prefix, optionally ", ST"' }],
+      data: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            city: { type: 'string' },
+            region: { type: 'string' },
+            country: { type: 'string', enum: ['US', 'CA'] },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/export': {
+    get: laborOp('exportLaborCrews', 'My whole list, for a contacts export', {
+      description:
+        'Each crew with its packers, service areas and my rating — the input to the app’s .vcf / Google Contacts .csv export.',
+      data: { type: 'array', items: { type: 'object' } },
+    }),
+  },
+  '/api/v1/labor/orders/{orderNum}/activities': {
+    get: laborOp('listLaborOrderActivities', "An order's activities with their crews and packers", {
+      description:
+        'A driver gets only the longhaul activities they own (the assigned driver, or the trip driver when unassigned), `editable: true`; an Operations role (tenant_admin, operations_admin, long_distance_dispatch, central_planning_dispatch) gets every activity on the order, editable only where its own driver mapping owns it. Each assigned crew lists ALL its packers, `selected` marking who worked the activity. `myCrew` is, on an activity I own, my whole My Crew (`selected` where they worked it) plus any other driver’s member who did; otherwise just the members who worked it. 403 DRIVER_NOT_MAPPED for any other login without a longhaul driver; 503 LEGACY_UNAVAILABLE when the order database cannot be read.',
+      intParams: [{ name: 'orderNum', description: 'Legacy order number' }],
+      data: { type: 'array', items: LABOR_ACTIVITY },
+      extraResponses: LABOR_ACTIVITY_ERRORS,
+    }),
+  },
+  '/api/v1/labor/activities/{activityId}': {
+    put: laborOp('setLaborActivity', "Replace an activity's crews and selected packers", {
+      description:
+        "Only the activity's own driver may write. A crew newly added must be in the caller's list (422 CREW_NOT_IN_YOUR_LIST); one already assigned may stay after it is removed from the list. Every packer must be on its crew (422 PACKER_NOT_ON_CREW). At most 10 crews; an empty list clears the activity. `memberIds` replaces the activity's My Crew members: one newly ticked must be in the caller's My Crew (422 MEMBER_NOT_YOURS); one already on it may stay after removal. Omit `memberIds` to leave them unchanged. An actual date does not lock it.",
+      intParams: [{ name: 'activityId', description: 'Legacy longhaul activity id' }],
+      body: {
+        type: 'object',
+        required: ['crews'],
+        properties: {
+          crews: {
+            type: 'array',
+            maxItems: 10,
+            items: {
+              type: 'object',
+              required: ['phone', 'packerIds'],
+              properties: {
+                phone: { type: 'string', description: 'Any spelling; normalised to E.164' },
+                packerIds: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+          memberIds: {
+            type: 'array',
+            maxItems: 50,
+            items: { type: 'string' },
+            description: 'My Crew member ids who worked it; omitted = unchanged',
+          },
+        },
+      },
+      data: LABOR_ACTIVITY,
+      extraResponses: {
+        ...LABOR_ACTIVITY_ERRORS,
+        '409': {
+          description: 'ACTIVITY_LABOR_CONFLICT — a concurrent save; reload and retry',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+        '422': {
+          description: 'CREW_NOT_IN_YOUR_LIST, PACKER_NOT_ON_CREW or MEMBER_NOT_YOURS',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+      },
+    }),
+  },
+  '/api/v1/labor/sharing': {
+    get: laborOp('getLaborSharing', 'Whether crew links can be shared', {
+      description:
+        'True when crew links are enabled and the tenant has a working RingCentral connection — the crew leader is texted a one-time code to open the link, so without texting there is no crew link.',
+      data: { type: 'object', properties: { available: { type: 'boolean' } } },
+    }),
+  },
+  '/api/v1/labor/orders/{orderNum}/crews/{phone}/link': {
+    post: laborOp('shareLaborCrewLink', 'Share a crew link with a crew leader', {
+      description:
+        'Mints a link (`<tenant web>/c/<token>`) a crew leader with no login opens to tick which of their packers work the activities this crew is assigned to on the order, and to add, edit or remove their packers. Opening it texts a one-time code to the crew’s phone on file. Valid 14 days; minting again revokes the caller’s previous link. A driver’s link covers only the activities on which that driver assigned the crew, which must still be theirs; an Operations role’s link covers every activity the crew is on. The link dies for good once none remain. 404 CREW_NOT_ON_ORDER, 403 NOT_YOUR_ACTIVITY, 409 SMS_UNAVAILABLE.',
+      phone: true,
+      intParams: [{ name: 'orderNum', description: 'Legacy order number' }],
+      status: '201',
+      data: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Shown once — only its hash is stored' },
+          expiresAt: { type: 'string', format: 'date-time' },
+        },
+      },
+    }),
+    delete: laborOp('stopLaborCrewLink', 'Stop sharing a crew link', {
+      description:
+        'Revokes the live link for this crew and order, ending every session opened with it.',
+      phone: true,
+      intParams: [{ name: 'orderNum', description: 'Legacy order number' }],
+      status: '204',
+    }),
+  },
+}
+
 export function getOpenApiSpec() {
   return {
     openapi: '3.1.0',
@@ -421,13 +950,51 @@ export function getOpenApiSpec() {
     ],
     paths: {
       ...OPERATIONAL_READ_PATHS,
+      '/api/v1/email/check-recipients': {
+        post: {
+          operationId: 'checkEmailRecipients',
+          summary: 'Would /email/send accept these recipients? No send, no record (SendEmail)',
+          description:
+            'Body { to (address or list), cc? }. Applies exactly the recipient rules /email/send does — the tenant’s allowed domains (Settings → App → Operations) and the 10-recipient cap — and returns a verdict without sending, recording or counting anything, so an automation can pick a recipient before composing instead of catching RECIPIENT_NOT_ALLOWED. Always 200 for a well-formed body. Side-effect free: the SDK runs it live under a dry run. Not metered. SDK: check_email_recipients.',
+          tags: ['Email'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['to'],
+                  additionalProperties: false,
+                  properties: {
+                    to: {
+                      oneOf: [
+                        { type: 'string', format: 'email' },
+                        { type: 'array', items: { type: 'string', format: 'email' }, minItems: 1 },
+                      ],
+                    },
+                    cc: { type: 'array', items: { type: 'string', format: 'email' } },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description:
+                '{data: {ok, reason, disallowed}} — ok:true, reason:null when every recipient would be accepted; else reason is NOT_CONFIGURED (no allowed domains: email is off) | RECIPIENT_NOT_ALLOWED (disallowed lists the refused addresses) | TOO_MANY_RECIPIENTS',
+            },
+            '400': { description: 'VALIDATION_ERROR — malformed address or body' },
+          },
+        },
+      },
       '/api/v1/email/send': {
         post: {
           operationId: 'sendEmail',
           summary:
             'Send an internal email through the tenant’s pegII API / SMTP account (SendEmail)',
           description:
-            'Body { to (address or list), cc?, subject (single line, ≤300), body, bodyType? (text | html, default text), dedupKey? }. Recipients must be on the tenant’s allowed domains (Settings → App → Operations; unset ⇒ 409 EMAIL_RECIPIENTS_NOT_CONFIGURED, outside ⇒ 400 RECIPIENT_NOT_ALLOWED); ≤10 recipients (400 TOO_MANY_RECIPIENTS); body ≤100 KB (413); a per-tenant daily limit (429 EMAIL_DAILY_LIMIT). With dedupKey a retry returns the first send (200, alreadySent:true); 409 EMAIL_SEND_IN_PROGRESS / EMAIL_SEND_IN_DOUBT / IDEMPOTENCY_KEY_REUSED as for /sms/send. The From address is the site’s configured default. 503 EMAIL_NOT_CONFIGURED when the site has no SMTP account, 503 PEGII_CAPABILITY_MISSING when its pegII API predates email or lacks auth, 502 EMAIL_SEND_FAILED when SMTP refuses.',
+            'Body { to (address or list), cc?, subject (single line, ≤300), body, bodyType? (text | html, default text), dedupKey? }. Recipients must be on the tenant’s allowed domains (Settings → App → Operations; unset ⇒ 409 EMAIL_RECIPIENTS_NOT_CONFIGURED, outside ⇒ 400 RECIPIENT_NOT_ALLOWED — ask first with POST /email/check-recipients); ≤10 recipients (400 TOO_MANY_RECIPIENTS); body ≤100 KB (413); a per-tenant daily limit (429 EMAIL_DAILY_LIMIT). With dedupKey a retry returns the first send (200, alreadySent:true); 409 EMAIL_SEND_IN_PROGRESS / EMAIL_SEND_IN_DOUBT / IDEMPOTENCY_KEY_REUSED as for /sms/send. The From address is the site’s configured default. 503 EMAIL_NOT_CONFIGURED when the site has no SMTP account, 503 PEGII_CAPABILITY_MISSING when its pegII API predates email or cannot take a cloud-issued token, 502 EMAIL_SEND_FAILED when SMTP refuses.',
           tags: ['Email'],
           security: [{ ApiKeyAuth: [] }],
           requestBody: {
@@ -474,8 +1041,7 @@ export function getOpenApiSpec() {
                 'EMAIL_SEND_FAILED | PEGII_SOURCE_UNREACHABLE | PEGII_SOURCE_AUTH_FAILED',
             },
             '503': {
-              description:
-                'EMAIL_NOT_CONFIGURED | PEGII_CAPABILITY_MISSING | PEGII_AUTH_UNAVAILABLE',
+              description: 'EMAIL_NOT_CONFIGURED | PEGII_CAPABILITY_MISSING',
             },
           },
         },
@@ -1869,6 +2435,7 @@ export function getOpenApiSpec() {
           },
         },
       },
+      ...LABOR_PATHS,
       '/api/v1/local-drivers': {
         get: {
           operationId: 'listLocalDrivers',
@@ -2247,12 +2814,56 @@ export function getOpenApiSpec() {
           },
         },
       },
+      // Re-declared here (after the OPERATIONAL_READ_PATHS spread) to add the
+      // write beside the read: keep `get` from the read table.
+      '/api/v1/workflows/{id}/triggers': {
+        ...OPERATIONAL_READ_PATHS['/api/v1/workflows/{id}/triggers'],
+        post: {
+          operationId: 'createWorkflowTrigger',
+          summary: 'Attach an EVENT or SCHEDULE trigger to an automation (ManageWorkflowTriggers)',
+          description:
+            'Body { kind: EVENT | SCHEDULE, eventType? (EVENT: a built-in or registered custom event type), filter? (EVENT: payload match), cronExpression? (SCHEDULE: 5-field UTC cron), enabled? (default true), dryRun? (default false) }. The trigger row belongs to the caller’s tenant, even on a GLOBAL automation. dryRun: the trigger fires on every matching event / cron minute, but every execution it starts is a dry run — reads live, mutations (send_sms, send_email, …) captured in the execution trace, never performed — so the wiring can be validated before it acts; PATCH dryRun:false to go live. Tenant-runner automations only: 400 DRY_RUN_UNSUPPORTED for a curated workflow. SDK: create_trigger; CLI: schedule create [--dry-run].',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['kind'],
+                  properties: {
+                    kind: { type: 'string', enum: ['EVENT', 'SCHEDULE'] },
+                    eventType: { type: 'string' },
+                    filter: { type: 'object' },
+                    cronExpression: { type: 'string' },
+                    enabled: { type: 'boolean', default: true },
+                    dryRun: { type: 'boolean', default: false },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description:
+                '{data: {id, tenantId, workflowId, kind, eventType, filter, cronExpression, enabled, dryRun, createdByUserId, createdAt, updatedAt}}',
+            },
+            '400': {
+              description:
+                'VALIDATION_ERROR (shape, unknown event type, invalid cron or filter) | DRY_RUN_UNSUPPORTED',
+            },
+            '404': { description: 'NOT_FOUND — no such automation visible to this tenant' },
+          },
+        },
+      },
       '/api/v1/workflows/{id}/triggers/{triggerId}': {
         patch: {
           operationId: 'updateWorkflowTrigger',
           summary: 'Partially update a trigger — pause/resume, re-target (ManageWorkflowTriggers)',
           description:
-            'Body (all optional, at least one): { enabled, eventType, filter, cronExpression }. enabled applies to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. SDK: update_trigger; CLI: schedule disable|enable.',
+            'Body (all optional, at least one): { enabled, dryRun, eventType, filter, cronExpression }. enabled and dryRun apply to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. A dryRun trigger keeps firing, but every execution it starts is a dry run (reads live, mutations captured in the trace, never performed) — validate the wiring, then set dryRun:false; 400 DRY_RUN_UNSUPPORTED turning it on for a curated workflow. SDK: update_trigger; CLI: schedule disable|enable|dry-run [--off].',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [
@@ -2268,6 +2879,7 @@ export function getOpenApiSpec() {
                   additionalProperties: false,
                   properties: {
                     enabled: { type: 'boolean' },
+                    dryRun: { type: 'boolean' },
                     eventType: { type: 'string' },
                     filter: { type: 'object' },
                     cronExpression: { type: 'string' },
@@ -2306,6 +2918,7 @@ export function getOpenApiSpec() {
           description:
             'Body { input?: object, mode?: "dry_run" }. Starts a server-side execution and returns it (RUNNING once Temporal accepted the start). A dry run reads live but captures every mutation instead of performing it; only tenant-runner automations support it (422 DRY_RUN_UNSUPPORTED otherwise). ' +
             'Limits on tenant-runner automations: 429 CONCURRENCY_LIMIT (5 queued/running) and 429 DAILY_QUOTA_EXCEEDED (resets at midnight UTC); dry runs count toward neither. ' +
+            'Event-triggered runs over the concurrency cap are delayed, not dropped: the event fires once a run finishes (an event still waiting after 24 hours is dropped). Over the daily quota, event-triggered runs are dropped. ' +
             '409 TENANT_MIGRATING (with Retry-After) while the platform moves the tenant’s automations to or from their own isolated Temporal namespace: new runs, dry runs included, are refused until in-flight runs finish (at most ~15 minutes); nothing was started, so retry. Event triggers lose nothing during a move; their events fire after it.',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
@@ -3088,6 +3701,177 @@ export function getOpenApiSpec() {
             mentionedUserIds: { type: 'array', items: { type: 'string' } },
             createdAt: { type: 'string', format: 'date-time' },
             deletedAt: { type: ['string', 'null'], format: 'date-time' },
+          },
+        },
+        LaborCrew: {
+          type: 'object',
+          description:
+            'A crew as the caller sees it — from their own list, their company list, or both. name/email/serviceAreas/packers are shared by every driver who added the number; nickname and myRating are private (null unless inMyList). averageRating is anonymous and null below 3 raters.',
+          required: ['phone', 'name', 'displayName', 'serviceAreas', 'packerCount'],
+          properties: {
+            phone: { type: 'string', description: 'E.164 — the crew’s identity' },
+            phoneDisplay: { type: 'string' },
+            name: { type: 'string' },
+            nickname: { type: ['string', 'null'] },
+            companyNickname: { type: ['string', 'null'], description: 'The company display name' },
+            displayName: { type: 'string', description: 'nickname ?? companyNickname ?? name' },
+            email: { type: ['string', 'null'] },
+            serviceAreas: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  city: { type: 'string' },
+                  region: { type: 'string' },
+                  country: { type: 'string', enum: ['US', 'CA'] },
+                  geocoded: { type: 'boolean' },
+                },
+              },
+            },
+            packerCount: { type: 'integer' },
+            myRating: {
+              type: ['object', 'null'],
+              properties: {
+                stars: { type: 'integer', minimum: 1, maximum: 5 },
+                comment: { type: ['string', 'null'] },
+                updatedAt: { type: 'string', format: 'date-time' },
+              },
+            },
+            averageRating: {
+              type: ['object', 'null'],
+              properties: { average: { type: 'number' }, count: { type: 'integer' } },
+            },
+            addedAt: { type: 'string', format: 'date-time' },
+            inMyList: { type: 'boolean' },
+            inCompanyList: { type: 'boolean' },
+            canRemoveFromCompany: {
+              type: 'boolean',
+              description: 'On the company list and the caller holds an Operations role',
+            },
+            distanceMiles: {
+              type: ['number', 'null'],
+              description: 'Only on a location search',
+            },
+          },
+        },
+        LaborCrewDetail: {
+          allOf: [
+            { $ref: '#/components/schemas/LaborCrew' },
+            {
+              type: 'object',
+              properties: {
+                packers: { type: 'array', items: { $ref: '#/components/schemas/LaborPacker' } },
+              },
+            },
+          ],
+        },
+        LaborPacker: {
+          type: 'object',
+          required: ['id', 'firstName', 'lastName'],
+          properties: {
+            id: { type: 'string' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            email: { type: ['string', 'null'] },
+            cidNumber: { type: ['string', 'null'] },
+            cidIssuedOn: { type: ['string', 'null'], format: 'date' },
+            phone: { type: ['string', 'null'] },
+            phoneDisplay: { type: ['string', 'null'] },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        LaborCrewMember: {
+          type: 'object',
+          description: "A packer on the caller's own My Crew.",
+          required: ['id', 'firstName', 'lastName', 'everyJob'],
+          properties: {
+            id: { type: 'string' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            email: { type: ['string', 'null'] },
+            cidNumber: { type: ['string', 'null'] },
+            cidIssuedOn: { type: ['string', 'null'], format: 'date' },
+            phone: { type: ['string', 'null'] },
+            phoneDisplay: { type: ['string', 'null'] },
+            everyJob: {
+              type: 'boolean',
+              description: 'Added to my labor activities whenever one of my trips is accepted',
+            },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        LaborActivity: {
+          type: 'object',
+          description: 'A legacy longhaul activity with the crews and packers that worked it.',
+          required: ['id', 'orderNum', 'editable', 'crews'],
+          properties: {
+            id: { type: 'integer' },
+            orderNum: { type: 'integer' },
+            typeCode: { type: ['string', 'null'] },
+            typeName: { type: ['string', 'null'] },
+            typeAbbreviation: { type: ['string', 'null'] },
+            plannedStart: { type: ['string', 'null'], format: 'date' },
+            estimatedDate: { type: ['string', 'null'], format: 'date' },
+            actualDate: { type: ['string', 'null'], format: 'date' },
+            editable: {
+              type: 'boolean',
+              description: "True when the caller is the activity's driver",
+            },
+            myCrew: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['id', 'firstName', 'lastName', 'everyJob', 'mine', 'selected'],
+                properties: {
+                  id: { type: 'string' },
+                  firstName: { type: 'string' },
+                  lastName: { type: 'string' },
+                  phoneDisplay: { type: ['string', 'null'] },
+                  everyJob: { type: 'boolean' },
+                  mine: {
+                    type: 'boolean',
+                    description: "In the caller's My Crew now — only these may be newly ticked",
+                  },
+                  selected: { type: 'boolean', description: 'Worked this activity' },
+                },
+              },
+            },
+            crews: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['phone', 'name', 'displayName', 'inMyBook', 'packers'],
+                properties: {
+                  phone: { type: 'string' },
+                  phoneDisplay: { type: 'string' },
+                  name: { type: 'string' },
+                  nickname: { type: ['string', 'null'], description: "The caller's private name" },
+                  displayName: { type: 'string' },
+                  inMyBook: { type: 'boolean' },
+                  inCompanyList: { type: 'boolean' },
+                  packers: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      required: ['id', 'firstName', 'lastName', 'selected'],
+                      properties: {
+                        id: { type: 'string' },
+                        firstName: { type: 'string' },
+                        lastName: { type: 'string' },
+                        phoneDisplay: { type: ['string', 'null'] },
+                        selected: { type: 'boolean' },
+                        removed: {
+                          type: 'boolean',
+                          description:
+                            'Removed from the crew since — listed only where they worked it, always selected, and kept by a PUT that omits them',
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
         ReportingDataset: {

@@ -146,12 +146,32 @@ export const TENANT_SCOPED_MODELS = new Set([
   // /availability-filters. Public filters are public WITHIN the tenant only,
   // which this scoping guarantees even if a visibility predicate is wrong.
   'AvailabilityFilter',
+  // ServicesFilter — the Operations → Services counterpart; same rules.
+  'ServicesFilter',
   // Move chat — rooms, messages and per-user member rows. All tenant-owned and
   // served only through the scoped client on /chat; the push fan-out resolves
   // recipients inside the same request, so nothing reads these cross-tenant.
   'ChatRoom',
   'ChatMessage',
   'ChatRoomMember',
+  // Labor on longhaul activities — keyed by the tenant's legacy activity id, so
+  // tenant-owned even though the crews and packers they point at are not.
+  // Served only through the scoped client on /labor; creates set tenantId.
+  'ActivityLaborCrew',
+  'ActivityLaborPacker',
+  // The company crew list — the tenant's grant to shared crews. Served only
+  // through the scoped client on /labor/company; creates set tenantId.
+  'CompanyCrewLink',
+  // A driver's own My Crew and the activities its members worked. Served
+  // through the scoped client on /labor/my-crew and by the trip-accepted
+  // auto-assign (handed the request's scoped client); creates set tenantId.
+  'DriverCrewMember',
+  'ActivityLaborMember',
+  // A crew link a driver shares with a crew leader. Minted and revoked through
+  // the scoped client on /labor; the PUBLIC crew-link endpoint uses the root
+  // `db` (it resolves the tenant FROM the presented token), like feedback.
+  // Its OTP/session/audit children carry no tenantId — they hang off the link.
+  'CrewAccessLink',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the

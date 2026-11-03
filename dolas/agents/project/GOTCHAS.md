@@ -2217,6 +2217,52 @@ cap the drain per tenant, and stop calling a tenant's executor once it is unreac
 **General rule:** any outbox whose "retry later" state never exhausts needs per-tenant fairness —
 a green cron with `sent: 0` is the tell.
 
+## A rate limit that stamps the outbox row is a silent drop
+
+**Symptom (prod 2026-10-28):** six inbound texts arrived in one sync. `nw_pulse_reply` ran for five.
+The sixth `sms.received` event showed `dispatched_at` set, with no execution and no alert.
+
+**Cause:** the trigger dispatcher treated `CONCURRENCY_LIMIT` (5 tenant-runner runs active) like a
+failed start: skip the run, stamp the event. That made the cap a hard limit on events per tick, not a
+delay. Any burst over 5 lost its tail.
+
+**Fix (`fix/trigger-concurrency-defer`):** the cap now returns `CAPPED` and the event stays
+undispatched (`CONCURRENCY_DEFERRED`). The park must not reintroduce the starvation above, so it
+uses both guards from that entry:
+
+- **Query-level exclusion.** `findTenantsAtRunnerConcurrencyCap` returns the tenants at the cap,
+  and the query leaves out their events younger than 24 h.
+- **A bound.** An event still capped after 24 h is stamped as dropped (`CONCURRENCY_DROPPED`,
+  error log). The bound sits under the 72 h purge of `messages.body`. The event's own payload copy
+  is safe while parked, because the purge only touches dispatched events.
+
+Query exclusion alone wasn't enough. A tenant one run _under_ the cap isn't excluded, so its 100
+oldest parked events filled the batch, one fired, and every other tenant waited that tick. The
+dispatcher also tripped the `pegasus-domain-event-dispatch-backlog` alarm. So a full pass that newly
+parks a tenant re-queries without it, up to 3 passes per tick. An in-tick set also keeps a burst to
+one rejected start. **General rule:** for each outbox skip
+reason, ask "is this _failed_ or _not yet_?" A stamp is only right for _failed_.
+
+## The concurrency cap is only correct with ONE trigger dispatcher
+
+`startWorkflowExecution` checks the 5-run TENANT_RUNNER cap by **counting** QUEUED/RUNNING runs,
+then inserts. Nothing reserves the slot, so two dispatchers running at once can each count 4,
+each start one, and leave the tenant at 6. While the dispatcher ran only on the 1-minute
+EventBridge rule this never came up. Once capture and finished runs started **kicking** it
+asynchronously (`lib/trigger-dispatch-kick.ts`), overlap became normal.
+
+The fix is `reservedConcurrentExecutions: 1` on `DispatchWorkflowTriggersFunction` (`api-stack.ts`).
+A kick that lands mid-tick is throttled, and Lambda's async retry redelivers it moments later.
+Its `EventInvokeConfig` (`retryAttempts: 0`, `maxEventAge: 60 s`) drops a kick that waited a whole
+minute: the next scheduled tick does the same work. **Don't remove the reservation** without
+first making the cap check atomic, for example with a reservation row or an advisory lock taken
+around the count and insert. The manual `POST /workflows/:id/run` path still has the old small
+race, which is unchanged.
+
+Also: **await** a fire-and-forget invoke on Lambda. An un-awaited promise is frozen when the handler
+returns, so the `InvokeCommand` may never be sent. Bound it with a timeout instead (the kick helper
+races a 2 s timer and aborts the SDK call).
+
 ## RingCentral FSync silently caps at 250 records
 
 **Symptom (prod 2026-09-25):** a tenant connected with a 90-day backfill window; exactly 250 messages
@@ -2974,6 +3020,44 @@ the local `audit-ci` run before enqueuing is.
 **version-update** run failed. If only `for <pkg>` security runs are red, the cause is the advisory,
 not the service — triage the alert (fix, or dismiss with a reason).
 
+### Addendum 2026-10-23: a TRANSITIVE-only vulnerable package can never be fixed by these jobs
+
+The entry above says a red security run means "triage the alert". This is _which_ triage, and why it
+is always manual here. Dependabot's security job definition on this repo reads
+`"allowed-updates":[{"dependency-type":"direct","update-type":"all"}]` with
+`"update-subdependencies":false` — and `.github/dependabot.yml` has **no `allow:` key at all**, so
+that is GitHub's default for security updates, not a local choice. Consequence: if the vulnerable
+copy is not reachable from a _direct_ manifest edge, the job cannot fix it, and it fails in one of
+two shapes seen the same day on #883:
+
+- **`security_update_not_possible`** — the package is exact-pinned by an ancestor. `@vitest/mocker`
+  was pinned by `vitest@4.1.11`, which was itself held by `@vitest/coverage-v8@4.1.11`'s **exact
+  peer** `vitest@4.1.11`. A two-level chain; neither link can move alone. The log's
+  `conflicting-dependencies` pointed `@vitest/mocker` at **itself** with `top_level_ancestors: []`,
+  so the log names the symptom and not the cause — do not expect it to name the ancestor.
+- **`NoChangeError: No files were updated!`** — there is no direct edge at all. The vulnerable `hono`
+  was the **root** copy, which existed only to satisfy the hoisted `@hono/*` peers; the one direct
+  edge (`apps/api`, `^4.13.13`) was already patched in its own nested copy. The job found nothing to
+  edit and crashed.
+
+**Two things that follow, both of which cost time on 2026-10-22:**
+
+1. **An override that PERMITS the patched version cannot be the blocker.** Check that before
+   suspecting your own `overrides` block your own security fixes — it is one `semver.satisfies`
+   call. `hono`'s `>=4.13.3 <5` already allowed the patched 4.13.11+, and `vite`'s `>=8.3.3 <9`
+   already satisfied `@vitest/mocker@4.1.12`'s peer `^6||^7||^8`. Both were exonerated by arithmetic
+   before any install ran. A whole re-diagnosis was built on the opposite assumption and was wrong.
+2. **A range that permits a fix is not a floor that pulls it.** `vitest` was declared `^4.1.11` in
+   14 manifests, which already allows 4.1.12, which is exactly why `npm update vitest` reported
+   "up to date" and changed nothing. Raising the declared floors is what moves the tree _and_ what
+   makes it durable against the next `npm install`.
+
+**And nothing in CI will escalate any of this.** The `audit-ci` gate is `"high": true`, all three npm
+alerts were **medium**, and the fourth was **pip** (`certifi`), which the npm gate does not see. The
+daily audit stayed green while four alerts sat open. They are visible only via
+`gh api repos/DolasDev/pegasus/dependabot/alerts?state=open` — worth running by hand periodically,
+because no job does it for you.
+
 ## NW's own database already runs a Weichert integration over the fields `update_order` writes
 
 `update_order` (`PATCH /api/v1/pegii/orders/:id`, SDK 0.49.0) writes `Survey.SerivceStatus` →
@@ -3383,3 +3467,164 @@ The scheduled day is `COALESCE(estimated_date, planned_start)`, the same fallbac
 the Gantt's ArrivalWindowField uses. It is a point date, so it does not bring back
 the overlap trap in #619/#622 (an inverted `planned_end`). Any new activity-level
 query that filters or sorts "by date" should use this coalesce.
+
+## Porting a tenant-web hook to `apps/mobile`: `document` guards never pause, and `/me/permissions` has no envelope
+
+Two traps hit while porting move chat (Phase 3) from tenant-web to the driver app,
+and neither shows up in jest — Node 24 has a global `crypto.randomUUID`, Hermes
+doesn't, and jest never runs a real background transition:
+
+- **`document.hidden` / `visibilitychange` have no RN equivalent.** A guard like
+  `typeof document !== 'undefined' && document.hidden` doesn't crash on a phone; it
+  is just always false, so a 3 s poll keeps running while the app is backgrounded.
+  Use `AppState.currentState === 'active'` and `AppState.addEventListener('change')`
+  (see `apps/mobile/src/chat/useChatThread.ts`). Likewise use `expo-crypto`'s
+  `randomUUID()`, never the global (the #542 outage).
+- **`GET /api/v1/me/permissions` returns a bare object**, not `{ data }`. The
+  shared `@pegasus/api-http` client returns `json.data`, so the mobile app reads it
+  as `undefined` without an error. The driver app gets its TenantUser id from
+  `GET /api/v1/me/driver` (`userId`, added for chat) instead.
+
+## `SKIP_AUTH`'s `userId` (`skip-auth-user`) has no `TenantUser` row
+
+`middleware/skip-auth.ts` sets `userId = 'skip-auth-user'` and hands out the
+**base** client, but nothing seeds a `TenantUser` with that id. A route that
+writes a row with an FK to `tenant_users` (labor's `CrewLink`, chat's member
+rows) therefore 500s on a foreign-key violation under SKIP_AUTH, including in the
+local e2e API mode. Exercise such routes in the API's Vitest integration suite
+(real router + `createTenantDb` + real TenantUser rows), not in a `@local-only`
+Playwright spec. The alternative is to seed that user in e2e global setup first.
+
+## A failed Prisma migration rolls back whole — data migrations included
+
+A `migration.sql` is sent as one multi-statement query, so Postgres runs it in
+one implicit transaction. When the geo data migration (`*_geo_places_data`) hit
+a duplicate key halfway (GeoNames lists some Canadian FSAs twice), **nothing**
+was left behind, and `prisma migrate resolve --rolled-back` said it had "never
+been applied". Fix the generator, regenerate, and run `migrate dev` again. There
+are no partial rows to clean up.
+
+## `@pegasus/domain` resolves to a gitignored `dist/` — mobile aliases it to source
+
+`packages/theme` and `packages/api-http` point `main` at `src/index.ts`, but
+`packages/domain`'s `main` is `./dist/index.js`, its `tsc` output, which is
+gitignored. On a dev machine `dist/` usually exists (a turbo build made it), so
+importing `@pegasus/domain` from the Expo app bundles fine locally and then
+fails on an EAS build machine, where nothing builds it. The Labor module is the
+first mobile code to import domain, so `apps/mobile/metro.config.js` maps
+`@pegasus/domain` to `packages/domain/src/index.ts` in `resolveRequest`, for
+every platform. That mirrors the `moduleNameMapper` in `jest.config.js`. To
+prove resolution, **move `packages/domain/dist` aside and run
+`npx expo export --platform android`**; a passing bundle with `dist/` present
+proves nothing.
+
+## A local dispatch job's `services` is a concatenation, and the tenant DBs have no `STRING_SPLIT`
+
+`LocalDispatchJobs.services` is space-separated act codes, but repeats are MIRRORED
+(`PACK R19I R19I PACK`, `RDEL SITOUT RDEL`) — it is two lists joined, not a count, so de-duplicate
+per job. Hand-typed codes outside movemanager's generator exist (QMM: `WHSE` on 283 jobs in 90 days,
+`MILE`, `MEET`). The job's own location columns are ~never filled (NW 7 %, QMM/RVS 0 %), so the
+place has to come from `sales`. There is **no actual date on a job**: `is_final = 'Y'` is what fires
+`TriggerLocalDispatchUpdate` to stamp `sales.*_actual = service_date` for every token in the
+string — so never set `is_final` to complete ONE act. And `STRING_SPLIT` fails with
+`Invalid object name` on NW, QMM and RVS (compatibility level < 130): split in JS. Prod check
+2026-10-25, re-runnable per tenant with `scripts/probe-local-dispatch-jobs.ts`.
+
+## Two driver read scopes: ORDER reads admit local jobs, TRIP reads stay longhaul-only
+
+`apps/api/src/lib/longhaul-read-scope.ts` has two resolvers. `resolveLonghaulReadScope` (one
+longhaul id) scopes the TRIP reads — trips list/detail, driver planning, rejected trips, the
+activities list — so a local-only driver gets `none` there: a local job has no trip. Since 2026-11,
+`resolveOrderReadScope` (both ids, each nullable) scopes the ORDER reads behind the mobile shipment
+screen — `/onprem/longhaul/shipments` (EXISTS on a longhaul activity, OR the order-assigned rule
+`orderAssignedTo` from `lib/itinerary/order-assigned.ts`, OR an active `LocalDispatchJobs` row) and labor `GET /orders/:orderNum/activities` (local-only ⇒ `[]`). A new order-level read must
+use the order scope or a local item's shipment screen breaks; a new trip read must NOT. Two traps:
+a `null` longhaul id compared with `activityOwnerDriverId()` (also `null` for an unowned activity)
+matches — guard it; and an empty predicate list must become `1 = 0`, never "no filter". Mobile
+`useTrips().driverId` is still the longhaul id only (`localDriverId` beside it), so "no driver
+linked" for the itinerary comes from its own 403 `DRIVER_NOT_MAPPED`.
+
+## RingCentral 400s are not all "stale sync token" — and a green deploy is not a fired event
+
+`sms.received` shipped (#730) and deployed green, yet prod had **zero** of them for a month. v1
+`message-sync` ISync was sent with `messageType=SMS`. RingCentral rejects any filter on ISync
+(`400 InvalidParameter / CMN-101`, `parameterName: "messageType"`), and `isSyncTokenInvalid` treated
+every 400 as a stale token. So every run silently fell back to FSync, which by design never emits
+(and re-armed a 90-day backfill each time). Unit tests mocked RC, so the contract error was invisible.
+Now: ISync carries only `syncType` + `syncToken`, non-SMS records are dropped in code, and only a 400
+naming `syncToken` (or naming nothing) counts as stale. Related RC facts, both probed on prod 2026-10-28:
+
+- Webhook `deliveryMode.verificationToken` must be **≤ 32 chars**. 48 is rejected with CMN-101, and
+  RC's OpenAPI spec documents no limit. The renew cron had failed every hour since go-live, so no
+  subscription existed and capture ran only on the 15-min sync.
+- Message Threads can be turned off per extension: `403 CMN-428`. A subscription that includes the
+  threads filter is still created, but RC silently drops that filter.
+- The RC Lambdas log to **custom-named** groups (`pegasus-prod-api-RingCentralSyncLogGroup…`), not
+  `/aws/lambda/<fn>`. Read `LoggingConfig.LogGroup` from `get-function-configuration`.
+
+Verify a new event type by **counting rows in `domain_events`** on prod, not by the deploy going green.
+
+## The offline harness and the tenant runner must give activities the same context
+
+`pegasus_workflows.testing.run_activity` runs an activity inside Temporal's `ActivityEnvironment`.
+The tenant runner's subprocess driver called the activity bare. So `activity.info()` passed every
+test, then raised `RuntimeError: Not in activity context` on the first dry run (external authoring
+feedback, 2026-10-28). The driver now uses the same `ActivityEnvironment`
+(`subprocess_driver._activity_environment`), with the same synthetic ids as its `workflow.info()`
+stand-in. Whenever the driver patches or stubs a Temporal primitive, the harness has to match it, or
+a green test means nothing about the runner.
+
+## Every published version is its own workflow row — count the current one
+
+`listForTenant` returns every non-retired `(name, version)` row, GLOBAL included. Anything that sums
+across them (the requirements summary, the Configs page "keys still needed") reports what a
+**superseded** version declared: NW saw weichert v0.4.0's `SEND_*` secrets as missing long after
+v0.5.0 dropped them. Use `lib/workflow-current-version.ts`. A row is current if it is the newest
+semver of its `(owner tenant, name)`, or if one of the caller's enabled triggers still runs it.
+
+## "Office" is `branches.branch_id`, and a local job has TWO of them
+
+The legacy schema DOES have an office dimension. #688 shipped a disabled Office
+placeholder on a "no branch anywhere" claim that was never checked against a
+live DB. `v_longhaul_shipments_v2.branch` is `sales.branch`, the order's managing
+branch: nvarchar(2), filled on all but 41 of about 199k NW orders. Every tenant
+has a `branches` table (`branch_id`, `branch_name`, `branch_active`; names are
+space-padded on NW/RVS; NW `09` is inactive).
+
+`LocalDispatchJobs` carries `managing_branch_id` AND `service_branch_id`. They
+differ on about half the jobs (NW 1,132 of 2,093; QMM 1,184 of 2,096 over 90
+days). The Services board matches local jobs on the SERVICE branch, which is
+what legacy Local Dispatch filters on, and longhaul activities on the order's
+branch, which is what the legacy CPnD Sales browse filters on. NW's
+`service_branch_id` is nvarchar(3) where QMM/RVS have (2). The bound-string
+`IN` works because MSSQL ignores trailing spaces, but a JS `===` against it
+would not.
+
+Before calling a legacy dimension absent, query `INFORMATION_SCHEMA.COLUMNS`
+on a prod tenant through the MssqlExecutor (the recipe is in
+`scripts/verify-longhaul-view-columns.ts`). Grepping this repo is not enough:
+the views are provisioned from movemanager.
+
+## A local job's times are never NULL — midnight is "not set", and there are two windows
+
+Every `LocalDispatchJobs` time column is a `datetime2` on `1900-01-01`, and an unset one is stored as
+**`00:00`**, not NULL: `eta_minimum = 00:00` with `eta_maximum = 00:00 + eta_win_minutes` means "no
+ETA" (NW 195/1952 jobs, QMM 523/1407, RVS 3/686 in −90..+30 days; no ETA anywhere falls 1–5 am).
+Reading it as a time shows drivers "Arrive 00:00 – 01:00". A job also carries TWO windows
+(movemanager `LocalDispatchJobMaster.vb` Schedule): the dispatcher **ETA** (`eta_minimum` →
+`eta_maximum`, emailed to the customer as "Arrival Time") and the crew **job window** (`start_time`
+→ `end_time` = start + `minutes`, a single time on almost every job). The itinerary uses the ETA when
+set and the job window otherwise (`lib/itinerary/local-job-tokens.ts` `localArrivalWindow`).
+
+## `sales.driver_id` is a longhaul id, a crew-id COPY, or nothing — the name says which
+
+QMM and RVS never write `LongDistanceDispatchActivity`; for QMM the order's own `sales.driver_id`
+is the ONLY record of the longhaul driver (1,229 of 1,505 orders with one, −180..+60 days). But
+`TriggerLocalDispatchUpdate` copies a confirmed local job's `driver_id1` (CREW space) into that same
+column, and ids collide across the two spaces (NW: 3,127 of 3,471 valid in both). The itinerary's
+order-assigned source (`lib/itinerary/order-assigned.ts`) therefore reads it only when the order has
+no activity rows, it is not a local job's driver on the order, AND `sales.driver_name`
+(`LAST, FIRST # phone`) matches that id's `v_longhaul_drivers` name (`LAST, FIRST` / `LAST, FIRST
+(id)`), compared upper-case without spaces. The view's `driver_name` / `driver_id` are sales' own
+(checked: 420/420 QMM, 964/964 NW). QMM's id 66666 is "Tor Crew, Local Toronto" — a crew-pool
+pseudo-driver, not a person. Full audit: `plans/completed/af79576b-order-assigned-source.md`.

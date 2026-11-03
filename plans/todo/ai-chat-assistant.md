@@ -6,17 +6,22 @@
 > assistant code, no infrastructure, no AWS account provisioning. The only thing on
 > `main` is Phase 0's eval scaffold, which nothing imports at runtime.
 >
-> **Why paused, not abandoned:** nothing here failed. Phase 1 needs two inputs that
-> did not arrive — the ops admin's eval set (still the three placeholder cases, five
-> weeks on) and the AWS Lambda quota increase. Both are other people's clocks.
+> **Why paused, not abandoned:** nothing here failed. Phase 1 needs an input that did
+> not arrive: the ops admin's eval set (still the three placeholder cases, five weeks
+> on). That's someone else's clock.
+>
+> **CORRECTION 2026-10-30: the Lambda quota was never a blocker.** Both AWS accounts
+> (prod `331145994639`, staging `248812875460`) were raised to **1,000** concurrent
+> executions on **2026-05-29**. Service Quotas history shows both requests approved and
+> CASE_CLOSED within 47 minutes. `get-account-settings` on 2026-10-30 shows 1,000 total,
+> all unreserved. The 2026-09-18 "both accounts are at 10" below was taken from a stale
+> note, not checked live. The struck-through quota items are kept below as history.
 >
 > **To resume, in this order:**
 >
-> 1. **Request the Lambda concurrency increase.** Multi-day lead time, and it now
->    gates writing the infra at all — see "Infrastructure" below. Start it first,
->    regardless of anything else.
-> 2. **Get the eval set authored** (Phase 0 step 4). Gates Phase 1's prompt work,
->    independent of (1), so the two can run in parallel.
+> 1. ~~**Request the Lambda concurrency increase.**~~ Done since 2026-05-29 (see the
+>    correction above). Reserved concurrency is settable now.
+> 2. **Get the eval set authored** (Phase 0 step 4). Gates Phase 1's prompt work.
 > 3. **Answer the three infra unknowns** in "Infrastructure" before writing CDK.
 > 4. Then Phase 1.
 >
@@ -109,6 +114,10 @@ mode**, bypassing API Gateway entirely. 15-minute ceiling, real token streaming.
 >
 > **CORRECTION (2026-09-18): the last sentence is wrong — it gates phase 1's infra.** See
 > below.
+>
+> **CORRECTION (2026-10-30): the whole callout is moot.** Both accounts have been at 1,000
+> since 2026-05-29, so there is no limit-increase request to open. Setting **reserved
+> concurrency** on the assistant function still stands, and is possible now. See section 1.
 
 ---
 
@@ -119,9 +128,18 @@ Verified 2026-09-18 against `packages/infra`: **zero** hits for bedrock, anthrop
 "Critical files" bullet about `api-stack.ts`. Per this repo's own rule — a feature is not shipped
 until it is wired into CDK — the LLM backend does not exist in any form.
 
-Four things were established after the plan was written. The first two are blocking.
+Four things were established after the plan was written. As of 2026-10-30 only the second is
+blocking. The first was based on a stale quota figure; see its correction.
 
-### 1. Reserved concurrency CANNOT be set at the current quota — this is now a phase-1 blocker
+### 1. ~~Reserved concurrency CANNOT be set at the current quota — this is now a phase-1 blocker~~ RESOLVED: the quota is 1,000
+
+> **CORRECTION (2026-10-30).** The premise below was wrong when it was written. Both accounts
+> were raised to **1,000** on 2026-05-29 (Service Quotas request `L-B99A9384`, CASE_CLOSED), so
+> on 2026-09-18 they were already at 1,000, not 10. The AWS rule itself is right: reservations
+> may total at most *unreserved minus 100*. At 1,000 that allows up to **900**, so
+> `reservedConcurrentExecutions` on the assistant function is settable, and the
+> no-starvation protection is available from phase 1. Size the reservation in phase 1 (for
+> example 50) and leave the rest for the platform. The original text follows as history.
 
 AWS only permits reserving up to **unreserved account concurrency minus 100**; the last 100 units
 must stay unreserved. Both accounts are capped at **10**, so the reservable amount is negative:
@@ -329,7 +347,7 @@ Four panes:
 ## Phase 3 — GA
 
 - Grant `UseAssistant` across the remaining personas in `authz/policies/30-personas/`.
-- **Confirm the concurrency increase landed** and reserved concurrency is set. Blocking.
+- ~~**Confirm the concurrency increase landed**~~ (at 1,000 since 2026-05-29). **Confirm reserved concurrency is set** on the assistant function. Blocking.
 - Per-tenant monthly token budget + a kill switch (an env-gated `ASSISTANT_ENABLED`, following
   `INTEGRATION_CONFIG_PUBLISH_ENABLED` in `apps/api/src/lib/integration-config-feature.ts`).
 - CloudWatch dashboard: turns/day, p50 and p95 latency, tool-call error rate, spend/tenant.
@@ -347,7 +365,8 @@ is concentrated in the slow, expensive parts and is near-zero in the visible one
 **Carries over (the long-lead items):** Claude Platform on AWS workspace + Marketplace billing
 (one-time, account-level); the SigV4-from-execution-role credential model — same grant shape for a
 Temporal worker task role as for a Lambda; the `InferenceProvider` seam (model ids, region,
-retries, throttling, token accounting); the Lambda quota increase. Most of the pain, done once.
+retries, throttling, token accounting). (The Lambda quota increase was listed here; it was already
+at 1,000 since 2026-05-29.) Most of the pain, done once.
 
 **Does NOT carry over:**
 
@@ -435,11 +454,11 @@ helper), `packages/api-http/src/index.ts` (add `streamFetch`), `packages/infra/l
 
 Ordered by what unblocks what. The first three are the resume checklist from the header.
 
-- [ ] **AWS Lambda concurrency limit increase.** ~~Gates phase 3.~~ **Gates writing the infra at
-      all** — reserved concurrency is unsettable at a quota of 10. Multi-day lead time, so it is
-      the long pole and nothing else waits on it. Target ≥ 500.
+- [x] ~~**AWS Lambda concurrency limit increase.**~~ Done 2026-05-29: both accounts are at 1,000,
+      CASE_CLOSED (found on 2026-10-30). The "unsettable at a quota of 10" reasoning was based on a
+      stale figure.
 - [ ] **The eval set** (Phase 0 step 4) — still three placeholder cases. Gates phase 1's prompt
-      work. Independent of the quota item; both can run at once.
+      work.
 - [ ] **Decide the Function URL exposure** (`authType: NONE`, public, outside API Gateway).
 - [ ] Claude Platform on AWS workspace provisioning + Marketplace billing — **and then observe the
       real IAM action/resource names** before writing the grant.

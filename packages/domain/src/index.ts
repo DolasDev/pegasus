@@ -24,6 +24,9 @@ export {
   dateRangesOverlap,
 } from './shared/types'
 
+// Semver precedence (workflow versions)
+export { compareSemver } from './shared/semver'
+
 // Domain errors
 export { DomainError } from './shared/errors'
 
@@ -253,3 +256,53 @@ export {
   splitMentions,
   formatMentionToken,
 } from './chat/index'
+
+// Labor context (driver-private cash-labor crews)
+export type {
+  CrewInput,
+  NormalizedCrew,
+  PackerInput,
+  NormalizedPacker,
+  NormalizedRating,
+  LaborCountry,
+  ServiceAreaInput,
+  NormalizedServiceArea,
+  LocationQuery,
+  GeoPoint,
+  RankableCrew,
+  ExportCrew,
+  ExportPacker,
+  ActivityLaborCrewInput,
+  NormalizedActivityLaborCrew,
+} from './labor/index'
+export {
+  normalizePhoneNumber,
+  formatPhoneNumber,
+  foldKey,
+  MAX_CREW_NAME_LENGTH,
+  MAX_NICKNAME_LENGTH,
+  validateCrew,
+  normalizeNickname,
+  validatePacker,
+  MAX_RATING_COMMENT_LENGTH,
+  MIN_RATERS_FOR_AVERAGE,
+  validateRating,
+  aggregateRating,
+  US_STATES,
+  CA_PROVINCES,
+  countryOfRegion,
+  MAX_SERVICE_AREAS,
+  validateServiceAreas,
+  MAX_ACTIVITY_CREWS,
+  validateActivityLabor,
+  MAX_CREW_MEMBERS,
+  LABOR_ACTIVITY_TYPE_CODES,
+  isLaborActivityType,
+  isTripConfirmTransition,
+  validateActivityMembers,
+  parseLocationQuery,
+  rankCrewsByDistance,
+  crewsToVCard,
+  GOOGLE_CONTACTS_CSV_HEADERS,
+  crewsToGoogleContactsCsv,
+} from './labor/index'

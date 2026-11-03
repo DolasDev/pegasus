@@ -62,6 +62,8 @@ import {
   ROUTED_STATUSES,
 } from '../repositories/tenant-temporal-namespace.repository'
 import { logger } from '../lib/logger'
+import { kickTriggerDispatcher } from '../lib/trigger-dispatch-kick'
+import { resolveWorkflowRoute } from '../lib/workflow-route'
 import type { AppEnv, WorkflowBrokerAuth } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -163,6 +165,28 @@ function deniedForTenant(auth: WorkflowBrokerAuth | undefined, executionTenantId
   // treat an impossible-missing value as a denial, never as shared access.
   if (!auth) return true
   return auth.kind === 'tenant' && auth.tenantId !== executionTenantId
+}
+
+/**
+ * A finished TENANT_RUNNER run frees one of its tenant's concurrency-cap
+ * slots. When the tenant has an event waiting (parked behind the cap, or just
+ * not yet ticked), kick the trigger dispatcher so it fires now rather than at
+ * the next minute. Awaited — an un-awaited invoke is frozen when the Lambda
+ * returns — but bounded and never throws, so the PATCH answers regardless.
+ */
+async function kickIfEventsWaiting(tenantId: string): Promise<void> {
+  try {
+    const waiting = await basePrisma.domainEvent.findFirst({
+      where: { tenantId, dispatchedAt: null },
+      select: { id: true },
+    })
+    if (waiting) await kickTriggerDispatcher('run_finished')
+  } catch (err) {
+    logger.warn('broker.patch.dispatch_kick_lookup_failed', {
+      tenantId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -290,7 +314,14 @@ workflowInternalHandler.patch(
 
     const existing = await basePrisma.workflowExecution.findUnique({
       where: { id: executionId },
-      select: { id: true, tenantId: true, status: true, finishedAt: true },
+      select: {
+        id: true,
+        tenantId: true,
+        status: true,
+        finishedAt: true,
+        // Route of the run — a finished TENANT_RUNNER run kicks the dispatcher.
+        workflow: { select: { name: true, executable: true } },
+      },
     })
     if (!existing) {
       return c.json({ error: 'execution not found', code: 'NOT_FOUND' }, 404)
@@ -400,6 +431,9 @@ workflowInternalHandler.patch(
         tenantId: existing.tenantId,
         status: toStatus,
       })
+      if (resolveWorkflowRoute(existing.workflow) === 'TENANT_RUNNER') {
+        await kickIfEventsWaiting(existing.tenantId)
+      }
     }
 
     return c.json({ data: updated })

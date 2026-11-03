@@ -37,7 +37,6 @@ export async function resolveTaskGateway(
   return createPegiiTaskGateway({
     tenantId,
     baseUrl: resolved.target.base,
-    apiKey: resolved.target.apiKey,
     ...(callerOf ? { caller: await callerOf() } : {}),
   })
 }

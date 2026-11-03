@@ -47,6 +47,8 @@ const {
   mockDecryptRuntimeToken,
   mockPresignDownload,
   mockTemporalNsRepo,
+  mockDomainEventFindFirst,
+  mockKickTriggerDispatcher,
 } = vi.hoisted(() => ({
   mockExecutionFindUnique: vi.fn(),
   mockWorkflowFindUnique: vi.fn(),
@@ -63,6 +65,8 @@ const {
     findByTenant: vi.fn(),
     getDecryptedKey: vi.fn(),
   },
+  mockDomainEventFindFirst: vi.fn(),
+  mockKickTriggerDispatcher: vi.fn(),
 }))
 
 vi.mock('../db', () => ({
@@ -70,7 +74,12 @@ vi.mock('../db', () => ({
     workflowExecution: { findUnique: mockExecutionFindUnique },
     workflow: { findUnique: mockWorkflowFindUnique, findMany: mockWorkflowFindMany },
     tenantBrokerCredential: { findUnique: mockCredentialFindUnique },
+    domainEvent: { findFirst: mockDomainEventFindFirst },
   } as unknown as PrismaClient,
+}))
+
+vi.mock('../lib/trigger-dispatch-kick', () => ({
+  kickTriggerDispatcher: mockKickTriggerDispatcher,
 }))
 
 vi.mock('../lib/runtime-token-crypto', () => ({
@@ -226,6 +235,8 @@ describe('workflow-internal handler', () => {
       workflowId: 'wf-1',
       status,
       finishedAt: null,
+      // Not runner-routed, so these PATCHes never kick the trigger dispatcher.
+      workflow: { name: 'legacy_wf', executable: false },
     })
 
     beforeEach(() => {
@@ -541,6 +552,7 @@ describe('workflow-internal handler', () => {
       tenantId: 't1',
       status: 'QUEUED' as const,
       finishedAt: null,
+      workflow: { name: 'legacy_wf', executable: false },
     }
 
     it('returns 404 when the row is missing', async () => {
@@ -684,6 +696,79 @@ describe('workflow-internal handler', () => {
         withSecret(BROKER_SECRET, { status: 'FAILED', errorMessage: 'never started' }, 'PATCH'),
       )
       expect(res.status).toBe(200)
+    })
+
+    // A finished TENANT_RUNNER run frees a concurrency-cap slot: kick the
+    // trigger dispatcher so an event parked behind the cap fires now.
+    describe('trigger dispatcher kick on a finished run', () => {
+      const runnerRow = {
+        ...baseRow,
+        status: 'RUNNING' as const,
+        workflow: { name: 'nw_pulse_reply', executable: true },
+      }
+      const finish = () =>
+        buildApp().request(
+          `/workflow-executions/${VALID_EXECUTION_ID}`,
+          withSecret(BROKER_SECRET, { status: 'COMPLETED' }, 'PATCH'),
+        )
+
+      beforeEach(() => {
+        mockExecRepo.markTerminal.mockResolvedValue({ ...runnerRow, status: 'COMPLETED' })
+        mockKickTriggerDispatcher.mockResolvedValue(true)
+      })
+
+      it('kicks when the tenant has an undispatched event', async () => {
+        mockExecutionFindUnique.mockResolvedValue(runnerRow)
+        mockDomainEventFindFirst.mockResolvedValue({ id: 'evt-1' })
+        const res = await finish()
+        expect(res.status).toBe(200)
+        expect(mockDomainEventFindFirst).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { tenantId: 't1', dispatchedAt: null } }),
+        )
+        // An event waiting behind a namespace migration also matches — a
+        // harmless kick: the kicked tick excludes migrating tenants itself.
+        expect(mockKickTriggerDispatcher).toHaveBeenCalledWith('run_finished')
+      })
+
+      it('does not kick when nothing is waiting', async () => {
+        mockExecutionFindUnique.mockResolvedValue(runnerRow)
+        mockDomainEventFindFirst.mockResolvedValue(null)
+        expect((await finish()).status).toBe(200)
+        expect(mockKickTriggerDispatcher).not.toHaveBeenCalled()
+      })
+
+      it('does not kick for a curated (STDLIB) run, which never holds a cap slot', async () => {
+        mockExecutionFindUnique.mockResolvedValue({
+          ...runnerRow,
+          workflow: { name: 'send_quote_followup', executable: true },
+        })
+        mockDomainEventFindFirst.mockResolvedValue({ id: 'evt-1' })
+        expect((await finish()).status).toBe(200)
+        expect(mockDomainEventFindFirst).not.toHaveBeenCalled()
+        expect(mockKickTriggerDispatcher).not.toHaveBeenCalled()
+      })
+
+      it('does not kick on a RUNNING transition', async () => {
+        mockExecutionFindUnique.mockResolvedValue({ ...runnerRow, status: 'QUEUED' })
+        mockExecRepo.markStarted.mockResolvedValue({ ...runnerRow })
+        const res = await buildApp().request(
+          `/workflow-executions/${VALID_EXECUTION_ID}`,
+          withSecret(
+            BROKER_SECRET,
+            { status: 'RUNNING', temporalWorkflowId: 'wf/x', temporalRunId: 'r1' },
+            'PATCH',
+          ),
+        )
+        expect(res.status).toBe(200)
+        expect(mockKickTriggerDispatcher).not.toHaveBeenCalled()
+      })
+
+      it('a failed waiting-events lookup still answers 200 and skips the kick', async () => {
+        mockExecutionFindUnique.mockResolvedValue(runnerRow)
+        mockDomainEventFindFirst.mockRejectedValue(new Error('db hiccup'))
+        expect((await finish()).status).toBe(200)
+        expect(mockKickTriggerDispatcher).not.toHaveBeenCalled()
+      })
     })
   })
 

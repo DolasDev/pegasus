@@ -12,6 +12,11 @@ Merges both planes in one call:
 * integrations — ``GET /api/v1/integrations/requirements-summary``
   (``ReadIntegrationConfig``)
 
+Only each Automation's CURRENT version counts by default — its newest version,
+or an older one an enabled trigger still runs (the API's ``current`` flag). A
+superseded version's manifest may declare keys nothing reads any more; pass
+``--all-versions`` to list every published version anyway.
+
 Presence only: a value is never returned by either endpoint. Provision what is
 missing with ``pegasus-workflows secrets set`` / ``config set``.
 
@@ -34,7 +39,9 @@ from ._auth import base_url_option, profile_option, resolve_credentials, token_o
 __all__ = ["requirements_command"]
 
 
-def _rows(client: PegasusClient) -> tuple[list[dict[str, Any]], list[str]]:
+def _rows(
+    client: PegasusClient, *, all_versions: bool = False
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Collect (consumer, requirement) rows from both planes.
 
     Returns the flattened rows plus a list of human-readable notes for any plane
@@ -49,11 +56,17 @@ def _rows(client: PegasusClient) -> tuple[list[dict[str, Any]], list[str]]:
     try:
         summary = client.requirements_summary()
         for workflow in summary.get("workflows", []):
+            # `current` is absent from an API that predates it: count the row.
+            if not all_versions and workflow.get("current") is False:
+                continue
+            consumer = workflow.get("name")
+            if all_versions:
+                consumer = f"{consumer}@{workflow.get('version')}"
             for requirement in workflow.get("requirements", []):
                 rows.append(
                     {
                         **requirement,
-                        "consumer": workflow.get("name"),
+                        "consumer": consumer,
                         "consumerKind": "workflow",
                     }
                 )
@@ -83,6 +96,15 @@ def requirements_command(
         "--missing-only",
         help="Show only keys that are declared but NOT set — what is left to provision.",
     ),
+    all_versions: bool = typer.Option(
+        False,
+        "--all-versions",
+        help=(
+            "Include superseded Automation versions (consumer shown as name@version). "
+            "By default only each Automation's current version counts: its newest, or "
+            "an older one an enabled trigger still runs."
+        ),
+    ),
     as_json: bool = typer.Option(False, "--json", help="Emit the merged rows as JSON."),
     token: str = token_option(),
     base_url: str = base_url_option(),
@@ -92,7 +114,7 @@ def requirements_command(
     token, base_url = resolve_credentials(token, base_url, profile)
     client = PegasusClient(base_url=base_url, token=token)
 
-    rows, unreadable = _rows(client)
+    rows, unreadable = _rows(client, all_versions=all_versions)
 
     # Both planes failed: there is no answer to print, so fail rather than
     # report an empty — and reassuring — result.

@@ -105,20 +105,34 @@ meHandler.get('/permissions', async (c) => {
 // driver mapping. Scoped to the calling user via c.get('userId'); cross-user
 // disclosure is structurally impossible. Returns null for service accounts /
 // M2M principals (no TenantUser row resolved).
+//
+// `localDriverEmployeeId` is the caller's local crew id (`crews` numbering
+// space, never compared with the longhaul id): a login with only that id is
+// still a driver to the app (My Itinerary).
+//
+// `userId` is the caller's TenantUser id, so the driver app can tell which
+// chat messages are its own. (/permissions carries it too, but outside the
+// `{ data }` envelope the app's API client unwraps.)
 meHandler.get('/driver', async (c) => {
   const db = c.get('db')
   const userId = c.get('userId')
 
   if (!userId) {
-    return c.json({ data: { longhaulDriverId: null } })
+    return c.json({ data: { longhaulDriverId: null, localDriverEmployeeId: null, userId: null } })
   }
 
   const user = await db.tenantUser.findUnique({
     where: { id: userId },
-    select: { longhaulDriverId: true },
+    select: { longhaulDriverId: true, localDriverEmployeeId: true },
   })
 
-  return c.json({ data: { longhaulDriverId: user?.longhaulDriverId ?? null } })
+  return c.json({
+    data: {
+      longhaulDriverId: user?.longhaulDriverId ?? null,
+      localDriverEmployeeId: user?.localDriverEmployeeId ?? null,
+      userId,
+    },
+  })
 })
 
 // ---------------------------------------------------------------------------

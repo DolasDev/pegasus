@@ -26,11 +26,13 @@ class _FakeClient:
 
     def create_trigger(self, workflow_id, *, kind, cron_expression=None, **_kw):  # noqa: ANN001
         _FakeClient.last["create"] = (workflow_id, kind, cron_expression, _kw.get("enabled"))
+        _FakeClient.last["create_dry_run"] = _kw.get("dry_run")
         return {
             "id": "trg-9",
             "kind": kind,
             "cronExpression": cron_expression,
             "enabled": _kw.get("enabled", True),
+            "dryRun": bool(_kw.get("dry_run")),
         }
 
     def list_triggers(self, workflow_id):  # noqa: ANN001
@@ -110,3 +112,29 @@ def test_unknown_workflow_is_an_error() -> None:
         sched.schedule_app, ["create", "nope", "--cron", "* * * * *", "--token", _TOKEN]
     )
     assert result.exit_code != 0
+
+
+def test_create_dry_run_flag() -> None:
+    result = runner.invoke(
+        sched.schedule_app,
+        ["create", "ade_lead_poll", "-c", "0 0 * * *", "--dry-run", "--token", _TOKEN],
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["create_dry_run"] is True
+    assert "dry run" in result.output
+
+
+def test_list_shows_live_or_dry_run() -> None:
+    result = runner.invoke(sched.schedule_app, ["list", "ade_lead_poll", "--token", _TOKEN])
+    assert result.exit_code == 0, result.output
+    assert "live" in result.output
+
+
+@pytest.mark.parametrize(("extra", "dry_run"), [([], True), (["--off"], False)])
+def test_dry_run_command_patches_only_dry_run(extra: list[str], dry_run: bool) -> None:
+    result = runner.invoke(
+        sched.schedule_app, ["dry-run", "ade_lead_poll", "trg-evt", *extra, "--token", _TOKEN]
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["update"] == ("wf-1", "trg-evt", {"dry_run": dry_run})
+    assert ("dry-run" if dry_run else "live") in result.output

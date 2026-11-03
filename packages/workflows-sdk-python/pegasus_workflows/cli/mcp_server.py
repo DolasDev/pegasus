@@ -198,6 +198,12 @@ run outside the runner fails with a clear named error instead of a bare
         client = PegasusClient.from_runtime()
         return client.get_workflow(quote_id)  # example — use the right method
 
+Each activity runs inside a Temporal activity context — on the tenant runner and
+in the offline harness (``pegasus_workflows.testing.run_activity``) alike — so
+``activity.info()`` and ``activity.heartbeat()`` work. Its values are synthetic
+(``activity_type`` = the activity's name, ``workflow_id`` = ``"dry-run"``,
+``attempt`` = 1): don't key real logic on them.
+
 ## Input contract
 
 See ``pegasus://guide/input-contract`` for the three argument shapes your
@@ -244,6 +250,11 @@ tick inside the move is skipped. Workflow code needs no change.
 at a tenant-admin-allowed domain (else 400 ``RECIPIENT_NOT_ALLOWED``; none
 configured → 409 ``EMAIL_RECIPIENTS_NOT_CONFIGURED``). Always pass a
 ``dedup_key`` for escalations/reminders so a retried activity doesn't mail twice.
+
+Ask BEFORE composing with ``client.check_email_recipients(to, cc=)`` — the same
+recipient check, no send: ``{"ok", "reason", "disallowed"}`` with ``reason`` in
+``NOT_CONFIGURED | RECIPIENT_NOT_ALLOWED | TOO_MANY_RECIPIENTS``. Side-effect
+free, so it runs live under a dry run.
 
 ## Selecting pegII orders (live search vs the snapshot)
 
@@ -404,7 +415,7 @@ not a snapshot — always re-fetch authoritative state from the Pegasus API.
 
 Built-in event types: ``quote.accepted``, ``move.status_changed``,
 ``invoice.paid``, ``customer.created``, ``pegasus_event.received``,
-``feedback.submitted``, ``sms.received``; plus ``pegii.shipment.opened``,
+``feedback.submitted``, ``sms.received``, ``trip.accepted``; plus ``pegii.shipment.opened``,
 ``pegii.shipment.closed``, ``pegii.sale.saved`` and the tenant's registered
 custom event types.
 
@@ -413,6 +424,12 @@ number (never for outbound, never for a connect-time backfill). Unlike the
 pointer payloads, it carries the text so the Automation can parse it directly:
 ``{messageId, fromNumber, toNumber, body, rcCreationTime, threadId, source,
 externalId, connectionId}``. Reply with ``client.send_sms(to=payload["fromNumber"], ...)``.
+
+``trip.accepted`` fires when a longhaul trip is confirmed for its driver in Pegasus
+(Pending/Offered -> Accepted/In-Progress; not for changes made in the desktop app):
+``{tripId, driverId, fromStatusId, toStatusId, assigned: [{activityId, memberIds}]}``,
+``assigned`` being the driver's "Every job" crew members just put on the trip's
+labor activities (``[]`` plus ``assignFailed: true`` when that step failed).
 
 ## Shape 2 — Manual run
 
@@ -444,6 +461,13 @@ Pause a trigger (EVENT or SCHEDULE) without deleting it with
 or ``client.update_trigger(wf_id, trigger_id, enabled=False)``. The same call
 edits ``event_type``/``filter`` (EVENT) or ``cron_expression`` (SCHEDULE).
 ``kind`` is immutable.
+
+Validate a trigger before it acts: ``create_trigger(..., dry_run=True)`` or
+``pegasus-workflows schedule dry-run <wf> <trigger-id>`` (EVENT or SCHEDULE). It
+fires on every real match, but each run is a dry run — reads live, mutations
+captured in the execution trace, never performed — so a rehearsal needs no
+hand-fed events. ``update_trigger(..., dry_run=False)`` / ``--off`` goes live.
+Tenant-runner Automations only (400 ``DRY_RUN_UNSUPPORTED`` for curated ones).
 
 ## Recommended pattern: a module-level resolver (unit-testable)
 
@@ -527,6 +551,10 @@ To see which of those declared keys the tenant has actually set, read them back
 or from code, ``PegasusClient.requirements_summary()``. The same resolution backs
 the tenant's own view (Settings -> Developer -> Configs and the Automation detail
 page), which additionally shows which Automations/integrations use each key.
+
+Only each Automation's CURRENT version counts (its newest, or an older one an
+enabled trigger still runs — the row's ``current`` flag): keys a superseded
+version declared are not reported as missing. ``--all-versions`` shows them all.
 
 ## 2. Publish values (one-time, by a developer/admin)
 
@@ -1054,7 +1082,9 @@ def tool_list_deployments(project_dir: str) -> dict[str, Any]:
 
     Wraps :func:`pegasus_workflows.deployments.read_deployments`, so an agent can
     answer "where is this deployed / what's its id in env X" without scraping
-    terminal output.
+    terminal output. Tables are keyed by ``push --env``, else the ``--profile``
+    name, else the API host (older ledgers: host only — QA and Prod sharing an API
+    root then collide, so push with a profile per environment).
 
     Returns:
         ``{"ok": True, "deployments": {...}}`` (empty dict when no ledger exists),

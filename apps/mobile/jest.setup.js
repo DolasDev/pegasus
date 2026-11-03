@@ -10,6 +10,13 @@ process.env.EXPO_PUBLIC_COGNITO_CLIENT_ID = 'test-mobile-client-id'
 process.env.EXPO_PUBLIC_COGNITO_DOMAIN = 'https://pegasus-test.auth.us-east-1.amazoncognito.com'
 process.env.EXPO_PUBLIC_COGNITO_REDIRECT_URI = 'movingapp://auth/callback'
 
+// RNTL's waitFor/findBy give up after 1s by default — the async twin of Jest's 5s testTimeout,
+// and starved by the same CI load (see testTimeout in jest.config.js). On 2026-10-30
+// labor-crew.test.tsx "saves a new rating and comment" took 156s for the file in CI and its
+// waitFor for a resolved mock's re-render ran out of its 1s. A real failure still fails, just
+// later; this only stops a slow runner from reading as a broken screen.
+require('@testing-library/react-native').configure({ asyncUtilTimeout: 10000 })
+
 // Global cleanup after each test
 afterEach(() => {
   jest.clearAllMocks();
@@ -81,6 +88,8 @@ jest.mock('expo-router', () => {
       back: jest.fn(),
     })),
     useLocalSearchParams: jest.fn(() => ({})),
+    // Tests have no navigator, so "focus" is simply mount (and a changed callback).
+    useFocusEffect: jest.fn((effect) => React.useEffect(() => effect(), [effect])),
     useSegments: jest.fn(() => []),
     Stack: StackMock,
     Tabs: jest.fn(({ children }) => React.createElement(React.Fragment, null, children)),
@@ -104,6 +113,11 @@ jest.mock('expo-crypto', () => ({
   digestStringAsync: jest.fn(() => Promise.resolve('bW9jay1kaWdlc3Q')),
   CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
   CryptoEncoding: { BASE64: 'base64' },
+  // A distinct v4-shaped id per call, like the real one.
+  randomUUID: jest.fn(() => {
+    globalThis.__mockUuidSeq = (globalThis.__mockUuidSeq ?? 0) + 1;
+    return `00000000-0000-4000-8000-${String(globalThis.__mockUuidSeq).padStart(12, '0')}`;
+  }),
 }));
 
 // Mock expo-image-picker
@@ -117,6 +131,27 @@ jest.mock('expo-image-picker', () => ({
       assets: [{ uri: 'mock://photo.jpg' }],
     })
   ),
+}));
+
+// Mock expo-contacts (native module). Defaults to full access and an empty
+// address book; the Labor import tests override per case.
+jest.mock('expo-contacts', () => ({
+  getPermissionsAsync: jest.fn(() =>
+    Promise.resolve({ status: 'granted', granted: true, canAskAgain: true, accessPrivileges: 'all' })
+  ),
+  requestPermissionsAsync: jest.fn(() =>
+    Promise.resolve({ status: 'granted', granted: true, canAskAgain: true, accessPrivileges: 'all' })
+  ),
+  getContactsAsync: jest.fn(() => Promise.resolve({ data: [], hasNextPage: false, hasPreviousPage: false })),
+  presentAccessPickerAsync: jest.fn(() => Promise.resolve([])),
+  Fields: { Name: 'name', PhoneNumbers: 'phoneNumbers', Emails: 'emails' },
+  SortTypes: { FirstName: 'firstName', LastName: 'lastName' },
+}));
+
+// Mock expo-sharing (native module).
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn(() => Promise.resolve(true)),
+  shareAsync: jest.fn(() => Promise.resolve()),
 }));
 
 // Mock react-native-safe-area-context

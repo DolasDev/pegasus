@@ -191,54 +191,28 @@
     // Remove once both parents are off query-string@7.
     "GHSA-vcc3-ghjq-m6fr",
 
-    // GHSA-86w9-cpqp-85rv — node-forge accepts extra nested DigestAlgorithm elements
-    // when verifying RSA PKCS#1 v1.5 signatures (high, CWE-347). Published 2026-09-03
-    // and surfaced in this repo's audit on 2026-10-02, the day after #755 cleared the
-    // previous four; it is the only advisory failing the gate.
+    // GHSA-qr28-fpjm-wq7f — decode-uri-component DoS via quadratic replacement of
+    // percent-encoded runs (HIGH, <=0.5.0; fix is 0.5.1). Published 2026-10-29.
     //
-    // Allowlisted because NO PATCHED VERSION EXISTS. The vulnerable range is `<=1.4.0`
-    // and 1.4.0 IS the latest published node-forge (`npm view node-forge version`,
-    // 2026-10-02); the advisory's own `first_patched_version` is null. There is no floor
-    // for an `overrides` entry to point at, so an override here is not a weaker fix than
-    // an upgrade — it is no fix at all. This is one step past the rule the image-size and
-    // decode-uri-component entries above record: there, a patch existed and was not
-    // installable; here, no patch has been published.
+    // Same two paths and the same reason as GHSA-vcc3 directly above:
+    // decode-uri-component@0.5.1 is still ESM-only (`"type": "module"`), so it
+    // can't be installed under the CommonJS query-string@7.1.3 in apps/mobile
+    // (react-navigation core and expo-router). The tenant-web copy (under
+    // query-string@9.5.1, `^0.5.0`) WAS bumped to 0.5.1 in the same change, so
+    // the only exposure left is a hostile deep link hanging the app on the
+    // user's own device. There is no server-side path.
     //
-    // Single copy, hoisted to the root at node-forge@1.4.0, and the two paths audit-ci
-    // reports collapse to ONE chain — Expo's command-line tooling:
-    //   apps/mobile > expo@55.0.31 > @expo/cli > node-forge@1.4.0
-    //   apps/mobile > expo@55.0.31 > @expo/cli > @expo/code-signing-certificates@0.0.6
-    //                                         > node-forge@1.4.0
-    // `@expo/code-signing-certificates` has exactly one dependent in the tree and it is
-    // that same `@expo/cli` (both verified against package-lock.json, 2026-10-02).
-    //
-    // WHY A PROD DEPENDENCY IS STILL NOT A RUNTIME PATH — the objection worth answering
-    // before someone stops at `npm ls`: `expo` is in apps/mobile's `dependencies`, not
-    // its devDependencies, because the `expo` package is the app's runtime module, and
-    // npm therefore does not mark this copy dev-only. But node-forge is reached only
-    // through `@expo/cli`, the Node CLI invoked as `npx expo ...` during development and
-    // EAS builds. Metro bundles what the app's own source imports; nothing under
-    // apps/mobile imports node-forge, and no path from apps/api, the web apps or
-    // packages/* reaches it at all.
-    //
-    // AND THE VULNERABLE CODE PATH IS NOT CONFIGURED. The flaw is in signature
-    // VERIFICATION, which @expo/cli exercises for expo-updates manifest code signing.
-    // `expo-updates` is not installed anywhere in the tree and no code-signing
-    // certificate is configured in apps/mobile (checked app.json, app.config.js and
-    // eas.json on 2026-10-02) — so the verifier never runs, flaw or no flaw.
-    //
-    // Remove once node-forge publishes a release the advisory does not cover and expo
-    // re-resolves onto it (audit-ci's "Consider not allowlisting advisories" report
-    // flags this entry once it is unused).
-    "GHSA-86w9-cpqp-85rv",
+    // Remove together with GHSA-vcc3, once both parents are off query-string@7.
+    "GHSA-qr28-fpjm-wq7f",
 
     // GHSA-vfj7-8cjw-p6xm — braces stack-exhaustion denial of service through deeply nested
     // patterns (high, CWE-674). Published 2026-09-18 and surfaced in this repo's audit on
     // 2026-10-03; it ejected #772 from the merge queue and is the only advisory failing the gate.
     // Reproduced against an unmodified lockfile first, so it is main's and not any PR's.
     //
-    // Allowlisted because NO PATCHED VERSION EXISTS — the same reason as GHSA-86w9-cpqp-85rv
-    // above, and the second time in three days. The vulnerable range is `<=3.0.3` and 3.0.3 IS the
+    // Allowlisted because NO PATCHED VERSION EXISTS — the same reason node-forge's
+    // GHSA-86w9-cpqp-85rv was allowlisted on 2026-10-02 (removed 2026-11-02, once node-forge
+    // 1.4.1 shipped). The vulnerable range is `<=3.0.3` and 3.0.3 IS the
     // latest published braces (`npm view braces version`, 2026-10-03); `first_patched_version` is
     // null. There is no floor for an `overrides` entry to point at. **Check that field before
     // planning an override** — one `gh api /advisories/<GHSA>` call settles whether a fix is even
@@ -260,5 +234,37 @@
     // unused). Note micromatch pins `^3.0.3`, so a 3.0.4 would be picked up by a plain install
     // while a 4.x would need micromatch to move first.
     "GHSA-vfj7-8cjw-p6xm",
+
+    // GHSA-mrhx-c7xc-m3w5 — zod can exhaust memory validating oversized constrained collections
+    // (high, vulnerable <4.6.6). Landed 2026-10-23 and turned main red. The 4.x copies (apps/api,
+    // @hono/zod-openapi, stryker) were moved to 4.6.7 in the lockfile; that is the reachable
+    // runtime one. What is left is ONE copy on the 3.x line:
+    //   apps/mobile > expo > @expo/cli > zod@3.25.76
+    // That is the Expo developer CLI validating our own app config / CLI flags at dev and EAS
+    // build time. It is not in the app bundle, and nothing user-supplied reaches it. There is no
+    // fix to install: the advisory's only patched release is 4.6.6 (a major for @expo/cli, an API
+    // break), and the latest @expo/cli (58.1.15 on 2026-10-25) still declares `zod: ^3.25.76`.
+    //
+    // NOTE this allowlist is by advisory id, so it would also hide a 4.x copy below 4.6.6
+    // re-entering the tree. Check `npm ls zod` when touching zod. Remove once @expo/cli moves to
+    // zod 4 (the "Consider not allowlisting advisories" report flags it once unused).
+    "GHSA-mrhx-c7xc-m3w5",
+
+    // GHSA-xcx6-jx8p-x3h5 — MSAL Node's authorization code flow may send parameters to an
+    // attacker-controlled endpoint (high, vulnerable >=5.0.0-beta.0 <7.1.0). Landed 2026-10-23.
+    // One copy: apps/mssql-executor > mssql > tedious > @azure/identity@4.13.1 >
+    // @azure/msal-node@5.2.4.
+    //
+    // NOT REACHABLE HERE: the authorization code flow is an interactive OAuth sign-in (redirect
+    // a user, exchange the returned code). tedious only ever uses @azure/identity's
+    // non-interactive credentials, for its Azure AD connection modes. And mssql-executor opens
+    // `new sql.ConnectionPool(connectionString)` with the tenant's SQL Server login connection
+    // strings, so it never takes an Azure AD path at all.
+    //
+    // No override: 7.1.0 is a major past what @azure/identity declares (`^6.0.0` even in the
+    // latest 4.14.0; tedious@20.3.8 pins identity `^4.13.1`), and forcing a major into a published
+    // package's tree is the breakage GOTCHAS warns about. Remove once @azure/identity accepts
+    // msal-node >=7.1.0 and the tree re-resolves.
+    "GHSA-xcx6-jx8p-x3h5",
   ],
 }

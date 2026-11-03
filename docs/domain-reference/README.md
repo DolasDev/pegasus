@@ -150,14 +150,64 @@ without repeating the research.
 
 | Phase                  | Output                                                                                                                                                                 | Status                                                 |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| 1. Inventory + rubric  | `sources/registry.yaml`, `rubric.md`, inbox requests                                                                                                                   | **done** — 87 sources registered                       |
-| 2. Per-source analysis | `sources/<id>/analysis.md` (from [`templates/source-analysis.md`](templates/source-analysis.md))                                                                       | in progress — 32 of 87; 15 blocked on access           |
+| 1. Inventory + rubric  | `sources/registry.yaml`, `rubric.md`, inbox requests                                                                                                                   | **done** — 95 sources registered                       |
+| 2. Per-source analysis | `sources/<id>/analysis.md` (from [`templates/source-analysis.md`](templates/source-analysis.md))                                                                       | in progress — 32 of 95; 15 blocked on access           |
 | 3. Comparison          | `analysis/<area>.md` — best source per area, with reasons                                                                                                              | in progress — see the note in [`rubric.md`](rubric.md) |
 | 4. Core model          | `packages/domain-reference/` — not `model/`; see above                                                                                                                 | **live**, minus the commands and the lifecycles        |
 | 5. Validation          | `packages/domain-reference/tests/scenarios/` + the Alloy models in `alloy/`                                                                                            | **live** — nine scenarios, model-checked               |
 | 6. Event catalog       | [`catalog/`](catalog/) — two JSON Schema faces, a manifest, an owed inventory; decided in [`analysis/published-event-catalog.md`](analysis/published-event-catalog.md) | **live**; the version is in `catalog/index.json`       |
 | 7. Context map         | [`context-map.md`](context-map.md) — **generated**; what crosses the thirteen areas, and the debt one owes another                                                     | **live**; regenerate with `npm run context-map`        |
 | 8. Mappings            | A separate workstream, no directory here                                                                                                                               | not started, deliberately                              |
+
+## Enriching the reference — filling a gap
+
+When enriching the reference needs a concept the corpus does not settle — an A10–A13 area being built
+out, a generic business concept (account, contact, invoice, payment, agreement) that no HHG source
+defines well, or a document that crosses the boundary to a non-moving counterparty — fill it from
+the sources below, **in this order**, and stop at the first that settles it:
+
+1. **The domain-specific corpus first.** Grep [`sources/registry.yaml`](sources/registry.yaml) and
+   the area's `analysis/` file. A moving, relocation, transport or regulatory source always outranks
+   a general business model for the same concept, because it carries the HHG distinctions (agent
+   roles, SIT, reweigh, binding estimate) a generic model cannot.
+2. **Common business vocabulary — `src:microsoft-cdm`.** Entity and attribute names for accounts,
+   contacts, leads, opportunities, products, activities. `src:salesforce-data-model` and
+   `src:dynamics-365` are its comparators, read after it, not instead of it.
+3. **Operational patterns — `src:odoo` and `src:erpnext`, both.** How quotation, order, delivery,
+   invoice and payment records connect and change state across a real workflow. Read both before
+   taking a pattern from either, so one application's choice is not mistaken for the domain's.
+4. **External document exchange and identification — `src:ubl-2-4` and GS1.** UBL for orders,
+   quotations, invoices, shipments and despatch advice as exchanged documents;
+   [GS1 standards](https://www.gs1.org/standards) for product and location identification and
+   supply-chain traceability (`src:gs1-epcis-cbv` is already analyzed for events; GS1's identification
+   keys are not yet registered — register them before citing them).
+5. **Specialist comparators, only when the gap is theirs.** `src:fibo` for legal entities,
+   agreements and obligations; `src:tmforum-sid` for enterprise-scale party / party-role modeling;
+   `src:sap-business-objects` for ERP finance, procurement and inventory.
+
+**Rules that apply to every gap filled this way:**
+
+- **A reference data model is not this domain model.** These sources describe documents and
+  generic records; this model needs lifecycles — pricing, scheduling, execution, adjustment, payment
+  — and the moving industry's own language ([§ Layers](#layers): "pure" does not mean generic). Take
+  a **concept** or a **pattern** and justify it; never adopt another system's schema, entity
+  boundaries or state machine because it is there. UBL's Order is a snapshot exchanged between
+  parties, not the order lifecycle A1 models.
+- **Generic concepts only.** A general model may supply party, account, contact, document,
+  invoice, payment, agreement. It may not supply an HHG semantic — if the only source for a
+  moving-specific concept is a general model, the concept is `[ORIGINAL]` and
+  [`[SD §0]`](analysis/00-shared-decisions.md) applies, not a citation.
+- **The frame is the rubric.** Map what a source offers onto [`rubric.md`](rubric.md)'s thirteen
+  areas. Do not import a source's module list (or any other list of "things to build around") as a
+  second taxonomy.
+- **The pipeline still applies.** A source's `areas` and `notes` in the registry are discovery
+  hints, not evidence. Before anything it says shapes the specification: capture it per
+  [`sources/README.md`](sources/README.md)'s storage policy, write `sources/<id>/analysis.md` from
+  [`templates/source-analysis.md`](templates/source-analysis.md), score it, and cite it by
+  `src:<id>` with its evidence grade. A bare URL in a docstring is not a citation —
+  `glossary-coverage.test.ts` requires a citation or an explicit `[ORIGINAL]` / `[SYNTHESIS]`.
+- **A new source gets a registry entry first.** Anything consulted that is not already registered
+  is added to `registry.yaml` before it is cited — including any further GS1 standard.
 
 ## Conventions (for humans and agents)
 

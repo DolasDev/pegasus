@@ -12,6 +12,7 @@ const base = {
   trips: [],
   loading: false,
   mappingResolved: true,
+  mappingFailed: false,
   driverId: null as number | null,
   offeredCount: 0,
   error: null as string | null,

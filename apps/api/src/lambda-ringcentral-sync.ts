@@ -15,6 +15,7 @@
 import { db } from './db'
 import { createLogger } from './lib/logger'
 import { readOAuthConfig } from './services/ringcentral/oauth'
+import { kickTriggerDispatcher } from './lib/trigger-dispatch-kick'
 import { syncConnection } from './services/ringcentral/sync'
 import { RateLimitError } from './services/ringcentral/client'
 import { listActiveConnections } from './repositories/messaging.repository'
@@ -32,11 +33,13 @@ export async function handler(): Promise<void> {
   logger.info('Reconciliation sync starting', { connections: connections.length })
 
   let captured = 0
+  let emitted = 0
   let failed = 0
   for (const conn of connections) {
     try {
       const result = await syncConnection(db, conn)
       captured += result.captured
+      emitted += result.emitted
     } catch (err) {
       failed++
       if (err instanceof RateLimitError) {
@@ -56,6 +59,10 @@ export async function handler(): Promise<void> {
   logger.info('Reconciliation sync complete', {
     connections: connections.length,
     captured,
+    emitted,
     failed,
   })
+  // The webhook path normally kicks first; this covers texts only the safety
+  // net caught. Awaited and never throws (lib/trigger-dispatch-kick.ts).
+  if (emitted > 0) await kickTriggerDispatcher('sms_received')
 }

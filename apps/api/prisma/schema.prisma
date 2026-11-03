@@ -316,12 +316,21 @@ model Tenant {
   // Push notifications
   deviceTokens           DeviceToken[]
   availabilityFilters    AvailabilityFilter[]
+  servicesFilters        ServicesFilter[]
   pushNotificationOutbox PushNotificationOutbox[]
 
   // Move chat
   chatRooms       ChatRoom[]
   chatMessages    ChatMessage[]
   chatRoomMembers ChatRoomMember[]
+
+  // Labor on longhaul activities
+  activityLaborCrews   ActivityLaborCrew[]
+  activityLaborPackers ActivityLaborPacker[]
+  companyCrewLinks     CompanyCrewLink[]
+  driverCrewMembers    DriverCrewMember[]
+  activityLaborMembers ActivityLaborMember[]
+  crewAccessLinks      CrewAccessLink[]
 
   // Longhaul — archived (rejected/canceled) trip snapshots
   archivedTrips ArchivedTrip[]
@@ -528,12 +537,20 @@ model TenantUser {
   apiClientsActedAs ApiClient[] @relation("ApiClientActsAs")
   crewMember        CrewMember?
 
-  deviceTokens        DeviceToken[]
-  availabilityFilters AvailabilityFilter[]
-  pushNotifications   PushNotificationOutbox[]
-  chatMessages        ChatMessage[]
-  chatRoomMembers     ChatRoomMember[]
-  companyMemberships  CompanyMembership[]
+  deviceTokens                 DeviceToken[]
+  availabilityFilters          AvailabilityFilter[]
+  servicesFilters              ServicesFilter[]
+  pushNotifications            PushNotificationOutbox[]
+  chatMessages                 ChatMessage[]
+  chatRoomMembers              ChatRoomMember[]
+  companyMemberships           CompanyMembership[]
+  laborCrewLinks               CrewLink[]
+  laborCrewLinkAdds            CrewLinkAdd[]
+  activityLaborCrews           ActivityLaborCrew[]
+  companyCrewLinks             CompanyCrewLink[]
+  myCrewMembers                DriverCrewMember[]
+  activityLaborMembersAssigned ActivityLaborMember[]
+  crewAccessLinksShared        CrewAccessLink[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1913,6 +1930,12 @@ model WorkflowTrigger {
 
   /// Disabled triggers are kept but never fired.
   enabled Boolean @default(true)
+
+  /// Dry-run triggers fire like any other, but every execution they start runs
+  /// in DRY-RUN mode (reads live, mutations captured, never performed) — for
+  /// validating a trigger's event/filter/cron wiring before letting it act.
+  /// TENANT_RUNNER workflows only; the API refuses it for a STDLIB workflow.
+  dryRun Boolean @default(false) @map("dry_run")
 
   /// TenantUser.id of the creator. Denormalized; not an FK so the row
   /// survives user deletion (matches Workflow.createdByUserId).
@@ -3433,6 +3456,34 @@ model AvailabilityFilter {
   @@schema("public")
 }
 
+/// A named, saved filter-bar state for the Operations → Services board. A
+/// parallel of AvailabilityFilter rather than a `screen` discriminator on it, so
+/// neither screen's rows can surface in the other's dialog. The default is
+/// TenantUser.preferences.operations.defaultServicesFilterId.
+///
+/// `query` is the versioned, zod-validated shape in lib/services-filter-query.ts.
+/// The board itself filters on absolute dates; the SAVED form stores day offsets
+/// so a preset doesn't rot.
+model ServicesFilter {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  ownerId  String  @map("owner_id")
+  name     String  @db.VarChar(100)
+  query    Json
+  isPublic Boolean @default(false) @map("is_public")
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  owner  TenantUser @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([tenantId, ownerId])
+  @@index([tenantId, isPublic])
+  @@map("services_filters")
+  @@schema("public")
+}
+
 // ---------------------------------------------------------------------------
 // Move chat — a chat room per move for office staff and assigned drivers.
 // Plan: plans/in-progress/move-chat-api.md. Access is decided in the API
@@ -3511,5 +3562,404 @@ model ChatRoomMember {
   @@id([roomId, userId])
   @@index([tenantId, userId])
   @@map("chat_room_members")
+  @@schema("public")
+}
+
+// ===========================================================================
+// Labor context — a driver's private book of cash-labor crews
+//
+// PLATFORM-WIDE, deliberately NOT tenant-scoped (none of these models are in
+// TENANT_SCOPED_MODELS): a crew is keyed by its E.164 phone number and every
+// driver — at any tenant — who adds that number to their list shares the same
+// crew record (name, service areas, packers). The per-driver `CrewLink` is the
+// access path: every read/write in handlers/labor.ts goes through the caller's
+// own link (`tenantUserId`), and a crew with no link of yours is a 404.
+// Ratings, comments and nicknames hang off the link, so they stay private.
+// Mirrors the domain `labor` bounded context. Plan: plans/in-progress/labor-crews.md.
+// ===========================================================================
+
+/// A cash-labor crew, identified by its phone number. Shared fields are
+/// editable by every linked driver; the user-id columns are the edit trail.
+model Crew {
+  /// E.164 (`normalizePhoneNumber`). The crew's identity — never changes.
+  phone           String   @id
+  name            String
+  email           String?
+  createdByUserId String   @map("created_by_user_id")
+  updatedByUserId String   @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  links         CrewLink[]
+  serviceAreas  CrewServiceArea[]
+  packers       Packer[]
+  activityLabor ActivityLaborCrew[]
+  companyLinks  CompanyCrewLink[]
+  accessLinks   CrewAccessLink[]
+
+  @@map("labor_crews")
+  @@schema("public")
+}
+
+/// A driver's membership of a crew — the access grant. `tenantId` is recorded
+/// for audit and tenant offboarding only; scoping is by `tenantUserId`.
+model CrewLink {
+  id           String   @id @default(uuid())
+  tenantUserId String   @map("tenant_user_id")
+  tenantId     String   @map("tenant_id")
+  crewPhone    String   @map("crew_phone")
+  /// Private display name — defaults to the name in the driver's phone contacts.
+  nickname     String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   TenantUser  @relation(fields: [tenantUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crew   Crew        @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  rating CrewRating?
+
+  @@unique([tenantUserId, crewPhone])
+  @@index([crewPhone])
+  @@index([tenantUserId, createdAt])
+  @@map("labor_crew_links")
+  @@schema("public")
+}
+
+/// Append-only record of every link a driver created — the add rate limit
+/// counts these, not live `CrewLink` rows, so removing a crew from your list
+/// never frees budget (add 100, delete 100, add 100 more would otherwise walk
+/// the phone-number space). Rows are never deleted by the app.
+model CrewLinkAdd {
+  id           String   @id @default(uuid())
+  tenantUserId String   @map("tenant_user_id")
+  crewPhone    String   @map("crew_phone")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([tenantUserId, createdAt])
+  @@map("labor_crew_link_adds")
+  @@schema("public")
+}
+
+/// A city a crew works in. `lat`/`lon` are copied from the matched GeoCity at
+/// write time; an unmatched city is kept but can't be distance-ranked.
+model CrewServiceArea {
+  id              String   @id @default(uuid())
+  crewPhone       String   @map("crew_phone")
+  city            String
+  cityKey         String   @map("city_key")
+  region          String
+  country         String   @db.Char(2)
+  geoCityId       String?  @map("geo_city_id")
+  lat             Float?
+  lon             Float?
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  crew    Crew     @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  geoCity GeoCity? @relation(fields: [geoCityId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([crewPhone, country, region, cityKey])
+  @@map("labor_crew_service_areas")
+  @@schema("public")
+}
+
+/// A member of a crew. Identified within the crew by last name + CID number or
+/// last name + email (the nullable `cidKey`/`emailKey`, unique per crew —
+/// Postgres lets NULLs repeat, so a phone-only packer has no identity key).
+model Packer {
+  id              String    @id @default(uuid())
+  crewPhone       String    @map("crew_phone")
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  email           String?
+  /// Candidate ID (a certification number).
+  cidNumber       String?   @map("cid_number")
+  /// Date the CID was issued — required iff `cidNumber`.
+  cidIssuedOn     DateTime? @map("cid_issued_on") @db.Date
+  phone           String?
+  cidKey          String?   @map("cid_key")
+  emailKey        String?   @map("email_key")
+  createdByUserId String    @map("created_by_user_id")
+  updatedByUserId String    @map("updated_by_user_id")
+  /// Removal is soft (Steve, 2026-10-28): a removed packer leaves the crew but
+  /// stays on the activities they worked. Re-adding the same identity restores them.
+  removedAt       DateTime? @map("removed_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  crew          Crew                  @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  activityLabor ActivityLaborPacker[]
+
+  @@unique([crewPhone, cidKey])
+  @@unique([crewPhone, emailKey])
+  @@index([crewPhone])
+  @@map("labor_packers")
+  @@schema("public")
+}
+
+/// One driver's rating of a crew (via their link — private). Only the
+/// anonymous aggregate, from MIN_RATERS_FOR_AVERAGE raters, is ever shown to
+/// anyone else.
+model CrewRating {
+  id         String   @id @default(uuid())
+  crewLinkId String   @unique @map("crew_link_id")
+  /// 1–5, enforced by a CHECK constraint in the migration.
+  stars      Int      @db.SmallInt
+  comment    String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  link CrewLink @relation(fields: [crewLinkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("labor_crew_ratings")
+  @@schema("public")
+}
+
+/// A crew on the tenant's company list — the tenant's grant to the shared
+/// platform-wide `Crew` (name, service areas and packers stay on the crew).
+/// Every tenant user reads it, adds to it and edits its crews; only an
+/// Operations role removes one. Removing it never deletes the `Crew`.
+model CompanyCrewLink {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  crewPhone     String   @map("crew_phone")
+  /// Company display name; falls back to `Crew.name`.
+  nickname      String?
+  /// Provenance only — deleting that user must not empty the company's list.
+  addedByUserId String?  @map("added_by_user_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crew    Crew        @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  addedBy TenantUser? @relation(fields: [addedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([tenantId, crewPhone])
+  @@index([crewPhone])
+  @@map("labor_company_crew_links")
+  @@schema("public")
+}
+
+/// A crew that worked one legacy longhaul activity on an order. Unlike the crew
+/// book, this IS tenant-scoped: `activityId` is LongDistanceDispatchActivity.id
+/// in the tenant's legacy database (no FK). `orderNum` is copied from that row
+/// at write time for the per-order read. The assignment outlives the driver
+/// dropping the crew from their book — it is the record of who worked the job.
+model ActivityLaborCrew {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  activityId       Int      @map("activity_id")
+  orderNum         Int      @map("order_num")
+  crewPhone        String   @map("crew_phone")
+  assignedByUserId String   @map("assigned_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crew       Crew                  @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  assignedBy TenantUser            @relation(fields: [assignedByUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  packers    ActivityLaborPacker[]
+
+  @@unique([tenantId, activityId, crewPhone])
+  @@index([tenantId, orderNum])
+  @@map("activity_labor_crews")
+  @@schema("public")
+}
+
+/// A packer selected on an assigned crew. Deleting the packer (or un-assigning
+/// the crew) drops the selection.
+model ActivityLaborPacker {
+  activityLaborCrewId String @map("activity_labor_crew_id")
+  tenantId            String @map("tenant_id")
+  packerId            String @map("packer_id")
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  assignment ActivityLaborCrew @relation(fields: [activityLaborCrewId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  packer     Packer            @relation(fields: [packerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([activityLaborCrewId, packerId])
+  @@index([packerId])
+  @@map("activity_labor_packers")
+  @@schema("public")
+}
+
+/// A packer on a driver's own "My Crew" — private to that driver, unlike the
+/// platform-wide `Packer` (it has no `Crew`). Same fields and identity keys as a
+/// packer, unique per owner. `everyJob` members are added to the driver's labor
+/// activities when one of their trips is accepted (lib/labor-auto-assign.ts).
+/// Removal is soft (`removedAt`) so the jobs a member worked keep showing them.
+model DriverCrewMember {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  tenantUserId String    @map("tenant_user_id")
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  email        String?
+  cidNumber    String?   @map("cid_number")
+  cidIssuedOn  DateTime? @map("cid_issued_on") @db.Date
+  phone        String?
+  cidKey       String?   @map("cid_key")
+  emailKey     String?   @map("email_key")
+  everyJob     Boolean   @default(false) @map("every_job")
+  removedAt    DateTime? @map("removed_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user          TenantUser            @relation(fields: [tenantUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  activityLabor ActivityLaborMember[]
+
+  @@unique([tenantUserId, cidKey])
+  @@unique([tenantUserId, emailKey])
+  @@index([tenantId, tenantUserId])
+  @@map("labor_driver_crew_members")
+  @@schema("public")
+}
+
+/// A My Crew member who worked one legacy longhaul activity (no FK — see
+/// ActivityLaborCrew). `assignedByUserId` is null when the trip-accepted
+/// auto-assign added the row.
+model ActivityLaborMember {
+  tenantId         String   @map("tenant_id")
+  activityId       Int      @map("activity_id")
+  orderNum         Int      @map("order_num")
+  memberId         String   @map("member_id")
+  assignedByUserId String?  @map("assigned_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  member     DriverCrewMember @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  assignedBy TenantUser?      @relation(fields: [assignedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@id([tenantId, activityId, memberId])
+  @@index([tenantId, orderNum])
+  @@index([memberId])
+  @@map("activity_labor_members")
+  @@schema("public")
+}
+
+/// A crew link: the capability a driver shares with a crew leader (who has no
+/// login) to staff the activities the driver assigned their crew on one order.
+/// The token only lets the holder ask for a one-time code, which is texted to
+/// `Crew.phone` — never to a number the holder supplies. Only the token's
+/// SHA-256 hash is stored (lib/opaque-token). The public endpoint
+/// (handlers/crew-link-public.ts) resolves the tenant FROM the token with the
+/// root client. Writes made through the link are attributed to `sharedByUserId`
+/// and recorded in CrewAccessAudit.
+model CrewAccessLink {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  crewPhone      String    @map("crew_phone")
+  orderNum       Int       @map("order_num")
+  tokenPrefix    String    @map("token_prefix")
+  tokenHash      String    @map("token_hash")
+  sharedByUserId String    @map("shared_by_user_id")
+  /// Wrong codes since the last successful verify; MAX_FAILED_ATTEMPTS burns the link.
+  failedAttempts Int       @default(0) @map("failed_attempts")
+  /// Minted by an Operations role: covers every activity the crew is on in the
+  /// order. A driver's link covers only the activities that driver assigned it.
+  allActivities  Boolean   @default(false) @map("all_activities")
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  burnedAt       DateTime? @map("burned_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crew     Crew                @relation(fields: [crewPhone], references: [phone], onDelete: Cascade, onUpdate: Cascade)
+  sharedBy TenantUser          @relation(fields: [sharedByUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  otps     CrewAccessOtp[]
+  sessions CrewAccessSession[]
+  audit    CrewAccessAudit[]
+
+  @@index([tokenPrefix])
+  @@index([tenantId, orderNum, crewPhone])
+  @@map("labor_crew_access_links")
+  @@schema("public")
+}
+
+/// A one-time code texted for a crew link. Append-only: the rows are also the
+/// send-rate counter. Only the newest unconsumed code of a link is accepted.
+model CrewAccessOtp {
+  id         String    @id @default(uuid())
+  linkId     String    @map("link_id")
+  codeHash   String    @map("code_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  link CrewAccessLink @relation(fields: [linkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([linkId, createdAt])
+  @@map("labor_crew_access_otps")
+  @@schema("public")
+}
+
+/// A verified crew-link session — an opaque bearer (hash only) sent in the
+/// X-Crew-Session header, never a cookie. Dies with its link.
+model CrewAccessSession {
+  id          String   @id @default(uuid())
+  linkId      String   @map("link_id")
+  tokenPrefix String   @map("token_prefix")
+  tokenHash   String   @map("token_hash")
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  link CrewAccessLink @relation(fields: [linkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([tokenPrefix])
+  @@index([linkId])
+  @@map("labor_crew_access_sessions")
+  @@schema("public")
+}
+
+/// What was done through a crew link — the record that a write came from the
+/// crew leader, not from the driver it is attributed to.
+model CrewAccessAudit {
+  id         String   @id @default(uuid())
+  linkId     String   @map("link_id")
+  action     String
+  packerId   String?  @map("packer_id")
+  activityId Int?     @map("activity_id")
+  detail     Json?
+  at         DateTime @default(now()) @db.Timestamptz(6)
+
+  link CrewAccessLink @relation(fields: [linkId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([linkId, at])
+  @@map("labor_crew_access_audit")
+  @@schema("public")
+}
+
+/// Reference data: US places (Census Gazetteer) and Canadian cities (GeoNames,
+/// CC-BY 4.0). Loaded by a data migration generated with
+/// scripts/generate-geo-places.ts. Global and read-only.
+model GeoCity {
+  id         String @id
+  country    String @db.Char(2)
+  region     String
+  name       String
+  /// `foldKey(name)` — what lookups and the typeahead match on.
+  nameKey    String @map("name_key")
+  lat        Float
+  lon        Float
+  population Int?
+
+  serviceAreas CrewServiceArea[]
+
+  @@index([nameKey])
+  @@index([country, region])
+  @@map("geo_cities")
+  @@schema("public")
+}
+
+/// Reference data: US ZIP5 (Census ZCTA) and Canadian FSA (first three
+/// characters of a postal code, GeoNames) centroids.
+model GeoPostalCode {
+  country String @db.Char(2)
+  code    String
+  region  String
+  lat     Float
+  lon     Float
+
+  @@id([country, code])
+  @@map("geo_postal_codes")
   @@schema("public")
 }

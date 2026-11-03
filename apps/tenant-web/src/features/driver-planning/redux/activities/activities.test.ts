@@ -16,8 +16,12 @@ import activitiesReducer, {
   fetchActivitiesFailure,
   fetchActivitiesStart,
   fetchActivitiesSuccess,
+  setIncludeLocal,
   clearActivityFilters,
+  seedActivityQuery,
+  setActivityQuery,
   type ActivitiesState,
+  type ActivityQuery,
 } from './index'
 
 const fetchActivitiesMock = API.fetchActivities as unknown as ReturnType<typeof vi.fn>
@@ -30,6 +34,8 @@ function makeStore(
     activityList: [],
     query: structuredClone(DEFAULT_ACTIVITY_QUERY),
     error: null,
+    defaultSeeded: false,
+    includeLocal: false,
   }
   return configureStore({
     reducer: { activities: activitiesReducer },
@@ -107,7 +113,7 @@ describe('activities query', () => {
           activity_type: [{ label: 'Pack', value: 'PACK' }],
           short_haul: [{ label: 'Yes', value: 'Y' }],
           operations_id: [{ label: 'A B', value: '1196' }],
-          office: [{ label: 'Chicago', value: 'chicago' }],
+          office: [{ label: '03 — NW of New Jersey', value: '03' }],
         },
         sortBy: { value: 'order_num', order: 'asc' },
       },
@@ -127,27 +133,54 @@ describe('activities query', () => {
   })
 })
 
-describe('buildActivityRequest', () => {
-  it('never sends office — the filter is mocked, and a silently-ignored key lies', () => {
-    const request = buildActivityRequest({
-      ...DEFAULT_ACTIVITY_QUERY,
-      filters: {
-        ...DEFAULT_ACTIVITY_QUERY.filters,
-        office: [{ label: 'Chicago', value: 'chicago' }],
-      },
-    }) as any
+describe('saved filters', () => {
+  const SAVED: ActivityQuery = {
+    filters: {
+      date_range: ['2026-03-01', '2026-03-05'],
+      activity_type: [{ label: 'PK', value: 'PK' }],
+      short_haul: [],
+      operations_id: [],
+      office: [],
+    },
+    sortBy: { value: 'order_num', order: 'desc' },
+  }
 
-    expect(request.filters).not.toHaveProperty('office')
+  it('setActivityQuery replaces the whole query, sort included', () => {
+    const store = makeStore()
+    store.dispatch(changeActivityQuery({ filters: { short_haul: [{ label: 'Yes', value: 'Y' }] } }))
+
+    store.dispatch(setActivityQuery(SAVED))
+
+    expect(store.getState().activities.query).toEqual(SAVED)
   })
 
-  it('sends every wired filter through untouched', () => {
+  it('seedActivityQuery applies the default and marks the board seeded', () => {
+    const store = makeStore()
+
+    store.dispatch(seedActivityQuery(SAVED))
+
+    expect(store.getState().activities).toMatchObject({ query: SAVED, defaultSeeded: true })
+  })
+
+  it('seedActivityQuery(null) keeps the built-in query but still marks it seeded', () => {
+    const store = makeStore()
+
+    store.dispatch(seedActivityQuery(null))
+
+    expect(store.getState().activities.query).toEqual(DEFAULT_ACTIVITY_QUERY)
+    expect(store.getState().activities.defaultSeeded).toBe(true)
+  })
+})
+
+describe('buildActivityRequest', () => {
+  it('sends every filter through untouched, office included', () => {
     const request = buildActivityRequest({
       filters: {
         date_range: ['2026-09-10', '2026-09-17'],
         activity_type: [{ label: 'Pack', value: 'PACK' }],
         short_haul: [{ label: 'Yes', value: 'Y' }],
         operations_id: [{ label: 'A B', value: '1196' }],
-        office: [],
+        office: [{ label: '03 — NW of New Jersey', value: '03' }],
       },
       sortBy: { value: 'order_num', order: 'desc' },
     }) as any
@@ -158,6 +191,7 @@ describe('buildActivityRequest', () => {
         activity_type: [{ label: 'Pack', value: 'PACK' }],
         short_haul: [{ label: 'Yes', value: 'Y' }],
         operations_id: [{ label: 'A B', value: '1196' }],
+        office: [{ label: '03 — NW of New Jersey', value: '03' }],
       },
       sortBy: { value: 'order_num', order: 'desc' },
     })
@@ -219,8 +253,25 @@ describe('fetchActivities thunk', () => {
 
     expect(fetchActivitiesMock).toHaveBeenCalledWith(
       buildActivityRequest(DEFAULT_ACTIVITY_QUERY as any),
+      false,
     )
     expect(store.getState().activities.activityList).toEqual([{ id: 9 }])
+  })
+
+  it('asks for local jobs only when told to, outside the query', async () => {
+    fetchActivitiesMock.mockResolvedValue([])
+    const store = makeStore()
+    store.dispatch(setIncludeLocal(true))
+    expect(store.getState().activities.includeLocal).toBe(true)
+    // The flag never leaks into the query a saved filter is made from.
+    expect(store.getState().activities.query).toEqual(DEFAULT_ACTIVITY_QUERY)
+
+    await store.dispatch(fetchActivities(store.getState().activities.query, true) as any)
+
+    expect(fetchActivitiesMock).toHaveBeenCalledWith(
+      buildActivityRequest(DEFAULT_ACTIVITY_QUERY as any),
+      true,
+    )
   })
 
   it('surfaces the API message so RESULT_LIMIT_EXCEEDED reaches the dispatcher', async () => {

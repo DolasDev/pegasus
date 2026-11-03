@@ -43,6 +43,7 @@ import {
   patchTouchesArrivalWindow,
 } from '../../lib/longhaul-arrival-window-schema'
 import { logger } from '../../lib/logger'
+import { activityOwnerDriverId, realDriverId } from '../../lib/longhaul-driver-activity'
 
 /** Activity types a driver may set an ETA on: Delivery and Delivery to Storage (SIT-IN). */
 export const DRIVER_ETA_ACTIVITY_CODES = ['RDEL', 'SITIN'] as const
@@ -89,15 +90,6 @@ SELECT a.*,
 FROM LongDistanceDispatchActivity a
 LEFT JOIN Longhaul_ActivityType at ON a.ActivityType_code = at.code
 WHERE a.id = @id`
-
-/**
- * A real driver id, or null. `v_longhaul_drivers` carries a placeholder driver
- * 0 (other queries exclude it with `driver_id <> 0`), so 0 means "unassigned"
- * on an activity or trip — and must never match a login mapped to 0.
- */
-function realDriverId(id: number | null | undefined): number | null {
-  return id == null || id === 0 ? null : id
-}
 
 interface OwnershipRow {
   id: number
@@ -190,7 +182,7 @@ export const driverActivityEtaHandler: Handler<AppEnv> = async (c) => {
 
     // The assigned driver wins when set; an unassigned (NULL or 0) activity
     // belongs to the trip's driver.
-    const owner = realDriverId(activity.assigned_driver_id) ?? realDriverId(activity.trip_driver_id)
+    const owner = activityOwnerDriverId(activity)
     if (owner !== driverId) {
       logger.warn('driver ETA write rejected — activity belongs to another driver', {
         activityId,

@@ -13,7 +13,7 @@ import {
   redirectLegacyWorkflowsList,
   validateAutomationDetailSearch,
 } from '@/lib/legacy-workflow-redirects'
-import { requireRole, OPERATIONS_ROLES, DISPATCH_ACTIVITIES_ROLES } from '@/auth/role-guard'
+import { requireRole, OPERATIONS_ROLES } from '@/auth/role-guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MessagesPage } from '@/routes/messages'
@@ -40,6 +40,7 @@ import { WorkflowDetailPage } from '@/routes/settings.workflows.$workflowId'
 import { EventTypesSettingsPage } from '@/routes/settings.event-types'
 import { FeedbackFormsSettingsPage } from '@/routes/settings.feedback-forms'
 import { PublicFeedbackPage } from '@/routes/f.$token'
+import { CrewLinkPage } from '@/routes/c.$token'
 import { RingCentralIntegrationPage } from '@/routes/settings.integrations.ringcentral'
 import { AppSettingsLayout } from '@/features/settings/app/AppSettingsLayout'
 import { AppSettingsIndexPage } from '@/routes/settings.app.index'
@@ -73,6 +74,16 @@ const ShipmentModuleLazy = lazy(() =>
 const ActivitiesModuleLazy = lazy(() =>
   import('@/features/driver-planning/routes/ActivitiesModule').then((m) => ({
     default: m.ActivitiesModule,
+  })),
+)
+const LaborModuleLazy = lazy(() =>
+  import('@/features/driver-planning/routes/LaborModule').then((m) => ({
+    default: m.LaborModule,
+  })),
+)
+const ItineraryModuleLazy = lazy(() =>
+  import('@/features/driver-planning/routes/ItineraryModule').then((m) => ({
+    default: m.ItineraryModule,
   })),
 )
 const TripDetailLazy = lazy(() =>
@@ -120,6 +131,15 @@ const publicFeedbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/f/$token',
   component: PublicFeedbackPage,
+})
+
+// Crew link — a crew leader (no login) opens a link their driver shared
+// (`/c/<token>`). No auth, like `/f`: the API resolves the tenant from the token
+// and a texted one-time code gates the session. See handlers/crew-link-public.ts.
+const crewLinkRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/c/$token',
+  component: CrewLinkPage,
 })
 
 // ---------------------------------------------------------------------------
@@ -473,14 +493,29 @@ const dpRejectedTripRoute = createRoute({
   component: TripDetailLazy,
 })
 
-// Dispatch Activities — narrower than its Operations siblings: gated on
-// DISPATCH_ACTIVITIES_ROLES (tenant_admin + operations_admin), not the full
-// OPERATIONS_ROLES. The nav child in AppShell.tsx carries the same list.
+// Services (formerly Dispatch Activities). Same gate as its Operations siblings.
 const dpActivitiesRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'activities',
-  beforeLoad: requireRole(...DISPATCH_ACTIVITIES_ROLES),
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
   component: ActivitiesModuleLazy,
+})
+
+// Labor: the company crew list. Operations-only, like its siblings.
+const dpLaborRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'labor',
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
+  component: LaborModuleLazy,
+})
+
+// Itinerary: one driver's work across trips, order assignments and local jobs.
+// Operations-only, like its siblings (the API enforces the same gate).
+const dpItineraryRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'itinerary',
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
+  component: ItineraryModuleLazy,
 })
 
 const dpShipmentsRoute = createRoute({
@@ -498,6 +533,7 @@ const routeTree = rootRoute.addChildren([
   loginCallbackRoute,
   loginSignedOutRoute,
   publicFeedbackRoute,
+  crewLinkRoute,
   authLayout.addChildren([
     indexRoute,
     movesIndexRoute,
@@ -523,6 +559,8 @@ const routeTree = rootRoute.addChildren([
       dpTripDetailRoute,
       dpShipmentsRoute,
       dpActivitiesRoute,
+      dpItineraryRoute,
+      dpLaborRoute,
     ]),
     settingsLayout.addChildren([
       ssoConfigRoute,

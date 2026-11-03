@@ -11,7 +11,12 @@ import type { PrismaClient } from '@prisma/client'
 import { db } from '../../../db'
 import { createTenantDb } from '../../../lib/prisma'
 import { updateAppSettings } from '../../../lib/app-settings'
-import { sendTenantEmail, DAILY_EMAIL_LIMIT, type OutboundEmailInput } from '../outbound'
+import {
+  checkEmailRecipients,
+  sendTenantEmail,
+  DAILY_EMAIL_LIMIT,
+  type OutboundEmailInput,
+} from '../outbound'
 import { PegiiApiError } from '../../../lib/pegii-api-client'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
@@ -74,6 +79,30 @@ describe.skipIf(!hasDb)('sendTenantEmail (integration)', () => {
     )
     expect(result).toEqual({ kind: 'recipient_not_allowed', recipients: ['someone@gmail.test'] })
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('checkEmailRecipients answers the same question without sending or recording', async () => {
+    expect(
+      await checkEmailRecipients(tdb, tenantId, ['coord@nwmovers.test', 'lead@NWMovers.test']),
+    ).toEqual({ kind: 'ok' })
+    expect(await checkEmailRecipients(tdb, tenantId, ['x@gmail.test', 'a@nwmovers.test'])).toEqual({
+      kind: 'recipient_not_allowed',
+      recipients: ['x@gmail.test'],
+    })
+    expect(
+      await checkEmailRecipients(
+        tdb,
+        tenantId,
+        Array.from({ length: 11 }, (_, i) => `u${i}@nwmovers.test`),
+      ),
+    ).toEqual({ kind: 'too_many_recipients' })
+    await updateAppSettings(db as unknown as PrismaClient, tenantId, {
+      operations: { emailAllowedRecipientDomains: [] },
+    })
+    expect(await checkEmailRecipients(tdb, tenantId, ['a@nwmovers.test'])).toEqual({
+      kind: 'not_configured',
+    })
+    expect(await db.emailSend.count({ where: { tenantId } })).toBe(0)
   })
 
   it('sends through the gateway and records the send', async () => {

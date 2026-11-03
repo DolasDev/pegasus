@@ -71,50 +71,50 @@ describe('GET /pegii', () => {
     expect(res.status).toBe(403)
   })
 
-  it('reports credential presence only, never the ref value', async () => {
+  it('returns the source + base URL only; the retired credential is neither read nor reported', async () => {
     mockDb.tenant.findUnique.mockResolvedValue({
       customerSource: 'pegii',
       pegiiApiBaseUrl: 'https://h:8443',
-      pegiiApiKeyRef: 'arn:aws:secret:super-secret',
     })
     const res = await buildApp().request('/pegii')
     expect(res.status).toBe(200)
     const data = (await json(res)).data as JsonBody
-    expect(data).toEqual({
-      customerSource: 'pegii',
-      pegiiApiBaseUrl: 'https://h:8443',
-      pegiiApiKeyConfigured: true,
-    })
-    expect(JSON.stringify(data)).not.toContain('super-secret')
+    expect(data).toEqual({ customerSource: 'pegii', pegiiApiBaseUrl: 'https://h:8443' })
+    expect(mockDb.tenant.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { customerSource: true, pegiiApiBaseUrl: true } }),
+    )
   })
 
   it('normalizes a null customerSource to prisma', async () => {
-    mockDb.tenant.findUnique.mockResolvedValue({
-      customerSource: null,
-      pegiiApiBaseUrl: null,
-      pegiiApiKeyRef: null,
-    })
+    mockDb.tenant.findUnique.mockResolvedValue({ customerSource: null, pegiiApiBaseUrl: null })
     const res = await buildApp().request('/pegii')
     const data = (await json(res)).data as JsonBody
     expect(data['customerSource']).toBe('prisma')
-    expect(data['pegiiApiKeyConfigured']).toBe(false)
   })
 })
 
 describe('PATCH /pegii', () => {
-  it('updates the customer source and echoes masked config', async () => {
+  it('updates the customer source and echoes the config', async () => {
     mockDb.tenant.update.mockResolvedValue({
       customerSource: 'pegii',
       pegiiApiBaseUrl: 'https://h:8443',
-      pegiiApiKeyRef: 'arn:k',
     })
     const res = await buildApp().request('/pegii', patchReq({ customerSource: 'pegii' }))
     expect(res.status).toBe(200)
-    expect(mockDb.tenant.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { customerSource: 'pegii' } }),
-    )
+    expect(mockDb.tenant.update).toHaveBeenCalledWith({
+      where: { id: expect.any(String) },
+      data: { customerSource: 'pegii' },
+      select: { customerSource: true, pegiiApiBaseUrl: true },
+    })
     const data = (await json(res)).data as JsonBody
-    expect(data['pegiiApiKeyConfigured']).toBe(true)
+    expect(data).toEqual({ customerSource: 'pegii', pegiiApiBaseUrl: 'https://h:8443' })
+  })
+
+  it('rejects the retired pegiiApiKeyRef field (hub credential path removed)', async () => {
+    const res = await buildApp().request('/pegii', patchReq({ pegiiApiKeyRef: 'arn:k' }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    expect(mockDb.tenant.update).not.toHaveBeenCalled()
   })
 
   it('rejects an invalid customerSource value', async () => {
@@ -156,17 +156,24 @@ describe('POST /pegii/test', () => {
   })
 
   it('returns OK for a bare {"status":"healthy"} body (no { data } envelope needed)', async () => {
-    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274', apiKey: null } })
+    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274' } })
     mockGetHealth.mockResolvedValue({ status: 'healthy' })
     const res = await buildApp().request('/pegii/test', { method: 'POST' })
     const data = (await json(res)).data as JsonBody
     expect(data['ok']).toBe(true)
     expect(data['code']).toBe('OK')
     expect(mockGetHealth).toHaveBeenCalledOnce()
+    // /health is open: the probe is built without any credential or caller.
+    const { createPegiiApiClient } = await import('../lib/pegii-api-client')
+    expect(vi.mocked(createPegiiApiClient).mock.calls[0]![0]).toEqual({
+      tenantId: expect.any(String),
+      baseUrl: 'http://h:65274',
+      timeoutMs: 10_000,
+    })
   })
 
   it('returns OK when the health body has no status field at all', async () => {
-    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274', apiKey: null } })
+    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274' } })
     mockGetHealth.mockResolvedValue({})
     const res = await buildApp().request('/pegii/test', { method: 'POST' })
     const data = (await json(res)).data as JsonBody
@@ -175,7 +182,7 @@ describe('POST /pegii/test', () => {
   })
 
   it('reports HTTP_ERROR when the service answers but is not healthy', async () => {
-    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274', apiKey: null } })
+    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274' } })
     mockGetHealth.mockResolvedValue({ status: 'degraded' })
     const res = await buildApp().request('/pegii/test', { method: 'POST' })
     const data = (await json(res)).data as JsonBody
@@ -185,7 +192,7 @@ describe('POST /pegii/test', () => {
   })
 
   it('classifies a tunnel failure as TUNNEL_ERROR', async () => {
-    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274', apiKey: null } })
+    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274' } })
     const { PegiiApiError } =
       await vi.importActual<typeof PegiiApiClient>('../lib/pegii-api-client')
     mockGetHealth.mockRejectedValue(

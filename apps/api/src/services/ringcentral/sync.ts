@@ -80,14 +80,25 @@ interface ThreadReadResponse {
 }
 
 /**
- * True when an RC error indicates the sync token is no longer valid. RC returns
- * CMN-101 / SYNC_TOKEN_INVALID with a 400. Our sync params are controlled (so a
- * 400 isn't a bad-parameter case we'd cause), so any 400 from the sync endpoint
- * is treated as a stale token → fall back to FSync. The fallback runs once and
- * is not recursive, so a genuine persistent 400 still surfaces.
+ * True when an RC error indicates the sync token is no longer valid → fall back
+ * to FSync. RC returns CMN-101 / SYNC_TOKEN_INVALID with a 400, so a 400 counts
+ * as stale UNLESS RingCentral names some other request parameter. That is a
+ * malformed request, and falling back would hide it behind a silent full re-read
+ * on every run (which is how a `messageType` on ISync kept sms.received from
+ * ever firing). The fallback runs once and is not recursive, so a genuine
+ * persistent 400 still surfaces.
  */
-function isSyncTokenInvalid(err: unknown): boolean {
-  return err instanceof RingCentralOAuthError && err.status === 400
+function isSyncTokenInvalid(err: unknown): err is RingCentralOAuthError {
+  return (
+    err instanceof RingCentralOAuthError &&
+    err.status === 400 &&
+    (err.parameterName === undefined || err.parameterName === 'syncToken')
+  )
+}
+
+/** Message Threads is a per-extension feature; RC answers 403 CMN-428 when it is off. */
+function isThreadsFeatureOff(err: unknown): boolean {
+  return err instanceof RingCentralOAuthError && err.errorCode === 'CMN-428'
 }
 
 function isoDaysAgo(days: number, now: number): string {
@@ -105,22 +116,36 @@ export interface SyncOptions {
 }
 
 /**
- * Syncs both stores for a connection. Returns the number of messages captured.
+ * Syncs both stores for a connection. Returns the number of messages captured,
+ * and how many of them emitted `sms.received` (committed) — the caller kicks
+ * the trigger dispatcher only when that is non-zero.
  * Throws RateLimitError up to the caller (the cron decides whether to back off).
  */
 export async function syncConnection(
   db: PrismaClient,
   connection: SyncConnection,
   opts: SyncOptions = {},
-): Promise<{ captured: number }> {
+): Promise<{ captured: number; emitted: number }> {
   const { accessToken, apiBase } = await acquireAccessToken(connection)
   const client = makeClient(apiBase, accessToken)
   const backfillDays = opts.backfillDays ?? DEFAULT_BACKFILL_DAYS
   const now = opts.now ?? Date.now()
 
-  const v1 = await syncV1Store(db, client, connection, backfillDays, now)
-  const thread = await syncThreadStore(db, client, connection)
-  return { captured: v1 + thread }
+  let emitted = 0
+  const onEmitted = () => {
+    emitted++
+  }
+  const v1 = await syncV1Store(db, client, connection, backfillDays, now, onEmitted)
+  let thread = 0
+  try {
+    thread = await syncThreadStore(db, client, connection, onEmitted)
+  } catch (err) {
+    if (!isThreadsFeatureOff(err)) throw err
+    logger.info('Message Threads is off for this extension — skipping the thread store', {
+      connectionId: connection.id,
+    })
+  }
+  return { captured: v1 + thread, emitted }
 }
 
 // ---------------------------------------------------------------------------
@@ -133,13 +158,15 @@ async function syncV1Store(
   connection: SyncConnection,
   backfillDays: number,
   now: number,
+  onEmitted: () => void,
 ): Promise<number> {
   const cursor = await getSyncCursor(db, connection.tenantId, connection.id, 'V1')
 
+  // ISync takes only the token — RingCentral rejects filters such as
+  // `messageType` (400 CMN-101) — so non-SMS records are dropped below instead.
   const isyncParams = (token: string): Record<string, string> => ({
     syncType: 'ISync',
     syncToken: token,
-    messageType: 'SMS',
   })
   const fsyncParams = (): Record<string, string> => ({
     syncType: 'FSync',
@@ -158,14 +185,30 @@ async function syncV1Store(
     )
   } catch (err) {
     if (!isSyncTokenInvalid(err)) throw err
-    logger.warn('v1 sync token invalid — falling back to FSync', { connectionId: connection.id })
+    logger.warn('v1 sync token invalid — falling back to FSync', {
+      connectionId: connection.id,
+      errorCode: err.errorCode,
+      parameterName: err.parameterName,
+    })
     incremental = false
     res = await client.get<MessageSyncResponse>(V1_MESSAGE_SYNC, fsyncParams())
   }
 
   let captured = 0
   for (const record of res.records ?? []) {
-    if (await captureOne(db, connection, () => normalizeV1Json(record), record.id, incremental)) {
+    // An unfiltered ISync also returns voicemail/fax/pager; those aren't ours.
+    // (An untyped record still goes through normalize, which rejects it.)
+    if (record.type !== undefined && record.type !== 'SMS') continue
+    if (
+      await captureOne(
+        db,
+        connection,
+        () => normalizeV1Json(record),
+        record.id,
+        incremental,
+        onEmitted,
+      )
+    ) {
       captured++
     }
   }
@@ -258,6 +301,7 @@ async function syncThreadStore(
   db: PrismaClient,
   client: RingCentralClient,
   connection: SyncConnection,
+  onEmitted: () => void,
 ): Promise<number> {
   const cursor = await getSyncCursor(db, connection.tenantId, connection.id, 'THREAD')
 
@@ -309,6 +353,7 @@ async function syncThreadStore(
         () => normalizeThreadJson(entry, threadId, phones),
         entry.id,
         incremental && entry.direction != null,
+        onEmitted,
       )
     ) {
       captured++
@@ -352,11 +397,13 @@ async function captureOne(
   normalize: () => ReturnType<typeof normalizeV1Json>,
   rawId: string | number,
   emitReceivedEvent: boolean,
+  onReceivedEventEmitted?: () => void,
 ): Promise<boolean> {
   try {
     const normalized = normalize()
     const message = await captureMessage(db, connection.tenantId, normalized, connection.id, {
       emitReceivedEvent,
+      ...(onReceivedEventEmitted ? { onReceivedEventEmitted } : {}),
     })
     // Opt-out keywords apply in EVERY sync mode (not only when sms.received
     // fires). Non-fatal: a failure here must never abort capture.

@@ -34,7 +34,9 @@ import {
 
 export const feedbackPublicHandler = new Hono<AppEnv>()
 
-feedbackPublicHandler.use('*', async (c, next) => {
+// Scoped to /feedback/* — other public handlers share the /api/public/v1 mount
+// (crew-link-public.ts) and must not inherit this flag.
+feedbackPublicHandler.use('/feedback/*', async (c, next) => {
   if (!isFeedbackEnabled()) {
     return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404)
   }

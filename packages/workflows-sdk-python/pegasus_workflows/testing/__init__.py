@@ -95,6 +95,8 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     # Keyed on the KEY within the namespace (namespaces rarely vary in a test).
     "get_workflow_state": lambda a, k: a[1] if len(a) > 1 else k.get("key"),
     "get_text_message": lambda a, k: _first(a, k, "message_id"),
+    # A side-effect-free POST: the fixture is the verdict, unkeyed.
+    "check_email_recipients": None,
     "get_text_message_links": lambda a, k: _first(a, k, "message_id"),
     "get_sms_opt_out": lambda a, k: _first(a, k, "phone"),
     "get_blob": lambda a, k: _first(a, k, "blob_id"),

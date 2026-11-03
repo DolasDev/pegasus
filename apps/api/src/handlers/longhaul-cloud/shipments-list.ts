@@ -40,7 +40,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
-import { resolveLonghaulReadScope } from '../../lib/longhaul-read-scope'
+import { resolveOrderReadScope } from '../../lib/longhaul-read-scope'
 import {
   ACTIVITY_TYPE_CODE,
   enrichShipmentWithTripInfo,
@@ -52,6 +52,7 @@ import {
   type ExtraLocationRow,
 } from '../../lib/longhaul-shipment-enrich'
 import { buildShipmentActivities } from '../../lib/longhaul-build-activities'
+import { orderAssignedTo } from '../../lib/itinerary/order-assigned'
 // The view's column manifest — typing the sort whitelist against it makes a
 // typo a compile error instead of a silently dead sort header.
 import type { LonghaulShipmentViewColumn } from '@pegasus/longhaul-contracts'
@@ -140,21 +141,47 @@ class ParamBag {
 // Base query builder — mirrors findShipmentsWithQuery in the on-prem repo.
 // ---------------------------------------------------------------------------
 
-function buildBaseSql(query: ShipmentQuery, bag: ParamBag, scopeDriverId?: number): string {
+/** A restricted caller's ids; each null grants nothing in its numbering space. */
+interface DriverOrderScope {
+  longhaulDriverId: number | null
+  localDriverEmployeeId: number | null
+}
+
+function buildBaseSql(query: ShipmentQuery, bag: ParamBag, scope?: DriverOrderScope): string {
   const S = SHIPMENTS_TABLE
   const where: string[] = []
 
   // Restricted (driver-scoped) caller: always applied, independent of
   // searchTerm / filters, so a restricted list is never an unfiltered dump.
-  // Activity-based so a multi-leg / SIT shipment on the driver's trip stays visible.
-  if (scopeDriverId !== undefined) {
-    bag.params.push({ name: 'scopeDriverId', value: scopeDriverId })
-    where.push(
-      `EXISTS (SELECT 1 FROM LongDistanceDispatchActivity a` +
-        ` LEFT JOIN TripMaster t ON a.TripMaster_id = t.id` +
-        ` WHERE a.order_num = ${S}.order_num` +
-        ` AND (a.assigned_driver_id = @scopeDriverId OR t.driver_id = @scopeDriverId))`,
-    )
+  // An order is the driver's when they own a longhaul activity on it
+  // (activity-based so a multi-leg / SIT shipment on their trip stays visible),
+  // OR it is assigned to them on the order itself with no activity rows (the
+  // itinerary's order-assigned rule, shared SQL — lib/itinerary/order-assigned),
+  // OR they are a driver on one of its active local dispatch jobs — the
+  // itinerary's three sources. Each id binds its own parameter: the longhaul and
+  // crew numbering spaces are never compared.
+  if (scope !== undefined) {
+    const owns: string[] = []
+    if (scope.longhaulDriverId !== null) {
+      bag.params.push({ name: 'scopeDriverId', value: scope.longhaulDriverId })
+      owns.push(
+        `EXISTS (SELECT 1 FROM LongDistanceDispatchActivity a` +
+          ` LEFT JOIN TripMaster t ON a.TripMaster_id = t.id` +
+          ` WHERE a.order_num = ${S}.order_num` +
+          ` AND (a.assigned_driver_id = @scopeDriverId OR t.driver_id = @scopeDriverId))`,
+        orderAssignedTo(S, '@scopeDriverId'),
+      )
+    }
+    if (scope.localDriverEmployeeId !== null) {
+      bag.params.push({ name: 'scopeLocalDriverId', value: scope.localDriverEmployeeId })
+      owns.push(
+        `EXISTS (SELECT 1 FROM LocalDispatchJobs j` +
+          ` WHERE j.order_num = ${S}.order_num AND ISNULL(j.active, 'Y') <> 'N'` +
+          ` AND (j.driver_id1 = @scopeLocalDriverId OR j.driver_id2 = @scopeLocalDriverId))`,
+      )
+    }
+    // A scope with neither id must still match nothing, never everything.
+    where.push(owns.length > 0 ? `(${owns.join(' OR ')})` : '1 = 0')
   }
 
   if (query.searchTerm && query.searchTerm.length >= 3) {
@@ -497,7 +524,7 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')
   const correlationId = c.get('correlationId')
 
-  const scope = await resolveLonghaulReadScope(c)
+  const scope = await resolveOrderReadScope(c)
   if (scope.kind === 'none') {
     return c.json({ data: [], meta: { count: 0 } })
   }
@@ -553,11 +580,7 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
   try {
     // --- round trip 1: base shipments query ---
     const baseBag = new ParamBag()
-    const baseSql = buildBaseSql(
-      query,
-      baseBag,
-      scope.kind === 'driver' ? scope.driverId : undefined,
-    )
+    const baseSql = buildBaseSql(query, baseBag, scope.kind === 'driver' ? scope : undefined)
     const baseRes = await executeSql(connectionString, baseSql, { params: baseBag.params })
     const { rows: rawShipments, dropped: duplicateRows } = dedupeByOrderNum(
       baseRes.recordset as ShipmentRow[],

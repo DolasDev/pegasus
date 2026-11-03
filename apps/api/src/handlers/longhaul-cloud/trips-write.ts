@@ -12,6 +12,9 @@
 //      UPDATE every activity's trip_status_id/status (legacy keeps them in
 //      sync), and re-read the trip. The proxy wrapped the two updates in a
 //      knex transaction — we use the in-SQL transaction (Unit 0).
+//      A confirm transition (Pending/Offered → Accepted/In-Progress) then
+//      auto-assigns the drivers' "Every job" My Crew members and emits
+//      `trip.accepted` — best-effort, after the commit (assignMyCrews).
 //   #9 POST  /trips/:id/cancel  — 404 if missing; 403 if status_id >= 4
 //      (== TripStatus_id; canceling after in-progress is disallowed). Then,
 //      atomically: touch + DELETE the trip's activities and set
@@ -31,10 +34,13 @@
 
 import type { Handler } from 'hono'
 import { z } from 'zod'
+import { isTripConfirmTransition } from '@pegasus/domain'
 import type { AppEnv } from '../../types'
 import { executeSql, MssqlExecError } from '../../lib/mssql-executor-client'
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { recomputeTripSummaryCloud } from '../../lib/longhaul-cloud-trip-summary'
+import { autoAssignOnTripAccepted, type TripAcceptedInput } from '../../lib/labor-auto-assign'
+import { realDriverId } from '../../lib/longhaul-driver-activity'
 import { logger } from '../../lib/logger'
 
 // --- #7 PATCH /trips/:id/status -------------------------------------------
@@ -117,8 +123,7 @@ export const longhaulTripStatusHandler: Handler<AppEnv> = async (c) => {
       ],
     })
     const header = recordsets[0]?.[0] as
-      | { driver_id: number | null; TripStatus_id: number | null }
-      | undefined
+      { driver_id: number | null; TripStatus_id: number | null } | undefined
     if (!header) {
       return c.json({ error: 'Trip not found', code: 'NOT_FOUND', correlationId }, 404)
     }
@@ -155,10 +160,8 @@ export const longhaulTripStatusHandler: Handler<AppEnv> = async (c) => {
     // same write transaction. driverAssigned is guaranteed here for statusId > 1
     // by the guard above, but @driverId is also re-guarded in SQL.
     const oldStatus = header.TripStatus_id ?? 0
-    const clearReady =
-      header.driver_id != null &&
-      (oldStatus === 1 || oldStatus === 2) &&
-      (statusId === 3 || statusId === 4)
+    const confirms = isTripConfirmTransition(oldStatus, statusId)
+    const clearReady = header.driver_id != null && confirms
 
     const { recordset } = await executeSql(connectionString, STATUS_WRITE_SQL, {
       params: [
@@ -170,6 +173,16 @@ export const longhaulTripStatusHandler: Handler<AppEnv> = async (c) => {
         { name: 'driverId', value: header.driver_id ?? null },
       ],
     })
+    if (confirms) {
+      await assignMyCrews(c, {
+        tenantId: c.get('tenantId'),
+        connectionString,
+        tripId,
+        driverId: realDriverId(header.driver_id),
+        fromStatusId: oldStatus,
+        toStatusId: statusId,
+      })
+    }
     return c.json({ data: recordset[0] ?? null })
   } catch (err) {
     logger.error('longhaul cloud change trip status failed', { error: errDetail(err) })
@@ -177,6 +190,38 @@ export const longhaulTripStatusHandler: Handler<AppEnv> = async (c) => {
       { error: 'Failed to change trip status', code: 'INTERNAL_ERROR', correlationId },
       500,
     )
+  }
+}
+
+/**
+ * Puts the drivers' "Every job" My Crew members on the accepted trip's labor
+ * activities and emits `trip.accepted` (lib/labor-auto-assign.ts).
+ *
+ * Best-effort, like the trip-save assignment push: the status is already
+ * committed on-prem, so a Postgres or legacy-read failure is logged and never
+ * turns the status change into a 500.
+ */
+async function assignMyCrews(
+  c: Parameters<Handler<AppEnv>>[0],
+  input: TripAcceptedInput,
+): Promise<void> {
+  try {
+    const db = c.get('db')
+    if (!db) {
+      logger.warn('no tenant db — trip.accepted and the My Crew auto-assign skipped', {
+        tripId: input.tripId,
+      })
+      return
+    }
+    const assigned = await autoAssignOnTripAccepted(db, input)
+    logger.info('trip accepted — My Crew auto-assign', {
+      tripId: input.tripId,
+      activities: assigned.length,
+      members: assigned.reduce((n, a) => n + a.memberIds.length, 0),
+    })
+  } catch (err) {
+    // Only when even the bare trip.accepted emit failed (see autoAssignOnTripAccepted).
+    logger.error('trip.accepted emit failed', { error: errDetail(err), tripId: input.tripId })
   }
 }
 

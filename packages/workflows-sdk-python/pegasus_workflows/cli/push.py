@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 
 from ..api import PegasusApiError, PegasusClient
-from ..deployments import derive_env, record_deployment
+from ..deployments import derive_env, ledger_env_key, read_deployments, record_deployment
 from ..manifest import DIAGRAM_FILENAME, ManifestError
 from ._auth import base_url_option, profile_option, resolve_credentials, token_option
 from .package import package_project
@@ -30,7 +30,11 @@ def push_command(
     env: str = typer.Option(
         None,
         "--env",
-        help="Environment key for the deployments.toml record (default: API host).",
+        help=(
+            "Environment key for the deployments.toml record (default: the --profile "
+            "name, else the API host). Two tenants on one API root (QA + Prod) need "
+            "distinct keys, or the second push overwrites the first's record."
+        ),
     ),
     project_dir: Path = typer.Option(
         Path("."),
@@ -53,7 +57,8 @@ def push_command(
         raise typer.Exit(code=1) from exc
 
     client = PegasusClient(base_url=base_url, token=token)
-    env_key = env or derive_env(base_url)
+    env_key = ledger_env_key(env, profile, base_url)
+    _warn_on_host_keyed_record(project_dir, env_key, base_url)
     multi = len(packaged) > 1
     failures = 0
 
@@ -122,3 +127,27 @@ def push_command(
 
     if failures:
         raise typer.Exit(code=1)
+
+
+def _warn_on_host_keyed_record(project_dir: Path, env_key: str, base_url: str) -> None:
+    """Point out a pre-existing host-keyed record this push will not update.
+
+    Ledgers written before profile keying hold ``[<api host>]`` tables. A push
+    keyed by profile leaves that table as it is and writes a sibling — say so,
+    once, so the stale table can be renamed or deleted by hand.
+    """
+    host_key = derive_env(base_url)
+    if env_key == host_key:
+        return
+    try:
+        existing = read_deployments(project_dir)
+    except (OSError, ValueError):
+        return
+    if host_key in existing:
+        typer.secho(
+            f"note: deployments.toml also has a [{host_key!s}] record from an older, "
+            f"host-keyed push; this push records under [{env_key}] and leaves it as is "
+            "(rename or delete it by hand)",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )

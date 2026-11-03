@@ -204,6 +204,20 @@ describe('setupNotificationTapHandler', () => {
     expect(navigate).toHaveBeenCalledWith('/(drawer)/trips')
   })
 
+  it("opens a chat.message tap on that move's conversation", () => {
+    const navigate = jest.fn()
+    setupNotificationTapHandler(navigate)
+    lastListener()(responseWith({ type: 'chat.message', orderNum: 4242, messageId: 'm-1' }))
+    expect(navigate).toHaveBeenCalledWith('/chat/4242')
+  })
+
+  it('falls back to Messages for a chat.message tap with no orderNum', () => {
+    const navigate = jest.fn()
+    setupNotificationTapHandler(navigate)
+    lastListener()(responseWith({ type: 'chat.message' }))
+    expect(navigate).toHaveBeenCalledWith('/(drawer)/messages')
+  })
+
   it('ignores taps with an unknown type', () => {
     const navigate = jest.fn()
     setupNotificationTapHandler(navigate)

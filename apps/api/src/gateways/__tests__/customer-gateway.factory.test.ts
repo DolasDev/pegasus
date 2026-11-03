@@ -38,10 +38,10 @@ describe('resolveCustomerGateway', () => {
     expect(createPegiiCustomerGateway).not.toHaveBeenCalled()
   })
 
-  it('returns the pegII gateway with the resolved base + apiKey when source is pegii', async () => {
+  it('returns the pegII gateway with the resolved base when source is pegii', async () => {
     vi.mocked(resolvePegiiOverlayTarget).mockResolvedValue({
       ok: true,
-      target: { base: 'https://10.200.7.1:8443', apiKey: 'arn:k' },
+      target: { base: 'https://10.200.7.1:8443' },
     })
     const db = dbWithSource('pegii')
     const gw = (await resolveCustomerGateway(db, 't1')) as unknown as { __pegii: boolean }
@@ -49,8 +49,9 @@ describe('resolveCustomerGateway', () => {
     expect(createPegiiCustomerGateway).toHaveBeenCalledWith({
       tenantId: 't1',
       baseUrl: 'https://10.200.7.1:8443',
-      apiKey: 'arn:k',
     })
+    // The retired hub credential is never threaded to the gateway.
+    expect(vi.mocked(createPegiiCustomerGateway).mock.calls[0]![0]).not.toHaveProperty('apiKey')
   })
 
   it('throws PEGII_API_NOT_CONFIGURED when a pegii tenant has no reachable target', async () => {
