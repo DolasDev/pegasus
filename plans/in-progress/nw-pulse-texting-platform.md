@@ -473,16 +473,18 @@ Movemanager plan file: `plans/in-progress/pegasus-api-write-foundations.md`.
 The live 0009 AC3 run is done (2026-10-22; see Phase 6: grants confirmed on prod, and "undeclared → 403" is not how the platform works). S5 is answered (yes); its follow-on (`get_activity_arrival_window`) is a separate plan after the pilot, which keeps the fixed 4–7 PM window.
 
 
-- [ ] **Test on NW Prod in dry-run** (decided 2026-09-29; NW QA's tunnel isn't connected). NW Prod's pegII API on a `dev`-derived release containing Phases 4–7, with JWT + the hub DB configured, the service user provisioned, and `/version` capabilities confirmed. All workflow runs stay `--dry-run` (every mutation captured, nothing sent) until NW signs off on a live test. Live steps, when approved, use `TEST_PHONES` only.
-- [ ] NW desktop on the MSIX build with the Phase 6 guard fix (D20). There is no 409 fallback to lift: D3 was withdrawn (D18).
-- [ ] Tenant config:
+- [x] **Test on NW Prod in dry-run** (decided 2026-09-29; NW QA's tunnel isn't connected). _(Ready 2026-11-03: NW site `2026.11.2.1` advertises every capability, including `pegii.email.v1`; Blue Signal has run dry and `TEST_PHONES`-only live tests since 2026-10-24.)_ NW Prod's pegII API on a `dev`-derived release containing Phases 4–7, with JWT + the hub DB configured, the service user provisioned, and `/version` capabilities confirmed. All workflow runs stay `--dry-run` (every mutation captured, nothing sent) until NW signs off on a live test. Live steps, when approved, use `TEST_PHONES` only.
+- [x] NW desktop on the MSIX build with the Phase 6 guard fix (D20). _(Steve, 2026-11-02. Also seen in the data: the pulse-created task 2545916 on order 493115 was completed in the desktop on 2026-10-28.)_ There is no 409 fallback to lift: D3 was withdrawn (D18).
+- [x] Tenant config:
   - `nw_pulse` CONFIG group: `PILOT_COORDINATORS`, `CS_PHONE`, `SAFETY_NET_EMAIL`, `HOLIDAYS`, `HELP_REPLY`, per-phase on/off.
   - Allowed email domains.
+  - _(2026-11-03: all 11 `nw_pulse` keys set by Blue Signal, including `TEST_PHONES` and `REPLY_TEST_ONLY=on`; only `PULSE_PACK` is on; `HELP_REPLY=off`. Domains: `nelsonwesterberg.com`.)_
 - [ ] Triggers:
   - SCHEDULE `*/15 * * * *`.
   - The daily check at the UTC equivalent of 17:00 Central. The dispatcher has **no catch-up** and DST shifts the UTC hour, so the workflow must re-check local time.
   - EVENT on `sms.received`.
-- [ ] Hand the workflow author the shipped surface:
+  - _(2026-11-03: **no SCHEDULE triggers yet**; send and daily check have only been run by hand. The `sms.received` trigger ran live on `nw_pulse_reply` 0.3.3 from 2026-10-30, but Blue Signal published 0.3.4 on 2026-11-03 and removed 0.3.3's trigger, so no reply trigger is enabled. Add the schedules as dry-run triggers first (`schedule create … --dry-run`). DST ended 2026-11-01, so 17:00 Central is now 23:00 UTC.)_
+- [x] Hand the workflow author the shipped surface: _(Hand-off doc "NW Pulse — Platform Hand-off for Blue Signal", 2026-10-21.)_
   - names: `sms.received`, `get_text_message` + `get_text_message_links`, `search_orders`, `expected_version`, `dedup_key`
   - the S-spike field answers, including "the salesman has `extension`+`email` but **no direct phone** ⇒ `[Coordinator Phone]` always takes the CS-number + extension fallback"
   - **We do not publish their workflows or configs** (standing rule).
@@ -491,6 +493,12 @@ The live 0009 AC3 run is done (2026-10-22; see Phase 6: grants confirmed on prod
   2. load → reply "2" → task in the desktop + email + memo
   3. STOP → opt-out → next send 409
   4. daily check → reminder, then a forced 90-day close
+
+  **Run review (2026-11-03, prod `workflow_executions` for NW, 158 runs):** Every live run that acted came from a test phone (+14049156526, then `TEST_PHONES` +16308868537) on order 493115. The 126 live `sms.received` runs from other numbers all stopped at `no_message` or `reply_test_only_number_not_on_test_phones`, so no customer got a reply.
+  - Scenario 1: partly shown. Live 2026-10-30, load phase, "5" → `positive_recorded`, ack sent. Dry runs captured `add_order_memo` and `mark_text_message_read`. Still owed: a live pack "5" with the memo and read state checked in the desktop and RingCentral.
+  - Scenario 2: partly shown. Live 2026-10-28, pack phase, "2" → `negative_escalated`; the desktop task (2545916) was created and closed by the coordinator. The safety-net email failed with `PEGII_CAPABILITY_MISSING` (the site build at the time); email through the bridge has worked since (2026-11-02 test). Still owed: a live "2" with the email arriving.
+  - Scenario 3 (STOP): no run yet.
+  - Scenario 4 (daily check): two forced dry runs found nothing to remind or close. Still owed: a run with a real unanswered pulse, and a forced 90-day close.
 
 ---
 
