@@ -81,6 +81,11 @@ const LaborModuleLazy = lazy(() =>
     default: m.LaborModule,
   })),
 )
+const ItineraryModuleLazy = lazy(() =>
+  import('@/features/driver-planning/routes/ItineraryModule').then((m) => ({
+    default: m.ItineraryModule,
+  })),
+)
 const TripDetailLazy = lazy(() =>
   import('@/features/driver-planning/containers/Trip').then((m) => ({ default: m.Trip })),
 )
@@ -504,6 +509,15 @@ const dpLaborRoute = createRoute({
   component: LaborModuleLazy,
 })
 
+// Itinerary: one driver's work across trips, order assignments and local jobs.
+// Operations-only, like its siblings (the API enforces the same gate).
+const dpItineraryRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'itinerary',
+  beforeLoad: requireRole(...OPERATIONS_ROLES),
+  component: ItineraryModuleLazy,
+})
+
 const dpShipmentsRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'shipments',
@@ -545,6 +559,7 @@ const routeTree = rootRoute.addChildren([
       dpTripDetailRoute,
       dpShipmentsRoute,
       dpActivitiesRoute,
+      dpItineraryRoute,
       dpLaborRoute,
     ]),
     settingsLayout.addChildren([

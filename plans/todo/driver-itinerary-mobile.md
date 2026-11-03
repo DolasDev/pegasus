@@ -18,7 +18,7 @@ local items too.
    start, after reading the `TriggerLocalDispatchUpdate` / `TriggerSalesUpdate` bodies.
 2. **Widen the driver read scope — DONE** (local-driver-scope): order reads admit orders on the
    caller's local jobs; local items open the shipment screen.
-3. **Dispatcher picker: pick a longhaul driver and a crew separately.** Longhaul drivers from the
+3. **Dispatcher picker: pick a longhaul driver and a crew separately — DONE** (dispatcher-itinerary). Longhaul drivers from the
    existing `/onprem/longhaul/drivers`; crews from a NEW Operations-gated sibling read (do not relax
    `/local-drivers`' `UpdateUser` gate), reusing `listLocalDrivers` from `chat-access.ts`.
 4. **Phase 4: go, tenant-agnostic, with a name guard — DONE** (order-assigned-source): an order
@@ -28,11 +28,11 @@ local items too.
 
 ## Checklist
 
-### Tenant-web driver itinerary view
+### Tenant-web driver itinerary view — DONE
 
-- [ ] `apps/tenant-web/src/features/driver-planning/containers/DriverItinerary/` on
-      `GET /onprem/longhaul/drivers/itinerary` — picker per decision 3 (driver + crew, each
-      optional, at least one). Revisit once labor-crews' phone-keyed people can link a driver to a crew.
+- [x] Operations → Itinerary (`features/driver-planning/routes/ItineraryModule.tsx`) on
+      `GET /onprem/longhaul/drivers/itinerary`, a longhaul-driver picker and a separate crew picker
+      (`GET /onprem/longhaul/local-drivers`, Operations-gated) — `plans/completed/52d2f914-dispatcher-itinerary.md`.
 
 ### Phase 3 — act facts for driver-posted ETA / arrival / completion
 
