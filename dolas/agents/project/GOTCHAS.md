@@ -3628,3 +3628,22 @@ no activity rows, it is not a local job's driver on the order, AND `sales.driver
 (id)`), compared upper-case without spaces. The view's `driver_name` / `driver_id` are sales' own
 (checked: 420/420 QMM, 964/964 NW). QMM's id 66666 is "Tor Crew, Local Toronto" — a crew-pool
 pseudo-driver, not a person. Full audit: `plans/completed/af79576b-order-assigned-source.md`.
+
+## `toHaveBeenCalledWith(db, …)` with the real Prisma client overflows the stack
+
+Found in `chore/retire-legacy-tenant-runner`, 2026-11-03. In an integration test
+(real `db` from `../../db`), asserting a spy was called with the Prisma client
+itself (`expect(spy).toHaveBeenCalledWith(db, tenantId)`) fails with
+`RangeError: Maximum call stack size exceeded` and no diff: vitest's deep
+equality walks the client's proxy. Match it with `expect.anything()` instead.
+
+## A deployed tenant-runner run needs an ACTIVE namespace — there is no shared runner
+
+Found in `chore/retire-legacy-tenant-runner`, 2026-11-03. Since the legacy
+runner's retirement, a tenant-runner Automation in staging or prod runs only in
+its tenant's own namespace. A tenant without one gets 409
+`TENANT_NAMESPACE_PROVISIONING` for a few minutes after its first publish (the
+publish requests it). Tests and local dev differ on purpose: with
+`TEMPORAL_PROVISIONER_FUNCTION_NAME` unset the start path still uses the shared
+namespace and launches no runner. A test that sets the variable switches the
+gate on; unset it afterwards.

@@ -206,29 +206,29 @@ until it's wired into CDK"). Name mirrored in `packages/infra/lib/metrics.ts`.
 
 ### 1. Request + gate
 
-- [ ] `lib/tenant-namespace-request.ts` (extracted from the admin POST; best-effort) + tests; the admin POST uses it.
-- [ ] Start-path gate + `TENANT_NAMESPACE_PROVISIONING` outcome → 409 + `Retry-After`; dispatcher maps a mid-tick refusal to "leave undispatched". Tests per row status, both "configured" and "unconfigured".
-- [ ] Finalize + fork call it; `data.namespace` in the response; tests.
-- [ ] Dispatcher grant + env (infra + test).
+- [x] `lib/tenant-namespace-request.ts` (extracted from the admin POST; best-effort) + tests; the admin POST uses it.
+- [x] Start-path gate + `TENANT_NAMESPACE_PROVISIONING` outcome → 409 + `Retry-After`; dispatcher maps a mid-tick refusal to "leave undispatched". Tests per row status, both "configured" and "unconfigured".
+- [x] Finalize + fork call it; `data.namespace` in the response; tests.
+- [x] Dispatcher grant + env (infra + test).
 
 ### 2. Auto-advance + events + deprovision
 
-- [ ] `advanceNamespaceMigrations`: READY → DRAINING → ACTIVE in one pass, with the key check; tests (including a READY row whose key fails → stays READY, logged).
-- [ ] Phase 0: re-invoke expired-lease PROVISIONING; retry FAILED older than 15 min; tests.
-- [ ] Event-query exclusion widened to PROVISIONING / READY (not FAILED); a FAILED tenant's curated trigger still fires; tests: another tenant's events are not delayed.
-- [ ] Rollback + cancel routes deleted; deprovision-from-ACTIVE rule; admin-web.
-- [ ] `TenantTemporalNamespacesUnhealthy` gauge + alarm (infra + test).
+- [x] `advanceNamespaceMigrations`: READY → DRAINING → ACTIVE in one pass, with the key check; tests (including a READY row whose key fails → stays READY, logged).
+- [x] Phase 0: re-invoke expired-lease PROVISIONING; retry FAILED older than 15 min; tests.
+- [x] Event-query exclusion widened to PROVISIONING / READY (not FAILED); a FAILED tenant's curated trigger still fires; tests: another tenant's events are not delayed.
+- [x] Rollback + cancel routes deleted; deprovision-from-ACTIVE rule; admin-web.
+- [x] `TenantTemporalNamespacesUnhealthy` gauge + alarm (infra + test).
 
 ### 3. Legacy removal
 
-- [ ] `tenant-runner.ts` single family; sweep; pool metric; tests.
-- [ ] Infra: delete the legacy task def + exec-role secret grant; repoint the env var; RunTask resources; infra tests + snapshots.
-- [ ] Runner docs/comments.
+- [x] `tenant-runner.ts` single family; sweep; pool metric; tests.
+- [x] Infra: delete the legacy task def + exec-role secret grant; repoint the env var; RunTask resources; infra tests + snapshots.
+- [x] Runner docs/comments.
 
 ### 4. SDK + docs
 
-- [ ] SDK error + `push` message + README/CHANGELOG/MCP/`--help`; OpenAPI; tenant-web message.
-- [ ] DECISIONS.md (A, auto-onboarding, no rollback), GOTCHAS.md; tick 3a's item in `durable-workflow-worker.md`.
+- [x] SDK error + `push` message + README/CHANGELOG/MCP/`--help`; OpenAPI (run + retry; finalize and fork are not in the spec, so `data.namespace` is described on the run route); tenant-web message.
+- [x] DECISIONS.md (A, auto-onboarding, no rollback), GOTCHAS.md; tick 3a's item in `durable-workflow-worker.md`.
 - [ ] Local: `npm run typecheck`, `npm run lint`, api (revert the coverage-floor autoUpdate), infra, tenant-web, admin-web, SDK pytest + ruff, tenant-runner pytest.
 
 ### Pre-merge (ops)

@@ -3,6 +3,27 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.55.0
+
+### Added — your tenant's own runtime (`TENANT_NAMESPACE_*`)
+
+- The platform retired its shared Automation runner: every tenant's
+  Automations now run in the tenant's own isolated Temporal namespace, which the
+  tenant's first publish (or fork) requests automatically.
+- `run_workflow` and `retry_execution` raise the new
+  `TenantNamespaceProvisioning` (a `PegasusApiError`) for HTTP 409
+  `code="TENANT_NAMESPACE_PROVISIONING"`: the runtime isn't ready yet (a few
+  minutes after the first publish). Nothing was started; retry after
+  `retry_after_seconds` (from `Retry-After`, 60 today). Event triggers wait and
+  fire once it is ready.
+- They raise `TenantNamespaceUnavailable` for HTTP 503
+  `code="TENANT_NAMESPACE_UNAVAILABLE"`: provisioning failed. The platform
+  retries on its own and is alerted.
+- Both are siblings of `TenantMigrating`, not subclasses, and exported from the
+  package root.
+- `push` prints whether the tenant's runtime is ready, from the finalize
+  response's new `namespace: {"status", "ready"}` field.
+
 ## 0.54.2
 
 ### Docs — event triggers start in seconds

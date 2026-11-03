@@ -2919,7 +2919,8 @@ export function getOpenApiSpec() {
             'Body { input?: object, mode?: "dry_run" }. Starts a server-side execution and returns it (RUNNING once Temporal accepted the start). A dry run reads live but captures every mutation instead of performing it; only tenant-runner automations support it (422 DRY_RUN_UNSUPPORTED otherwise). ' +
             'Limits on tenant-runner automations: 429 CONCURRENCY_LIMIT (5 queued/running) and 429 DAILY_QUOTA_EXCEEDED (resets at midnight UTC); dry runs count toward neither. ' +
             'Event-triggered runs over the concurrency cap are delayed, not dropped: the event fires once a run finishes (an event still waiting after 24 hours is dropped). Over the daily quota, event-triggered runs are dropped. ' +
-            '409 TENANT_MIGRATING (with Retry-After) while the platform moves the tenant’s automations to or from their own isolated Temporal namespace: new runs, dry runs included, are refused until in-flight runs finish (at most ~15 minutes); nothing was started, so retry. Event triggers lose nothing during a move; their events fire after it.',
+            '409 TENANT_MIGRATING (with Retry-After) while the platform moves the tenant’s automations into their own isolated Temporal namespace: new runs, dry runs included, are refused until in-flight runs finish (at most ~15 minutes); nothing was started, so retry. Event triggers lose nothing during a move; their events fire after it. ' +
+            'Every tenant’s tenant-runner automations run in the tenant’s own namespace. A tenant’s first publish (POST /api/v1/workflows) or fork requests it, and their 201 response carries data.namespace {status, ready}. Until it is ready (a few minutes): 409 TENANT_NAMESPACE_PROVISIONING (with Retry-After), dry runs included; nothing was started, so retry; event triggers wait and fire once it is ready. If provisioning failed: 503 TENANT_NAMESPACE_UNAVAILABLE; the platform retries on its own, and event-triggered runs of tenant-runner automations are skipped meanwhile. Curated automations are never affected.',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2931,12 +2932,16 @@ export function getOpenApiSpec() {
             },
             '409': {
               description:
-                'TENANT_MIGRATING: runs paused while the tenant’s automations move namespace; honour Retry-After',
+                'TENANT_MIGRATING (runs paused while the tenant’s automations move namespace) or TENANT_NAMESPACE_PROVISIONING (the tenant’s own namespace is still being created); honour Retry-After',
             },
             '422': { description: 'DRY_RUN_UNSUPPORTED' },
             '423': { description: 'WORKFLOWS_DISABLED for this tenant' },
             '429': { description: 'CONCURRENCY_LIMIT | DAILY_QUOTA_EXCEEDED' },
             '502': { description: 'TEMPORAL_START_FAILED' },
+            '503': {
+              description:
+                'TENANT_NAMESPACE_UNAVAILABLE: the tenant’s own namespace failed to provision; the platform retries it',
+            },
           },
         },
       },
@@ -2967,7 +2972,11 @@ export function getOpenApiSpec() {
             '201': { description: 'New execution started ({data: execution})' },
             '409': {
               description:
-                'Execution not in a retryable state, or TENANT_MIGRATING (runs paused while the tenant’s automations move namespace; honour Retry-After)',
+                'Execution not in a retryable state, TENANT_MIGRATING (runs paused while the tenant’s automations move namespace), or TENANT_NAMESPACE_PROVISIONING (the tenant’s own namespace is still being created); honour Retry-After',
+            },
+            '503': {
+              description:
+                'TENANT_NAMESPACE_UNAVAILABLE: the tenant’s own namespace failed to provision; the platform retries it',
             },
           },
         },

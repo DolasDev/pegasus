@@ -23,6 +23,31 @@ from .package import package_project
 __all__ = ["push_command"]
 
 
+def _echo_namespace_status(namespace: object) -> None:
+    """Say whether the tenant's own Automation runtime is ready (0.55.0+).
+
+    A tenant's first Automation gets its own isolated runtime (a Temporal
+    namespace) requested at publish; the finalize response reports it. Older
+    servers and curated publishes send no ``namespace``; a ready one is silent.
+    """
+    if not isinstance(namespace, dict) or namespace.get("ready"):
+        return
+    status = namespace.get("status")
+    if status == "FAILED":
+        typer.secho(
+            "-> this tenant's Automation runtime failed to provision; the platform retries "
+            "on its own. Runs fail with TENANT_NAMESPACE_UNAVAILABLE until then.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        return
+    typer.echo(
+        f"-> this tenant's isolated Automation runtime is being set up (status {status}); "
+        "the first run is available in a few minutes. Until then `run` answers "
+        "TENANT_NAMESPACE_PROVISIONING (retry)."
+    )
+
+
 def push_command(
     token: str = token_option(),
     base_url: str = base_url_option(),
@@ -69,9 +94,7 @@ def push_command(
         # package_project already verified the diagram exists; read its contents
         # to embed in the manifest. It is the same file packaged into the zip, so
         # it is covered by artifactSha256 and pinned to this exact version.
-        diagram = (project_dir / manifest.source_dir / DIAGRAM_FILENAME).read_text(
-            encoding="utf-8"
-        )
+        diagram = (project_dir / manifest.source_dir / DIAGRAM_FILENAME).read_text(encoding="utf-8")
         try:
             typer.echo(f"-> requesting upload URL for {label} ({size} bytes)")
             upload = client.request_upload_url(manifest.name, manifest.version, size)
@@ -80,14 +103,13 @@ def push_command(
             client.upload_artifact(upload["uploadUrl"], artifact)
 
             typer.echo("-> finalizing")
-            row = client.finalize(
-                upload["workflowId"], manifest.to_api_manifest(diagram=diagram)
-            )
+            row = client.finalize(upload["workflowId"], manifest.to_api_manifest(diagram=diagram))
 
             typer.secho(
                 f"published {label} (id={row['id']}, visibility={row['visibility']})",
                 fg=typer.colors.GREEN,
             )
+            _echo_namespace_status(row.get("namespace"))
 
             # The artifact is already published; a ledger-write failure (disk
             # full, perms) must not abort the remaining Automations or surface as a

@@ -159,7 +159,7 @@ class TenantMigrating(PegasusApiError):
 
     Raised by :meth:`PegasusClient.run_workflow` and
     :meth:`PegasusClient.retry_execution` with ``code`` ``"TENANT_MIGRATING"``:
-    the platform is moving this tenant's Automations to (or back from) their
+    the platform is moving this tenant's Automations into their
     own isolated Temporal runtime, and refuses new runs until the runs already
     in flight finish. Nothing was started. Transient: a move is bounded by the
     15-minute execution cap, so retry after ``retry_after_seconds``. Event
@@ -171,6 +171,43 @@ class TenantMigrating(PegasusApiError):
     """
 
     retry_after_seconds: int | None = None
+
+
+@dataclass
+class TenantNamespaceProvisioning(PegasusApiError):
+    """The tenant's own Automation runtime is still being created (HTTP 409).
+
+    Raised by :meth:`PegasusClient.run_workflow` and
+    :meth:`PegasusClient.retry_execution` with ``code``
+    ``"TENANT_NAMESPACE_PROVISIONING"`` (0.55.0+). Every tenant's Automations
+    run in their own isolated Temporal namespace; a tenant's first publish
+    requests it, and it takes a few minutes to become ready. Nothing was
+    started. Transient: retry after ``retry_after_seconds``. Event triggers are
+    not lost while it provisions: their events wait and fire once it is ready.
+
+    A sibling of :class:`TenantMigrating`, not a subclass: catch both to retry
+    either kind of pause.
+
+    Attributes:
+        retry_after_seconds: From the ``Retry-After`` header (60 today), or
+            ``None`` if the server sent none.
+    """
+
+    retry_after_seconds: int | None = None
+
+
+@dataclass
+class TenantNamespaceUnavailable(PegasusApiError):
+    """The tenant's own Automation runtime failed to provision (HTTP 503).
+
+    Raised by :meth:`PegasusClient.run_workflow` and
+    :meth:`PegasusClient.retry_execution` with ``code``
+    ``"TENANT_NAMESPACE_UNAVAILABLE"`` (0.55.0+). Not a retry-in-a-minute
+    condition: the platform retries the provision on its own and its team is
+    alerted. Nothing was started. While it lasts, an event trigger for a
+    tenant-runner Automation is skipped (that run is lost); curated triggers are
+    unaffected.
+    """
 
 
 @dataclass
@@ -220,6 +257,33 @@ def _raise_for_tenant_migrating(response: httpx.Response) -> None:
             code="TENANT_MIGRATING",
             message=body.get("error"),
             retry_after_seconds=int(retry_after) if retry_after and retry_after.isdigit() else None,
+        )
+
+
+def _raise_for_tenant_namespace(response: httpx.Response) -> None:
+    """Raise the typed error for a run refused because the tenant's namespace isn't ready."""
+    if response.status_code not in (409, 503):
+        return
+    try:
+        body = response.json()
+    except ValueError:
+        return
+    if not isinstance(body, dict):
+        return
+    code = body.get("code")
+    if response.status_code == 409 and code == "TENANT_NAMESPACE_PROVISIONING":
+        retry_after = response.headers.get("Retry-After")
+        raise TenantNamespaceProvisioning(
+            status_code=409,
+            code="TENANT_NAMESPACE_PROVISIONING",
+            message=body.get("error"),
+            retry_after_seconds=int(retry_after) if retry_after and retry_after.isdigit() else None,
+        )
+    if response.status_code == 503 and code == "TENANT_NAMESPACE_UNAVAILABLE":
+        raise TenantNamespaceUnavailable(
+            status_code=503,
+            code="TENANT_NAMESPACE_UNAVAILABLE",
+            message=body.get("error"),
         )
 
 
@@ -593,6 +657,13 @@ class PegasusClient:
             TenantMigrating: 409 ``TENANT_MIGRATING`` — new runs are paused
                 while the tenant's Automations move to (or from) their own
                 runtime. Transient; retry after ``retry_after_seconds``.
+            TenantNamespaceProvisioning: 409 ``TENANT_NAMESPACE_PROVISIONING``
+                (0.55.0+) — the tenant's own runtime is still being created
+                (a few minutes after its first publish). Transient; retry
+                after ``retry_after_seconds``.
+            TenantNamespaceUnavailable: 503 ``TENANT_NAMESPACE_UNAVAILABLE``
+                (0.55.0+) — the tenant's runtime failed to provision; the
+                platform retries on its own.
             PegasusApiError: On 400 (not in allowlist), 404, 422
                 (``DRY_RUN_UNSUPPORTED``), 502 (Temporal start failed), or any
                 other non-2xx.
@@ -606,6 +677,7 @@ class PegasusClient:
                 json=payload,
             )
         _raise_for_tenant_migrating(response)
+        _raise_for_tenant_namespace(response)
         _raise_for_status(response)
         return response.json()["data"]
 
@@ -745,6 +817,11 @@ class PegasusClient:
         Raises:
             TenantMigrating: 409 ``TENANT_MIGRATING`` — new runs are paused
                 while the tenant's Automations move; retry shortly.
+            TenantNamespaceProvisioning: 409 ``TENANT_NAMESPACE_PROVISIONING``
+                (0.55.0+) — the tenant's own runtime is still being created;
+                retry after ``retry_after_seconds``.
+            TenantNamespaceUnavailable: 503 ``TENANT_NAMESPACE_UNAVAILABLE``
+                (0.55.0+) — the tenant's runtime failed to provision.
             PegasusApiError: 404 (unknown execution), 409 (execution not in a
                 retryable terminal state), or any non-2xx.
         """
@@ -753,6 +830,7 @@ class PegasusClient:
                 f"/api/v1/workflows/{workflow_id}/executions/{execution_id}/retry"
             )
         _raise_for_tenant_migrating(response)
+        _raise_for_tenant_namespace(response)
         _raise_for_status(response)
         return response.json()["data"]
 
