@@ -517,3 +517,16 @@ jest.mock('../../src/services/laborService', () => ({
   LaborService: { getOrderActivities: jest.fn(), setActivityLabor: jest.fn() },
 }))
 ```
+
+## A driver's word on legacy work is an attached fact, not a legacy write or an overlay
+
+When a driver asserts something about an act legacy owns (ETA, done), record it as a Pegasus fact
+(`ItineraryActFact`, `lib/itinerary/act-facts.ts`) and ATTACH it to the item (`assertion`), leaving
+the legacy dates untouched. Don't write it back (a local job's `is_final` completes every act on the
+job; an activity's `actual_date` feeds settlement; the dispatcher's local ETA is the one the customer
+is emailed) and don't overlay it (the itinerary SQL filters on legacy dates, so an overlaid day can
+vanish from every page). Key the fact on the item's own stable `key`, append-only, newest per basis
+wins, a null clears. A write names the item by key AND its listed day, and the handler re-reads the
+caller's own itinerary for that day and refuses a key that isn't there — the key alone proves nothing.
+Where legacy already has an editor the driver may use (an activity's ETA), route to it instead of
+keeping a second store.

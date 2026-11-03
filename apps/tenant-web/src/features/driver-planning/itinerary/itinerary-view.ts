@@ -119,6 +119,21 @@ export function stopTitle(stop: ItineraryStop): string {
   return line1 || line2 || stop.placeNote?.trim() || 'No address'
 }
 
+/**
+ * The driver's own word from the app, for the dispatcher: "Driver: done Mon
+ * Nov 2" / "Driver ETA Tue Nov 3 · 08:00 – 10:00". Null when they posted none.
+ */
+export function driverAssertionLabel(item: ItineraryItem): string | null {
+  const a = item.assertion
+  if (!a) return null
+  if (a.done) return `Driver: done ${formatDay(a.done)}`
+  if (a.eta) {
+    const w = a.eta.window ? ` · ${formatWindow({ ...a.eta.window, tz: null })}` : ''
+    return `Driver ETA ${formatDay(a.eta.day)}${w}`
+  }
+  return null
+}
+
 /** The source as a short label: where the dispatcher should look to change it. */
 export function sourceLabel(item: ItineraryItem): string {
   switch (item.source.kind) {

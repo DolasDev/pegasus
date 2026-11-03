@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   SectionList,
   StyleSheet,
@@ -13,6 +14,7 @@ import { useRouter } from 'expo-router'
 import { ApiError } from '@pegasus/api-http'
 import { ItineraryService } from '../../src/services/itineraryService'
 import { TripStatusBadge } from '../../src/components/TripStatusBadge'
+import { ItineraryEtaModal, type EtaDraft } from '../../src/components/ItineraryEtaModal'
 import type { ItineraryItem, ItinerarySourceName } from '../../src/types/itinerary'
 import {
   formatDay,
@@ -41,8 +43,10 @@ import { colors, fontSize, spacing, borderRadius } from '../../src/theme/colors'
 //
 // The API's 403 DRIVER_NOT_MAPPED (neither id mapped) is the onboarding state.
 //
-// Read-only. Delivery ETAs are still set from the trip screen; local acts get
-// ETA / done in Phase 3.
+// A driver can mark any act done and post an ETA on a local or order act. Both
+// are Pegasus facts (`assertion`), never written to legacy, and the legacy
+// dates stay as the dispatcher set them. A trip activity's ETA is set on the
+// trip screen, whose editor does write legacy.
 // ---------------------------------------------------------------------------
 
 type LoadError = { kind: 'unmapped' } | { kind: 'failed'; message: string }
@@ -65,6 +69,47 @@ export default function ItineraryScreen() {
   // Only the newest request may write state: paging weeks while a retry or a
   // pull-to-refresh is in flight must not land the old week under the new one.
   const latest = useRef(0)
+
+  const [etaItem, setEtaItem] = useState<ItineraryItem | null>(null)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+
+  /** Swap in the server's copy of one item after a write. */
+  const replaceItem = (updated: ItineraryItem) =>
+    setItems((list) => list.map((i) => (i.key === updated.key ? updated : i)))
+
+  const writeFailed = (err: unknown) =>
+    Alert.alert('Not saved', err instanceof Error ? err.message : 'Please try again.')
+
+  const toggleDone = async (item: ItineraryItem) => {
+    setBusyKey(item.key)
+    try {
+      replaceItem(await ItineraryService.setDone(item, item.assertion?.done ? null : localDay()))
+    } catch (err) {
+      writeFailed(err)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  const saveEta = async (eta: EtaDraft | null) => {
+    if (!etaItem) return
+    setBusyKey(etaItem.key)
+    try {
+      replaceItem(await ItineraryService.setEta(etaItem, eta))
+      setEtaItem(null)
+    } catch (err) {
+      writeFailed(err)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  // A trip activity's ETA lives on its trip screen (which writes legacy).
+  const editEta = (item: ItineraryItem) => {
+    if (item.source.kind === 'longhaul-activity') {
+      if (item.tripId != null) router.push(`/trip/${item.tripId}`)
+    } else setEtaItem(item)
+  }
 
   const load = useCallback(async (r: DayRange) => {
     const id = ++latest.current
@@ -227,8 +272,11 @@ export default function ItineraryScreen() {
         renderItem={({ item: stop }) => (
           <StopCard
             stop={stop}
+            busyKey={busyKey}
             onItemPress={openItem}
             onTripPress={(tripId) => router.push(`/trip/${tripId}`)}
+            onDone={(item) => void toggleDone(item)}
+            onEta={editEta}
           />
         )}
         contentContainerStyle={styles.listContent}
@@ -249,18 +297,31 @@ export default function ItineraryScreen() {
           />
         }
       />
+
+      <ItineraryEtaModal
+        item={etaItem}
+        busy={busyKey !== null}
+        onClose={() => setEtaItem(null)}
+        onSave={(eta) => void saveEta(eta)}
+      />
     </SafeAreaView>
   )
 }
 
 function StopCard({
   stop,
+  busyKey,
   onItemPress,
   onTripPress,
+  onDone,
+  onEta,
 }: {
   stop: ItineraryStop
+  busyKey: string | null
   onItemPress: (item: ItineraryItem) => void
   onTripPress: (tripId: number) => void
+  onDone: (item: ItineraryItem) => void
+  onEta: (item: ItineraryItem) => void
 }) {
   const { line2 } = placeLines(stop.place)
   const title = stopTitle(stop)
@@ -269,12 +330,15 @@ function StopCard({
       <Text style={styles.stopTitle}>{title}</Text>
       {line2 && line2 !== title ? <Text style={styles.stopSubtitle}>{line2}</Text> : null}
       {stop.items.map((item) => (
-        <ItemRow
-          key={item.key}
-          item={item}
-          onPress={() => onItemPress(item)}
-          onTripPress={onTripPress}
-        />
+        <View key={item.key}>
+          <ItemRow item={item} onPress={() => onItemPress(item)} onTripPress={onTripPress} />
+          <ItemActions
+            item={item}
+            busy={busyKey === item.key}
+            onDone={() => onDone(item)}
+            onEta={() => onEta(item)}
+          />
+        </View>
       ))}
     </View>
   )
@@ -289,7 +353,7 @@ function ItemRow({
   onPress: () => void
   onTripPress: (tripId: number) => void
 }) {
-  const done = isDone(item)
+  const done = isDone(item) || item.assertion?.done != null
   const offered = (item.tripStatus ?? '').trim().toLowerCase() === OFFERED_STATUS
   return (
     <TouchableOpacity
@@ -350,7 +414,82 @@ function ItemRow({
   )
 }
 
+/**
+ * The driver's own word on the act: what they posted, and the buttons to post
+ * it. A done that dispatch already recorded in legacy needs no button.
+ */
+function ItemActions({
+  item,
+  busy,
+  onDone,
+  onEta,
+}: {
+  item: ItineraryItem
+  busy: boolean
+  onDone: () => void
+  onEta: () => void
+}) {
+  const mine = item.assertion
+  const legacyDone = item.actual != null
+  const activity = item.source.kind === 'longhaul-activity'
+  return (
+    <View style={styles.actions}>
+      <View style={styles.assertion}>
+        {mine?.done ? (
+          <Text style={styles.assertionText}>You marked done {formatDay(mine.done)}</Text>
+        ) : null}
+        {mine?.eta && !mine.done ? (
+          <Text style={styles.assertionText}>
+            Your ETA {formatDay(mine.eta.day)}
+            {mine.eta.window ? ` · ${formatWindow({ ...mine.eta.window, tz: null })}` : ''}
+          </Text>
+        ) : null}
+      </View>
+      {busy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+      {!legacyDone && !mine?.done && !(activity && item.tripId == null) ? (
+        <TouchableOpacity
+          onPress={onEta}
+          disabled={busy}
+          style={styles.actionButton}
+          accessibilityRole="button"
+          accessibilityLabel={`ETA for ${item.actName}, order ${item.orderNum}`}
+        >
+          <Text style={styles.actionText}>{mine?.eta ? 'Change ETA' : 'ETA'}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {!legacyDone ? (
+        <TouchableOpacity
+          onPress={onDone}
+          disabled={busy}
+          style={styles.actionButton}
+          accessibilityRole="button"
+          accessibilityLabel={`${mine?.done ? 'Undo done' : 'Mark done'}: ${item.actName}, order ${item.orderNum}`}
+        >
+          <Text style={styles.actionText}>{mine?.done ? 'Undo done' : 'Mark done'}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  assertion: { flex: 1 },
+  assertionText: { fontSize: fontSize.small, color: colors.info, fontWeight: '600' },
+  actionButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.medium,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionText: { fontSize: fontSize.medium, fontWeight: '600', color: colors.textPrimary },
   container: { flex: 1, backgroundColor: colors.backgroundLight },
   rangeBar: {
     flexDirection: 'row',

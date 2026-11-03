@@ -3628,3 +3628,15 @@ no activity rows, it is not a local job's driver on the order, AND `sales.driver
 (id)`), compared upper-case without spaces. The view's `driver_name` / `driver_id` are sales' own
 (checked: 420/420 QMM, 964/964 NW). QMM's id 66666 is "Tor Crew, Local Toronto" — a crew-pool
 pseudo-driver, not a person. Full audit: `plans/completed/af79576b-order-assigned-source.md`.
+
+## `TriggerLocalDispatchUpdate` fires on EVERY job update — its work is gated by `IF UPDATE(col)`
+
+Read from `sys.sql_modules` on NW and QMM (2026-11-03): the `LocalDispatchJobs` trigger is `FOR
+UPDATE`, but every cascade sits under `IF UPDATE(is_final)` (stamps `sales.*_actual` for each token
+in `services`, logs "Local Marked Final") or `IF UPDATE(is_confirmed)` (copies `driver_id1` into
+`sales.driver_id` / `load_driver`, inserts `CrewServices` rows, logs "Local Marked Confirmed"). So an
+UPDATE whose SET list names only `eta_minimum` / `eta_maximum` / `eta_win_minutes` cascades nothing.
+Two traps: `IF UPDATE(col)` is TRUE when the column is merely in the SET list, even unchanged — never
+write a full row back; and `sales` has its own large `TriggerSalesUpdate` (118 KB on NW), so any
+`sales` write needs the same reading first. Pegasus writes neither today: the driver's ETA / done
+are act facts (`lib/itinerary/act-facts.ts`).

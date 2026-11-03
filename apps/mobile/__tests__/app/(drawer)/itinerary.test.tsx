@@ -1,12 +1,19 @@
 import React from 'react'
+import { Alert } from 'react-native'
 import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import { ApiError } from '@pegasus/api-http'
 import ItineraryScreen from '../../../app/(drawer)/itinerary'
 import type { ItineraryItem } from '../../../src/types/itinerary'
 
 const mockGet = jest.fn()
+const mockSetDone = jest.fn()
+const mockSetEta = jest.fn()
 jest.mock('../../../src/services/itineraryService', () => ({
-  ItineraryService: { getMyItinerary: (...args: unknown[]) => mockGet(...args) },
+  ItineraryService: {
+    getMyItinerary: (...args: unknown[]) => mockGet(...args),
+    setDone: (...args: unknown[]) => mockSetDone(...args),
+    setEta: (...args: unknown[]) => mockSetEta(...args),
+  },
 }))
 
 const mockPush = jest.fn()
@@ -39,6 +46,7 @@ function item(partial: Partial<ItineraryItem>): ItineraryItem {
     tripId: null,
     tripStatus: null,
     drivers: { longhaul: [], local: [] },
+    assertion: null,
     ...partial,
   }
 }
@@ -50,6 +58,8 @@ function ok(items: ItineraryItem[], failedSources: string[] = []) {
 beforeEach(() => {
   mockGet.mockReset()
   mockPush.mockReset()
+  mockSetDone.mockReset()
+  mockSetEta.mockReset()
   jest.useFakeTimers({ now: new Date(2026, 9, 27, 9, 0), doNotFake: ['nextTick', 'setImmediate'] })
 })
 afterEach(() => jest.useRealTimers())
@@ -170,5 +180,105 @@ describe('ItineraryScreen', () => {
     const { findByText } = render(<ItineraryScreen />)
 
     expect(await findByText(/Couldn’t load your local jobs/)).toBeTruthy()
+  })
+})
+
+describe("ItineraryScreen — the driver's own ETA and done", () => {
+  const LOCAL = {
+    key: 'local-job-token:9:LOAD',
+    actName: 'Load',
+    orderNum: 200,
+    source: { kind: 'local-job-token' as const, jobId: 9, token: 'LOAD' },
+  }
+
+  it('marks an act done, shows it as theirs, and can undo it', async () => {
+    mockGet.mockResolvedValue(ok([item(LOCAL)]))
+    mockSetDone.mockResolvedValueOnce(
+      item({
+        ...LOCAL,
+        assertion: { eta: null, done: '2026-10-27', assertedAt: 'x', byUserId: 'u1' },
+      }),
+    )
+    const { findByLabelText, findByText, getByLabelText } = render(<ItineraryScreen />)
+
+    fireEvent.press(await findByLabelText('Mark done: Load, order 200'))
+    await waitFor(() =>
+      expect(mockSetDone).toHaveBeenCalledWith(
+        expect.objectContaining({ key: LOCAL.key, day: '2026-10-27' }),
+        '2026-10-27',
+      ),
+    )
+    expect(await findByText('You marked done Tue Oct 27')).toBeTruthy()
+
+    mockSetDone.mockResolvedValueOnce(item(LOCAL))
+    fireEvent.press(getByLabelText('Undo done: Load, order 200'))
+    await waitFor(() =>
+      expect(mockSetDone).toHaveBeenLastCalledWith(
+        expect.objectContaining({ key: LOCAL.key }),
+        null,
+      ),
+    )
+  })
+
+  it('posts an ETA on a local act through the ETA sheet', async () => {
+    mockGet.mockResolvedValue(ok([item(LOCAL)]))
+    mockSetEta.mockResolvedValue(
+      item({
+        ...LOCAL,
+        assertion: {
+          eta: { day: '2026-10-28', window: null },
+          done: null,
+          assertedAt: 'x',
+          byUserId: 'u1',
+        },
+      }),
+    )
+    const { findByLabelText, getByLabelText, getByText, findByText } = render(<ItineraryScreen />)
+
+    fireEvent.press(await findByLabelText('ETA for Load, order 200'))
+    fireEvent.press(getByLabelText('Next day'))
+    fireEvent.press(getByText('Save'))
+
+    await waitFor(() =>
+      expect(mockSetEta).toHaveBeenCalledWith(expect.objectContaining({ key: LOCAL.key }), {
+        day: '2026-10-28',
+        window: null,
+      }),
+    )
+    expect(await findByText('Your ETA Wed Oct 28')).toBeTruthy()
+  })
+
+  it("sends a trip activity's ETA to its trip screen, not the sheet", async () => {
+    mockGet.mockResolvedValue(ok([item({ key: 'a', actName: 'Pack', tripId: 55 })]))
+    const { findByLabelText, queryByText } = render(<ItineraryScreen />)
+
+    fireEvent.press(await findByLabelText('ETA for Pack, order 100'))
+    expect(mockPush).toHaveBeenCalledWith('/trip/55')
+    expect(queryByText('Your ETA')).toBeNull()
+    expect(mockSetEta).not.toHaveBeenCalled()
+  })
+
+  it('offers no buttons on an act dispatch already marked done in legacy', async () => {
+    mockGet.mockResolvedValue(ok([item({ ...LOCAL, actual: '2026-10-27' })]))
+    const { findByText, queryByLabelText } = render(<ItineraryScreen />)
+    await findByText('✓ Load')
+    expect(queryByLabelText('Mark done: Load, order 200')).toBeNull()
+    expect(queryByLabelText('ETA for Load, order 200')).toBeNull()
+  })
+
+  it('says so when a write fails', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined)
+    mockGet.mockResolvedValue(ok([item(LOCAL)]))
+    mockSetDone.mockRejectedValue(new Error('That act is not on your itinerary for that day'))
+    const { findByLabelText } = render(<ItineraryScreen />)
+
+    fireEvent.press(await findByLabelText('Mark done: Load, order 200'))
+    await waitFor(() =>
+      expect(alert).toHaveBeenCalledWith(
+        'Not saved',
+        'That act is not on your itinerary for that day',
+      ),
+    )
+    alert.mockRestore()
   })
 })

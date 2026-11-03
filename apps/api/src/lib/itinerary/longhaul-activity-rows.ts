@@ -113,5 +113,6 @@ export function longhaulActivityItem(row: LonghaulActivityRow): ItineraryItem | 
     tripId: realId(row.TripMaster_id),
     tripStatus: text(row.it_trip_status),
     drivers: { longhaul: owner === null ? [] : [owner], local: [] },
+    assertion: null,
   }
 }

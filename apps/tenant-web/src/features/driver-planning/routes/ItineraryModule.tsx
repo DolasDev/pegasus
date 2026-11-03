@@ -41,6 +41,7 @@ import {
   localDay,
   rangeFrom,
   shiftRange,
+  driverAssertionLabel,
   sourceLabel,
   stopTitle,
 } from '../itinerary/itinerary-view'
@@ -242,6 +243,14 @@ export function ItineraryModule() {
                                     <Badge variant="outline">Storage</Badge>
                                   )}
                                   {item.confirmed && !item.actual && <Badge>Confirmed</Badge>}
+                                  {driverAssertionLabel(item) && (
+                                    <Badge
+                                      variant="info"
+                                      title="Posted by the driver in the app; not in legacy"
+                                    >
+                                      {driverAssertionLabel(item)}
+                                    </Badge>
+                                  )}
                                 </span>
                               </button>
                             </li>

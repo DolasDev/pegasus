@@ -317,6 +317,7 @@ model Tenant {
   deviceTokens           DeviceToken[]
   availabilityFilters    AvailabilityFilter[]
   servicesFilters        ServicesFilter[]
+  itineraryActFacts      ItineraryActFact[]
   pushNotificationOutbox PushNotificationOutbox[]
 
   // Move chat
@@ -540,6 +541,7 @@ model TenantUser {
   deviceTokens                 DeviceToken[]
   availabilityFilters          AvailabilityFilter[]
   servicesFilters              ServicesFilter[]
+  itineraryActFacts            ItineraryActFact[]
   pushNotifications            PushNotificationOutbox[]
   chatMessages                 ChatMessage[]
   chatRoomMembers              ChatRoomMember[]
@@ -3453,6 +3455,45 @@ model AvailabilityFilter {
   @@index([tenantId, ownerId])
   @@index([tenantId, isPublic])
   @@map("availability_filters")
+  @@schema("public")
+}
+
+/// A driver's own assertion about one itinerary act — an ETA or "done" — kept in
+/// Pegasus and never written to legacy (plan: itinerary-act-facts): a local
+/// job's `is_final` completes every act on the job, an activity's `actual_date`
+/// feeds settlement, and the dispatcher's local ETA is the one legacy emails
+/// the customer.
+///
+/// Keyed by the itinerary item's own stable `itemKey` (`longhaul-activity:<id>`,
+/// `local-job-token:<job>:<token>`, `order-assigned:<order>:<act>`), not by a
+/// day: one order can have two same-token jobs on one day, and both drivers on a
+/// job see the same act. Append-only; the latest `assertedAt` per (itemKey,
+/// basis) is current, and a row with a null `day` clears.
+model ItineraryActFact {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  itemKey      String    @map("item_key") @db.VarChar(120)
+  /// `longhaul-activity` | `local-job-token` | `order-assigned`.
+  sourceKind   String    @map("source_kind") @db.VarChar(32)
+  orderNum     Int       @map("order_num")
+  actCode      String?   @map("act_code") @db.VarChar(16)
+  /// `ETA` | `DONE`.
+  basis        String    @db.VarChar(8)
+  /// The asserted day (ETA: when it will happen; DONE: when it happened). Null clears.
+  day          DateTime? @db.Date
+  /// Local `HH:mm` arrival window for an ETA; both or neither.
+  windowStart  String?   @map("window_start") @db.VarChar(5)
+  windowEnd    String?   @map("window_end") @db.VarChar(5)
+  assertedById String?   @map("asserted_by_id")
+  /// Where it was captured, e.g. `driver-app`.
+  capturedBy   String    @map("captured_by") @db.VarChar(32)
+  assertedAt   DateTime  @default(now()) @map("asserted_at") @db.Timestamptz(6)
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  assertedBy TenantUser? @relation(fields: [assertedById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([tenantId, itemKey, basis, assertedAt])
+  @@map("itinerary_act_facts")
   @@schema("public")
 }
 
