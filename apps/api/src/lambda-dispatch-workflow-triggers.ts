@@ -119,8 +119,12 @@ import {
 } from './lib/start-workflow-execution'
 import { sweepTenantRunners } from './lib/tenant-runner'
 import { advanceNamespaceMigrations } from './lib/temporal-namespace-cutover'
+import { tenantNamespacesConfigured } from './lib/tenant-namespace-request'
 import { resolveWorkflowRoute } from './lib/workflow-route'
-import { createTenantTemporalNamespaceRepository } from './repositories/tenant-temporal-namespace.repository'
+import {
+  createTenantTemporalNamespaceRepository,
+  MIGRATING_STATUSES,
+} from './repositories/tenant-temporal-namespace.repository'
 import { createWorkflowRepository } from './repositories/workflow.repository'
 
 const logger = createLogger('pegasus-dispatch-workflow-triggers')
@@ -162,6 +166,8 @@ type TriggerSkipReason =
   | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
   | 'MUST_FORK' // defensive: trigger on a cross-tenant GLOBAL workflow (config mistake)
   | 'TENANT_MIGRATING' // Phase 3b.2: tenant's Temporal namespace mid-cutover/rollback
+  | 'TENANT_NAMESPACE_PROVISIONING' // tenant's own namespace being created: deferred like TENANT_MIGRATING
+  | 'TENANT_NAMESPACE_UNAVAILABLE' // tenant's namespace FAILED / DEPROVISIONING: the run is lost (alarmed)
   | 'DRY_RUN_UNSUPPORTED' // dry-run trigger on a STDLIB workflow (API refuses; legacy/race)
   | 'ERROR' // unexpected per-trigger exception
 
@@ -268,6 +274,9 @@ type MetricCounts = {
   derived: number // custom events derived from a domain condition (Unit 8)
   skipped: Map<TriggerSkipReason, number>
   backlog: boolean
+  /** TenantTemporalNamespacesUnhealthy: set by phase 0 where namespaces are
+   * provisioned (0 included, so the alarm has a continuous series). */
+  namespacesUnhealthy?: number
 }
 
 async function flushMetrics(counts: MetricCounts): Promise<void> {
@@ -309,6 +318,14 @@ async function flushMetrics(counts: MetricCounts): Promise<void> {
       Unit: 'Count' as const,
       Timestamp: timestamp,
       Dimensions: [{ Name: 'Reason', Value: reason }],
+    })
+  }
+  if (counts.namespacesUnhealthy !== undefined) {
+    metricData.push({
+      MetricName: 'TenantTemporalNamespacesUnhealthy',
+      Value: counts.namespacesUnhealthy,
+      Unit: 'Count' as const,
+      Timestamp: timestamp,
     })
   }
   if (counts.backlog) {
@@ -541,6 +558,34 @@ async function fireTrigger(opts: {
         ...logContext,
       })
       return 'DEFERRED'
+    case 'TENANT_NAMESPACE_PROVISIONING':
+      // The tenant had no namespace when this tick loaded its events (the
+      // start just requested one), or it began provisioning mid-tick. Same
+      // contract as TENANT_MIGRATING: nothing written, the event waits, and
+      // the next ticks exclude the tenant at the query until it is ACTIVE.
+      skip('TENANT_NAMESPACE_PROVISIONING')
+      logger.info('Trigger deferred — tenant Temporal namespace provisioning', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        triggerSource,
+        ...logContext,
+      })
+      return 'DEFERRED'
+    case 'TENANT_NAMESPACE_UNAVAILABLE':
+      // FAILED (or DEPROVISIONING) is not excluded at the query: it has no
+      // bound, and holding the tenant's events would also hold its curated
+      // triggers. So this tenant-runner occurrence is lost, loudly; phase 0
+      // retries the provision and TenantTemporalNamespacesUnhealthy alarms.
+      skip('TENANT_NAMESPACE_UNAVAILABLE')
+      logger.error('Trigger skipped — tenant Temporal namespace unavailable', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        triggerSource,
+        ...logContext,
+      })
+      break
     case 'ALREADY_STARTED':
       // The pre-check raced a concurrent start; Temporal's REJECT_DUPLICATE
       // guarantees the run exists exactly once. Success-already-handled: no
@@ -614,6 +659,9 @@ export async function handler(event?: unknown): Promise<{
   // ── Phase 1: domain-event dispatch (EVENT triggers) ──────────────────────
 
   // ── Phase 0 (3b.2): finish namespace drains ───────────────────────────────
+  // (and, where namespaces are provisioned, advance READY rows and retry stuck
+  // or failed provisions: lib/temporal-namespace-cutover.ts)
+  const namespacesConfigured = tenantNamespacesConfigured()
   //
   // Before the event query, so a tenant that settles now gets its waiting
   // events dispatched this tick. Failure-isolated: a broken pass leaves every
@@ -621,7 +669,13 @@ export async function handler(event?: unknown): Promise<{
   if (!kicked) {
     try {
       const migration = await advanceNamespaceMigrations(db)
-      if (migration.advanced.length > 0 || migration.waiting.length > 0) {
+      if (namespacesConfigured) counts.namespacesUnhealthy = migration.unhealthy
+      if (
+        migration.advanced.length > 0 ||
+        migration.waiting.length > 0 ||
+        migration.retried.length > 0 ||
+        migration.unhealthy > 0
+      ) {
         logger.info('Temporal namespace migrations checked', { ...migration })
       }
     } catch (err) {
@@ -636,8 +690,18 @@ export async function handler(event?: unknown): Promise<{
   // QUERY — never loaded and skipped — so they can't sit at the head of this
   // oldest-first batch and starve every other tenant (GOTCHAS: "A global
   // oldest-first outbox drain + an infinite park").
+  //
+  // Legacy-runner retirement: where namespaces are provisioned, a tenant
+  // whose namespace is PROVISIONING or READY waits the same way (bounded: a
+  // provision finishes within the provisioner's 15-minute timeout, and READY
+  // advances on the next phase 0). FAILED is deliberately NOT held: it has no
+  // bound, and holding it would hold the tenant's curated triggers too.
   const migratingTenantIds = (
-    await createTenantTemporalNamespaceRepository(db).findMigrating()
+    await createTenantTemporalNamespaceRepository(db).findInStatuses(
+      namespacesConfigured
+        ? [...MIGRATING_STATUSES, 'PROVISIONING', 'READY']
+        : [...MIGRATING_STATUSES],
+    )
   ).map((r) => r.tenantId)
 
   // Back-pressure: a tenant at the concurrency cap would only park its events

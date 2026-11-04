@@ -131,6 +131,14 @@ function friendlyRunError(error: unknown): string {
     // own isolated runtime; in-flight runs finish first (≤ ~15 minutes).
     return 'Your Automations are being moved to their own isolated runtime. New runs are paused until in-flight runs finish (about 15 minutes at most). Try again shortly.'
   }
+  if (error.code === 'TENANT_NAMESPACE_PROVISIONING') {
+    // Transient: the account's own isolated runtime is being created, usually
+    // right after its first Automation was published (a few minutes).
+    return 'Your Automations are getting their own isolated runtime, which takes a few minutes. Nothing was started. Try again shortly.'
+  }
+  if (error.code === 'TENANT_NAMESPACE_UNAVAILABLE') {
+    return 'Your isolated Automation runtime is unavailable right now. Nothing was started. The platform team has been alerted.'
+  }
   return error.message || 'Failed to start run.'
 }
 

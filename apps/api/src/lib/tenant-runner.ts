@@ -97,7 +97,13 @@ export type TenantRunnerConfig = {
   clusterArn: string
   /** Task-definition FAMILY name (no revision). RunTask resolves a bare
    * family to its latest ACTIVE revision, so a CDK task-def update is picked
-   * up by the next launch without re-wiring the dispatcher. */
+   * up by the next launch without re-wiring the dispatcher.
+   *
+   * Since the legacy runner's retirement this is the SCOPED family
+   * (`pegasus-tenant-runner-scoped-<env>`): no Temporal secret; the runner
+   * fetches its tenant's namespace key from the broker. It is the only
+   * family, so a runner can only serve executions recorded in a tenant
+   * namespace. */
   taskDefinition: string
   /** Container name inside the task definition — targets the env overrides. */
   containerName: string
@@ -106,29 +112,6 @@ export type TenantRunnerConfig = {
   subnetIds: string[]
   /** Egress-only security group id for runner tasks. */
   securityGroupId: string
-  /** Phase 3b.2: family of the SCOPED task definition (no shared Temporal
-   * key; the runner fetches its tenant's key from the broker). Null when
-   * this environment hasn't deployed it yet — optional on purpose, see
-   * loadTenantRunnerConfig. */
-  scopedTaskDefinition: string | null
-}
-
-/**
- * Which runner task definition a launch uses (Phase 3b.2):
- *   legacy — `taskDefinition`: the shared Temporal key from the task
- *            definition; polls the shared namespace.
- *   scoped — `scopedTaskDefinition`: no Temporal secret; polls the tenant's
- *            own namespace with the key the broker serves.
- * Decided by WHERE the work lives (the execution row's temporalNamespace),
- * never by the tenant's current status.
- */
-export type TenantRunnerFamily = 'legacy' | 'scoped'
-
-/** The family an execution row needs, from its recorded namespace. */
-export function runnerFamilyForNamespace(
-  temporalNamespace: string | null | undefined,
-): TenantRunnerFamily {
-  return temporalNamespace == null ? 'legacy' : 'scoped'
 }
 
 /** The bare family name inside a task-definition ARN (`…/<family>:<rev>`). */
@@ -160,19 +143,7 @@ export function loadTenantRunnerConfig(
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
   if (subnetIds.length === 0) return null
-  // NOT part of the all-or-nothing check above: if the API stack deploys
-  // before the worker stack has the scoped task definition, every LEGACY
-  // launch must keep working. Asking for the scoped family while it's unset is
-  // a per-launch failure (SCOPED_UNCONFIGURED), and cutover refuses to start.
-  const scopedTaskDefinition = env['TENANT_RUNNER_SCOPED_TASK_DEFINITION']?.trim() || null
-  return {
-    clusterArn,
-    taskDefinition,
-    containerName,
-    subnetIds,
-    securityGroupId,
-    scopedTaskDefinition,
-  }
+  return { clusterArn, taskDefinition, containerName, subnetIds, securityGroupId }
 }
 
 // ---------------------------------------------------------------------------
@@ -249,10 +220,7 @@ export type EnsureTenantRunnerDeps = {
   config?: TenantRunnerConfig | null
 }
 
-export type EnsureTenantRunnerOptions = EnsureTenantRunnerDeps & {
-  /** Which task definition (Phase 3b.2). Defaults to legacy. */
-  family?: TenantRunnerFamily
-}
+export type EnsureTenantRunnerOptions = EnsureTenantRunnerDeps
 
 export type EnsureTenantRunnerResult =
   /** No TENANT_RUNNER_* config in this environment — nothing to do. */
@@ -288,8 +256,7 @@ export async function ensureTenantRunner(
   if (!config) {
     return { outcome: 'SKIPPED_UNCONFIGURED' }
   }
-  const family = deps.family ?? 'legacy'
-  const taskDefinition = family === 'scoped' ? config.scopedTaskDefinition : config.taskDefinition
+  const taskDefinition = config.taskDefinition
 
   // Kill-switch: refuse to launch a runner for a disabled tenant. The check is
   // a cheap primary-key lookup. We do NOT throw — callers treat this as a soft
@@ -315,17 +282,6 @@ export async function ensureTenantRunner(
     return { outcome: 'LAUNCH_FAILED', reason: 'INVALID_TENANT_ID' }
   }
 
-  // Scoped work with no scoped task definition deployed: fail loudly. Never
-  // fall back to the legacy family — its runner polls the shared namespace
-  // and would leave the tenant-namespace work stranded anyway.
-  if (!taskDefinition) {
-    logger.error('Scoped tenant-runner requested but no scoped task definition is configured', {
-      tenantId,
-    })
-    await publishMetrics([{ MetricName: METRIC_RUNNER_LAUNCH_FAILED, Value: 1, Unit: 'Count' }])
-    return { outcome: 'LAUNCH_FAILED', reason: 'SCOPED_UNCONFIGURED' }
-  }
-
   const ecs = deps.ecsClient ?? defaultEcsClient()
 
   try {
@@ -338,10 +294,9 @@ export async function ensureTenantRunner(
       new ListTasksCommand({ cluster: config.clusterArn, startedBy: tenantId }),
     )
     const listedArns = listed.taskArns ?? []
-    // Family-aware (Phase 3b.2): `startedBy` is the tenant id alone, so it
-    // matches the tenant's runners of BOTH families. Only a runner of the
-    // wanted family counts — otherwise a legacy runner idling out after a
-    // cutover would hold off the scoped launch for its whole idle window.
+    // Family-aware: `startedBy` is the tenant id alone, so it would also match
+    // any other task family launched for the tenant (3b.2's legacy runners,
+    // while they existed). Only a runner of this family can serve the work.
     let existing: string[] = []
     if (listedArns.length > 0) {
       const described = await ecs.send(
@@ -384,8 +339,11 @@ export async function ensureTenantRunner(
               name: config.containerName,
               // Per-launch env contract — mirrors
               // apps/tenant-runner/pegasus_tenant_runner/config.py. The
-              // static half (ENV_NAME / TEMPORAL_* / PEGASUS_API_BASE_URL /
-              // TEMPORAL_CLOUD_API_KEY) lives on the task definition.
+              // static half (ENV_NAME / PEGASUS_API_BASE_URL) lives on the
+              // task definition; there is no Temporal setting at all (the
+              // runner fetches its namespace, address and key from the
+              // broker), and never a Temporal key here: overrides are
+              // readable through ecs:DescribeTasks.
               environment: [
                 { name: 'TENANT_ID', value: tenantId },
                 { name: 'WORKFLOW_BROKER_TOKEN', value: brokerToken },
@@ -415,7 +373,6 @@ export async function ensureTenantRunner(
       tenantId,
       taskArn: task.taskArn,
       taskDefinition,
-      family,
     })
     await publishMetrics([{ MetricName: METRIC_RUNNER_LAUNCHED, Value: 1, Unit: 'Count' }])
     return { outcome: 'LAUNCHED', taskArn: task.taskArn }
@@ -487,15 +444,20 @@ export async function sweepTenantRunners(
       workflow: { select: { name: true, executable: true } },
     },
   })
-  // One demand per (tenant, family), the family read from each row's recorded
-  // namespace (Phase 3b.2) rather than the tenant's current status. Mid-cutover
-  // a tenant can briefly have work in both namespaces (a start that raced the
-  // flip to DRAINING); each half gets the runner that can reach it.
-  const demands = new Map<string, { tenantId: string; family: TenantRunnerFamily }>()
+  // One demand per tenant. Only rows recorded in a tenant namespace can be
+  // served: the only runner family polls the tenant's own namespace. A row in
+  // the shared namespace (temporal_namespace NULL) has no runner since the
+  // legacy family's retirement; it is logged here and the reconciler fails it.
+  // The retirement's pre-merge gate made sure none was open at deploy.
+  const demands = new Set<string>()
+  const unservable = new Set<string>()
   for (const row of open) {
     if (!executionNeedsTenantRunner(row.workflow)) continue
-    const family = runnerFamilyForNamespace(row.temporalNamespace)
-    demands.set(`${row.tenantId}:${family}`, { tenantId: row.tenantId, family })
+    if (row.temporalNamespace == null) unservable.add(row.tenantId)
+    else demands.add(row.tenantId)
+  }
+  for (const tenantId of unservable) {
+    logger.error('tenant_runner.shared_row_unservable', { tenantId })
   }
   result.tenantsNeedingRunner = demands.size
 
@@ -507,8 +469,8 @@ export async function sweepTenantRunners(
 
   // Sequential on purpose: per-tenant isolation (one tenant's failure never
   // skips another) and no thundering RunTask herd on a busy tick.
-  for (const { tenantId, family } of demands.values()) {
-    const ensured = await ensureTenantRunner(db, tenantId, { ...deps, family })
+  for (const tenantId of demands) {
+    const ensured = await ensureTenantRunner(db, tenantId, deps)
     if (ensured.outcome === 'LAUNCHED') result.launched += 1
     // SKIPPED_DISABLED is a clean no-op — operator kill switch. Not a failure.
     if (ensured.outcome === 'LAUNCH_FAILED') result.launchFailed += 1
@@ -542,15 +504,10 @@ export async function publishTenantRunnerPoolMetrics(
     // the stdlib worker service). One page (100 ARNs) is far beyond v1
     // scale; if we ever run >100 concurrent tenant runners the gauge
     // saturating at 100 is the least of our problems — revisit then.
-    // Both families (Phase 3b.2): the gauge counts every runner.
-    const families = [config.taskDefinition, config.scopedTaskDefinition].filter(
-      (f): f is string => f !== null,
+    const listed = await ecs.send(
+      new ListTasksCommand({ cluster: config.clusterArn, family: config.taskDefinition }),
     )
-    const taskArns: string[] = []
-    for (const family of families) {
-      const listed = await ecs.send(new ListTasksCommand({ cluster: config.clusterArn, family }))
-      taskArns.push(...(listed.taskArns ?? []))
-    }
+    const taskArns = listed.taskArns ?? []
 
     let running = 0
     const metricData: MetricDatum[] = []

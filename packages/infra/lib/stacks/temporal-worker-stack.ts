@@ -144,12 +144,9 @@ export class TemporalWorkerStack extends cdk.Stack {
   public readonly tenantRunnerRepository: ecr.IRepository
 
   /** Tenant-runner Fargate task definition — launched via RunTask, never a
-   * service (scale-to-zero, Phase 3 Unit 9). */
+   * service (scale-to-zero, Phase 3 Unit 9). The SCOPED family, the only one
+   * since the legacy shared-key runner was retired: no Temporal secret. */
   public readonly tenantRunnerTaskDefinition: ecs.FargateTaskDefinition
-
-  /** Scoped tenant-runner task definition — no Temporal secret; runs tenants
-   * cut over to their own namespace (Phase 3b.2). */
-  public readonly tenantRunnerScopedTaskDefinition: ecs.FargateTaskDefinition
 
   constructor(scope: Construct, id: string, props: TemporalWorkerStackProps) {
     super(scope, id, props)
@@ -414,7 +411,7 @@ export class TemporalWorkerStack extends cdk.Stack {
     // The names below are therefore load-bearing and mirrored in
     // api-stack.ts — change both sides together:
     //   - cluster        pegasus-temporal-worker-<env>   (above)
-    //   - task family    pegasus-tenant-runner-<env>
+    //   - task family    pegasus-tenant-runner-scoped-<env>
     //   - task role      pegasus-tenant-runner-task-<env>
     //   - exec role      pegasus-tenant-runner-exec-<env>
     // =========================================================================
@@ -463,84 +460,37 @@ export class TemporalWorkerStack extends cdk.Stack {
         'Tenant-runner task role - intentionally NO permissions (runner holds no AWS credentials).',
     })
 
-    // Execution role — used by the ECS agent (not the container): ECR pull,
-    // awslogs delivery, and the Secrets Manager read for the one secret env
-    // var injected below. Deterministic name for the same PassRole reason.
+    // Execution role — used by the ECS agent (not the container): ECR pull
+    // and awslogs delivery. It reads NO secret: since the legacy runner's
+    // retirement no runner task gets a Temporal key injected (completes 3a's
+    // "no Admin key in runners"). Deterministic name for the same PassRole
+    // reason.
     const tenantRunnerExecutionRole = new iam.Role(this, 'TenantRunnerExecutionRole', {
       roleName: `pegasus-tenant-runner-exec-${envName}`,
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description: 'Tenant-runner execution role - ECR pull + awslogs + secret injection.',
+      description: 'Tenant-runner execution role - ECR pull + awslogs (no secrets).',
     })
-
-    // Task definition. Same 0.5 vCPU / 1 GiB as the stdlib worker — the
-    // runner is equally IO-bound (Temporal polling + HTTP + a venv install
-    // at startup); the per-execution subprocess inherits this envelope,
-    // which doubles as the fixed CPU/memory limit from Resolved #3.
-    const tenantRunnerTaskDef = new ecs.FargateTaskDefinition(this, 'TenantRunnerTaskDef', {
-      cpu: 512,
-      memoryLimitMiB: 1024,
-      family: `pegasus-tenant-runner-${envName}`,
-      taskRole: tenantRunnerTaskRole,
-      executionRole: tenantRunnerExecutionRole,
-    })
-    this.tenantRunnerTaskDefinition = tenantRunnerTaskDef
-
-    tenantRunnerTaskDef.addContainer('TenantRunnerContainer', {
-      // Mirrored in api-stack.ts as TENANT_RUNNER_CONTAINER_NAME — the
-      // dispatcher's containerOverrides target this name at RunTask time.
-      containerName: 'tenant-runner',
-      image: ecs.ContainerImage.fromEcrRepository(tenantRunnerRepository, 'latest'),
-      logging: ecs.LogDriver.awsLogs({
-        logGroup: tenantRunnerLogGroup,
-        streamPrefix: 'runner',
-      }),
-      environment: {
-        // STATIC half of the runner env contract
-        // (apps/tenant-runner/pegasus_tenant_runner/config.py). The
-        // per-launch half — TENANT_ID + WORKFLOW_BROKER_TOKEN — arrives as
-        // RunTask containerOverrides from the dispatcher
-        // (apps/api/src/lib/tenant-runner.ts); it is per-tenant and cannot
-        // live on a shared task definition.
-        ENV_NAME: envName,
-        TEMPORAL_NAMESPACE: temporalNamespace,
-        TEMPORAL_ADDRESS: temporalAddress,
-        PEGASUS_API_BASE_URL: pegasusApiBaseUrl,
-      },
-      secrets: {
-        // Same complete-ARN secret object as the worker container above —
-        // see the fromSecretCompleteArn block for why the suffixed ARN is
-        // mandatory. NOTE the asymmetry vs the worker: the runner gets the
-        // Temporal Cloud key ONLY. The shared WORKFLOW_BROKER_SECRET must
-        // NEVER reach a tenant-runner task (Unit 7's whole point) — its
-        // per-tenant wbk_ token arrives via RunTask override instead.
-        TEMPORAL_CLOUD_API_KEY: ecs.Secret.fromSecretsManager(temporalCloudSecret, 'apiKey'),
-      },
-    })
-
-    // Secret read for the injection above. Execution role only — the
-    // container's task role stays empty (the runner process never calls
-    // AWS APIs, and tenant code must find nothing if it ever reaches the
-    // task-role credentials endpoint).
-    temporalCloudSecret.grantRead(tenantRunnerExecutionRole)
 
     // -----------------------------------------------------------------------
-    // SCOPED tenant-runner task definition (Phase 3b.2)
+    // Tenant-runner task definition: the SCOPED family
     //
-    // For tenants cut over to their OWN Temporal namespace. Same image, roles
-    // and log group as the legacy definition above, but NO Temporal secret
-    // and no TEMPORAL_* env at all: with TEMPORAL_ADDRESS absent the runner
-    // runs in broker mode, fetching its tenant's namespace + namespace-scoped
-    // key from GET /internal/temporal-credentials (wbk_-authenticated) and
-    // refreshing it as the key rotates
+    // Same 0.5 vCPU / 1 GiB as the stdlib worker — the runner is equally
+    // IO-bound (Temporal polling + HTTP + a venv install at startup); the
+    // per-execution subprocess inherits this envelope, which doubles as the
+    // fixed CPU/memory limit from Resolved #3.
+    //
+    // NO Temporal secret and no TEMPORAL_* env at all: with TEMPORAL_ADDRESS
+    // absent the runner runs in broker mode, fetching its tenant's namespace +
+    // namespace-scoped key from GET /internal/temporal-credentials
+    // (wbk_-authenticated) and refreshing it as the key rotates
     // (apps/tenant-runner/pegasus_tenant_runner/temporal_credentials.py).
     // The key is never a RunTask override: overrides are readable through
     // ecs:DescribeTasks.
     //
-    // The dispatcher picks the family per execution from the namespace
-    // recorded on the row (apps/api/src/lib/tenant-runner.ts). The legacy
-    // definition stays until every tenant with Automations is cut over.
-    // Reusing the legacy roles keeps the dispatcher's iam:PassRole grant
-    // unchanged.
+    // Since 3b.2's legacy family (`pegasus-tenant-runner-<env>`, which held
+    // the shared Temporal key) was retired, this is the only runner family:
+    // every tenant-runner Automation runs in its tenant's own namespace. The
+    // construct id predates that and is kept so the resource isn't replaced.
     // -----------------------------------------------------------------------
     const tenantRunnerScopedTaskDef = new ecs.FargateTaskDefinition(
       this,
@@ -553,11 +503,11 @@ export class TemporalWorkerStack extends cdk.Stack {
         executionRole: tenantRunnerExecutionRole,
       },
     )
-    this.tenantRunnerScopedTaskDefinition = tenantRunnerScopedTaskDef
+    this.tenantRunnerTaskDefinition = tenantRunnerScopedTaskDef
 
     tenantRunnerScopedTaskDef.addContainer('TenantRunnerContainer', {
-      // Same container name as the legacy definition: the dispatcher's
-      // containerOverrides target one name for both families.
+      // Mirrored in api-stack.ts as TENANT_RUNNER_CONTAINER_NAME — the
+      // dispatcher's containerOverrides target this name at RunTask time.
       containerName: 'tenant-runner',
       image: ecs.ContainerImage.fromEcrRepository(tenantRunnerRepository, 'latest'),
       logging: ecs.LogDriver.awsLogs({
@@ -565,9 +515,12 @@ export class TemporalWorkerStack extends cdk.Stack {
         streamPrefix: 'runner-scoped',
       }),
       environment: {
-        // Static half of the env contract, minus every TEMPORAL_* variable
-        // (their absence IS broker mode). The per-launch half arrives as
-        // RunTask overrides exactly as for the legacy family.
+        // STATIC half of the runner env contract
+        // (apps/tenant-runner/pegasus_tenant_runner/config.py), minus every
+        // TEMPORAL_* variable (their absence IS broker mode). The per-launch
+        // half — TENANT_ID + WORKFLOW_BROKER_TOKEN — arrives as RunTask
+        // containerOverrides from the dispatcher
+        // (apps/api/src/lib/tenant-runner.ts).
         ENV_NAME: envName,
         PEGASUS_API_BASE_URL: pegasusApiBaseUrl,
       },
@@ -599,14 +552,9 @@ export class TemporalWorkerStack extends cdk.Stack {
         'ECR repository URI for the tenant-runner image. .github/workflows/tenant-runner.yml pushes here.',
     })
     new cdk.CfnOutput(this, 'TenantRunnerTaskDefinitionFamily', {
-      value: tenantRunnerTaskDef.family,
-      description:
-        'Tenant-runner task-definition family. The dispatcher RunTasks the latest ACTIVE revision of this family.',
-    })
-    new cdk.CfnOutput(this, 'TenantRunnerScopedTaskDefinitionFamily', {
       value: tenantRunnerScopedTaskDef.family,
       description:
-        'Scoped tenant-runner task-definition family (no Temporal secret; broker-fetched tenant key). Used for tenants cut over to their own namespace.',
+        'Tenant-runner task-definition family (scoped: no Temporal secret; broker-fetched tenant key). The dispatcher RunTasks the latest ACTIVE revision of this family.',
     })
     new cdk.CfnOutput(this, 'TenantRunnerLogGroupName', {
       value: tenantRunnerLogGroup.logGroupName,

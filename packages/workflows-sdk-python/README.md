@@ -1578,7 +1578,7 @@ client.list_workflows(include_retired=True)                 # rows carry status
 ## Runs paused while your Automations move (`TENANT_MIGRATING`)
 
 The platform can move a tenant's Automations into their own isolated Temporal
-runtime (a dedicated namespace with its own key), and back. While a move is in
+runtime (a dedicated namespace with its own key). While a move is in
 progress, new runs are refused until the runs already in flight finish. That
 takes at most about 15 minutes, the execution cap. (0.50.0+)
 
@@ -1601,6 +1601,37 @@ except TenantMigrating as err:
   missed tick (schedules never catch up).
 - **Your code doesn't change.** The same task queue, the same `from_runtime()`
   client, the same broker: only where Temporal runs it changes.
+
+## Your tenant's own runtime (`TENANT_NAMESPACE_*`)
+
+Every tenant's Automations run in the tenant's own isolated Temporal runtime (a
+dedicated namespace with its own key). The tenant's first `push` or fork
+requests it, and it is ready a few minutes later. `push` tells you, and the
+finalize response carries `namespace: {"status", "ready"}`. (0.55.0+)
+
+```python
+from pegasus_workflows import TenantNamespaceProvisioning, TenantNamespaceUnavailable
+
+try:
+    client.run_workflow(workflow_id, {"orderId": "123"})
+except TenantNamespaceProvisioning as err:
+    time.sleep(err.retry_after_seconds or 60)  # then try again
+except TenantNamespaceUnavailable:
+    ...  # provisioning failed; the platform retries it and is alerted
+```
+
+- **HTTP 409, `code="TENANT_NAMESPACE_PROVISIONING"`,** with a `Retry-After`
+  header, from `POST /workflows/{id}/run` and
+  `POST /workflows/{id}/executions/{id}/retry` (`run_workflow`,
+  `retry_execution`, and `pegasus-workflows run`), dry runs included, until the
+  runtime is ready. Nothing was started, so retrying is safe. Event triggers
+  wait and fire once it is ready.
+- **HTTP 503, `code="TENANT_NAMESPACE_UNAVAILABLE"`,** if provisioning failed.
+  The platform retries every 15 minutes and its team is alerted. While it
+  lasts, an event trigger for a tenant-runner Automation is skipped (that run
+  is lost); curated triggers are unaffected.
+- Both are `PegasusApiError` subclasses and siblings of `TenantMigrating`, not
+  subclasses of it. Your code doesn't change.
 
 ## Deployment ledger — `deployments.toml`
 

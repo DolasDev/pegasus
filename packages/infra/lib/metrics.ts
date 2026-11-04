@@ -87,6 +87,16 @@ export const TEMPORAL_KEY_CLASSES = ['provisioner', 'tenant', 'platform'] as con
  */
 export const TEMPORAL_KEY_ROTATION_FAILED_METRIC_NAME = 'TemporalKeyRotationFailed'
 
+/**
+ * Gauge: tenant Temporal namespaces that look unhealthy — FAILED, or READY /
+ * PROVISIONING untouched for 20 minutes (a key that stopped authorizing, or a
+ * provisioner that keeps dying). Published by the trigger dispatcher's phase 0
+ * every full tick (0 when healthy), where namespaces are provisioned. A tenant
+ * counted here can't run its Automations: with the legacy runner retired there
+ * is no shared namespace to fall back to.
+ */
+export const TENANT_TEMPORAL_NAMESPACES_UNHEALTHY_METRIC_NAME = 'TenantTemporalNamespacesUnhealthy'
+
 // ---------------------------------------------------------------------------
 // Usage meter (billable automated actions).
 //

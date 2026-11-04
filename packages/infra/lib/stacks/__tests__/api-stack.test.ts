@@ -1391,11 +1391,12 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
       ) {
         throw new Error(`unexpected cluster ARN: ${JSON.stringify(vars.TENANT_RUNNER_CLUSTER_ARN)}`)
       }
-      if (vars.TENANT_RUNNER_SCOPED_TASK_DEFINITION !== 'pegasus-tenant-runner-scoped-staging') {
-        throw new Error('TENANT_RUNNER_SCOPED_TASK_DEFINITION must be the scoped bare family name')
+      // The scoped family is the only one (legacy shared-key runner retired).
+      if (vars.TENANT_RUNNER_TASK_DEFINITION !== 'pegasus-tenant-runner-scoped-staging') {
+        throw new Error('TENANT_RUNNER_TASK_DEFINITION must be the scoped bare family name')
       }
-      if (vars.TENANT_RUNNER_TASK_DEFINITION !== 'pegasus-tenant-runner-staging') {
-        throw new Error('TENANT_RUNNER_TASK_DEFINITION must be the bare family name')
+      if ('TENANT_RUNNER_SCOPED_TASK_DEFINITION' in vars) {
+        throw new Error('TENANT_RUNNER_SCOPED_TASK_DEFINITION is retired')
       }
       if (vars.TENANT_RUNNER_CONTAINER_NAME !== 'tenant-runner') {
         throw new Error('TENANT_RUNNER_CONTAINER_NAME mismatch')
@@ -1421,9 +1422,7 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
             // revision) + the bare-family form, belt-and-braces — see the
             // statement comment in api-stack.ts.
             Resource: [
-              'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging:*',
-              'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging',
-              // Phase 3b.2: the scoped family, for tenants on their own namespace.
+              // The scoped family only: the legacy family is retired.
               'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-scoped-staging:*',
               'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-scoped-staging',
             ],
@@ -1590,16 +1589,21 @@ describe('ApiStack — Temporal namespace provisioner (Phase 3b)', () => {
       expect(provisionerId).toBeTruthy()
     })
 
-    it('gives the API the function name and invoke on the provisioner only', () => {
+    it('gives the API and the trigger dispatcher (only) the function name and invoke on the provisioner', () => {
       const template = synth({ temporalProvisionerSecretArn: PROVISIONER_ARN })
       const [provisionerId] = provisionerFns(template)[0]!
-      const withName = Object.values(template.findResources('AWS::Lambda::Function')).filter(
-        (fn) => vars(fn)['TEMPORAL_PROVISIONER_FUNCTION_NAME'] !== undefined,
+      const withName = Object.entries(template.findResources('AWS::Lambda::Function')).filter(
+        ([, fn]) => vars(fn)['TEMPORAL_PROVISIONER_FUNCTION_NAME'] !== undefined,
       )
-      expect(withName).toHaveLength(1)
-      expect(vars(withName[0]!)['TEMPORAL_PROVISIONER_FUNCTION_NAME']).toEqual({
-        Ref: provisionerId,
-      })
+      // The dispatcher requests a namespace for a trigger-fired start and
+      // retries failed provisions (legacy-runner retirement).
+      expect(withName.map(([id]) => id.replace(/[0-9A-F]{8}$/, '')).sort()).toEqual([
+        'ApiFunction',
+        'DispatchWorkflowTriggersFunction',
+      ])
+      for (const [, fn] of withName) {
+        expect(vars(fn)['TEMPORAL_PROVISIONER_FUNCTION_NAME']).toEqual({ Ref: provisionerId })
+      }
       template.hasResourceProperties('AWS::IAM::Policy', {
         PolicyDocument: {
           Statement: Match.arrayWith([

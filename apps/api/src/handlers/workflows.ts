@@ -50,6 +50,7 @@ import { createTenantEventTypeRepository } from '../repositories/tenant-event-ty
 import { loadPresenceSets, resolveAgainst, countMissing } from '../lib/workflow-secret-requirements'
 import { currentWorkflowIds } from '../lib/workflow-current-version'
 import { resolveWorkflowRoute } from '../lib/workflow-route'
+import { requestTenantNamespaceQuietly } from '../lib/tenant-namespace-request'
 import { validateFilterExpr } from '../lib/event-filter'
 import type { WorkflowTriggerRow } from '../repositories/workflow-trigger.repository'
 import type { AppEnv } from '../types'
@@ -513,6 +514,29 @@ function startResultToResponse(
         },
         409,
       )
+    case 'TENANT_NAMESPACE_PROVISIONING':
+      // Transient: the tenant's own namespace is being created (a few
+      // minutes). Usually requested at its first publish; nothing started.
+      c.header('Retry-After', '60')
+      return c.json(
+        {
+          error:
+            'Automations for this account are getting their own isolated runtime, which takes a few minutes. Nothing was started. Try again shortly.',
+          code: 'TENANT_NAMESPACE_PROVISIONING',
+        },
+        409,
+      )
+    case 'TENANT_NAMESPACE_UNAVAILABLE':
+      // FAILED or DEPROVISIONING: not a retry-in-a-minute condition. The
+      // platform retries a failed provision on its own and an alarm pages.
+      return c.json(
+        {
+          error:
+            "This account's isolated Automation runtime is unavailable right now. Nothing was started. The platform team has been alerted.",
+          code: 'TENANT_NAMESPACE_UNAVAILABLE',
+        },
+        503,
+      )
     default: {
       // START_FAILED, plus ALREADY_STARTED mapped to the same 502 surface
       // (unreachable on the manual/retry path — the workflow id embeds a fresh
@@ -865,7 +889,15 @@ workflowsHandler.post(
       version: row.version,
       visibility,
     })
-    return c.json({ data: toResponse(row) }, 201)
+    // A tenant's first Automation gets its own Temporal namespace requested
+    // now, so it is usually ready by the first run (legacy runner retired).
+    // GLOBAL publishes skip it: other tenants run a GLOBAL row only through a
+    // fork, which requests for the forking tenant.
+    const namespace =
+      visibility === 'TENANT' && resolveWorkflowRoute(row) === 'TENANT_RUNNER'
+        ? await requestTenantNamespaceQuietly(basePrisma, tenantId, 'publish')
+        : null
+    return c.json({ data: { ...toResponse(row), ...(namespace ? { namespace } : {}) } }, 201)
   },
 )
 
@@ -1173,7 +1205,12 @@ workflowsHandler.post('/:id/fork', requirePermission(Actions.UploadWorkflow), as
     forkedFromWorkflowId: source.id,
     forkedFromVersion: source.version,
   })
-  return c.json({ data: toResponse(row) }, 201)
+  // The fork runs on the forking tenant's runner, in its own namespace.
+  const namespace =
+    resolveWorkflowRoute(row) === 'TENANT_RUNNER'
+      ? await requestTenantNamespaceQuietly(basePrisma, tenantId, 'fork')
+      : null
+  return c.json({ data: { ...toResponse(row), ...(namespace ? { namespace } : {}) } }, 201)
 })
 
 // ---------------------------------------------------------------------------

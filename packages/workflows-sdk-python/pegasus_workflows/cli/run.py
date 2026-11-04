@@ -95,7 +95,14 @@ def run_command(
     base_url: str = base_url_option(),
     profile: str = profile_option(),
 ) -> None:
-    """Run a curated Automation against the Pegasus runtime."""
+    """Run a curated Automation against the Pegasus runtime.
+
+    Each tenant's Automations run in the tenant's own isolated runtime. Until it
+    is ready (a few minutes after the tenant's first publish) a run is refused
+    with TENANT_NAMESPACE_PROVISIONING (409: retry in a minute), or
+    TENANT_NAMESPACE_UNAVAILABLE (503) if it failed to provision. While it moves,
+    TENANT_MIGRATING (409: retry). Nothing is started in any of those cases.
+    """
     token, base_url = resolve_credentials(token, base_url, profile)
 
     try:

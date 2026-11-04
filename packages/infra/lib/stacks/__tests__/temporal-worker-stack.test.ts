@@ -104,9 +104,10 @@ describe('TemporalWorkerStack — ECS cluster + Fargate service', () => {
     synth().template.resourceCountIs('AWS::ECS::Cluster', 1)
   })
 
-  it('creates three task definitions (worker + legacy and scoped tenant-runner) but exactly ONE service', () => {
+  it('creates two task definitions (worker + the scoped tenant-runner) but exactly ONE service', () => {
     const { template } = synth()
-    template.resourceCountIs('AWS::ECS::TaskDefinition', 3)
+    // 3b.2's legacy runner family (shared Temporal key) is retired.
+    template.resourceCountIs('AWS::ECS::TaskDefinition', 2)
     // The tenant-runner MUST NOT have a service — runners are RunTask-only
     // and scale to zero (Phase 3 Resolved #1). A second service appearing
     // here means someone broke the scale-to-zero contract.
@@ -161,81 +162,63 @@ function findTaskDef(family: string): TaskDefResource {
   return def as TaskDefResource
 }
 
-describe('TemporalWorkerStack — SCOPED tenant-runner task definition (Phase 3b.2)', () => {
-  const scoped = () => findTaskDef('pegasus-tenant-runner-scoped-staging')
+describe('TemporalWorkerStack — tenant-runner task definition (scoped; the only family)', () => {
+  const runner = () => findTaskDef('pegasus-tenant-runner-scoped-staging')
 
-  it('registers family pegasus-tenant-runner-scoped-<env> at the same 512 CPU / 1024 MiB', () => {
-    expect(scoped().Properties?.Cpu).toBe('512')
-    expect(scoped().Properties?.Memory).toBe('1024')
+  it('registers family pegasus-tenant-runner-scoped-<env> at 512 CPU / 1024 MiB', () => {
+    expect(runner().Properties?.Cpu).toBe('512')
+    expect(runner().Properties?.Memory).toBe('1024')
+  })
+
+  it('has no legacy family pegasus-tenant-runner-<env> (it held the shared Temporal key)', () => {
+    const tmpl = synth().template.toJSON() as { Resources?: Record<string, TaskDefResource> }
+    const families = Object.values(tmpl.Resources ?? {})
+      .filter((r) => r.Type === 'AWS::ECS::TaskDefinition')
+      .map((r) => r.Properties?.Family)
+    expect(families).not.toContain('pegasus-tenant-runner-staging')
   })
 
   it('carries NO secrets at all — the runner fetches its tenant key from the broker', () => {
-    const container = scoped().Properties?.ContainerDefinitions?.[0]
+    const container = runner().Properties?.ContainerDefinitions?.[0]
     expect(container?.Secrets ?? []).toEqual([])
   })
 
   it('carries no TEMPORAL_* env (its absence is broker mode), only the static contract', () => {
-    const container = scoped().Properties?.ContainerDefinitions?.[0]
+    const container = runner().Properties?.ContainerDefinitions?.[0]
     expect(container?.Name).toBe('tenant-runner')
     const envNames = (container?.Environment ?? []).map((e) => e.Name).sort()
+    // The per-launch TENANT_ID / WORKFLOW_BROKER_TOKEN come via RunTask overrides.
     expect(envNames).toEqual(['ENV_NAME', 'PEGASUS_API_BASE_URL'])
   })
 
-  it('reuses the legacy task + execution roles (the PassRole contract is unchanged)', () => {
-    const legacy = findTaskDef('pegasus-tenant-runner-staging').Properties
-    expect(scoped().Properties?.TaskRoleArn).toEqual(legacy?.TaskRoleArn)
-    expect(scoped().Properties?.ExecutionRoleArn).toEqual(legacy?.ExecutionRoleArn)
+  it('the runner EXECUTION role can read no secret (no Temporal key injected anywhere)', () => {
+    const tmpl = synth().template.toJSON() as {
+      Resources?: Record<string, { Type: string; Properties?: Record<string, unknown> }>
+    }
+    const execRoleIds = Object.entries(tmpl.Resources ?? {})
+      .filter(
+        ([, r]) =>
+          r.Type === 'AWS::IAM::Role' &&
+          r.Properties?.['RoleName'] === 'pegasus-tenant-runner-exec-staging',
+      )
+      .map(([id]) => id)
+    expect(execRoleIds).toHaveLength(1)
+    const onExecRole = Object.values(tmpl.Resources ?? {}).filter(
+      (r) =>
+        r.Type === 'AWS::IAM::Policy' &&
+        JSON.stringify(r.Properties?.['Roles'] ?? []).includes(execRoleIds[0]!),
+    )
+    expect(JSON.stringify(onExecRole)).not.toContain('secretsmanager:')
   })
 
   it('exports its family', () => {
     const outputs = Object.keys(synth().template.toJSON().Outputs ?? {})
-    expect(outputs).toContain('TenantRunnerScopedTaskDefinitionFamily')
-  })
-})
-
-describe('TemporalWorkerStack — tenant-runner task definition (Phase 3 Unit 9)', () => {
-  it('registers family pegasus-tenant-runner-<env> at 512 CPU / 1024 MiB', () => {
-    const def = findTaskDef('pegasus-tenant-runner-staging')
-    expect(def.Properties?.Cpu).toBe('512')
-    expect(def.Properties?.Memory).toBe('1024')
-  })
-
-  it('sets the static env contract (per-launch TENANT_ID/WORKFLOW_BROKER_TOKEN come via RunTask overrides)', () => {
-    const container = findTaskDef('pegasus-tenant-runner-staging').Properties
-      ?.ContainerDefinitions?.[0]
-    expect(container?.Name).toBe('tenant-runner')
-    expect(container?.Environment).toEqual(
-      expect.arrayContaining([
-        { Name: 'ENV_NAME', Value: 'staging' },
-        { Name: 'TEMPORAL_NAMESPACE', Value: 'pegasus-staging.chgel' },
-        { Name: 'TEMPORAL_ADDRESS', Value: 'pegasus-staging.chgel.tmprl.cloud:7233' },
-        { Name: 'PEGASUS_API_BASE_URL', Value: 'https://api.pegasus-qa.dolas.dev' },
-      ]),
-    )
-    // The per-launch pair must NOT be baked into the shared task def.
-    const envNames = (container?.Environment ?? []).map((e) => e.Name)
-    expect(envNames).not.toContain('TENANT_ID')
-    expect(envNames).not.toContain('WORKFLOW_BROKER_TOKEN')
-  })
-
-  it('injects TEMPORAL_CLOUD_API_KEY from the COMPLETE (suffixed) secret ARN — and nothing else', () => {
-    const container = findTaskDef('pegasus-tenant-runner-staging').Properties
-      ?.ContainerDefinitions?.[0]
-    // Exactly one secret env var, sourced from the full ARN (with the
-    // 6-char suffix) + the apiKey JSON path. A no-suffix ARN here breaks
-    // both the IAM grant match and the runtime GetSecretValue — see
-    // [[feedback_cdk_secret_complete_arn_for_ecs]].
-    expect(container?.Secrets).toEqual([
-      {
-        Name: 'TEMPORAL_CLOUD_API_KEY',
-        ValueFrom:
-          'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-TESTAB:apiKey::',
-      },
-    ])
+    expect(outputs).toContain('TenantRunnerTaskDefinitionFamily')
+    expect(outputs).not.toContain('TenantRunnerScopedTaskDefinitionFamily')
   })
 
   it('NEVER injects the shared WORKFLOW_BROKER_SECRET into a tenant-runner task (Unit 7 keystone)', () => {
-    const container = findTaskDef('pegasus-tenant-runner-staging').Properties
+    const container = findTaskDef('pegasus-tenant-runner-scoped-staging').Properties
       ?.ContainerDefinitions?.[0]
     const secretNames = (container?.Secrets ?? []).map((s) => s.Name)
     const envNames = (container?.Environment ?? []).map((e) => e.Name)
@@ -261,7 +244,7 @@ describe('TemporalWorkerStack — tenant-runner task definition (Phase 3 Unit 9)
         r.Properties?.LogGroupName === '/pegasus/staging/tenant-runner',
     )
     expect(lg?.DeletionPolicy).toBe('Retain')
-    const container = findTaskDef('pegasus-tenant-runner-staging').Properties
+    const container = findTaskDef('pegasus-tenant-runner-scoped-staging').Properties
       ?.ContainerDefinitions?.[0]
     expect(container?.LogConfiguration?.LogDriver).toBe('awslogs')
   })

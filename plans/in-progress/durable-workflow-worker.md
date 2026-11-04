@@ -18,9 +18,12 @@
   expiry alarms (#838), and staging acceptance passed after fixes #844/#845.
   **3b.2 (routing) is COMPLETE** (#855, prod rollout 2026-11-03: 5 tenants
   ACTIVE; plan archived at
-  `plans/completed/00dc33f0-tenant-temporal-routing.md`). Still owed from 3b:
-  removing the legacy runner and its shared key, which is **blocked** and planned
-  in `plans/todo/retire-legacy-tenant-runner.md`. This file stays in
+  `plans/completed/00dc33f0-tenant-temporal-routing.md`). **The legacy runner
+  and its shared key are retired** (`chore/retire-legacy-tenant-runner`,
+  plan `plans/in-progress/retire-legacy-tenant-runner.md`): every tenant-runner
+  Automation runs in its tenant's own namespace, a tenant's first publish
+  requests one, and no runner holds a Temporal secret, which completes 3a's
+  "no Admin key in runners". This file stays in
   `plans/in-progress/` until 3c lands; each part's PR updates it. (The
   "Approved outline" section at the bottom is the original checklist, copied
   verbatim from the master plan; the detailed plan above supersedes it.)
@@ -240,7 +243,8 @@ command) `saas-api.tmprl.cloud` does not resolve.
   - Driven by `scripts/temporal/cutover-tenant.ts`.
   - The final cleanup (removing the legacy runner task definition and the
     shared key from runners) happens once every tenant is ACTIVE. That's a
-    separate small PR.
+    separate small PR. **Done:** `plans/in-progress/retire-legacy-tenant-runner.md`
+    (it also onboards new tenants automatically and drops rollback).
 - **Tests:**
   - vitest for client resolution, cutover states, the broker endpoint (tenant
     confinement and 404s) and task-definition selection;

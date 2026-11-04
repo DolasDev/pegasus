@@ -234,7 +234,7 @@ dedupe on ``messageId`` — events may be delivered twice.
 
 ## Runs paused while Automations move (``TENANT_MIGRATING``)
 
-While the platform moves a tenant's Automations to (or back from) their own
+While the platform moves a tenant's Automations into their own
 isolated Temporal namespace, ``run_workflow`` / ``retry_execution`` (and
 ``pegasus-workflows run``) raise ``TenantMigrating`` (409
 ``TENANT_MIGRATING``, a ``PegasusApiError`` subclass importable from
@@ -242,6 +242,21 @@ isolated Temporal namespace, ``run_workflow`` / ``retry_execution`` (and
 Nothing was started: wait ``err.retry_after_seconds`` (or 60) and retry.
 Event triggers lose nothing (their events fire after the move); a schedule
 tick inside the move is skipped. Workflow code needs no change.
+
+## The tenant's own runtime (``TENANT_NAMESPACE_*``, 0.55.0+)
+
+Every tenant's Automations run in the tenant's own isolated Temporal
+namespace. A tenant's first ``push`` (or fork) requests it; ``push`` says so,
+and the finalize response carries ``namespace: {status, ready}``. Until it is
+ready (a few minutes) ``run_workflow`` / ``retry_execution`` raise
+``TenantNamespaceProvisioning`` (409 ``TENANT_NAMESPACE_PROVISIONING``, with
+``retry_after_seconds``): nothing was started, retry. Event triggers wait and
+fire once it is ready. If provisioning failed they raise
+``TenantNamespaceUnavailable`` (503 ``TENANT_NAMESPACE_UNAVAILABLE``): the
+platform retries on its own and is alerted; while it lasts, event-triggered
+runs of tenant-runner Automations are skipped. Both are ``PegasusApiError``
+subclasses importable from ``pegasus_workflows``, siblings of
+``TenantMigrating``.
 
 ## Email (internal only)
 

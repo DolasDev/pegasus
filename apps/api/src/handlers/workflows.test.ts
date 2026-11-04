@@ -101,6 +101,14 @@ const {
   }
 })
 
+// Publish/fork namespace request: spied; the start-path gate keeps the real
+// helpers (it reads TEMPORAL_PROVISIONER_FUNCTION_NAME).
+const { mockRequestQuietly } = vi.hoisted(() => ({ mockRequestQuietly: vi.fn() }))
+vi.mock('../lib/tenant-namespace-request', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  requestTenantNamespaceQuietly: mockRequestQuietly,
+}))
+
 vi.mock('../repositories/workflow.repository', () => ({
   createWorkflowRepository: vi.fn(() => mockRepo),
 }))
@@ -341,6 +349,7 @@ describe('workflows handler', () => {
     })
     mockEncryptRuntimeToken.mockResolvedValue('BASE64-CIPHERTEXT')
     mockRepo.attachRuntimeToken.mockResolvedValue(provisionedRow)
+    mockRequestQuietly.mockResolvedValue(null)
     // Custom event-type registry: default to "not registered" so a non-built-in
     // eventType is rejected unless a test opts in by returning an enabled row.
     mockEventTypeRepo.findByName.mockResolvedValue(null)
@@ -632,6 +641,34 @@ describe('workflows handler', () => {
         }),
       )
       expect(res.status).toBe(201)
+    })
+
+    it('requests the tenant namespace for a tenant-runner publish and reports it', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      const custom = { ...provisionedRow, name: 'my_custom_workflow' }
+      mockRepo.create.mockResolvedValue(custom)
+      mockRepo.attachRuntimeToken.mockResolvedValue(custom)
+      mockRequestQuietly.mockResolvedValue({ status: 'PROVISIONING', ready: false })
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      expect(res.status).toBe(201)
+      expect(mockRequestQuietly).toHaveBeenCalledWith(
+        expect.anything(),
+        'test-tenant-id',
+        'publish',
+      )
+      expect(((await json(res)).data as JsonBody)['namespace']).toEqual({
+        status: 'PROVISIONING',
+        ready: false,
+      })
+    })
+
+    it('does not request a namespace for a curated (STDLIB) publish; no namespace field', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockRepo.create.mockResolvedValue(mockRow)
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      expect(res.status).toBe(201)
+      expect(mockRequestQuietly).not.toHaveBeenCalled()
+      expect(((await json(res)).data as JsonBody)['namespace']).toBeUndefined()
     })
 
     it('returns 400 VALIDATION_ERROR on a manifest with an unknown requiredActions id', async () => {
@@ -1034,6 +1071,21 @@ describe('workflows handler', () => {
       expect(mockGetObjectBuffer).not.toHaveBeenCalled()
     })
 
+    it('requests the forking tenant’s namespace for a tenant-runner fork', async () => {
+      const forkedRow = { ...provisionedRow, id: 'forked-wf-1', name: 'my_custom_workflow' }
+      mockRepo.findByIdForTenant.mockResolvedValue({ ...globalRow, name: 'my_custom_workflow' })
+      mockRepo.forkGlobalToTenant.mockResolvedValue(forkedRow)
+      mockRepo.attachRuntimeToken.mockResolvedValue(forkedRow)
+      mockRequestQuietly.mockResolvedValue({ status: 'ACTIVE', ready: true })
+      const res = await buildApp().request('/global-wf-1/fork', post({}))
+      expect(res.status).toBe(201)
+      expect(mockRequestQuietly).toHaveBeenCalledWith(expect.anything(), 'test-tenant-id', 'fork')
+      expect(((await json(res)).data as JsonBody)['namespace']).toEqual({
+        status: 'ACTIVE',
+        ready: true,
+      })
+    })
+
     it('strips artifactKey from the fork response', async () => {
       const forkedRow = { ...provisionedRow, id: 'forked-wf-1' }
       mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
@@ -1198,6 +1250,37 @@ describe('workflows handler', () => {
       expect((await json(res)).code).toBe('TENANT_MIGRATING')
       expect(mockTemporalStart).not.toHaveBeenCalled()
     })
+
+    it.each([
+      ['PROVISIONING', 409, 'TENANT_NAMESPACE_PROVISIONING', '60'],
+      ['FAILED', 503, 'TENANT_NAMESPACE_UNAVAILABLE', null],
+    ] as const)(
+      'where namespaces are provisioned, a %s tenant gets %i %s (legacy runner retired)',
+      async (status, httpStatus, code, retryAfter) => {
+        process.env['TEMPORAL_PROVISIONER_FUNCTION_NAME'] = 'pegasus-test-temporal-provisioner'
+        try {
+          mockRepo.findByIdForTenant.mockResolvedValue({
+            ...provisionedRow,
+            name: 'tenant_custom_workflow',
+            visibility: 'TENANT' as const,
+            tenantId: 'test-tenant-id',
+            executable: true,
+          })
+          mockNamespaceFindUnique.mockResolvedValueOnce({
+            tenantId: 'test-tenant-id',
+            namespace: 'pg-test.acct',
+            status,
+          })
+          const res = await buildApp().request('/wf-1/run', post({ input: {} }))
+          expect(res.status).toBe(httpStatus)
+          expect(res.headers.get('Retry-After')).toBe(retryAfter)
+          expect((await json(res)).code).toBe(code)
+          expect(mockTemporalStart).not.toHaveBeenCalled()
+        } finally {
+          delete process.env['TEMPORAL_PROVISIONER_FUNCTION_NAME']
+        }
+      },
+    )
 
     it('422 DRY_RUN_UNSUPPORTED — dry-run of a curated (STDLIB) workflow is rejected', async () => {
       mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)

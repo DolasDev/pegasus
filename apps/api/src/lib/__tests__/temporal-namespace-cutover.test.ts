@@ -4,7 +4,7 @@
 // logic here (which rows hold a drain open), so it runs against real SQL.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, afterAll, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, afterAll, beforeAll, beforeEach, vi } from 'vitest'
 import { db } from '../../db'
 import {
   advanceNamespaceMigrations,
@@ -39,8 +39,11 @@ async function execution(data: {
   })
 }
 
-async function setStatus(status: 'READY' | 'DRAINING' | 'ACTIVE' | 'REVERTING') {
-  await db.tenantTemporalNamespace.update({ where: { tenantId }, data: { status } })
+async function setStatus(
+  status: 'READY' | 'DRAINING' | 'ACTIVE' | 'REVERTING' | 'PROVISIONING' | 'FAILED',
+  extra: { leaseExpiresAt?: Date | null } = {},
+) {
+  await db.tenantTemporalNamespace.update({ where: { tenantId }, data: { status, ...extra } })
 }
 
 async function statusNow() {
@@ -170,6 +173,99 @@ describe.skipIf(!hasDb)('temporal namespace cutover drains (integration)', () =>
         await advanceNamespaceMigrations(db, NOW, { tenantIds: [tenantId] })
         expect(await statusNow()).toBe(status)
       }
+    })
+  })
+
+  // Legacy-runner retirement: where namespaces are provisioned, READY is a
+  // waypoint and stuck/failed provisions are retried. Rows were written just
+  // now (updatedAt ≈ real time) and NOW is in 2030, so every row here is
+  // "untouched for a long time" unless the test passes `now: new Date()`.
+  describe('advanceNamespaceMigrations — namespaces provisioned', () => {
+    const authorized = vi.fn(async () => true)
+    const request = vi.fn(async () => ({ outcome: 'REQUESTED' }) as never)
+    const pass = (now: Date = NOW) =>
+      advanceNamespaceMigrations(db, now, {
+        tenantIds: [tenantId],
+        configured: true,
+        keyAuthorized: authorized,
+        request,
+      })
+
+    beforeEach(() => {
+      authorized.mockClear().mockResolvedValue(true)
+      request.mockClear()
+    })
+
+    it('READY → DRAINING → ACTIVE in ONE pass when nothing is open and the key passes', async () => {
+      const result = await pass()
+      expect(result.advanced).toEqual([
+        { tenantId, from: 'READY', to: 'DRAINING' },
+        { tenantId, from: 'DRAINING', to: 'ACTIVE' },
+      ])
+      expect(await statusNow()).toBe('ACTIVE')
+      expect(authorized).toHaveBeenCalledWith(expect.anything(), tenantId)
+    })
+
+    it('READY with an open shared-namespace run stops at DRAINING until it finishes', async () => {
+      await execution({ status: 'RUNNING' })
+      const result = await pass()
+      expect(result.waiting).toContainEqual({ tenantId, status: 'DRAINING', open: 1 })
+      expect(await statusNow()).toBe('DRAINING')
+    })
+
+    it('READY stays READY while its key does not pass, and counts as unhealthy once stuck', async () => {
+      authorized.mockResolvedValue(false)
+      const fresh = await pass(new Date())
+      expect(await statusNow()).toBe('READY')
+      expect(fresh.unhealthy).toBe(0)
+      expect((await pass()).unhealthy).toBe(1)
+    })
+
+    it('re-requests a PROVISIONING row whose lease expired; leaves a held lease alone', async () => {
+      await setStatus('PROVISIONING', { leaseExpiresAt: new Date(NOW.getTime() + 60_000) })
+      expect((await pass()).retried).toEqual([])
+      expect(request).not.toHaveBeenCalled()
+
+      await setStatus('PROVISIONING', { leaseExpiresAt: new Date(NOW.getTime() - 60_000) })
+      expect((await pass()).retried).toEqual([tenantId])
+      expect(request).toHaveBeenCalledWith(expect.anything(), tenantId, {
+        cause: 'retry',
+        now: NOW,
+      })
+    })
+
+    it('retries a FAILED row only after FAILED_RETRY_AFTER_MS; always counts it unhealthy', async () => {
+      await setStatus('FAILED')
+      const recent = await pass(new Date())
+      expect(recent.unhealthy).toBe(1)
+      expect(request).not.toHaveBeenCalled()
+
+      const later = await pass()
+      expect(later.retried).toEqual([tenantId])
+      expect(later.unhealthy).toBe(1)
+    })
+
+    it('leaves ACTIVE alone', async () => {
+      await setStatus('ACTIVE')
+      const result = await pass()
+      expect(result.advanced).toEqual([])
+      expect(request).not.toHaveBeenCalled()
+      expect(await statusNow()).toBe('ACTIVE')
+    })
+
+    it('without provisioning configured, READY / FAILED / PROVISIONING are left alone (3b.2)', async () => {
+      for (const status of ['READY', 'FAILED', 'PROVISIONING'] as const) {
+        await setStatus(status)
+        await advanceNamespaceMigrations(db, NOW, {
+          tenantIds: [tenantId],
+          configured: false,
+          keyAuthorized: authorized,
+          request,
+        })
+        expect(await statusNow()).toBe(status)
+      }
+      expect(request).not.toHaveBeenCalled()
+      expect(authorized).not.toHaveBeenCalled()
     })
   })
 })

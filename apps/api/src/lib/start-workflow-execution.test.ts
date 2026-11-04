@@ -39,6 +39,8 @@ const {
   capturedPutMetricInputs,
   mockWithTemporalClient,
   mockNamespaceFindByTenant,
+  mockNamespacesConfigured,
+  mockRequestNamespace,
 } = vi.hoisted(() => {
   const capturedPutMetricInputs: Array<unknown> = []
   const mockTemporalStart = vi.fn()
@@ -49,6 +51,10 @@ const {
     ),
     // No TenantTemporalNamespace row by default: the shared namespace.
     mockNamespaceFindByTenant: vi.fn(),
+    // Whether this environment provisions tenant namespaces; false by default
+    // (local dev / tests: the shared namespace).
+    mockNamespacesConfigured: vi.fn(),
+    mockRequestNamespace: vi.fn(),
     mockWorkflowRepo: {
       attachRuntimeToken: vi.fn(),
     },
@@ -101,6 +107,11 @@ vi.mock('../repositories/tenant-temporal-namespace.repository', async (importOri
   createTenantTemporalNamespaceRepository: vi.fn(() => ({
     findByTenant: mockNamespaceFindByTenant,
   })),
+}))
+
+vi.mock('./tenant-namespace-request', () => ({
+  tenantNamespacesConfigured: mockNamespacesConfigured,
+  requestTenantNamespace: mockRequestNamespace,
 }))
 
 // tenant-runner: ensureTenantRunner is mocked; the real executionNeedsTenantRunner
@@ -256,6 +267,14 @@ beforeEach(() => {
   mockCwSend.mockResolvedValue({})
   // Default: kill switch OFF.
   mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
+  mockNamespacesConfigured.mockReturnValue(false)
+  // A cut-over tenant, as every tenant with Automations is in staging and
+  // prod: its tenant-runner runs go to its own namespace and get a runner.
+  mockNamespaceFindByTenant.mockImplementation(async (tenantId: string) => ({
+    tenantId,
+    namespace: `pg-test-${tenantId}.acct`,
+    status: 'ACTIVE',
+  }))
 })
 
 // ---------------------------------------------------------------------------
@@ -320,9 +339,7 @@ describe('routing matrix', () => {
         taskQueue: 'pegasus-tenant-tenant-1-test',
       }),
     )
-    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'tenant-1', {
-      family: 'legacy',
-    })
+    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'tenant-1')
   })
 
   it('tenant queue name is exactly pegasus-tenant-<tenantId>-<envSuffix>', async () => {
@@ -1006,9 +1023,7 @@ describe('MUST_FORK — cross-tenant GLOBAL workflow guard', () => {
     })
 
     expect(result.outcome).toBe('STARTED')
-    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'platform-tenant', {
-      family: 'legacy',
-    })
+    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'platform-tenant')
     expect(mockExecutionRepo.create).toHaveBeenCalledTimes(1)
   })
 
@@ -1050,9 +1065,7 @@ describe('MUST_FORK — cross-tenant GLOBAL workflow guard', () => {
     })
 
     expect(result.outcome).toBe('STARTED')
-    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'tenant-b', {
-      family: 'legacy',
-    })
+    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'tenant-b')
   })
 })
 
@@ -1072,7 +1085,7 @@ describe('tenant Temporal namespace routing (3b.2)', () => {
       ...opts,
     })
 
-  it('no namespace row → shared namespace: null on the row, legacy runner', async () => {
+  it('no namespace row, namespaces not provisioned (local dev) → shared namespace, no runner launch', async () => {
     mockNamespaceFindByTenant.mockResolvedValue(null)
     expect((await run(tenantWorkflow)).outcome).toBe('STARTED')
 
@@ -1083,9 +1096,8 @@ describe('tenant Temporal namespace routing (3b.2)', () => {
       { tenantId: 'tenant-1', namespace: null },
       expect.any(Function),
     )
-    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'tenant-1', {
-      family: 'legacy',
-    })
+    // The only runner family polls a tenant namespace: nothing to launch.
+    expect(mockEnsureTenantRunner).not.toHaveBeenCalled()
   })
 
   it('READY (provisioned, not routed) still runs in the shared namespace', async () => {
@@ -1107,9 +1119,7 @@ describe('tenant Temporal namespace routing (3b.2)', () => {
       { tenantId: 'tenant-1', namespace: TENANT_NS },
       expect.any(Function),
     )
-    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'tenant-1', {
-      family: 'scoped',
-    })
+    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'tenant-1')
     // Same per-tenant queue name, now in the tenant namespace.
     expect(mockTemporalStart).toHaveBeenCalledWith(
       'my_custom_workflow',
@@ -1143,5 +1153,94 @@ describe('tenant Temporal namespace routing (3b.2)', () => {
       { tenantId: 'tenant-1', namespace: null },
       expect.any(Function),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Legacy-runner retirement — where tenant namespaces are provisioned (staging,
+// prod) there is no shared runner: a tenant runs only once ACTIVE.
+// ---------------------------------------------------------------------------
+
+describe('tenant namespace gate (namespaces provisioned)', () => {
+  const TENANT_NS = 'pg-test-tenant1.acct'
+  const nsRow = (status: string) => ({ tenantId: 'tenant-1', namespace: TENANT_NS, status })
+  const run = (workflow: WorkflowRow, opts: { dryRun?: boolean } = {}) =>
+    startWorkflowExecution(fakeDb(0), {
+      workflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+      ...opts,
+    })
+  const expectNothingStarted = () => {
+    expect(mockEnsureTenantRunner).not.toHaveBeenCalled()
+    expect(mockExecutionRepo.create).not.toHaveBeenCalled()
+    expect(mockTemporalStart).not.toHaveBeenCalled()
+  }
+
+  beforeEach(() => {
+    mockNamespacesConfigured.mockReturnValue(true)
+  })
+
+  it('no row → requests one (cause start) and refuses TENANT_NAMESPACE_PROVISIONING', async () => {
+    mockNamespaceFindByTenant.mockResolvedValue(null)
+    mockRequestNamespace.mockResolvedValue({ outcome: 'REQUESTED' })
+    expect((await run(tenantWorkflow)).outcome).toBe('TENANT_NAMESPACE_PROVISIONING')
+    expect(mockRequestNamespace).toHaveBeenCalledWith(expect.anything(), 'tenant-1', {
+      cause: 'start',
+    })
+    expectNothingStarted()
+    expect(JSON.stringify(capturedPutMetricInputs)).toContain('TENANT_NAMESPACE_PROVISIONING')
+  })
+
+  it('no row and the request could not invoke the provisioner → TENANT_NAMESPACE_UNAVAILABLE', async () => {
+    mockNamespaceFindByTenant.mockResolvedValue(null)
+    mockRequestNamespace.mockResolvedValue({ outcome: 'INVOKE_FAILED' })
+    expect((await run(tenantWorkflow)).outcome).toBe('TENANT_NAMESPACE_UNAVAILABLE')
+    expectNothingStarted()
+  })
+
+  it.each(['PROVISIONING', 'READY'])(
+    '%s → TENANT_NAMESPACE_PROVISIONING without a second request',
+    async (status) => {
+      mockNamespaceFindByTenant.mockResolvedValue(nsRow(status))
+      expect((await run(tenantWorkflow)).outcome).toBe('TENANT_NAMESPACE_PROVISIONING')
+      expect(mockRequestNamespace).not.toHaveBeenCalled()
+      expectNothingStarted()
+    },
+  )
+
+  it.each(['FAILED', 'DEPROVISIONING'])('%s → TENANT_NAMESPACE_UNAVAILABLE', async (status) => {
+    mockNamespaceFindByTenant.mockResolvedValue(nsRow(status))
+    expect((await run(tenantWorkflow)).outcome).toBe('TENANT_NAMESPACE_UNAVAILABLE')
+    expect(mockRequestNamespace).not.toHaveBeenCalled()
+    expectNothingStarted()
+    expect(JSON.stringify(capturedPutMetricInputs)).toContain('TENANT_NAMESPACE_UNAVAILABLE')
+  })
+
+  it('a dry run is gated too (it runs on the runner)', async () => {
+    mockNamespaceFindByTenant.mockResolvedValue(nsRow('PROVISIONING'))
+    expect((await run(tenantWorkflow, { dryRun: true })).outcome).toBe(
+      'TENANT_NAMESPACE_PROVISIONING',
+    )
+  })
+
+  it('DRAINING still answers TENANT_MIGRATING', async () => {
+    mockNamespaceFindByTenant.mockResolvedValue(nsRow('DRAINING'))
+    expect((await run(tenantWorkflow)).outcome).toBe('TENANT_MIGRATING')
+  })
+
+  it('ACTIVE runs in the tenant namespace', async () => {
+    mockNamespaceFindByTenant.mockResolvedValue(nsRow('ACTIVE'))
+    expect((await run(tenantWorkflow)).outcome).toBe('STARTED')
+    expect(mockExecutionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ temporalNamespace: TENANT_NS }),
+    )
+  })
+
+  it('curated (STDLIB) runs are never gated, even for a tenant with no namespace', async () => {
+    mockNamespaceFindByTenant.mockResolvedValue(null)
+    expect((await run(curatedWorkflow)).outcome).toBe('STARTED')
+    expect(mockRequestNamespace).not.toHaveBeenCalled()
   })
 })

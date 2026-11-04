@@ -738,4 +738,26 @@ describe('MonitoringStack — Temporal key-expiry alarms', () => {
       AlarmActions: Match.arrayWith([Match.objectLike({})]),
     })
   })
+
+  it('pages when a tenant namespace is unhealthy for 3 consecutive minutes', () => {
+    synth(true).hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-tenant-temporal-namespaces-unhealthy',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'TenantTemporalNamespacesUnhealthy',
+      Statistic: 'Maximum',
+      Period: 60,
+      EvaluationPeriods: 3,
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+      AlarmActions: Match.arrayWith([Match.objectLike({})]),
+    })
+  })
+
+  it('creates no unhealthy-namespace alarm where there is no provisioner (dev)', () => {
+    const names = Object.values(synth(false).findResources('AWS::CloudWatch::Alarm')).map((a) =>
+      String(a.Properties?.['AlarmName']),
+    )
+    expect(names).not.toContain('pegasus-tenant-temporal-namespaces-unhealthy')
+  })
 })

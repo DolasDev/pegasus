@@ -993,6 +993,16 @@ export class ApiStack extends cdk.Stack {
           'TEMPORAL_PROVISIONER_FUNCTION_NAME',
           provisionerFunction.functionName,
         )
+        // The dispatcher requests a tenant's namespace too (a trigger-fired
+        // start for a tenant with none; phase 0 re-invokes a killed provision
+        // and retries a FAILED one), and its start path gates on the variable.
+        if (dispatchTriggersFunction) {
+          provisionerFunction.grantInvoke(dispatchTriggersFunction)
+          dispatchTriggersFunction.addEnvironment(
+            'TEMPORAL_PROVISIONER_FUNCTION_NAME',
+            provisionerFunction.functionName,
+          )
+        }
 
         // The construct id predates daily-maintenance; renaming it would
         // replace the rule.
@@ -1031,17 +1041,16 @@ export class ApiStack extends cdk.Stack {
       // -----------------------------------------------------------------------
       if (props.tenantRunnerSubnets?.length && props.tenantRunnerSecurityGroup) {
         const tenantRunnerClusterArn = `arn:aws:ecs:${this.region}:${this.account}:cluster/pegasus-temporal-worker-${envName}`
-        const tenantRunnerTaskFamily = `pegasus-tenant-runner-${envName}`
-        // Phase 3b.2: runners for tenants cut over to their own namespace (no
-        // Temporal secret; mirrored from temporal-worker-stack.ts by name).
-        const tenantRunnerScopedTaskFamily = `pegasus-tenant-runner-scoped-${envName}`
+        // The SCOPED family (no Temporal secret; mirrored from
+        // temporal-worker-stack.ts by name), the only runner family since the
+        // legacy shared-key runner (`pegasus-tenant-runner-<env>`) was retired.
+        const tenantRunnerTaskFamily = `pegasus-tenant-runner-scoped-${envName}`
 
         const tenantRunnerEnv: Record<string, string> = {
           TENANT_RUNNER_CLUSTER_ARN: tenantRunnerClusterArn,
           // Bare family name — RunTask resolves the latest ACTIVE revision,
           // so task-def updates need no dispatcher re-wiring.
           TENANT_RUNNER_TASK_DEFINITION: tenantRunnerTaskFamily,
-          TENANT_RUNNER_SCOPED_TASK_DEFINITION: tenantRunnerScopedTaskFamily,
           TENANT_RUNNER_CONTAINER_NAME: 'tenant-runner',
           TENANT_RUNNER_SUBNET_IDS: cdk.Fn.join(
             ',',
@@ -1060,7 +1069,7 @@ export class ApiStack extends cdk.Stack {
           // ecs:cluster condition pins launches to our cluster either way.
           new iam.PolicyStatement({
             actions: ['ecs:RunTask'],
-            resources: [tenantRunnerTaskFamily, tenantRunnerScopedTaskFamily].flatMap((family) => [
+            resources: [tenantRunnerTaskFamily].flatMap((family) => [
               `arn:aws:ecs:${this.region}:${this.account}:task-definition/${family}:*`,
               `arn:aws:ecs:${this.region}:${this.account}:task-definition/${family}`,
             ]),

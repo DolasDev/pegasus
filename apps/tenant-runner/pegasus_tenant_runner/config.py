@@ -14,18 +14,19 @@ Required:
                              runner NEVER receives the shared broker secret.
 
 Temporal connection — one of two modes (Phase 3b.2):
-    env mode     TEMPORAL_ADDRESS + TEMPORAL_NAMESPACE set (the legacy task
-                 definition, and local dev). TEMPORAL_CLOUD_API_KEY empty →
-                 local dev server (no TLS/auth).
-    broker mode  TEMPORAL_ADDRESS absent (the scoped task definition). The
+    env mode     TEMPORAL_ADDRESS + TEMPORAL_NAMESPACE set: local dev only
+                 (3b.2's legacy shared-key task definition used it and is
+                 retired). TEMPORAL_CLOUD_API_KEY empty → local dev server
+                 (no TLS/auth).
+    broker mode  TEMPORAL_ADDRESS absent (the deployed task definition). The
                  runner fetches its tenant's own namespace, address and
                  namespace-scoped key from the broker
                  (GET /internal/temporal-credentials) and refreshes the key
                  while it runs. TEMPORAL_NAMESPACE / TEMPORAL_CLOUD_API_KEY
                  must then be absent too: a shared key next to a scoped task
                  definition is a cross-wired deploy, and the runner refuses it.
-    The image (``:latest``) deploys independently of the task definitions,
-    so it must work under both.
+    The deployed task definition is broker mode; env mode stays for local
+    dev against a Dockerized Temporal.
 
 Optional:
     RUNNER_TEMPORAL_CREDENTIALS_REFRESH_SECONDS  Broker mode: how often to

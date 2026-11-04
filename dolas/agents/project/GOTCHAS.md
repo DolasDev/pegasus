@@ -3839,3 +3839,22 @@ Two traps: `IF UPDATE(col)` is TRUE when the column is merely in the SET list, e
 write a full row back; and `sales` has its own large `TriggerSalesUpdate` (118 KB on NW), so any
 `sales` write needs the same reading first. Pegasus writes neither today: the driver's ETA / done
 are act facts (`lib/itinerary/act-facts.ts`).
+
+## `toHaveBeenCalledWith(db, …)` with the real Prisma client overflows the stack
+
+Found in `chore/retire-legacy-tenant-runner`, 2026-11-03. In an integration test
+(real `db` from `../../db`), asserting a spy was called with the Prisma client
+itself (`expect(spy).toHaveBeenCalledWith(db, tenantId)`) fails with
+`RangeError: Maximum call stack size exceeded` and no diff: vitest's deep
+equality walks the client's proxy. Match it with `expect.anything()` instead.
+
+## A deployed tenant-runner run needs an ACTIVE namespace — there is no shared runner
+
+Found in `chore/retire-legacy-tenant-runner`, 2026-11-03. Since the legacy
+runner's retirement, a tenant-runner Automation in staging or prod runs only in
+its tenant's own namespace. A tenant without one gets 409
+`TENANT_NAMESPACE_PROVISIONING` for a few minutes after its first publish (the
+publish requests it). Tests and local dev differ on purpose: with
+`TEMPORAL_PROVISIONER_FUNCTION_NAME` unset the start path still uses the shared
+namespace and launches no runner. A test that sets the variable switches the
+gate on; unset it afterwards.

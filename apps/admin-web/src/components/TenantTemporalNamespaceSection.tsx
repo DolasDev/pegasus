@@ -6,7 +6,6 @@ import {
   rotateTemporalNamespaceKey,
   deprovisionTemporalNamespace,
   cutoverTemporalNamespace,
-  rollbackTemporalNamespace,
 } from '@/api/temporal-namespace'
 import type { TemporalNamespace, TemporalNamespaceStatus } from '@/api/temporal-namespace'
 import { ApiError } from '@/api/client'
@@ -16,15 +15,17 @@ import { ApiError } from '@/api/client'
 // namespace for Automations. Provisioning runs asynchronously in the
 // temporal-provisioner Lambda; this section polls while it works.
 //
-// 3b.2 adds routing: Cut over (READY → DRAINING → ACTIVE) moves the tenant's
-// Automations into this namespace, Roll back (ACTIVE → REVERTING → READY)
-// moves them back. Each drain finishes on its own (the trigger dispatcher
-// advances it once the tenant's open runs finish); this section polls.
+// Every tenant's Automations run in their own namespace (the shared runner is
+// retired). A tenant's first publish requests it, and the trigger dispatcher
+// advances a READY namespace through DRAINING to ACTIVE on its own; Cut over
+// is only a manual nudge. There is no roll back: the emergency stop is the
+// tenant's workflowsDisabled kill switch. This section polls while a row moves.
 // ---------------------------------------------------------------------------
 
 const POLL_MS = 5_000
 const IN_FLIGHT: ReadonlySet<TemporalNamespaceStatus> = new Set([
   'PROVISIONING',
+  'READY',
   'DEPROVISIONING',
   'DRAINING',
   'REVERTING',
@@ -81,7 +82,7 @@ function routingText(ns: TemporalNamespace): string {
     case 'REVERTING':
       return `Rolling back: new runs are paused until runs in this namespace finish.${waiting}`
     default:
-      return 'Automations run in the shared platform namespace.'
+      return 'Ready: becomes Active on the dispatcher’s next tick. Runs are paused until then.'
   }
 }
 
@@ -95,7 +96,7 @@ const dangerButtonClass =
   'rounded-md border border-destructive/50 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed'
 const cancelButtonClass = 'rounded-md border border-border px-3 py-1.5 text-sm'
 
-type Confirming = null | 'deprovision' | 'cutover' | 'rollback'
+type Confirming = null | 'deprovision' | 'cutover'
 
 function NamespacePanel({
   tenantId,
@@ -139,18 +140,8 @@ function NamespacePanel({
     onSuccess,
     onError: onError('Failed to start the cutover.'),
   })
-  const rollback = useMutation({
-    mutationFn: () => rollbackTemporalNamespace(tenantId),
-    onSuccess,
-    onError: onError('Failed to roll back.'),
-  })
   const pending =
-    retry.isPending ||
-    rotate.isPending ||
-    deprovision.isPending ||
-    cutover.isPending ||
-    rollback.isPending ||
-    ns.busy
+    retry.isPending || rotate.isPending || deprovision.isPending || cutover.isPending || ns.busy
 
   return (
     <div className="rounded-md border border-border p-4 space-y-3">
@@ -212,30 +203,12 @@ function NamespacePanel({
               Cut over
             </button>
           )}
-          {ns.status === 'ACTIVE' && (
-            <button
-              className={dangerButtonClass}
-              disabled={pending}
-              onClick={() => setConfirming('rollback')}
-            >
-              Roll back
-            </button>
-          )}
-          {ns.status === 'DRAINING' && (
-            <button
-              className={cancelButtonClass}
-              disabled={pending}
-              onClick={() => rollback.mutate()}
-            >
-              {rollback.isPending ? 'Cancelling…' : 'Cancel cutover'}
-            </button>
-          )}
           {KEY_HOLDING.has(ns.status) && (
             <button className={buttonClass} disabled={pending} onClick={() => rotate.mutate()}>
               {rotate.isPending ? 'Rotating…' : 'Rotate key'}
             </button>
           )}
-          {(ns.status === 'READY' || ns.status === 'FAILED') && (
+          {(ns.status === 'READY' || ns.status === 'FAILED' || ns.status === 'ACTIVE') && (
             <button
               className={dangerButtonClass}
               disabled={pending}
@@ -265,22 +238,9 @@ function NamespacePanel({
           onConfirm={() => cutover.mutate()}
           onCancel={() => setConfirming(null)}
         >
-          Move this tenant's Automations to <code className="text-xs">{ns.namespace}</code>? New
-          runs are refused (and events wait) until runs in the shared namespace finish, at most
-          about 15 minutes; then everything runs in this namespace with its own key.
-        </Confirm>
-      )}
-      {confirming === 'rollback' && (
-        <Confirm
-          testId="temporal-namespace-confirm-rollback"
-          danger
-          confirmLabel={rollback.isPending ? 'Rolling back…' : 'Yes, roll back'}
-          disabled={rollback.isPending}
-          onConfirm={() => rollback.mutate()}
-          onCancel={() => setConfirming(null)}
-        >
-          Move this tenant's Automations back to the shared namespace? New runs are refused until
-          runs in <code className="text-xs">{ns.namespace}</code> finish.
+          Move this tenant's Automations to <code className="text-xs">{ns.namespace}</code> now,
+          instead of on the dispatcher's next tick? New runs are refused (and events wait) until
+          runs in the shared namespace finish, at most about 15 minutes.
         </Confirm>
       )}
       {confirming === 'deprovision' && (
@@ -293,7 +253,8 @@ function NamespacePanel({
           onCancel={() => setConfirming(null)}
         >
           Delete <code className="text-xs">{ns.namespace}</code> and its keys from Temporal Cloud?
-          Workflow history in it is lost.
+          Workflow history in it is lost. An Active namespace can be deleted only once the tenant
+          has no live Automations and no open runs; if it publishes again it gets a new one.
         </Confirm>
       )}
 
@@ -389,9 +350,9 @@ export function TenantTemporalNamespaceSection({ tenantId }: { tenantId: string 
     <div className="rounded-md border border-border bg-muted/20 p-4 space-y-3">
       {configured ? (
         <p className="text-sm text-muted-foreground">
-          This tenant's Automations run in the shared platform namespace. Provision a dedicated
-          Temporal Cloud namespace with its own scoped key. Nothing routes to it until the tenant is
-          cut over.
+          No namespace yet. One is requested automatically when the tenant publishes its first
+          Automation; until it is Active the tenant's Automations can't run. Provision one now to
+          get it ready early.
         </p>
       ) : (
         <p
