@@ -1,6 +1,6 @@
 # Retire the legacy tenant runner: every Automation runs in its tenant's own namespace
 
-- **Status:** APPROVED 2026-11-03 (option A); IN PROGRESS. Two design amendments made during implementation are marked "amended" below (FAILED handling).
+- **Status:** **DONE. MERGED #919 (`872d63bf`) and DEPLOYED to staging + prod 2026-11-04; staging acceptance PASSED; ARCHIVED 2026-11-04.** Two design amendments made during implementation are marked "amended" below (FAILED handling). Open follow-ups moved to `plans/todo/tenant-namespace-followups.md`.
 - **Branch:** `chore/retire-legacy-tenant-runner` (via `/workstream-start`); plan
   and code in **one PR**, as for 3b.2.
 - **Goal:** no tenant runner holds the shared Temporal key. Every tenant-runner
@@ -11,7 +11,15 @@
   Read its "Design" first: state machine, runner families, per-row namespace.
 - **Written:** 2026-11-03 against `main` @ `bfd4294b`.
 
-## Resume here (2026-11-03)
+## Outcome (2026-11-04)
+
+- **Merged** #919 as `872d63bf`; Deploy run 41892431710 green (staging, E2E gate, prod).
+- **Infra, both envs:** no ACTIVE revision of `pegasus-tenant-runner-<env>`; `pegasus-tenant-runner-scoped-<env>:1` carries no secrets; the API and dispatcher Lambdas have `TENANT_RUNNER_TASK_DEFINITION` = the scoped family, no `TENANT_RUNNER_SCOPED_TASK_DEFINITION`, and `TEMPORAL_PROVISIONER_FUNCTION_NAME`.
+- **SDK** `sdk-python-v0.55.0` tagged on `872d63bf`; 0.55.0 on PyPI. Authoring-repo `CLAUDE.md` line: `pegasus-workflows` `ad3d28e`.
+- **Staging acceptance on AVP Smoke** (`4b2e0267-…`, no namespace before): `push` of a scaffolded hello-world `ns_canary@0.1.0` printed "being set up (status PROVISIONING)" → `run` got 409 `TENANT_NAMESPACE_PROVISIONING` → the row went PROVISIONING (19:15:21) → READY (19:17:43) → **ACTIVE (19:18:08) on its own** → run `158a9280` COMPLETED (19:19:07, ~30 s) in `pg-staging-4b2e0267c597.chgel` on a scoped runner (`runner-scoped/` stream: `runner.temporal_credentials_fetched`, `runner.connected`; no key-shaped strings in the logs). `ns_canary` is left published on AVP Smoke. Namespaces in use: 7 of 100 (6 prod, 1 staging).
+- **Not verified live** (carried to `plans/todo/tenant-namespace-followups.md`): an EVENT trigger fired during PROVISIONING (unit-tested only); NW's and Dolios's next real runs (none since the deploy as of 2026-11-04 ~19:30 UTC).
+
+## Resume here (2026-11-03; superseded by Outcome above)
 
 - **Code: DONE and verified locally** (see the checklist's "Local" line). Branch
   `chore/retire-legacy-tenant-runner`, worktree
@@ -256,17 +264,17 @@ until it's wired into CDK"). Name mirrored in `packages/infra/lib/metrics.ts`.
 
 ### Acceptance (staging, after deploy; burns 1 of the 100 namespaces)
 
-- [ ] `pegasus-tenant-runner-staging` is gone and the runner image digest is this merge's.
-- [ ] **AVP Smoke** (no namespace, no Automations; its `smoke_canary` fork was retired 2026-11-03, so there is nothing to fork): `push` a small canary Automation from the authoring repo with the `avp-smoke` profile → the push says provisioning started → a `run` gets 409 `TENANT_NAMESPACE_PROVISIONING` (SDK raises the typed error) → the row goes PROVISIONING → READY → ACTIVE on its own → the run completes in `pg-staging-4b2e0267c597.chgel` on a scoped runner.
-- [ ] An EVENT trigger fired during PROVISIONING fires after ACTIVE.
-- [ ] Prod: the next NW run still completes (scoped, unchanged).
-- [ ] Post-merge: SDK tag; authoring-repo line.
+- [x] `pegasus-tenant-runner-staging` is gone (and `-prod`); the scoped task definitions carry no secrets (2026-11-04).
+- [x] **AVP Smoke** (PASSED 2026-11-04; see Outcome) (no namespace, no Automations; its `smoke_canary` fork was retired 2026-11-03, so there is nothing to fork): `push` a small canary Automation from the authoring repo with the `avp-smoke` profile → the push says provisioning started → a `run` gets 409 `TENANT_NAMESPACE_PROVISIONING` (SDK raises the typed error) → the row goes PROVISIONING → READY → ACTIVE on its own → the run completes in `pg-staging-4b2e0267c597.chgel` on a scoped runner.
+- [ ] An EVENT trigger fired during PROVISIONING fires after ACTIVE. **Carried to `plans/todo/tenant-namespace-followups.md`** (unit-tested; a live check needs another namespace-less tenant).
+- [ ] Prod: the next NW run still completes (scoped, unchanged). **Carried to `plans/todo/tenant-namespace-followups.md`** (no NW run since the deploy yet).
+- [x] Post-merge: SDK tag `sdk-python-v0.55.0` (on PyPI); authoring-repo line `ad3d28e`.
 
 ### Carried from the 3b.2 prod rollout
 
-- [ ] Dolios (prod, ACTIVE, 11 Automations, 9 triggers, none enabled, no runs
+- [ ] **Carried to `plans/todo/tenant-namespace-followups.md`.** Dolios (prod, ACTIVE, 11 Automations, 9 triggers, none enabled, no runs
       since cutover on 2026-11-03): verify its first run lands scoped.
-- [ ] Staging: revoke the `avp-smoke` CLI key once acceptance is done, if
+- [ ] **Carried to `plans/todo/tenant-namespace-followups.md`.** Staging: revoke the `avp-smoke` CLI key once acceptance is done, if
       unwanted.
 
 ## Files
