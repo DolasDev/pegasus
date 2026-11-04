@@ -56,6 +56,18 @@ export interface ItineraryItem {
   tripId: number | null
   tripStatus: string | null
   drivers: { longhaul: number[]; local: number[] }
+  /**
+   * The driver's own ETA / done from the app — a Pegasus fact, never written
+   * to legacy. The legacy dates above are the dispatcher's.
+   */
+  assertion: ItineraryAssertion | null
+}
+
+export interface ItineraryAssertion {
+  eta: { day: string; window: { start: string; end: string } | null } | null
+  done: string | null
+  assertedAt: string
+  byUserId: string | null
 }
 
 export type ItinerarySourceName = 'longhaul' | 'order' | 'local'

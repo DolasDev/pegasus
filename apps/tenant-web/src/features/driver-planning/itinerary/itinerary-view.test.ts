@@ -5,6 +5,7 @@ import {
   formatDay,
   formatRange,
   formatWindow,
+  driverAssertionLabel,
   groupItinerary,
   rangeFrom,
   shiftRange,
@@ -39,6 +40,7 @@ function item(partial: Partial<ItineraryItem>): ItineraryItem {
     tripId: null,
     tripStatus: null,
     drivers: { longhaul: [], local: [] },
+    assertion: null,
     ...partial,
   }
 }
@@ -88,6 +90,31 @@ describe('groupItinerary', () => {
       ['No address', 1],
       ['Warehouse B', 1],
     ])
+  })
+})
+
+describe('driverAssertionLabel', () => {
+  const by = { assertedAt: 'x', byUserId: 'u1' }
+  it("shows the driver's done over their ETA, and nothing when there is none", () => {
+    expect(driverAssertionLabel(item({}))).toBeNull()
+    expect(
+      driverAssertionLabel(
+        item({
+          assertion: {
+            ...by,
+            eta: { day: '2026-11-03', window: { start: '08:00', end: '10:00' } },
+            done: null,
+          },
+        }),
+      ),
+    ).toBe('Driver ETA Tue Nov 3 · 08:00 – 10:00')
+    expect(
+      driverAssertionLabel(
+        item({
+          assertion: { ...by, eta: { day: '2026-11-03', window: null }, done: '2026-11-02' },
+        }),
+      ),
+    ).toBe('Driver: done Mon Nov 2')
   })
 })
 

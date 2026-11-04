@@ -74,7 +74,12 @@ import {
 } from './handlers/longhaul-cloud/trip-notes'
 import { longhaulSaveActivityHandler } from './handlers/longhaul-cloud/activities-write'
 import { driverActivityEtaHandler } from './handlers/longhaul-cloud/driver-activity-eta'
-import { myItineraryHandler, driverItineraryHandler } from './handlers/longhaul-cloud/itinerary'
+import {
+  myItineraryHandler,
+  myItineraryEtaHandler,
+  myItineraryDoneHandler,
+  driverItineraryHandler,
+} from './handlers/longhaul-cloud/itinerary'
 import {
   longhaulTripStatusHandler,
   longhaulTripCancelHandler,
@@ -566,6 +571,8 @@ v1.get('/onprem/longhaul/activities', longhaulActivitiesListHandler)
 // ids); /drivers is any driver's, Operations roles only. See
 // handlers/longhaul-cloud/itinerary.ts.
 v1.get('/onprem/longhaul/me/itinerary', myItineraryHandler)
+v1.put('/onprem/longhaul/me/itinerary/acts/eta', myItineraryEtaHandler)
+v1.put('/onprem/longhaul/me/itinerary/acts/done', myItineraryDoneHandler)
 v1.get('/onprem/longhaul/drivers/itinerary', driverItineraryHandler)
 v1.get('/onprem/longhaul/local-drivers', operationsLocalDriversHandler)
 // Phase 3: /filter-options and /dispatchers are served cloud-direct. Their

@@ -118,3 +118,17 @@ docs/domain-reference/sources/inbox/*
 # Alloy analyzer jar — a tool fetched by packages/domain-reference/alloy/run.mjs,
 # verified against a pinned sha256. Not evidence, not ours to redistribute.
 packages/domain-reference/alloy/.tools/
+
+# GitHub App / service private keys. The DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY
+# .pem is downloaded to disk by GitHub when you generate it, and on 2026-11-03
+# it landed in the repo root — untracked, but nothing stopped `git add -A` from
+# committing it. Pipe it into `gh secret set` and delete it; this is the net
+# under that. A key that reaches a commit must be rotated, not just removed.
+#
+# The negation is load-bearing: packages/infra/config/outbox-relay/{prod,staging}-ca.pem
+# are PUBLIC CA certificates and are deliberately tracked. gitignore does not
+# un-track what is already tracked, so the two existing files were never at
+# risk — but without this line a NEW or re-added CA cert there would be
+# silently ignored, which is the quiet failure worth preventing.
+*.pem
+!packages/infra/config/outbox-relay/*.pem

@@ -3058,6 +3058,205 @@ daily audit stayed green while four alerts sat open. They are visible only via
 `gh api repos/DolasDev/pegasus/dependabot/alerts?state=open` — worth running by hand periodically,
 because no job does it for you.
 
+### Addendum 2026-11-03: `@dependabot recreate` does NOT fix an `npm ci` lockfile desync — and this repo already knew
+
+Three Dependabot PRs were failing with four jobs each dying inside
+`.github/actions/setup`. The install log gives the class away:
+
+```
+npm error code EUSAGE
+`npm ci` can only install packages when your package.json and package-lock.json ... are in sync.
+npm error Missing: aws-cdk@2.1147.0 from lock file
+```
+
+`@dependabot recreate` was fired at #884, #886 and #907 to clear it. **It did not
+work, and the repo's own notes say so in as many words** — the lockfile-rejection
+write-up has carried "**`@dependabot recreate` does NOT fix this class**" since #786,
+because recreate re-runs the _same_ resolution and lands the _same_ lockfile. #886 and
+#907 came back with the identical `Missing:` error on new heads. The lesson is not
+about Dependabot; it is that a remembered **diagnosis** was reused while the
+accompanying **prescription** went unread. Read both halves of a known finding.
+
+The documented fix is to regenerate locally with the npm CI actually runs (plain `npm`
+on Node 24, i.e. npm 11.x — **not** the declarative `packageManager` pin, which is a
+false green) and push onto the Dependabot branch:
+
+```
+npm ci --dry-run                 # must FAIL first, reproducing CI
+npm install --package-lock-only
+npm ci --dry-run                 # must exit 0
+```
+
+Then check for nested `<workspace>/node_modules/<pkg>` entries that shadow a
+workspace's own declared range — `--dry-run` cannot see that second defect.
+
+**#884 is a separate, real failure, not this class.** Its recreate _did_ clear the
+EUSAGE, and exposed:
+
+```
+npm error path .../apps/api
+npm error command sh -c prisma generate
+npm error sh: 1: prisma: not found
+```
+
+`apps/api`'s `postinstall` is a bare `prisma generate` that relies on PATH. A
+7.10.0 → 7.10.1 **patch** forked the tree: the lockfile ends up with
+`node_modules/prisma@7.10.0` (required by nothing) _plus_
+`apps/api/node_modules/prisma@7.10.1`. That is the tree-reshuffle shape
+`.github/dependabot.yml`'s own comments document for the prisma group (#383, #665).
+It is **not** the `.bin`-by-path/root-ownership class of #762/#779 — that one is
+_permission denied_, this one is _not found_. Different symptom, different cause;
+resist filing it under the nearest familiar heading.
+
+### Addendum 2026-11-03: a `@dependabot recreate` comment can be silently dropped
+
+#886's first `@dependabot recreate` produced **no `Dependabot Updates` run at all**,
+while the prisma, hono and cedar comments posted in the same batch all ran within
+seconds. No error, no reply, no run — the PR head simply never moved. Re-issuing the
+identical comment ~9 minutes later worked. So after commenting, verify a run actually
+appeared rather than assuming the comment took:
+
+```
+gh run list --workflow "Dependabot Updates" --limit 10 \
+  --json createdAt,status,conclusion,displayTitle
+```
+
+Related: a long-running recreate is **not** a zombie. `updatedAt` on an `in_progress`
+run does not tick — it is written on completion — so a start timestamp that looks
+hours old proves nothing. A 24-package group recreate legitimately takes 10–20
+minutes, and posting a second `recreate` over a running one is the thing most likely
+to actually confuse it.
+
+### Addendum 2026-11-03: `gh run view --log` can return ZERO lines; the raw API still works
+
+Reading a failed job with `gh run view --job <id> --log` (and `--log-failed`) returned
+an **empty result, exit code 0** for several runs from 1–2 days earlier — not an
+error, just nothing. Read as "no errors in the log", that is a false green of exactly
+the kind `feedback_poll_filter_empty_output_false_green` warns about. The REST
+endpoint served the same logs fine:
+
+```
+gh api repos/DolasDev/pegasus/actions/jobs/<job-id>/logs
+```
+
+Treat an empty log as a failed read, not a clean one, and retry via the API before
+concluding anything about the job.
+
+### Addendum 2026-11-04: #884 — an orphan duplicate makes npm install NEITHER copy, and the `prisma` hoisting pin finally stopped working
+
+One Dependabot PR, **three** distinct failures stacked on top of each other, each only
+visible after the previous one was fixed. Worth reading end to end before touching a
+prisma lockfile again.
+
+#### Failure 1 — the orphan duplicate: `npm ci` installs NEITHER prisma
+
+Dependabot's lockfile carried two prisma entries:
+
+```
+node_modules/prisma            7.10.0   dev=true   <- required by NOTHING
+apps/api/node_modules/prisma   7.10.1              <- the real one
+```
+
+Only `apps/api` declares prisma. With both entries present npm's reifier installs
+**neither** — the prisma CLI tarball is never even fetched. From the failing run's
+`~/.npm/_logs/*-debug-0.log`: every scoped `@prisma/*` 7.10.1 tarball is fetched, and
+
+```
+$ grep -E 'registry\.npmjs\.org/prisma/-/' <debug log>
+NONE
+```
+
+so no `.bin/prisma` exists anywhere and `apps/api`'s `postinstall: prisma generate`
+dies with `npm error code 127` / `sh: 1: prisma: not found`. All four fast CI jobs
+fail inside `.github/actions/setup`.
+
+**Every usual tell points the wrong way here:**
+
+- `npm ci --dry-run` **exits 0** — the lockfile is internally consistent and the
+  failure is in a lifecycle script, which `--dry-run` never runs. A passing dry-run is
+  NOT evidence there is nothing to fix. (This is where the recipe for the EUSAGE
+  desync class — #694/#799/#886/#907, "the dry-run must FAIL first" — does not apply.)
+- `npm ci --ignore-scripts` **also exits 0**, silently omitting the package.
+- The lockfile entry carries `bin: {"prisma": "build/index.js"}`, so reading the
+  lockfile suggests the bin must exist. It does not.
+- `@dependabot recreate` cannot fix it — same resolution, same result. Second
+  independent confirmation of that rule after #886/#907.
+
+#### Failure 2 — the `prisma` override pin stopped being able to hoist
+
+`npm install --package-lock-only` drops the orphan, and then prisma lives ONLY at
+`apps/api/node_modules/prisma`. Locally that looks perfect: full `npm ci` exit 0, bin
+linked, client generated, `turbo run typecheck lint build` 32/32, `turbo run test`
+16/16 with 4764 api tests green. CI still went red:
+
+```
+Error: Cannot find module '/home/runner/work/pegasus/pegasus/node_modules/.bin/prisma'
+```
+
+because **nine call sites** run `node ../../node_modules/.bin/prisma <cmd>` from
+`apps/api` — three steps in `ci.yml`, four in `_deploy.yml` (including the migrate
+job that only runs after merge), plus `apps/e2e/global-setup.ts`. None of them is a
+turbo task, which is exactly why a fully green local `turbo run ...` proved nothing.
+**A green `turbo run` is not a green CI**; the prisma steps are workflow steps that
+sit outside turbo entirely.
+
+The root `//overrides` entry for prisma used to guarantee the root copy: one range
+across apps/api + apps/e2e made them dedupe and hoist. At 7.10.1 that stops working,
+because the conflict moves INSIDE prisma's own subtree —
+`prisma > @prisma/dev@0.24.17` wants `@prisma/get-platform@7.2.0` while
+`prisma > @prisma/engines@7.10.1` wants `@prisma/get-platform@7.10.1`. npm hoists
+`@prisma/dev` and pushes the whole prisma subtree down into `apps/api/node_modules`.
+No range can fix that, so the remedy moved to a root `devDependencies` edge — the
+`tsx`/`sharp` shape from #762/#779, root-resolvable by DECLARATION rather than luck.
+
+Two gotchas while doing that:
+
+- npm refuses an override for a package the root also declares directly:
+  `npm error EOVERRIDE Override for prisma@^7.10.1 conflicts with direct dependency`.
+  The `"."` key has to come out of the override when the edge goes in. The nested
+  `mysql2` key stays — that one is a security floor.
+- `@prisma/client` needs the SAME treatment, for a different reason. `prisma generate`
+  runs from `apps/api` and writes the client next to whichever `@prisma/client`
+  resolves from there; `apps/e2e/global-setup.ts` imports `@prisma/client` from
+  `apps/e2e`. A private copy per workspace means apps/e2e gets an UNGENERATED client,
+  and **nothing in `turbo run test` notices because e2e is a separate task.**
+
+#### Failure 3 — an uncapped override floated a transitive MAJOR
+
+`npm install --package-lock-only` re-resolves everything, not just prisma. The root
+override `"effect": ">=3.20.0"` had no ceiling, so effect went 3.22.1 → **4.1.2**, and
+every prisma command died with:
+
+```
+Failed to load config file "<repo>/apps/api" as a TypeScript/JavaScript module.
+Error: TypeError: Cannot read properties of undefined (reading 'right')
+```
+
+`@prisma/config` pins effect at an EXACT `3.20.0`; the override is what lifts it off
+that pin, and uncapped it lifts it straight over a major rewrite. Note the error names
+neither effect nor the override — in CI it surfaces only as a red
+`postinstall: prisma generate`. Fixed by `">=3.20.0 <4"`, the same `<9` ceiling shape
+the `vite` entry already uses. **Audit every unbounded `>=` override before a
+regeneration**: a bare floor is a licence for the next `npm install` to take a major.
+
+#### The recipe that actually worked
+
+```
+# with the npm CI uses — read it off the failing job's banner:
+#   node: v24.16.0 / npm: 11.13.0.  The packageManager: npm@10.8.2 pin is enforced by nothing.
+npm install --package-lock-only
+npm ci                        # FULL ci, exit 0 — a dry-run proves nothing in this class
+cd apps/api && node ../../node_modules/.bin/prisma generate     # the literal CI step
+cd apps/e2e && node -e "new (require('@prisma/client').PrismaClient)()"   # the literal e2e step
+npx turbo run typecheck lint build && npx turbo run test
+```
+
+Integrity check on the lockfile: 11 keys removed, 3 added, 2367 -> 2356, and the
+prisma family ends up at exactly `main`'s root shape one patch version up. Watch for
+collateral: this regeneration also pruned root `fast-check`/`pure-rand` while effect
+was briefly on 4.x (effect 3.x depends on fast-check; 4.x does not) — a removal that
+looks like damage and is really a knock-on of the override drift above.
+
 ## NW's own database already runs a Weichert integration over the fields `update_order` writes
 
 `update_order` (`PATCH /api/v1/pegii/orders/:id`, SDK 0.49.0) writes `Survey.SerivceStatus` →
@@ -3628,6 +3827,18 @@ no activity rows, it is not a local job's driver on the order, AND `sales.driver
 (id)`), compared upper-case without spaces. The view's `driver_name` / `driver_id` are sales' own
 (checked: 420/420 QMM, 964/964 NW). QMM's id 66666 is "Tor Crew, Local Toronto" — a crew-pool
 pseudo-driver, not a person. Full audit: `plans/completed/af79576b-order-assigned-source.md`.
+
+## `TriggerLocalDispatchUpdate` fires on EVERY job update — its work is gated by `IF UPDATE(col)`
+
+Read from `sys.sql_modules` on NW and QMM (2026-11-03): the `LocalDispatchJobs` trigger is `FOR
+UPDATE`, but every cascade sits under `IF UPDATE(is_final)` (stamps `sales.*_actual` for each token
+in `services`, logs "Local Marked Final") or `IF UPDATE(is_confirmed)` (copies `driver_id1` into
+`sales.driver_id` / `load_driver`, inserts `CrewServices` rows, logs "Local Marked Confirmed"). So an
+UPDATE whose SET list names only `eta_minimum` / `eta_maximum` / `eta_win_minutes` cascades nothing.
+Two traps: `IF UPDATE(col)` is TRUE when the column is merely in the SET list, even unchanged — never
+write a full row back; and `sales` has its own large `TriggerSalesUpdate` (118 KB on NW), so any
+`sales` write needs the same reading first. Pegasus writes neither today: the driver's ETA / done
+are act facts (`lib/itinerary/act-facts.ts`).
 
 ## `toHaveBeenCalledWith(db, …)` with the real Prisma client overflows the stack
 

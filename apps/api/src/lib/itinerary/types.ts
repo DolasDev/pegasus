@@ -87,6 +87,23 @@ export interface ItineraryItem {
    * across them). An activity has at most one owner; a local job up to two.
    */
   drivers: { longhaul: number[]; local: number[] }
+  /**
+   * The driver's own ETA / done for this act (act-facts.ts), kept in Pegasus
+   * and never written to legacy. Attached, not overlaid: `day`, `estimated`
+   * and `actual` above stay the legacy values. Null when nothing is asserted.
+   */
+  assertion: ItineraryAssertion | null
+}
+
+export interface ItineraryAssertion {
+  /** The driver's ETA: the day, and an optional local `HH:mm` window. */
+  eta: { day: string; window: { start: string; end: string } | null } | null
+  /** The day the driver marked the act done. */
+  done: string | null
+  /** When the newest of these was asserted (ISO). */
+  assertedAt: string
+  /** The TenantUser who asserted the newest one. */
+  byUserId: string | null
 }
 
 /** One `Longhaul_ActivityType` row, as the itinerary needs it. Per tenant. */

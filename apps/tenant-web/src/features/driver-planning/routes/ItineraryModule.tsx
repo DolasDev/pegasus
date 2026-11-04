@@ -5,7 +5,7 @@
 // grouped by day and then by stop.
 //
 // A driver is picked as a longhaul driver and/or a local crew, separately
-// (plans/todo/driver-itinerary-mobile.md, decision 3): the two are different
+// (plans/completed/08b7a429-driver-itinerary-mobile.md, decision 3): the two are different
 // numbering spaces, sometimes different people, and nothing links them, so the
 // screen never pairs them for the dispatcher.
 //
@@ -41,6 +41,7 @@ import {
   localDay,
   rangeFrom,
   shiftRange,
+  driverAssertionLabel,
   sourceLabel,
   stopTitle,
 } from '../itinerary/itinerary-view'
@@ -242,6 +243,14 @@ export function ItineraryModule() {
                                     <Badge variant="outline">Storage</Badge>
                                   )}
                                   {item.confirmed && !item.actual && <Badge>Confirmed</Badge>}
+                                  {driverAssertionLabel(item) && (
+                                    <Badge
+                                      variant="info"
+                                      title="Posted by the driver in the app; not in legacy"
+                                    >
+                                      {driverAssertionLabel(item)}
+                                    </Badge>
+                                  )}
                                 </span>
                               </button>
                             </li>

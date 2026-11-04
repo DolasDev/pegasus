@@ -1,11 +1,42 @@
 import { ItineraryService } from './itineraryService'
 
 const mockFetchPaginated = jest.fn()
+const mockFetch = jest.fn()
 jest.mock('../api/client', () => ({
-  getApiClient: jest.fn(() => ({ fetchPaginated: mockFetchPaginated })),
+  getApiClient: jest.fn(() => ({ fetchPaginated: mockFetchPaginated, fetch: mockFetch })),
 }))
 
-beforeEach(() => mockFetchPaginated.mockReset())
+beforeEach(() => {
+  mockFetchPaginated.mockReset()
+  mockFetch.mockReset()
+})
+
+describe('ItineraryService act facts', () => {
+  it('PUTs an ETA (or its clearing) with the item key and its listed day', async () => {
+    mockFetch.mockResolvedValue({ key: 'local-job-token:9:LOAD' })
+    await ItineraryService.setEta(
+      { key: 'local-job-token:9:LOAD', day: '2026-11-03' },
+      { day: '2026-11-04', window: { start: '08:00', end: '10:00' } },
+    )
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/onprem/longhaul/me/itinerary/acts/eta', {
+      method: 'PUT',
+      body: JSON.stringify({
+        key: 'local-job-token:9:LOAD',
+        day: '2026-11-03',
+        eta: { day: '2026-11-04', window: { start: '08:00', end: '10:00' } },
+      }),
+    })
+  })
+
+  it('PUTs done (or null to undo)', async () => {
+    mockFetch.mockResolvedValue({})
+    await ItineraryService.setDone({ key: 'k', day: '2026-11-03' }, null)
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/onprem/longhaul/me/itinerary/acts/done', {
+      method: 'PUT',
+      body: JSON.stringify({ key: 'k', day: '2026-11-03', done: null }),
+    })
+  })
+})
 
 describe('ItineraryService.getMyItinerary', () => {
   it('calls /me/itinerary with the inclusive range and keeps the meta', async () => {

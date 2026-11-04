@@ -192,6 +192,7 @@ export function localJobItems(
       tripId: null,
       tripStatus: null,
       drivers: { longhaul: [], local: [...new Set(drivers)] },
+      assertion: null,
     }
   })
   return items.sort((a, b) => a.sequence - b.sequence)
