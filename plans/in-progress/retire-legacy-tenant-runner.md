@@ -17,16 +17,11 @@
   `chore/retire-legacy-tenant-runner`, worktree
   `../pegasus-retire-legacy-tenant-runner`. PR: see the branch (opened
   2026-11-03; auto-merge deliberately NOT armed).
-- **Merge is blocked by the pre-merge gate.** Re-checked 2026-11-03: staging 0
-  blockers / 0 open shared rows / 0 READY; prod 0 open shared rows / 0 READY but
-  **1 blocker: Nelson Westerberg Test** (`32dd89be-…`, 2 Automations, no
-  namespace row, no Provision/Cut over in `platform.audit_logs`). The user
-  reported cutting it over, but nothing reached prod. Either the user provisions
-  and cuts it over in prod admin-web, or the user relaxes gate 1 for it (it has
-  no enabled triggers and no open runs; after this PR its next run would request
-  a namespace automatically). That is the user's call.
-- **Then:** re-run gate queries 1-3 on both envs, paste them into the PR, arm
-  auto-merge (`gh pr merge <N> --auto`), and watch Deploy.
+- **Pre-merge gate PASSED 2026-11-04** (re-run after the user provisioned NW
+  Test at 18:28 and cut it over at 18:31 UTC; it is ACTIVE in
+  `pg-prod-32dd89be72b3.chgel`): prod 0 blockers / 0 open shared rows / 0 READY
+  (6 ACTIVE); staging 0 / 0 / 0 (no rows).
+- **Then:** PR #919 queued with `gh pr merge 919 --auto`; watch Deploy.
 - **Post-merge owed:** tag `sdk-python-v0.55.0` (only once the PR's
   `mergeCommit` is non-empty); add the `TenantNamespaceProvisioning` /
   `TenantNamespaceUnavailable` line to `~/repos/pegasus-workflows/CLAUDE.md`
@@ -256,8 +251,8 @@ until it's wired into CDK"). Name mirrored in `packages/infra/lib/metrics.ts`.
 
 ### Pre-merge (ops)
 
-- [ ] NW Test ACTIVE (user, admin-web).
-- [ ] Pre-merge gate queries 1-3 pass on both envs; paste the results into the PR.
+- [x] NW Test ACTIVE (user, admin-web, 2026-11-04 18:31 UTC).
+- [x] Pre-merge gate queries 1-3 pass on both envs; paste the results into the PR (2026-11-04).
 
 ### Acceptance (staging, after deploy; burns 1 of the 100 namespaces)
 
