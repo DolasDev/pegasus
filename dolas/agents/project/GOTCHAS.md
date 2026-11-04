@@ -3142,6 +3142,121 @@ gh api repos/DolasDev/pegasus/actions/jobs/<job-id>/logs
 Treat an empty log as a failed read, not a clean one, and retry via the API before
 concluding anything about the job.
 
+### Addendum 2026-11-04: #884 — an orphan duplicate makes npm install NEITHER copy, and the `prisma` hoisting pin finally stopped working
+
+One Dependabot PR, **three** distinct failures stacked on top of each other, each only
+visible after the previous one was fixed. Worth reading end to end before touching a
+prisma lockfile again.
+
+#### Failure 1 — the orphan duplicate: `npm ci` installs NEITHER prisma
+
+Dependabot's lockfile carried two prisma entries:
+
+```
+node_modules/prisma            7.10.0   dev=true   <- required by NOTHING
+apps/api/node_modules/prisma   7.10.1              <- the real one
+```
+
+Only `apps/api` declares prisma. With both entries present npm's reifier installs
+**neither** — the prisma CLI tarball is never even fetched. From the failing run's
+`~/.npm/_logs/*-debug-0.log`: every scoped `@prisma/*` 7.10.1 tarball is fetched, and
+
+```
+$ grep -E 'registry\.npmjs\.org/prisma/-/' <debug log>
+NONE
+```
+
+so no `.bin/prisma` exists anywhere and `apps/api`'s `postinstall: prisma generate`
+dies with `npm error code 127` / `sh: 1: prisma: not found`. All four fast CI jobs
+fail inside `.github/actions/setup`.
+
+**Every usual tell points the wrong way here:**
+
+- `npm ci --dry-run` **exits 0** — the lockfile is internally consistent and the
+  failure is in a lifecycle script, which `--dry-run` never runs. A passing dry-run is
+  NOT evidence there is nothing to fix. (This is where the recipe for the EUSAGE
+  desync class — #694/#799/#886/#907, "the dry-run must FAIL first" — does not apply.)
+- `npm ci --ignore-scripts` **also exits 0**, silently omitting the package.
+- The lockfile entry carries `bin: {"prisma": "build/index.js"}`, so reading the
+  lockfile suggests the bin must exist. It does not.
+- `@dependabot recreate` cannot fix it — same resolution, same result. Second
+  independent confirmation of that rule after #886/#907.
+
+#### Failure 2 — the `prisma` override pin stopped being able to hoist
+
+`npm install --package-lock-only` drops the orphan, and then prisma lives ONLY at
+`apps/api/node_modules/prisma`. Locally that looks perfect: full `npm ci` exit 0, bin
+linked, client generated, `turbo run typecheck lint build` 32/32, `turbo run test`
+16/16 with 4764 api tests green. CI still went red:
+
+```
+Error: Cannot find module '/home/runner/work/pegasus/pegasus/node_modules/.bin/prisma'
+```
+
+because **nine call sites** run `node ../../node_modules/.bin/prisma <cmd>` from
+`apps/api` — three steps in `ci.yml`, four in `_deploy.yml` (including the migrate
+job that only runs after merge), plus `apps/e2e/global-setup.ts`. None of them is a
+turbo task, which is exactly why a fully green local `turbo run ...` proved nothing.
+**A green `turbo run` is not a green CI**; the prisma steps are workflow steps that
+sit outside turbo entirely.
+
+The root `//overrides` entry for prisma used to guarantee the root copy: one range
+across apps/api + apps/e2e made them dedupe and hoist. At 7.10.1 that stops working,
+because the conflict moves INSIDE prisma's own subtree —
+`prisma > @prisma/dev@0.24.17` wants `@prisma/get-platform@7.2.0` while
+`prisma > @prisma/engines@7.10.1` wants `@prisma/get-platform@7.10.1`. npm hoists
+`@prisma/dev` and pushes the whole prisma subtree down into `apps/api/node_modules`.
+No range can fix that, so the remedy moved to a root `devDependencies` edge — the
+`tsx`/`sharp` shape from #762/#779, root-resolvable by DECLARATION rather than luck.
+
+Two gotchas while doing that:
+
+- npm refuses an override for a package the root also declares directly:
+  `npm error EOVERRIDE Override for prisma@^7.10.1 conflicts with direct dependency`.
+  The `"."` key has to come out of the override when the edge goes in. The nested
+  `mysql2` key stays — that one is a security floor.
+- `@prisma/client` needs the SAME treatment, for a different reason. `prisma generate`
+  runs from `apps/api` and writes the client next to whichever `@prisma/client`
+  resolves from there; `apps/e2e/global-setup.ts` imports `@prisma/client` from
+  `apps/e2e`. A private copy per workspace means apps/e2e gets an UNGENERATED client,
+  and **nothing in `turbo run test` notices because e2e is a separate task.**
+
+#### Failure 3 — an uncapped override floated a transitive MAJOR
+
+`npm install --package-lock-only` re-resolves everything, not just prisma. The root
+override `"effect": ">=3.20.0"` had no ceiling, so effect went 3.22.1 → **4.1.2**, and
+every prisma command died with:
+
+```
+Failed to load config file "<repo>/apps/api" as a TypeScript/JavaScript module.
+Error: TypeError: Cannot read properties of undefined (reading 'right')
+```
+
+`@prisma/config` pins effect at an EXACT `3.20.0`; the override is what lifts it off
+that pin, and uncapped it lifts it straight over a major rewrite. Note the error names
+neither effect nor the override — in CI it surfaces only as a red
+`postinstall: prisma generate`. Fixed by `">=3.20.0 <4"`, the same `<9` ceiling shape
+the `vite` entry already uses. **Audit every unbounded `>=` override before a
+regeneration**: a bare floor is a licence for the next `npm install` to take a major.
+
+#### The recipe that actually worked
+
+```
+# with the npm CI uses — read it off the failing job's banner:
+#   node: v24.16.0 / npm: 11.13.0.  The packageManager: npm@10.8.2 pin is enforced by nothing.
+npm install --package-lock-only
+npm ci                        # FULL ci, exit 0 — a dry-run proves nothing in this class
+cd apps/api && node ../../node_modules/.bin/prisma generate     # the literal CI step
+cd apps/e2e && node -e "new (require('@prisma/client').PrismaClient)()"   # the literal e2e step
+npx turbo run typecheck lint build && npx turbo run test
+```
+
+Integrity check on the lockfile: 11 keys removed, 3 added, 2367 -> 2356, and the
+prisma family ends up at exactly `main`'s root shape one patch version up. Watch for
+collateral: this regeneration also pruned root `fast-check`/`pure-rand` while effect
+was briefly on 4.x (effect 3.x depends on fast-check; 4.x does not) — a removal that
+looks like damage and is really a knock-on of the override drift above.
+
 ## NW's own database already runs a Weichert integration over the fields `update_order` writes
 
 `update_order` (`PATCH /api/v1/pegii/orders/:id`, SDK 0.49.0) writes `Survey.SerivceStatus` →
