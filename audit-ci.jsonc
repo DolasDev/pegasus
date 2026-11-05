@@ -266,5 +266,49 @@
     // package's tree is the breakage GOTCHAS warns about. Remove once @azure/identity accepts
     // msal-node >=7.1.0 and the tree re-resolves.
     "GHSA-xcx6-jx8p-x3h5",
+
+    // GHSA-6pq8-jhm2-2vcw — qs: `qs.stringify` with arrayFormat 'comma' throws an uncaught
+    // TypeError on array elements carrying a non-callable own `toString` (moderate, vulnerable
+    // >=6.7.0 <=6.16.0; fix is 6.16.1). Surfaced 2026-11-05.
+    //
+    // One copy, dev-only: packages/domain > @stryker-mutator/core > typed-rest-client (mutation
+    // testing), which never runs in production. Same single path as the older
+    // GHSA-q8mj-m7cp-5q26, which the parent-scoped `typed-rest-client.qs` override in
+    // package.json already carries a floor for.
+    //
+    // RAISING THAT FLOOR IS A REGRESSION, NOT A FIX — measured 2026-11-05. Moving it from
+    // `>=6.15.2 <7` to `>=6.16.1 <7` makes the resolution go BACKWARDS, from 6.16.0 to 6.15.1
+    // (typed-rest-client's exact pin, which the override then fails to lift). 6.15.1 is INSIDE
+    // the older advisory's range (>=6.11.1 <=6.15.1), so raising the floor re-opens
+    // GHSA-q8mj-m7cp-5q26 while still not clearing this one. Confirmed two ways with identical
+    // results — `npm update qs --package-lock-only` + `npm install`, and a full
+    // `npm install --package-lock-only` — so it is not an artifact of which command was used.
+    // Do not retry the floor; the exact pin has to move upstream.
+    //
+    // Remove once typed-rest-client relaxes or bumps its qs pin (the same condition as the
+    // override entry in package.json), or once @stryker-mutator/core leaves packages/domain.
+    "GHSA-6pq8-jhm2-2vcw",
+
+    // GHSA-g3hv-75wg-m249 — minimatch: potential denial of service via globparts amplification
+    // (moderate, vulnerable >=7.0.0 <11.0.1; fix is 11.0.1). Surfaced 2026-11-05.
+    //
+    // Dependabot cannot fix this one: its security job has failed TWICE (runs 42029545563 and
+    // 42073846265) with conflicting-dependencies — "the latest possible version that can be
+    // installed is 10.2.6" — because no direct edge in the tree reaches 11.x.
+    //
+    // AND NEITHER CAN AN OVERRIDE — measured 2026-11-05. Raising the existing tree-wide floor
+    // from `>=3.1.4` to `>=11.0.1` moves six copies to 11.0.4 but leaves three vulnerable, while
+    // inflating the tree from 2 minimatch copies to 9:
+    //   - node_modules/minimatch (root)                        stays 10.2.6
+    //   - aws-cdk-lib/node_modules/minimatch                   stays 10.2.6
+    //   - apps/mobile/.../glob/node_modules/minimatch          stays 9.0.9
+    // The aws-cdk-lib copy is the bundled one the brace-expansion note in package.json already
+    // carves out as unreachable by overrides; this entry is that same carve-out, now covering
+    // the root and apps/mobile copies too.
+    //
+    // Remove once aws-cdk-lib and apps/mobile's glob pull minimatch >=11.0.1 and the root copy
+    // re-resolves above the floor — at which point raise the package.json floor in the same
+    // change rather than instead of it.
+    "GHSA-g3hv-75wg-m249",
   ],
 }
