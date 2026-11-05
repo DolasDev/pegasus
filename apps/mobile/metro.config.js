@@ -41,33 +41,40 @@ config.resolver.nodeModulesPaths = [
 // directly — the same thing jest.config.js's moduleNameMapper does for tests.
 const domainEntry = path.resolve(monorepoRoot, 'packages/domain/src/index.ts');
 
-// Store-screenshot capture only (npm run store:export).
+// react-native-document-scanner-plugin → an import-safe stub on WEB only.
 //
-// The screenshots are taken by driving a real `expo export --platform web`
-// build in a browser, which means every route has to survive react-native-web.
-// `react-native-document-scanner-plugin` does not: its entry point runs
-// TurboModuleRegistry.getEnforcing('DocumentScanner') at module scope and there
-// is no web implementation, so importing it throws and the shipment route —
-// the one that owns the Documents tab — renders as a blank page.
-//
-// Alias it to an import-safe stub, gated on BOTH platform === 'web' and the
-// PEGASUS_STORE_CAPTURE env var, so device/store builds and the normal `expo
-// start --web` dev flow resolve the real native module exactly as before.
-const storeCapture = process.env.PEGASUS_STORE_CAPTURE === '1';
-const scannerStub = path.resolve(projectRoot, 'store-assets/scripts/document-scanner.web-stub.js');
+// Its entry point runs TurboModuleRegistry.getEnforcing('DocumentScanner') at
+// module scope and it ships no web implementation, so under react-native-web
+// the import throws and takes down the shipment route (the one that owns the
+// Documents tab) with "Cannot read properties of undefined (reading
+// 'getEnforcing')". Every web bundle needs the stub — `expo start --web` and the
+// store-screenshot export (npm run store:export) alike. ios/android resolve the
+// real native module, unchanged. See metro/document-scanner.web.js.
+const scannerStub = path.resolve(projectRoot, 'metro/document-scanner.web.js');
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === '@pegasus/domain') {
     return { type: 'sourceFile', filePath: domainEntry };
   }
-  if (
-    storeCapture &&
-    platform === 'web' &&
-    moduleName === 'react-native-document-scanner-plugin'
-  ) {
+  if (platform === 'web' && moduleName === 'react-native-document-scanner-plugin') {
     return { type: 'sourceFile', filePath: scannerStub };
   }
   return context.resolveRequest(context, moduleName, platform);
 };
+
+// Dev-only /api forwarder (npm run dev:web). Set by scripts/dev-web.mjs to the
+// real API origin; the app is then pointed at Metro's own origin so the browser
+// never makes a cross-origin call. Unset (every other flow) → nothing installed.
+// See metro/api-proxy.js.
+const apiProxyTarget = process.env.PEGASUS_API_PROXY_TARGET;
+if (apiProxyTarget) {
+  const { createApiProxyMiddleware } = require('./metro/api-proxy');
+  const apiProxy = createApiProxyMiddleware(apiProxyTarget);
+  const previous = config.server.enhanceMiddleware;
+  config.server.enhanceMiddleware = (metroMiddleware, server) => {
+    const inner = previous ? previous(metroMiddleware, server) : metroMiddleware;
+    return (req, res, next) => apiProxy(req, res, () => inner(req, res, next));
+  };
+}
 
 module.exports = config;

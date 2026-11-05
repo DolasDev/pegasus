@@ -3883,3 +3883,23 @@ itself non-dumpable (`hardening.py`), but the kernel resets the flag to 1 on
 durable-Workflow worker driver holds the tenant's Temporal key) must call
 `prctl(PR_SET_DUMPABLE, 0)` itself, before reading the secret.
 `workflow_worker_driver.py` does, and exits 5 if it can't.
+
+## The mobile app in a browser: stale `.env`, a native-only import, and prod CORS
+
+Found in `fix/mobile-web-dev`, 2026-11-05. Three separate failures stack when
+running `apps/mobile` on Expo web, and each looks like the whole problem:
+
+- **`Cannot read properties of undefined (reading 'getEnforcing')`** —
+  `react-native-document-scanner-plugin` runs `TurboModuleRegistry.getEnforcing`
+  at module scope and has no web build. `metro.config.js` now aliases
+  `metro/document-scanner.web.js` for every web bundle (it used to be gated on
+  `PEGASUS_STORE_CAPTURE=1`, so only the store-screenshot export got it).
+- **"Server error looking up your account"** — `apps/mobile/.env` is
+  gitignored and hand-maintained, so it drifts; one still pointed at the
+  pre-split account's API Gateway, which 500s on `resolve-tenants`. A phone
+  build works because release builds regenerate `.env` from SSM. Run
+  `npm run env:prod` (same script the release action uses).
+- **CORS preflight blocked** — the deployed API only allows its own web origins.
+  Phones don't enforce CORS, so "works on the phone" proves nothing here. Use
+  `npm run dev:web`: the app calls Metro's own origin and Metro forwards `/api/*`
+  (`metro/api-proxy.js`). Don't widen prod CORS for a dev loop.

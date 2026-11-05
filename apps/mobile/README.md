@@ -57,6 +57,30 @@ npm start
 # - Scan QR code with Expo Go app
 ```
 
+### Config (`.env`) and running in a browser
+
+`apps/mobile/.env` holds the API URL and Cognito IDs. Don't hand-edit it — it
+goes stale (an old one pointed at the pre-split account's API, which 500s on
+sign-in). Regenerate it from SSM exactly the way release builds do:
+
+```bash
+aws sso login --profile dolas-pegasus-prod-ro   # if the session expired
+npm run env:prod                               # → apps/mobile/.env (prod)
+```
+
+To use the app **in a browser** (any tailnet device), run:
+
+```bash
+npm run dev:web    # then open http://100.69.252.113:8081
+```
+
+The deployed API's CORS allowlist rejects the Metro origin, so `dev:web` points
+the app at Metro itself and Metro forwards `/api/*` to the real API
+(`metro/api-proxy.js`, dev server only). Set `REACT_NATIVE_PACKAGER_HOSTNAME`
+to serve on another address. Caveats: it is the **live API with real data**;
+SSO sign-in can't complete on web (`movingapp://` redirect); the document
+scanner is a no-op stub on web (`metro/document-scanner.web.js`).
+
 ### Demo Credentials
 
 Login with any email and password (minimum 4 characters).
@@ -205,7 +229,9 @@ npm run test:coverage
 npm start          # Start Expo dev server
 npm run android    # Run on Android
 npm run ios        # Run on iOS
-npm run web        # Run in browser
+npm run web        # Run in browser (no API access — see dev:web)
+npm run dev:web    # Browser against the deployed API, via Metro
+npm run env:prod   # Regenerate .env from SSM (prod)
 npm test           # Run tests
 ```
 
