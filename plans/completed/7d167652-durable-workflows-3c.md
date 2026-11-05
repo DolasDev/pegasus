@@ -2,11 +2,13 @@
 
 - **Branch / worktree:** `feat/durable-workflows-3c`,
   `/home/steve/repos/pegasus-durable-workflows-3c`.
-- **Parent plan:** `plans/in-progress/durable-workflow-worker.md` ("3c" and
+- **Parent plan:** `plans/completed/7d167652-durable-workflow-worker.md` ("3c" and
   "3c: what 3b changed"). Master plan:
   `plans/in-progress/long-running-workflows-and-automations.md`.
-- **Status:** APPROVED by the user 2026-11-05 (plan + the staging probe).
-  See "Progress" at the end.
+- **Status:** DONE. Approved 2026-11-05; 3c.1 shipped #924 (`5a5b7334`);
+  3c.2 shipped in the PR that archived this file. Live follow-ups (SDK
+  publish, authoring-repo docs, staging acceptance) are in
+  `plans/todo/durable-workflows-3c-followups.md`. See "Progress" at the end.
 - **Goal:** a tenant can publish a manifest with `kind = "workflow"`; a start
   runs it as a real, durable Temporal workflow in the tenant's own namespace,
   served by a long-lived worker subprocess in the tenant runner, pinned to

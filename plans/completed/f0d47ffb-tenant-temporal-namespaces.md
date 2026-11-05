@@ -6,7 +6,7 @@
   namespace, with a tenant-scoped Write key that the tenant runner fetches from
   the broker. The shared platform key leaves tenant runners for every tenant
   that is cut over. No Workflows yet (that's 3c).
-- **Parent plans:** `plans/in-progress/durable-workflow-worker.md` (the
+- **Parent plans:** `plans/completed/7d167652-durable-workflow-worker.md` (the
   3a/3b/3c split, decisions DECIDE-1..4) and
   `plans/in-progress/long-running-workflows-and-automations.md` (D1–D5).
   Phase 2 evidence: `plans/completed/2b1e2147-durable-workflow-isolation-spike.md`.

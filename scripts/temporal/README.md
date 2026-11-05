@@ -2,7 +2,7 @@
 
 Operator scripts for Temporal Cloud (account `chgel`). Background and decisions:
 `plans/completed/f0d47ffb-tenant-temporal-namespaces.md` (3b) and
-`plans/in-progress/durable-workflow-worker.md` (3a).
+`plans/completed/7d167652-durable-workflow-worker.md` (3a).
 
 None of these scripts prints, logs or passes a key on a command line. Keys live
 in memory, or in 0600 temp files that are shredded on exit.

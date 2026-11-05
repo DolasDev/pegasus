@@ -15,6 +15,9 @@
       ~19:30 UTC). Query `workflow_executions` for tenant `9d869236-…`,
       `created_at > '2026-11-04 18:45'`, and check `temporal_namespace` plus the
       `runner-scoped/` log stream.
+      **Partly seen 2026-11-05 17:55 UTC:** a DRY run (`nw_pulse_daily_check`,
+      exec `8d3d998b`) COMPLETED in `pg-prod-9d869236518f.chgel` on the new
+      runner image. Still waiting on a live run.
 - [ ] **Dolios's first run since its 2026-11-03 cutover (prod)** lands in
       `pg-prod-a90b22bc4393.chgel`. It has 11 executable Automations and 9
       triggers, none enabled, so this waits for someone to run one.

@@ -11,7 +11,7 @@
   workflows, tenant-authored in Python) as a new capability, and rebrand what
   exists today as **Automations**: short sandboxed runs that fire on their own
   from triggers or run as steps called by a Workflow.
-- **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 next.
+- **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 done (2026-11-05: 3b.1, 3b.2 #855, legacy runner retired #919, 3c.1 #924, 3c.2; plan `plans/completed/7d167652-durable-workflow-worker.md`, follow-ups `plans/todo/durable-workflows-3c-followups.md`). Phase 4 next.
 - **Supersedes:** `plans/sdk/long-running-event-correlated-workflows.md`
   (spec 0008, Proposed since 2026-06-29). Marked superseded in
   `plans/sdk/README.md` and the spec itself by Phase 1. Still owed: mirror

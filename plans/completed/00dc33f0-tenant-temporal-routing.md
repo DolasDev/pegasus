@@ -85,7 +85,7 @@ their own Temporal namespace (`TenantTemporalNamespace.status = ACTIVE`):
   holds no shared Temporal secret.
 - **Written:** seed 2026-10-15 (end of 3b.1); expanded into this plan
   2026-10-15 against `main` @ `8fd47f1f`.
-- **Parent plans:** `plans/in-progress/durable-workflow-worker.md` (3a/3b/3c);
+- **Parent plans:** `plans/completed/7d167652-durable-workflow-worker.md` (3a/3b/3c);
   `plans/in-progress/long-running-workflows-and-automations.md` (D1–D5);
   3b.1 (done) `plans/completed/f0d47ffb-tenant-temporal-namespaces.md`, its
   "Design decision: no platform service account" and "3b.2 sketch" sections.
