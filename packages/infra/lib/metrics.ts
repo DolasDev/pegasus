@@ -124,6 +124,14 @@ export const USAGE_METER_WRITE_FAILED_METRIC_NAME = 'MeterWriteFailed'
  */
 export const WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME = 'WorkflowExecutionReconciled'
 
+/**
+ * Count of durable Workflow executions (Phase 3c) the reconcile poller closed,
+ * dimensioned by terminal `Status`. Unlike WorkflowExecutionReconciled this is
+ * the NORMAL path: a durable Workflow has no runner write-back, so every one
+ * closes here. Kept separate so it never trips the crashed-runner alarm.
+ */
+export const WORKFLOW_EXECUTION_CLOSED_METRIC_NAME = 'WorkflowExecutionClosed'
+
 // ---------------------------------------------------------------------------
 // Tenant-runner orchestration metrics (Phase 3 Unit 9).
 //

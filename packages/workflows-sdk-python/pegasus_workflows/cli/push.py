@@ -71,7 +71,14 @@ def push_command(
         dir_okay=True,
     ),
 ) -> None:
-    """Package and publish every Automation in the project to Pegasus."""
+    """Package and publish every Automation (and durable Workflow) in the project to Pegasus.
+
+    A ``kind = "workflow"`` entry publishes a durable Workflow: a long-running
+    Temporal workflow (timers, wait_condition, signals, replay) that lives up to
+    ``max_lifetime_days`` and stays pinned to the version it started on. Its
+    worker comes up a minute or two after publish; until then ``run`` answers
+    WORKFLOW_VERSION_STARTING (409: retry).
+    """
     token, base_url = resolve_credentials(token, base_url, profile)
 
     project_dir = project_dir.resolve()
@@ -110,6 +117,12 @@ def push_command(
                 fg=typer.colors.GREEN,
             )
             _echo_namespace_status(row.get("namespace"))
+            if manifest.is_workflow:
+                typer.echo(
+                    "-> durable Workflow: its worker comes up in a minute or two; until then "
+                    "`run` answers WORKFLOW_VERSION_STARTING (retry). Running Workflows of "
+                    "older versions keep running their own version."
+                )
 
             # The artifact is already published; a ledger-write failure (disk
             # full, perms) must not abort the remaining Automations or surface as a

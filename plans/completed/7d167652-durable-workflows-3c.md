@@ -2,11 +2,13 @@
 
 - **Branch / worktree:** `feat/durable-workflows-3c`,
   `/home/steve/repos/pegasus-durable-workflows-3c`.
-- **Parent plan:** `plans/in-progress/durable-workflow-worker.md` ("3c" and
+- **Parent plan:** `plans/completed/7d167652-durable-workflow-worker.md` ("3c" and
   "3c: what 3b changed"). Master plan:
   `plans/in-progress/long-running-workflows-and-automations.md`.
-- **Status:** APPROVED by the user 2026-11-05 (plan + the staging probe).
-  See "Progress" at the end.
+- **Status:** DONE. Approved 2026-11-05; 3c.1 shipped #924 (`5a5b7334`);
+  3c.2 shipped in the PR that archived this file. Live follow-ups (SDK
+  publish, authoring-repo docs, staging acceptance) are in
+  `plans/todo/durable-workflows-3c-followups.md`. See "Progress" at the end.
 - **Goal:** a tenant can publish a manifest with `kind = "workflow"`; a start
   runs it as a real, durable Temporal workflow in the tenant's own namespace,
   served by a long-lived worker subprocess in the tenant runner, pinned to
@@ -70,8 +72,8 @@ Still unverified; the recommended design doesn't need it.** Two designs:
   would silently run the current code unless it also passes an override (so
   it's a hybrid anyway); and a failed set leaves Postgres and the server
   disagreeing.
-- **Probe (step 0 of implementation; needs your go-ahead: it's a Cloud-side
-  write, staging only, reversible):** with the staging tenant's Write key:
+- **Probe — DROPPED by the user 2026-11-05** (design B passed its gate and
+  doesn't need it; kept for the record): with the staging tenant's Write key:
   `get_system_info` (server version), `set_worker_deployment_current_version(deployment_name="probe-3c", build_id="x", allow_no_pollers=True)`
   then clear it (`build_id=""`) and record the probe deployment for cleanup.
   Reading the result: Cloud authorizes each RPC at the frontend before the
@@ -324,8 +326,7 @@ task_queue, workflows=[cls], activities=[…], deployment_config=…PINNED)`
 
 ## Delivery
 
-1. **Probe** (staging, with your go-ahead): Q1 + server version. Result goes
-   into this file.
+1. ~~**Probe**~~: dropped by the user 2026-11-05 (B's gate passed in 3c.1).
 2. **PR 3c.1** (runner) → merge → `:latest` rolls out; nothing changes for
    Automations (verified: an NW Automation run after the deploy). Its local
    membership gate test must pass before 3c.2 starts.
@@ -375,9 +376,8 @@ task_queue, workflows=[cls], activities=[…], deployment_config=…PINNED)`
   accepted after all workers drained**. Image built locally: temporalio
   1.35.0, and the driver hardens and imports in a `--system-site-packages`
   venv inside the container (exit 4 on a bad request, not 5).
-- **Probe (Q1): BLOCKED on AWS SSO** (staging token expired 2026-11-05; the
-  user was asked to log in). Not on 3c.1's path; design B no longer depends
-  on it.
+- **Probe (Q1): DROPPED** by the user 2026-11-05: design B passed its gate,
+  so the Write-key question no longer matters.
 - **2026-11-05: review fixes on 3c.1.** A stop that lands while a worker is
   spawning could hang the drain and orphan a key-holding child: fixed (kill
   on cancel, kill if stopped mid-spawn; 2 tests that fail without the fix).
@@ -389,3 +389,41 @@ task_queue, workflows=[cls], activities=[…], deployment_config=…PINNED)`
   merges. Start 3c.2 in a fresh worktree off `main`
   (`scripts/new-worktree.sh feat durable-workflows-3c2`) with this plan file;
   the PR 3c.2 section above is its checklist.
+- **2026-11-05: PR 3c.1 MERGED** (#924, `5a5b7334`), image + Deploy green;
+  post-deploy check PASSED 17:55 UTC (NW `nw_pulse_daily_check` dry run
+  `8d3d998b` COMPLETED in 30 s on the new image; 3 `/tenant-workflows` lists =
+  the discovery loop; 0 warnings/errors).
+- **2026-11-05: PR 3c.2 built** (worktree `../pegasus-durable-workflows-3c2`,
+  branch `feat/durable-workflows-3c2`). API: migration
+  `durable_workflow_kind` (`WorkflowKind`, `Workflow.kind`,
+  `WorkflowExecution.reconciledAt` + index), manifest `kind`/`signals`/
+  `maxLifetimeDays` with cross-field refusals, finalize/fork persist kind and
+  warm the version (`warmDurableWorkflowVersion`), the start path (own queue,
+  pin, lifetime, open-Workflow cap, quota, dry-run refusal,
+  `WORKFLOW_VERSION_STARTING` deletes the row), dispatcher (park/drop EVENT,
+  skip SCHEDULE, `OPEN_WORKFLOW_LIMIT`, the `tenantAtCap` short-circuit skips
+  Workflows), sweep `groupBy`, kill-switch exception, reconciler lanes, broker
+  `kind`/`openExecutions` + `POST /workflow-worker-grant`, OpenAPI, admin
+  label. SDK 0.56.0: manifest fields, `WorkflowVersionStarting`, MCP guide +
+  manifest reference, `run`/`push` help, README, CHANGELOG. API 4847 tests
+  pass; SDK 555; admin-web 63.
+- **Deviations (as built):**
+  - The reconciler's WORKFLOW lane emits `WorkflowExecutionClosed`, not
+    `WorkflowExecutionReconciled`: the latter feeds the "runners are crashing"
+    alarm (> 5/h), and a Workflow closing there is the normal path.
+  - A refused `WORKFLOW_VERSION_STARTING` EVENT is parked under the existing
+    24 h park bound (then dropped as `WORKFLOW_VERSION_DROPPED`) rather than
+    deferred like a migration, so a version that never registers (a broken
+    artifact) can't park events forever. It doesn't mark the tenant capped.
+  - The SDK's own `temporalio` floor stays `>=1.7`: the runner image pins
+    1.35.0 exactly (3c.1), and raising the SDK floor would only force tenants'
+    local installs to upgrade for a server-side feature.
+  - `to_api_manifest` sends `kind` only for a Workflow (Automation manifests
+    are byte-identical to 0.55.0).
+  - Known trade, unchanged: a tenant at the Automation cap of 5 has its young
+    events held at the dispatcher's query, so a Workflow trigger on the same
+    events waits with them (the existing "the whole event waits" rule).
+- **Owed after 3c.2 merges:** publish SDK 0.56.0 (tag `sdk-python-v0.56.0`),
+  then update `~/repos/pegasus-workflows/CLAUDE.md` (manifest rules: `kind`,
+  `signals`, `max_lifetime_days`; `WorkflowVersionStarting`) — not before the
+  release, since it cites "0.56.0+". Then the staging acceptance below.

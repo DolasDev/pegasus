@@ -444,9 +444,10 @@ function WorkflowKillSwitchSection({ tenant }: { tenant: TenantDetail }) {
         </span>
       </div>
       <p className="text-sm text-muted-foreground">
-        When disabled, all new automation runs (manual, event-triggered, and scheduled) are refused
-        immediately. Existing <span className="font-mono">RUNNING</span> executions are allowed to
-        finish. Toggle this switch to block or unblock automation runs for this tenant without
+        When disabled, all new automation and workflow runs (manual, event-triggered, and scheduled)
+        are refused immediately. Existing <span className="font-mono">RUNNING</span> executions are
+        allowed to finish, and long-running workflows already in progress keep running (their timers
+        still fire). Toggle this switch to block or unblock new runs for this tenant without
         offboarding them.
       </p>
       {tenant.workflowsDisabled ? (
@@ -456,7 +457,7 @@ function WorkflowKillSwitchSection({ tenant }: { tenant: TenantDetail }) {
             disabled={isPending}
             className="rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {enableMutation.isPending ? 'Enabling…' : 'Enable automations'}
+            {enableMutation.isPending ? 'Enabling…' : 'Enable new automation and workflow runs'}
           </button>
           <p className="text-sm text-muted-foreground">Resumes normal automation runs.</p>
         </div>
@@ -467,10 +468,10 @@ function WorkflowKillSwitchSection({ tenant }: { tenant: TenantDetail }) {
             disabled={isPending}
             className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {disableMutation.isPending ? 'Disabling…' : 'Disable automations'}
+            {disableMutation.isPending ? 'Disabling…' : 'Disable new automation and workflow runs'}
           </button>
           <p className="text-sm text-muted-foreground">
-            Blocks all new automation runs. Running executions finish normally.
+            Blocks all new runs. Running executions and in-progress workflows continue.
           </p>
         </div>
       )}

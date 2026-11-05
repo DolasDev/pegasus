@@ -20,6 +20,11 @@ __all__ = [
     "REQUIREMENT_KEY_REGEX",
     "REQUIREMENT_GROUP_REGEX",
     "MANIFEST_TIMEOUT_MAX_SECONDS",
+    "KIND_AUTOMATION",
+    "KIND_WORKFLOW",
+    "DEFAULT_MAX_LIFETIME_DAYS",
+    "MAX_LIFETIME_DAYS",
+    "SIGNAL_NAME_REGEX",
     "DIAGRAM_FILENAME",
     "Manifest",
     "Requirement",
@@ -39,6 +44,27 @@ DIAGRAM_FILENAME = "workflow.mmd"
 #: server's ``ManifestSchema.timeoutSeconds.max(900)`` (Phase 3 Unit 10).
 #: The manifest may LOWER the platform default (900 s), never raise it.
 MANIFEST_TIMEOUT_MAX_SECONDS = 900
+
+#: ``kind = "automation"`` (the default): the whole body runs as one unit of
+#: work within ``timeout_seconds`` (≤ 900). Signals, queries and
+#: ``workflow.wait_condition`` are not available.
+KIND_AUTOMATION = "automation"
+
+#: ``kind = "workflow"``: a durable, long-running Temporal workflow — timers
+#: (``workflow.sleep``), ``workflow.wait_condition``, signals and replay all
+#: work — that lives up to ``max_lifetime_days`` and stays pinned to the exact
+#: published version it started on. Mirrors the server's manifest ``kind``.
+KIND_WORKFLOW = "workflow"
+
+#: Lifetime of one durable Workflow execution when ``max_lifetime_days`` is
+#: absent, and the platform maximum. Mirrors the server's ManifestSchema.
+DEFAULT_MAX_LIFETIME_DAYS = 90
+MAX_LIFETIME_DAYS = 365
+
+#: Allowed signal names (a Python identifier: it names a ``@workflow.signal``).
+#: Mirrors the server's ``SIGNAL_NAME_REGEX``; at most 50 per workflow.
+SIGNAL_NAME_REGEX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+MAX_SIGNALS = 50
 
 #: Allowed workflow names. Mirrors the server's ``NAME_REGEX``.
 NAME_REGEX = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -115,7 +141,14 @@ class Manifest:
             seconds (Phase 3 Unit 10). When set, the platform uses this value
             instead of the default 900 s. Must be 1–900 (inclusive): the
             manifest may LOWER the platform default, never raise it. Absent
-            from the TOML → use the platform default.
+            from the TOML → use the platform default. Automations only.
+        kind: ``"automation"`` (default) or ``"workflow"`` (durable; see
+            :data:`KIND_WORKFLOW`).
+        signals: Signal names a durable Workflow accepts (declared now;
+            delivering signals into running Workflows comes later). Workflows
+            only; ``None`` when absent.
+        max_lifetime_days: How long one execution of a durable Workflow may
+            live, 1–365 days (default 90). Workflows only.
     """
 
     name: str
@@ -127,6 +160,14 @@ class Manifest:
     required_secrets: list[Requirement] = field(default_factory=list)
     required_configs: list[Requirement] = field(default_factory=list)
     timeout_seconds: int | None = None
+    kind: str = KIND_AUTOMATION
+    signals: list[str] | None = None
+    max_lifetime_days: int | None = None
+
+    @property
+    def is_workflow(self) -> bool:
+        """True for a durable Workflow (``kind = "workflow"``)."""
+        return self.kind == KIND_WORKFLOW
 
     def to_api_manifest(self, diagram: str | None = None) -> dict[str, object]:
         """Return the dict shape the finalize endpoint expects.
@@ -152,6 +193,14 @@ class Manifest:
             manifest["description"] = self.description
         if self.timeout_seconds is not None:
             manifest["timeoutSeconds"] = self.timeout_seconds
+        # Only for a Workflow: an Automation manifest stays exactly what it was
+        # before kinds existed (the server defaults kind to "automation").
+        if self.kind != KIND_AUTOMATION:
+            manifest["kind"] = self.kind
+        if self.signals is not None:
+            manifest["signals"] = list(self.signals)
+        if self.max_lifetime_days is not None:
+            manifest["maxLifetimeDays"] = self.max_lifetime_days
         if diagram is not None:
             manifest["diagram"] = diagram
         return manifest
@@ -218,6 +267,9 @@ def validate_manifest_fields(
     timeout_seconds: object = None,
     required_secrets: object = None,
     required_configs: object = None,
+    kind: object = None,
+    signals: object = None,
+    max_lifetime_days: object = None,
 ) -> None:
     """Validate raw manifest field values, raising :class:`ManifestError`.
 
@@ -231,6 +283,10 @@ def validate_manifest_fields(
         description: Optional description.
         required_actions: Optional list of Cedar action ids.
         timeout_seconds: Optional per-execution timeout (1–900 seconds).
+            Automations only.
+        kind: Optional ``"automation"`` (default) or ``"workflow"``.
+        signals: Optional signal names (durable Workflows only).
+        max_lifetime_days: Optional lifetime, 1–365 days (durable Workflows only).
 
     Raises:
         ManifestError: If any field is missing or invalid.
@@ -271,6 +327,54 @@ def validate_manifest_fields(
             )
     _validate_requirements(required_secrets, "required_secrets")
     _validate_requirements(required_configs, "required_configs")
+    _validate_kind_fields(kind, signals, max_lifetime_days, timeout_seconds)
+
+
+def _validate_kind_fields(
+    kind: object, signals: object, max_lifetime_days: object, timeout_seconds: object
+) -> None:
+    """The ``kind`` rules (Phase 3c), mirroring the server's ManifestSchema.
+
+    Kind-specific fields are refused on the other kind rather than ignored, so a
+    manifest never carries a setting the platform silently drops.
+    """
+    effective = KIND_AUTOMATION if kind is None else kind
+    if effective not in (KIND_AUTOMATION, KIND_WORKFLOW):
+        raise ManifestError(
+            f'kind must be "{KIND_AUTOMATION}" or "{KIND_WORKFLOW}" (got {kind!r})'
+        )
+    if effective == KIND_WORKFLOW and timeout_seconds is not None:
+        raise ManifestError(
+            "timeout_seconds applies to Automations only — a Workflow declares "
+            "max_lifetime_days instead"
+        )
+    if effective == KIND_AUTOMATION:
+        for field_name, value in (("max_lifetime_days", max_lifetime_days), ("signals", signals)):
+            if value is not None:
+                raise ManifestError(
+                    f'{field_name} applies to durable Workflows only — set kind = "workflow"'
+                )
+    if signals is not None:
+        if not isinstance(signals, list):
+            raise ManifestError("signals must be a list of strings when present")
+        if len(signals) > MAX_SIGNALS:
+            raise ManifestError(f"at most {MAX_SIGNALS} signals may be declared")
+        for name in signals:
+            if not isinstance(name, str) or not SIGNAL_NAME_REGEX.match(name):
+                raise ManifestError(
+                    "each signal must be a Python identifier (letters, digits, _; max 64) "
+                    f"(got {name!r})"
+                )
+    if max_lifetime_days is not None:
+        if not isinstance(max_lifetime_days, int) or isinstance(max_lifetime_days, bool):
+            raise ManifestError(
+                f"max_lifetime_days must be an integer (got {max_lifetime_days!r})"
+            )
+        if max_lifetime_days < 1 or max_lifetime_days > MAX_LIFETIME_DAYS:
+            raise ManifestError(
+                f"max_lifetime_days must be between 1 and {MAX_LIFETIME_DAYS} "
+                f"(got {max_lifetime_days})"
+            )
 
 
 def load_manifest(path: str | Path) -> list[Manifest]:
@@ -291,6 +395,13 @@ def load_manifest(path: str | Path) -> list[Manifest]:
         # optional description — shown to the tenant so they can provision them:
         required_secrets = [{ key = "STRIPE_API_KEY", group = "billing" }]
         required_configs = [{ key = "DEFAULT_REGION" }]
+
+        # A durable, long-running Workflow (timers, wait_condition, signals,
+        # replay) instead of a one-shot Automation:
+        kind = "workflow"                     # optional, defaults to "automation"
+        signals = ["proceed"]                 # optional, Workflows only
+        max_lifetime_days = 30                # optional, Workflows only (1-365, default 90)
+        # timeout_seconds is for Automations only
 
     Args:
         path: Path to a ``pegasus-workflows.toml`` file *or* to a directory
@@ -330,6 +441,9 @@ def load_manifest(path: str | Path) -> list[Manifest]:
         timeout_seconds = entry.get("timeout_seconds")
         required_secrets = entry.get("required_secrets")
         required_configs = entry.get("required_configs")
+        kind = entry.get("kind")
+        signals = entry.get("signals")
+        max_lifetime_days = entry.get("max_lifetime_days")
         validate_manifest_fields(
             name,
             version,
@@ -339,6 +453,9 @@ def load_manifest(path: str | Path) -> list[Manifest]:
             timeout_seconds,
             required_secrets,
             required_configs,
+            kind=kind,
+            signals=signals,
+            max_lifetime_days=max_lifetime_days,
         )
         source_dir = entry.get("source_dir", name)
         if not isinstance(source_dir, str) or source_dir == "":
@@ -354,6 +471,9 @@ def load_manifest(path: str | Path) -> list[Manifest]:
                 required_secrets=_parse_requirements(required_secrets),
                 required_configs=_parse_requirements(required_configs),
                 timeout_seconds=timeout_seconds,
+                kind=kind if isinstance(kind, str) else KIND_AUTOMATION,
+                signals=list(signals) if isinstance(signals, list) else None,
+                max_lifetime_days=max_lifetime_days,
             )
         )
 

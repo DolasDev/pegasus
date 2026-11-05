@@ -24,8 +24,9 @@
   #919, plan `plans/completed/872d63bf-retire-legacy-tenant-runner.md`): every tenant-runner
   Automation runs in its tenant's own namespace, a tenant's first publish
   requests one, and no runner holds a Temporal secret, which completes 3a's
-  "no Admin key in runners". This file stays in
-  `plans/in-progress/` until 3c lands; each part's PR updates it. (The
+  "no Admin key in runners". **3c is DONE** (3c.1 #924; 3c.2 in the PR that archived this file; plan
+  `plans/completed/7d167652-durable-workflows-3c.md`), so Phase 3 is complete.
+  Live follow-ups: `plans/todo/durable-workflows-3c-followups.md`. (The
   "Approved outline" section at the bottom is the original checklist, copied
   verbatim from the master plan; the detailed plan above supersedes it.)
 
@@ -59,7 +60,7 @@ from `scripts/new-worktree.sh`; never commit them.
       changed" right after it, which supersedes parts of it.
 
 **Update 2026-11-05:** Q1–Q4 answered and the file-level plan written:
-`plans/in-progress/durable-workflows-3c.md` (awaiting user approval + go-ahead
+`plans/completed/7d167652-durable-workflows-3c.md` (awaiting user approval + go-ahead
 for the staging versioning probe). Original next action, kept for context:
 
 **Next action:** turn the 3c section (plus "3c: what 3b changed") into a
@@ -71,7 +72,7 @@ detailed, file-level 3c plan and get the user's approval **before any code**
    image (`apps/tenant-runner/pyproject.toml` only floors `temporalio>=1.7`)
    and its Worker Deployment Versioning API; whether a namespace-scoped
    **Write** key may call `SetWorkerDeploymentCurrentVersion`.
-2. Write the file-level plan as `plans/in-progress/durable-workflows-3c.md` in
+2. Write the file-level plan as `plans/completed/7d167652-durable-workflows-3c.md` in
    this worktree and present it to the user.
 3. After approval: implement in this worktree (it already exists; `/workstream-start
 feat durable-workflows-3c <plan>` is idempotent and re-enters it).

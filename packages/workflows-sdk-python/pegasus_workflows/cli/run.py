@@ -88,7 +88,8 @@ def run_command(
         "--dry-run",
         help=(
             "Benign rehearsal: run the real Automation with reads live but "
-            "mutations captured, never performed. Tenant-runner Automations only."
+            "mutations captured, never performed. Tenant-runner Automations only "
+            "(not curated workflows, not durable Workflows)."
         ),
     ),
     token: str = token_option(),
@@ -102,6 +103,11 @@ def run_command(
     with TENANT_NAMESPACE_PROVISIONING (409: retry in a minute), or
     TENANT_NAMESPACE_UNAVAILABLE (503) if it failed to provision. While it moves,
     TENANT_MIGRATING (409: retry). Nothing is started in any of those cases.
+
+    A durable Workflow (manifest kind = "workflow") starts pinned to that exact
+    version and runs up to its max_lifetime_days. Right after it is published,
+    WORKFLOW_VERSION_STARTING (409: retry in ~30 s) while its worker comes up;
+    OPEN_WORKFLOW_LIMIT (429) at 500 open Workflows. Nothing is started then.
     """
     token, base_url = resolve_credentials(token, base_url, profile)
 

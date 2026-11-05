@@ -3,6 +3,28 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.56.0
+
+### Added — durable Workflows (`kind = "workflow"`)
+
+- The manifest takes `kind = "workflow"` to publish a durable, long-running
+  Temporal workflow (timers, `wait_condition`, signals, replay), pinned for
+  life to the version it started on. Workflow-only fields: `signals` (the
+  `@workflow.signal` names, declared now; delivery through the API comes later)
+  and `max_lifetime_days` (1-365, default 90). `timeout_seconds` stays
+  Automation-only, and each kind's fields are refused on the other, locally
+  (`package` / `push`) and by the server.
+- `Manifest` gains `kind`, `signals`, `max_lifetime_days` and `is_workflow`;
+  `to_api_manifest` sends `kind` only for a Workflow, so an Automation's
+  manifest is unchanged.
+- `run_workflow` / `retry_execution` raise the new `WorkflowVersionStarting`
+  (HTTP 409 `code="WORKFLOW_VERSION_STARTING"`, `retry_after_seconds`) while a
+  just-published Workflow version's worker comes up. Exported from the package
+  root.
+- `push` says when it published a durable Workflow; `run --help`, the MCP
+  authoring guide and the manifest reference document Workflows, including
+  `OPEN_WORKFLOW_LIMIT` (HTTP 429, 500 open per tenant).
+
 ## 0.55.0
 
 ### Added — your tenant's own runtime (`TENANT_NAMESPACE_*`)

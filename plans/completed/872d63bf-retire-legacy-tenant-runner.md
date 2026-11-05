@@ -6,7 +6,7 @@
 - **Goal:** no tenant runner holds the shared Temporal key. Every tenant-runner
   Automation runs in its tenant's own namespace. A tenant without one gets it
   automatically on first publish. This completes 3a's "no Admin key in runners"
-  (`plans/in-progress/durable-workflow-worker.md`).
+  (`plans/completed/7d167652-durable-workflow-worker.md`).
 - **Builds on** 3b.2 (`plans/completed/00dc33f0-tenant-temporal-routing.md`).
   Read its "Design" first: state machine, runner families, per-row namespace.
 - **Written:** 2026-11-03 against `main` @ `bfd4294b`.
@@ -285,7 +285,7 @@ Modified: `apps/api/src/lib/{start-workflow-execution,tenant-runner,temporal-nam
 `packages/infra/lib/stacks/{api-stack,temporal-worker-stack}.ts`, `packages/infra/lib/metrics.ts`,
 admin-web `TenantTemporalNamespaceSection.tsx` + `temporal-namespace.ts`, tenant-web run/retry
 errors, `packages/workflows-sdk-python`, `dolas/agents/project/{DECISIONS,GOTCHAS}.md`,
-`plans/in-progress/durable-workflow-worker.md`.
+`plans/completed/7d167652-durable-workflow-worker.md`.
 Created: `apps/api/src/lib/tenant-namespace-request.ts` + tests.
 
 ## Risks

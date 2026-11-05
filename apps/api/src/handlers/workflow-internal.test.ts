@@ -49,7 +49,13 @@ const {
   mockTemporalNsRepo,
   mockDomainEventFindFirst,
   mockKickTriggerDispatcher,
+  mockExecutionGroupBy,
+  mockExecutionCount,
+  mockWorkflowCount,
 } = vi.hoisted(() => ({
+  mockExecutionGroupBy: vi.fn(),
+  mockExecutionCount: vi.fn(),
+  mockWorkflowCount: vi.fn(),
   mockExecutionFindUnique: vi.fn(),
   mockWorkflowFindUnique: vi.fn(),
   mockWorkflowFindMany: vi.fn(),
@@ -71,8 +77,16 @@ const {
 
 vi.mock('../db', () => ({
   db: {
-    workflowExecution: { findUnique: mockExecutionFindUnique },
-    workflow: { findUnique: mockWorkflowFindUnique, findMany: mockWorkflowFindMany },
+    workflowExecution: {
+      findUnique: mockExecutionFindUnique,
+      groupBy: mockExecutionGroupBy,
+      count: mockExecutionCount,
+    },
+    workflow: {
+      findUnique: mockWorkflowFindUnique,
+      findMany: mockWorkflowFindMany,
+      count: mockWorkflowCount,
+    },
     tenantBrokerCredential: { findUnique: mockCredentialFindUnique },
     domainEvent: { findFirst: mockDomainEventFindFirst },
   } as unknown as PrismaClient,
@@ -797,6 +811,7 @@ describe('workflow-internal handler', () => {
 
     beforeEach(() => {
       stubCredentials()
+      mockExecutionGroupBy.mockResolvedValue([])
       mockWorkflowFindMany.mockResolvedValue([workflowRow()])
       mockPresignDownload.mockResolvedValue('https://s3.example/presigned-get')
     })
@@ -1071,6 +1086,168 @@ describe('workflow-internal handler', () => {
       } finally {
         for (const s of spies) s.mockRestore()
       }
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Phase 3c: durable Workflows on the broker
+// ---------------------------------------------------------------------------
+
+describe('durable Workflows on the broker (Phase 3c)', () => {
+  const WORKFLOW_ROW_ID = '00000000-0000-4000-8000-0000000000aa'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env['WORKFLOW_BROKER_SECRET'] = BROKER_SECRET
+    stubCredentials()
+    mockPresignDownload.mockResolvedValue('https://s3.example/presigned-get')
+    mockDecryptRuntimeToken.mockResolvedValue('vnd_PLAINTEXT_SECRET')
+    mockWorkflowCount.mockResolvedValue(0)
+    mockExecutionCount.mockResolvedValue(0)
+  })
+
+  describe('GET /tenant-workflows: kind + openExecutions', () => {
+    it('reports each row kind and its open executions (one groupBy)', async () => {
+      mockWorkflowFindMany.mockResolvedValue([
+        {
+          id: WORKFLOW_ROW_ID,
+          name: 'lifecycle',
+          version: '1.0.0',
+          manifest: { entryPoints: ['lifecycle.workflow:Lifecycle'] },
+          artifactKey: 'k',
+          artifactSha256: 'b'.repeat(64),
+          artifactSizeBytes: 1,
+          createdAt: new Date('2026-06-11T00:00:00Z'),
+          kind: 'WORKFLOW',
+        },
+        {
+          id: 'auto-1',
+          name: 'my_automation',
+          version: '1.0.0',
+          manifest: { entryPoints: ['a.b:C'] },
+          artifactKey: 'k2',
+          artifactSha256: 'c'.repeat(64),
+          artifactSizeBytes: 1,
+          createdAt: new Date('2026-06-11T00:00:00Z'),
+          kind: 'AUTOMATION',
+        },
+      ])
+      mockExecutionGroupBy.mockResolvedValue([{ workflowId: WORKFLOW_ROW_ID, _count: { _all: 3 } }])
+
+      const res = await buildApp().request('/tenant-workflows', {
+        method: 'GET',
+        headers: { 'X-Workflow-Broker-Token': TENANT_A_TOKEN },
+      })
+
+      expect(res.status).toBe(200)
+      const data = (await json(res))['data'] as Array<Record<string, unknown>>
+      expect(data.map((d) => [d['name'], d['kind'], d['openExecutions']])).toEqual([
+        ['lifecycle', 'workflow', 3],
+        ['my_automation', 'automation', 0],
+      ])
+      expect(mockExecutionGroupBy).toHaveBeenCalledWith({
+        by: ['workflowId'],
+        where: {
+          tenantId: TENANT_A,
+          status: { in: ['QUEUED', 'RUNNING'] },
+          workflowId: { in: [WORKFLOW_ROW_ID, 'auto-1'] },
+        },
+        _count: { _all: true },
+      })
+    })
+  })
+
+  describe('POST /workflow-worker-grant', () => {
+    const durableRow = (overrides: Record<string, unknown> = {}) => ({
+      id: WORKFLOW_ROW_ID,
+      tenantId: TENANT_A,
+      name: 'lifecycle',
+      kind: 'WORKFLOW',
+      executable: true,
+      status: 'ACTIVE',
+      artifactSha256: 'b'.repeat(64),
+      runtimeTokenCiphertext: 'CIPHERTEXT',
+      createdAt: new Date('2026-06-11T00:00:00Z'),
+      ...overrides,
+    })
+
+    function grant(token: string | null, body: unknown = { workflowId: WORKFLOW_ROW_ID }) {
+      return buildApp().request(
+        '/workflow-worker-grant',
+        token === null ? withSecret(BROKER_SECRET, body) : withToken(token, body),
+      )
+    }
+
+    it('issues the vnd_ token for the newest row of a name, no-store, never logged', async () => {
+      mockWorkflowFindUnique.mockResolvedValue(durableRow())
+      const info = vi.spyOn(logger, 'info')
+
+      const res = await grant(TENANT_A_TOKEN)
+
+      expect(res.status).toBe(200)
+      expect(res.headers.get('Cache-Control')).toBe('no-store')
+      expect(await json(res)).toEqual({ token: 'vnd_PLAINTEXT_SECRET' })
+      expect(mockDecryptRuntimeToken).toHaveBeenCalledWith('CIPHERTEXT')
+      expect(JSON.stringify(info.mock.calls)).not.toContain('vnd_PLAINTEXT_SECRET')
+    })
+
+    it('issues for a superseded row that still has open executions', async () => {
+      mockWorkflowFindUnique.mockResolvedValue(durableRow())
+      mockWorkflowCount.mockResolvedValue(1) // a newer version exists
+      mockExecutionCount.mockResolvedValue(2) // but executions are pinned to this one
+      expect((await grant(TENANT_A_TOKEN)).status).toBe(200)
+    })
+
+    it('only a newer WORKFLOW row of the name supersedes (the runner rule)', async () => {
+      mockWorkflowFindUnique.mockResolvedValue(durableRow())
+      await grant(TENANT_A_TOKEN)
+      expect(mockWorkflowCount).toHaveBeenCalledWith({
+        where: expect.objectContaining({ name: 'lifecycle', kind: 'WORKFLOW' }),
+      })
+    })
+
+    it('404s a superseded row with nothing open', async () => {
+      mockWorkflowFindUnique.mockResolvedValue(durableRow())
+      mockWorkflowCount.mockResolvedValue(1)
+      mockExecutionCount.mockResolvedValue(0)
+      expect((await grant(TENANT_A_TOKEN)).status).toBe(404)
+      expect(mockDecryptRuntimeToken).not.toHaveBeenCalled()
+    })
+
+    it('403s the shared secret: only a tenant runner serves its Workflows', async () => {
+      mockWorkflowFindUnique.mockResolvedValue(durableRow())
+      const res = await grant(null)
+      expect(res.status).toBe(403)
+      expect((await json(res))['code']).toBe('TENANT_TOKEN_REQUIRED')
+      expect(mockWorkflowFindUnique).not.toHaveBeenCalled()
+    })
+
+    it("404s another tenant's row exactly like a missing one", async () => {
+      mockWorkflowFindUnique.mockResolvedValue(durableRow({ tenantId: TENANT_B }))
+      const crossTenant = await grant(TENANT_A_TOKEN)
+      mockWorkflowFindUnique.mockResolvedValue(null)
+      const missing = await grant(TENANT_A_TOKEN)
+      expect(crossTenant.status).toBe(404)
+      expect(await json(crossTenant)).toEqual(await json(missing))
+      expect(mockDecryptRuntimeToken).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['an Automation', { kind: 'AUTOMATION' }],
+      ['a non-executable row', { executable: false }],
+      ['a retired row', { status: 'RETIRED' }],
+      ['a row without a digest', { artifactSha256: null }],
+      ['a row without a runtime token', { runtimeTokenCiphertext: null }],
+    ])('404s %s', async (_label, overrides) => {
+      mockWorkflowFindUnique.mockResolvedValue(durableRow(overrides))
+      expect((await grant(TENANT_A_TOKEN)).status).toBe(404)
+      expect(mockDecryptRuntimeToken).not.toHaveBeenCalled()
+    })
+
+    it('400s a non-uuid workflowId', async () => {
+      const res = await grant(TENANT_A_TOKEN, { workflowId: 'nope' })
+      expect(res.status).toBe(400)
     })
   })
 })

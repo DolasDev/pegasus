@@ -105,12 +105,28 @@ function fakeClient(opts: {
   } as unknown as Client
 }
 
+// The handler queries two lanes (Phase 3c); route the mock by the lane's kind.
+let automationLane: unknown[] = []
+let workflowLane: unknown[] = []
+function setAutomationLane(rows: unknown[]): void {
+  automationLane = rows
+}
+function setWorkflowLane(rows: unknown[]): void {
+  workflowLane = rows
+}
+
 beforeEach(() => {
+  automationLane = []
+  workflowLane = []
   vi.useFakeTimers()
   vi.setSystemTime(now)
   mockSend.mockReset().mockResolvedValue({})
   putMetricDataInputs.length = 0
-  mockFindMany.mockReset()
+  mockFindMany
+    .mockReset()
+    .mockImplementation(async (args: { where: { workflow: { kind: string } } }) =>
+      args.where.workflow.kind === 'WORKFLOW' ? workflowLane : automationLane,
+    )
   mockUpdateMany.mockReset().mockResolvedValue({ count: 1 })
   _setTemporalClientForTesting(null)
 })
@@ -119,16 +135,18 @@ beforeEach(() => {
 
 describe('lambda-reconcile-workflow-executions', () => {
   it('queries only RUNNING rows older than the 5-minute grace window', async () => {
-    mockFindMany.mockResolvedValue([])
+    setAutomationLane([])
 
     await handler()
 
-    expect(mockFindMany).toHaveBeenCalledTimes(1)
+    // Two lanes (Phase 3c); this is the AUTOMATION one.
+    expect(mockFindMany).toHaveBeenCalledTimes(2)
     const arg = mockFindMany.mock.calls[0]![0] as {
-      where: { status: string; startedAt: { lt: Date } }
+      where: { status: string; startedAt: { lt: Date }; workflow: { kind: string } }
       take: number
       orderBy: { startedAt: string }
     }
+    expect(arg.where.workflow).toEqual({ kind: 'AUTOMATION' })
     expect(arg.where.status).toBe('RUNNING')
     expect(arg.take).toBe(100)
     expect(arg.orderBy).toEqual({ startedAt: 'asc' })
@@ -137,7 +155,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('does nothing (no Temporal call, no write) when there are no orphans', async () => {
-    mockFindMany.mockResolvedValue([])
+    setAutomationLane([])
     // Inject a client that would throw if touched.
     _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED' }))
 
@@ -149,7 +167,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('flips a stale RUNNING row to COMPLETED and carries the result', async () => {
-    mockFindMany.mockResolvedValue([runningRow()])
+    setAutomationLane([runningRow()])
     _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }))
 
     const out = await handler()
@@ -169,7 +187,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('flips a FAILED run and records the failure message', async () => {
-    mockFindMany.mockResolvedValue([runningRow()])
+    setAutomationLane([runningRow()])
     const failure = new Error('Workflow execution failed')
     ;(failure as Error & { cause?: Error }).cause = new Error('boom in activity')
     _setTemporalClientForTesting(fakeClient({ statusName: 'FAILED', resultError: failure }))
@@ -185,7 +203,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('maps Temporal TERMINATED -> CANCELLED and TIMED_OUT -> TIMED_OUT', async () => {
-    mockFindMany.mockResolvedValue([runningRow()])
+    setAutomationLane([runningRow()])
 
     _setTemporalClientForTesting(fakeClient({ statusName: 'TERMINATED' }))
     await handler()
@@ -202,7 +220,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('leaves a row alone when Temporal still reports RUNNING', async () => {
-    mockFindMany.mockResolvedValue([runningRow()])
+    setAutomationLane([runningRow()])
     _setTemporalClientForTesting(fakeClient({ statusName: 'RUNNING' }))
 
     const out = await handler()
@@ -213,7 +231,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('is idempotent — a row already terminal (write-back raced) emits no metric', async () => {
-    mockFindMany.mockResolvedValue([runningRow()])
+    setAutomationLane([runningRow()])
     // The conditional updateMany matched zero rows: the worker beat us to it.
     mockUpdateMany.mockResolvedValue({ count: 0 })
     _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }))
@@ -226,7 +244,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('emits WorkflowExecutionReconciled with a Status dimension', async () => {
-    mockFindMany.mockResolvedValue([runningRow()])
+    setAutomationLane([runningRow()])
     _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED', resultValue: { ok: true } }))
 
     await handler()
@@ -247,7 +265,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('skips a RUNNING row with no temporalWorkflowId (cannot address the run)', async () => {
-    mockFindMany.mockResolvedValue([runningRow({ temporalWorkflowId: null })])
+    setAutomationLane([runningRow({ temporalWorkflowId: null })])
     _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED' }))
 
     const out = await handler()
@@ -257,7 +275,7 @@ describe('lambda-reconcile-workflow-executions', () => {
   })
 
   it('one bad row does not abort the tick — the next row still reconciles', async () => {
-    mockFindMany.mockResolvedValue([
+    setAutomationLane([
       runningRow({ id: 'exec-bad', temporalWorkflowId: 'wf/bad' }),
       runningRow({ id: 'exec-good', temporalWorkflowId: 'wf/good' }),
     ])
@@ -301,7 +319,7 @@ describe('tenant namespaces (3b.2)', () => {
     const connect = vi.fn(async () => ({ client: tenantClient, close: vi.fn(async () => {}) }))
     _setTenantTemporalDepsForTesting({ loadKey, connect })
     try {
-      mockFindMany.mockResolvedValue([runningRow({ temporalNamespace: NS })])
+      setAutomationLane([runningRow({ temporalNamespace: NS })])
 
       const out = await handler()
 
@@ -322,7 +340,7 @@ describe('tenant namespaces (3b.2)', () => {
     _setTemporalClientForTesting(fakeClient({ statusName: 'FAILED', resultError: new Error('x') }))
     _setTenantTemporalDepsForTesting({ loadKey: vi.fn(async () => null) })
     try {
-      mockFindMany.mockResolvedValue([
+      setAutomationLane([
         runningRow({ id: 'exec-tenant', temporalNamespace: NS }),
         runningRow({ id: 'exec-shared' }),
       ])
@@ -333,5 +351,104 @@ describe('tenant namespaces (3b.2)', () => {
     } finally {
       _setTenantTemporalDepsForTesting(null)
     }
+  })
+})
+
+// ── Durable Workflows: the WORKFLOW lane (Phase 3c) ────────────────────────
+
+describe('WORKFLOW lane (Phase 3c)', () => {
+  it('queries durable rows round-robin on reconciledAt, never-checked first', async () => {
+    await handler()
+    const arg = mockFindMany.mock.calls[1]![0] as {
+      where: { status: string; startedAt: { lt: Date }; workflow: { kind: string } }
+      take: number
+      orderBy: unknown
+    }
+    expect(arg.where).toEqual({
+      status: 'RUNNING',
+      startedAt: { lt: new Date(now.getTime() - 5 * 60 * 1000) },
+      workflow: { kind: 'WORKFLOW' },
+    })
+    expect(arg.take).toBe(100)
+    expect(arg.orderBy).toEqual({ reconciledAt: { sort: 'asc', nulls: 'first' } })
+  })
+
+  it('a full WORKFLOW lane never starves the AUTOMATION lane', async () => {
+    // 100 open durable Workflows plus one orphaned Automation: the Automation
+    // still gets its check (before 3c, one global oldest-first batch of 100
+    // would have held only the long-lived rows).
+    setWorkflowLane(
+      Array.from({ length: 100 }, (_, i) =>
+        runningRow({ id: `wfl-${i}`, temporalWorkflowId: `wf/t/lifecycle/wfl-${i}` }),
+      ),
+    )
+    setAutomationLane([runningRow({ id: 'auto-1' })])
+    const client = {
+      workflow: {
+        getHandle: vi.fn((id: string) => ({
+          describe: vi.fn().mockResolvedValue({
+            status: { name: id.includes('lifecycle') ? 'RUNNING' : 'COMPLETED' },
+          }),
+          result: vi.fn().mockResolvedValue(null),
+        })),
+      },
+    } as unknown as Client
+    _setTemporalClientForTesting(client)
+
+    const out = await handler()
+
+    expect(out.reconciled).toBe(1)
+    const flipped = mockUpdateMany.mock.calls
+      .map((c) => c[0] as { where: { id: string }; data: { status?: string } })
+      .filter((c) => c.data.status !== undefined)
+    expect(flipped.map((c) => c.where.id)).toEqual(['auto-1'])
+  })
+
+  it('stamps reconciledAt on a still-running durable row (moves the round-robin)', async () => {
+    setWorkflowLane([runningRow({ id: 'wfl-1' })])
+    _setTemporalClientForTesting(fakeClient({ statusName: 'RUNNING' }))
+
+    const out = await handler()
+
+    expect(out.reconciled).toBe(0)
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'wfl-1', status: 'RUNNING' },
+      data: { reconciledAt: now },
+    })
+  })
+
+  it('closes a finished durable Workflow, stamped, as WorkflowExecutionClosed (not Reconciled)', async () => {
+    setWorkflowLane([runningRow({ id: 'wfl-1' })])
+    _setTemporalClientForTesting(fakeClient({ statusName: 'COMPLETED', resultValue: 'done' }))
+
+    const out = await handler()
+
+    expect(out.reconciled).toBe(1)
+    const arg = mockUpdateMany.mock.calls[0]![0] as {
+      data: { status: string; reconciledAt: Date; result: unknown }
+    }
+    expect(arg.data).toMatchObject({ status: 'COMPLETED', reconciledAt: now, result: 'done' })
+    const names = putMetricDataInputs.flatMap(
+      (p) => (p as { MetricData: Array<{ MetricName: string }> }).MetricData,
+    )
+    expect(names.every((m) => m.MetricName === 'WorkflowExecutionClosed')).toBe(true)
+    expect(names.length).toBeGreaterThan(0)
+  })
+
+  it('stamps a durable row whose describe fails, so it cannot pin the batch', async () => {
+    setWorkflowLane([runningRow({ id: 'wfl-1' })])
+    const client = {
+      workflow: {
+        getHandle: vi.fn(() => ({ describe: vi.fn().mockRejectedValue(new Error('grpc down')) })),
+      },
+    } as unknown as Client
+    _setTemporalClientForTesting(client)
+
+    await handler()
+
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'wfl-1', status: 'RUNNING' },
+      data: { reconciledAt: now },
+    })
   })
 })

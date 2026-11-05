@@ -71,6 +71,7 @@ import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwat
 import type { PrismaClient } from '@prisma/client'
 import { getOrCreateTenantBrokerCredential } from './tenant-broker-credential'
 import { resolveWorkflowRoute } from './workflow-route'
+import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
 import { logger } from './logger'
 
 // Duplicated literally from packages/infra/lib/metrics.ts for the same
@@ -247,6 +248,51 @@ export type EnsureTenantRunnerResult =
  * Idempotency: see the module header's "Race posture" — a lost race means a
  * transient duplicate runner, which idle-exit self-heals.
  */
+/** Whether the tenant has a QUEUED/RUNNING durable Workflow (Phase 3c). */
+async function hasOpenDurableWorkflows(db: PrismaClient, tenantId: string): Promise<boolean> {
+  const open = await db.workflowExecution.count({
+    where: {
+      tenantId,
+      status: { in: ['QUEUED', 'RUNNING'] },
+      workflow: { kind: 'WORKFLOW' },
+    },
+  })
+  return open > 0
+}
+
+/**
+ * Warm a just-published durable Workflow version (Phase 3c): launch the
+ * tenant's runner so its worker for the new version polls once. A start
+ * pinned to a version no worker has EVER polled is refused by Temporal
+ * (GOTCHAS: "A pinned Temporal start needs a version that has polled ONCE"),
+ * so publishing is the moment to register it. Only for a tenant whose
+ * namespace is ACTIVE — the only runner family polls it; otherwise the first
+ * start after activation launches the runner and is retried. Best effort:
+ * never throws, and an Automation (or STDLIB) row is a no-op.
+ */
+export async function warmDurableWorkflowVersion(
+  db: PrismaClient,
+  row: { tenantId: string; name: string; executable: boolean; kind: string },
+  deps: EnsureTenantRunnerOptions = {},
+): Promise<EnsureTenantRunnerResult | null> {
+  if (row.kind !== 'WORKFLOW' || resolveWorkflowRoute(row) !== 'TENANT_RUNNER') return null
+  try {
+    const namespace = await db.tenantTemporalNamespace.findUnique({
+      where: { tenantId: row.tenantId },
+      select: { status: true },
+    })
+    if (namespace?.status !== 'ACTIVE') return null
+    return await ensureTenantRunner(db, row.tenantId, deps)
+  } catch (err) {
+    logger.warn('Durable workflow version warm-up failed', {
+      tenantId: row.tenantId,
+      workflowName: row.name,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
+}
+
 export async function ensureTenantRunner(
   db: PrismaClient,
   tenantId: string,
@@ -266,7 +312,11 @@ export async function ensureTenantRunner(
     where: { id: tenantId },
     select: { workflowsDisabled: true },
   })
-  if (tenantRow?.workflowsDisabled === true) {
+  // Exception (DECIDE-4, Phase 3c): the kill switch stops NEW runs only.
+  // Durable Workflows already running keep running, timers included, so a
+  // tenant with an open one still gets its runner: without it they would
+  // stall, not stop.
+  if (tenantRow?.workflowsDisabled === true && !(await hasOpenDurableWorkflows(db, tenantId))) {
     logger.info('Tenant-runner launch skipped — workflows disabled for tenant', { tenantId })
     return { outcome: 'SKIPPED_DISABLED' }
   }
@@ -431,17 +481,17 @@ export async function sweepTenantRunners(
   const config = deps.config !== undefined ? deps.config : loadTenantRunnerConfig()
   if (!config) return result
 
-  // Tenants with outstanding runner-bound work. The row count here is small
-  // by construction (Resolved #3 caps concurrent executions per tenant), so
-  // an unaggregated select + in-process filter is fine.
-  // `executable` is required by executionNeedsTenantRunner (Unit 10: the
-  // routing decision also checks eligibility, not just name).
-  const open = await db.workflowExecution.findMany({
-    where: { status: { in: ['QUEUED', 'RUNNING'] } },
-    select: {
-      tenantId: true,
-      temporalNamespace: true,
-      workflow: { select: { name: true, executable: true } },
+  // Tenants with outstanding runner-bound work: one group per (tenant,
+  // namespace), aggregated in SQL. Since Phase 3c a tenant can hold hundreds
+  // of open durable Workflows (each keeps its runner up, DECIDE-3), so the
+  // old unaggregated select no longer stays small. The where clause IS the
+  // TENANT_RUNNER routing decision (resolveWorkflowRoute: executable and not
+  // curated), pushed into the query.
+  const open = await db.workflowExecution.groupBy({
+    by: ['tenantId', 'temporalNamespace'],
+    where: {
+      status: { in: ['QUEUED', 'RUNNING'] },
+      workflow: { executable: true, name: { notIn: [...CURATED_WORKFLOW_NAMES] } },
     },
   })
   // One demand per tenant. Only rows recorded in a tenant namespace can be
@@ -452,7 +502,6 @@ export async function sweepTenantRunners(
   const demands = new Set<string>()
   const unservable = new Set<string>()
   for (const row of open) {
-    if (!executionNeedsTenantRunner(row.workflow)) continue
     if (row.temporalNamespace == null) unservable.add(row.tenantId)
     else demands.add(row.tenantId)
   }

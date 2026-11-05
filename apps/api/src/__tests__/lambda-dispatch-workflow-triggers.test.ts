@@ -52,7 +52,9 @@ const {
   mockNamespaceFindMany,
   mockNamespaceFindUnique,
   mockNamespaceUpdateMany,
+  mockExecutionDelete,
 } = vi.hoisted(() => ({
+  mockExecutionDelete: vi.fn(async () => ({ count: 1 })),
   mockNamespaceFindMany: vi.fn(async (): Promise<unknown[]> => []),
   mockNamespaceFindUnique: vi.fn(async (): Promise<unknown> => null),
   mockNamespaceUpdateMany: vi.fn(async () => ({ count: 1 })),
@@ -111,6 +113,7 @@ vi.mock('../db', () => {
       update: mockExecutionUpdate,
       count: mockExecutionCount,
       groupBy: mockExecutionGroupBy,
+      deleteMany: mockExecutionDelete,
     },
     // Kill-switch check in start-workflow-execution.ts.
     tenant: {
@@ -1649,6 +1652,101 @@ describe('concurrency-cap back-pressure', () => {
 
     expect(mockDomainEventFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { dispatchedAt: null } }),
+    )
+  })
+})
+
+// ── Durable Workflows (Phase 3c) ──────────────────────────────────────────
+
+describe('durable Workflows (Phase 3c)', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000
+  const durable = workflowRow({
+    id: 'wf-durable',
+    name: 'lifecycle',
+    executable: true,
+    kind: 'WORKFLOW',
+    artifactSha256: 'f'.repeat(64),
+    manifest: { name: 'lifecycle', version: '1.0.0', kind: 'workflow' },
+  })
+  const notRegistered = new Error('Failed to start Workflow', {
+    cause: new Error(
+      "9 FAILED_PRECONDITION: Pinned version 'lifecycle:fff' is not present in task queue 'q'",
+    ),
+  })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    mockWorkflowFindFirst.mockResolvedValue(durable)
+    setTriggers({ event: [triggerRow({ workflowId: 'wf-durable' })] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('parks the event while the version has not registered (not stamped, row deleted)', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    _setTemporalClientForTesting(fakeTemporalClient(vi.fn().mockRejectedValue(notRegistered)))
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
+    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1', status: 'QUEUED' } })
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'WORKFLOW_VERSION_DEFERRED' }],
+      }),
+    )
+  })
+
+  it('drops (stamps) an event still parked on an unregistered version past the max age', async () => {
+    mockDomainEventFindMany.mockResolvedValue([
+      eventRow({ occurredAt: new Date(now.getTime() - DAY_MS - 1000) }),
+    ])
+    _setTemporalClientForTesting(fakeTemporalClient(vi.fn().mockRejectedValue(notRegistered)))
+
+    await handler()
+
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'WORKFLOW_VERSION_DROPPED' }],
+      }),
+    )
+  })
+
+  it('a tenant at the Automation cap still starts its durable Workflows', async () => {
+    mockExecutionGroupBy.mockResolvedValue([{ tenantId: 'tenant-1', _count: { _all: 5 } }])
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+
+    const out = await handler()
+
+    expect(out.fired).toBe(1)
+    expect(emittedMetrics()).not.toContainEqual(
+      expect.objectContaining({
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_DEFERRED' }],
+      }),
+    )
+  })
+
+  it('OPEN_WORKFLOW_LIMIT: skipped and stamped (an abuse ceiling, not back-pressure)', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockExecutionCount.mockResolvedValue(500)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'OPEN_WORKFLOW_LIMIT' }],
+      }),
     )
   })
 })

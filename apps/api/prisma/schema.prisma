@@ -1472,6 +1472,19 @@ model DocumentVariant {
 // scopes manually.
 // ---------------------------------------------------------------------------
 
+/// What a published workflow row is (Phase 3c), from the manifest's `kind`.
+enum WorkflowKind {
+  /// One-shot: the whole body runs as one unit of work behind the tenant
+  /// runner's proxy activity, capped at 900 s. Every row before Phase 3c.
+  AUTOMATION
+  /// Durable: a real Temporal workflow (timers, conditions, signals, replay)
+  /// served by a long-lived worker subprocess on its own task queue, pinned
+  /// at start to the row it started on. Lives up to `maxLifetimeDays`.
+  WORKFLOW
+
+  @@schema("public")
+}
+
 enum WorkflowVisibility {
   /// Owned by the platform tenant; readable by every tenant.
   GLOBAL
@@ -1789,6 +1802,10 @@ model Workflow {
   /// retired (name, version) still blocks a re-push of the same pair.
   status WorkflowStatus @default(ACTIVE)
 
+  /// AUTOMATION or WORKFLOW (Phase 3c), from the manifest's `kind` at
+  /// finalize. Decides the start path (task queue, timeout, version pin, caps).
+  kind WorkflowKind @default(AUTOMATION)
+
   /// When the row was retired, and by which TenantUser.id. Null while ACTIVE.
   /// Not an FK, so the row survives user deletion.
   retiredAt       DateTime? @map("retired_at")
@@ -1875,6 +1892,12 @@ model WorkflowExecution {
   startedAt  DateTime? @map("started_at")
   finishedAt DateTime? @map("finished_at")
 
+  /// When the reconciler last asked Temporal about this RUNNING row (Phase
+  /// 3c). Its WORKFLOW lane round-robins on it (oldest check first, NULLs
+  /// first): a durable Workflow has no runner write-back, so the reconciler
+  /// is the only thing that closes its row.
+  reconciledAt DateTime? @map("reconciled_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1886,6 +1909,8 @@ model WorkflowExecution {
   /// `WHERE tenantId = $1 AND createdAt >= $utcDayStart`. The tenantId-first
   /// ordering means the query touches only one tenant's rows.
   @@index([tenantId, createdAt])
+  /// The reconciler's WORKFLOW lane: RUNNING rows, least recently checked first.
+  @@index([status, reconciledAt])
   @@map("workflow_executions")
   @@schema("public")
 }
