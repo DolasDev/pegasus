@@ -10,10 +10,11 @@
 
 ## Checklist
 
-- [ ] **Publish SDK 0.56.0** once 3c.2 is merged and deployed: tag
+- [x] **Publish SDK 0.56.0** once 3c.2 is merged and deployed: tag
       `sdk-python-v0.56.0` on the merge commit (see the release workflow;
       guard the tag on a real merge commit).
-- [ ] **Authoring repo docs** (`~/repos/pegasus-workflows/CLAUDE.md`, a
+      **Done 2026-11-05:** tag `sdk-python-v0.56.0` on merge commit `b07d0c9a` (#925); release run 42089236963 green; on PyPI.
+- [x] **Authoring repo docs** (`~/repos/pegasus-workflows/CLAUDE.md`, a
       separate repo, commits to its `main`), only after 0.56.0 is on PyPI:
       manifest rules gain `kind` (`"automation"` default / `"workflow"`),
       `signals` and `max_lifetime_days` (Workflows only; `timeout_seconds`
@@ -21,9 +22,11 @@
       `WorkflowVersionStarting` (409 `WORKFLOW_VERSION_STARTING`) and
       `OPEN_WORKFLOW_LIMIT` (429); one paragraph on what a durable Workflow is
       (timers/wait_condition/replay, pinned to its version, no dry runs).
-- [ ] **Post-deploy checks (prod):** the migration `durable_workflow_kind`
+      **Done 2026-11-05:** `pegasus-workflows` `c131380` (manifest rules + `WorkflowVersionStarting` / `OPEN_WORKFLOW_LIMIT`).
+- [x] **Post-deploy checks (prod):** the migration `durable_workflow_kind`
       applied; the `pegasus-workflow-execution-reconciled` alarm stays quiet;
       an NW Automation (dry run is enough) still completes.
+      **Done 2026-11-05 ~18:57 UTC:** migration `20261105175848_durable_workflow_kind` applied (50 rows, all AUTOMATION); `pegasus-workflow-execution-reconciled` OK; reconcile ticks clean with the new `durableScanned` field; NW dry run `b8a525f3` COMPLETED.
 - [ ] **Staging acceptance** (the plan's "Acceptance" list), on a staging
       tenant with an ACTIVE namespace:
   - publish a Workflow that sleeps 15 min, then waits on a condition with a
