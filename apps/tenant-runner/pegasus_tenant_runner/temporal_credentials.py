@@ -17,13 +17,18 @@ fetches a fresh key — that is the floor, this loop is the normal path.
 
 The key never reaches a log line, and never reaches tenant code: the
 subprocess environment is built from an allowlist (sandbox_env.py) and the
-key lives only in this process's memory.
+key lives only in this process's memory — except for durable-Workflow worker
+subprocesses (Phase 3c), which run a Temporal worker in the tenant's own
+namespace and so are handed the key, and every refreshed one, over their
+stdin control channel (D5 accepts a tenant's code holding its own
+namespace-scoped key).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from .broker_client import TemporalCredentials, TemporalCredentialsUnavailable
@@ -51,6 +56,7 @@ async def run_credentials_refresh(
     interval_seconds: float,
     shutdown_requested: asyncio.Event,
     log_context: dict[str, Any],
+    on_refreshed: Callable[[TemporalCredentials], Awaitable[None]] | None = None,
 ) -> None:
     """Refresh the client's key every ``interval_seconds`` until shutdown.
 
@@ -92,3 +98,13 @@ async def run_credentials_refresh(
             client.api_key = fresh.api_key
             current = fresh
             log.info("runner.temporal_key_refreshed", extra=log_context)
+            if on_refreshed is not None:
+                # Phase 3c: the durable-Workflow worker subprocesses hold the
+                # key too, and outlive the old key's 24 h grace.
+                try:
+                    await on_refreshed(fresh)
+                except Exception as exc:  # noqa: BLE001 — retried next interval
+                    log.warning(
+                        "runner.temporal_key_fanout_failed",
+                        extra={**log_context, "error_type": type(exc).__name__},
+                    )

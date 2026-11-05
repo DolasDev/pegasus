@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import io
 import zipfile
@@ -14,9 +15,11 @@ from pegasus_tenant_runner.artifacts import (
     ArtifactInstallError,
     ArtifactIntegrityError,
     download_artifact,
+    has_open_workflows,
     prepare_workflow,
     safe_extract,
     select_latest,
+    select_workflow_versions,
     sha256_file,
 )
 from pegasus_tenant_runner.broker_client import ExecutableWorkflow
@@ -291,3 +294,51 @@ def test_select_latest_dedupes_by_name_keeping_newest() -> None:
     picked = {w.name: w for w in select_latest([new, old, other])}
     assert picked["my_workflow"].version == "1.1.0"
     assert picked["other_wf"].name == "other_wf"
+
+
+# ---------------------------------------------------------------------------
+# Durable Workflows (Phase 3c)
+# ---------------------------------------------------------------------------
+
+
+def _durable(
+    wid: str, *, name: str = "lifecycle", created_at: str, open_executions: int = 0
+) -> ExecutableWorkflow:
+    return dataclasses.replace(
+        _workflow(name=name, sha256=wid[-1] * 64, created_at=created_at),
+        id=wid,
+        kind="workflow",
+        open_executions=open_executions,
+    )
+
+
+def test_select_latest_never_returns_a_durable_workflow() -> None:
+    automation = _workflow(sha256="a" * 64, created_at="2026-06-01T00:00:00.000Z")
+    durable = _durable("w1", name="my_workflow", created_at="2026-06-10T00:00:00.000Z")
+    assert select_latest([automation, durable]) == [automation]
+
+
+def test_select_workflow_versions_serves_newest_plus_every_open_row() -> None:
+    v1 = _durable("w1", created_at="2026-06-01T00:00:00.000Z", open_executions=3)
+    v2 = _durable("w2", created_at="2026-06-02T00:00:00.000Z")  # superseded, nothing open
+    v3 = _durable("w3", created_at="2026-06-03T00:00:00.000Z")  # newest
+    other = _durable("w4", name="other", created_at="2026-06-04T00:00:00.000Z")
+    automation = _workflow(sha256="f" * 64)
+    picked = select_workflow_versions([v1, v2, v3, other, automation])
+    # Open rows first (they must be served under a cap), then newest-first.
+    assert [w.id for w in picked] == ["w1", "w4", "w3"]
+
+
+def test_has_open_workflows_only_counts_durable_rows() -> None:
+    idle = _durable("w1", created_at="2026-06-01T00:00:00.000Z")
+    assert has_open_workflows([idle, _workflow(sha256="a" * 64)]) is False
+    busy = dataclasses.replace(idle, open_executions=1)
+    assert has_open_workflows([busy]) is True
+
+
+def test_prepared_row_carries_its_kind(tmp_path: Path) -> None:
+    wf = dataclasses.replace(_workflow(sha256=VALID_SHA), kind="workflow")
+    prepared = prepare_workflow(
+        tmp_path, wf, max_unpacked_bytes=1024 * 1024, transport=_transport_serving(VALID_ZIP)
+    )
+    assert prepared.is_workflow

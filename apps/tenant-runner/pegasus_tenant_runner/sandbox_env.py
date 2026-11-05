@@ -45,13 +45,16 @@ ENV_ALLOWLIST_KEYS = frozenset(
 )
 
 
-def build_subprocess_env(prepared: PreparedWorkflow, *, execution_id: str) -> dict[str, str]:
+def build_subprocess_env(prepared: PreparedWorkflow, *, execution_id: str = "") -> dict[str, str]:
     """Build the stripped environment for one tenant-code subprocess.
 
     ``PATH`` deliberately contains only the workflow's own venv bin plus the
     standard system bins (the image is slim; there is nothing interesting in
     them, but ``python -m venv``-created interpreters resolve tools like
     ``uname`` via PATH and an empty PATH breaks innocent stdlib calls).
+
+    A durable Workflow's worker subprocess serves many executions, so it
+    passes no ``execution_id`` and ``PEGASUS_EXECUTION_ID`` is empty.
     """
     env = {
         "PATH": f"{prepared.python_bin.parent}:/usr/local/bin:/usr/bin:/bin",

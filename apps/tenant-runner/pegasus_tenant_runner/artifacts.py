@@ -89,6 +89,12 @@ class PreparedWorkflow:
     src_dir: Path
     python_bin: Path
     scratch_dir: Path
+    #: The row's manifest ``kind`` (see ExecutableWorkflow.kind).
+    kind: str = "automation"
+
+    @property
+    def is_workflow(self) -> bool:
+        return self.kind == "workflow"
 
 
 def sha256_file(path: Path) -> str:
@@ -222,15 +228,21 @@ def _create_venv(venv_dir: Path) -> Path:
 
 
 def select_latest(workflows: list[ExecutableWorkflow]) -> list[ExecutableWorkflow]:
-    """Pick one row per workflow NAME — the most recently created.
+    """Pick one AUTOMATION row per workflow NAME — the most recently created.
 
     Temporal proxies are registered by name (the run path starts
     ``workflow.name``), so two executable versions of the same name can't
     both be live on one queue. Latest upload wins; the skipped versions are
     logged. Unit 10's run-path routing may refine this contract.
+
+    WORKFLOW-kind rows (Phase 3c) are never proxied — a worker subprocess
+    serves them on their own queue — so they are left out here; see
+    :func:`select_workflow_versions`.
     """
     by_name: dict[str, ExecutableWorkflow] = {}
     for wf in workflows:
+        if wf.is_workflow:
+            continue
         current = by_name.get(wf.name)
         if current is None or wf.created_at > current.created_at:
             if current is not None:
@@ -245,6 +257,34 @@ def select_latest(workflows: list[ExecutableWorkflow]) -> list[ExecutableWorkflo
                 extra={"workflow_name": wf.name, "skipped_version": wf.version},
             )
     return list(by_name.values())
+
+
+def select_workflow_versions(workflows: list[ExecutableWorkflow]) -> list[ExecutableWorkflow]:
+    """The WORKFLOW-kind rows that should have a worker subprocess, by priority.
+
+    A durable Workflow is pinned to the published row it started on, so the
+    runner serves every row that still has open executions, plus the newest
+    row of each name (where new starts go). Rows with open executions come
+    first: under the per-runner worker cap they must be served before a
+    newest row that nothing is running on yet. Within each group, newest
+    first.
+    """
+    rows = [wf for wf in workflows if wf.is_workflow]
+    newest: dict[str, ExecutableWorkflow] = {}
+    for wf in rows:
+        current = newest.get(wf.name)
+        if current is None or wf.created_at > current.created_at:
+            newest[wf.name] = wf
+    newest_ids = {wf.id for wf in newest.values()}
+    wanted = [wf for wf in rows if wf.open_executions > 0 or wf.id in newest_ids]
+    wanted.sort(key=lambda wf: wf.created_at, reverse=True)
+    wanted.sort(key=lambda wf: wf.open_executions == 0)  # stable: open ones first
+    return wanted
+
+
+def has_open_workflows(workflows: list[ExecutableWorkflow]) -> bool:
+    """True when any WORKFLOW-kind row has an open execution (DECIDE-3 hold)."""
+    return any(wf.is_workflow and wf.open_executions > 0 for wf in workflows)
 
 
 def prepare_workflow(
@@ -312,6 +352,7 @@ def prepare_workflow(
             src_dir=src_dir,
             python_bin=python_bin,
             scratch_dir=scratch_dir,
+            kind=wf.kind,
         )
     except Exception:
         shutil.rmtree(wf_dir, ignore_errors=True)

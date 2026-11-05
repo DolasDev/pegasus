@@ -39,6 +39,8 @@ Optional:
     RUNNER_MAX_OUTPUT_BYTES           stdout/stderr tail kept per run (256 KiB).
     RUNNER_MAX_RESULT_BYTES           Max result-file size accepted (1 MiB).
     RUNNER_WORK_DIR                   Scratch root (/home/pegasus/work).
+    RUNNER_WORKFLOW_DISCOVERY_SECONDS Durable-Workflow re-list interval (60).
+    RUNNER_MAX_WORKFLOW_WORKERS       Durable-Workflow workers per runner (8).
 """
 
 from __future__ import annotations
@@ -81,6 +83,11 @@ class RunnerConfig:
     max_result_bytes: int
     work_dir: str
     temporal_credentials_refresh_seconds: int = 1800
+    #: Phase 3c: how often the runner re-lists the tenant's workflows to start,
+    #: retire and restart durable-Workflow workers and refresh the idle hold.
+    workflow_discovery_seconds: int = 60
+    #: Phase 3c: cap on durable-Workflow worker subprocesses per runner task.
+    max_workflow_workers: int = 8
 
     @property
     def uses_broker_credentials(self) -> bool:
@@ -182,6 +189,10 @@ def load_config(env: dict[str, str] | None = None) -> RunnerConfig:
         temporal_credentials_refresh_seconds=_positive_int(
             "RUNNER_TEMPORAL_CREDENTIALS_REFRESH_SECONDS", source, 1800
         ),
+        workflow_discovery_seconds=_positive_int(
+            "RUNNER_WORKFLOW_DISCOVERY_SECONDS", source, 60
+        ),
+        max_workflow_workers=_positive_int("RUNNER_MAX_WORKFLOW_WORKERS", source, 8),
         idle_timeout_seconds=_positive_int("RUNNER_IDLE_TIMEOUT_SECONDS", source, 600),
         execution_timeout_seconds=_positive_int("RUNNER_EXECUTION_TIMEOUT_SECONDS", source, 900),
         max_unpacked_bytes=_positive_int("RUNNER_MAX_UNPACKED_BYTES", source, 100 * 1024 * 1024),

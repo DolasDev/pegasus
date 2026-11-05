@@ -166,6 +166,14 @@ class TenantCodeExecutor:
             async with self._preparer.use(
                 workflow_id=grant.workflow_id, workflow_name=workflow_name
             ) as (prepared, resolved_by):
+                if prepared.is_workflow:
+                    # Defense in depth: a durable Workflow runs on its own
+                    # queue, served by a worker subprocess — never as a
+                    # one-shot proxy run (no timers, no replay, a 900 s cap).
+                    raise WorkflowNotAvailableError(
+                        f"workflow row {prepared.workflow_id} ({prepared.name!r}) is a "
+                        "durable Workflow and cannot run as a one-shot Automation"
+                    )
                 log.info(
                     "runner.execution_resolved",
                     extra={

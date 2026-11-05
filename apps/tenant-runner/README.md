@@ -71,11 +71,28 @@ ECS task / image hardening layer.
    substitutes another version's bytes (sdk-feedback 0034 — resolving per name
    at startup meant a warm task served whatever was latest when it launched,
    for its whole life).
-5. **Idle-exit** (scale-to-zero, Resolved #1): after
+5. **Durable Workflows** (Phase 3c, `workflow_workers.py`): every
+   `RUNNER_WORKFLOW_DISCOVERY_SECONDS` (default 60, and once at start) the
+   runner re-lists, and keeps ONE long-lived worker subprocess
+   (`workflow_worker_driver.py`, in the row's venv, stripped env) per
+   `kind: workflow` row that still has open executions or is the newest of
+   its name, capped at `RUNNER_MAX_WORKFLOW_WORKERS` (default 8; rows with
+   open executions first). Each is a real Temporal `Worker` on
+   `pegasus-tenant-<tenantId>-<env>-wfl-<name>`, as Worker Deployment
+   Version `(name, artifactSha256)`, PINNED. Its stdin stays open as a
+   JSON-lines control channel: a `start` line (tenant namespace + key, the
+   row's `vnd_` token from `POST /internal/workflow-worker-grant`, queue,
+   version), then every refreshed key (`credentials`) and `shutdown`. A
+   worker that dies is restarted with backoff; a row that drops out of the
+   listing is drained. The driver makes itself non-dumpable (the flag resets
+   on `execve`). The one-shot proxy refuses a `kind: workflow` row.
+6. **Idle-exit** (scale-to-zero, Resolved #1): after
    `RUNNER_IDLE_TIMEOUT_SECONDS` (default 600) with no activity, the runner
-   drains the Temporal worker and exits 0. SIGTERM does the same.
+   drains the Temporal worker (and every durable-Workflow worker) and exits 0. SIGTERM does the same. **Held** while the listing shows any open
+   durable Workflow (DECIDE-3): a Workflow waiting on a timer has nothing in
+   flight, and exiting would only get the runner relaunched a minute later.
 
-### v1 execution semantics for tenant workflows
+### v1 execution semantics for Automations
 
 Tenant code is authored as Temporal workflow classes (SDK shape), but it
 executes in **direct mode** inside the subprocess: the driver patches
@@ -84,25 +101,29 @@ callable in-process, `workflow.sleep` → `asyncio.sleep`, `workflow.now` /
 `workflow.uuid4` → wall-clock/random. The whole workflow is one unit of work
 under the per-execution timeout; durable replay, signals, queries, and
 per-activity retries are not available to tenant code in v1. Temporal sees a
-single activity (`maximum_attempts=1`) under the proxy workflow.
+single activity (`maximum_attempts=1`) under the proxy workflow. Durable
+Workflows (`kind: workflow`, step 5) are the opposite: real Temporal
+workflows with timers, signals, `wait_condition` and replay.
 
 ## Configuration (env, injected by the Unit 9 dispatcher)
 
-| Var                                | Required | Notes                                                                                                                                                |
-| ---------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TENANT_ID`                        | ✓        | lowercase UUID                                                                                                                                       |
-| `ENV_NAME`                         | ✓        | `staging` / `prod` / `dev`                                                                                                                           |
-| `TEMPORAL_NAMESPACE`               |          | env mode (local dev) only, `default` there. Deployed runners omit every `TEMPORAL_*` var and fetch their tenant's namespace + key from the broker    |
-| `TEMPORAL_ADDRESS`                 |          | env mode (local dev) only: gRPC `host:port`. Its absence is broker mode                                                                              |
-| `PEGASUS_API_BASE_URL`             | ✓        | broker base URL                                                                                                                                      |
-| `WORKFLOW_BROKER_TOKEN`            | ✓        | per-tenant `wbk_` token. The runner refuses anything else (notably the shared broker secret) and refuses a token whose embedded tenant ≠ `TENANT_ID` |
-| `TEMPORAL_CLOUD_API_KEY`           |          | env mode only; empty → local dev server (no TLS/auth). Never set on a deployed runner                                                                |
-| `RUNNER_IDLE_TIMEOUT_SECONDS`      |          | default 600                                                                                                                                          |
-| `RUNNER_EXECUTION_TIMEOUT_SECONDS` |          | default 900                                                                                                                                          |
-| `RUNNER_MAX_UNPACKED_BYTES`        |          | default 104857600 (100 MiB)                                                                                                                          |
-| `RUNNER_MAX_OUTPUT_BYTES`          |          | default 262144                                                                                                                                       |
-| `RUNNER_MAX_RESULT_BYTES`          |          | default 1048576                                                                                                                                      |
-| `RUNNER_WORK_DIR`                  |          | default `/home/pegasus/work`                                                                                                                         |
+| Var                                 | Required | Notes                                                                                                                                                |
+| ----------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TENANT_ID`                         | ✓        | lowercase UUID                                                                                                                                       |
+| `ENV_NAME`                          | ✓        | `staging` / `prod` / `dev`                                                                                                                           |
+| `TEMPORAL_NAMESPACE`                |          | env mode (local dev) only, `default` there. Deployed runners omit every `TEMPORAL_*` var and fetch their tenant's namespace + key from the broker    |
+| `TEMPORAL_ADDRESS`                  |          | env mode (local dev) only: gRPC `host:port`. Its absence is broker mode                                                                              |
+| `PEGASUS_API_BASE_URL`              | ✓        | broker base URL                                                                                                                                      |
+| `WORKFLOW_BROKER_TOKEN`             | ✓        | per-tenant `wbk_` token. The runner refuses anything else (notably the shared broker secret) and refuses a token whose embedded tenant ≠ `TENANT_ID` |
+| `TEMPORAL_CLOUD_API_KEY`            |          | env mode only; empty → local dev server (no TLS/auth). Never set on a deployed runner                                                                |
+| `RUNNER_IDLE_TIMEOUT_SECONDS`       |          | default 600                                                                                                                                          |
+| `RUNNER_EXECUTION_TIMEOUT_SECONDS`  |          | default 900                                                                                                                                          |
+| `RUNNER_MAX_UNPACKED_BYTES`         |          | default 104857600 (100 MiB)                                                                                                                          |
+| `RUNNER_MAX_OUTPUT_BYTES`           |          | default 262144                                                                                                                                       |
+| `RUNNER_MAX_RESULT_BYTES`           |          | default 1048576                                                                                                                                      |
+| `RUNNER_WORK_DIR`                   |          | default `/home/pegasus/work`                                                                                                                         |
+| `RUNNER_WORKFLOW_DISCOVERY_SECONDS` |          | default 60: durable-Workflow re-list interval                                                                                                        |
+| `RUNNER_MAX_WORKFLOW_WORKERS`       |          | default 8: durable-Workflow worker subprocesses per runner                                                                                           |
 
 The task queue is always derived: `pegasus-tenant-<TENANT_ID>-<ENV_NAME>`.
 
@@ -117,7 +138,11 @@ Same toolchain as `apps/temporal-worker` (no CI job runs Python tests today;
 this is the local verification command). `tests/conftest.py` adds
 `packages/workflows-sdk-python/` to `sys.path`. Several tests spawn real
 subprocesses (driver + sandbox isolation proofs); they need no network and
-no Temporal server.
+no Temporal server — except `tests/test_workflow_worker_e2e.py`, which
+downloads and starts a Temporal dev server (`WorkflowEnvironment.start_local`
+with Worker Deployment Versioning switched on by dynamic config) and skips
+when it can't. `temporalio` is pinned EXACTLY in `pyproject.toml`; re-run that
+test when bumping it.
 
 Lint: `uv run --extra dev ruff check .`
 

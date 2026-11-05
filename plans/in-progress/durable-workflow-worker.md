@@ -1,8 +1,9 @@
 # Phase 3: durable workflow worker
 
-- **Branch:** `feat/durable-workflow-worker` (worktree
-  `../pegasus-durable-workflow-worker`). All Phase 3 changes stay on this
-  branch.
+- **Branch:** each part gets its own workstream. 3a used
+  `feat/durable-workflow-worker` (merged, worktree gone); **3c has no branch
+  yet**; its checkpoint worktree is `../pegasus-durable-workflows-3c` on
+  `feat/durable-workflows-3c` (see "Resume here").
 - **Goal:** tenant-authored, long-running Workflows can run durably in their
   tenant's own Temporal Cloud namespace, isolated per D5 (option A).
 - **Master plan:** `plans/in-progress/long-running-workflows-and-automations.md`.
@@ -27,6 +28,90 @@
   `plans/in-progress/` until 3c lands; each part's PR updates it. (The
   "Approved outline" section at the bottom is the original checklist, copied
   verbatim from the master plan; the detailed plan above supersedes it.)
+
+## Resume here (written 2026-11-05, for a fresh session)
+
+**Where:** worktree `/home/steve/repos/pegasus-durable-workflows-3c`, branch
+`feat/durable-workflows-3c`, created off `main` @ `9610c2cc` (#922, archive of
+the legacy-runner retirement) with its own Postgres. No commits on it, no PR,
+no watcher. Primary checkout clean on `main`.
+(`../pegasus-mobile-web-dev` is an unrelated stream; ignore it.)
+
+**Uncommitted work:** only this file (this "Resume here" section, the Branch
+line, and "3c: what 3b changed"), from a `/keep-going` checkpoint (no commit by
+design). Commit it as the branch's first commit together with the 3c plan.
+`apps/e2e/.env.test` and `package-lock.json` may show as modified: those come
+from `scripts/new-worktree.sh`; never commit them.
+
+**State of Phase 3:**
+
+- [x] 3a: key downgrades + DNS Firewall (2026-10-04). Still owed: the
+      100-namespace cap request to Temporal support (7 used on 2026-11-04:
+      6 prod, 1 staging; onboarding is now automatic, so this matters more).
+- [x] 3b.1: per-tenant namespaces + provisioner + key rotation
+      (`plans/completed/f0d47ffb-tenant-temporal-namespaces.md`).
+- [x] 3b.2: routing + cutover (`plans/completed/00dc33f0-tenant-temporal-routing.md`).
+- [x] Legacy runner retired, automatic onboarding (#919 `872d63bf`, deployed
+      2026-11-04; `plans/completed/872d63bf-retire-legacy-tenant-runner.md`).
+      Live follow-ups: `plans/todo/tenant-namespace-followups.md`.
+- [ ] **3c: durable Workflows — NOT STARTED.** Design: the "3c" section below,
+      approved 2026-09-29, but **written before 3b**: read "3c: what 3b
+      changed" right after it, which supersedes parts of it.
+
+**Update 2026-11-05:** Q1–Q4 answered and the file-level plan written:
+`plans/in-progress/durable-workflows-3c.md` (awaiting user approval + go-ahead
+for the staging versioning probe). Original next action, kept for context:
+
+**Next action:** turn the 3c section (plus "3c: what 3b changed") into a
+detailed, file-level 3c plan and get the user's approval **before any code**
+(engineering principles: plan first). Concretely:
+
+1. Settle the open questions in "3c: what 3b changed" (Q1-Q4) by reading code
+   and docs: the Temporal Python SDK version actually installed in the runner
+   image (`apps/tenant-runner/pyproject.toml` only floors `temporalio>=1.7`)
+   and its Worker Deployment Versioning API; whether a namespace-scoped
+   **Write** key may call `SetWorkerDeploymentCurrentVersion`.
+2. Write the file-level plan as `plans/in-progress/durable-workflows-3c.md` in
+   this worktree and present it to the user.
+3. After approval: implement in this worktree (it already exists; `/workstream-start
+feat durable-workflows-3c <plan>` is idempotent and re-enters it).
+
+**Decisions & context a new session needs:**
+
+- User asked (2026-11-05) how to use "long-running workflows" and whether
+  they are in the UI: **they don't exist yet**; 3c builds the runtime, and the
+  tenant-web Workflows section, signals/event delivery and `run_automation()`
+  are **Phase 4** of the master plan (`plans/in-progress/long-running-workflows-and-automations.md`).
+  The user then asked to checkpoint here before starting.
+- Answered decisions still binding on 3c: DECIDE-3 (keep the runner up while a
+  tenant has open Workflows, ~$18/month per such tenant) and DECIDE-4 (kill
+  switch blocks new starts only). See "Decisions needed" below.
+- There is **no shared runner and no shared-namespace fallback** any more:
+  every tenant-runner execution lives in the tenant's ACTIVE namespace; starts
+  for a tenant without one get 409 `TENANT_NAMESPACE_PROVISIONING` (start path
+  `apps/api/src/lib/start-workflow-execution.ts`). DECISIONS.md: "Every
+  tenant-runner Automation runs in its tenant's own namespace".
+
+**Gotchas:**
+
+- AWS SSO (staging/prod) expires within days: the user runs
+  `aws sso login --profile dolas-pegasus-<env> --use-device-code`.
+- DB read recipe (prod/staging): read `DATABASE_URL` from the reconcile
+  Lambda's config into a variable on its **own** line, then `psql "$DB"`
+  (`VAR=$(…) psql "$VAR"` on one line expands before the assignment).
+  Lambdas: `pegasus-prod-api-ReconcileWorkflowExecutionsFuncti-3c9x3zD5oD0N`,
+  `pegasus-staging-api-ReconcileWorkflowExecutionsFun-wdwJvHTDuNiP`.
+  Admin audit table: `platform.audit_logs`.
+- In a worktree, after merging `main`: run `npx prisma migrate deploy` **from
+  `apps/api`** (Prisma 7 config) if `main` added migrations; and restore
+  `apps/api/vitest.config.ts` to HEAD before each push (the pre-push coverage
+  run raises its floors, and the next push then fails by ~0.01%).
+- Worktree-isolated sessions refuse compound shell around git/gh/aws loops:
+  put multi-step checks in a script file under the scratchpad and run it.
+
+**Verification still owed (not 3c):** the live checks in
+`plans/todo/tenant-namespace-followups.md` (NW's next run, Dolios's first run,
+EVENT trigger during PROVISIONING, AVP Smoke cleanup).
 
 ## Step 0: detailed implementation plan (approved 2026-09-29)
 
@@ -350,6 +435,41 @@ task_queue=…-wfl, deployment version = (name, artifactSha256))`.
 - **Acceptance:** on the staging tenant, a published Workflow waits on a
   timer longer than the runner's idle window. The runner exits, the sweep
   wakes it, and the Workflow completes. Queried status is correct throughout.
+
+#### 3c: what 3b changed (2026-11-05; supersedes the bullets above where they conflict)
+
+- **"Finalize refuses `kind=WORKFLOW` unless ACTIVE (422
+  `TENANT_NAMESPACE_REQUIRED`)" is obsolete.** Finalize and fork now request
+  the tenant's namespace automatically (`lib/tenant-namespace-request.ts`),
+  and every tenant-runner start is gated on ACTIVE (409
+  `TENANT_NAMESPACE_PROVISIONING` / 503 `TENANT_NAMESPACE_UNAVAILABLE`).
+  Recommendation: drop the 422; reuse the same gate for WORKFLOW starts.
+- **"The platform key sets the current version" is obsolete:** 3b.1 decided
+  there is no platform service account; the API uses the tenant's own scoped
+  **Write** key per namespace (`withTemporalClient`, `lib/temporal-client.ts`).
+  **Q1 (unverified):** can a namespace-scoped Write key call
+  `SetWorkerDeploymentCurrentVersion` / describe deployments? If not, the
+  design needs another caller.
+- **Credentials for the worker subprocess:** the runner is in broker mode
+  (fetches the tenant key, hot-swaps it every 30 min via `client.api_key = …`,
+  `apps/tenant-runner/pegasus_tenant_runner/temporal_credentials.py`). A
+  long-lived Workflow worker subprocess outlives a rotation (the previous key
+  dies 24 h after the swap). **Q2:** how the shim pushes a rotated key to each
+  worker subprocess (the control pipe the idle-tracking design already needs
+  is the natural channel), so the stdin-once handoff is not enough.
+- **Q3:** the Temporal Python SDK version actually installed in the runner
+  image (only `temporalio>=1.7` is pinned) and the exact Worker Deployment
+  Versioning API in it ("1.33" in the bullets above was never confirmed).
+- **Q4:** the runner sweep (`sweepTenantRunners`, `lib/tenant-runner.ts`) now
+  launches only for rows recorded in a tenant namespace and logs
+  `tenant_runner.shared_row_unservable` otherwise; WORKFLOW rows always have a
+  namespace, so "keep the runner up while Workflows are open" (DECIDE-3) can
+  key off open WORKFLOW rows there. Confirm the reconciler's per-namespace
+  grouping (done in 3b.2) handles long-lived rows, and note the 100-rows-per-
+  tick starvation risk (Risks) stays until Phase 4.
+- Done by 3b, no longer 3c work: the per-namespace API client, the
+  reconciler's per-namespace reads, the regional-endpoint question (moot), and
+  the namespace-cap request (still owed, tracked under 3a above).
 
 ### Decisions needed (recommendation first)
 

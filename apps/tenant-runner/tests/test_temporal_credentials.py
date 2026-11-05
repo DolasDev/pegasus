@@ -139,3 +139,58 @@ def test_the_key_never_reaches_a_log_record(caplog: pytest.LogCaptureFixture) ->
     text = " ".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
     assert "runner.temporal_key_refreshed" in text
     assert "SECRET" not in text
+
+
+def test_a_rotated_key_is_fanned_out_to_workflow_workers() -> None:
+    client = FakeClient("key-1")
+    pushed: list[str] = []
+
+    async def on_refreshed(fresh: TemporalCredentials) -> None:
+        pushed.append(fresh.api_key)
+
+    async def run() -> None:
+        shutdown = asyncio.Event()
+        broker = ScriptedBroker([creds("key-1"), creds("key-2")], shutdown)
+        await asyncio.wait_for(
+            run_credentials_refresh(
+                broker=broker,
+                client=client,
+                current=creds("key-1"),
+                interval_seconds=0.001,
+                shutdown_requested=shutdown,
+                log_context={"tenant_id": "t"},
+                on_refreshed=on_refreshed,
+            ),
+            timeout=5,
+        )
+
+    asyncio.run(run())
+    # Only a CHANGED key is pushed; the unchanged first answer is not.
+    assert pushed == ["key-2"]
+    assert client.set_keys == ["key-2"]
+
+
+def test_a_failed_fan_out_does_not_stop_the_refresh() -> None:
+    client = FakeClient("key-1")
+
+    async def on_refreshed(_fresh: TemporalCredentials) -> None:
+        raise BrokenPipeError
+
+    async def run() -> None:
+        shutdown = asyncio.Event()
+        broker = ScriptedBroker([creds("key-2"), creds("key-3")], shutdown)
+        await asyncio.wait_for(
+            run_credentials_refresh(
+                broker=broker,
+                client=client,
+                current=creds("key-1"),
+                interval_seconds=0.001,
+                shutdown_requested=shutdown,
+                log_context={"tenant_id": "t"},
+                on_refreshed=on_refreshed,
+            ),
+            timeout=5,
+        )
+
+    asyncio.run(run())
+    assert client.set_keys == ["key-2", "key-3"]
