@@ -99,3 +99,30 @@ async def test_watchdog_returns_when_event_set_externally() -> None:
     assert not task.done()
     event.set()  # external SIGTERM path
     await asyncio.wait_for(task, timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# Hold (Phase 3c / DECIDE-3): an open durable Workflow keeps the runner up
+# ---------------------------------------------------------------------------
+
+
+def test_hold_blocks_exit_with_nothing_in_flight() -> None:
+    clock = FakeClock()
+    held = [True]
+    tracker = IdleTracker(10, clock=clock, hold=lambda: held[0])
+    clock.advance(1000)
+    assert tracker.should_exit() is False
+
+
+def test_released_hold_waits_a_full_window_before_exit() -> None:
+    clock = FakeClock()
+    held = [True]
+    tracker = IdleTracker(10, clock=clock, hold=lambda: held[0])
+    clock.advance(1000)
+    assert tracker.should_exit() is False
+    held[0] = False
+    # The window restarts at the last held check, not at construction.
+    clock.advance(5)
+    assert tracker.should_exit() is False
+    clock.advance(5)
+    assert tracker.should_exit() is True

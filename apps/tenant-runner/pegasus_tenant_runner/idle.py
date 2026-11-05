@@ -3,7 +3,10 @@
 A runner launches on the first QUEUED execution for its tenant (Unit 9) and
 self-terminates after an idle window so per-tenant runners cost nothing at
 rest. "Idle" means: no activity in flight AND no activity started/finished
-within the window.
+within the window AND no hold (Phase 3c: a tenant with an open durable
+Workflow keeps its runner up — DECIDE-3 — because a Workflow waiting on a
+timer has nothing in flight, and exiting would only have the dispatcher's
+sweep relaunch the runner a minute later).
 
 :class:`IdleTracker` is pure logic over an injectable monotonic clock so the
 exit decision is unit-testable without sleeping; :func:`run_idle_watchdog`
@@ -36,11 +39,13 @@ class IdleTracker:
         idle_timeout_seconds: float,
         *,
         clock: Callable[[], float] = time.monotonic,
+        hold: Callable[[], bool] | None = None,
     ) -> None:
         if idle_timeout_seconds <= 0:
             raise ValueError("idle_timeout_seconds must be > 0")
         self._idle_timeout = idle_timeout_seconds
         self._clock = clock
+        self._hold = hold
         self._in_flight = 0
         # Start the clock at construction: an empty queue must still time out.
         self._last_activity = clock()
@@ -64,8 +69,19 @@ class IdleTracker:
             return 0.0
         return self._clock() - self._last_activity
 
+    def held(self) -> bool:
+        """True while the hold says the runner must stay up."""
+        return self._hold is not None and self._hold()
+
     def should_exit(self) -> bool:
-        """True when nothing is in flight and the idle window has elapsed."""
+        """True when nothing is in flight or held and the idle window has elapsed.
+
+        The window restarts when a hold releases: a runner that just finished
+        serving its last open Workflow still waits a full window for new work.
+        """
+        if self.held():
+            self._last_activity = self._clock()
+            return False
         return self._in_flight == 0 and self.idle_seconds() >= self._idle_timeout
 
 

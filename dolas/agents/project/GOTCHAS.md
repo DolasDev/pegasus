@@ -3858,3 +3858,28 @@ publish requests it). Tests and local dev differ on purpose: with
 `TEMPORAL_PROVISIONER_FUNCTION_NAME` unset the start path still uses the shared
 namespace and launches no runner. A test that sets the variable switches the
 gate on; unset it afterwards.
+
+## A pinned Temporal start needs a version that has polled ONCE — not one polling now
+
+Found in `feat/durable-workflows-3c`, 2026-11-05 (server source + a dev-server
+test, `apps/tenant-runner/tests/test_workflow_worker_e2e.py`). A start with a
+pinned `versioningOverride` is refused with `FailedPrecondition` ("Pinned
+version '<deployment>:<build>' is not present in task queue") until a worker of
+that build has polled the queue at least once. Membership lives in the task
+queue's persisted user data, so once it's there a pinned start is accepted
+with **zero** pollers (it waits in the backlog). So durable Workflows only
+need a worker to poll once per published version (finalize launches the
+runner); a runner that idle-exits doesn't break the next start. Worker
+Deployment Versioning is off in the dev server by default: pass
+`--dynamic-config-value system.enableDeploymentVersions=true` (plus the
+`frontend.workerVersioning*APIs` keys) or the worker's `deployment_config` is
+rejected at poll.
+
+## `PR_SET_DUMPABLE = 0` does not survive `execve` — each subprocess sets its own
+
+Found in `feat/durable-workflows-3c`, 2026-11-05. The tenant runner shim makes
+itself non-dumpable (`hardening.py`), but the kernel resets the flag to 1 on
+`execve()` of an ordinary binary, so a child that holds a secret (the
+durable-Workflow worker driver holds the tenant's Temporal key) must call
+`prctl(PR_SET_DUMPABLE, 0)` itself, before reading the secret.
+`workflow_worker_driver.py` does, and exits 5 if it can't.

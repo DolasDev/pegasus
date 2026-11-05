@@ -28,6 +28,12 @@ Plus, in broker mode only (Phase 3b.2), :meth:`fetch_temporal_credentials` —
 GET ``/internal/temporal-credentials``: the tenant's own Temporal namespace,
 address and namespace-scoped key, for a runner launched from the scoped task
 definition (which carries no Temporal secret).
+
+And, for durable Workflows (Phase 3c), :meth:`fetch_workflow_worker_grant` —
+POST ``/internal/workflow-worker-grant``: the ``vnd_`` runtime token for one
+WORKFLOW-kind published row, handed to the long-lived worker subprocess that
+serves that row (a worker serves many executions, so the per-execution
+:meth:`fetch_runtime_token` doesn't fit).
 """
 
 from __future__ import annotations
@@ -49,6 +55,7 @@ __all__ = [
     "TemporalCredentials",
     "TemporalCredentialsUnavailable",
     "TenantBrokerClient",
+    "WorkerGrantUnavailable",
 ]
 
 BROKER_TOKEN_HEADER = "X-Workflow-Broker-Token"
@@ -57,6 +64,11 @@ LIST_PATH = "/api/v1/internal/tenant-workflows"
 TOKEN_PATH = "/api/v1/internal/workflow-runtime-token"
 PATCH_PATH = "/api/v1/internal/workflow-executions/{execution_id}"
 TEMPORAL_CREDENTIALS_PATH = "/api/v1/internal/temporal-credentials"
+WORKER_GRANT_PATH = "/api/v1/internal/workflow-worker-grant"
+
+#: ``kind`` values on a listed row (the manifest's ``kind``, lowercased).
+KIND_AUTOMATION = "automation"
+KIND_WORKFLOW = "workflow"
 
 VALID_TERMINAL_STATUSES = frozenset({"COMPLETED", "FAILED", "TIMED_OUT", "CANCELLED"})
 
@@ -72,6 +84,11 @@ class BrokerAuthError(BrokerError):
 class TemporalCredentialsUnavailable(BrokerError):
     """404 from the credentials route: the tenant isn't cut over to its own
     namespace (or is no longer) — a scoped runner has nothing to poll."""
+
+
+class WorkerGrantUnavailable(BrokerError):
+    """404 from the worker-grant route: the row is not a WORKFLOW this tenant
+    may serve any more (retired, superseded with nothing open, or not its own)."""
 
 
 @dataclass(frozen=True)
@@ -117,6 +134,16 @@ class ExecutableWorkflow:
     artifact_size_bytes: int | None
     download_url: str
     created_at: str
+    #: ``automation`` (one-shot, proxy-driven) or ``workflow`` (durable, served
+    #: by a worker subprocess). Absent on the wire from an API older than
+    #: Phase 3c — the runner ships first — which means ``automation``.
+    kind: str = KIND_AUTOMATION
+    #: QUEUED/RUNNING executions of this row. Absent from an older API → 0.
+    open_executions: int = 0
+
+    @property
+    def is_workflow(self) -> bool:
+        return self.kind == KIND_WORKFLOW
 
 
 def _parse_workflow(item: dict[str, Any]) -> ExecutableWorkflow:
@@ -141,6 +168,12 @@ def _parse_workflow(item: dict[str, Any]) -> ExecutableWorkflow:
         if len(sha) != 64:
             raise ValueError("artifactSha256 must be a 64-char hex digest")
         size = item.get("artifactSizeBytes")
+        kind = item.get("kind", KIND_AUTOMATION)
+        if kind not in (KIND_AUTOMATION, KIND_WORKFLOW):
+            raise ValueError(f"kind must be {KIND_AUTOMATION!r} or {KIND_WORKFLOW!r}")
+        open_executions = item.get("openExecutions", 0)
+        if not isinstance(open_executions, int) or isinstance(open_executions, bool):
+            raise ValueError("openExecutions must be an integer")
         return ExecutableWorkflow(
             id=_string("id"),
             name=_string("name"),
@@ -150,6 +183,8 @@ def _parse_workflow(item: dict[str, Any]) -> ExecutableWorkflow:
             artifact_size_bytes=int(size) if size is not None else None,
             download_url=_string("downloadUrl"),
             created_at=_string("createdAt"),
+            kind=kind,
+            open_executions=max(0, open_executions),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise BrokerError(f"broker list item has an invalid shape: {exc!r}") from exc
@@ -292,6 +327,32 @@ class TenantBrokerClient:
             namespace=values["namespace"],
             api_key=values["apiKey"],
         )
+
+    def fetch_workflow_worker_grant(self, workflow_id: str) -> str:
+        """POST for the ``vnd_`` runtime token of one WORKFLOW-kind row.
+
+        The token is the tenant's own credential, handed to the worker
+        subprocess serving that row; it never reaches a log line. 404 →
+        :class:`WorkerGrantUnavailable` (the row is no longer servable);
+        401/403 → :class:`BrokerAuthError`.
+        """
+        if not workflow_id:
+            raise ValueError("workflow_id is required")
+        with self._client() as client:
+            response = client.post(WORKER_GRANT_PATH, json={"workflowId": workflow_id})
+        self._check_auth(response)
+        if response.status_code == 404:
+            raise WorkerGrantUnavailable(f"no worker grant for workflow row {workflow_id}")
+        if not response.is_success:
+            raise BrokerError(f"worker grant fetch failed: HTTP {response.status_code}")
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise BrokerError("worker grant response was not JSON") from exc
+        token = body.get("token") if isinstance(body, dict) else None
+        if not isinstance(token, str) or not token:
+            raise BrokerError("worker grant response missing 'token' string field")
+        return token
 
     def patch_execution(
         self,

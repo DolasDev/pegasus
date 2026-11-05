@@ -19,9 +19,13 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-  # Same lower bounds as apps/temporal-worker so a single resolution can
-  # satisfy both apps and the SDK.
-  "temporalio>=1.7",
+  # EXACT pin (Phase 3c): durable-Workflow workers run on Worker Deployment
+  # Versioning, and the image used to resolve whatever temporalio was newest
+  # at build time. An exact pin keeps the image, CI's install and its
+  # pip-audit on the one tested version. Bump deliberately: re-run
+  # tests/test_workflow_worker_e2e.py (real dev server) on the new version.
+  # Must stay inside the SDK's own range (packages/workflows-sdk-python).
+  "temporalio==1.35.0",
   "httpx>=0.27",
 ]
 

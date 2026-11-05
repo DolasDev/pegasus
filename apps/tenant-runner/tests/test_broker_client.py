@@ -12,6 +12,7 @@ from pegasus_tenant_runner.broker_client import (
     BrokerAuthError,
     BrokerError,
     TenantBrokerClient,
+    WorkerGrantUnavailable,
 )
 
 TOKEN = "wbk_11111111-1111-4111-8111-111111111111_" + "ab" * 24
@@ -303,3 +304,60 @@ def test_temporal_credentials_missing_field_names_it_without_echoing_the_body(
     with pytest.raises(BrokerError, match=missing) as raised:
         _client(handler).fetch_temporal_credentials()
     assert SCOPED_KEY not in str(raised.value)
+
+
+# ---------------------------------------------------------------------------
+# Durable Workflows (Phase 3c): kind / openExecutions, worker grant
+# ---------------------------------------------------------------------------
+
+
+def test_list_defaults_kind_and_open_executions_for_an_older_api() -> None:
+    """The runner ships before the API: rows without the fields are Automations."""
+    client = _client(lambda _r: httpx.Response(200, json={"data": [_list_item()]}))
+    rows = client.list_executable_workflows()
+    assert rows[0].kind == "automation"
+    assert rows[0].open_executions == 0
+    assert rows[0].is_workflow is False
+
+
+def test_list_parses_kind_and_open_executions() -> None:
+    item = _list_item(kind="workflow", openExecutions=4)
+    client = _client(lambda _r: httpx.Response(200, json={"data": [item]}))
+    rows = client.list_executable_workflows()
+    assert rows[0].is_workflow is True
+    assert rows[0].open_executions == 4
+
+
+@pytest.mark.parametrize("broken", [{"kind": "saga"}, {"openExecutions": "4"}])
+def test_list_rejects_a_bad_kind_or_count(broken: dict[str, Any]) -> None:
+    item = _list_item(**broken)
+    client = _client(lambda _r: httpx.Response(200, json={"data": [item]}))
+    with pytest.raises(BrokerError):
+        client.list_executable_workflows()
+
+
+def test_worker_grant_posts_the_row_id_and_returns_the_token() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"token": "vnd_secret"})
+
+    token = _client(handler).fetch_workflow_worker_grant("wf-1")
+    assert token == "vnd_secret"
+    assert seen[0].url.path == "/api/v1/internal/workflow-worker-grant"
+    assert json.loads(seen[0].content) == {"workflowId": "wf-1"}
+    assert seen[0].headers["X-Workflow-Broker-Token"] == TOKEN
+
+
+def test_worker_grant_404_is_unavailable() -> None:
+    client = _client(lambda _r: httpx.Response(404, json={"code": "NOT_FOUND"}))
+    with pytest.raises(WorkerGrantUnavailable):
+        client.fetch_workflow_worker_grant("wf-1")
+
+
+def test_worker_grant_auth_and_shape_errors() -> None:
+    with pytest.raises(BrokerAuthError):
+        _client(lambda _r: httpx.Response(403)).fetch_workflow_worker_grant("wf-1")
+    with pytest.raises(BrokerError):
+        _client(lambda _r: httpx.Response(200, json={})).fetch_workflow_worker_grant("wf-1")

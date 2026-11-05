@@ -5,7 +5,8 @@
 - **Parent plan:** `plans/in-progress/durable-workflow-worker.md` ("3c" and
   "3c: what 3b changed"). Master plan:
   `plans/in-progress/long-running-workflows-and-automations.md`.
-- **Status:** DRAFT 2026-11-05, awaiting user approval. No code yet.
+- **Status:** APPROVED by the user 2026-11-05 (plan + the staging probe).
+  See "Progress" at the end.
 - **Goal:** a tenant can publish a manifest with `kind = "workflow"`; a start
   runs it as a real, durable Temporal workflow in the tenant's own namespace,
   served by a long-lived worker subprocess in the tenant runner, pinned to
@@ -204,12 +205,13 @@ task_queue, workflows=[cls], activities=[…], deployment_config=…PINNED)`
   `supervisor.push_credentials`.
 - `.../executor.py`: defense in depth: refuse a WORKFLOW-kind row reached
   through the proxy (it never should be: different queues).
-- `apps/tenant-runner/pyproject.toml` + `Dockerfile`: `temporalio>=1.29,<2`;
-  build from a lock so the image's temporalio is the tested one. Two steps,
-  because hash-checking mode refuses local-path installs: (1) `pip install
---require-hashes -r` a `uv export --frozen --no-emit-project` of a new
-  `apps/tenant-runner/uv.lock` (third-party deps only), then (2) `pip install
---no-deps` the two local directories (SDK, runner).
+- `apps/tenant-runner/pyproject.toml`: **DEVIATION (as built):**
+  `temporalio==1.35.0`, an exact pin, instead of a hashed lock. A lock would
+  have split what ships from what CI's `pip-audit` audits (CI resolves `-e .`
+  freshly), and Dependabot doesn't watch this directory, so the lock would
+  rot. The exact pin gives the image, CI's install and its audit the one
+  tested temporalio. Other transitive deps float as before. No Dockerfile
+  change.
 - Tests (pytest): `test_workflow_workers.py` (reconcile/cap/backoff/rotation fan-out,
   with a fake spawner); `test_idle.py` (hold); `test_broker_client.py` (optional
   fields, grant); `test_workflow_worker_e2e.py` against
@@ -353,3 +355,26 @@ task_queue, workflows=[cls], activities=[…], deployment_config=…PINNED)`
 - **WORKFLOW close latency** = ⌈open/100⌉ min via the reconciler, until Phase 4
   gives Workflows a write-back.
 - **Namespace cap request** (3a) is still owed to Temporal support.
+
+## Progress
+
+- **2026-11-05: approved; Q3 spike.** A local dev server (1.32.2) confirmed
+  design B's premise before any code: a pinned start of a never-polled version
+  is refused ("Pinned version 'wf:v1' is not present in task queue"); after
+  one poll, a pinned start with zero pollers is ACCEPTED and runs when the
+  version polls again, still pinned to v1.
+- **2026-11-05: PR 3c.1 (runner) built.** `workflow_workers.py` (supervisor),
+  `workflow_worker_driver.py` (driver; self-hardening, stdin control
+  channel), idle hold, discovery loop, key fan-out, `kind`/`openExecutions`
+  parsing with defaults, worker-grant client, executor refusal, exact
+  temporalio pin. pytest 149 passed (was 122), ruff clean. The real-server
+  e2e (`tests/test_workflow_worker_e2e.py`, 19 s) passes: timer +
+  `wait_condition` + signal; the activity sees the `vnd_` token; worker
+  killed mid-wait → restarted → replayed; v1 stays v1 after v2 publishes; a
+  rotated key reaches live workers; **the gate: zero-poller pinned start
+  accepted after all workers drained**. Image built locally: temporalio
+  1.35.0, and the driver hardens and imports in a `--system-site-packages`
+  venv inside the container (exit 4 on a bad request, not 5).
+- **Probe (Q1): BLOCKED on AWS SSO** (staging token expired 2026-11-05; the
+  user was asked to log in). Not on 3c.1's path; design B no longer depends
+  on it.

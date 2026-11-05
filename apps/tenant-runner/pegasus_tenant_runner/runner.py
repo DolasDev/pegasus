@@ -1,5 +1,10 @@
 """Runner entrypoint: discover → verify → prepare → poll → idle-exit.
 
+Phase 3c adds durable Workflows alongside: a discovery loop re-lists the
+tenant's workflows every ``workflow_discovery_seconds``, keeps one worker
+subprocess per served WORKFLOW-kind row (workflow_workers.py), and holds the
+idle-exit while any Workflow is open (DECIDE-3).
+
 Run as ``python -m pegasus_tenant_runner.runner`` (the Dockerfile
 ENTRYPOINT). Mirrors the lifecycle of the stdlib worker's ``worker.py``
 (SIGTERM-driven graceful drain, JSON logging) and adds the Unit 8 pieces:
@@ -20,6 +25,7 @@ import asyncio
 import logging
 import signal
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from temporalio.client import Client
@@ -29,6 +35,7 @@ from .artifacts import (
     ArtifactInstallError,
     ArtifactIntegrityError,
     PreparedWorkflow,
+    has_open_workflows,
     prepare_workflow,
     select_latest,
 )
@@ -45,6 +52,7 @@ from .logging_setup import configure_logging
 from .preparer import WorkflowPreparer
 from .proxy import build_registrations
 from .temporal_credentials import run_credentials_refresh
+from .workflow_workers import WorkflowWorkerSupervisor
 
 log = logging.getLogger("pegasus_tenant_runner")
 
@@ -141,6 +149,47 @@ def prepare_all(
     return prepared, len(listed)
 
 
+@dataclass
+class _WorkflowHold:
+    """Whether the tenant has an open durable Workflow, as last listed."""
+
+    open: bool = False
+
+
+async def run_workflow_discovery(
+    *,
+    broker: TenantBrokerClient,
+    supervisor: WorkflowWorkerSupervisor,
+    hold: _WorkflowHold,
+    interval_seconds: float,
+    shutdown_requested: asyncio.Event,
+    log_context: dict[str, str],
+) -> None:
+    """Re-list every ``interval_seconds``: reconcile workers, refresh the hold.
+
+    Runs a tick immediately, so a runner launched for a just-published
+    Workflow version polls its queue within seconds — the API can't start a
+    pinned execution on a version no worker has ever polled. A failed listing
+    keeps the previous state (the workers keep running; the hold keeps its
+    last value) and is retried next tick.
+    """
+    while not shutdown_requested.is_set():
+        try:
+            listed = await asyncio.to_thread(broker.list_executable_workflows)
+        except Exception as exc:  # noqa: BLE001 — keep serving on the last listing
+            log.warning(
+                "runner.workflow_discovery_failed",
+                extra={**log_context, "error_type": type(exc).__name__},
+            )
+        else:
+            hold.open = has_open_workflows(listed)
+            await supervisor.reconcile(listed)
+        try:
+            await asyncio.wait_for(shutdown_requested.wait(), timeout=interval_seconds)
+        except TimeoutError:
+            continue
+
+
 async def run_runner(config: RunnerConfig) -> None:
     base = _base_log_context(config)
     log.info(
@@ -188,7 +237,8 @@ async def run_runner(config: RunnerConfig) -> None:
     )
     preparer.seed(prepared)
 
-    idle_tracker = IdleTracker(config.idle_timeout_seconds)
+    workflow_hold = _WorkflowHold()
+    idle_tracker = IdleTracker(config.idle_timeout_seconds, hold=lambda: workflow_hold.open)
     executor = TenantCodeExecutor(
         broker=broker,
         preparer=preparer,
@@ -206,6 +256,32 @@ async def run_runner(config: RunnerConfig) -> None:
     )
 
     client = await build_temporal_client(config, credentials)
+
+    # Durable-Workflow workers connect on their own (they run tenant code, so
+    # they can't share this client) with the same address/namespace/key; in
+    # broker mode the key follows every refresh.
+    current_credentials = credentials or TemporalCredentials(
+        address=config.temporal_address,
+        namespace=config.temporal_namespace,
+        api_key=config.temporal_cloud_api_key,
+    )
+
+    def _credentials() -> TemporalCredentials:
+        return current_credentials
+
+    async def _on_refreshed(fresh: TemporalCredentials) -> None:
+        nonlocal current_credentials
+        current_credentials = fresh
+        await supervisor.push_credentials(fresh)
+
+    supervisor = WorkflowWorkerSupervisor(
+        broker=broker,
+        preparer=preparer,
+        credentials=_credentials,
+        tenant_task_queue=config.task_queue,
+        api_base_url=config.pegasus_api_base_url,
+        max_workers=config.max_workflow_workers,
+    )
     log.info(
         "runner.connected",
         extra={
@@ -247,7 +323,20 @@ async def run_runner(config: RunnerConfig) -> None:
 
     drain_task = asyncio.create_task(_drain_on_shutdown())
 
-    background = [drain_task, watchdog_task]
+    background = [
+        drain_task,
+        watchdog_task,
+        asyncio.create_task(
+            run_workflow_discovery(
+                broker=broker,
+                supervisor=supervisor,
+                hold=workflow_hold,
+                interval_seconds=config.workflow_discovery_seconds,
+                shutdown_requested=shutdown_requested,
+                log_context=base,
+            )
+        ),
+    ]
     if credentials is not None:
         background.append(
             asyncio.create_task(
@@ -258,6 +347,7 @@ async def run_runner(config: RunnerConfig) -> None:
                     interval_seconds=config.temporal_credentials_refresh_seconds,
                     shutdown_requested=shutdown_requested,
                     log_context=base,
+                    on_refreshed=_on_refreshed,
                 )
             )
         )
@@ -273,6 +363,10 @@ async def run_runner(config: RunnerConfig) -> None:
                     await task
                 except asyncio.CancelledError:
                     pass
+        # After the discovery loop is gone (so nothing restarts a worker):
+        # durable-Workflow workers drain too. Their open executions stay open
+        # in Temporal and resume on the next runner (the sweep relaunches it).
+        await supervisor.drain_all()
         log.info("runner.stopped", extra=base)
 
 
