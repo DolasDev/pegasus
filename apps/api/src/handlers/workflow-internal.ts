@@ -74,6 +74,10 @@ const BrokerBody = z.object({
   executionId: z.string().uuid(),
 })
 
+const WorkerGrantBody = z.object({
+  workflowId: z.string().uuid(),
+})
+
 const PatchBody = z.object({
   status: z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'TIMED_OUT', 'CANCELLED'] as const),
   // The worker passes JSON-shaped result payloads opaquely. We don't
@@ -522,9 +526,28 @@ workflowInternalHandler.get('/tenant-workflows', async (c) => {
       artifactSha256: true,
       artifactSizeBytes: true,
       createdAt: true,
+      kind: true,
     },
     orderBy: { createdAt: 'asc' },
   })
+
+  // Open (QUEUED/RUNNING) executions per row, in one query (Phase 3c): the
+  // runner keeps a durable-Workflow worker up for every row with open
+  // executions — each is pinned to the row it started on — and holds its
+  // idle-exit while any is open.
+  const openCounts = new Map(
+    (
+      await basePrisma.workflowExecution.groupBy({
+        by: ['workflowId'],
+        where: {
+          tenantId,
+          status: { in: ['QUEUED', 'RUNNING'] },
+          workflowId: { in: rows.map((r) => r.id) },
+        },
+        _count: { _all: true },
+      })
+    ).map((g) => [g.workflowId, g._count._all]),
+  )
 
   const data = []
   for (const row of rows) {
@@ -544,6 +567,10 @@ workflowInternalHandler.get('/tenant-workflows', async (c) => {
       artifactSha256: row.artifactSha256,
       artifactSizeBytes: row.artifactSizeBytes,
       createdAt: row.createdAt.toISOString(),
+      // Phase 3c: `automation` (proxied one-shot) or `workflow` (served by a
+      // worker subprocess). A runner older than 3c ignores both fields.
+      kind: row.kind === 'WORKFLOW' ? 'workflow' : 'automation',
+      openExecutions: openCounts.get(row.id) ?? 0,
       // The presigned URL is the runner's entire authorization to the
       // artifact bytes; the raw S3 key stays internal (it is embedded in
       // the signed URL by construction, but never exposed as a field).
@@ -637,3 +664,98 @@ workflowInternalHandler.get('/temporal-credentials', async (c) => {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
   }
 })
+
+// ---------------------------------------------------------------------------
+// POST /workflow-worker-grant
+//
+// Phase 3c: the per-workflow `vnd_` runtime token for ONE durable-Workflow
+// row, for the runner's long-lived worker subprocess that serves it. That
+// worker runs many executions of the row, so the per-execution
+// /workflow-runtime-token doesn't fit; the `vnd_` token doesn't expire, so one
+// grant per worker is enough.
+//
+// Issued only when the runner could legitimately be serving the row:
+//   * per-tenant `wbk_` tokens only (the shared secret gets 403, as for
+//     /temporal-credentials: only a tenant's own runner serves its Workflows);
+//   * the row is the token's own tenant's (cross-tenant = 404, like a missing
+//     row, so ids can't be probed), kind WORKFLOW, executable, ACTIVE, with an
+//     artifact digest and a provisioned runtime token;
+//   * and it is either the newest row of its name (where new starts go) or has
+//     open executions (each is pinned to the row it started on).
+// Anything else is 404. `Cache-Control: no-store`; the token is never logged.
+//
+// Request:  { workflowId }
+// Response: { token } | 400 | 401 | 403 | 404
+// ---------------------------------------------------------------------------
+workflowInternalHandler.post(
+  '/workflow-worker-grant',
+  validator('json', (value, c) => {
+    const r = WorkerGrantBody.safeParse(value)
+    if (!r.success) {
+      return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    }
+    return r.data
+  }),
+  async (c) => {
+    c.header('Cache-Control', 'no-store')
+    const auth = c.get('brokerAuth')
+    const notFound = () => c.json({ error: 'workflow not found', code: 'NOT_FOUND' }, 404)
+    if (auth?.kind !== 'tenant') {
+      return c.json(
+        { error: 'A per-tenant broker token is required', code: 'TENANT_TOKEN_REQUIRED' },
+        403,
+      )
+    }
+    const { workflowId } = c.req.valid('json')
+
+    const row = await basePrisma.workflow.findUnique({
+      where: { id: workflowId },
+      select: {
+        id: true,
+        tenantId: true,
+        name: true,
+        kind: true,
+        executable: true,
+        status: true,
+        artifactSha256: true,
+        runtimeTokenCiphertext: true,
+        createdAt: true,
+      },
+    })
+    if (!row || deniedForTenant(auth, row.tenantId)) {
+      if (row) logger.warn('broker.worker_grant_denied_cross_tenant', { workflowId })
+      return notFound()
+    }
+    if (
+      row.kind !== 'WORKFLOW' ||
+      !row.executable ||
+      row.status !== 'ACTIVE' ||
+      !row.artifactSha256 ||
+      !row.runtimeTokenCiphertext
+    ) {
+      return notFound()
+    }
+
+    // Newest of its name (the runner's rule: latest createdAt among the
+    // tenant's executable ACTIVE rows), or still serving open executions.
+    const newer = await basePrisma.workflow.count({
+      where: {
+        tenantId: row.tenantId,
+        name: row.name,
+        executable: true,
+        status: 'ACTIVE',
+        createdAt: { gt: row.createdAt },
+      },
+    })
+    if (newer > 0) {
+      const open = await basePrisma.workflowExecution.count({
+        where: { workflowId: row.id, status: { in: ['QUEUED', 'RUNNING'] } },
+      })
+      if (open === 0) return notFound()
+    }
+
+    const token = await decryptRuntimeToken(row.runtimeTokenCiphertext)
+    logger.info('broker.worker_grant_issued', { workflowId: row.id, tenantId: row.tenantId })
+    return c.json({ token })
+  },
+)

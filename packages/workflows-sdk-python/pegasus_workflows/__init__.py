@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         TenantNamespaceUnavailable,
         WorkflowInUse,
         WorkflowStateConflict,
+        WorkflowVersionStarting,
     )
     from .manifest import Manifest, ManifestError, load_manifest
 
@@ -52,6 +53,7 @@ __all__ = [
     "TenantMigrating",
     "TenantNamespaceProvisioning",
     "TenantNamespaceUnavailable",
+    "WorkflowVersionStarting",
     "TaskAmbiguous",
     "Manifest",
     "ManifestError",
@@ -74,6 +76,7 @@ _LAZY_EXPORTS = {
     "TenantMigrating": "api",
     "TenantNamespaceProvisioning": "api",
     "TenantNamespaceUnavailable": "api",
+    "WorkflowVersionStarting": "api",
     "TaskAmbiguous": "api",
     "Manifest": "manifest",
     "ManifestError": "manifest",

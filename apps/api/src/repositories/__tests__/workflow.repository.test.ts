@@ -37,6 +37,7 @@ const sourceRow: WorkflowRow = {
   artifactSizeBytes: 2116,
   executable: true,
   status: 'ACTIVE',
+  kind: 'AUTOMATION',
   retiredAt: null,
   retiredByUserId: null,
   createdAt: new Date('2026-06-01T00:00:00Z'),

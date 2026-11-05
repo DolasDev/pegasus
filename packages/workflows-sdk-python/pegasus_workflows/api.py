@@ -197,6 +197,30 @@ class TenantNamespaceProvisioning(PegasusApiError):
 
 
 @dataclass
+class WorkflowVersionStarting(PegasusApiError):
+    """A just-published durable Workflow version isn't ready to start yet (HTTP 409).
+
+    Raised by :meth:`PegasusClient.run_workflow` and
+    :meth:`PegasusClient.retry_execution` with ``code``
+    ``"WORKFLOW_VERSION_STARTING"`` (0.56.0+), for a ``kind = "workflow"``
+    Workflow only. Each run is pinned to the exact version it starts on, and a
+    new version's worker takes a minute or two after publish to come up.
+    Nothing was started. Transient: retry after ``retry_after_seconds``. An
+    event trigger waits and fires once the version is ready; a schedule tick
+    in that window is skipped.
+
+    A sibling of :class:`TenantNamespaceProvisioning`: catch both to retry
+    either kind of not-ready-yet.
+
+    Attributes:
+        retry_after_seconds: From the ``Retry-After`` header (30 today), or
+            ``None`` if the server sent none.
+    """
+
+    retry_after_seconds: int | None = None
+
+
+@dataclass
 class TenantNamespaceUnavailable(PegasusApiError):
     """The tenant's own Automation runtime failed to provision (HTTP 503).
 
@@ -276,6 +300,14 @@ def _raise_for_tenant_namespace(response: httpx.Response) -> None:
         raise TenantNamespaceProvisioning(
             status_code=409,
             code="TENANT_NAMESPACE_PROVISIONING",
+            message=body.get("error"),
+            retry_after_seconds=int(retry_after) if retry_after and retry_after.isdigit() else None,
+        )
+    if response.status_code == 409 and code == "WORKFLOW_VERSION_STARTING":
+        retry_after = response.headers.get("Retry-After")
+        raise WorkflowVersionStarting(
+            status_code=409,
+            code="WORKFLOW_VERSION_STARTING",
             message=body.get("error"),
             retry_after_seconds=int(retry_after) if retry_after and retry_after.isdigit() else None,
         )
@@ -664,8 +696,13 @@ class PegasusClient:
             TenantNamespaceUnavailable: 503 ``TENANT_NAMESPACE_UNAVAILABLE``
                 (0.55.0+) — the tenant's runtime failed to provision; the
                 platform retries on its own.
+            WorkflowVersionStarting: 409 ``WORKFLOW_VERSION_STARTING``
+                (0.56.0+) — a durable Workflow version published moments ago
+                isn't ready yet; retry after ``retry_after_seconds``.
             PegasusApiError: On 400 (not in allowlist), 404, 422
-                (``DRY_RUN_UNSUPPORTED``), 502 (Temporal start failed), or any
+                (``DRY_RUN_UNSUPPORTED``: a curated workflow or a durable
+                Workflow), 429 (``CONCURRENCY_LIMIT``, ``DAILY_QUOTA_EXCEEDED``,
+                ``OPEN_WORKFLOW_LIMIT``), 502 (Temporal start failed), or any
                 other non-2xx.
         """
         payload: dict[str, Any] = {"input": input or {}}
@@ -822,6 +859,8 @@ class PegasusClient:
                 retry after ``retry_after_seconds``.
             TenantNamespaceUnavailable: 503 ``TENANT_NAMESPACE_UNAVAILABLE``
                 (0.55.0+) — the tenant's runtime failed to provision.
+            WorkflowVersionStarting: 409 ``WORKFLOW_VERSION_STARTING``
+                (0.56.0+) — the durable Workflow version isn't ready yet; retry.
             PegasusApiError: 404 (unknown execution), 409 (execution not in a
                 retryable terminal state), or any non-2xx.
         """

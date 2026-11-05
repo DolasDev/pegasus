@@ -109,6 +109,13 @@ vi.mock('../lib/tenant-namespace-request', async (importOriginal) => ({
   requestTenantNamespaceQuietly: mockRequestQuietly,
 }))
 
+// The publish-time warm-up of a durable Workflow version (Phase 3c): spied.
+const { mockWarm } = vi.hoisted(() => ({ mockWarm: vi.fn() }))
+vi.mock('../lib/tenant-runner', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  warmDurableWorkflowVersion: mockWarm,
+}))
+
 vi.mock('../repositories/workflow.repository', () => ({
   createWorkflowRepository: vi.fn(() => mockRepo),
 }))
@@ -304,6 +311,7 @@ const mockRow = {
   artifactSizeBytes: validArtifactZip.length,
   executable: true,
   status: 'ACTIVE' as const,
+  kind: 'AUTOMATION' as 'AUTOMATION' | 'WORKFLOW',
   retiredAt: null,
   retiredByUserId: null,
   createdAt: now,
@@ -613,6 +621,84 @@ describe('workflows handler', () => {
 
   describe('POST /', () => {
     const workflowId = 'a1b2c3d4-e5f6-4789-89ab-cdef01234567'
+
+    describe('kind / signals / maxLifetimeDays (Phase 3c)', () => {
+      const durableManifest = {
+        ...validManifest,
+        kind: 'workflow',
+        signals: ['proceed', 'cancel_move'],
+        maxLifetimeDays: 30,
+      }
+
+      it('persists kind WORKFLOW, returns it, and warms the new version', async () => {
+        mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+        const row = { ...provisionedRow, kind: 'WORKFLOW' as const, manifest: durableManifest }
+        mockRepo.create.mockResolvedValue(row)
+        mockRepo.attachRuntimeToken.mockResolvedValue(row)
+
+        const res = await buildApp().request('/', post({ workflowId, manifest: durableManifest }))
+
+        expect(res.status).toBe(201)
+        expect(mockRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kind: 'WORKFLOW',
+            manifest: expect.objectContaining({
+              kind: 'workflow',
+              signals: ['proceed', 'cancel_move'],
+              maxLifetimeDays: 30,
+            }),
+          }),
+        )
+        expect(((await json(res)).data as JsonBody)['kind']).toBe('WORKFLOW')
+        expect(mockWarm).toHaveBeenCalledWith(expect.anything(), row)
+      })
+
+      it('defaults kind to automation (every manifest before 3c)', async () => {
+        mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+        mockRepo.create.mockResolvedValue(mockRow)
+        const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+        expect(res.status).toBe(201)
+        expect(mockRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            kind: 'AUTOMATION',
+            manifest: expect.objectContaining({ kind: 'automation' }),
+          }),
+        )
+      })
+
+      it.each([
+        [
+          'timeoutSeconds on a Workflow',
+          { ...durableManifest, timeoutSeconds: 60 },
+          'timeoutSeconds',
+        ],
+        [
+          'maxLifetimeDays on an Automation',
+          { ...validManifest, maxLifetimeDays: 30 },
+          'maxLifetimeDays',
+        ],
+        ['signals on an Automation', { ...validManifest, signals: ['go'] }, 'signals'],
+        [
+          'maxLifetimeDays over 365',
+          { ...durableManifest, maxLifetimeDays: 366 },
+          'maxLifetimeDays',
+        ],
+        ['maxLifetimeDays of 0', { ...durableManifest, maxLifetimeDays: 0 }, 'maxLifetimeDays'],
+        [
+          'a signal that is not an identifier',
+          { ...durableManifest, signals: ['go-now'] },
+          'signal',
+        ],
+        ['an unknown kind', { ...validManifest, kind: 'saga' }, 'kind'],
+      ])('400 VALIDATION_ERROR: %s', async (_label, manifest, mentions) => {
+        const res = await buildApp().request('/', post({ workflowId, manifest }))
+        expect(res.status).toBe(400)
+        const body = await json(res)
+        expect(body.code).toBe('VALIDATION_ERROR')
+        expect(String(body.error)).toContain(mentions)
+        expect(mockRepo.create).not.toHaveBeenCalled()
+      })
+    })
 
     it('returns 400 on invalid manifest', async () => {
       const res = await buildApp().request(
@@ -1836,6 +1922,21 @@ describe('workflows handler', () => {
       expect(res.status).toBe(201)
       expect(((await json(res)).data as JsonBody)['dryRun']).toBe(true)
       expect(mockTriggerRepo.create).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }))
+    })
+
+    it('400 DRY_RUN_UNSUPPORTED — a dry-run trigger on a durable Workflow (Phase 3c)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue({
+        ...provisionedRow,
+        name: 'lifecycle',
+        kind: 'WORKFLOW',
+      })
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted', dryRun: true }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('DRY_RUN_UNSUPPORTED')
+      expect(mockTriggerRepo.create).not.toHaveBeenCalled()
     })
 
     it('400 DRY_RUN_UNSUPPORTED — a dry-run trigger on a curated (STDLIB) workflow', async () => {

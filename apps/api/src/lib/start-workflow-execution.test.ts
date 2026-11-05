@@ -41,6 +41,7 @@ const {
   mockNamespaceFindByTenant,
   mockNamespacesConfigured,
   mockRequestNamespace,
+  mockExecutionDelete,
 } = vi.hoisted(() => {
   const capturedPutMetricInputs: Array<unknown> = []
   const mockTemporalStart = vi.fn()
@@ -55,6 +56,7 @@ const {
     // (local dev / tests: the shared namespace).
     mockNamespacesConfigured: vi.fn(),
     mockRequestNamespace: vi.fn(),
+    mockExecutionDelete: vi.fn(),
     mockWorkflowRepo: {
       attachRuntimeToken: vi.fn(),
     },
@@ -144,6 +146,8 @@ vi.mock('./workflow-route', async (importOriginal) => {
     ...real,
     // Return a deterministic test queue for any tenantId.
     tenantTaskQueue: (tenantId: string) => `pegasus-tenant-${tenantId}-test`,
+    workflowTaskQueue: (tenantId: string, name: string) =>
+      `pegasus-tenant-${tenantId}-test-wfl-${name}`,
   }
 })
 
@@ -174,6 +178,7 @@ const curatedWorkflow: WorkflowRow = {
   artifactSizeBytes: 1024,
   executable: true,
   status: 'ACTIVE',
+  kind: 'AUTOMATION',
   retiredAt: null,
   retiredByUserId: null,
   createdAt: now,
@@ -230,7 +235,7 @@ const runningExecution = {
 function fakeDb(countValue = 0, workflowsDisabled = false): PrismaClient {
   const db = {
     tenantUser: { create: mockTenantUserCreate },
-    workflowExecution: { count: mockExecutionCount },
+    workflowExecution: { count: mockExecutionCount, delete: mockExecutionDelete },
     // Kill-switch check (Phase 3 Unit 11) — default OFF.
     tenant: { findUnique: mockTenantFindUnique },
   } as unknown as PrismaClient
@@ -265,6 +270,7 @@ beforeEach(() => {
   mockWorkflowRepo.attachRuntimeToken.mockResolvedValue(curatedWorkflow)
   mockEnsureTenantRunner.mockResolvedValue({ outcome: 'SKIPPED_UNCONFIGURED' })
   mockCwSend.mockResolvedValue({})
+  mockExecutionDelete.mockResolvedValue({ id: 'exec-1' })
   // Default: kill switch OFF.
   mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
   mockNamespacesConfigured.mockReturnValue(false)
@@ -1242,5 +1248,141 @@ describe('tenant namespace gate (namespaces provisioned)', () => {
     mockNamespaceFindByTenant.mockResolvedValue(null)
     expect((await run(curatedWorkflow)).outcome).toBe('STARTED')
     expect(mockRequestNamespace).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Durable Workflows (Phase 3c)
+// ---------------------------------------------------------------------------
+
+describe('durable Workflows (kind WORKFLOW, Phase 3c)', () => {
+  const SHA = 'f'.repeat(64)
+  const durableWorkflow: WorkflowRow = {
+    ...tenantWorkflow,
+    id: 'wf-durable',
+    name: 'lifecycle',
+    kind: 'WORKFLOW',
+    artifactSha256: SHA,
+    manifest: { name: 'lifecycle', version: '1.0.0', kind: 'workflow', maxLifetimeDays: 30 },
+  }
+  const run = (workflow: WorkflowRow = durableWorkflow, extra: Record<string, unknown> = {}) =>
+    startWorkflowExecution(fakeDb(0), {
+      workflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+      ...extra,
+    })
+
+  it("starts on the workflow's own queue, pinned to this row, living maxLifetimeDays", async () => {
+    const result = await run()
+
+    expect(result.outcome).toBe('STARTED')
+    expect(mockTemporalStart).toHaveBeenCalledWith(
+      'lifecycle',
+      expect.objectContaining({
+        taskQueue: 'pegasus-tenant-tenant-1-test-wfl-lifecycle',
+        workflowExecutionTimeout: `${30 * 24 * 60 * 60}s`,
+        versioningOverride: { pinnedTo: { deploymentName: 'lifecycle', buildId: SHA } },
+      }),
+    )
+    // In the tenant's own namespace, with its runner ensured, like any runner run.
+    expect(mockWithTemporalClient).toHaveBeenCalledWith(
+      { tenantId: 'tenant-1', namespace: 'pg-test-tenant-1.acct' },
+      expect.any(Function),
+    )
+    expect(mockEnsureTenantRunner).toHaveBeenCalled()
+  })
+
+  it('defaults to a 90-day lifetime when the manifest declares none', async () => {
+    await run({ ...durableWorkflow, manifest: { name: 'lifecycle', kind: 'workflow' } })
+    expect(mockTemporalStart).toHaveBeenCalledWith(
+      'lifecycle',
+      expect.objectContaining({ workflowExecutionTimeout: `${90 * 24 * 60 * 60}s` }),
+    )
+  })
+
+  it('an Automation is never pinned (no versioningOverride)', async () => {
+    await run(tenantWorkflow)
+    const opts = mockTemporalStart.mock.calls[0]![1] as Record<string, unknown>
+    expect(opts).not.toHaveProperty('versioningOverride')
+    expect(opts['taskQueue']).toBe('pegasus-tenant-tenant-1-test')
+  })
+
+  it('is not held to the Automation cap of 5, only the open-Workflow cap', async () => {
+    // 5 open of everything would block an Automation; the Workflow only looks
+    // at open durable Workflows (the first count) and the daily quota.
+    mockExecutionCount.mockReset()
+    mockExecutionCount
+      .mockResolvedValueOnce(5) // open durable Workflows: 5 < 500
+      .mockResolvedValueOnce(5) // daily quota: 5 < 200
+    const result = await startWorkflowExecution(
+      {
+        ...fakeDb(0),
+        workflowExecution: { count: mockExecutionCount, delete: mockExecutionDelete },
+      } as unknown as PrismaClient,
+      {
+        workflow: durableWorkflow,
+        tenantId: 'tenant-1',
+        input: {},
+        provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+      },
+    )
+    expect(result.outcome).toBe('STARTED')
+    expect(mockExecutionCount.mock.calls[0]![0]).toEqual({
+      where: {
+        tenantId: 'tenant-1',
+        status: { in: ['QUEUED', 'RUNNING'] },
+        workflow: { kind: 'WORKFLOW' },
+      },
+    })
+    expect(mockExecutionCount).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses OPEN_WORKFLOW_LIMIT at the cap (500), writing nothing', async () => {
+    mockExecutionCount.mockResolvedValue(500)
+    const result = await startWorkflowExecution(fakeDb(500), {
+      workflow: durableWorkflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+    expect(result.outcome).toBe('OPEN_WORKFLOW_LIMIT')
+    expect(mockExecutionRepo.create).not.toHaveBeenCalled()
+    expect(mockTemporalStart).not.toHaveBeenCalled()
+  })
+
+  it('the Automation cap of 5 no longer counts durable Workflows', async () => {
+    await run(tenantWorkflow)
+    const where = mockExecutionCount.mock.calls[0]![0].where as Record<string, unknown>
+    expect(where['workflow']).toMatchObject({ kind: 'AUTOMATION' })
+  })
+
+  it('refuses a dry run (DRY_RUN_UNSUPPORTED): it runs on a real worker', async () => {
+    const result = await run(durableWorkflow, { dryRun: true })
+    expect(result.outcome).toBe('DRY_RUN_UNSUPPORTED')
+    expect(mockTemporalStart).not.toHaveBeenCalled()
+  })
+
+  it('a version no worker has polled yet → WORKFLOW_VERSION_STARTING, QUEUED row deleted', async () => {
+    const refusal = new Error('Failed to start Workflow', {
+      cause: new Error(
+        "9 FAILED_PRECONDITION: Pinned version 'lifecycle:fff' is not present in task queue 'q' of type 'Workflow'",
+      ),
+    })
+    mockTemporalStart.mockRejectedValue(refusal)
+
+    const result = await run()
+
+    expect(result.outcome).toBe('WORKFLOW_VERSION_STARTING')
+    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1' } })
+    expect(mockExecutionRepo.markTerminal).not.toHaveBeenCalled()
+  })
+
+  it('any other start failure of a Workflow is START_FAILED as before', async () => {
+    mockTemporalStart.mockRejectedValue(new Error('UNAVAILABLE: connection reset'))
+    const result = await run()
+    expect(result.outcome).toBe('START_FAILED')
+    expect(mockExecutionDelete).not.toHaveBeenCalled()
   })
 })

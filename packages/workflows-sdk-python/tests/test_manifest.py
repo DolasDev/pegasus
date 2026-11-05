@@ -412,3 +412,74 @@ def test_validate_manifest_fields_rejects_bool_as_timeout_seconds() -> None:
     # bool is a subclass of int in Python — must be explicitly rejected.
     with pytest.raises(ManifestError, match="timeout_seconds"):
         validate_manifest_fields("demo", "0.1.0", ["a:B"], timeout_seconds=True)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# kind / signals / max_lifetime_days (Phase 3c durable Workflows)
+# ---------------------------------------------------------------------------
+
+
+def _write(tmp_path: Path, extra: str) -> Path:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "lifecycle"
+            version = "1.0.0"
+            entry_points = ["lifecycle.workflow:Lifecycle"]
+            """
+        )
+        + textwrap.dedent(extra)
+    )
+    return tmp_path
+
+
+def test_kind_defaults_to_automation_and_is_not_sent(tmp_path: Path) -> None:
+    m = load_manifest(_write(tmp_path, ""))[0]
+    assert m.kind == "automation"
+    assert not m.is_workflow
+    assert "kind" not in m.to_api_manifest()
+
+
+def test_durable_workflow_fields_round_trip_to_the_api_shape(tmp_path: Path) -> None:
+    m = load_manifest(
+        _write(
+            tmp_path,
+            """
+            kind = "workflow"
+            signals = ["proceed", "cancel_move"]
+            max_lifetime_days = 30
+            """,
+        )
+    )[0]
+    assert m.is_workflow
+    api = m.to_api_manifest()
+    assert api["kind"] == "workflow"
+    assert api["signals"] == ["proceed", "cancel_move"]
+    assert api["maxLifetimeDays"] == 30
+    assert "timeoutSeconds" not in api
+
+
+@pytest.mark.parametrize(
+    ("extra", "mentions"),
+    [
+        ('kind = "workflow"\ntimeout_seconds = 60', "timeout_seconds"),
+        ("max_lifetime_days = 30", "max_lifetime_days"),
+        ('signals = ["go"]', "signals"),
+        ('kind = "workflow"\nmax_lifetime_days = 366', "max_lifetime_days"),
+        ('kind = "workflow"\nmax_lifetime_days = 0', "max_lifetime_days"),
+        ('kind = "workflow"\nmax_lifetime_days = true', "max_lifetime_days"),
+        ('kind = "workflow"\nsignals = ["go-now"]', "signal"),
+        ('kind = "workflow"\nsignals = "go"', "signals"),
+        ('kind = "saga"', "kind"),
+    ],
+)
+def test_kind_rules_mirror_the_server(tmp_path: Path, extra: str, mentions: str) -> None:
+    with pytest.raises(ManifestError, match=mentions):
+        load_manifest(_write(tmp_path, extra))
+
+
+def test_too_many_signals_rejected(tmp_path: Path) -> None:
+    names = ", ".join(f'"s{i}"' for i in range(51))
+    with pytest.raises(ManifestError, match="at most 50"):
+        load_manifest(_write(tmp_path, f'kind = "workflow"\nsignals = [{names}]'))

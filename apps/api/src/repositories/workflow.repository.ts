@@ -61,6 +61,8 @@ export type WorkflowRow = {
   executable: boolean
   /** ACTIVE, or RETIRED (sdk-feedback 0032). Default reads return ACTIVE rows only. */
   status: WorkflowStatus
+  /** AUTOMATION (one-shot) or WORKFLOW (durable, Phase 3c), from the manifest's `kind`. */
+  kind: WorkflowKind
   retiredAt: Date | null
   retiredByUserId: string | null
   createdAt: Date
@@ -68,6 +70,8 @@ export type WorkflowRow = {
 }
 
 export type WorkflowStatus = 'ACTIVE' | 'RETIRED'
+
+export type WorkflowKind = 'AUTOMATION' | 'WORKFLOW'
 
 /** Opt-in for the reads that must still see retired rows: execution history, triggers. */
 export type RetiredFilter = { includeRetired?: boolean }
@@ -111,6 +115,7 @@ const WORKFLOW_SELECT = {
   artifactSizeBytes: true,
   executable: true,
   status: true,
+  kind: true,
   retiredAt: true,
   retiredByUserId: true,
   createdAt: true,
@@ -145,6 +150,8 @@ export function createWorkflowRepository(db: PrismaClient) {
       artifactSha256: string
       artifactSizeBytes: number
       executable: boolean
+      /** From the manifest's `kind` (Phase 3c). Absent = AUTOMATION. */
+      kind?: WorkflowKind
     }): Promise<WorkflowRow> {
       return db.workflow.create({
         data: input,
@@ -339,6 +346,8 @@ export function createWorkflowRepository(db: PrismaClient) {
           artifactSha256: source.artifactSha256,
           artifactSizeBytes: source.artifactSizeBytes,
           executable: source.executable,
+          // Same bytes, same manifest — so the same kind.
+          kind: source.kind,
         },
         select: WORKFLOW_SELECT,
       })

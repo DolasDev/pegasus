@@ -58,8 +58,10 @@ import {
   loadTenantRunnerConfig,
   publishTenantRunnerPoolMetrics,
   sweepTenantRunners,
+  warmDurableWorkflowVersion,
   type TenantRunnerConfig,
 } from './tenant-runner'
+import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -135,8 +137,13 @@ function fakeEcs(handlers: {
 // Minimal fake db used by ensureTenantRunner direct-call tests. Kill switch
 // is OFF by default — tests that need it on override tenantFindUnique per test.
 const mockTenantFindUnique = vi.fn().mockResolvedValue({ workflowsDisabled: false })
+// Open durable Workflows for the tenant (Phase 3c kill-switch exception). None by default.
+const mockOpenWorkflowCount = vi.fn().mockResolvedValue(0)
+const mockNamespaceFindUnique = vi.fn().mockResolvedValue({ status: 'ACTIVE' })
 const db = {
   tenant: { findUnique: mockTenantFindUnique },
+  workflowExecution: { count: mockOpenWorkflowCount },
+  tenantTemporalNamespace: { findUnique: mockNamespaceFindUnique },
 } as unknown as PrismaClient
 
 function emittedMetricNames(): string[] {
@@ -156,6 +163,8 @@ beforeEach(() => {
   mockCwSend.mockResolvedValue({})
   // Reset kill switch to OFF (default safe state).
   mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
+  mockOpenWorkflowCount.mockResolvedValue(0)
+  mockNamespaceFindUnique.mockResolvedValue({ status: 'ACTIVE' })
 })
 
 // ── loadTenantRunnerConfig ───────────────────────────────────────────────
@@ -401,6 +410,69 @@ describe('ensureTenantRunner', () => {
     // Kill switch is a clean no-op — no failure metric emitted.
     expect(emittedMetricNames()).not.toContain('TenantRunnerLaunchFailed')
   })
+
+  it('still launches under the kill switch while a durable Workflow is open (DECIDE-4)', async () => {
+    // Running Workflows keep running — timers fire — so their runner must come
+    // back if it dies; only NEW starts are refused (by the start path).
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+    mockOpenWorkflowCount.mockResolvedValue(2)
+    const ecs = fakeEcs({})
+    const result = await ensureTenantRunner(db, TENANT_ID, { ecsClient: ecs.client, config })
+
+    expect(result).toEqual({ outcome: 'LAUNCHED', taskArn: 'arn:task/launched' })
+    expect(mockOpenWorkflowCount).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT_ID,
+        status: { in: ['QUEUED', 'RUNNING'] },
+        workflow: { kind: 'WORKFLOW' },
+      },
+    })
+  })
+
+  it('never counts open Workflows when the kill switch is off', async () => {
+    const ecs = fakeEcs({})
+    await ensureTenantRunner(db, TENANT_ID, { ecsClient: ecs.client, config })
+    expect(mockOpenWorkflowCount).not.toHaveBeenCalled()
+  })
+})
+
+// ── warmDurableWorkflowVersion (Phase 3c) ────────────────────────────────
+
+describe('warmDurableWorkflowVersion', () => {
+  const durable = { tenantId: TENANT_ID, name: 'lifecycle', executable: true, kind: 'WORKFLOW' }
+
+  it('launches the runner for a new durable version of an ACTIVE tenant', async () => {
+    const ecs = fakeEcs({})
+    const result = await warmDurableWorkflowVersion(db, durable, { ecsClient: ecs.client, config })
+    expect(result).toEqual({ outcome: 'LAUNCHED', taskArn: 'arn:task/launched' })
+  })
+
+  it.each([
+    ['an Automation', { ...durable, kind: 'AUTOMATION' }],
+    ['a curated (STDLIB) row', { ...durable, name: 'send_quote_followup' }],
+    ['a non-executable row', { ...durable, executable: false }],
+  ])('is a no-op for %s', async (_label, row) => {
+    const ecs = fakeEcs({})
+    expect(await warmDurableWorkflowVersion(db, row, { ecsClient: ecs.client, config })).toBeNull()
+    expect(ecs.send).not.toHaveBeenCalled()
+  })
+
+  it('is a no-op while the namespace is not ACTIVE', async () => {
+    mockNamespaceFindUnique.mockResolvedValue({ status: 'PROVISIONING' })
+    const ecs = fakeEcs({})
+    expect(
+      await warmDurableWorkflowVersion(db, durable, { ecsClient: ecs.client, config }),
+    ).toBeNull()
+    expect(ecs.send).not.toHaveBeenCalled()
+  })
+
+  it('never throws (publish must not fail on a warm-up)', async () => {
+    mockNamespaceFindUnique.mockRejectedValue(new Error('db down'))
+    const ecs = fakeEcs({})
+    expect(
+      await warmDurableWorkflowVersion(db, durable, { ecsClient: ecs.client, config }),
+    ).toBeNull()
+  })
 })
 
 // ── sweepTenantRunners ───────────────────────────────────────────────────
@@ -416,17 +488,31 @@ describe('sweepTenantRunners', () => {
     opts?: { workflowsDisabled?: boolean },
   ): {
     db: PrismaClient
-    findMany: ReturnType<typeof vi.fn>
+    groupBy: ReturnType<typeof vi.fn>
     tenantFindUnique: ReturnType<typeof vi.fn>
   } {
-    const findMany = vi.fn().mockResolvedValue(
-      rows.map((r) => ({
-        ...r,
-        temporalNamespace:
-          r.temporalNamespace === undefined
-            ? `pg-staging-${r.tenantId.slice(0, 8)}.acct`
-            : r.temporalNamespace,
-      })),
+    const withNamespace = rows.map((r) => ({
+      ...r,
+      temporalNamespace:
+        r.temporalNamespace === undefined
+          ? `pg-staging-${r.tenantId.slice(0, 8)}.acct`
+          : r.temporalNamespace,
+    }))
+    // Emulates Postgres: apply the routing filter in the where clause, then
+    // group by (tenantId, temporalNamespace).
+    const groupBy = vi.fn(
+      async (args: { where: { workflow: { executable: boolean; name: { notIn: string[] } } } }) => {
+        const seen = new Map<string, { tenantId: string; temporalNamespace: string | null }>()
+        for (const r of withNamespace) {
+          const w = args.where.workflow
+          if (r.workflow.executable !== w.executable) continue
+          if (w.name.notIn.includes(r.workflow.name)) continue
+          const key = JSON.stringify([r.tenantId, r.temporalNamespace])
+          if (!seen.has(key))
+            seen.set(key, { tenantId: r.tenantId, temporalNamespace: r.temporalNamespace })
+        }
+        return [...seen.values()]
+      },
     )
     // Default: kill switch OFF. Tests that need the kill switch on pass opts.
     const tenantFindUnique = vi
@@ -434,20 +520,21 @@ describe('sweepTenantRunners', () => {
       .mockResolvedValue({ workflowsDisabled: opts?.workflowsDisabled ?? false })
     return {
       db: {
-        workflowExecution: { findMany },
+        // count: open durable Workflows, for the kill-switch exception (none here).
+        workflowExecution: { groupBy, count: vi.fn().mockResolvedValue(0) },
         tenant: { findUnique: tenantFindUnique },
       } as unknown as PrismaClient,
-      findMany,
+      groupBy,
       tenantFindUnique,
     }
   }
 
   it('no-ops (and never touches the DB) without config', async () => {
-    const { db: sweepDb, findMany } = dbWithOpenExecutions([])
+    const { db: sweepDb, groupBy } = dbWithOpenExecutions([])
     const result = await sweepTenantRunners(sweepDb, { config: null })
 
     expect(result).toEqual({ tenantsNeedingRunner: 0, launched: 0, launchFailed: 0 })
-    expect(findMany).not.toHaveBeenCalled()
+    expect(groupBy).not.toHaveBeenCalled()
   })
 
   it('launches nothing for a shared-namespace row (no family can serve it) and logs it', async () => {
@@ -466,7 +553,7 @@ describe('sweepTenantRunners', () => {
   })
 
   it('ensures one runner per unique tenant with non-curated open work', async () => {
-    const { db: sweepDb, findMany } = dbWithOpenExecutions([
+    const { db: sweepDb, groupBy } = dbWithOpenExecutions([
       // Curated rows never need a runner — filtered out.
       { tenantId: TENANT_ID, workflow: { name: 'send_quote_followup', executable: true } },
       // Two open executions for the same tenant — deduped to one ensure.
@@ -481,12 +568,13 @@ describe('sweepTenantRunners', () => {
 
     const result = await sweepTenantRunners(sweepDb, { ecsClient: ecs.client, config })
 
-    expect(findMany).toHaveBeenCalledWith({
-      where: { status: { in: ['QUEUED', 'RUNNING'] } },
-      select: {
-        tenantId: true,
-        temporalNamespace: true,
-        workflow: { select: { name: true, executable: true } },
+    // Aggregated in SQL (Phase 3c: hundreds of open Workflows per tenant),
+    // with the TENANT_RUNNER routing decision as the where clause.
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['tenantId', 'temporalNamespace'],
+      where: {
+        status: { in: ['QUEUED', 'RUNNING'] },
+        workflow: { executable: true, name: { notIn: [...CURATED_WORKFLOW_NAMES] } },
       },
     })
     expect(result).toEqual({ tenantsNeedingRunner: 2, launched: 2, launchFailed: 0 })

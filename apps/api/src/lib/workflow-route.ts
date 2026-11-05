@@ -109,6 +109,17 @@ export function tenantTaskQueue(tenantId: string): string {
   return `pegasus-tenant-${tenantId}-${tenantTaskQueueEnv()}`
 }
 
+/**
+ * The task queue ONE durable Workflow's workers poll (Phase 3c), in the
+ * tenant's own namespace. One queue per workflow name, because a task queue
+ * belongs to one Worker Deployment and the deployment is the workflow name.
+ * MUST match the runner's `workflow_task_queue`
+ * (apps/tenant-runner/pegasus_tenant_runner/workflow_workers.py).
+ */
+export function workflowTaskQueue(tenantId: string, workflowName: string): string {
+  return `${tenantTaskQueue(tenantId)}-wfl-${workflowName}`
+}
+
 // ---------------------------------------------------------------------------
 // Routing function — one decision, one place
 // ---------------------------------------------------------------------------

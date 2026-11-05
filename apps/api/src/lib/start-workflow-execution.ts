@@ -24,6 +24,8 @@
 //   7. Temporal `workflow.start` with REJECT_DUPLICATE
 //      - STDLIB: stdlib task queue (unchanged Phase-2 behavior)
 //      - TENANT_RUNNER: per-tenant queue + workflowExecutionTimeout
+//      - TENANT_RUNNER, kind WORKFLOW (Phase 3c): the workflow's own queue,
+//        maxLifetimeDays, and a version pin to this exact row (see below)
 //   8. eager QUEUED → RUNNING on success / FAILED on Temporal start error
 //
 // Callers own everything around this sequence: authz, validation, and HTTP
@@ -69,7 +71,7 @@ import {
   MIGRATING_STATUSES,
 } from '../repositories/tenant-temporal-namespace.repository'
 import { temporalTaskQueue, withTemporalClient } from './temporal-client'
-import { resolveWorkflowRoute, tenantTaskQueue } from './workflow-route'
+import { resolveWorkflowRoute, tenantTaskQueue, workflowTaskQueue } from './workflow-route'
 import { ensureTenantRunner } from './tenant-runner'
 import { requestTenantNamespace, tenantNamespacesConfigured } from './tenant-namespace-request'
 import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
@@ -95,6 +97,38 @@ const TENANT_RUNNER_CONCURRENCY_CAP = 5
  */
 const DEFAULT_DAILY_QUOTA = 200
 
+/**
+ * Per-tenant cap on OPEN durable Workflows (Phase 3c), instead of the
+ * concurrency cap of 5 that bounds Automations: a Workflow is open for days,
+ * mostly waiting, so it doesn't compete for the runner the way a 15-minute
+ * Automation does. TENANT_OPEN_WORKFLOW_CAP overrides it (0/unset → default).
+ */
+const DEFAULT_OPEN_WORKFLOW_CAP = 500
+
+function openWorkflowCap(env: Record<string, string | undefined> = process.env): number {
+  const raw = (env['TENANT_OPEN_WORKFLOW_CAP'] ?? '').trim()
+  const n = Number.parseInt(raw, 10)
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_OPEN_WORKFLOW_CAP
+}
+
+/** Durable Workflow lifetime when the manifest doesn't declare maxLifetimeDays. */
+const DEFAULT_MAX_LIFETIME_DAYS = 90
+
+/**
+ * Temporal's refusal of a start pinned to a version no worker has polled yet
+ * (FailedPrecondition: "Pinned version '<deployment>:<build>' is not present
+ * in task queue ..."). Matched on the message because it is the one stable
+ * discriminator the TS client surfaces for it.
+ */
+const PINNED_VERSION_NOT_REGISTERED = /is not present in task queue/
+
+function isPinnedVersionNotRegistered(err: unknown): boolean {
+  for (let e: unknown = err; e instanceof Error; e = e.cause) {
+    if (PINNED_VERSION_NOT_REGISTERED.test(e.message)) return true
+  }
+  return false
+}
+
 function dailyQuotaLimit(env: Record<string, string | undefined> = process.env): number {
   const raw = (env['TENANT_WORKFLOW_DAILY_QUOTA'] ?? '').trim()
   if (!raw) return DEFAULT_DAILY_QUOTA
@@ -119,6 +153,8 @@ type RejectionReason =
   | 'TENANT_MIGRATING'
   | 'TENANT_NAMESPACE_PROVISIONING'
   | 'TENANT_NAMESPACE_UNAVAILABLE'
+  | 'OPEN_WORKFLOW_LIMIT'
+  | 'WORKFLOW_VERSION_STARTING'
 
 function isMigratingStatus(status: string): boolean {
   return (MIGRATING_STATUSES as readonly string[]).includes(status)
@@ -281,6 +317,21 @@ export type StartWorkflowExecutionResult =
    */
   | { outcome: 'TENANT_NAMESPACE_UNAVAILABLE' }
   /**
+   * TENANT_RUNNER, kind WORKFLOW (Phase 3c): the tenant already has the
+   * maximum number of OPEN durable Workflows (TENANT_OPEN_WORKFLOW_CAP, 500).
+   * Nothing written or started. The handler maps this to 429.
+   */
+  | { outcome: 'OPEN_WORKFLOW_LIMIT' }
+  /**
+   * TENANT_RUNNER, kind WORKFLOW (Phase 3c): this published version's worker
+   * has not polled yet, so Temporal refuses a start pinned to it (it does,
+   * for good, once the worker has polled once). Typical for a minute or two
+   * after publish. Nothing started; the inserted QUEUED row is deleted (no
+   * execution ever existed). Transient: the handler maps this to 409 with a
+   * retry hint; the dispatcher defers an EVENT and skips a SCHEDULE tick.
+   */
+  | { outcome: 'WORKFLOW_VERSION_STARTING' }
+  /**
    * TENANT_RUNNER: the caller tried to directly run a non-curated GLOBAL
    * workflow it does not own (workflow.tenantId !== caller's tenantId). Nothing
    * written or started. The caller must fork the workflow into their own tenant
@@ -399,8 +450,23 @@ function tenantRunnerActiveWhere(includeDryRuns = false): Prisma.WorkflowExecuti
     workflow: {
       executable: true,
       name: { notIn: [...CURATED_WORKFLOW_NAMES] },
+      // Durable Workflows (Phase 3c) are open for days and have their own cap
+      // (OPEN_WORKFLOW_LIMIT); counting them here would lock a tenant with five
+      // open Workflows out of every Automation, and park its events.
+      kind: 'AUTOMATION',
     },
   }
+}
+
+/** Open durable Workflows for the tenant (Phase 3c), against openWorkflowCap. */
+async function countOpenDurableWorkflows(db: PrismaClient, tenantId: string): Promise<number> {
+  return db.workflowExecution.count({
+    where: {
+      tenantId,
+      status: { in: ['QUEUED', 'RUNNING'] },
+      workflow: { kind: 'WORKFLOW' },
+    },
+  })
 }
 
 /** Count of this tenant's executions counting against the concurrency cap. */
@@ -506,10 +572,14 @@ export async function startWorkflowExecution(
     return { outcome: 'NOT_EXECUTABLE' }
   }
 
+  const durable = route === 'TENANT_RUNNER' && workflow.kind === 'WORKFLOW'
+
   // Dry-run is a TENANT_RUNNER-only capability: interception lives in the
   // subprocess driver. Reject (never silently perform side effects) a dry-run
-  // of a curated STDLIB workflow, which runs real activities with no seam.
-  if (opts.dryRun && route !== 'TENANT_RUNNER') {
+  // of a curated STDLIB workflow, which runs real activities with no seam —
+  // and of a durable Workflow (Phase 3c), which runs on a real Temporal worker,
+  // not the one-shot driver the interception lives in.
+  if (opts.dryRun && (route !== 'TENANT_RUNNER' || durable)) {
     logger.warn('Dry-run start rejected — workflow does not run on the tenant runner', {
       tenantId,
       workflowId: workflow.id,
@@ -625,12 +695,30 @@ export async function startWorkflowExecution(
     // live AND dry runs, and the dispatcher sees CONCURRENCY_LIMIT /
     // DAILY_QUOTA_EXCEEDED for it as for any trigger.
     const manualDryRun = opts.dryRun === true && provenance.triggerSource === 'USER'
+    if (durable) {
+      // (b') Open-Workflow cap, instead of the Automation concurrency cap.
+      const open = await countOpenDurableWorkflows(db, tenantId)
+      const cap = openWorkflowCap()
+      if (open >= cap) {
+        logger.warn('Open durable Workflow cap reached', {
+          tenantId,
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          open,
+          cap,
+        })
+        await emitRejectionMetric('OPEN_WORKFLOW_LIMIT')
+        return { outcome: 'OPEN_WORKFLOW_LIMIT' }
+      }
+    }
     if (!manualDryRun) {
       const now = new Date()
       const includeDryRuns = opts.dryRun === true
 
-      // (b) Concurrency cap
-      const activeConcurrent = await countTenantRunnerActiveExecutions(db, tenantId, includeDryRuns)
+      // (b) Concurrency cap — Automations only (a Workflow took (b') above).
+      const activeConcurrent = durable
+        ? 0
+        : await countTenantRunnerActiveExecutions(db, tenantId, includeDryRuns)
       if (activeConcurrent >= TENANT_RUNNER_CONCURRENCY_CAP) {
         logger.warn('TENANT_RUNNER concurrency cap reached', {
           tenantId,
@@ -643,7 +731,8 @@ export async function startWorkflowExecution(
         return { outcome: 'CONCURRENCY_LIMIT' }
       }
 
-      // (c) Daily quota
+      // (c) Daily quota — every TENANT_RUNNER start, durable Workflows
+      // included: it bounds starts, which a Workflow still is (Phase 3c).
       const dailyCount = await countTenantRunnerDailyExecutions(db, tenantId, now, includeDryRuns)
       const quota = dailyQuotaLimit()
       if (dailyCount >= quota) {
@@ -720,7 +809,13 @@ export async function startWorkflowExecution(
   // Manifest may provide timeoutSeconds (already validated: 1..900) to lower
   // the default. Never raise it (values > 900 are rejected at finalize).
   let workflowExecutionTimeout: number | undefined
-  if (route === 'TENANT_RUNNER') {
+  if (durable) {
+    // A durable Workflow lives up to its manifest's maxLifetimeDays (finalize
+    // validated 1..365; absent = 90). timeoutSeconds is refused on a Workflow.
+    const days = (workflow.manifest as Record<string, unknown>)['maxLifetimeDays']
+    workflowExecutionTimeout =
+      (typeof days === 'number' ? days : DEFAULT_MAX_LIFETIME_DAYS) * 24 * 60 * 60
+  } else if (route === 'TENANT_RUNNER') {
     const manifestTimeout =
       typeof (workflow.manifest as Record<string, unknown>)['timeoutSeconds'] === 'number'
         ? ((workflow.manifest as Record<string, unknown>)['timeoutSeconds'] as number)
@@ -731,7 +826,24 @@ export async function startWorkflowExecution(
         : DEFAULT_EXECUTION_TIMEOUT_SECONDS
   }
 
-  const taskQueue = route === 'TENANT_RUNNER' ? tenantTaskQueue(tenantId) : temporalTaskQueue()
+  const taskQueue = durable
+    ? workflowTaskQueue(tenantId, workflow.name)
+    : route === 'TENANT_RUNNER'
+      ? tenantTaskQueue(tenantId)
+      : temporalTaskQueue()
+
+  // Durable Workflows (Phase 3c) are PINNED, at start, to this exact
+  // published row: Worker Deployment = workflow name, build id =
+  // artifactSha256 (the runner's worker for this row polls as exactly that).
+  // Postgres decides which version runs — a trigger bound to an older version
+  // runs that version — and the execution stays on it for life, even after a
+  // newer version is published. No server-side "current version" is used.
+  const versioningOverride =
+    durable && workflow.artifactSha256
+      ? {
+          pinnedTo: { deploymentName: workflow.name, buildId: workflow.artifactSha256 },
+        }
+      : undefined
 
   // Start the Temporal workflow. If start_workflow throws, mark the
   // execution FAILED with the error so we don't leak QUEUED rows for
@@ -755,6 +867,7 @@ export async function startWorkflowExecution(
         ...(workflowExecutionTimeout !== undefined
           ? { workflowExecutionTimeout: `${workflowExecutionTimeout}s` }
           : {}),
+        ...(versioningOverride ? { versioningOverride } : {}),
       }),
     )
 
@@ -795,6 +908,23 @@ export async function startWorkflowExecution(
         temporalWorkflowId,
       })
       return { outcome: 'ALREADY_STARTED', execution: inserted }
+    }
+
+    // A durable Workflow version no worker has polled yet (Phase 3c): nothing
+    // was started, so the QUEUED row describes an execution that never
+    // existed — delete it rather than record a failure. The runner was
+    // already launched above and registers the version within a minute or
+    // two; the caller retries.
+    if (durable && isPinnedVersionNotRegistered(err)) {
+      await db.workflowExecution.delete({ where: { id: inserted.id } }).catch(() => null)
+      logger.warn('Durable workflow version not registered yet — start deferred', {
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        tenantId,
+        buildId: workflow.artifactSha256,
+      })
+      await emitRejectionMetric('WORKFLOW_VERSION_STARTING')
+      return { outcome: 'WORKFLOW_VERSION_STARTING' }
     }
 
     // Roll the QUEUED row forward to FAILED so the operator + caller see

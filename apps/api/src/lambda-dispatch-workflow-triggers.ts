@@ -169,6 +169,10 @@ type TriggerSkipReason =
   | 'TENANT_NAMESPACE_PROVISIONING' // tenant's own namespace being created: deferred like TENANT_MIGRATING
   | 'TENANT_NAMESPACE_UNAVAILABLE' // tenant's namespace FAILED / DEPROVISIONING: the run is lost (alarmed)
   | 'DRY_RUN_UNSUPPORTED' // dry-run trigger on a STDLIB workflow (API refuses; legacy/race)
+  | 'OPEN_WORKFLOW_LIMIT' // Phase 3c: tenant at its open durable-Workflow cap
+  | 'WORKFLOW_VERSION_STARTING' // Phase 3c: SCHEDULE tick for a durable version not yet polled (skipped)
+  | 'WORKFLOW_VERSION_DEFERRED' // Phase 3c: EVENT parked until the durable version's worker has polled
+  | 'WORKFLOW_VERSION_DROPPED' // Phase 3c: EVENT still parked on an unregistered version past the max park age
   | 'ERROR' // unexpected per-trigger exception
 
 export { matchesTriggerFilter }
@@ -393,7 +397,7 @@ async function fireTrigger(opts: {
   logContext: Record<string, unknown>
   /** EVENT only: the tenant is known to be at the concurrency cap this tick. */
   tenantAtCap?: boolean
-}): Promise<'DEFERRED' | 'CAPPED' | void> {
+}): Promise<'DEFERRED' | 'CAPPED' | 'VERSION_STARTING' | void> {
   const { workflowRepo, trigger, triggerSource, dedupeKey, input, counts, skip, logContext } = opts
 
   // Same visibility rule as the manual run path: the workflow must be the
@@ -437,7 +441,13 @@ async function fireTrigger(opts: {
     return
   }
 
-  if (opts.tenantAtCap && resolveWorkflowRoute(workflow) === 'TENANT_RUNNER') {
+  // The concurrency cap bounds Automations only: a durable Workflow (Phase 3c)
+  // has its own open-Workflow cap, checked by the start.
+  if (
+    opts.tenantAtCap &&
+    resolveWorkflowRoute(workflow) === 'TENANT_RUNNER' &&
+    workflow.kind !== 'WORKFLOW'
+  ) {
     return 'CAPPED'
   }
 
@@ -504,6 +514,33 @@ async function fireTrigger(opts: {
       if (triggerSource === 'EVENT') return 'CAPPED'
       skip('CONCURRENCY_LIMIT')
       logger.warn('Trigger skipped — TENANT_RUNNER concurrency cap reached', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        ...logContext,
+      })
+      break
+    case 'OPEN_WORKFLOW_LIMIT':
+      // Phase 3c: the tenant already has the maximum number of open durable
+      // Workflows. An abuse ceiling like the daily quota, so the occurrence is
+      // skipped rather than parked (open Workflows can stay open for months).
+      skip('OPEN_WORKFLOW_LIMIT')
+      logger.warn('Trigger skipped — open durable Workflow cap reached', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        ...logContext,
+      })
+      break
+    case 'WORKFLOW_VERSION_STARTING':
+      // Phase 3c: the durable version's worker hasn't polled yet (a minute or
+      // two after publish), so Temporal refused the pinned start; nothing was
+      // written. EVENT: parked like the concurrency cap (bounded by the same
+      // max park age, so a version that never registers can't park forever).
+      // SCHEDULE: a skipped minute, like a migrating tenant.
+      if (triggerSource === 'EVENT') return 'VERSION_STARTING'
+      skip('WORKFLOW_VERSION_STARTING')
+      logger.info('Trigger skipped — durable workflow version not registered yet', {
         triggerId: trigger.id,
         tenantId: trigger.tenantId,
         workflowId: workflow.id,
@@ -784,6 +821,10 @@ export async function handler(event?: unknown): Promise<{
         // Parked behind the concurrency cap: true leaves the event undispatched
         // unless it has waited past the max age, when it is stamped as dropped.
         let capped = false
+        // Parked on a durable Workflow version that hasn't registered yet
+        // (Phase 3c): same park/drop contract as `capped`, but it says nothing
+        // about the tenant's other triggers, so the tenant isn't marked capped.
+        let versionStarting = false
         const parkExpired = event.occurredAt <= parkCutoff
         for (const trigger of triggers) {
           // Failure isolation: one trigger's failure must not poison the event
@@ -814,6 +855,19 @@ export async function handler(event?: unknown): Promise<{
             if (fired === 'DEFERRED') {
               deferred = true
               migratingTenants.add(event.tenantId)
+            }
+            if (fired === 'VERSION_STARTING') {
+              versionStarting = true
+              skip(parkExpired ? 'WORKFLOW_VERSION_DROPPED' : 'WORKFLOW_VERSION_DEFERRED')
+              if (parkExpired) {
+                logger.error('Trigger dropped — durable workflow version never registered', {
+                  triggerId: trigger.id,
+                  tenantId: trigger.tenantId,
+                  domainEventId: event.id,
+                  occurredAt: event.occurredAt.toISOString(),
+                  maxAgeHours: CONCURRENCY_DEFER_MAX_AGE_MS / 3_600_000,
+                })
+              }
             }
             if (fired === 'CAPPED') {
               capped = true
@@ -861,7 +915,7 @@ export async function handler(event?: unknown): Promise<{
         // exclude the tenant at the query while it stays at the cap, then the
         // event is redelivered — triggers that fired now hit the DUPLICATE
         // pre-check. Past the max age it falls through and is stamped (dropped).
-        if (capped && !parkExpired) continue
+        if ((capped || versionStarting) && !parkExpired) continue
 
         // Stamp AFTER the event's triggers are processed. Conditional on
         // dispatchedAt still being null so a concurrent tick can't double-count

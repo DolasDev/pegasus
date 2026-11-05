@@ -63,10 +63,15 @@ from ..api import PegasusClient
 from ..credentials import ProfileError, list_profile_summaries
 from ..deployments import read_deployments
 from ..manifest import (
+    DEFAULT_MAX_LIFETIME_DAYS,
     DIAGRAM_FILENAME,
+    KIND_AUTOMATION,
+    KIND_WORKFLOW,
     MANIFEST_FILENAME,
     MANIFEST_TIMEOUT_MAX_SECONDS,
+    MAX_LIFETIME_DAYS,
     NAME_REGEX,
+    SIGNAL_NAME_REGEX,
     VERSION_REGEX,
     Manifest,
     ManifestError,
@@ -148,10 +153,9 @@ def resource_guide_authoring() -> str:
 An Automation is authored as a Temporal workflow class — the same
 ``@pegasus_workflow`` + ``@workflow.run`` shape as any Temporal workflow — but the
 platform runs it as a single sandboxed unit with a 900-second ceiling. Signals,
-queries, and ``workflow.wait_condition`` are not supported in Automations. (A
-separate, future capability — long-running, durable **Workflows**, with signals,
-queries, and waits — is planned but not available yet; this guide covers
-Automations, which exist today.)
+queries, and ``workflow.wait_condition`` are not supported in Automations. For
+those, publish a durable **Workflow** instead (``kind = "workflow"`` in the
+manifest; see "Durable Workflows" at the end of this guide).
 
 ## Import surface
 
@@ -403,6 +407,36 @@ rules, produce a Mermaid ``flowchart TD`` that faithfully reflects the control
 flow (no invented steps), and write it to the path the tool names.
 ``scaffold_workflow`` seeds a starter ``workflow.mmd`` so a fresh project already
 publishes; refine it before publishing for real.
+
+## Durable Workflows (``kind = "workflow"``)
+
+A durable Workflow is the same ``@pegasus_workflow`` class, published with
+``kind = "workflow"`` in its ``[[workflow]]`` table. The platform runs it as a
+real Temporal workflow on a dedicated worker in your account's own isolated
+runtime, so it can wait for days:
+
+- ``await workflow.sleep(timedelta(days=3))`` and ``await workflow.wait_condition(...)``
+  work, and a Workflow survives worker restarts: Temporal **replays** its history.
+  That makes the determinism rule above non-negotiable — code that behaves
+  differently on replay breaks the run.
+- It lives up to ``max_lifetime_days`` (default 90, max 365); ``timeout_seconds``
+  is for Automations only and is refused on a Workflow.
+- Each run is **pinned** to the exact published version it started on. Publishing
+  a new version never changes a running Workflow; new runs get the new version.
+  Change behaviour by publishing a new version, never by expecting a running
+  Workflow to pick it up.
+- ``signals = ["name", ...]`` declares the ``@workflow.signal`` methods it
+  accepts. Declared now; sending signals into a running Workflow through the
+  Pegasus API is not available yet.
+- Activities work as in an Automation (``PegasusClient.from_runtime()``) and get
+  Temporal's per-activity retries.
+- No dry runs (422 ``DRY_RUN_UNSUPPORTED``) — test locally against a Temporal dev
+  server instead.
+- Starting one right after publishing it can return 409
+  ``WORKFLOW_VERSION_STARTING`` for a minute or two while its worker comes up:
+  nothing was started, retry. Limits: 500 open Workflows per account (429
+  ``OPEN_WORKFLOW_LIMIT``); starts count toward the daily quota.
+- The execution's status closes within a few minutes of the Workflow finishing.
 """
 
 
@@ -630,7 +664,15 @@ def resource_reference_manifest() -> str:
         "(``-beta.1``, ``-rc.2``, ...).\n\n"
         "## Timeout constraint\n\n"
         f"``timeout_seconds`` max: ``{MANIFEST_TIMEOUT_MAX_SECONDS}`` s.\n"
-        "The manifest may LOWER the platform default, never raise it.\n\n"
+        "The manifest may LOWER the platform default, never raise it. Automations only.\n\n"
+        "## Kind\n\n"
+        f'``kind``: ``"{KIND_AUTOMATION}"`` (default) or ``"{KIND_WORKFLOW}"``. An Automation\n'
+        "runs as one unit of work within ``timeout_seconds``. A Workflow is a durable,\n"
+        "long-running Temporal workflow (timers, ``wait_condition``, signals, replay),\n"
+        "pinned for life to the version it started on. Workflow-only fields:\n"
+        f"``max_lifetime_days`` (1–{MAX_LIFETIME_DAYS}, default {DEFAULT_MAX_LIFETIME_DAYS})\n"
+        f"and ``signals`` (identifiers matching ``{SIGNAL_NAME_REGEX.pattern}``, at most 50).\n"
+        "Each kind's fields are refused on the other kind.\n\n"
         "## Packaging requirement — Automation diagram\n\n"
         f"Every Automation must ship a Mermaid diagram at ``<source_dir>/{DIAGRAM_FILENAME}``.\n"
         "``package`` (and ``push``) hard-fail without it. Through MCP, call the\n"
@@ -649,7 +691,14 @@ def resource_reference_manifest() -> str:
         '    source_dir = "send_quote_followup"   # optional, defaults to name\n'
         '    description = "Follow up on accepted quotes."\n'
         '    required_actions = ["ReadQuote", "EmitTenantEvent"]\n'
-        "    timeout_seconds = 300\n"
+        "    timeout_seconds = 300\n\n"
+        "    [[workflow]]\n"
+        '    name = "move_lifecycle"\n'
+        '    version = "0.1.0"\n'
+        '    entry_points = ["move_lifecycle.workflow:MoveLifecycle"]\n'
+        '    kind = "workflow"\n'
+        '    signals = ["proceed"]\n'
+        "    max_lifetime_days = 30\n"
     )
 
 
@@ -965,6 +1014,9 @@ def _manifest_to_dict(m: Manifest) -> dict[str, Any]:
         "description": m.description,
         "required_actions": list(m.required_actions),
         "timeout_seconds": m.timeout_seconds,
+        "kind": m.kind,
+        "signals": list(m.signals) if m.signals is not None else None,
+        "max_lifetime_days": m.max_lifetime_days,
     }
 
 

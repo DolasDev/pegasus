@@ -1499,6 +1499,69 @@ description = "..."                             # optional
 These rules mirror the server's `ManifestSchema` exactly, so `package`/`push`
 fail fast locally before any HTTP call.
 
+`kind` picks what you publish (0.56.0+). The default, `"automation"`, runs the
+whole body as one unit of work within `timeout_seconds` (max 900). `"workflow"`
+publishes a [durable Workflow](#durable-workflows-kind--workflow) and takes two
+fields of its own:
+
+```toml
+[[workflow]]
+name = "move_lifecycle"
+version = "0.1.0"
+entry_points = ["move_lifecycle.workflow:MoveLifecycle"]
+kind = "workflow"            # default "automation"
+signals = ["proceed"]        # optional, Workflows only: @workflow.signal names
+max_lifetime_days = 30       # optional, Workflows only: 1-365, default 90
+```
+
+Each kind's fields are refused on the other kind (`timeout_seconds` on a
+Workflow, `signals` / `max_lifetime_days` on an Automation), so a manifest never
+carries a setting the platform would silently drop.
+
+## Durable Workflows (`kind = "workflow"`)
+
+A durable Workflow is the same `@pegasus_workflow` class as an Automation,
+published with `kind = "workflow"`. The platform runs it as a real Temporal
+workflow on a dedicated worker in your tenant's own runtime, so it can wait for
+days. (0.56.0+)
+
+- **Timers and waits work:** `await workflow.sleep(timedelta(days=3))`,
+  `await workflow.wait_condition(lambda: self.approved)`. A Workflow survives
+  worker restarts because Temporal **replays** its history, so the determinism
+  rule is not optional: workflow code must behave the same on replay (no I/O, no
+  `datetime.now()`, no randomness; all I/O in activities).
+- **Pinned to its version:** each run stays on the exact published version it
+  started on, to the end. Publishing a new version never changes a running
+  Workflow; new runs get the new version.
+- **Lifetime:** up to `max_lifetime_days` (default 90, max 365).
+- **Signals:** declare the `@workflow.signal` names in `signals`. Sending a
+  signal into a running Workflow through the Pegasus API is not available yet.
+- **Activities** work as in an Automation (`PegasusClient.from_runtime()`) and
+  get Temporal's per-activity retries.
+- **No dry runs** (422 `DRY_RUN_UNSUPPORTED`, and no dry-run triggers). Test
+  locally against a Temporal dev server.
+- **Right after `push`** its worker takes a minute or two to come up; until then
+  `run_workflow` / `retry_execution` raise `WorkflowVersionStarting` (HTTP 409
+  `code="WORKFLOW_VERSION_STARTING"`, with `retry_after_seconds`). Nothing was
+  started, so retry. An event trigger waits and fires once it is ready (dropped
+  if still waiting after 24 hours); a schedule tick in that window is skipped.
+- **Limits:** not counted toward the 5-run concurrency cap; instead 500 open
+  Workflows per tenant (HTTP 429 `code="OPEN_WORKFLOW_LIMIT"`). Starts count
+  toward the daily quota.
+- **Status:** the execution row is `RUNNING` while the Workflow runs and closes
+  (`COMPLETED`, `FAILED`, …) within a few minutes of it finishing.
+- **Kill switch:** an operator's "disable new runs" stops new starts only;
+  running Workflows keep running and their timers fire.
+
+```python
+from pegasus_workflows import WorkflowVersionStarting
+
+try:
+    client.run_workflow(workflow_id, {"moveId": "123"})
+except WorkflowVersionStarting as err:
+    time.sleep(err.retry_after_seconds or 30)  # then try again
+```
+
 ## Credentials & profiles
 
 Every command that talks to the API needs a `vnd_` token and a base URL. Rather

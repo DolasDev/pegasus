@@ -20,6 +20,19 @@
 // extension would scope the write to a (non-existent) request tenant.
 //
 // Scheduling lives in the CDK ApiStack (EventBridge rule, every minute).
+//
+// TWO LANES (Phase 3c). Durable Workflows stay RUNNING for days, so they get
+// their own batch:
+//   - AUTOMATION lane: the crash-recovery backstop above, oldest-first. Durable
+//     rows are excluded: 100 open Workflows would otherwise fill this batch on
+//     every tick, and no tenant's Automations would be reconciled again.
+//   - WORKFLOW lane: a durable Workflow has NO runner write-back (the worker
+//     runs it in Temporal; nothing PATCHes the row), so this lane is the only
+//     thing that ever closes its row. It round-robins on `reconciledAt` (least
+//     recently checked first, never-checked first) and stamps it on every
+//     check, so a row closes within about ⌈open Workflows / 100⌉ minutes of
+//     finishing. Its closes are counted as WorkflowExecutionClosed, never as
+//     WorkflowExecutionReconciled (the crashed-runner alarm).
 // ---------------------------------------------------------------------------
 
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
@@ -37,6 +50,7 @@ const cloudwatch = new CloudWatchClient({})
 // sides in sync.
 const METRIC_NAMESPACE = 'Pegasus/Workflows'
 const METRIC_NAME = 'WorkflowExecutionReconciled'
+const CLOSED_METRIC_NAME = 'WorkflowExecutionClosed'
 
 /** Don't touch a row until it has been RUNNING for at least this long — gives
  * the worker write-back time to land before we go ask Temporal. */
@@ -74,15 +88,18 @@ function mapTemporalStatus(name: WorkflowExecutionStatusName): TerminalStatus | 
   }
 }
 
-async function emitReconciledMetric(status: TerminalStatus): Promise<void> {
+type Lane = 'AUTOMATION' | 'WORKFLOW'
+
+async function emitReconciledMetric(status: TerminalStatus, lane: Lane): Promise<void> {
   const timestamp = new Date()
+  const name = lane === 'WORKFLOW' ? CLOSED_METRIC_NAME : METRIC_NAME
   await cloudwatch.send(
     new PutMetricDataCommand({
       Namespace: METRIC_NAMESPACE,
       MetricData: [
         // Dimensioned metric — breakdown per terminal status for dashboards.
         {
-          MetricName: METRIC_NAME,
+          MetricName: name,
           Value: 1,
           Unit: 'Count',
           Timestamp: timestamp,
@@ -92,7 +109,7 @@ async function emitReconciledMetric(status: TerminalStatus): Promise<void> {
         // CloudWatch does NOT automatically aggregate dimensioned metrics into the
         // undimensioned (no-dimension) series, so we publish both explicitly.
         {
-          MetricName: METRIC_NAME,
+          MetricName: name,
           Value: 1,
           Unit: 'Count',
           Timestamp: timestamp,
@@ -156,113 +173,158 @@ async function readTemporalOutcome(
   return outcome
 }
 
+type ExecutionRow = Awaited<ReturnType<typeof db.workflowExecution.findMany>>[number]
+
 export async function handler(): Promise<{ scanned: number; reconciled: number }> {
   const cutoff = new Date(Date.now() - GRACE_MS)
 
   const orphans = await db.workflowExecution.findMany({
-    where: { status: 'RUNNING', startedAt: { lt: cutoff } },
+    where: { status: 'RUNNING', startedAt: { lt: cutoff }, workflow: { kind: 'AUTOMATION' } },
     take: BATCH_SIZE,
     orderBy: { startedAt: 'asc' },
+  })
+  const durables = await db.workflowExecution.findMany({
+    where: { status: 'RUNNING', startedAt: { lt: cutoff }, workflow: { kind: 'WORKFLOW' } },
+    take: BATCH_SIZE,
+    orderBy: { reconciledAt: { sort: 'asc', nulls: 'first' } },
   })
 
   logger.info('Scanned for orphaned RUNNING executions', {
     scanned: orphans.length,
+    durableScanned: durables.length,
     cutoff: cutoff.toISOString(),
   })
 
-  if (orphans.length === 0) {
-    return { scanned: 0, reconciled: 0 }
-  }
-
   let reconciled = 0
-
   for (const row of orphans) {
-    if (!row.temporalWorkflowId) {
-      // RUNNING but never recorded a Temporal id — can't address the run.
-      // Don't guess at a terminal state; leave it for a human to inspect.
-      logger.warn('RUNNING execution has no temporalWorkflowId — skipping', {
-        executionId: row.id,
-        tenantId: row.tenantId,
-      })
-      continue
-    }
-
-    try {
-      const temporalWorkflowId = row.temporalWorkflowId
-      // Ask the namespace the run was started in (3b.2): the row records it.
-      const read = await withTemporalClient(
-        { tenantId: row.tenantId, namespace: row.temporalNamespace },
-        (client) => readTemporalOutcome(client, temporalWorkflowId, row.id),
-      )
-      const { temporalStatus, terminal, result, errorMessage } = read
-
-      if (terminal === null) {
-        // Still RUNNING (or CONTINUED_AS_NEW) on Temporal's side — the worker
-        // is alive; nothing to reconcile yet. Log CONTINUED_AS_NEW since it is
-        // the less-obvious case and worth surfacing.
-        if (temporalStatus === 'CONTINUED_AS_NEW') {
-          logger.info('Execution continued-as-new on Temporal — leaving RUNNING', {
-            executionId: row.id,
-            tenantId: row.tenantId,
-            temporalWorkflowId: row.temporalWorkflowId,
-          })
-        }
-        continue
-      }
-
-      // Idempotent write: only flip rows still RUNNING. If the worker's
-      // write-back raced in between our read and this update, the
-      // `status: 'RUNNING'` predicate makes this a no-op (count: 0) rather
-      // than clobbering the worker's terminal payload.
-      const data: Prisma.WorkflowExecutionUncheckedUpdateInput = {
-        status: terminal,
-        finishedAt: new Date(),
-      }
-      if (result !== undefined) data.result = result
-      if (errorMessage !== undefined) data.errorMessage = errorMessage
-
-      const { count } = await db.workflowExecution.updateMany({
-        where: { id: row.id, status: 'RUNNING' },
-        data,
-      })
-
-      if (count === 0) {
-        // Already terminal (worker write-back won the race) — nothing to do.
-        logger.info('Execution already terminal — skipped (idempotent)', {
-          executionId: row.id,
-          tenantId: row.tenantId,
-        })
-        continue
-      }
-
-      reconciled += 1
-      await emitReconciledMetric(terminal)
-
-      logger.info('Reconciled orphaned RUNNING execution', {
-        executionId: row.id,
-        tenantId: row.tenantId,
-        temporalWorkflowId: row.temporalWorkflowId,
-        temporalStatus,
-        terminalStatus: terminal,
-      })
-    } catch (err) {
-      // One bad row (e.g. a WorkflowNotFoundError, a transient gRPC error)
-      // must not abort the whole tick — the next minute retries it.
-      logger.error('Failed to reconcile execution', {
-        executionId: row.id,
-        tenantId: row.tenantId,
-        temporalWorkflowId: row.temporalWorkflowId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
+    if (await reconcileRow(row, 'AUTOMATION')) reconciled += 1
+  }
+  for (const row of durables) {
+    if (await reconcileRow(row, 'WORKFLOW')) reconciled += 1
   }
 
+  // The AUTOMATION lane only: the WORKFLOW lane is full by design whenever 100+
+  // durable Workflows are open, so a full batch there is not a backlog.
   if (orphans.length === BATCH_SIZE) {
     logger.warn('Reconcile backlog — hit batch cap; next tick will continue', {
       batchSize: BATCH_SIZE,
     })
   }
 
-  logger.info('Reconcile tick finished', { scanned: orphans.length, reconciled })
-  return { scanned: orphans.length, reconciled }
+  const scanned = orphans.length + durables.length
+  logger.info('Reconcile tick finished', { scanned, reconciled })
+  return { scanned, reconciled }
+}
+
+/**
+ * Ask Temporal about one RUNNING row and flip it if the run is terminal.
+ * Returns true when the row was flipped. Never throws: one bad row (e.g. a
+ * WorkflowNotFoundError, a transient gRPC error) must not abort the tick.
+ * WORKFLOW-lane rows get `reconciledAt` stamped on every check, terminal or
+ * not — that stamp is what moves the lane's round-robin along.
+ */
+async function reconcileRow(row: ExecutionRow, lane: Lane): Promise<boolean> {
+  const checkedAt = new Date()
+  const stamp = lane === 'WORKFLOW' ? { reconciledAt: checkedAt } : {}
+  if (!row.temporalWorkflowId) {
+    // RUNNING but never recorded a Temporal id — can't address the run.
+    // Don't guess at a terminal state; leave it for a human to inspect.
+    logger.warn('RUNNING execution has no temporalWorkflowId — skipping', {
+      executionId: row.id,
+      tenantId: row.tenantId,
+    })
+    if (lane === 'WORKFLOW') await stampChecked(row.id, checkedAt)
+    return false
+  }
+
+  try {
+    const temporalWorkflowId = row.temporalWorkflowId
+    // Ask the namespace the run was started in (3b.2): the row records it.
+    const read = await withTemporalClient(
+      { tenantId: row.tenantId, namespace: row.temporalNamespace },
+      (client) => readTemporalOutcome(client, temporalWorkflowId, row.id),
+    )
+    const { temporalStatus, terminal, result, errorMessage } = read
+
+    if (terminal === null) {
+      // Still RUNNING (or CONTINUED_AS_NEW) on Temporal's side — the worker
+      // is alive; nothing to reconcile yet. Log CONTINUED_AS_NEW since it is
+      // the less-obvious case and worth surfacing.
+      if (temporalStatus === 'CONTINUED_AS_NEW') {
+        logger.info('Execution continued-as-new on Temporal — leaving RUNNING', {
+          executionId: row.id,
+          tenantId: row.tenantId,
+          temporalWorkflowId: row.temporalWorkflowId,
+        })
+      }
+      if (lane === 'WORKFLOW') await stampChecked(row.id, checkedAt)
+      return false
+    }
+
+    // Idempotent write: only flip rows still RUNNING. If the worker's
+    // write-back raced in between our read and this update, the
+    // `status: 'RUNNING'` predicate makes this a no-op (count: 0) rather
+    // than clobbering the worker's terminal payload.
+    const data: Prisma.WorkflowExecutionUncheckedUpdateInput = {
+      status: terminal,
+      finishedAt: new Date(),
+      ...stamp,
+    }
+    if (result !== undefined) data.result = result
+    if (errorMessage !== undefined) data.errorMessage = errorMessage
+
+    const { count } = await db.workflowExecution.updateMany({
+      where: { id: row.id, status: 'RUNNING' },
+      data,
+    })
+
+    if (count === 0) {
+      // Already terminal (worker write-back won the race) — nothing to do.
+      logger.info('Execution already terminal — skipped (idempotent)', {
+        executionId: row.id,
+        tenantId: row.tenantId,
+      })
+      return false
+    }
+
+    await emitReconciledMetric(terminal, lane)
+
+    logger.info(
+      lane === 'WORKFLOW'
+        ? 'Closed durable Workflow execution'
+        : 'Reconciled orphaned RUNNING execution',
+      {
+        executionId: row.id,
+        tenantId: row.tenantId,
+        temporalWorkflowId: row.temporalWorkflowId,
+        temporalStatus,
+        terminalStatus: terminal,
+      },
+    )
+    return true
+  } catch (err) {
+    // One bad row must not abort the whole tick — the next minute retries it.
+    // A WORKFLOW-lane row is still stamped, so a persistently failing row
+    // goes to the back of the round-robin instead of pinning the batch.
+    logger.error('Failed to reconcile execution', {
+      executionId: row.id,
+      tenantId: row.tenantId,
+      temporalWorkflowId: row.temporalWorkflowId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    if (lane === 'WORKFLOW') await stampChecked(row.id, checkedAt)
+    return false
+  }
+}
+
+/** Stamp a WORKFLOW-lane check; a failure only delays the round-robin. */
+async function stampChecked(id: string, checkedAt: Date): Promise<void> {
+  await db.workflowExecution
+    .updateMany({ where: { id, status: 'RUNNING' }, data: { reconciledAt: checkedAt } })
+    .catch((err: unknown) => {
+      logger.warn('Failed to stamp reconciledAt', {
+        executionId: id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
 }

@@ -83,7 +83,8 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     'List automations visible to the tenant (∪ GLOBAL); retired ones only with ?includeRetired=true',
     {
       tags: ['Workflows'],
-      responseDescription: '{data: WorkflowResponse[]} (each carries status: ACTIVE | RETIRED)',
+      responseDescription:
+        '{data: WorkflowResponse[]} (each carries status: ACTIVE | RETIRED, and kind: AUTOMATION | WORKFLOW — WORKFLOW is a durable Workflow, from the manifest\u2019s kind = "workflow")',
     },
   ),
   '/api/v1/workflows/requirements-summary': apiKeyGet(
@@ -2822,7 +2823,7 @@ export function getOpenApiSpec() {
           operationId: 'createWorkflowTrigger',
           summary: 'Attach an EVENT or SCHEDULE trigger to an automation (ManageWorkflowTriggers)',
           description:
-            'Body { kind: EVENT | SCHEDULE, eventType? (EVENT: a built-in or registered custom event type), filter? (EVENT: payload match), cronExpression? (SCHEDULE: 5-field UTC cron), enabled? (default true), dryRun? (default false) }. The trigger row belongs to the caller’s tenant, even on a GLOBAL automation. dryRun: the trigger fires on every matching event / cron minute, but every execution it starts is a dry run — reads live, mutations (send_sms, send_email, …) captured in the execution trace, never performed — so the wiring can be validated before it acts; PATCH dryRun:false to go live. Tenant-runner automations only: 400 DRY_RUN_UNSUPPORTED for a curated workflow. SDK: create_trigger; CLI: schedule create [--dry-run].',
+            'Body { kind: EVENT | SCHEDULE, eventType? (EVENT: a built-in or registered custom event type), filter? (EVENT: payload match), cronExpression? (SCHEDULE: 5-field UTC cron), enabled? (default true), dryRun? (default false) }. The trigger row belongs to the caller’s tenant, even on a GLOBAL automation. dryRun: the trigger fires on every matching event / cron minute, but every execution it starts is a dry run — reads live, mutations (send_sms, send_email, …) captured in the execution trace, never performed — so the wiring can be validated before it acts; PATCH dryRun:false to go live. Tenant-runner automations only: 400 DRY_RUN_UNSUPPORTED for a curated workflow or a durable Workflow (kind WORKFLOW). SDK: create_trigger; CLI: schedule create [--dry-run].',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2863,7 +2864,7 @@ export function getOpenApiSpec() {
           operationId: 'updateWorkflowTrigger',
           summary: 'Partially update a trigger — pause/resume, re-target (ManageWorkflowTriggers)',
           description:
-            'Body (all optional, at least one): { enabled, dryRun, eventType, filter, cronExpression }. enabled and dryRun apply to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. A dryRun trigger keeps firing, but every execution it starts is a dry run (reads live, mutations captured in the trace, never performed) — validate the wiring, then set dryRun:false; 400 DRY_RUN_UNSUPPORTED turning it on for a curated workflow. SDK: update_trigger; CLI: schedule disable|enable|dry-run [--off].',
+            'Body (all optional, at least one): { enabled, dryRun, eventType, filter, cronExpression }. enabled and dryRun apply to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. A dryRun trigger keeps firing, but every execution it starts is a dry run (reads live, mutations captured in the trace, never performed) — validate the wiring, then set dryRun:false; 400 DRY_RUN_UNSUPPORTED turning it on for a curated workflow or a durable Workflow. SDK: update_trigger; CLI: schedule disable|enable|dry-run [--off].',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [
@@ -2920,7 +2921,8 @@ export function getOpenApiSpec() {
             'Limits on tenant-runner automations: 429 CONCURRENCY_LIMIT (5 queued/running) and 429 DAILY_QUOTA_EXCEEDED (resets at midnight UTC); dry runs count toward neither. ' +
             'Event-triggered runs over the concurrency cap are delayed, not dropped: the event fires once a run finishes (an event still waiting after 24 hours is dropped). Over the daily quota, event-triggered runs are dropped. ' +
             '409 TENANT_MIGRATING (with Retry-After) while the platform moves the tenant’s automations into their own isolated Temporal namespace: new runs, dry runs included, are refused until in-flight runs finish (at most ~15 minutes); nothing was started, so retry. Event triggers lose nothing during a move; their events fire after it. ' +
-            'Every tenant’s tenant-runner automations run in the tenant’s own namespace. A tenant’s first publish (POST /api/v1/workflows) or fork requests it, and their 201 response carries data.namespace {status, ready}. Until it is ready (a few minutes): 409 TENANT_NAMESPACE_PROVISIONING (with Retry-After), dry runs included; nothing was started, so retry; event triggers wait and fire once it is ready. If provisioning failed: 503 TENANT_NAMESPACE_UNAVAILABLE; the platform retries on its own, and event-triggered runs of tenant-runner automations are skipped meanwhile. Curated automations are never affected.',
+            'Every tenant’s tenant-runner automations run in the tenant’s own namespace. A tenant’s first publish (POST /api/v1/workflows) or fork requests it, and their 201 response carries data.namespace {status, ready}. Until it is ready (a few minutes): 409 TENANT_NAMESPACE_PROVISIONING (with Retry-After), dry runs included; nothing was started, so retry; event triggers wait and fire once it is ready. If provisioning failed: 503 TENANT_NAMESPACE_UNAVAILABLE; the platform retries on its own, and event-triggered runs of tenant-runner automations are skipped meanwhile. Curated automations are never affected. ' +
+            'Durable Workflows (kind WORKFLOW, manifest kind = "workflow"): a real Temporal workflow (timers, wait_condition, signals, replay) that lives up to the manifest’s maxLifetimeDays (default 90, max 365), pinned for life to the exact published version it started on — publishing a newer version never changes a running one. They don’t count toward the 5-run concurrency cap; instead 429 OPEN_WORKFLOW_LIMIT at 500 open Workflows per tenant. They do count toward the daily quota. No dry runs (422 DRY_RUN_UNSUPPORTED). Right after a version is published its worker takes a minute or two to come up: 409 WORKFLOW_VERSION_STARTING (with Retry-After); nothing was started, so retry; event triggers wait (dropped after 24 hours) and a cron minute is skipped. The execution row closes (COMPLETED / FAILED / …) within a few minutes of the Workflow finishing. The kill switch (423 WORKFLOWS_DISABLED) blocks new starts only: running Workflows keep running.',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2932,11 +2934,15 @@ export function getOpenApiSpec() {
             },
             '409': {
               description:
-                'TENANT_MIGRATING (runs paused while the tenant’s automations move namespace) or TENANT_NAMESPACE_PROVISIONING (the tenant’s own namespace is still being created); honour Retry-After',
+                'TENANT_MIGRATING (runs paused while the tenant’s automations move namespace), TENANT_NAMESPACE_PROVISIONING (the tenant’s own namespace is still being created), or WORKFLOW_VERSION_STARTING (a just-published durable Workflow version’s worker is still coming up); honour Retry-After',
             },
-            '422': { description: 'DRY_RUN_UNSUPPORTED' },
+            '422': {
+              description: 'DRY_RUN_UNSUPPORTED (curated automations and durable Workflows)',
+            },
             '423': { description: 'WORKFLOWS_DISABLED for this tenant' },
-            '429': { description: 'CONCURRENCY_LIMIT | DAILY_QUOTA_EXCEEDED' },
+            '429': {
+              description: 'CONCURRENCY_LIMIT | DAILY_QUOTA_EXCEEDED | OPEN_WORKFLOW_LIMIT',
+            },
             '502': { description: 'TEMPORAL_START_FAILED' },
             '503': {
               description:
