@@ -109,6 +109,10 @@ export function tenantTaskQueue(tenantId: string): string {
   return `pegasus-tenant-${tenantId}-${tenantTaskQueueEnv()}`
 }
 
+/** Durable Workflow lifetime bounds (Phase 3c): default 90 days, platform maximum 365. */
+export const DEFAULT_MAX_LIFETIME_DAYS = 90
+export const MAX_LIFETIME_DAYS = 365
+
 /**
  * The task queue ONE durable Workflow's workers poll (Phase 3c), in the
  * tenant's own namespace. One queue per workflow name, because a task queue

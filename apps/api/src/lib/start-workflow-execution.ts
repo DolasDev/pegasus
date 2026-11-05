@@ -71,7 +71,12 @@ import {
   MIGRATING_STATUSES,
 } from '../repositories/tenant-temporal-namespace.repository'
 import { temporalTaskQueue, withTemporalClient } from './temporal-client'
-import { resolveWorkflowRoute, tenantTaskQueue, workflowTaskQueue } from './workflow-route'
+import {
+  DEFAULT_MAX_LIFETIME_DAYS,
+  resolveWorkflowRoute,
+  tenantTaskQueue,
+  workflowTaskQueue,
+} from './workflow-route'
 import { ensureTenantRunner } from './tenant-runner'
 import { requestTenantNamespace, tenantNamespacesConfigured } from './tenant-namespace-request'
 import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
@@ -110,9 +115,6 @@ function openWorkflowCap(env: Record<string, string | undefined> = process.env):
   const n = Number.parseInt(raw, 10)
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_OPEN_WORKFLOW_CAP
 }
-
-/** Durable Workflow lifetime when the manifest doesn't declare maxLifetimeDays. */
-const DEFAULT_MAX_LIFETIME_DAYS = 90
 
 /**
  * Temporal's refusal of a start pinned to a version no worker has polled yet
@@ -916,7 +918,30 @@ export async function startWorkflowExecution(
     // already launched above and registers the version within a minute or
     // two; the caller retries.
     if (durable && isPinnedVersionNotRegistered(err)) {
-      await db.workflowExecution.delete({ where: { id: inserted.id } }).catch(() => null)
+      // deleteMany on (id, QUEUED): idempotent, and it can never remove a row
+      // that somehow started. If it fails, the row must still be CLOSED: a
+      // stranded QUEUED row is never reconciled, and it would hold an open-
+      // Workflow slot, keep the runner sweep demanding a runner, and keep the
+      // runner's idle hold on — for an execution that never existed.
+      const removed = await db.workflowExecution
+        .deleteMany({ where: { id: inserted.id, status: 'QUEUED' } })
+        .catch((deleteErr: unknown) => {
+          logger.error('Failed to delete a never-started durable workflow row', {
+            executionId: inserted.id,
+            error: deleteErr instanceof Error ? deleteErr.message : String(deleteErr),
+          })
+          return null
+        })
+      if (removed === null) {
+        await createWorkflowExecutionRepository(db)
+          .markTerminal(inserted.id, {
+            status: 'FAILED',
+            errorMessage:
+              'Not started: this Workflow version was just published and its worker was not ready yet. Run it again.',
+            finishedAt: new Date(),
+          })
+          .catch(() => null)
+      }
       logger.warn('Durable workflow version not registered yet — start deferred', {
         workflowId: workflow.id,
         workflowName: workflow.name,

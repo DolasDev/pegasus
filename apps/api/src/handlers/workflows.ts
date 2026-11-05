@@ -50,7 +50,7 @@ import { createWorkflowTriggerRepository } from '../repositories/workflow-trigge
 import { createTenantEventTypeRepository } from '../repositories/tenant-event-type.repository'
 import { loadPresenceSets, resolveAgainst, countMissing } from '../lib/workflow-secret-requirements'
 import { currentWorkflowIds } from '../lib/workflow-current-version'
-import { resolveWorkflowRoute } from '../lib/workflow-route'
+import { MAX_LIFETIME_DAYS, resolveWorkflowRoute } from '../lib/workflow-route'
 import { requestTenantNamespaceQuietly } from '../lib/tenant-namespace-request'
 import { warmDurableWorkflowVersion } from '../lib/tenant-runner'
 import { validateFilterExpr } from '../lib/event-filter'
@@ -123,10 +123,6 @@ const RequirementSchema = z
 
 /** A signal name a durable Workflow declares (a Python identifier: it names a @workflow.signal). */
 const SIGNAL_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
-
-/** Durable Workflow lifetime bounds (Phase 3c): default 90 days, platform maximum 365. */
-export const DEFAULT_MAX_LIFETIME_DAYS = 90
-export const MAX_LIFETIME_DAYS = 365
 
 const ManifestSchema = z
   .object({

@@ -1199,6 +1199,14 @@ describe('durable Workflows on the broker (Phase 3c)', () => {
       expect((await grant(TENANT_A_TOKEN)).status).toBe(200)
     })
 
+    it('only a newer WORKFLOW row of the name supersedes (the runner rule)', async () => {
+      mockWorkflowFindUnique.mockResolvedValue(durableRow())
+      await grant(TENANT_A_TOKEN)
+      expect(mockWorkflowCount).toHaveBeenCalledWith({
+        where: expect.objectContaining({ name: 'lifecycle', kind: 'WORKFLOW' }),
+      })
+    })
+
     it('404s a superseded row with nothing open', async () => {
       mockWorkflowFindUnique.mockResolvedValue(durableRow())
       mockWorkflowCount.mockResolvedValue(1)

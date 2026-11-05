@@ -235,7 +235,7 @@ const runningExecution = {
 function fakeDb(countValue = 0, workflowsDisabled = false): PrismaClient {
   const db = {
     tenantUser: { create: mockTenantUserCreate },
-    workflowExecution: { count: mockExecutionCount, delete: mockExecutionDelete },
+    workflowExecution: { count: mockExecutionCount, deleteMany: mockExecutionDelete },
     // Kill-switch check (Phase 3 Unit 11) — default OFF.
     tenant: { findUnique: mockTenantFindUnique },
   } as unknown as PrismaClient
@@ -270,7 +270,7 @@ beforeEach(() => {
   mockWorkflowRepo.attachRuntimeToken.mockResolvedValue(curatedWorkflow)
   mockEnsureTenantRunner.mockResolvedValue({ outcome: 'SKIPPED_UNCONFIGURED' })
   mockCwSend.mockResolvedValue({})
-  mockExecutionDelete.mockResolvedValue({ id: 'exec-1' })
+  mockExecutionDelete.mockResolvedValue({ count: 1 })
   // Default: kill switch OFF.
   mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
   mockNamespacesConfigured.mockReturnValue(false)
@@ -1319,7 +1319,7 @@ describe('durable Workflows (kind WORKFLOW, Phase 3c)', () => {
     const result = await startWorkflowExecution(
       {
         ...fakeDb(0),
-        workflowExecution: { count: mockExecutionCount, delete: mockExecutionDelete },
+        workflowExecution: { count: mockExecutionCount, deleteMany: mockExecutionDelete },
       } as unknown as PrismaClient,
       {
         workflow: durableWorkflow,
@@ -1375,8 +1375,26 @@ describe('durable Workflows (kind WORKFLOW, Phase 3c)', () => {
     const result = await run()
 
     expect(result.outcome).toBe('WORKFLOW_VERSION_STARTING')
-    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1' } })
+    // QUEUED-only and idempotent: it can never remove a row that started.
+    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1', status: 'QUEUED' } })
     expect(mockExecutionRepo.markTerminal).not.toHaveBeenCalled()
+  })
+
+  it('a failed delete still CLOSES the never-started row (no phantom open Workflow)', async () => {
+    // A stranded QUEUED row is never reconciled: it would hold an open-Workflow
+    // slot and keep the runner up for an execution that never existed.
+    mockTemporalStart.mockRejectedValue(
+      new Error("Pinned version 'lifecycle:fff' is not present in task queue 'q'"),
+    )
+    mockExecutionDelete.mockRejectedValue(new Error('db blip'))
+
+    const result = await run()
+
+    expect(result.outcome).toBe('WORKFLOW_VERSION_STARTING')
+    expect(mockExecutionRepo.markTerminal).toHaveBeenCalledWith(
+      'exec-1',
+      expect.objectContaining({ status: 'FAILED' }),
+    )
   })
 
   it('any other start failure of a Workflow is START_FAILED as before', async () => {

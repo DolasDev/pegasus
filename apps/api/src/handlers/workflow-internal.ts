@@ -742,6 +742,9 @@ workflowInternalHandler.post(
       where: {
         tenantId: row.tenantId,
         name: row.name,
+        // The runner's rule (select_workflow_versions): newest WORKFLOW row of
+        // the name — a later Automation of the same name doesn't supersede it.
+        kind: 'WORKFLOW',
         executable: true,
         status: 'ACTIVE',
         createdAt: { gt: row.createdAt },

@@ -54,7 +54,7 @@ const {
   mockNamespaceUpdateMany,
   mockExecutionDelete,
 } = vi.hoisted(() => ({
-  mockExecutionDelete: vi.fn(async () => ({ id: 'exec-1' })),
+  mockExecutionDelete: vi.fn(async () => ({ count: 1 })),
   mockNamespaceFindMany: vi.fn(async (): Promise<unknown[]> => []),
   mockNamespaceFindUnique: vi.fn(async (): Promise<unknown> => null),
   mockNamespaceUpdateMany: vi.fn(async () => ({ count: 1 })),
@@ -113,7 +113,7 @@ vi.mock('../db', () => {
       update: mockExecutionUpdate,
       count: mockExecutionCount,
       groupBy: mockExecutionGroupBy,
-      delete: mockExecutionDelete,
+      deleteMany: mockExecutionDelete,
     },
     // Kill-switch check in start-workflow-execution.ts.
     tenant: {
@@ -1693,7 +1693,7 @@ describe('durable Workflows (Phase 3c)', () => {
 
     expect(out.fired).toBe(0)
     expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
-    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1' } })
+    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1', status: 'QUEUED' } })
     expect(emittedMetrics()).toContainEqual(
       expect.objectContaining({
         MetricName: 'WorkflowTriggerSkipped',
