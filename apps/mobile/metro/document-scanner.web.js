@@ -7,13 +7,12 @@
 // the entire `shipment/[orderNum]` route: the screen renders as a blank white
 // page with "Cannot read properties of undefined (reading 'getEnforcing')".
 //
-// The store-screenshot capture needs that screen (it is where documents live),
-// so metro.config.js aliases this file in — but ONLY for a web bundle and ONLY
-// when PEGASUS_STORE_CAPTURE=1. Device builds resolve the real native module,
-// unchanged.
+// metro.config.js aliases this file in for EVERY web bundle — `expo start --web`
+// in development and the store-screenshot export alike. Device (ios/android)
+// builds resolve the real native module, unchanged.
 //
-// Scanning is a camera flow that cannot happen in a headless browser anyway, so
-// the stub only has to be import-safe and type-shaped. Calling scanDocument
+// Scanning is a native camera flow with no browser equivalent, so the stub only
+// has to be import-safe and type-shaped. Calling scanDocument
 // returns a cancelled response, which is the same thing the real plugin returns
 // when the user backs out of the scanner.
 

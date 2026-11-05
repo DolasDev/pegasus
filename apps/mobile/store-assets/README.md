@@ -100,12 +100,12 @@ after a real login.
    link bounces to `(auth)` and lands on the dashboard. Add new screens to the
    `SCREENS` flow with a `tapText`/`tapLabel`, not a path.
 
-2. **`store:export` sets `PEGASUS_STORE_CAPTURE=1`**, which makes
-   `metro.config.js` swap `react-native-document-scanner-plugin` for a web stub.
-   The real module calls `TurboModuleRegistry.getEnforcing` at module scope with
-   no web implementation; without the stub it throws on import and blanks the
-   entire shipment route. Device and store builds are unaffected — the alias is
-   gated on both `platform === 'web'` and that env var.
+2. **Web bundles get a stub for `react-native-document-scanner-plugin`.** The
+   real module calls `TurboModuleRegistry.getEnforcing` at module scope with no
+   web implementation; without the stub it throws on import and blanks the
+   entire shipment route. `metro.config.js` aliases `metro/document-scanner.web.js`
+   for every `platform === 'web'` bundle (this export and `expo start --web`
+   alike); device and store builds resolve the real module.
 
 3. **One react-native-web layout defect is patched at capture time.** RNW gives
    the trips filter-chip ScrollView a stale explicit height, which
