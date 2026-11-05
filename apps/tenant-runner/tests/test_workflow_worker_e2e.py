@@ -16,12 +16,14 @@ Versioning. Pins the properties Phase 3c rests on:
   a runner that idle-exits must not make the next start fail;
 * a rotated key reaches a live worker over its control channel.
 
-Skipped when the dev server can't be downloaded/started (offline).
+Skipped when the dev server can't be downloaded/started (offline) — except
+with ``PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER=1`` (set in CI), where that fails.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import textwrap
 import uuid
@@ -179,6 +181,11 @@ async def env() -> AsyncIterator[WorkflowEnvironment]:
             dev_server_extra_args=WDV_DYNAMIC_CONFIG
         )
     except Exception as exc:  # pragma: no cover — environment-specific
+        # This test is the gate for design B (pin at start). Skipping is right
+        # offline, but in CI a skip would be a silent green: CI sets
+        # PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER=1 and a failed start fails.
+        if os.environ.get("PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER") == "1":
+            pytest.fail(f"local Temporal dev server required but unavailable: {exc}")
         pytest.skip(f"local Temporal dev server unavailable: {exc}")
     try:
         yield environment

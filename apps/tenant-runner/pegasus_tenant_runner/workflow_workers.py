@@ -149,7 +149,12 @@ class WorkflowWorkerSupervisor:
         backoff_base_seconds: float = 2.0,
         backoff_max_seconds: float = 300.0,
         stable_after_seconds: float = 300.0,
-        stop_grace_seconds: float = 20.0,
+        # Per escalation step (shutdown line → SIGTERM → SIGKILL). The whole
+        # runner drain must fit ECS's stopTimeout (Fargate default 30 s, not
+        # overridden for the runner): proxy worker 5 s + 8 + 8 s here ≈ 21 s.
+        # A drain cut short loses nothing (open Workflows replay on the next
+        # runner), but a clean one lets in-flight activities finish.
+        stop_grace_seconds: float = 8.0,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._broker = broker
@@ -351,6 +356,11 @@ class WorkflowWorkerSupervisor:
         child = await self._spawn(prepared)
         slot.child = child
         started = self._clock()
+        if slot.stopping:
+            # _stop ran while we were spawning (slot.child was still None, so
+            # it had nothing to signal): stop this child ourselves.
+            with contextlib.suppress(ProcessLookupError):
+                child.kill()
         pumps = [
             asyncio.create_task(self._pump(child.stdout, wf, "stdout")),
             asyncio.create_task(self._pump(child.stderr, wf, "stderr")),
@@ -365,6 +375,12 @@ class WorkflowWorkerSupervisor:
             code = await child.wait()
         finally:
             slot.child = None
+            # Cancelled mid-wait (a stop that timed out on us): never leave a
+            # child holding the tenant key behind, and give the pumps their
+            # EOF — they read until the child's pipes close.
+            if child.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    child.kill()
             await asyncio.gather(*pumps, return_exceptions=True)
 
         ran_for = self._clock() - started

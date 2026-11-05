@@ -9,6 +9,7 @@ fan-out and draining.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import json
 import logging
@@ -351,3 +352,39 @@ async def test_worker_output_is_rate_limited(
     assert len(logged) == 120
     assert suppressed.lines == 380  # type: ignore[attr-defined]
     await h.supervisor.drain_all()
+
+
+async def test_stop_during_a_slow_spawn_leaves_no_child_running(tmp_path: Path) -> None:
+    h = Harness(tmp_path)
+    release = asyncio.Event()
+    real_spawn = h._spawn
+
+    async def slow_spawn(prepared: PreparedWorkflow) -> FakeChild:
+        await release.wait()
+        return await real_spawn(prepared)
+
+    h.supervisor._spawn = slow_spawn  # type: ignore[assignment]
+    await h.supervisor.reconcile([_row("w1")])
+    await h.settle()
+    drain = asyncio.create_task(h.supervisor.drain_all())
+    await h.settle()
+    release.set()
+    await asyncio.wait_for(drain, timeout=2)
+    assert len(h.children) == 1
+    assert h.children[0].returncode is not None
+
+
+async def test_cancelled_supervision_kills_its_child(tmp_path: Path) -> None:
+    """A stop whose grace ran out cancels the task: the child must not outlive it."""
+    h = Harness(tmp_path, obeys_shutdown=False)
+    await h.supervisor.reconcile([_row("w1")])
+    await h.settle(lambda: h.children)
+    child = h.children[0]
+    child.terminate = lambda: None  # type: ignore[method-assign]
+    child.kill = lambda: child.exit(-9)  # type: ignore[method-assign]
+    slot = next(iter(h.supervisor._slots.values()))
+    assert slot.task is not None
+    slot.task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await asyncio.wait_for(slot.task, timeout=2)
+    assert child.returncode == -9

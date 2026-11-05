@@ -378,3 +378,14 @@ task_queue, workflows=[cls], activities=[…], deployment_config=…PINNED)`
 - **Probe (Q1): BLOCKED on AWS SSO** (staging token expired 2026-11-05; the
   user was asked to log in). Not on 3c.1's path; design B no longer depends
   on it.
+- **2026-11-05: review fixes on 3c.1.** A stop that lands while a worker is
+  spawning could hang the drain and orphan a key-holding child: fixed (kill
+  on cancel, kill if stopped mid-spawn; 2 tests that fail without the fix).
+  Drain budget sized to ECS's default 30 s `stopTimeout` (driver graceful 6 s,
+  supervisor 8 s per step). CI sets `PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER=1` so
+  the design-B gate fails instead of skipping. **The one prod-visible change
+  of 3c.1:** every live runner re-lists `/tenant-workflows` once a minute.
+- **Resume path for 3c.2:** 3c.1's PR tears this worktree down after it
+  merges. Start 3c.2 in a fresh worktree off `main`
+  (`scripts/new-worktree.sh feat durable-workflows-3c2`) with this plan file;
+  the PR 3c.2 section above is its checklist.

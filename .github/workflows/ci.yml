@@ -224,6 +224,10 @@ jobs:
 
       - name: Pytest
         working-directory: apps/tenant-runner
+        # The durable-Workflow e2e downloads a Temporal dev server and skips
+        # offline; here a skip would be a silent green on the design-B gate.
+        env:
+          PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER: '1'
         run: python -m pytest -q
 
       # pip-audit is Python's counterpart to the Node `audit-ci` gate above.

@@ -50,8 +50,10 @@ from typing import Any
 _PR_SET_DUMPABLE = 4
 _PR_GET_DUMPABLE = 3
 
-#: How long a draining worker lets in-flight activities finish.
-_GRACEFUL_SHUTDOWN = timedelta(seconds=10)
+#: How long a draining worker lets in-flight activities finish. Must fit the
+#: shim's per-step stop grace (workflow_workers.py, 8 s) so a normal drain
+#: ends on the shutdown line, never on SIGTERM/SIGKILL.
+_GRACEFUL_SHUTDOWN = timedelta(seconds=6)
 
 
 def _set_non_dumpable() -> None:
