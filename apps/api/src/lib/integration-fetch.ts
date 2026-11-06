@@ -336,3 +336,188 @@ function checkPaging(name: string, op: FetchOperation): FetchProblem[] {
   }
   return problems
 }
+
+// ---------------------------------------------------------------------------
+// RUNTIME half — resolving a published block to one operation, and filling its
+// templates. Both pure, so they are fully testable without an outbound call.
+//
+// WHERE THE BLOCK COMES FROM. Off the tenant's scoped IntegrationConfig row
+// (`integrationConfigRepository.findActiveForScope`), exactly as the ingress
+// endpoint reads `inbound` off the row — NOT off the resolved
+// IntegrationDefinition, which has no `fetch` field and does not need one.
+// `findActiveForScope` already implements tenant-overlay-wins-over-GLOBAL, which
+// is the behavior a routing block has to have.
+//
+// The definition supplies only `capabilities`, for the runtime name check below.
+// ---------------------------------------------------------------------------
+
+/** Why a `fetch` operation could not be resolved. Typed so the handler maps each to a status. */
+export type FetchResolveFailure =
+  | { kind: 'noFetchBlock' }
+  | { kind: 'unknownOperation'; declared: string[] }
+  | { kind: 'notACapability'; capabilities: string[] }
+  | { kind: 'malformedBlock'; problems: FetchProblem[] }
+
+export type FetchResolveResult =
+  { ok: true; operation: FetchOperation } | { ok: false; failure: FetchResolveFailure }
+
+/**
+ * Resolve one named operation out of a stored `fetch` block.
+ *
+ * Re-checks the capability name even though the publish gate already did. That
+ * is deliberate defence in depth, not redundancy: a row can predate a floor
+ * that dropped a capability, and a stored block is data we did not validate on
+ * this request. The gate is the authoring guard; this is the runtime guard.
+ */
+export function resolveFetchOperation(
+  rawBlock: unknown,
+  capabilities: readonly string[] | undefined,
+  operation: string,
+): FetchResolveResult {
+  if (rawBlock == null) return { ok: false, failure: { kind: 'noFetchBlock' } }
+
+  const parsed = FetchBlockSchema.safeParse(rawBlock)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      failure: {
+        kind: 'malformedBlock',
+        problems: parsed.error.issues.map((i) => ({
+          where: i.path.join('.') || '(root)',
+          problem: i.message,
+        })),
+      },
+    }
+  }
+
+  const block = parsed.data
+  const op = block[operation]
+  if (!op) {
+    return {
+      ok: false,
+      failure: { kind: 'unknownOperation', declared: Object.keys(block).sort() },
+    }
+  }
+
+  // A stored op whose name is no longer a declared capability must not run.
+  if (!(capabilities ?? []).includes(operation)) {
+    return {
+      ok: false,
+      failure: { kind: 'notACapability', capabilities: [...(capabilities ?? [])].sort() },
+    }
+  }
+
+  return { ok: true, operation: op }
+}
+
+/** A template that could not be filled, or a value that may not be substituted. */
+export interface FetchSubstituteProblem {
+  where: string
+  template: string
+  problem: string
+}
+
+export type FetchSubstituteResult =
+  { ok: true; operation: FetchOperation } | { ok: false; problems: FetchSubstituteProblem[] }
+
+/**
+ * Characters a PATH substitution may not introduce. A descriptor exists to
+ * constrain WHICH endpoint is called; letting a caller-supplied param inject a
+ * path segment, a query string or a fragment turns it back into an
+ * arbitrary-URL builder, which is the whole thing `fetch` is meant to prevent.
+ * Query and body values are exempt — they are encoded downstream by
+ * URLSearchParams / JSON, so they cannot change the request's shape.
+ */
+const PATH_FORBIDDEN_RE = /[/?#]/
+
+/**
+ * Fill `{{param}}` and `{{config:KEY}}` in an operation's path, query, headers
+ * and body.
+ *
+ * A template that cannot be filled is an ERROR, never a pass-through. This is
+ * the load-bearing rule: a leftover `{{settlementDate}}` on the wire comes back
+ * as an opaque partner 400, so the real cause (a caller that forgot a param)
+ * would be invisible. Substitution is single-pass — a substituted VALUE that
+ * happens to look like a template is left alone, so no caller input can expand
+ * into another template.
+ */
+export function substituteFetchTemplates(
+  operation: FetchOperation,
+  params: Readonly<Record<string, string | number | boolean>>,
+  configs: Readonly<Record<string, string>> = {},
+): FetchSubstituteResult {
+  const problems: FetchSubstituteProblem[] = []
+
+  const fill = (text: string, where: string, isPath: boolean): string =>
+    text.replace(TEMPLATE_SCAN_RE, (match) => {
+      if (!FETCH_TEMPLATE_RE.test(match)) {
+        // The gate refuses these at publish; a stored block can still predate it.
+        problems.push({
+          where,
+          template: match,
+          problem: 'not a permitted substitution; only {{param}} and {{config:KEY}} are allowed',
+        })
+        return match
+      }
+      const inner = match.slice(2, -2)
+      const isConfig = inner.startsWith('config:')
+      const key = isConfig ? inner.slice('config:'.length) : inner
+      const raw = isConfig ? configs[key] : params[key]
+      if (raw === undefined) {
+        problems.push({
+          where,
+          template: match,
+          problem: isConfig
+            ? `config '${key}' is not set for this integration`
+            : `required parameter '${key}' was not supplied`,
+        })
+        return match
+      }
+      const value = String(raw)
+      if (isPath && PATH_FORBIDDEN_RE.test(value)) {
+        problems.push({
+          where,
+          template: match,
+          problem: `value for '${key}' may not contain '/', '?' or '#' in a path — it would change which endpoint is called`,
+        })
+        return match
+      }
+      return value
+    })
+
+  const out: FetchOperation = { ...operation, path: fill(operation.path, 'path', true) }
+
+  if (operation.query) {
+    const query: Record<string, string> = {}
+    for (const [k, v] of Object.entries(operation.query)) query[k] = fill(v, `query.${k}`, false)
+    out.query = query
+  }
+  if (operation.headers) {
+    const headers: Record<string, string> = {}
+    for (const [k, v] of Object.entries(operation.headers)) {
+      headers[k] = fill(v, `headers.${k}`, false)
+    }
+    out.headers = headers
+  }
+  if (operation.body !== undefined) {
+    out.body = fillBody(operation.body, 'body', fill)
+  }
+
+  return problems.length ? { ok: false, problems } : { ok: true, operation: out }
+}
+
+/** Fill templates in every string leaf of a JSON body, preserving its shape. */
+function fillBody(
+  value: unknown,
+  path: string,
+  fill: (text: string, where: string, isPath: boolean) => string,
+): unknown {
+  if (typeof value === 'string') return fill(value, path, false)
+  if (Array.isArray(value)) return value.map((v, i) => fillBody(v, `${path}[${i}]`, fill))
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, fillBody(v, `${path}.${k}`, fill)]),
+    )
+  }
+  return value
+}

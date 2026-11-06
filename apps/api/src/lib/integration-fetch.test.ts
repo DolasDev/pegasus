@@ -4,6 +4,8 @@ import {
   fetchBlockJsonSchema,
   checkFetchBlock,
   FETCH_TEMPLATE_RE,
+  resolveFetchOperation,
+  substituteFetchTemplates,
   type FetchBlock,
 } from './integration-fetch'
 
@@ -371,5 +373,198 @@ describe('checkFetchBlock — reports every problem, not just the first', () => 
     // unknown capability + templated secret + reserved header + 2 paging gaps
     expect(problems.length).toBe(5)
     expect(new Set(problems.map((p) => p.where)).size).toBe(5)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Runtime half: resolving one operation out of a stored block, and filling its
+// templates. Pure, so no outbound call is involved.
+// ---------------------------------------------------------------------------
+
+describe('resolveFetchOperation', () => {
+  it('resolves a declared operation', () => {
+    const r = resolveFetchOperation(atlasSettlements, CAPS, 'settlements')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.operation.path).toBe('/settlement/v1/settlement')
+  })
+
+  it('reports noFetchBlock for a config that publishes none', () => {
+    for (const empty of [null, undefined]) {
+      const r = resolveFetchOperation(empty, CAPS, 'settlements')
+      expect(r).toEqual({ ok: false, failure: { kind: 'noFetchBlock' } })
+    }
+  })
+
+  it('reports unknownOperation and lists what IS declared', () => {
+    const r = resolveFetchOperation(atlasSettlements, CAPS, 'documents')
+    expect(r.ok).toBe(false)
+    if (!r.ok && r.failure.kind === 'unknownOperation') {
+      expect(r.failure.declared).toEqual(['settlements'])
+    } else {
+      throw new Error('expected unknownOperation')
+    }
+  })
+
+  it('refuses a stored op whose name is no longer a declared capability', () => {
+    // Defence in depth: the gate accepted this row when the floor still declared
+    // the capability. A floor that later dropped it must stop the operation
+    // running, rather than the row quietly outliving the contract.
+    const r = resolveFetchOperation(atlasSettlements, [], 'settlements')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.failure.kind).toBe('notACapability')
+  })
+
+  it('reports malformedBlock rather than throwing on a corrupt stored block', () => {
+    const r = resolveFetchOperation({ settlements: { method: 'TELEPORT' } }, CAPS, 'settlements')
+    expect(r.ok).toBe(false)
+    if (!r.ok && r.failure.kind === 'malformedBlock') {
+      expect(r.failure.problems.length).toBeGreaterThan(0)
+    } else {
+      throw new Error('expected malformedBlock')
+    }
+  })
+})
+
+describe('substituteFetchTemplates', () => {
+  const op = parse(atlasSettlements)['settlements']!
+
+  it('fills a query param', () => {
+    const r = substituteFetchTemplates(op, { settlementDate: '2026-11-06' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.operation.query).toEqual({ settlementDate: '2026-11-06' })
+  })
+
+  it('stringifies non-string params', () => {
+    const numeric = parse({
+      settlements: { method: 'GET', path: '/s', query: { page: '{{n}}', flag: '{{b}}' } },
+    })['settlements']!
+    const r = substituteFetchTemplates(numeric, { n: 7, b: true })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.operation.query).toEqual({ page: '7', flag: 'true' })
+  })
+
+  it('ERRORS on a missing param instead of leaking the template to the wire', () => {
+    // The load-bearing case: a leftover {{settlementDate}} comes back as an
+    // opaque partner 400, so the real cause would be invisible.
+    const r = substituteFetchTemplates(op, {})
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.problems).toHaveLength(1)
+      expect(r.problems[0]?.where).toBe('query.settlementDate')
+      expect(r.problems[0]?.problem).toContain("'settlementDate' was not supplied")
+    }
+  })
+
+  it('fills {{config:KEY}} from the resolved config map, and errors when unset', () => {
+    const withConfig = parse({
+      settlements: { method: 'GET', path: '/s', query: { vendor: '{{config:VENDOR_ID}}' } },
+    })['settlements']!
+    const ok = substituteFetchTemplates(withConfig, {}, { VENDOR_ID: 'A123' })
+    expect(ok.ok).toBe(true)
+    if (ok.ok) expect(ok.operation.query).toEqual({ vendor: 'A123' })
+
+    const missing = substituteFetchTemplates(withConfig, {}, {})
+    expect(missing.ok).toBe(false)
+    if (!missing.ok) expect(missing.problems[0]?.problem).toContain('VENDOR_ID')
+  })
+
+  it('does NOT let a param be mistaken for a config, or vice versa', () => {
+    const withConfig = parse({
+      settlements: { method: 'GET', path: '/s', query: { v: '{{config:K}}' } },
+    })['settlements']!
+    // A param named K must not satisfy {{config:K}}.
+    const r = substituteFetchTemplates(withConfig, { K: 'from-params' }, {})
+    expect(r.ok).toBe(false)
+  })
+
+  it('substitutes in the path', () => {
+    const pathOp = parse({
+      settlements: { method: 'GET', path: '/settlement/v1/{{id}}' },
+    })['settlements']!
+    const r = substituteFetchTemplates(pathOp, { id: 'abc' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.operation.path).toBe('/settlement/v1/abc')
+  })
+
+  it.each([
+    ['a path segment', 'a/b'],
+    ['a query string', 'a?x=1'],
+    ['a fragment', 'a#frag'],
+  ])('refuses %s injected into a PATH param', (_label, value) => {
+    // A descriptor exists to constrain WHICH endpoint is called. Allowing this
+    // would turn it back into an arbitrary-URL builder.
+    const pathOp = parse({
+      settlements: { method: 'GET', path: '/settlement/v1/{{id}}' },
+    })['settlements']!
+    const r = substituteFetchTemplates(pathOp, { id: value })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.problems[0]?.problem).toContain('change which endpoint is called')
+  })
+
+  it('ALLOWS those characters in a query value — encoded downstream, shape unchanged', () => {
+    const r = substituteFetchTemplates(op, { settlementDate: 'a/b?c#d' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.operation.query).toEqual({ settlementDate: 'a/b?c#d' })
+  })
+
+  it('does not recursively expand a substituted value that looks like a template', () => {
+    const r = substituteFetchTemplates(op, { settlementDate: '{{config:SECRETISH}}' })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.operation.query).toEqual({ settlementDate: '{{config:SECRETISH}}' })
+  })
+
+  it('fills a nested POST body and preserves non-string leaves', () => {
+    const bodyOp = parse({
+      settlements: {
+        method: 'POST',
+        path: '/s',
+        body: { criteria: [{ date: '{{d}}', limit: 50, deep: { note: 'x{{d}}y' } }], flag: true },
+      },
+    })['settlements']!
+    const r = substituteFetchTemplates(bodyOp, { d: '2026-11-06' })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.operation.body).toEqual({
+        criteria: [{ date: '2026-11-06', limit: 50, deep: { note: 'x2026-11-06y' } }],
+        flag: true,
+      })
+    }
+  })
+
+  it('fills headers but leaves secretHeaders alone (they are key names)', () => {
+    const hOp = parse({
+      settlements: {
+        method: 'GET',
+        path: '/s',
+        headers: { 'X-Caller': '{{who}}' },
+        secretHeaders: { 'Ocp-Apim-Subscription-Key': 'ATLAS_SUB_KEY' },
+      },
+    })['settlements']!
+    const r = substituteFetchTemplates(hOp, { who: 'pegasus' })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.operation.headers).toEqual({ 'X-Caller': 'pegasus' })
+      expect(r.operation.secretHeaders).toEqual({
+        'Ocp-Apim-Subscription-Key': 'ATLAS_SUB_KEY',
+      })
+    }
+  })
+
+  it('reports EVERY unfillable template, not just the first', () => {
+    const multi = parse({
+      settlements: { method: 'GET', path: '/s/{{a}}', query: { x: '{{b}}', y: '{{c}}' } },
+    })['settlements']!
+    const r = substituteFetchTemplates(multi, {})
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.problems.map((p) => p.where)).toEqual(['path', 'query.x', 'query.y'])
+  })
+
+  it('leaves an operation with no templates untouched', () => {
+    const plain = parse({
+      settlements: { method: 'GET', path: '/s', query: { format: 'json' } },
+    })['settlements']!
+    const r = substituteFetchTemplates(plain, {})
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.operation).toEqual(plain)
   })
 })
