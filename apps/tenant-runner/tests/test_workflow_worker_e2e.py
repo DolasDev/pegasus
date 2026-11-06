@@ -279,3 +279,56 @@ async def test_durable_workflow_lifecycle_against_a_real_server(
 
 async def _assert(condition: bool) -> None:
     assert condition
+
+
+async def test_drain_with_an_open_workflow_exits_cleanly(
+    env: WorkflowEnvironment, tmp_path: Path
+) -> None:
+    """A runner stop (SIGTERM → drain_all) while a Workflow is open mid-wait.
+
+    In the Phase 3c staging acceptance (Temporal Cloud) every such drain logged
+    the worker subprocess exiting -11 (SIGSEGV) ~40 ms after the shutdown line,
+    while drains after all Workflows had closed exited 0. It does NOT reproduce
+    against the dev server (nor in python:3.12-slim, nor with pegasus_workflows
+    in the sandbox), so this pins the contract — a drain with an open Workflow
+    exits 0 and the Workflow finishes on the next worker — rather than the
+    crash. The lifecycle test above only asserted ``returncode is not None``.
+    """
+    client = env.client
+    preparer = LocalPreparer(tmp_path)
+    preparer.install("w1", "v1")
+    sha = "1" * 64
+    creds = TemporalCredentials(
+        address=client.service_client.config.target_host, namespace=client.namespace, api_key=""
+    )
+    spawned: list[Any] = []
+
+    async def spawn(prepared: PreparedWorkflow) -> Any:
+        from pegasus_tenant_runner.workflow_workers import spawn_worker_process
+
+        child = await spawn_worker_process(prepared)
+        spawned.append(child)
+        return child
+
+    supervisor = WorkflowWorkerSupervisor(
+        broker=GrantBroker(),  # type: ignore[arg-type]
+        preparer=preparer,  # type: ignore[arg-type]
+        credentials=lambda: creds,
+        tenant_task_queue=TENANT_QUEUE,
+        api_base_url="http://api.invalid",
+        spawn=spawn,
+        backoff_base_seconds=0.2,
+        stop_grace_seconds=15,
+    )
+    try:
+        await supervisor.reconcile([_row("w1", sha, "2026-06-01T00:00:00Z")])
+        handle = await _eventually(lambda: _start_pinned(client, sha))
+        # Past the 1 s timer, parked in wait_condition: open and cached.
+        await asyncio.sleep(3)
+        await supervisor.drain_all()
+        assert [c.returncode for c in spawned] == [0]
+        # And it still finishes on the next worker.
+        await supervisor.reconcile([_row("w1", sha, "2026-06-01T00:00:00Z", open_executions=1)])
+        assert await _finish(handle) == "done:v1:token"
+    finally:
+        await supervisor.drain_all()

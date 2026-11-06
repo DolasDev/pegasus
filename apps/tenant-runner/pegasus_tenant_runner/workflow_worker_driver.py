@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import ctypes
+import faulthandler
 import importlib
 import json
 import os
@@ -209,6 +210,12 @@ async def _serve(request: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    # A native crash (SIGSEGV/SIGABRT in the Temporal core or a C extension)
+    # otherwise exits silently with a negative code; this dumps every thread's
+    # Python stack to stderr, which the shim forwards as
+    # runner.workflow_worker_output. Stdlib, unbuffered fd write — fine
+    # non-dumpable, and nothing secret is in a stack listing.
+    faulthandler.enable()
     try:
         _set_non_dumpable()
     except Exception as exc:  # noqa: BLE001 — refuse to hold secrets dumpable

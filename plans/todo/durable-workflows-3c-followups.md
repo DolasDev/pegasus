@@ -184,6 +184,24 @@ Scratch project: session scratchpad `accept/accept_3c` (not in the repo).
 - [ ] **Diagnose the worker -11 (SIGSEGV) on runner SIGTERM drain** (see the
       Acceptance log): reproduce locally with the gate test harness, make the
       drain clean so an in-flight activity finishes.
+      **Investigated 2026-11-06 (`fix/worker-drain-sigsegv`):** NOT the
+      signal — ECS SIGTERMs only PID 1 (no init process; ENTRYPOINT exec
+      form), and the runner's `drain_all` sends the child the same
+      `{"type":"shutdown"}` line as an idle-exit. The real discriminator in the
+      staging logs: both -11s came ~40 ms after the shutdown line with a
+      Workflow OPEN mid-timer; the 3 clean exits (153 ms) had none open.
+      Does NOT reproduce against the dev server — open Workflow mid
+      `workflow.sleep(15 min)`, `pegasus_workflows` imported in the sandbox,
+      inside `python:3.12-slim`: all exit 0. Untested combination: open
+      Workflow + Temporal Cloud (TLS + API key). temporalio 1.35.0 both sides
+      (also the latest release). Landed: `faulthandler.enable()` at the top
+      of the driver's `main()` (a native crash now dumps every thread's stack
+      to stderr → `runner.workflow_worker_output`) + an e2e test pinning
+      "drain with an open Workflow exits 0 and it finishes on the next
+      worker". **Next:** after the runner image deploys, repeat the staging
+      stop (start `accept_3c@0.2.0` on AVP Smoke, `ecs stop-task` mid-sleep —
+      no kill switch needed), read the traceback, fix from it.
+
 - [ ] **Namespace cap request** (owed since 3a): ask Temporal support to
       raise the 100-namespace cap shared by staging and prod (7 used on
       2026-11-04). A user action.
