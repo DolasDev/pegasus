@@ -169,10 +169,18 @@ Scratch project: session scratchpad `accept/accept_3c` (not in the repo).
       it roughly doubles DECIDE-3's ~$18/month per tenant with open Workflows).
       **Done 2026-11-06:** ≈ 40 MiB per worker, runner base ≈ 52 MiB ⇒ 8
       workers ≈ 370 MiB of 1 GiB. Cap and task size unchanged.
-- [ ] **Fix `pegasus-workflows run <name>` picking the OLDEST version** when
+- [x] **Fix `pegasus-workflows run <name>` picking the OLDEST version** when
       several are visible (`_find_workflow` in `cli/run.py` sorts `createdAt`
       ascending). Refuse with "name@version required" or pick the newest;
       test + SDK patch release + authoring-repo note.
+      **Fixed 2026-11-06 in SDK 0.57.0** (`fix/sdk-run-ambiguous-version`):
+      REFUSE, not pick-newest — the docstring already promised "bare name only
+      when one version is visible", and `schedule` shares the resolver (a cron
+      silently attached to a guessed version is worse than a one-off run). The
+      error lists the versions (numeric semver order) and suggests the newest.
+- [ ] **After that PR merges:** tag `sdk-python-v0.57.0` on the real merge
+      commit, wait for PyPI, then note it in `~/repos/pegasus-workflows/CLAUDE.md`
+      (bare name refused when several versions are visible).
 - [ ] **Diagnose the worker -11 (SIGSEGV) on runner SIGTERM drain** (see the
       Acceptance log): reproduce locally with the gate test harness, make the
       drain clean so an in-flight activity finishes.
