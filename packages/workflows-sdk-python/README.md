@@ -1457,7 +1457,10 @@ data is available programmatically via `client.list_executions`,
 runner installs the artifact for exactly that row and **fails the run** rather
 than substituting another version, so publish→run is deterministic: a version
 published seconds ago runs on the next execution, and `run name@version` executes
-that version even when a newer one exists. (Before that fix a runner served
+that version even when a newer one exists. A bare `run name` (and `schedule …
+name`) works only while exactly one version is visible; with several it is
+refused, listing them, so pass `name@version` (0.57.0+; before that a bare name
+silently ran the OLDEST version). (Before that fix a runner served
 whatever was newest when its task started, for the task's whole life — so a fresh
 publish silently ran old code, and only waiting out an idle window or restarting
 the runner cleared it.)

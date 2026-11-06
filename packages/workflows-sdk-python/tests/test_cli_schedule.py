@@ -138,3 +138,20 @@ def test_dry_run_command_patches_only_dry_run(extra: list[str], dry_run: bool) -
     assert result.exit_code == 0, result.output
     assert _FakeClient.last["update"] == ("wf-1", "trg-evt", {"dry_run": dry_run})
     assert ("dry-run" if dry_run else "live") in result.output
+
+
+def test_create_refuses_ambiguous_bare_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        _FakeClient,
+        "list_workflows",
+        lambda self: [
+            {"id": "wf-1", "name": "ade_lead_poll", "version": "0.0.1", "visibility": "TENANT"},
+            {"id": "wf-2", "name": "ade_lead_poll", "version": "0.0.2", "visibility": "TENANT"},
+        ],
+    )
+    result = runner.invoke(
+        sched.schedule_app, ["create", "ade_lead_poll", "--cron", "*/5 * * * *", "--token", _TOKEN]
+    )
+    assert result.exit_code == 2, result.output
+    assert "create" not in _FakeClient.last  # nothing attached to a guessed version
+    assert "ade_lead_poll@0.0.2" in result.output

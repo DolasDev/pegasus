@@ -1,9 +1,11 @@
 """``pegasus-workflows run`` — trigger a server-side execution.
 
 Looks up an Automation by ``name@version`` (or ``name`` if there is only one
-version visible), POSTs ``/api/v1/workflows/{id}/run``, and prints the
-returned execution row. An Automation that is not executable is refused by the
-server with 400 ``WORKFLOW_NOT_EXECUTABLE``.
+version visible — with several, a bare ``name`` is refused and the error lists
+them, so a newer push never leaves you silently running an older one), POSTs
+``/api/v1/workflows/{id}/run``, and prints the returned execution row. An
+Automation that is not executable is refused by the server with 400
+``WORKFLOW_NOT_EXECUTABLE``.
 
 The resolved row is the one that RUNS: the runner installs that published
 artifact specifically and fails rather than falling back to another version.
@@ -42,6 +44,13 @@ def _parse_name_version(spec: str) -> tuple[str, str | None]:
     return spec, None
 
 
+def _version_key(version: str) -> tuple[tuple[int, ...], int, str]:
+    """Order ``1.2.3`` / ``1.2.3-beta.1`` numerically, a release after its pre-releases."""
+    core, _, pre = version.partition("-")
+    nums = tuple(int(p) if p.isdigit() else 0 for p in core.split("."))
+    return nums, 0 if pre else 1, pre
+
+
 def _find_workflow(
     client: PegasusClient,
     name: str,
@@ -49,8 +58,10 @@ def _find_workflow(
 ) -> dict[str, Any]:
     """Find the Automation row matching ``name`` (and optional ``version``).
 
-    Prefers the caller's tenant rows over GLOBAL when both exist with the
-    same (name, version) — a fork is the more explicit choice.
+    A bare ``name`` must resolve to exactly one version; with several visible it
+    is refused (listing them) rather than guessing. Prefers the caller's tenant
+    rows over GLOBAL when both exist with the same (name, version) — a fork is
+    the more explicit choice.
     """
     rows = client.list_workflows()
     candidates = [r for r in rows if r.get("name") == name]
@@ -60,6 +71,12 @@ def _find_workflow(
         raise typer.BadParameter(
             f"no visible Automation matches {name}"
             + (f"@{version}" if version else "")
+        )
+    versions = sorted({str(r.get("version")) for r in candidates}, key=_version_key)
+    if len(versions) > 1:
+        raise typer.BadParameter(
+            f"{name} has {len(versions)} visible versions ({', '.join(versions)}); "
+            f"pass name@version, e.g. {name}@{versions[-1]}"
         )
     # Prefer TENANT (more specific) over GLOBAL when multiple match.
     tenant_first = sorted(
@@ -74,7 +91,7 @@ def run_command(
     workflow: str = typer.Argument(
         ...,
         help=(
-            "Automation name or name@version "
+            "Automation name@version, or a bare name when only one version is visible "
             "(e.g. send_quote_followup or send_quote_followup@0.1.0)."
         ),
     ),

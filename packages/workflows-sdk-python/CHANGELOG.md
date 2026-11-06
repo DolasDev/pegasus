@@ -3,6 +3,19 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.57.0
+
+### Changed — a bare name no longer picks a version for you
+
+- `pegasus-workflows run <name>` and `pegasus-workflows schedule … <name>`
+  refuse a bare name when more than one version of it is visible, and list the
+  versions: `accept_3c has 2 visible versions (0.1.0, 0.2.0); pass name@version,
+e.g. accept_3c@0.2.0` (exit code 2, nothing started or attached). Until now a
+  bare name silently resolved the OLDEST version — right after a push, `run
+<name>` ran the previous build. A bare name still works when only one version
+  is visible, and a TENANT fork still wins over a GLOBAL row of the same
+  `name@version`. Scripts that relied on the old pick must pass `name@version`.
+
 ## 0.56.0
 
 ### Added — durable Workflows (`kind = "workflow"`)

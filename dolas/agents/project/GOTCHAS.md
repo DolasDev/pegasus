@@ -3880,15 +3880,17 @@ the runner idle-exited with no open Workflows, a start of the same version was
 accepted on the first try (`plans/todo/durable-workflows-3c-followups.md`,
 Acceptance log).
 
-## `pegasus-workflows run <name>` starts the OLDEST visible version
+## SDK < 0.57.0: `pegasus-workflows run <name>` starts the OLDEST visible version
 
 Found in the 3c staging acceptance, 2026-11-06. With several versions of a name
 published, a bare `run accept_3c` resolved `accept_3c@0.1.0` right after
 `0.2.0` was pushed: `_find_workflow` in
-`packages/workflows-sdk-python/pegasus_workflows/cli/run.py` sorts candidates
-by `createdAt` ascending and takes the first. The server pins exactly what it
-was asked for, so nothing errors — you just run the old build. Until the fix
-ships (tracked in the 3c follow-ups plan), always pass `name@version`.
+`packages/workflows-sdk-python/pegasus_workflows/cli/run.py` sorted candidates
+by `createdAt` ascending and took the first (`schedule` shares it). The server
+pins exactly what it was asked for, so nothing errored — you just ran the old
+build. **Fixed in 0.57.0:** a bare name is refused (exit 2) when several
+versions are visible, and the error lists them. An older installed CLI still
+has the bug, so scripts should pass `name@version` regardless.
 
 ## `PR_SET_DUMPABLE = 0` does not survive `execve` — each subprocess sets its own
 
