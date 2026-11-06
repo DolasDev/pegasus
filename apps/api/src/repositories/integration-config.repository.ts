@@ -51,6 +51,8 @@ export type IntegrationConfigRow = {
   externalMapping: Prisma.JsonValue | null
   /** Inbound (ingress) behavior block (0021). Null ⇒ generic ack. */
   inbound: Prisma.JsonValue | null
+  /** Declarative pull descriptor (Gap B). Null ⇒ no declarative fetch. */
+  fetch: Prisma.JsonValue | null
   /** Declared secret keys the integration reads at runtime. Null ⇒ none. */
   requiredSecrets: Prisma.JsonValue | null
   /** Declared config keys the integration reads at runtime. Null ⇒ none. */
@@ -77,6 +79,7 @@ const SELECT = {
   externalShape: true,
   externalMapping: true,
   inbound: true,
+  fetch: true,
   requiredSecrets: true,
   requiredConfigs: true,
   createdAt: true,
@@ -107,6 +110,8 @@ export interface PublishConfigInput {
   externalMapping?: Prisma.InputJsonValue
   /** Inbound (ingress) behavior block (0021). Omit ⇒ generic ack. */
   inbound?: Prisma.InputJsonValue
+  /** Declarative pull descriptor (Gap B). Omit ⇒ no declarative fetch. */
+  fetch?: Prisma.InputJsonValue
   /** Declared secret keys the integration reads (informational). Omit ⇒ none. */
   requiredSecrets?: Prisma.InputJsonValue
   /** Declared config keys the integration reads (informational). Omit ⇒ none. */

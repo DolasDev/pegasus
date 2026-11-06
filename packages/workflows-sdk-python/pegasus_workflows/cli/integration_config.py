@@ -57,6 +57,14 @@ EXTERNAL_MAPPING_FILE = "external-mapping.json"
 #: envelope (e.g. ADE Result{…}) + validates the body. See the JSON Schema at
 #: GET /api/v1/integrations/inbound-schema. Absent ⇒ non-ingress integration.
 INBOUND_FILE = "inbound.json"
+#: Optional declarative PULL block — the counterpart to inbound.json, which only
+#: ever described push. Maps a capability name to one operation
+#: { method, path, query?, body?, headers?, secretHeaders?, decode?, recordsPath?,
+#: page? }. Operation names must be capabilities the FLOOR declares (read them
+#: from GET /api/v1/integrations/floors/<floor> → `capabilities`). See the JSON
+#: Schema at GET /api/v1/integrations/fetch-schema. Present ⇒ this source can be
+#: pulled generically, no per-source workflow. Absent ⇒ push-only.
+FETCH_FILE = "fetch.json"
 
 
 @dataclass
@@ -71,6 +79,7 @@ class _Surface:
     external_shape: Any | None = None
     external_mapping: Any | None = None
     inbound: Any | None = None
+    fetch: Any | None = None
     required_secrets: Any | None = None
     required_configs: Any | None = None
 
@@ -126,6 +135,7 @@ def _load_surface(directory: Path) -> _Surface:
         external_shape=_load_optional_json(directory, EXTERNAL_SHAPE_FILE),
         external_mapping=_load_optional_json(directory, EXTERNAL_MAPPING_FILE),
         inbound=_load_optional_json(directory, INBOUND_FILE),
+        fetch=_load_optional_json(directory, FETCH_FILE),
         required_secrets=meta_dict.get("requiredSecrets"),
         required_configs=meta_dict.get("requiredConfigs"),
     )
@@ -194,6 +204,7 @@ def validate_command(
             external_shape=surface.external_shape,
             external_mapping=surface.external_mapping,
             inbound=surface.inbound,
+            fetch=surface.fetch,
             required_secrets=surface.required_secrets,
             required_configs=surface.required_configs,
         )
@@ -228,6 +239,7 @@ def publish_command(
             external_shape=surface.external_shape,
             external_mapping=surface.external_mapping,
             inbound=surface.inbound,
+            fetch=surface.fetch,
             required_secrets=surface.required_secrets,
             required_configs=surface.required_configs,
         )
@@ -302,6 +314,7 @@ def pull_command(
         (EXTERNAL_SHAPE_FILE, "externalShape"),
         (EXTERNAL_MAPPING_FILE, "externalMapping"),
         (INBOUND_FILE, "inbound"),
+        (FETCH_FILE, "fetch"),
     ):
         if config.get(key) is not None:
             (directory / filename).write_text(

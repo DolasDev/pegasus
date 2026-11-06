@@ -121,6 +121,7 @@ function composeDefinition(floor: TypeFloor, parts: OverlayParts): IntegrationDe
     defaultAction: floor.defaultAction,
     ...(floor.projection ? { projection: floor.projection } : {}),
     ...(floor.correlation ? { correlation: floor.correlation } : {}),
+    ...(floor.capabilities ? { capabilities: floor.capabilities } : {}),
     ...(parts.externalShape ? { externalJsonSchema: parts.externalShape } : {}),
     ...(parts.externalMapping ? { externalTransform: compileMapping(parts.externalMapping) } : {}),
     ...(parts.requiredSecrets ? { requiredSecrets: parts.requiredSecrets } : {}),

@@ -1573,6 +1573,16 @@ model IntegrationConfig {
   /// synchronous partner ack. Null ⇒ a generic `{status:"accepted"}` ack.
   inbound Json?
 
+  /// Declarative PULL descriptor (Gap B) — the counterpart to `inbound`, which
+  /// only ever described push. Capability name → operation:
+  /// `{ "settlements": { method, path, query?, body?, headers?, secretHeaders?,
+  /// decode?, recordsPath?, page? } }`. Operation names must be capabilities the
+  /// floor declares, so naming is a floor change rather than a migration.
+  /// Gate-checked at publish (shape + capability names + reserved headers + the
+  /// refusal to template a secret into a URL). Null ⇒ no declarative pull; the
+  /// source stays reachable only through a bespoke workflow's call_external.
+  fetch Json?
+
   /// Secret keys this integration reads at runtime (e.g. the delivery API key +
   /// URL used by deliver-to-external), each `{ key, group?, description? }`.
   /// Informational — the runtime read still resolves lazily against the

@@ -96,6 +96,12 @@ export const financialSettlementFloor: TypeFloor = {
   correlation: {
     localEntityType: 'shipment',
   },
+  // The one capability needed to ship the pilot (Gap B). Deliberately NOT
+  // joined by `documents`/`status`/`estimates`: with a single example there is
+  // nothing to check a naming scheme against, and a name guessed now is a name
+  // we would be stuck matching later. Name the second capability when a second
+  // domain is real — that is the first moment the decision is informed.
+  capabilities: ['settlements'],
   projection: {
     entityType: 'settlement',
     key: (o) => {

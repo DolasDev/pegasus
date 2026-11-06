@@ -94,6 +94,22 @@ export interface TypeFloor {
    * partner's key.
    */
   correlation?: IntegrationCorrelationBinding
+  /**
+   * The named PULL operations a source on this floor may declare in its `fetch`
+   * block (Gap B) — e.g. `['settlements']`, so every settlement source answers
+   * to `settlements` regardless of partner.
+   *
+   * WHY THE FLOOR OWNS THE LIST. A capability is a property of the data TYPE
+   * ("settlements can be pulled"), not of the partner, so it belongs with the
+   * other type-level declarations. The practical payoff: the `fetch` block and
+   * (Phase 4) the binding table both validate their names against this list, so
+   * adding or renaming a capability is a FLOOR CHANGE plus a republish — never a
+   * schema migration.
+   *
+   * Absent ⇒ records on this floor cannot be pulled declaratively, and any
+   * `fetch` block naming an operation is a publish error.
+   */
+  capabilities?: readonly string[]
 }
 
 /**
@@ -202,6 +218,12 @@ export interface IntegrationDefinition {
    * persists the binding, making the cache reachable by our id (Gap A).
    */
   correlation?: IntegrationCorrelationBinding
+  /**
+   * Named PULL operations declarable in a `fetch` block, inherited from the
+   * floor (Gap B). The publish gate validates every `fetch` operation name
+   * against this list. Absent ⇒ no declarative pull on this integration.
+   */
+  capabilities?: readonly string[]
   /**
    * The partner external output shape as a JSON Schema (0020). Absent ⇒ external
    * == canonical (identity). Used by the publish gate to static-check

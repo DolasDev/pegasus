@@ -3,6 +3,39 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.58.0
+
+### Added — declarative pull: the `fetch` block (authoring half)
+
+- A config may now publish a **`fetch`** block: the PULL counterpart to
+  `inbound`, which only ever described push. It maps a **capability name** to one
+  operation (`{method, path, query?, body?, headers?, secretHeaders?, decode?,
+recordsPath?, page?}`), so a new source can be fetched from config alone
+  instead of needing its own workflow.
+- `publish_integration_config` / `validate_integration_config` take `fetch=`, and
+  the CLI reads it from **`fetch.json`** in the working directory. `pull` writes
+  the file back, so the block round-trips rather than being stripped by the next
+  publish.
+- New `get_fetch_schema()` — live introspection of the block's JSON Schema,
+  mirroring `get_inbound_schema()`.
+- `get_floor()` / `list_floors()` now report **`capabilities`**: the legal
+  operation names for that floor. `financial_settlement` declares
+  `["settlements"]`. A floor declaring none cannot be pulled declaratively, and
+  the publish gate refuses any operation it does not declare — so naming a
+  capability is a floor change, never a schema migration.
+- The DSL is deliberately bounded and **gate-checked at publish**: only
+  `{{param}}` / `{{config:KEY}}` substitution, a closed `page.style`
+  (`none`/`pageNumber`/`cursor`), a closed `decode` (`none`/`jsonString`, for a
+  double-encoded body — a JSON string whose content is JSON), one dot-path
+  `recordsPath`. `{{secret:…}}` is **refused**, not merely unsupported: a
+  credential must never reach a URL or query string. Use `secretHeaders`.
+
+### Not yet in this release
+
+- **Running** a fetch (`fetch_external`) is not here — this release ships the
+  authoring + discovery half only. A published `fetch` block is validated and
+  stored, and is not yet executable.
+
 ## 0.57.0
 
 ### Changed — a bare name no longer picks a version for you

@@ -1776,14 +1776,68 @@ The `integration-config` group manages an integration's declarative **mapping +
 rules** (the DB-backed authoring surface). The working directory (`-C`, default
 `.`) holds:
 
-| File                                            | Required | What it is                                                                                                                             |
-| ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `mapping.json`                                  | ✓        | native payload → canonical (output-shaped DSL; `GET /api/v1/integrations/mapping-schema`)                                              |
-| `rules.json`                                    | ✓        | behavioral rules; ops `eq ne gt gte lt lte in nin` (use `nin` for "must be one of a set")                                              |
-| `corpus.json`                                   | ✓        | gate cases `{input: {order: <native>}, expected: {valid, ruleIds}}`                                                                    |
-| `meta.json`                                     | –        | `{floor, displayName}` — **required for a new id** with no built-in overlay                                                            |
-| `inbound.json`                                  | –        | ingress ack/validation block (`GET /api/v1/integrations/inbound-schema`) — makes the ingress return the partner's `Result{…}` envelope |
-| `external-shape.json` / `external-mapping.json` | –        | partner **outbound** body shape + projection                                                                                           |
+| File                                            | Required | What it is                                                                                                                                  |
+| ----------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mapping.json`                                  | ✓        | native payload → canonical (output-shaped DSL; `GET /api/v1/integrations/mapping-schema`)                                                   |
+| `rules.json`                                    | ✓        | behavioral rules; ops `eq ne gt gte lt lte in nin` (use `nin` for "must be one of a set")                                                   |
+| `corpus.json`                                   | ✓        | gate cases `{input: {order: <native>}, expected: {valid, ruleIds}}`                                                                         |
+| `meta.json`                                     | –        | `{floor, displayName}` — **required for a new id** with no built-in overlay                                                                 |
+| `inbound.json`                                  | –        | ingress ack/validation block (`GET /api/v1/integrations/inbound-schema`) — makes the ingress return the partner's `Result{…}` envelope      |
+| `fetch.json`                                    | –        | declarative **pull** block (`GET /api/v1/integrations/fetch-schema`) — lets the source be fetched from config alone, no per-source workflow |
+| `external-shape.json` / `external-mapping.json` | –        | partner **outbound** body shape + projection                                                                                                |
+
+**`fetch.json` — pulling a source without writing a workflow.** `inbound.json`
+describes _push_; nothing described _pull_, so which path to call, which params
+select a period and where the records sit in the envelope all lived in workflow
+Python. That meant a new source needed a new workflow even when its mapping and
+rules were pure config. A `fetch` block maps a **capability name** to one
+operation, so every settlement source answers to `settlements`:
+
+```json
+{
+  "settlements": {
+    "method": "GET",
+    "path": "/settlement/v1/settlement",
+    "query": { "settlementDate": "{{settlementDate}}" },
+    "decode": "jsonString",
+    "page": { "style": "none" }
+  }
+}
+```
+
+That example omits `recordsPath` deliberately. It is the dot-path to the array of
+records in the response, and for this partner **which array that is** is still an
+open question — the outer levels of the payload are a _remittance envelope_ (one
+payment run spanning many orders) while the per-order record sits nested inside.
+Naming the outer array would make every record the envelope, so set `recordsPath`
+only once you know where your partner's per-record array actually is; omit it when
+the whole body IS the single record.
+
+The operation **names** are not free-form: they must be capabilities the floor
+declares. Read them from the floor itself —
+`client.get_floor("financial_settlement")["capabilities"]` → `["settlements"]` —
+because `get_fetch_schema()` publishes the operation _shape_ and is floor-neutral.
+A floor that declares no capabilities cannot be pulled declaratively at all.
+
+The DSL is **deliberately bounded**, and a fetch block is where that discipline
+usually dies. Permitted: `{{param}}` and `{{config:KEY}}` substitution, a closed
+`page.style` (`none` / `pageNumber` / `cursor`), a closed `decode`
+(`none` / `jsonString`), one dot-path `recordsPath`. No arithmetic, no
+conditionals, no loops — anything richer is a bespoke workflow, the same escape
+hatch the mapping DSL documents.
+
+Two things worth knowing before you write one:
+
+- **`decode: "jsonString"` is for a double-encoded body** — a response that is a
+  JSON _string_ whose content is JSON. Without it `recordsPath` has nothing to
+  walk and the first call fails. Real partners do this.
+- **`{{secret:…}}` is refused at publish, not merely unsupported.** A credential
+  must never be templatable into a URL or query string, where it would land in the
+  partner's access logs. Put it in `secretHeaders`, whose values are secret _key
+  names_ resolved server-side: `{"Ocp-Apim-Subscription-Key": "ATLAS_SUB_KEY"}`.
+
+`page.style: "none"` is the honest answer when the endpoint exposes no paging
+parameters, not a shortcut.
 
 **Reformatting a date is a `coerce`, not a workaround.** Partners document their own
 date format while the native payload carries .NET datetimes

@@ -77,6 +77,38 @@ describe('POST /integrations/:integrationId/validate', () => {
     expect(body.properties).toHaveProperty('validation')
   })
 
+  it('serves the fetch-block JSON schema with NO auth (GET fetch-schema)', async () => {
+    const res = await buildApp().request('/api/v1/integrations/fetch-schema')
+    expect(res.status).toBe(200)
+    // A record schema, so the operation shape sits under additionalProperties —
+    // assert on the serialized schema rather than guessing at Zod's encoding.
+    const body = (await res.json()) as Record<string, unknown>
+    const text = JSON.stringify(body)
+    expect(text).toContain('recordsPath')
+    expect(text).toContain('jsonString')
+    // The published schema must carry the AUTHORING semantics: an agent reads
+    // this endpoint, never the source, so "why would I set decode" has to be here.
+    expect(text).toContain('double-encoded')
+    expect(text).toContain('secretHeaders')
+  })
+
+  it('exposes a floor’s fetch capabilities, so an author knows the legal op names', async () => {
+    // The fetch-schema endpoint publishes the operation SHAPE but is floor-neutral,
+    // so it cannot say WHICH names are legal. Without this the only way to find out
+    // is to publish and read the gate's rejection.
+    const res = await buildApp().request('/api/v1/integrations/floors/financial_settlement')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { capabilities?: string[] } }
+    expect(body.data.capabilities).toEqual(['settlements'])
+  })
+
+  it('omits capabilities for a floor that declares none', async () => {
+    const res = await buildApp().request('/api/v1/integrations/floors/shipment_status_update')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data).not.toHaveProperty('capabilities')
+  })
+
   it('lists floors with their canonical fields + fact catalog (GET floors, public)', async () => {
     const res = await buildApp().request('/api/v1/integrations/floors')
     expect(res.status).toBe(200)

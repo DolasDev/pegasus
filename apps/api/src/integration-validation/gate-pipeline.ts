@@ -29,6 +29,7 @@ import { applyMapping } from './transform/engine'
 import { validateWithDefinition } from './validate'
 import type { TransformSpec } from './transform/engine'
 import type { IntegrationDefinition, ValidationInput } from './types'
+import { FetchBlockSchema, checkFetchBlock } from '../lib/integration-fetch'
 
 /** A single static-analysis problem, tagged with the stage that produced it. */
 export interface GateProblem {
@@ -40,6 +41,8 @@ export interface GateProblem {
     | 'external-mapping-format'
     | 'external-mapping'
     | 'external-shape'
+    | 'fetch-format'
+    | 'fetch'
   where: string
   problem: string
 }
@@ -72,6 +75,14 @@ export interface GateCandidate {
   externalShape?: Record<string, unknown>
   /** Canonical → external projection (0020). Absent ⇒ identity. */
   externalMapping?: unknown
+  /**
+   * Declarative PULL descriptor (Gap B): capability name → operation. Absent ⇒
+   * this source cannot be pulled generically. Gated here rather than at the HTTP
+   * layer because the checks that matter are SEMANTIC — operation names must be
+   * capabilities the floor declares, and no credential may be templated into a
+   * URL — neither of which a request-body schema can see.
+   */
+  fetch?: unknown
 }
 
 export interface GateReport {
@@ -155,6 +166,28 @@ export function runGatePipeline(base: IntegrationDefinition, candidate: GateCand
         problems.push({ stage: 'external-mapping', where: p.where, problem: p.problem })
       }
       externalTransform = compileMapping(extParsed.data)
+    }
+  }
+
+  // 4c. Declarative fetch block (Gap B). Two stages like every other pair:
+  // `fetch-format` is the shape (enums, types, unknown keys), `fetch` is the
+  // content the shape cannot express — capability names, reserved headers, and
+  // the refusal to template a secret into a URL. Both are pure; the gate stays
+  // synchronous.
+  if (candidate.fetch !== undefined) {
+    const fetchParsed = FetchBlockSchema.safeParse(candidate.fetch)
+    if (!fetchParsed.success) {
+      for (const i of fetchParsed.error.issues) {
+        problems.push({
+          stage: 'fetch-format',
+          where: i.path.join('.') || '(root)',
+          problem: i.message,
+        })
+      }
+    } else {
+      for (const p of checkFetchBlock(fetchParsed.data, base.capabilities)) {
+        problems.push({ stage: 'fetch', where: p.where, problem: p.problem })
+      }
     }
   }
 

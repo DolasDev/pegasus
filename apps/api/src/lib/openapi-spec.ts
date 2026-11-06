@@ -2643,6 +2643,16 @@ export function getOpenApiSpec() {
           responses: { '200': { description: 'JSON Schema of the inbound block' } },
         },
       },
+      '/api/v1/integrations/fetch-schema': {
+        get: {
+          operationId: 'getFetchSchema',
+          summary: 'JSON Schema for the fetch (declarative pull) block (public)',
+          description:
+            'The publishable `fetch` block — the PULL counterpart to `inbound`: a map of capability name → { method (GET|POST, a fetch is a read), path, query?, body?, headers?, secretHeaders?, decode?, recordsPath?, page? }. Operation names must be capabilities the floor declares — read them from GET /integrations/floors/{floorId} (`capabilities`); this schema is floor-neutral. The DSL is deliberately bounded: only {{param}} and {{config:KEY}} substitution (no arithmetic, conditionals or loops), a closed page.style enum (none|pageNumber|cursor), a closed decode enum (none|jsonString — use jsonString for a double-encoded body, i.e. a JSON string containing JSON), and one dot-path recordsPath. {{secret:…}} is REFUSED at publish: a credential must never reach a URL or query string — declare it in secretHeaders, which resolves server-side.',
+          tags: ['Integrations'],
+          responses: { '200': { description: 'JSON Schema of the fetch block' } },
+        },
+      },
       // Partner-ingress bearer management (ManageIngress). The bearer a partner
       // POSTs to the pre-tenant ingress endpoint; the plaintext token is shown
       // once at provision/rotate and never again.
@@ -3606,7 +3616,7 @@ export function getOpenApiSpec() {
           operationId: 'publishIntegrationConfig',
           summary: 'Validate (dry-run) or publish a config overlay (API key, platform tenant)',
           description:
-            'The full authoring surface. `floor` is required for a new id with no built-in overlay. `inbound` is the ingress ack/validation block (see /integrations/inbound-schema). Gated by PublishIntegrationConfig + INTEGRATION_CONFIG_PUBLISH_ENABLED.',
+            'The full authoring surface. `floor` is required for a new id with no built-in overlay. `inbound` is the ingress ack/validation block (see /integrations/inbound-schema); `fetch` is its PULL counterpart (see /integrations/fetch-schema). Gated by PublishIntegrationConfig + INTEGRATION_CONFIG_PUBLISH_ENABLED.',
           tags: ['Integrations'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [
@@ -3636,6 +3646,11 @@ export function getOpenApiSpec() {
                     externalShape: { type: 'object' },
                     externalMapping: {},
                     inbound: { type: 'object', description: 'see /integrations/inbound-schema' },
+                    fetch: {
+                      type: 'object',
+                      description:
+                        'declarative pull descriptor, capability name → operation; see /integrations/fetch-schema. Gate-checked at publish: operation names must be capabilities the floor declares, reserved headers are refused, and {{secret:…}} is refused outright.',
+                    },
                   },
                 },
               },
