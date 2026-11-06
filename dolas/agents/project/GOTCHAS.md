@@ -3875,6 +3875,21 @@ Deployment Versioning is off in the dev server by default: pass
 `frontend.workerVersioning*APIs` keys) or the worker's `deployment_config` is
 rejected at poll.
 
+**Confirmed on Temporal Cloud** in the 3c staging acceptance (2026-11-06): after
+the runner idle-exited with no open Workflows, a start of the same version was
+accepted on the first try (`plans/todo/durable-workflows-3c-followups.md`,
+Acceptance log).
+
+## `pegasus-workflows run <name>` starts the OLDEST visible version
+
+Found in the 3c staging acceptance, 2026-11-06. With several versions of a name
+published, a bare `run accept_3c` resolved `accept_3c@0.1.0` right after
+`0.2.0` was pushed: `_find_workflow` in
+`packages/workflows-sdk-python/pegasus_workflows/cli/run.py` sorts candidates
+by `createdAt` ascending and takes the first. The server pins exactly what it
+was asked for, so nothing errors — you just run the old build. Until the fix
+ships (tracked in the 3c follow-ups plan), always pass `name@version`.
+
 ## `PR_SET_DUMPABLE = 0` does not survive `execve` — each subprocess sets its own
 
 Found in `feat/durable-workflows-3c`, 2026-11-05. The tenant runner shim makes

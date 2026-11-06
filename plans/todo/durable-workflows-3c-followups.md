@@ -8,6 +8,126 @@
   progress) and DECISIONS.md "Durable Workflows are pinned AT START".
 - **Written:** 2026-11-05 in the 3c.2 PR.
 
+## Resume here (updated 2026-11-06 ~18:30 UTC)
+
+**Status:** staging acceptance DONE (every bullet PASS) and memory measured,
+on AVP Smoke `4b2e0267-c597-451e-a367-771dfac52fba` (namespace
+`pg-staging-4b2e0267c597.chgel`); evidence in the Acceptance log below.
+
+**Open:** two follow-ups found during acceptance (CLI oldest-version pick;
+worker SIGSEGV on SIGTERM drain) and the namespace cap request (user's
+action). Each fix gets its own worktree + PR.
+
+**Leftovers on staging:** `accept_3c@0.1.0` (`9f1d7544…`) and `@0.2.0`
+(`e5c0910b…`) are still published on AVP Smoke; no open executions. Retire
+with `pegasus-workflows retire accept_3c --profile avp-smoke` if unwanted. The
+kill switch is OFF (`workflows_disabled = f`, 18:52:08 UTC, verified in the DB).
+
+**How the acceptance was driven (reusable):** scratch project outside the
+repo, CLI via `uv run --project packages/workflows-sdk-python
+pegasus-workflows …`, profile `avp-smoke`. ALWAYS pass `name@version` to `run`
+(see the CLI defect). Staging DB URL from the reconcile Lambda env
+(`pegasus-staging-api-ReconcileWorkflowExecutionsFun-wdwJvHTDuNiP`); reconcile
+logs in `pegasus-staging-api-ReconcileWorkflowExecutionsLogGroup7AF99A7D-kUsgUm4flGyb`;
+runner logs `/pegasus/staging/tenant-runner`; per-task memory in
+`/aws/ecs/containerinsights/pegasus-temporal-worker-staging/performance`
+(`Type=Task`; the metric has no TaskId dimension). Cluster
+`pegasus-temporal-worker-staging`, runner tasks `--started-by <tenant id>`.
+
+## Acceptance log (staging AVP Smoke, 2026-11-06)
+
+Scratch project: session scratchpad `accept/accept_3c` (not in the repo).
+
+- 15:22:20Z `push` → `accept_3c@0.1.0` id `9f1d7544-cbef-453d-b2ba-ea8fe928f611`.
+- 15:22:25Z / 15:22:41Z `run` → 409 `WORKFLOW_VERSION_STARTING` (×2);
+  15:22:57Z → 201, execution `aedff089-3e6a-4fc7-bacc-9c483d90e2fb` RUNNING.
+  **Bullet 1 PASS** (worker up ~37 s after publish).
+- 15:23:10Z / 15:24:05Z `run ns_canary` (workflow id `2e2193f3-7df9-4419-a083-4cb9ceba6bce`)
+  → `371c704e…` and `2e874d63…` both COMPLETED while `aedff089` was open.
+- `aedff089` COMPLETED 15:40:39Z, result `token v0.1.0 timed-out` (timer
+  15:22:57→15:37:57, wait timer →15:39:57, `probe` activity saw the runtime
+  token). Runner `runner.starting` 15:22:41, `workflow_worker_started`
+  15:22:44, `runner.idle_exit` only at 15:50:45 (idle 600.4 s after the close),
+  so it **held through the 15-min sleep — PASS**. Reconcile Lambda logged
+  `Closed durable Workflow execution` 15:40:39; row `reconciled_at`
+  15:40:39.341, namespace `pg-staging-4b2e0267c597.chgel`; metric
+  `Pegasus/Workflows WorkflowExecutionClosed{Status=COMPLETED}` = 1 at 15:40.
+  **Reconciler WORKFLOW-lane bullet PASS.**
+- 16:30:33Z (runner idle-exited at 15:50:45, no open Workflows) `run accept_3c`
+  → 201 on the FIRST attempt, no 409: execution
+  `4df42972-a5fc-468e-b6f7-359c329cfbdc`. **Version membership survives on
+  Cloud — PASS.** Runner task `cfeee9bb57d040b5ac54d745b85f0961` launched.
+- Container Insights is `enabled` on `pegasus-temporal-worker-staging`
+  (memory can be read without enabling anything).
+- Runner `cfeee9bb` RUNNING 16:30:55Z (worker 0.1.0 started 16:30:55); manual
+  `ecs stop-task` 16:34:15Z (`runner.shutdown_signal` SIGTERM → draining →
+  stopped 16:34:17; NOTE the 0.1.0 worker subprocess exited **-11 (SIGSEGV)**
+  on the drain, not 0). Sweep relaunched task `0b078909…` at 16:35:08Z
+  (**53 s**); `runner.starting` 16:35:23.
+- 16:35:15Z `push` → `accept_3c@0.2.0` id `e5c0910b-9941-45ba-b5a7-9814768c610b`
+  while `4df42972` (0.1.0) sleeps.
+  - **SDK CLI defect found:** 16:35:17Z bare `run accept_3c` started **0.1.0**
+    (exec `4a4cd24b-91b0-436c-858a-62c734c27434`), not 0.2.0:
+    `_find_workflow` (`pegasus_workflows/cli/run.py`) sorts candidates by
+    `createdAt` ASCENDING and takes the OLDEST version when several are
+    visible, contrary to its docstring ("name if there is only one version").
+    The server pinned it correctly to what was asked. Needs a fix (refuse
+    ambiguity or pick newest) + SDK patch release.
+  - 16:35:34Z `run accept_3c@0.2.0` → 201 first try, exec
+    `c0cf4922-ba02-43a5-ab2b-cb4b0eb216c5`, `workflowVersion` 0.2.0. No 409
+    because the relaunched runner had already taken the 0.2.0
+    `workflow-worker-grant` at 16:35:27 (both workers 0.1.0 pid 18 and 0.2.0
+    pid 17 started 16:35:27).
+- Memory (Container Insights performance log, `Type=Task`, 1024 MiB reserved):
+  runner with ns_canary warm + ONE durable worker (0.1.0): 81→92→93 MiB
+  (16:31–16:33).
+- `4df42972` COMPLETED 16:48:39Z, result `token v0.1.0 timed-out`, despite
+  the manual runner stop mid-sleep and 0.2.0 published mid-run. **Stop →
+  sweep relaunch → completes: PASS. v1 finishes on v1: PASS.**
+- Memory, relaunched task `0b078909` with TWO durable workers (0.1.0 + 0.2.0)
+  - ns_canary: 130–133 MiB steady (16:36–16:47). So **≈ 40 MiB per worker
+    subprocess**, runner base ≈ 52 MiB ⇒ 8 workers ≈ 370 MiB of 1024 MiB.
+    **The 8-worker cap fits the 1 GiB task; no change.** (Caveat: toy
+    Workflow; heavy imports in a real Workflow would raise this.)
+- 16:49:00Z `run accept_3c@0.2.0` → exec `63391ed8-6a48-42ef-8479-9fad36875944`
+  (open Workflow for the kill-switch check).
+- `c0cf4922` (0.2.0) COMPLETED 16:52:39Z, result `token v0.2.0 timed-out`.
+  **New starts run v2: PASS** (publish-v2-mid-run bullet fully PASS).
+  `63391ed8` (0.2.0) COMPLETED 17:06:39Z `token v0.2.0 timed-out`;
+  `4a4cd24b` (the accidental 0.1.0) COMPLETED.
+- Kill switch: `tenants.workflows_disabled = t` at 17:35:11Z (user, admin-web).
+  17:35:32Z `run accept_3c@0.2.0` and `run ns_canary` → both 423
+  `WORKFLOWS_DISABLED`. **Start refused: PASS.** "Open Workflow still
+  completes" NOT yet shown: `63391ed8` had closed at 17:06, before the switch.
+- Kill switch round 2: OFF; 17:44:33Z `run accept_3c@0.2.0` → `28493da2-4f31-4f9e-baaf-fa6fa43ca764`
+  (TimerStarted 17:45:09, +33 s cold runner start). Switch ON 18:02:23Z —
+  but Temporal had completed the run at 18:02:09 (14 s earlier); 18:02:34Z
+  start → 423 again; the reconciler closed the row at 18:02:39 with the
+  switch ON. So round 2 still did NOT exercise an open Workflow under the
+  switch. The risky path is `ensureTenantRunner`'s DECIDE-4 exemption
+  (`apps/api/src/lib/tenant-runner.ts`, launch despite the switch while
+  `hasOpenDurableWorkflows`) — round 3 stops the runner with the switch ON.
+- Kill switch round 3: OFF; 18:09:20Z `run accept_3c@0.2.0` →
+  `dc4c79dc-6a0a-4334-aab8-2c8b3ba5774f`. Switch ON 18:09:29.812Z (DB).
+  18:09:45Z manual `ecs stop-task` of runner `addb4d0b…`; the sweep
+  relaunched `cef83ab6…` at 18:10:09Z (**24 s, despite the switch** — the
+  DECIDE-4 exemption works). Timers 18:09:21→18:24:21→18:26:21, `probe`
+  18:26:21; COMPLETED 18:26:39Z, `token v0.2.0 timed-out`, reconciled
+  18:26:39.35 with the switch still ON. **Kill-switch bullet PASS** (start
+  refused + open Workflow completes, even through a runner stop).
+- **Worker SIGSEGV on SIGTERM drain (reproducible, not blocking):** every
+  runner SIGTERM stop logged `runner.workflow_worker_stopped` with
+  `exit_code: -11` in the SAME second as `runner.shutdown_signal` (16:34:17
+  v0.1.0, 18:09:47 v0.2.0), while idle-exit / retirement stops exit 0 (3/3:
+  15:50:45, 16:53:28, 17:17:27). No graceful drain happened, but the
+  Workflows survived (the next worker replays). Suspects: the Temporal
+  core / daemon control-reader thread at interpreter teardown in
+  `workflow_worker_driver.py`, or the child also getting SIGTERM. An
+  in-flight activity would be cut mid-run instead of drained.
+- Switch OFF verified 18:52:08Z (`workflows_disabled = f`); 18:52:21Z
+  `run ns_canary` → `6077639a-b9cb-4c52-9ab2-17981f2f2cfe` COMPLETED (after
+  the v2 publish and both runner stops). **Automation-unaffected bullet PASS.**
+
 ## Checklist
 
 - [x] **Publish SDK 0.56.0** once 3c.2 is merged and deployed: tag
@@ -27,7 +147,7 @@
       applied; the `pegasus-workflow-execution-reconciled` alarm stays quiet;
       an NW Automation (dry run is enough) still completes.
       **Done 2026-11-05 ~18:57 UTC:** migration `20261105175848_durable_workflow_kind` applied (50 rows, all AUTOMATION); `pegasus-workflow-execution-reconciled` OK; reconcile ticks clean with the new `durableScanned` field; NW dry run `b8a525f3` COMPLETED.
-- [ ] **Staging acceptance** (the plan's "Acceptance" list), on a staging
+- [x] **Staging acceptance** (the plan's "Acceptance" list), on a staging
       tenant with an ACTIVE namespace:
   - publish a Workflow that sleeps 15 min, then waits on a condition with a
     timeout; a start right after publish may get `WORKFLOW_VERSION_STARTING`,
@@ -42,10 +162,20 @@
     (`WorkflowExecutionClosed` metric);
   - kill switch on: a start is refused, the open Workflow still completes;
   - an Automation for the same tenant is unaffected throughout.
-- [ ] **Measure memory per worker subprocess** during acceptance (decision 4:
+    **Done 2026-11-06: ALL bullets PASS** on AVP Smoke (see the Acceptance log).
+- [x] **Measure memory per worker subprocess** during acceptance (decision 4:
       cap 8 workers per 0.5 vCPU / 1 GiB runner). If 8 don't fit, lower
       `RUNNER_MAX_WORKFLOW_WORKERS` or raise the task size (and tell the user:
       it roughly doubles DECIDE-3's ~$18/month per tenant with open Workflows).
+      **Done 2026-11-06:** ≈ 40 MiB per worker, runner base ≈ 52 MiB ⇒ 8
+      workers ≈ 370 MiB of 1 GiB. Cap and task size unchanged.
+- [ ] **Fix `pegasus-workflows run <name>` picking the OLDEST version** when
+      several are visible (`_find_workflow` in `cli/run.py` sorts `createdAt`
+      ascending). Refuse with "name@version required" or pick the newest;
+      test + SDK patch release + authoring-repo note.
+- [ ] **Diagnose the worker -11 (SIGSEGV) on runner SIGTERM drain** (see the
+      Acceptance log): reproduce locally with the gate test harness, make the
+      drain clean so an in-flight activity finishes.
 - [ ] **Namespace cap request** (owed since 3a): ask Temporal support to
       raise the 100-namespace cap shared by staging and prod (7 used on
       2026-11-04). A user action.
