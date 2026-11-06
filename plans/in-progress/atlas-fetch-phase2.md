@@ -55,11 +55,9 @@ declarative surface: column, `capabilities`, schema, gate, discovery endpoints, 
 **The next action is to land increment 1 as a PR**, then start increment 2 (the
 `POST /integrations/:id/fetch/:operation` endpoint + `fetch_external`).
 
-**Three things in order, after increment 1 merges** — the middle one is a standing rule
-and the third depends on it:
+**All three DONE 2026-11-06** (kept for the record and the standing rule):
 
-1. Delete `plans/in-progress/vanline-source-binding.md` **in this PR** (this file
-   supersedes it; leaving both is how the stale "Phase 1 in flight" header survives).
+1. `[x]` Deleted `plans/in-progress/vanline-source-binding.md` in `#931`.
 2. **Publish the SDK.** The bump is **0.58.0**, not 0.57.0 — `#930` (an unrelated
    `run`/`schedule` fix) was ahead in the merge queue and took 0.57.0. Worth knowing
    because the collision was nearly silent: `pyproject.toml` and `uv.lock` MERGE
@@ -67,10 +65,14 @@ and the third depends on it:
    CHANGELOG conflicted. A naive CHANGELOG resolution would have shipped two feature
    sets under one version number, and whichever got published would be missing half
    its changes. **Check the queue for a competing SDK bump before picking a version.**
-   So after this merges:
-   publish to PyPI and tag `sdk-python-v0.58.0`. A merged bump that was never published
-   is the recurring failure here.
-3. **Then** commit `~/repos/pegasus-workflows/CLAUDE.md` in that repo. It says
+   `[x]` Published: tag `sdk-python-v0.58.0` on the verified merge commit `a25ec20a`
+   (not on `main` — an empty `mergeCommit` silently tags whatever `main` points at),
+   release workflow green, and **0.58.0 confirmed live on PyPI** (wheel + sdist, with
+   provenance). Note PyPI's `/pypi/<pkg>/json` endpoint is CDN-stale for a minute after
+   a publish and still reported 0.57.0 — `/simple/<pkg>/` showed the artifacts
+   immediately, so verify there.
+3. `[x]` Committed `~/repos/pegasus-workflows/CLAUDE.md` (`103c3e7`, pushed straight to
+   that repo's `main` — it takes no PRs), after the publish. It says
    "SDK 0.58.0+", so it must not land before 0.58.0 exists on PyPI. The split is
    deliberate: increment 2 must extract the outbound core out of
    `handlers/integration-call.ts` rather than copy it, which is a security-sensitive
@@ -791,14 +793,38 @@ reused, not re-implemented), so it gets its own review.
   existing `'shipment'` correlations. Deliberately NOT folded into increment 1: it has
   its own blast radius (the SDK README teaches `"shipment"`) and its own DB precheck,
   which cannot be run from this worktree. See "Decisions & dead ends".
-- `[ ]` **Prerequisite, or you will rediscover it:** `IntegrationDefinition` carries
-  `capabilities` (from the floor) but **no `fetch` field**. The published block is stored
-  and readable through `GET .../config` and the CLI's `pull`, but
-  `resolveIntegrationDefinition` does not surface it — so the runtime endpoint has
-  nothing to read until `fetch` is threaded from the config row into the resolved
-  definition, the way `externalShape`/`externalMapping` already are in
-  `registry.ts` → `composeDefinition`.
-- `[ ]` `POST /integrations/:id/fetch/:operation` — resolves the descriptor, substitutes
+- `[x]` ~~**Prerequisite: thread `fetch` into the resolved definition**~~ —
+  **DISSOLVED 2026-11-06, the prescription was wrong.** It is true that
+  `IntegrationDefinition` has no `fetch` field, but it does not need one: **`inbound`
+  has no field there either.** The ingress handler reads the block straight off the
+  config row (`handlers/ingress.ts`: `select: { inbound: true }`), and that is the
+  precedent `fetch` follows. The machinery already exists —
+  `integrationConfigRepository.findActiveForScope(integrationId, tenantId)` returns the
+  `fetch` column (it is in `SELECT`) **and** implements tenant-wins-over-GLOBAL. So the
+  runtime reads the descriptor off the scoped row and takes only `capabilities` from the
+  definition, for the runtime name check.
+  _Do not re-derive the threading model from an earlier draft of this bullet._
+- `[x]` **Increment 2a — the PURE runtime core. DONE 2026-11-06, green, uncommitted on
+  branch `feat/atlas-fetch-resolve-definition`.** Both in `lib/integration-fetch.ts`
+  beside the gate code, both pure, so they are fully tested without an outbound call:
+  - `resolveFetchOperation(rawBlock, capabilities, opName)` → the descriptor or a TYPED
+    miss (`noFetchBlock` / `unknownOperation` / `notACapability` / `malformedBlock`), so
+    the handler maps each to its own status instead of collapsing them to 404.
+    It re-checks the capability name even though the gate already did — a stored row can
+    outlive a floor that dropped a capability.
+  - `substituteFetchTemplates(op, params, configs)` → fills `{{param}}` /
+    `{{config:KEY}}` in path, query, headers and body (nested, shape-preserving).
+  - Two correctness edges worth keeping: an **unfillable template is an ERROR, never a
+    pass-through** (a leftover `{{settlementDate}}` on the wire returns an opaque partner
+    400, so the real cause — a caller that forgot a param — would be invisible); and a
+    **path** substitution may not introduce `/`, `?` or `#`, because a descriptor exists
+    to constrain WHICH endpoint is called and caller-injected path segments would turn it
+    back into an arbitrary-URL builder. Query and body values are exempt (encoded
+    downstream, cannot change the request's shape). Substitution is single-pass, so no
+    caller input can expand into another template.
+  - 24 new tests (64 in `integration-fetch.test.ts`, 20 in `registry.test.ts`); full API
+    suite 4938/4938, `tsc` clean, lint clean.
+- `[ ]` **Increment 2b — the endpoint.** `POST /integrations/:id/fetch/:operation`: resolves the descriptor, substitutes
   params, calls through the existing call-external path (auth/headers/timeout/429-retry
   all reused), decodes per `decode`, extracts `recordsPath`, pages per `page.style`.
   **Reuse, do not re-implement:** extract the outbound core out of
@@ -977,6 +1003,16 @@ is the first informed moment to decide.
   at all (see the Phase 2 checklist). Not answerable from this repo.
 - **Do any `local_entity_type = 'shipment'` correlations exist?** Gates the one-line floor
   edit to `'order'`. One query against staging/prod settles it.
+- **LATENT BUG found 2026-11-06, NOT fixed here (out of scope — record only).**
+  `handlers/ingress.ts` loads the `inbound` block with
+  `findFirst({ where: { integrationId, tenantId, status: 'PUBLISHED' } })` — **no GLOBAL
+  fallback and no `orderBy: { version: 'desc' }`**, while `config.ts`'s own
+  `carriedPublishFields` comment states a tenant overlay "wins over GLOBAL" for `inbound`.
+  So a tenant relying on a GLOBAL published `inbound` silently gets the generic
+  `{status:'accepted'}` ack instead of the partner's envelope. The repository already has
+  `findActiveForScope`, which does tenant-then-GLOBAL correctly.
+  **Do not copy ingress's query shape for `fetch`** — increment 2b uses
+  `findActiveForScope`. Worth its own small PR.
 - **Agent-Limited's rate budget** — unpublished; blocks choosing the TTL default on anything
   better than judgement. Outstanding with Atlas (see `docs/atlas-world-group-api/README.md`).
   No throttling observed at ~24 calls/min in Aug, and none hit again on 2026-11-06, but a

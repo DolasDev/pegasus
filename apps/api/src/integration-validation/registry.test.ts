@@ -246,3 +246,92 @@ describe('coerceRequirements', () => {
     expect(coerceRequirements([42, {}, { key: '' }])).toBeUndefined()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Floor-only configs (no built-in overlay) — the Atlas settlements shape.
+//
+// This is load-bearing for the declarative-fetch runtime: the handler reads the
+// `fetch` block off the scoped config ROW, but takes `capabilities` off the
+// resolved DEFINITION for its runtime name check. `atlas_settlement` has no code
+// overlay, so if the resolver could not compose a floor-only row, the pilot
+// would 404 at runtime for a reason that only surfaces on first real use.
+// ---------------------------------------------------------------------------
+
+/** A published row for a brand-new partner id that targets a floor directly. */
+const floorOnlyRow = {
+  id: 'cfg-atlas-1',
+  tenantId: 'tenant-1',
+  integrationId: 'atlas_settlement',
+  version: 1,
+  visibility: 'TENANT' as const,
+  status: 'PUBLISHED' as const,
+  mapping: { Id: 'orderNumber' },
+  rules: [],
+  corpus: [],
+  gateReport: {},
+  publishedBy: 'user-1',
+  forkedFromConfigId: null,
+  forkedFromVersion: null,
+  floor: 'financial_settlement',
+  displayName: 'Atlas Settlements',
+  externalShape: null,
+  externalMapping: null,
+  inbound: null,
+  fetch: {
+    settlements: {
+      method: 'GET',
+      path: '/settlement/v1/settlement',
+      query: { settlementDate: '{{settlementDate}}' },
+      decode: 'jsonString',
+    },
+  },
+  requiredSecrets: null,
+  requiredConfigs: null,
+  createdAt: new Date(),
+}
+
+describe('resolveIntegrationDefinition — a floor-only config (no built-in overlay)', () => {
+  it('composes from the row’s `floor` alone', async () => {
+    const def = await resolveIntegrationDefinition(
+      scopedDb(floorOnlyRow, null),
+      'atlas_settlement',
+      'tenant-1',
+    )
+    expect(def).toBeDefined()
+    expect(def?.floor).toBe('financial_settlement')
+    expect(def?.displayName).toBe('Atlas Settlements')
+  })
+
+  it('carries the floor’s `capabilities` through, which the fetch runtime needs', async () => {
+    const def = await resolveIntegrationDefinition(
+      scopedDb(floorOnlyRow, null),
+      'atlas_settlement',
+      'tenant-1',
+    )
+    expect(def?.capabilities).toEqual(['settlements'])
+  })
+
+  it('does NOT put `fetch` on the definition — it is read off the row, like `inbound`', async () => {
+    // Pins the design decision. `IntegrationDefinition` deliberately has no
+    // `fetch` field: the handler reads the block off the scoped config row the
+    // same way the ingress endpoint reads `inbound`. A future change that
+    // threads it through here should delete this test on purpose, not by
+    // accident.
+    const def = await resolveIntegrationDefinition(
+      scopedDb(floorOnlyRow, null),
+      'atlas_settlement',
+      'tenant-1',
+    )
+    expect(def).toBeDefined()
+    expect(def).not.toHaveProperty('fetch')
+  })
+
+  it('returns undefined for a row naming an unknown floor with no built-in to fall back to', async () => {
+    const def = await resolveIntegrationDefinition(
+      scopedDb({ ...floorOnlyRow, floor: 'no_such_floor' }, null),
+      'atlas_settlement',
+      'tenant-1',
+    )
+    expect(def).toBeUndefined()
+  })
+})
