@@ -235,3 +235,65 @@ describe('POST /integrations/:id/events', () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// Config RESOLUTION — the tenant's own published row wins, else GLOBAL.
+//
+// This used to be a bare findFirst on (integrationId, tenantId) with no GLOBAL
+// fallback and no version ordering, so a tenant whose `inbound` came from a
+// GLOBAL config silently received the generic {status:'accepted'} ack instead
+// of the partner's envelope. The failure was invisible: the partner got a 200
+// and the config looked published.
+// ---------------------------------------------------------------------------
+
+describe('inbound config resolution (tenant row, else GLOBAL)', () => {
+  /** Route findFirst by its where clause, the way findActiveForScope calls it. */
+  function routeByScope(own: unknown, global: unknown) {
+    mockConfigFindFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      'tenantId' in where ? own : global,
+    )
+  }
+
+  it('uses the GLOBAL block when the tenant has published none', async () => {
+    routeByScope(null, { inbound: ADE_INBOUND })
+    const res = await app().request(ROUTE, req(SHIPMENT, auth))
+    expect(res.status).toBe(200)
+    // The partner's envelope, NOT the generic {status:'accepted'} fallback.
+    expect(await json(res)).toEqual({
+      Result: { Results: 'Success', ResultsMessageCount: 0, ResultsMessage: [] },
+    })
+  })
+
+  it("prefers the tenant's own block over GLOBAL", async () => {
+    routeByScope(
+      { inbound: { ...ADE_INBOUND, ackTemplate: { success: { mine: true } } } },
+      { inbound: ADE_INBOUND },
+    )
+    const res = await app().request(ROUTE, req(SHIPMENT, auth))
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ mine: true })
+  })
+
+  it('falls back to the generic ack when NEITHER scope has published one', async () => {
+    routeByScope(null, null)
+    const res = await app().request(ROUTE, req(SHIPMENT, auth))
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ status: 'accepted' })
+  })
+
+  it('scopes the first lookup to the bearer’s own tenant', async () => {
+    // The credential resolves the tenant; the config read must be bound to it.
+    // IntegrationConfig is deliberately NOT in TENANT_SCOPED_MODELS (it has a
+    // GLOBAL case), so nothing injects a tenantId — the query has to carry it.
+    routeByScope({ inbound: ADE_INBOUND }, null)
+    await app().request(ROUTE, req(SHIPMENT, auth))
+    const firstWhere = mockConfigFindFirst.mock.calls[0]?.[0]?.where as Record<string, unknown>
+    expect(firstWhere).toMatchObject({ tenantId: 'tenant-1', integrationId: INTEGRATION })
+  })
+
+  it('asks for the newest version in each scope, not an arbitrary row', async () => {
+    routeByScope({ inbound: ADE_INBOUND }, null)
+    await app().request(ROUTE, req(SHIPMENT, auth))
+    expect(mockConfigFindFirst.mock.calls[0]?.[0]?.orderBy).toEqual({ version: 'desc' })
+  })
+})
