@@ -1,0 +1,1048 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Settlement",
+    "description": "Service to expose an endpoint to get settlement data",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/settlement/v1"
+    }
+  ],
+  "paths": {
+    "/settlement": {
+      "get": {
+        "tags": ["Settlement"],
+        "summary": "Get Settlement",
+        "description": "Gets the settlement data",
+        "operationId": "get-settlement",
+        "parameters": [
+          {
+            "name": "settlementDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settlement"
+                },
+                "example": {
+                  "agentSettlements": [
+                    {
+                      "agentSettlementDetails": [
+                        {
+                          "documents": [
+                            {
+                              "adjustmentRecords": [
+                                {
+                                  "adjustmentDocumentNumber": "string",
+                                  "agentInvoiceNumber": "string",
+                                  "amount": 0,
+                                  "atlasInvoiceNumber": "string",
+                                  "comment": "string",
+                                  "distributionCode": "string",
+                                  "dueFrom": "string",
+                                  "dueTo": "string",
+                                  "memoType": "string",
+                                  "orderNumber": "string",
+                                  "reason": "string",
+                                  "reasonCode": "string"
+                                }
+                              ],
+                              "apDistributionRecords": [
+                                {
+                                  "amount": 0,
+                                  "grossAmount": 0,
+                                  "discountAmount": 0,
+                                  "basis": "string",
+                                  "basisCode": "string",
+                                  "description": "string",
+                                  "discountPercent": 0,
+                                  "invoiceNumber": "string",
+                                  "itemCode": "string",
+                                  "longDescription": "string",
+                                  "percentOfTotalBasis": 0
+                                }
+                              ],
+                              "detailRecords": [
+                                {
+                                  "documentAmount": 0,
+                                  "documentDescription": "string",
+                                  "documentNumber": "string",
+                                  "orderNumber": "string"
+                                }
+                              ],
+                              "sopDetailRecords": [
+                                {
+                                  "charge": 0,
+                                  "description": "string",
+                                  "invoiceNumber": "string",
+                                  "sequence": 0
+                                }
+                              ],
+                              "invoices": [
+                                {
+                                  "invoiceDetailRecords": [
+                                    {
+                                      "additionalTextFlag": "string",
+                                      "charge": 0,
+                                      "chargeTypeCode": "string",
+                                      "description": "string",
+                                      "discountPercent": 0,
+                                      "invoiceNumber": "string",
+                                      "remark": "string"
+                                    }
+                                  ],
+                                  "invoiceDistributionRecords": [
+                                    {
+                                      "amount": 0,
+                                      "basis": "string",
+                                      "basisCode": "string",
+                                      "basisEdiCode": "string",
+                                      "chargeTypeCode": "string",
+                                      "description": "string",
+                                      "discountPercent": 0,
+                                      "glNumber": "string",
+                                      "invoiceNumber": "string",
+                                      "longDescription": "string"
+                                    }
+                                  ],
+                                  "addressID": "string",
+                                  "agentReleasedBy": "string",
+                                  "autoWeight": 0,
+                                  "billedLinehaulMiles": 0,
+                                  "billedLinehaulMilesAK": 0,
+                                  "billedWeight": 0,
+                                  "billName": "string",
+                                  "billTo": "string",
+                                  "boatWeight": 0,
+                                  "booker": "string",
+                                  "constructiveWeight": 0,
+                                  "creditOption": "string",
+                                  "customerID": "string",
+                                  "discountPercent": 0,
+                                  "ebldPercent": 0,
+                                  "invoiceFormat": "string",
+                                  "invoiceNumber": "string",
+                                  "invoicePrint": "string",
+                                  "nationalAccountEntity": "string",
+                                  "nationalAccountName": "string",
+                                  "nationalAccountNumber": "string",
+                                  "paymentTiming": "string",
+                                  "paymentTimingName": "string",
+                                  "paymentType": "string",
+                                  "paymentTypeName": "string",
+                                  "pbldPercent": 0,
+                                  "pricingID": "string",
+                                  "ratedBy": "string",
+                                  "referenceNumber": "string",
+                                  "sequenceNumber": "string",
+                                  "regMiles": 0,
+                                  "releaseDate": "string",
+                                  "releasedBy": "string",
+                                  "remarkOther": "string",
+                                  "selectRating": "string",
+                                  "sharedPercent": 0,
+                                  "subTariff": "string",
+                                  "subTariffSection": "string",
+                                  "tareWeight": 0,
+                                  "tariff": "string",
+                                  "tariffSection": "string",
+                                  "thirdPartyType2Salesperson": "string",
+                                  "thirdPartyType2SalespersonName": "string",
+                                  "totalCharge": 0,
+                                  "totalDiscount": 0,
+                                  "totalGross": 0,
+                                  "totalMiles": 0,
+                                  "totalPieces": 0,
+                                  "totalVolume": 0,
+                                  "totalWeight": 0,
+                                  "weightAdditive": 0
+                                }
+                              ],
+                              "controlNumber": "string",
+                              "customerName": "string",
+                              "description": "string",
+                              "documentAmount": 0,
+                              "documentDescription": "string",
+                              "documentNumber": "string",
+                              "documentType": 0,
+                              "invoiceNumber": "string",
+                              "memoType": "string",
+                              "orderNumber": "string",
+                              "salesPerson": "string",
+                              "shipmentType": 0,
+                              "shipper": "string",
+                              "totalLinehaulCommission": 0
+                            }
+                          ],
+                          "netSettlement": 0,
+                          "settlementId": "string",
+                          "totalCharges": 0,
+                          "totalDistribution": 0,
+                          "vendorId": "string"
+                        }
+                      ],
+                      "documents": [
+                        {
+                          "adjustmentRecords": [
+                            {
+                              "adjustmentDocumentNumber": "string",
+                              "agentInvoiceNumber": "string",
+                              "amount": 0,
+                              "atlasInvoiceNumber": "string",
+                              "comment": "string",
+                              "distributionCode": "string",
+                              "dueFrom": "string",
+                              "dueTo": "string",
+                              "memoType": "string",
+                              "orderNumber": "string",
+                              "reason": "string",
+                              "reasonCode": "string"
+                            }
+                          ],
+                          "apDistributionRecords": [
+                            {
+                              "amount": 0,
+                              "grossAmount": 0,
+                              "discountAmount": 0,
+                              "basis": "string",
+                              "basisCode": "string",
+                              "description": "string",
+                              "discountPercent": 0,
+                              "invoiceNumber": "string",
+                              "itemCode": "string",
+                              "longDescription": "string",
+                              "percentOfTotalBasis": 0
+                            }
+                          ],
+                          "detailRecords": [
+                            {
+                              "documentAmount": 0,
+                              "documentDescription": "string",
+                              "documentNumber": "string",
+                              "orderNumber": "string"
+                            }
+                          ],
+                          "sopDetailRecords": [
+                            {
+                              "charge": 0,
+                              "description": "string",
+                              "invoiceNumber": "string",
+                              "sequence": 0
+                            }
+                          ],
+                          "invoices": [
+                            {
+                              "invoiceDetailRecords": [
+                                {
+                                  "additionalTextFlag": "string",
+                                  "charge": 0,
+                                  "chargeTypeCode": "string",
+                                  "description": "string",
+                                  "discountPercent": 0,
+                                  "invoiceNumber": "string",
+                                  "remark": "string"
+                                }
+                              ],
+                              "invoiceDistributionRecords": [
+                                {
+                                  "amount": 0,
+                                  "basis": "string",
+                                  "basisCode": "string",
+                                  "basisEdiCode": "string",
+                                  "chargeTypeCode": "string",
+                                  "description": "string",
+                                  "discountPercent": 0,
+                                  "glNumber": "string",
+                                  "invoiceNumber": "string",
+                                  "longDescription": "string"
+                                }
+                              ],
+                              "addressID": "string",
+                              "agentReleasedBy": "string",
+                              "autoWeight": 0,
+                              "billedLinehaulMiles": 0,
+                              "billedLinehaulMilesAK": 0,
+                              "billedWeight": 0,
+                              "billName": "string",
+                              "billTo": "string",
+                              "boatWeight": 0,
+                              "booker": "string",
+                              "constructiveWeight": 0,
+                              "creditOption": "string",
+                              "customerID": "string",
+                              "discountPercent": 0,
+                              "ebldPercent": 0,
+                              "invoiceFormat": "string",
+                              "invoiceNumber": "string",
+                              "invoicePrint": "string",
+                              "nationalAccountEntity": "string",
+                              "nationalAccountName": "string",
+                              "nationalAccountNumber": "string",
+                              "paymentTiming": "string",
+                              "paymentTimingName": "string",
+                              "paymentType": "string",
+                              "paymentTypeName": "string",
+                              "pbldPercent": 0,
+                              "pricingID": "string",
+                              "ratedBy": "string",
+                              "referenceNumber": "string",
+                              "sequenceNumber": "string",
+                              "regMiles": 0,
+                              "releaseDate": "string",
+                              "releasedBy": "string",
+                              "remarkOther": "string",
+                              "selectRating": "string",
+                              "sharedPercent": 0,
+                              "subTariff": "string",
+                              "subTariffSection": "string",
+                              "tareWeight": 0,
+                              "tariff": "string",
+                              "tariffSection": "string",
+                              "thirdPartyType2Salesperson": "string",
+                              "thirdPartyType2SalespersonName": "string",
+                              "totalCharge": 0,
+                              "totalDiscount": 0,
+                              "totalGross": 0,
+                              "totalMiles": 0,
+                              "totalPieces": 0,
+                              "totalVolume": 0,
+                              "totalWeight": 0,
+                              "weightAdditive": 0
+                            }
+                          ],
+                          "controlNumber": "string",
+                          "customerName": "string",
+                          "description": "string",
+                          "documentAmount": 0,
+                          "documentDescription": "string",
+                          "documentNumber": "string",
+                          "documentType": 0,
+                          "invoiceNumber": "string",
+                          "memoType": "string",
+                          "orderNumber": "string",
+                          "salesPerson": "string",
+                          "shipmentType": 0,
+                          "shipper": "string",
+                          "totalLinehaulCommission": 0
+                        }
+                      ],
+                      "atlasPaymentNumber": "string",
+                      "netSettlement": 0,
+                      "settlementId": "string",
+                      "totalCharges": 0,
+                      "totalDistribution": 0,
+                      "vendorId": "string"
+                    }
+                  ],
+                  "netSettlement": 0,
+                  "settlementDate": "string",
+                  "totalCharges": 0,
+                  "totalDistribution": 0
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "APDistributionRecord": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "grossAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "discountAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "basis": {
+            "type": "string",
+            "nullable": true
+          },
+          "basisCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "discountPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "longDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "percentOfTotalBasis": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdjustmentRecord": {
+        "type": "object",
+        "properties": {
+          "adjustmentDocumentNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "agentInvoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "atlasInvoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true
+          },
+          "distributionCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "dueFrom": {
+            "type": "string",
+            "nullable": true
+          },
+          "dueTo": {
+            "type": "string",
+            "nullable": true
+          },
+          "memoType": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "reasonCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentSettlement": {
+        "type": "object",
+        "properties": {
+          "agentSettlementDetails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentSettlementDetail"
+            },
+            "nullable": true
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Document"
+            },
+            "nullable": true
+          },
+          "atlasPaymentNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "netSettlement": {
+            "type": "number",
+            "format": "double"
+          },
+          "settlementId": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalCharges": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalDistribution": {
+            "type": "number",
+            "format": "double"
+          },
+          "vendorId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentSettlementDetail": {
+        "type": "object",
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Document"
+            },
+            "nullable": true
+          },
+          "netSettlement": {
+            "type": "number",
+            "format": "double"
+          },
+          "settlementId": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalCharges": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalDistribution": {
+            "type": "number",
+            "format": "double"
+          },
+          "vendorId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DetailRecord": {
+        "type": "object",
+        "properties": {
+          "documentAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "documentDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "adjustmentRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentRecord"
+            },
+            "nullable": true
+          },
+          "apDistributionRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/APDistributionRecord"
+            },
+            "nullable": true
+          },
+          "detailRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DetailRecord"
+            },
+            "nullable": true
+          },
+          "sopDetailRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SOPDetailRecord"
+            },
+            "nullable": true
+          },
+          "invoices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            },
+            "nullable": true
+          },
+          "controlNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "documentDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentType": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "memoType": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "salesPerson": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipmentType": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "shipper": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalLinehaulCommission": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Invoice": {
+        "type": "object",
+        "properties": {
+          "invoiceDetailRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceDetailRecord"
+            },
+            "nullable": true
+          },
+          "invoiceDistributionRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceDistributionRecord"
+            },
+            "nullable": true
+          },
+          "addressID": {
+            "type": "string",
+            "nullable": true
+          },
+          "agentReleasedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "autoWeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "billedLinehaulMiles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "billedLinehaulMilesAK": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "billedWeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "billName": {
+            "type": "string",
+            "nullable": true
+          },
+          "billTo": {
+            "type": "string",
+            "nullable": true
+          },
+          "boatWeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "booker": {
+            "type": "string",
+            "nullable": true
+          },
+          "constructiveWeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "creditOption": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerID": {
+            "type": "string",
+            "nullable": true
+          },
+          "discountPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "ebldPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "invoiceFormat": {
+            "type": "string",
+            "nullable": true
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "invoicePrint": {
+            "type": "string",
+            "nullable": true
+          },
+          "nationalAccountEntity": {
+            "type": "string",
+            "nullable": true
+          },
+          "nationalAccountName": {
+            "type": "string",
+            "nullable": true
+          },
+          "nationalAccountNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentTiming": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentTimingName": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentTypeName": {
+            "type": "string",
+            "nullable": true
+          },
+          "pbldPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "pricingID": {
+            "type": "string",
+            "nullable": true
+          },
+          "ratedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "referenceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "sequenceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "regMiles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "releaseDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "releasedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "remarkOther": {
+            "type": "string",
+            "nullable": true
+          },
+          "selectRating": {
+            "type": "string",
+            "nullable": true
+          },
+          "sharedPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "subTariff": {
+            "type": "string",
+            "nullable": true
+          },
+          "subTariffSection": {
+            "type": "string",
+            "nullable": true
+          },
+          "tareWeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tariff": {
+            "type": "string",
+            "nullable": true
+          },
+          "tariffSection": {
+            "type": "string",
+            "nullable": true
+          },
+          "thirdPartyType2Salesperson": {
+            "type": "string",
+            "nullable": true
+          },
+          "thirdPartyType2SalespersonName": {
+            "type": "string",
+            "nullable": true
+          },
+          "totalCharge": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalDiscount": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalGross": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalMiles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalPieces": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalVolume": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalWeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "weightAdditive": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "InvoiceDetailRecord": {
+        "type": "object",
+        "properties": {
+          "additionalTextFlag": {
+            "type": "string",
+            "nullable": true
+          },
+          "charge": {
+            "type": "number",
+            "format": "double"
+          },
+          "chargeTypeCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "discountPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "remark": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InvoiceDistributionRecord": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "basis": {
+            "type": "string",
+            "nullable": true
+          },
+          "basisCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "basisEdiCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "chargeTypeCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "discountPercent": {
+            "type": "number",
+            "format": "double"
+          },
+          "glNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "longDescription": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SOPDetailRecord": {
+        "type": "object",
+        "properties": {
+          "charge": {
+            "type": "number",
+            "format": "double"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Settlement": {
+        "type": "object",
+        "properties": {
+          "agentSettlements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentSettlement"
+            },
+            "nullable": true
+          },
+          "netSettlement": {
+            "type": "number",
+            "format": "double"
+          },
+          "settlementDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalCharges": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalDistribution": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Settlement"
+    }
+  ]
+}

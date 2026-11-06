@@ -50,6 +50,14 @@ class _FakeClient:
             "displayName": "Weichert",
             "externalShape": {"type": "object", "properties": {"ref": {"type": "string"}}},
             "externalMapping": {"ref": "serviceOrderNumber"},
+            "fetch": {
+                "settlements": {
+                    "method": "GET",
+                    "path": "/settlement/v1/settlement",
+                    "query": {"settlementDate": "{{settlementDate}}"},
+                    "decode": "jsonString",
+                }
+            },
         }
 
     def list_integration_config_versions(self, integration_id):
@@ -196,8 +204,38 @@ def test_pull_then_publish_round_trips_overlay_fields(tmp_path: Path) -> None:
         "external_shape": {"type": "object", "properties": {"ref": {"type": "string"}}},
         "external_mapping": {"ref": "serviceOrderNumber"},
         "inbound": None,
+        "fetch": {
+            "settlements": {
+                "method": "GET",
+                "path": "/settlement/v1/settlement",
+                "query": {"settlementDate": "{{settlementDate}}"},
+                "decode": "jsonString",
+            }
+        },
         "required_secrets": None,
         "required_configs": None,
+    }
+
+
+def test_pull_writes_fetch_file(tmp_path: Path) -> None:
+    """The declarative-pull block must round-trip like every other overlay file.
+
+    A `fetch` block that pull silently dropped would be stripped by the next
+    publish — the source would stop being pullable while still looking adopted,
+    which is exactly the failure mode `inbound` already had.
+    """
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["pull", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads((tmp_path / ic.FETCH_FILE).read_text()) == {
+        "settlements": {
+            "method": "GET",
+            "path": "/settlement/v1/settlement",
+            "query": {"settlementDate": "{{settlementDate}}"},
+            "decode": "jsonString",
+        }
     }
 
 
@@ -251,6 +289,7 @@ def test_publish_without_overlay_files_sends_none(tmp_path: Path) -> None:
         "external_shape": None,
         "external_mapping": None,
         "inbound": None,
+        "fetch": None,
         "required_secrets": None,
         "required_configs": None,
     }

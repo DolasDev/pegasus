@@ -215,6 +215,10 @@ const fullyPopulated = {
   externalShape: { type: 'object' },
   externalMapping: { ref: '$.id' },
   inbound: { eventType: 'shipment.status', dedupKeyPath: '$.id' },
+  // `fetch` is behavioral in exactly the way `inbound` is — a tenant overlay
+  // wins over GLOBAL at resolve time, so an overlay that lost it would silently
+  // stop being pullable while still looking adopted.
+  fetch: { settlements: { method: 'GET', path: '/settlement/v1/settlement' } },
   requiredSecrets: [{ key: 'SEND_API_KEY', group: 'demo' }],
   requiredConfigs: [{ key: 'SEND_URL', group: 'demo' }],
 }
@@ -315,6 +319,26 @@ describe('integration-config handler', () => {
       const res = await buildApp().request(`${PATH}/validate`, post(validBody))
       expect(res.status).toBe(200)
     })
+
+    it('hands a fetch block to the gate on the DRY-RUN path too', async () => {
+      // Its own test because this is a SEPARATE handler from the publish path,
+      // with the same trap: `fetch` undestructured resolves to the global fetch
+      // FUNCTION, which typechecks and silently hands the gate the wrong thing.
+      // Authoring agents hit this endpoint far more often than the publish one,
+      // so a fetch block that is quietly never gated here is the worse failure.
+      const fetchBlock = { settlements: { method: 'GET', path: '/settlement/v1/settlement' } }
+      const res = await buildApp().request(
+        `${PATH}/validate`,
+        post({ ...validBody, fetch: fetchBlock }),
+      )
+      expect(res.status).toBe(200)
+      expect(mockRunGatePipeline).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ fetch: fetchBlock }),
+      )
+      const handed = mockRunGatePipeline.mock.calls[0]?.[1] as { fetch?: unknown }
+      expect(typeof handed?.fetch).not.toBe('function')
+    })
   })
 
   // ── POST /config (publish) ──────────────────────────────────────────────────
@@ -383,6 +407,56 @@ describe('integration-config handler', () => {
       )
       // Overlay is refreshed so the live validator picks up the new config.
       expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
+    })
+
+    // ── the declarative `fetch` block (Gap B) ─────────────────────────────
+    //
+    // The HTTP layer deliberately does NOT validate the block's shape (the gate
+    // owns that, shape AND semantics, so the contract lives in one place). What
+    // these pin is the plumbing either side of the gate: the block has to REACH
+    // the gate, and it has to reach the STORE. `fetch` is also the one field here
+    // whose name collides with a global, so the first test doubles as the guard
+    // against the handler silently passing the global `fetch` function instead.
+    const fetchBlock = {
+      settlements: {
+        method: 'GET',
+        path: '/settlement/v1/settlement',
+        query: { settlementDate: '{{settlementDate}}' },
+        decode: 'jsonString',
+      },
+    }
+
+    it('hands the fetch block to the gate — not the global fetch function', async () => {
+      const res = await buildApp().request(PATH, post({ ...validBody, fetch: fetchBlock }))
+      expect(res.status).toBe(201)
+      expect(mockRunGatePipeline).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ fetch: fetchBlock }),
+      )
+      const handed = mockRunGatePipeline.mock.calls[0]?.[1] as { fetch?: unknown }
+      expect(typeof handed?.fetch).toBe('object')
+    })
+
+    it('persists the fetch block on publish', async () => {
+      const res = await buildApp().request(PATH, post({ ...validBody, fetch: fetchBlock }))
+      expect(res.status).toBe(201)
+      expect(mockRepo.publish).toHaveBeenCalledWith(expect.objectContaining({ fetch: fetchBlock }))
+    })
+
+    it('omits fetch entirely when the body declares none, rather than writing null', async () => {
+      const res = await buildApp().request(PATH, post(validBody))
+      expect(res.status).toBe(201)
+      const published = mockRepo.publish.mock.calls[0]?.[0]
+      expect(published).toBeDefined()
+      expect(published).not.toHaveProperty('fetch')
+    })
+
+    it('writes nothing when the gate rejects the fetch block', async () => {
+      mockRunGatePipeline.mockReturnValue(failReport)
+      const res = await buildApp().request(PATH, post({ ...validBody, fetch: fetchBlock }))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('GATE_FAILED')
+      expect(mockRepo.publish).not.toHaveBeenCalled()
     })
 
     it('publishes a GLOBAL-visibility row when the tenant is the platform tenant', async () => {
@@ -713,6 +787,7 @@ describe('integration-config handler', () => {
       mockRepo.findActiveGlobal.mockResolvedValue({
         ...globalRow,
         inbound: null,
+        fetch: null,
         requiredSecrets: null,
         requiredConfigs: null,
       })
@@ -724,6 +799,7 @@ describe('integration-config handler', () => {
       // as three passing absence checks.
       expect(published).toBeDefined()
       expect(published).not.toHaveProperty('inbound')
+      expect(published).not.toHaveProperty('fetch')
       expect(published).not.toHaveProperty('requiredSecrets')
       expect(published).not.toHaveProperty('requiredConfigs')
     })

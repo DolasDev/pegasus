@@ -420,13 +420,20 @@ def _integration_config_body(
     inbound: Any | None = None,
     required_secrets: Any | None = None,
     required_configs: Any | None = None,
+    *,
+    fetch: Any | None = None,
 ) -> dict[str, Any]:
     """Assemble the integration-config request body, omitting unset overlay fields.
 
     ``mapping``/``rules``/``corpus`` are the editable surface; the rest are the
     floor/overlay fields (sdk-feedback 0019 + 0020), the ``inbound`` ingress block
-    (0021), and the declared ``required_secrets``/``required_configs`` keys — each
-    sent only when provided, so an older-style publish is byte-identical.
+    (0021), the ``fetch`` declarative-pull block, and the declared
+    ``required_secrets``/``required_configs`` keys — each sent only when provided,
+    so an older-style publish is byte-identical.
+
+    ``fetch`` is KEYWORD-ONLY deliberately: the existing call sites pass the
+    earlier parameters positionally, so appending it positionally would silently
+    shift ``required_secrets``/``required_configs`` by one.
     """
     body: dict[str, Any] = {"mapping": mapping, "rules": rules, "corpus": corpus}
     if floor is not None:
@@ -439,6 +446,8 @@ def _integration_config_body(
         body["externalMapping"] = external_mapping
     if inbound is not None:
         body["inbound"] = inbound
+    if fetch is not None:
+        body["fetch"] = fetch
     if required_secrets is not None:
         body["requiredSecrets"] = required_secrets
     if required_configs is not None:
@@ -3066,6 +3075,7 @@ class PegasusClient:
         external_shape: Any | None = None,
         external_mapping: Any | None = None,
         inbound: Any | None = None,
+        fetch: Any | None = None,
         required_secrets: list[dict[str, Any]] | None = None,
         required_configs: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
@@ -3091,6 +3101,10 @@ class PegasusClient:
             inbound: The ingress ack/validation block (0021) — see the
                 ``/api/v1/integrations/inbound-schema`` JSON Schema. Omit for a
                 non-ingress integration.
+            fetch: The declarative PULL block — capability name → operation; see
+                :meth:`get_fetch_schema`. Gate-checked here, so a dry run tells
+                you whether the operation names are capabilities the floor
+                declares before you publish. Omit for a push-only integration.
             required_secrets: Secret keys this integration reads at runtime, each
                 ``{"key", "group"?, "description"?}`` (group defaults to
                 ``"global"``). Informational — surfaced in the tenant UI so the
@@ -3118,6 +3132,7 @@ class PegasusClient:
                     inbound,
                     required_secrets,
                     required_configs,
+                    fetch=fetch,
                 ),
             )
         _raise_for_status(response)
@@ -3135,6 +3150,7 @@ class PegasusClient:
         external_shape: Any | None = None,
         external_mapping: Any | None = None,
         inbound: Any | None = None,
+        fetch: Any | None = None,
         required_secrets: list[dict[str, Any]] | None = None,
         required_configs: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
@@ -3166,6 +3182,14 @@ class PegasusClient:
                 ingress return the partner's ack envelope (e.g. ADE ``Result{…}``)
                 instead of the generic ``{"status":"accepted"}``. Omit for a
                 non-ingress integration.
+            fetch: The declarative PULL block — the counterpart to ``inbound``,
+                which only ever described push. Maps a capability name to one
+                operation ``{method, path, query?, body?, headers?,
+                secretHeaders?, decode?, recordsPath?, page?}``; see
+                :meth:`get_fetch_schema` for the bounded DSL and
+                :meth:`get_floor` (``capabilities``) for the legal names. This is
+                what lets a NEW source be pulled from config alone instead of
+                needing its own workflow. Omit for a push-only integration.
             required_secrets: Secret keys this integration reads at runtime (e.g.
                 the ``deliver_to_external`` API key + URL), each ``{"key",
                 "group"?, "description"?}`` (group defaults to ``"global"``).
@@ -3178,7 +3202,7 @@ class PegasusClient:
         Returns:
             The created config row: ``{id, integrationId, version, visibility,
             status, mapping, rules, corpus, floor, displayName, externalShape,
-            externalMapping, inbound, requiredSecrets, requiredConfigs,
+            externalMapping, inbound, fetch, requiredSecrets, requiredConfigs,
             publishedBy, createdAt}``.
 
         Raises:
@@ -3207,6 +3231,7 @@ class PegasusClient:
                     inbound,
                     required_secrets,
                     required_configs,
+                    fetch=fetch,
                 ),
             )
         _raise_for_status(response)
@@ -3386,6 +3411,35 @@ class PegasusClient:
         ``GET /api/v1/integrations/inbound-schema``.
         """
         return self._get_json("/api/v1/integrations/inbound-schema")
+
+    def get_fetch_schema(self) -> dict[str, Any]:
+        """The JSON Schema for the ``fetch`` declarative-pull block (public, live).
+
+        The PULL counterpart to :meth:`get_inbound_schema`. A ``fetch`` block maps
+        a capability name to one operation::
+
+            {"settlements": {"method": "GET", "path": "/settlement/v1/settlement",
+                             "query": {"settlementDate": "{{settlementDate}}"},
+                             "decode": "jsonString", "page": {"style": "none"}}}
+
+        Operation names must be capabilities the FLOOR declares — read them from
+        :meth:`get_floor` (``capabilities``); this schema is floor-neutral and
+        cannot tell you which names are legal.
+
+        The DSL is deliberately bounded: ``{{param}}`` and ``{{config:KEY}}``
+        substitution only (no arithmetic, conditionals or loops), a closed
+        ``page.style`` (``none``/``pageNumber``/``cursor``), a closed ``decode``
+        (``none``/``jsonString`` — use ``jsonString`` for a double-encoded body,
+        i.e. a JSON string whose content is JSON), and one dot-path
+        ``recordsPath``. Anything richer is a bespoke workflow.
+
+        ``{{secret:…}}`` is REFUSED at publish: a credential must never reach a
+        URL or query string, where it would land in the partner's access logs.
+        Declare it in ``secretHeaders``, which resolves server-side.
+
+        Backed by ``GET /api/v1/integrations/fetch-schema``.
+        """
+        return self._get_json("/api/v1/integrations/fetch-schema")
 
     def list_floors(self) -> list[dict[str, Any]]:
         """List the built-in integration floors — the per-type contracts a config builds on.

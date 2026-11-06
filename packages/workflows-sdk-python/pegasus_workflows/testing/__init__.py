@@ -127,6 +127,7 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_integrations": None,
     "get_mapping_schema": None,
     "get_inbound_schema": None,
+    "get_fetch_schema": None,
     # feedback form authoring reads (validate is a no-write pre-check, like
     # validate_integration_config)
     "validate_feedback_form": None,

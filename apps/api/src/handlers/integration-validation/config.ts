@@ -81,6 +81,12 @@ const ConfigBody = z.object({
   // Inbound (ingress) behavior published with the definition (sdk-feedback 0021):
   // { eventType, dedupKeyPath?, orderByPath?, ackTemplate: {success, failure} }.
   inbound: z.record(z.string(), z.unknown()).optional(),
+  // Declarative PULL descriptor (Gap B) — capability name → operation. Left as
+  // `unknown` here on purpose: the GATE does the real validation (shape AND the
+  // semantic checks a request schema cannot see — that operation names are
+  // capabilities the floor declares, and that no credential is templated into a
+  // URL). Pre-judging the shape here would split the contract across two places.
+  fetch: z.record(z.string(), z.unknown()).optional(),
   // Secret/config keys this integration reads at runtime (e.g. deliver-to-external's
   // API key + URL), declared so the tenant sees which values to provide and whether
   // they are set. Informational — does not gate the publish or the runtime read.
@@ -108,6 +114,7 @@ function toFull(row: IntegrationConfigRow) {
     externalShape: row.externalShape,
     externalMapping: row.externalMapping,
     inbound: row.inbound,
+    fetch: row.fetch,
     requiredSecrets: row.requiredSecrets,
     requiredConfigs: row.requiredConfigs,
     publishedBy: row.publishedBy,
@@ -167,6 +174,7 @@ function carriedPublishFields(source: IntegrationConfigRow): Partial<PublishConf
     ...(source.externalShape != null ? { externalShape: json(source.externalShape) } : {}),
     ...(source.externalMapping != null ? { externalMapping: json(source.externalMapping) } : {}),
     ...(source.inbound != null ? { inbound: json(source.inbound) } : {}),
+    ...(source.fetch != null ? { fetch: json(source.fetch) } : {}),
     ...(source.requiredSecrets != null ? { requiredSecrets: json(source.requiredSecrets) } : {}),
     ...(source.requiredConfigs != null ? { requiredConfigs: json(source.requiredConfigs) } : {}),
   }
@@ -183,7 +191,11 @@ integrationConfigHandler.post(
   }),
   (c) => {
     const integrationId = c.req.param('integrationId') ?? ''
-    const { mapping, rules, corpus, floor, externalShape, externalMapping } = c.req.valid('json')
+    // NOTE `fetch` must be destructured explicitly: without it the identifier
+    // silently resolves to the GLOBAL fetch function, which typechecks and would
+    // hand the gate a function instead of the descriptor.
+    const { mapping, rules, corpus, floor, externalShape, externalMapping, fetch } =
+      c.req.valid('json')
     if (floor && !getFloor(floor))
       return c.json({ error: `Unknown floor "${floor}"`, code: 'NOT_FOUND' }, 404)
     const base = getGateBase(integrationId, floor)
@@ -201,6 +213,7 @@ integrationConfigHandler.post(
       corpus: corpus as GateCorpusCase[],
       ...(externalShape ? { externalShape } : {}),
       ...(externalMapping !== undefined ? { externalMapping } : {}),
+      ...(fetch !== undefined ? { fetch } : {}),
     })
     return c.json({ data: report })
   },
@@ -238,6 +251,7 @@ integrationConfigHandler.post(
       externalShape,
       externalMapping,
       inbound,
+      fetch,
       requiredSecrets,
       requiredConfigs,
     } = c.req.valid('json')
@@ -259,6 +273,7 @@ integrationConfigHandler.post(
       corpus: corpus as GateCorpusCase[],
       ...(externalShape ? { externalShape } : {}),
       ...(externalMapping !== undefined ? { externalMapping } : {}),
+      ...(fetch !== undefined ? { fetch } : {}),
     })
     if (!report.ok) {
       return c.json(
@@ -294,6 +309,7 @@ integrationConfigHandler.post(
         ? { externalMapping: externalMapping as Prisma.InputJsonValue }
         : {}),
       ...(inbound !== undefined ? { inbound: inbound as Prisma.InputJsonValue } : {}),
+      ...(fetch !== undefined ? { fetch: fetch as Prisma.InputJsonValue } : {}),
       ...(requiredSecrets !== undefined
         ? { requiredSecrets: requiredSecrets as unknown as Prisma.InputJsonValue }
         : {}),
@@ -442,6 +458,7 @@ integrationConfigHandler.post(
         ? { externalShape: source.externalShape as Record<string, unknown> }
         : {}),
       ...(source.externalMapping != null ? { externalMapping: source.externalMapping } : {}),
+      ...(source.fetch != null ? { fetch: source.fetch } : {}),
     })
     if (!report.ok) {
       return c.json(
@@ -572,6 +589,7 @@ integrationConfigHandler.post(
         ? { externalShape: source.externalShape as Record<string, unknown> }
         : {}),
       ...(source.externalMapping != null ? { externalMapping: source.externalMapping } : {}),
+      ...(source.fetch != null ? { fetch: source.fetch } : {}),
     })
     if (!report.ok) {
       return c.json(

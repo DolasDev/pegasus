@@ -50,6 +50,7 @@ import {
   canonicalSchemaPaths,
 } from '../../integration-validation/transform/mapping-static-check'
 import { inboundBlockJsonSchema } from '../../lib/ingress'
+import { fetchBlockJsonSchema } from '../../lib/integration-fetch'
 import { createIntegrationProjectionRepository } from '../../repositories/integration-projection.repository'
 import { db as basePrisma } from '../../db'
 import { createTenantDb } from '../../lib/prisma'
@@ -90,6 +91,17 @@ integrationValidationHandler.get('/integrations/mapping-schema', (c) => {
 integrationValidationHandler.get('/integrations/inbound-schema', (c) => {
   c.header('Cache-Control', 'public, max-age=86400')
   return c.json(inboundBlockJsonSchema() as object)
+})
+
+// Published JSON Schema for the `fetch` PULL block (Gap B) — the counterpart to
+// inbound-schema. PUBLIC: it is the authoring contract for a declarative pull,
+// and the whole point is that an author (or their agent) can write a fetch
+// descriptor without platform source. The floor's own capability list — which
+// operation NAMES are legal — comes from the floor-contract endpoint below, not
+// from here: this schema is partner-neutral.
+integrationValidationHandler.get('/integrations/fetch-schema', (c) => {
+  c.header('Cache-Control', 'public, max-age=86400')
+  return c.json(fetchBlockJsonSchema() as object)
 })
 
 // Floor introspection (sdk-feedback 0024) — the machine-readable contract an
@@ -143,6 +155,12 @@ function floorDetail(floorId: string): Record<string, unknown> | null {
           },
         }
       : {}),
+    // Legal `fetch` OPERATION NAMES (Gap B). A published fetch block may only
+    // declare operations named here, so this is the list an author needs before
+    // writing one — the fetch-schema endpoint publishes the operation SHAPE but
+    // is partner- and floor-neutral, so it cannot carry these. Omitted for a
+    // floor that declares none, which means declarative pull is unavailable on it.
+    ...(floor.capabilities ? { capabilities: [...floor.capabilities] } : {}),
   }
 }
 
