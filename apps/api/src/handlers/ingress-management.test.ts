@@ -226,3 +226,63 @@ describe('POST .../ingress/test (dry-run)', () => {
     expect(mockConfigFindFirst).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// The dry-run must resolve its config EXACTLY as the live endpoint does —
+// otherwise it answers a different question than "is my config correct", which
+// is its whole purpose.
+//
+// It previously queried `where: { integrationId, status: 'PUBLISHED' }` with NO
+// tenantId. `IntegrationConfig` is deliberately absent from
+// TENANT_SCOPED_MODELS (it has a GLOBAL case, so auto-scoping would hide GLOBAL
+// rows), so nothing injected one — the dry-run could read ANOTHER TENANT's
+// published `inbound` block and render their ack template. It also had no
+// GLOBAL fallback and no version ordering.
+// ---------------------------------------------------------------------------
+
+describe('POST .../ingress/test — config resolution is tenant-scoped', () => {
+  const inbound = { eventType: 'sirva_ade.shipment.event', dedupKeyPath: 'Events.0.Id' }
+
+  function routeByScope(own: unknown, global: unknown) {
+    mockConfigFindFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      'tenantId' in where ? own : global,
+    )
+  }
+
+  const post = () => ({
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ Events: [{ Id: 'evt-123' }] }),
+  })
+
+  it('binds the lookup to the CALLER’s tenant — no cross-tenant read', async () => {
+    routeByScope({ inbound }, null)
+    const res = await buildApp().request(TEST, post())
+    expect(res.status).toBe(200)
+    const firstWhere = mockConfigFindFirst.mock.calls[0]?.[0]?.where as Record<string, unknown>
+    expect(firstWhere).toMatchObject({ tenantId: 'tenant-1' })
+  })
+
+  it('falls back to the GLOBAL block, matching the live endpoint', async () => {
+    routeByScope(null, { inbound })
+    const res = await buildApp().request(TEST, post())
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({
+      eventType: 'sirva_ade.shipment.event',
+      dedupId: 'evt-123',
+    })
+  })
+
+  it('prefers the tenant’s own block over GLOBAL', async () => {
+    routeByScope({ inbound: { ...inbound, eventType: 'mine.event' } }, { inbound })
+    const res = await buildApp().request(TEST, post())
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({ eventType: 'mine.event' })
+  })
+
+  it('asks for the newest version, not an arbitrary published row', async () => {
+    routeByScope({ inbound }, null)
+    await buildApp().request(TEST, post())
+    expect(mockConfigFindFirst.mock.calls[0]?.[0]?.orderBy).toEqual({ version: 'desc' })
+  })
+})

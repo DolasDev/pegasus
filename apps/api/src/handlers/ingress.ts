@@ -29,6 +29,7 @@ import { Actions } from '../authz/actions'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
 import { DomainError } from '@pegasus/domain'
+import { createIntegrationConfigRepository } from '../repositories/integration-config.repository'
 import {
   createIngressCredentialRepository,
   type IngressAuthRow,
@@ -77,10 +78,17 @@ ingressHandler.post('/integrations/:integrationId/events', async (c) => {
   const tenantId = cred.tenantId
 
   // 2. Load the tenant's published inbound behavior off its IntegrationConfig.
-  const configRow = await rootDb.integrationConfig.findFirst({
-    where: { integrationId, tenantId, status: 'PUBLISHED' },
-    select: { inbound: true },
-  })
+  //    Via findActiveForScope, which resolves the SAME way every other consumer
+  //    does: the tenant's own latest PUBLISHED row wins, else the GLOBAL one.
+  //    This used to be a bare findFirst on (integrationId, tenantId) with no
+  //    GLOBAL fallback and no version ordering, so a tenant whose `inbound` came
+  //    from a GLOBAL config silently got the generic {status:'accepted'} ack
+  //    instead of the partner's envelope — the exact case `carriedPublishFields`
+  //    calls "a tenant overlay wins over GLOBAL at resolve time".
+  const configRow = await createIntegrationConfigRepository(rootDb).findActiveForScope(
+    integrationId,
+    tenantId,
+  )
   const inbound = parseInboundConfig(configRow?.inbound ?? null)
   const eventType = inbound.eventType ?? defaultEventType(integrationId)
 
@@ -281,10 +289,20 @@ ingressManagementHandler.post(
     const integrationId = c.req.param('integrationId') ?? ''
     const db = c.get('db')
 
-    const configRow = await db.integrationConfig.findFirst({
-      where: { integrationId, status: 'PUBLISHED' },
-      select: { inbound: true },
-    })
+    // Resolve exactly as the live endpoint does — otherwise the dry-run answers
+    // a different question than "is my config correct", which is its whole job.
+    //
+    // The previous query was `where: { integrationId, status: 'PUBLISHED' }` with
+    // NO tenantId. `IntegrationConfig` is deliberately absent from
+    // TENANT_SCOPED_MODELS (it has a GLOBAL case, so auto-scoping would hide
+    // GLOBAL rows), which means nothing injected one — so this could read
+    // ANOTHER TENANT's published `inbound` block and render their ack template.
+    const tenantId = c.get('tenantId')
+    if (!tenantId) throw new DomainError('Tenant context required', 'UNAUTHENTICATED')
+    const configRow = await createIntegrationConfigRepository(db).findActiveForScope(
+      integrationId,
+      tenantId,
+    )
     const inbound = parseInboundConfig(configRow?.inbound ?? null)
     const eventType = inbound.eventType ?? defaultEventType(integrationId)
 
