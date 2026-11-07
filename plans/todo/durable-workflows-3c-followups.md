@@ -14,9 +14,10 @@
 on AVP Smoke `4b2e0267-c597-451e-a367-771dfac52fba` (namespace
 `pg-staging-4b2e0267c597.chgel`); evidence in the Acceptance log below.
 
-**Open:** two follow-ups found during acceptance (CLI oldest-version pick;
-worker SIGSEGV on SIGTERM drain) and the namespace cap request (user's
-action). Each fix gets its own worktree + PR.
+**Open:** only the namespace cap request (user's action). Both acceptance
+follow-ups are DONE: CLI bare-name refusal (#930, SDK 0.57.0) and the worker
+SIGSEGV on drain (#933 faulthandler, #935 `os._exit` — accepted on staging
+2026-11-07). When the cap request is settled, archive this plan.
 
 **Leftovers on staging:** `accept_3c@0.1.0` (`9f1d7544…`) and `@0.2.0`
 (`e5c0910b…`) are still published on AVP Smoke; no open executions. Retire
@@ -178,10 +179,12 @@ Scratch project: session scratchpad `accept/accept_3c` (not in the repo).
       when one version is visible", and `schedule` shares the resolver (a cron
       silently attached to a guessed version is worse than a one-off run). The
       error lists the versions (numeric semver order) and suggests the newest.
-- [ ] **After that PR merges:** tag `sdk-python-v0.57.0` on the real merge
+- [x] **After that PR merges:** tag `sdk-python-v0.57.0` on the real merge
       commit, wait for PyPI, then note it in `~/repos/pegasus-workflows/CLAUDE.md`
       (bare name refused when several versions are visible).
-- [ ] **Diagnose the worker -11 (SIGSEGV) on runner SIGTERM drain** (see the
+      **Done 2026-11-06:** #930 → `61c1e263`, tag `sdk-python-v0.57.0`,
+      release run 42302217784, on PyPI; authoring repo `bafbb2d`.
+- [x] **Diagnose the worker -11 (SIGSEGV) on runner SIGTERM drain** (see the
       Acceptance log): reproduce locally with the gate test harness, make the
       drain clean so an in-flight activity finishes.
       **Investigated 2026-11-06 (`fix/worker-drain-sigsegv`):** NOT the
@@ -202,8 +205,8 @@ Scratch project: session scratchpad `accept/accept_3c` (not in the repo).
       **Root cause 2026-11-07 (staging re-test on the #933 image):** stop 1
       (worker up 62 s) exited 0; stop 2 (worker up ~3.5 min, `0a8314eb` open
       mid-timer) exited -11 with faulthandler output `Fatal Python error:
-    Segmentation fault` / `Thread 0x… <no Python frame>` / `Extension
-    modules: google._upb._message` — a NON-Python (Temporal core) thread
+  Segmentation fault` / `Thread 0x… <no Python frame>` / `Extension
+  modules: google._upb._message` — a NON-Python (Temporal core) thread
       faulting while the interpreter finalizes after `asyncio.run` returned.
       Python/temporalio/protobuf identical in the crashing (b07d0c9a) and
       current images (3.12.16 / 1.35.0 / 7.36.2). **Fix
@@ -212,6 +215,13 @@ Scratch project: session scratchpad `accept/accept_3c` (not in the repo).
       is already done. **Tick only after staging:** ≥ 3 consecutive stops
       exit 0, ≥ 2 of them with the worker up ≥ 3 min, each read from
       `runner.workflow_worker_stopped`.
+      **FIXED + ACCEPTED 2026-11-07:** #935 → `c55646e3`; staging image
+      `sha256:81edf62e…` (14:41Z). Fresh `accept_3c@0.2.0` exec
+      `825176c2-b1bd-45a3-8b08-5a1ed2e04fbc`; three consecutive `ecs
+    stop-task`s on the NEW image, all `exit_code: 0`, no `Fatal Python`:
+      14:47:38 (runner up ~3.5 min), 14:52:09 (~3.5 min), 14:54:36 (~1.3
+      min). `825176c2` COMPLETED 15:01:39Z `token v0.2.0 timed-out`. (Pre-fix,
+      same conditions: -11 in 3 of 4 stops.)
 
 - [ ] **Namespace cap request** (owed since 3a): ask Temporal support to
       raise the 100-namespace cap shared by staging and prod (7 used on
