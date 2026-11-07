@@ -198,9 +198,20 @@ Scratch project: session scratchpad `accept/accept_3c` (not in the repo).
       of the driver's `main()` (a native crash now dumps every thread's stack
       to stderr → `runner.workflow_worker_output`) + an e2e test pinning
       "drain with an open Workflow exits 0 and it finishes on the next
-      worker". **Next:** after the runner image deploys, repeat the staging
-      stop (start `accept_3c@0.2.0` on AVP Smoke, `ecs stop-task` mid-sleep —
-      no kill switch needed), read the traceback, fix from it.
+      worker" (#933).
+      **Root cause 2026-11-07 (staging re-test on the #933 image):** stop 1
+      (worker up 62 s) exited 0; stop 2 (worker up ~3.5 min, `0a8314eb` open
+      mid-timer) exited -11 with faulthandler output `Fatal Python error:
+    Segmentation fault` / `Thread 0x… <no Python frame>` / `Extension
+    modules: google._upb._message` — a NON-Python (Temporal core) thread
+      faulting while the interpreter finalizes after `asyncio.run` returned.
+      Python/temporalio/protobuf identical in the crashing (b07d0c9a) and
+      current images (3.12.16 / 1.35.0 / 7.36.2). **Fix
+      (`fix/worker-driver-skip-finalization`):** the driver flushes stdio and
+      `os._exit(code)` instead of `sys.exit` — skips `Py_Finalize`, the drain
+      is already done. **Tick only after staging:** ≥ 3 consecutive stops
+      exit 0, ≥ 2 of them with the worker up ≥ 3 min, each read from
+      `runner.workflow_worker_stopped`.
 
 - [ ] **Namespace cap request** (owed since 3a): ask Temporal support to
       raise the 100-namespace cap shared by staging and prod (7 used on
