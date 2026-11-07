@@ -244,4 +244,17 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Exit WITHOUT interpreter finalization. The Temporal core's native runtime
+    # threads can still be running when Python tears down, and one touching
+    # the interpreter during Py_Finalize segfaults: on staging (2026-11-06/07)
+    # a runner stop with a Workflow open exited this process -11 ~40 ms after
+    # the shutdown line, in 3 of 4 tries, with faulthandler showing the fault
+    # on a non-Python thread and the main thread past its last Python frame.
+    # Everything worth finishing (the worker drain) is done once main()
+    # returns, so skipping finalization loses nothing — but os._exit skips the
+    # stdio flush too, and stderr is how a crash dump reaches the shim's
+    # runner.workflow_worker_output. Do not "clean this up" to sys.exit().
+    code = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)

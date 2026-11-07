@@ -3920,3 +3920,26 @@ running `apps/mobile` on Expo web, and each looks like the whole problem:
   Phones don't enforce CORS, so "works on the phone" proves nothing here. Use
   `npm run dev:web`: the app calls Metro's own origin and Metro forwards `/api/*`
   (`metro/api-proxy.js`). Don't widen prod CORS for a dev loop.
+
+## The Workflow worker driver exits with `os._exit` on purpose — a Temporal core thread can segfault `Py_Finalize`
+
+Found in the 3c staging acceptance, 2026-11-06/07. A runner stop while a durable
+Workflow was open made the worker subprocess (`workflow_worker_driver.py`) exit
+**-11** ~40 ms after the shutdown line — 3 of 4 tries on Temporal Cloud, never
+against the dev server. `faulthandler` showed it:
+
+```
+Fatal Python error: Segmentation fault
+Thread 0x00007fd6f9c7c340 (most recent call first):
+  <no Python frame>
+Extension modules: google._upb._message (total: 1)
+```
+
+"Thread", not "Current thread": the fault is on a NON-Python (native Temporal
+core) thread, and the only Python thread has no frame left — the interpreter
+was already finalizing after `asyncio.run` returned. The drain itself had
+finished, so the driver now flushes stdout/stderr and calls `os._exit(code)`
+instead of `sys.exit` — don't "tidy" that back. Not the signal: ECS SIGTERMs
+only PID 1, and the runner sends the child the same shutdown line as an
+idle-exit. A one-off clean stop proves nothing here (it's a race) — judge a
+fix over several stops with a worker that has been up a few minutes.
