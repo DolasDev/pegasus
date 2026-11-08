@@ -22,7 +22,8 @@
 > 1. ~~**Request the Lambda concurrency increase.**~~ Done since 2026-05-29 (see the
 >    correction above). Reserved concurrency is settable now.
 > 2. **Get the eval set authored** (Phase 0 step 4). Gates Phase 1's prompt work.
-> 3. **Answer the three infra unknowns** in "Infrastructure" before writing CDK.
+> 3. **Answer the two remaining infra unknowns** in "Infrastructure" (§3 Function URL exposure,
+>    §4 sizing and the kill switch) before writing CDK. §2 was settled 2026-11-07: the host is Bedrock.
 > 4. Then Phase 1.
 >
 > **Read "Infrastructure — designed on paper only" before writing any code.** The
@@ -63,24 +64,25 @@ own role scope. Phases 2–3 widen it to gated roles, then to everyone.
 
 ## Decisions
 
-| Decision          | Choice                                                 | Why                                                                                                                                                                   |
-| ----------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Retrieval         | Tool-use over existing read endpoints                  | Inherits Cedar role scoping; never stale                                                                                                                              |
-| Inference host    | **Claude Platform on AWS** (Anthropic-operated, SigV4) | No API key in Secrets Manager — the Lambda role authenticates. AWS Marketplace billing. Same-day parity with the first-party API.                                     |
-| Model             | **`claude-opus-5`**                                    | Removes model quality as a variable while ops tunes context. Re-evaluate against the eval set at GA; the seam below makes the swap cheap.                             |
-| Provider coupling | Thin `InferenceProvider` seam                          | Tool registry, Cedar filtering, traces, prompt store are all provider-agnostic. Switching providers = one adapter file + one env var.                                 |
-| Transport         | Dedicated Lambda + Function URL, `RESPONSE_STREAM`     | See "The 29-second problem" below.                                                                                                                                    |
-| Rollout gating    | **New Cedar action, not a capability flag**            | `usePermissions().hasCapability()` in `apps/tenant-web/src/auth/permissions.ts` **fails open** (absent ⇒ `true`). A Cedar action fails closed and is server-enforced. |
-| v1 tool surface   | **Read-only**                                          | No mutations. The model's output must never drive a state change.                                                                                                     |
-| Persistence       | Conversations + per-tool-call traces from day 1        | The trace table _is_ the lab's debugger, the audit log, and the eval substrate.                                                                                       |
+| Decision          | Choice                                                                                                                       | Why                                                                                                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Retrieval         | Tool-use over existing read endpoints                                                                                        | Inherits Cedar role scoping; never stale                                                                                                                              |
+| Inference host    | **Claude in Amazon Bedrock** (AWS-operated, SigV4) — _changed 2026-11-07 from Claude Platform on AWS; see Infrastructure §2_ | No API key — the Lambda role authenticates. AWS is the sole data processor (settles the phase-2 PII assumption). Everything but a one-time use-case form is CDK.      |
+| Model             | **`claude-opus-5`** via `us.anthropic.claude-opus-5`                                                                         | Removes model quality as a variable while ops tunes context. Re-evaluate against the eval set at GA; the seam below makes the swap cheap.                             |
+| Provider coupling | Thin `InferenceProvider` seam                                                                                                | Tool registry, Cedar filtering, traces, prompt store are all provider-agnostic. Switching providers = one adapter file + one env var.                                 |
+| Transport         | Dedicated Lambda + Function URL, `RESPONSE_STREAM`                                                                           | See "The 29-second problem" below.                                                                                                                                    |
+| Rollout gating    | **New Cedar action, not a capability flag**                                                                                  | `usePermissions().hasCapability()` in `apps/tenant-web/src/auth/permissions.ts` **fails open** (absent ⇒ `true`). A Cedar action fails closed and is server-enforced. |
+| v1 tool surface   | **Read-only**                                                                                                                | No mutations. The model's output must never drive a state change.                                                                                                     |
+| Persistence       | Conversations + per-tool-call traces from day 1                                                                              | The trace table _is_ the lab's debugger, the audit log, and the eval substrate.                                                                                       |
 
 ### Assumptions (flagged, proceeding)
 
-- **Tenant PII leaves our infrastructure.** Customer names, addresses, and shipment details go
-  to the inference provider as tool results. Claude Platform on AWS is Anthropic-operated under
-  the standard commercial retention posture. Confirm this is acceptable — and confirm whether
-  any tenant contract forbids it — before phase 2 exposes it beyond internal staff. If a tenant
-  must be excluded, the Cedar action is the per-tenant off switch.
+- ~~**Tenant PII leaves our infrastructure.**~~ **Largely settled 2026-11-07 by the switch to
+  Bedrock** (Infrastructure §2). AWS is the sole data processor, and the `us.*` geo profile keeps
+  inference in US regions. Customer names, addresses and shipment details still go to the model
+  as tool results inside our AWS accounts. So still confirm that no tenant contract forbids LLM
+  processing at all before phase 2 exposes it beyond internal staff. If a tenant must be excluded,
+  the Cedar action is the per-tenant off switch.
 - **Tool results are untrusted input.** A customer note field can contain text shaped like an
   instruction. Because v1 tools are read-only and the model cannot trigger actions, the blast
   radius is a wrong answer, not a wrong write. Revisit hard before any write-capable tool.
@@ -128,15 +130,16 @@ Verified 2026-09-18 against `packages/infra`: **zero** hits for bedrock, anthrop
 "Critical files" bullet about `api-stack.ts`. Per this repo's own rule — a feature is not shipped
 until it is wired into CDK — the LLM backend does not exist in any form.
 
-Four things were established after the plan was written. As of 2026-10-30 only the second is
-blocking. The first was based on a stale quota figure; see its correction.
+Four things were established after the plan was written. The first (based on a stale quota
+figure) and the second (resolved 2026-11-07 by switching to Bedrock) are no longer blocking. Items 3
+and 4 are still open.
 
 ### 1. ~~Reserved concurrency CANNOT be set at the current quota — this is now a phase-1 blocker~~ RESOLVED: the quota is 1,000
 
 > **CORRECTION (2026-10-30).** The premise below was wrong when it was written. Both accounts
 > were raised to **1,000** on 2026-05-29 (Service Quotas request `L-B99A9384`, CASE_CLOSED), so
 > on 2026-09-18 they were already at 1,000, not 10. The AWS rule itself is right: reservations
-> may total at most *unreserved minus 100*. At 1,000 that allows up to **900**, so
+> may total at most _unreserved minus 100_. At 1,000 that allows up to **900**, so
 > `reservedConcurrentExecutions` on the assistant function is settable, and the
 > no-starvation protection is available from phase 1. Size the reservation in phase 1 (for
 > example 50) and leave the rest for the platform. The original text follows as history.
@@ -153,7 +156,77 @@ account pool. Land somewhere ≥ 500 so reserving a meaningful slice is possible
 Refs: [AWS docs](https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html),
 [re:Post](https://repost.aws/questions/QU7NV9YgI3RGaqVOFdrZYnSQ/concurrency-limits-for-lambda-does-not-allow-to-reserve).
 
-### 2. Claude Platform on AWS provisioning is not IaC, and the IAM grant is unpinned
+### 2. ~~Claude Platform on AWS provisioning is not IaC, and the IAM grant is unpinned~~ RESOLVED: switch the host to Amazon Bedrock
+
+> **DECIDED 2026-11-07: the inference host is Claude in Amazon Bedrock, not Claude Platform on
+> AWS.** Web research against primary docs (sources below) settled both halves of the old item.
+> Bedrock is CDK apart from one CLI call per account, and its IAM grant is pinned to named
+> actions from the AWS Service Authorization Reference. The deciding factor is the data
+> posture, not CDK. Bedrock makes AWS the **sole data processor**, which largely settles the phase-2
+> "tenant PII leaves our infrastructure" assumption. Anthropic's own Claude
+> Platform on AWS page says to use Bedrock "if you need AWS as the sole data processor". The
+> original text and the rejected alternative are kept below as history.
+
+**What the design now commits to:**
+
+| Concern            | Choice                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model id           | **`us.anthropic.claude-opus-5`**, the US geo cross-region inference profile. From `us-east-1` it routes only to us-east-1, us-east-2 and us-west-2. **Never `global.*`**, which routes worldwide and gives back the residency the switch was for. Opus 5 has no in-region `bedrock-runtime` endpoint, so a geo profile is required.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Client             | **`AnthropicBedrock` from `@anthropic-ai/bedrock-sdk`**, the default client. **Not** the `mantle-client` export and **not** the `bedrock-runtime…/anthropic` Messages path, because neither appears in the Service Authorization Reference (see the grant row). The default client calls `/model/{id}/invoke` and `/model/{id}/invoke-with-response-stream` (verified in the 1.1.1 tarball, `client.js`), with the same Messages-shaped request and response and the same tool runner.                                                                                                                                                                                                                                              |
+| Credentials        | SigV4 from the Lambda execution role. There is no API key anywhere, so `bedrock:CallWithBearerToken` is **not** granted. Bedrock long-term API keys stay unused.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| IAM grant (pinned) | `bedrock:InvokeModel` + `bedrock:InvokeModelWithResponseStream`. The Service Authorization Reference maps the `InvokeModel` and `InvokeModelWithResponseStream` operations to exactly these actions. The `Converse*` operations reuse the same two. **Resources:** (a) the inference profile `arn:aws:bedrock:us-east-1:{account}:inference-profile/us.anthropic.claude-opus-5`, **and** (b) the foundation model in **every destination region** `arn:aws:bedrock:{us-east-1,us-east-2,us-west-2}::foundation-model/anthropic.claude-opus-5`. A grant on the profile alone does not cover the underlying model. Add `bedrock:CountTokens` only if the adapter calls it. Opus 5 on `bedrock-runtime` does not support count-tokens. |
+| Cost attribution   | An **application inference profile** (`CfnApplicationInferenceProfile`, stable L1 in the installed `aws-cdk-lib` 2.273.0) wrapping the US geo profile, tagged `feature=assistant` (later `feature=workflows-llm`). The grant then targets the application-profile ARN **plus** the underlying model ARNs as above. Skip the experimental `@aws-cdk/aws-bedrock-alpha` L2. Optional for phase 1, cheap to add.                                                                                                                                                                                                                                                                                                                       |
+| Kill switch        | Removing the grant (or deploying a `Deny`) is the infra-level lever. It sits alongside the `ASSISTANT_ENABLED` env flag from §4, and both must be in CDK.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+
+**The one non-IaC step: the Anthropic use-case form.** Bedrock has enabled all serverless
+models by default since 2025-10-15, governed by IAM with no model-access page. Anthropic models
+are the exception: they need a one-time **use-case form per AWS account**
+(`aws bedrock put-use-case-for-model-access`, base64 form-data on the CLI). If you submit it from
+an AWS Organizations **management** account, it covers the child accounts. Before the first
+invoke, a missing form surfaces as a `ResourceNotFoundException`. Approval can take ~15 minutes.
+
+- Do this as a **documented runbook step, not a CDK custom resource**. It runs once, needs
+  company and use-case text, and isn't a deploy-time concern.
+- **Check first:** are prod `331145994639` and staging `248812875460` in one Organization, and
+  can this team act as its management account? If yes, one call covers both. If not, make one
+  call per account.
+- **Verify** with a single `InvokeModel` from each account's role (or the CLI) before phase 1's
+  CDK lands, so a missing form isn't mistaken for an IAM bug.
+
+**What Bedrock costs us vs. Claude Platform on AWS:** feature lag. New models and features may
+land later than on the first-party API. Opus 5's `bedrock-runtime` support covers everything
+phase 1 uses: streaming, tool use, adaptive thinking, explicit prompt caching (4 checkpoints,
+5 min / 1 h TTL) and structured outputs. Anthropic-hosted extras are missing, such as Agent
+Skills, the code-execution sandbox, the Files API and count-tokens. The plan uses none of them.
+The `InferenceProvider` seam keeps a later swap to one adapter file.
+
+**Rejected alternative: Claude Platform on AWS.** It was the original choice. Kept for the record,
+because its blockers turned out to be smaller than the old text claimed:
+
+- The IAM grant **is** pinnable: `aws-external-anthropic:CreateInference` on
+  `arn:aws:aws-external-anthropic:{region}:{account}:workspace/wrkspc_…`, plus
+  `sts:GetWebIdentityToken` / `sts:TagGetWebIdentityToken`, conditioned on
+  `aws:CalledViaLast = aws-external-anthropic.amazonaws.com` and the Anthropic audiences.
+- `iam:EnableOutboundWebIdentityFederation` is a plain IAM API call. It returns a 409 on repeat
+  and has no CloudFormation type. Workspaces come from a SigV4 admin route
+  (`POST /v1/organizations/workspaces`). Both would need Lambda-backed custom resources, because
+  `AwsCustomResource` can't call a non-AWS-SDK endpoint.
+- **Still console-only:** Marketplace signup and Anthropic organization creation, which is tied to
+  an owner email, once per account. There's no CloudFormation resource type. Terraform support
+  exists only as unmerged pull requests in a community provider.
+- **Data posture:** Anthropic is the processor, ZDR is on request only, and workspaces created
+  before 2026-09-18 may store data outside AWS. Its advantage is same-day feature parity, which
+  this design doesn't need.
+
+**Sources:** [Bedrock model card: Claude Opus 5](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5.html),
+[Service Authorization Reference: Bedrock](https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrock.html),
+[PutUseCaseForModelAccess](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_PutUseCaseForModelAccess.html),
+[Bedrock automatic model enablement](https://aws.amazon.com/about-aws/whats-new/2025/10/amazon-bedrock-automatic-enablement-serverless-foundation-models),
+[CDK InferenceProfileBase (grant semantics)](https://docs.aws.amazon.com/cdk/api/v2/docs/@aws-cdk_aws-bedrock-alpha.InferenceProfileBase.html),
+[Claude Platform on AWS](https://platform.claude.com/docs/en/build-with-claude/claude-platform-on-aws),
+[Claude Platform on AWS IAM actions](https://platform.claude.com/docs/en/api/claude-platform-on-aws-iam-actions).
+
+<details><summary>Original text (2026-09-18), superseded</summary>
 
 Workspace provisioning and AWS Marketplace billing are console/account actions CDK cannot express —
 a manual prerequisite before any IAM grant means anything. And the plan asserts "SigV4 from the
@@ -161,6 +234,8 @@ Lambda role" **without pinning which IAM actions and resources**. Bedrock's
 `bedrock:InvokeModelWithResponseStream` on a model ARN is a _different_ grant from
 Anthropic-operated Claude Platform on AWS. The grant cannot be written until the account is
 provisioned and the real auth surface is observed. Do not guess it into CDK.
+
+</details>
 
 ### 3. A Function URL with custom JWT auth is internet-exposed — undecided
 
@@ -172,7 +247,10 @@ itself. Decide deliberately before writing it.
 
 - **Bundling.** `NodejsFunction` bundles CJS, and an ESM-only dependency once caused a silent
   Lambda INIT crash that ran undetected for two months with synth and deploy both green
-  (`project_lambda_esm_bundling_init_crash`). Check `@anthropic-ai/sdk` against that specifically.
+  (`project_lambda_esm_bundling_init_crash`). **Checked 2026-11-07:** `@anthropic-ai/bedrock-sdk`
+  1.1.1 is `"type": "commonjs"` with a CJS `require` export, and every direct dependency is CJS
+  (`@anthropic-ai/sdk`, `@aws-sdk/*`, `@smithy/*`, `@opentelemetry/api`). The shape check passes.
+  Still smoke-invoke the deployed function, because synth and deploy were green last time too.
 - **The kill switch is not real until it is in CDK.** `ASSISTANT_ENABLED` is listed under phase 3,
   but an env flag absent from `packages/infra` is not a lever — the exact trap the
   flag-gated-feature rule exists for.
@@ -284,9 +362,11 @@ capped, so it narrows its filters instead of silently reasoning over a truncated
 
 New `apps/api/src/assistant/`:
 
-- `provider.ts` — the `InferenceProvider` seam. `ClaudeAwsProvider` uses `AnthropicAWS` from
-  the `anthropic` SDK (`pip`-equivalent: `npm i @anthropic-ai/sdk`), region + workspace id from
-  env, SigV4 from the Lambda role.
+- `provider.ts` — the `InferenceProvider` seam (but see "Placement decision": it belongs in
+  `apps/api/src/lib/inference/`). `BedrockProvider` uses `AnthropicBedrock` from
+  `@anthropic-ai/bedrock-sdk` (the default client, not `mantle-client`). Region and model id
+  (`us.anthropic.claude-opus-5`) come from env, with SigV4 from the Lambda role. See
+  Infrastructure §2 for the pinned grant.
 - `loop.ts` — use the SDK **tool runner** (`client.beta.messages.toolRunner` with `betaTool`
   and raw JSON Schema), not a hand-rolled loop. Its per-turn hooks are where the permission
   filter and trace capture attach.
@@ -362,8 +442,8 @@ Not committed to; recorded so phase 1 does not foreclose it. Question asked: cou
 also be the foundation for using LLMs from within tenant-authored workflows? **Yes — but the reuse
 is concentrated in the slow, expensive parts and is near-zero in the visible ones.**
 
-**Carries over (the long-lead items):** Claude Platform on AWS workspace + Marketplace billing
-(one-time, account-level); the SigV4-from-execution-role credential model — same grant shape for a
+**Carries over (the long-lead items):** the Bedrock Anthropic use-case form (one-time,
+account-level, Infrastructure §2); the SigV4-from-execution-role credential model — same grant shape for a
 Temporal worker task role as for a Lambda; the `InferenceProvider` seam (model ids, region,
 retries, throttling, token accounting). (The Lambda quota increase was listed here; it was already
 at 1,000 since 2026-05-29.) Most of the pain, done once.
@@ -417,7 +497,8 @@ OpenAPI). A capability not reachable through the SDK is a gap, not a feature.
 **Modified:** `apps/api/src/authz/actions.ts`, `authz/policies/30-personas/{operations-admin,tenant-admin}.cedar`,
 `apps/api/prisma/schema.prisma`, `apps/api/src/middleware/tenant.ts` (extract the token-verify
 helper), `packages/api-http/src/index.ts` (add `streamFetch`), `packages/infra/lib/stacks/api-stack.ts`
-(new `NodejsFunction` + Function URL + reserved concurrency + Bedrock/Claude-on-AWS IAM grant),
+(new `NodejsFunction` + Function URL + reserved concurrency + the pinned Bedrock IAM grant from Infrastructure §2, optionally a
+`CfnApplicationInferenceProfile`),
 `apps/tenant-web/src/router.tsx`, `apps/tenant-web/src/components/AppShell.tsx`
 
 **Reused, not rebuilt:** `apps/api/src/lib/authz.ts` (`authorize`, `listAllowedPermissions`),
@@ -460,9 +541,13 @@ Ordered by what unblocks what. The first three are the resume checklist from the
 - [ ] **The eval set** (Phase 0 step 4) — still three placeholder cases. Gates phase 1's prompt
       work.
 - [ ] **Decide the Function URL exposure** (`authType: NONE`, public, outside API Gateway).
-- [ ] Claude Platform on AWS workspace provisioning + Marketplace billing — **and then observe the
-      real IAM action/resource names** before writing the grant.
-- [ ] Confirm tenant-PII-to-inference-provider posture, and whether any tenant contract excludes it.
-      Blocks phase 2, not phase 1.
+- [x] ~~Claude Platform on AWS workspace provisioning + Marketplace billing.~~ Superseded
+      2026-11-07: the host is now Bedrock, and the grant is pinned (Infrastructure §2).
+- [ ] **Submit the Bedrock Anthropic use-case form** (`put-use-case-for-model-access`). First
+      check whether prod and staging share an Organization, because one management-account call
+      covers both. Then verify with one `InvokeModel` per account.
+- [ ] Confirm no tenant contract excludes LLM processing of its data. With Bedrock, data stays
+      in our AWS accounts and US regions. Blocks phase 2, not phase 1.
 - [ ] Ops manager's Claude Code seat.
-- [ ] Check `@anthropic-ai/sdk` for the ESM/CJS bundling trap before it reaches a Lambda.
+- [x] ~~Check the SDK for the ESM/CJS bundling trap.~~ `@anthropic-ai/bedrock-sdk` 1.1.1 and its
+      direct dependencies are all CJS (2026-11-07). Smoke-invoke after the first deploy anyway.
