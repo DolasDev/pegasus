@@ -13,7 +13,7 @@ import {
   redirectLegacyWorkflowsList,
   validateAutomationDetailSearch,
 } from '@/lib/legacy-workflow-redirects'
-import { requireRole, OPERATIONS_ROLES } from '@/auth/role-guard'
+import { requireRole, AUTOMATION_VIEW_ROLES, OPERATIONS_ROLES } from '@/auth/role-guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MessagesPage } from '@/routes/messages'
@@ -28,6 +28,8 @@ import { ReportingPage } from '@/routes/reporting'
 import { ReportingEditPage } from '@/routes/reporting.edit'
 import { IntegrationsIndexPage } from '@/routes/integrations.index'
 import { IntegrationDetailPage } from '@/routes/integrations.$integrationId'
+import { AutomationsIndexPage } from '@/routes/automations.index'
+import { AutomationDetailPage } from '@/routes/automations.$workflowId'
 import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { CompaniesSettingsPage } from '@/routes/settings.companies'
@@ -277,6 +279,27 @@ const integrationDetailRoute = createRoute({
   path: '/integrations/$integrationId',
   beforeLoad: requireRole(...INTEGRATION_VIEW_ROLES),
   component: IntegrationDetailPage,
+})
+
+// Automations — read-only status view of the tenant's own automations (the
+// `/workflows` API), for any employee who wants to check on them. Same shape as
+// Integrations above: off authLayout (NOT settingsLayout), guarded to the roles
+// that hold ReadWorkflow (AUTOMATION_VIEW_ROLES, shared with the AppShell nav).
+// Every read the pages make is ReadWorkflow; run/cancel/retry controls are
+// hidden by their own permissions.
+const automationsIndexRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/automations',
+  beforeLoad: requireRole(...AUTOMATION_VIEW_ROLES),
+  component: AutomationsIndexPage,
+})
+
+const automationViewDetailRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/automations/$workflowId',
+  beforeLoad: requireRole(...AUTOMATION_VIEW_ROLES),
+  component: AutomationDetailPage,
+  validateSearch: validateAutomationDetailSearch,
 })
 
 // ---------------------------------------------------------------------------
@@ -551,6 +574,8 @@ const routeTree = rootRoute.addChildren([
     reportingEditRoute,
     integrationsIndexRoute,
     integrationDetailRoute,
+    automationsIndexRoute,
+    automationViewDetailRoute,
     driverPlanningRoute.addChildren([
       dpAvailabilityRoute,
       dpPlanningRoute,

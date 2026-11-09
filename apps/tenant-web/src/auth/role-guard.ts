@@ -35,6 +35,15 @@ import { getSession } from './session'
  */
 export { OPERATIONS_ROLES } from '@pegasus/auth'
 
+/**
+ * Roles that can reach the read-only Automations view (`/automations` and
+ * `/automations/$workflowId`) — the holders of Cedar `ReadWorkflow`: the viewer
+ * baseline (20-viewer.cedar), the workflow_developer persona, and tenant_admin
+ * via permit-all. Shared by the route guards in router.tsx and the nav entry in
+ * AppShell.tsx so the two cannot drift.
+ */
+export const AUTOMATION_VIEW_ROLES = ['tenant_admin', 'viewer', 'workflow_developer'] as const
+
 export function requireRole(...allowedRoles: string[]): () => void {
   return () => {
     const session = getSession()
