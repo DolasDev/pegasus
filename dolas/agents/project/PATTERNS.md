@@ -151,7 +151,12 @@ diff to show for it.
 Shared role sets belong in `apps/tenant-web/src/auth/role-guard.ts` alongside
 `requireRole` (which router.tsx already imports), exported as a
 `readonly` tuple and spread at both call sites — `OPERATIONS_ROLES` (#639) is
-the worked example. A nav child that should simply inherit its group's gate
+the worked example. `AUTOMATION_VIEW_ROLES` is the same shape for an all-user,
+read-only mirror of an admin Settings section (`/automations`, off `authLayout`
+rather than `settingsLayout`). Its list is exactly the roles Cedar grants the read
+action (`ReadWorkflow`), and the page it reuses hides each mutating control behind
+`perms.has(...)`, so the page needs no read-only fork. (`INTEGRATION_VIEW_ROLES`
+predates the rule and is still duplicated between the two files.) A nav child that should simply inherit its group's gate
 carries **no** `roles` key of its own; the `NavGroup` filter already treats a
 missing `roles` as "inherit", so a per-child list duplicating the group's is
 noise that will drift.

@@ -80,7 +80,7 @@ function workflowExecutability(workflow: Workflow): 'curated' | 'executable' | '
   return 'not-executable'
 }
 
-function ExecutabilityBadge({ workflow }: { workflow: Workflow }) {
+export function ExecutabilityBadge({ workflow }: { workflow: Workflow }) {
   const state = workflowExecutability(workflow)
   if (state === 'curated') {
     return (

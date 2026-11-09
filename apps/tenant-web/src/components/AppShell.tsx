@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils'
 import { getSession, clearSession } from '@/auth/session'
 import { getCognitoConfig, buildLogoutUrl } from '@/auth/cognito'
 import { usePermissions } from '@/auth/permissions'
-import { OPERATIONS_ROLES } from '@/auth/role-guard'
+import { AUTOMATION_VIEW_ROLES, OPERATIONS_ROLES } from '@/auth/role-guard'
 import { ChatUnreadBadge } from '@/features/chat/components/ChatUnreadBadge'
 
 const SIDEBAR_COLLAPSED_KEY = 'pegasus.sidebar.collapsed'
@@ -160,6 +160,17 @@ const NAV_ITEMS = [
     icon: Blocks,
     exact: false,
     roles: INTEGRATION_VIEW_ROLES,
+    children: null,
+  },
+  {
+    // Read-only status view of the tenant's own automations — diagram and run
+    // history for anyone who holds ReadWorkflow. Managing them (upload, run,
+    // triggers) stays under Settings → Automations.
+    to: '/automations' as const,
+    label: 'Automations',
+    icon: Zap,
+    exact: false,
+    roles: AUTOMATION_VIEW_ROLES,
     children: null,
   },
 ] as const

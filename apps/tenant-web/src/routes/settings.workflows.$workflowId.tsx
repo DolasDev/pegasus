@@ -48,7 +48,17 @@ import {
 const ACTIVE_STATUSES = new Set(['QUEUED', 'RUNNING'])
 const RETRYABLE_STATUSES = new Set(['FAILED', 'TIMED_OUT', 'CANCELLED'])
 
-export function WorkflowDetailPage() {
+/**
+ * Which section the detail page renders under: the admin Settings → Automations
+ * page, or the all-user read-only `/automations` view. Only the back link
+ * differs — every control on the page is already gated by its own permission,
+ * so a viewer sees the same page minus the buttons.
+ */
+export type AutomationSectionPath = '/settings/automations' | '/automations'
+
+export function WorkflowDetailPage({
+  backTo = '/settings/automations',
+}: { backTo?: AutomationSectionPath } = {}) {
   const { workflowId } = useParams({ strict: false }) as { workflowId: string }
   const { tab } = useSearch({ strict: false }) as { tab?: 'executions' }
   const { data: workflow, isLoading, isError } = useQuery(workflowQueryOptions(workflowId))
@@ -68,7 +78,7 @@ export function WorkflowDetailPage() {
           title="Automation not found"
           description="It may have been removed, or you don't have access."
         />
-        <BackLink />
+        <BackLink to={backTo} />
       </div>
     )
   }
@@ -77,14 +87,14 @@ export function WorkflowDetailPage() {
     <div className="container mx-auto max-w-4xl py-8">
       <PageHeader
         title={workflow.name}
-        breadcrumbs={[{ label: 'Workflows' }, { label: workflow.name }]}
+        breadcrumbs={[{ label: 'Automations' }, { label: workflow.name }]}
         action={
           <Badge variant="outline" className="font-mono">
             v{workflow.version}
           </Badge>
         }
       />
-      <BackLink />
+      <BackLink to={backTo} />
 
       <Tabs defaultValue={tab === 'executions' ? 'executions' : 'overview'} className="mt-6">
         <TabsList>
@@ -104,10 +114,10 @@ export function WorkflowDetailPage() {
   )
 }
 
-function BackLink() {
+function BackLink({ to }: { to: AutomationSectionPath }) {
   return (
     <Link
-      to="/settings/automations"
+      to={to}
       className="text-muted-foreground hover:text-foreground inline-flex items-center text-sm"
     >
       <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
@@ -216,6 +226,9 @@ function OverviewTab({ workflowId, workflow }: { workflowId: string; workflow: W
  */
 function RequiredValuesSection({ requirements }: { requirements: ResolvedWorkflowRequirement[] }) {
   const missing = requirements.filter((r) => !r.present).length
+  // The Configs page is admin-only; a read-only viewer gets the count without a
+  // link that would bounce them to the dashboard.
+  const canManageConfigs = usePermissions().has('workflow_config:manage')
 
   return (
     <section>
@@ -253,10 +266,15 @@ function RequiredValuesSection({ requirements }: { requirements: ResolvedWorkflo
           </ul>
           {missing > 0 && (
             <p className="mt-2 text-xs text-muted-foreground">
-              {missing} value{missing === 1 ? '' : 's'} not yet set.{' '}
-              <Link to="/settings/developer/configs" className="text-primary hover:underline">
-                Manage secrets &amp; configs
-              </Link>
+              {missing} value{missing === 1 ? '' : 's'} not yet set.
+              {canManageConfigs && (
+                <>
+                  {' '}
+                  <Link to="/settings/developer/configs" className="text-primary hover:underline">
+                    Manage secrets &amp; configs
+                  </Link>
+                </>
+              )}
             </p>
           )}
         </>

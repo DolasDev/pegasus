@@ -105,9 +105,12 @@ describe('AppShell — Settings nav visibility', () => {
     )
 
     expect(screen.getByText('Settings')).toBeInTheDocument()
+    // getAllByText: 'Automations' is ALSO a main-nav entry (the read-only
+    // /automations view) for an admin; the href check pins the Settings one.
     for (const label of SETTINGS_LABELS) {
-      expect(screen.getByText(label)).toBeInTheDocument()
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0)
     }
+    expect(document.querySelector('a[href="/settings/automations"]')).not.toBeNull()
   })
 
   it('hides the Settings header and all four items for a non-admin role', () => {
@@ -423,4 +426,43 @@ describe('AppShell — Messages nav', () => {
     renderShell()
     expect(screen.getAllByTestId('chat-unread-badge')).toHaveLength(1)
   })
+})
+
+describe('AppShell — read-only Automations nav', () => {
+  beforeEach(() => {
+    currentPathname = '/dashboard'
+  })
+
+  const renderShell = () =>
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+  const mainNavLink = () => document.querySelector('a[href="/automations"]')
+  const settingsLink = () => document.querySelector('a[href="/settings/automations"]')
+
+  // The roles holding ReadWorkflow: the viewer baseline, workflow_developer,
+  // and tenant_admin via permit-all. Must match the /automations route guards.
+  it.each(['viewer', 'workflow_developer', 'tenant_admin'])('shows it to %s', (role) => {
+    mockPermissions = { isLoading: false, roles: [role] }
+    renderShell()
+    expect(mainNavLink()).not.toBeNull()
+  })
+
+  it('shows it to a persona user who also holds viewer, without the admin Settings entry', () => {
+    mockPermissions = { isLoading: false, roles: ['sales', 'viewer'] }
+    renderShell()
+    expect(mainNavLink()).not.toBeNull()
+    expect(settingsLink()).toBeNull()
+  })
+
+  it.each([[['driver']], [['sales']], [[]]])(
+    'hides it from roles without ReadWorkflow: %j',
+    (roles: string[]) => {
+      mockPermissions = { isLoading: false, roles }
+      renderShell()
+      expect(mainNavLink()).toBeNull()
+    },
+  )
 })
