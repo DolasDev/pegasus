@@ -18,7 +18,13 @@
 // ---------------------------------------------------------------------------
 
 import type Anthropic from '@anthropic-ai/sdk'
-import { AnthropicBedrock } from '@anthropic-ai/bedrock-sdk'
+
+// The Bedrock SDK is loaded LAZILY (dynamic import in createBedrockProvider), on
+// the first real model call. Its modules `require('@aws-sdk/client-bedrock-runtime')`
+// at load time, and the API bundle leaves `@aws-sdk/*` external (resolved from
+// the Lambda runtime). app.ts imports the assistant router, so a static import
+// here would put that require on the MAIN API Lambda's cold start — the #594
+// INIT-crash class. Lazy, a problem can only fail an assistant turn.
 
 /**
  * The slice of an Anthropic client the assistant uses. Both the first-party
@@ -46,10 +52,11 @@ export interface InferenceProvider {
  */
 export const DEFAULT_ASSISTANT_MODEL_ID = 'us.anthropic.claude-opus-5'
 
-export function createBedrockProvider(opts: {
+export async function createBedrockProvider(opts: {
   modelId: string
   region: string
-}): InferenceProvider {
+}): Promise<InferenceProvider> {
+  const { AnthropicBedrock } = await import('@anthropic-ai/bedrock-sdk')
   const client = new AnthropicBedrock({ awsRegion: opts.region })
   return {
     name: 'bedrock',
@@ -73,7 +80,7 @@ export function setInferenceProviderForTests(provider: InferenceProvider | null)
  * model (the eval sweep and the planned Sonnet step-down use it); the region is
  * the Lambda's own.
  */
-export function resolveInferenceProvider(): InferenceProvider {
+export async function resolveInferenceProvider(): Promise<InferenceProvider> {
   if (override) return override
   if (cached) return cached
   const modelId = process.env['ASSISTANT_MODEL_ID'] || DEFAULT_ASSISTANT_MODEL_ID
@@ -82,6 +89,6 @@ export function resolveInferenceProvider(): InferenceProvider {
     throw new Error(`ASSISTANT_MODEL_ID must not be a global.* profile (got ${modelId})`)
   }
   const region = process.env['AWS_REGION'] || 'us-east-1'
-  cached = createBedrockProvider({ modelId, region })
+  cached = await createBedrockProvider({ modelId, region })
   return cached
 }

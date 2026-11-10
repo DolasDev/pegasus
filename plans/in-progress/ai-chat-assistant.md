@@ -481,13 +481,24 @@ Files: `apps/api/src/assistant/{http,loop,prompt}.ts`, `assistant/tools/*`,
 
 1. Per account (staging first): the Bedrock use-case form, then one verified `InvokeModel`.
    Check first whether prod and staging share an Organization.
-2. Flip `assistantEnabled` for staging, deploy, and **smoke-invoke the Function URL** (the
-   bundle test proves the SDK is bundled, but #594-class INIT failures only show at
-   runtime). Confirm `cache_read_input_tokens > 0` on a second turn (Verification 6) and
-   that Bedrock accepts the tool runner's `type: "custom"` tool entries.
-3. The eval set: still three placeholders, so the gate content doesn't exist yet. The
+2. **Right after this merges, before any AWS step:** `curl` the staging Function URL
+   (`AssistantUrlExport` output) at `/api/v1/assistant/tools`. It should answer **401**
+   (no token) or **404 `ASSISTANT_DISABLED`**. A **502** means the Lambda failed INIT, the
+   #594 class that synth, deploy and the bundle test all miss. (`@aws-sdk/*` stays external
+   and resolves from the runtime; the Bedrock SDK is imported lazily so it can't take the
+   main API's INIT down, but the assistant entry still loads the whole app.)
+3. Flip `assistantEnabled` for staging and deploy. Then, **from the SPA in a browser**
+   (not curl):
+   - exactly one `Access-Control-Allow-Origin` on the Function URL response. The Function
+     URL's CORS and Hono's `cors()` could both set it.
+   - Bedrock accepts `output_config.effort` and the runner's `type: "custom"` tool entries
+     on the invoke path.
+   - `cache_read_input_tokens > 0` on a second turn (Verification 6).
+   - no `stop_reason: max_tokens` in the traces. Adaptive thinking is on by default and
+     shares the 4,096-token ceiling, so raise `maxTokens` if it shows up.
+4. The eval set: still three placeholders, so the gate content doesn't exist yet. The
    runner, the Lab pane and `npm run assistant:eval` are ready for it.
-4. Manual checks (Verification 4/5): operations_admin asks "which trips are running late
+5. Manual checks (Verification 4/5): operations_admin asks "which trips are running late
    this week?" and reads the trace; a driver-only login can't reach the Lab at all.
 
 ---

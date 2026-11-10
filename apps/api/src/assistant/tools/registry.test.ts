@@ -48,6 +48,15 @@ describe('offeredTools', () => {
   it('an empty-roles principal is offered nothing', async () => {
     expect(await names([])).toEqual([])
   })
+
+  it('the same sub under a different role set is re-evaluated, not served from the authz cache', async () => {
+    // The eval runner keeps the Lab user's sub and swaps in the case's role. A
+    // cache keyed without roles would hand the driver case the admin's ALLOW
+    // (and the admin the driver's DENY). No cache clear between the two calls.
+    expect(await names(['tenant_admin'])).toContain('list_invoices')
+    expect(await names(['driver'])).not.toContain('list_invoices')
+    expect(await names(['tenant_admin'])).toContain('list_invoices')
+  })
 })
 
 describe('runTool', () => {

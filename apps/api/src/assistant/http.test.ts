@@ -117,6 +117,20 @@ describe.skipIf(!hasDb)('/assistant (integration)', () => {
     expect(((await res.json()) as { code: string }).code).toBe('ASSISTANT_DISABLED')
   })
 
+  it('answers 503 when the model cannot be loaded, before writing a conversation', async () => {
+    // No test provider + a refused (global.*) model id: resolution throws, as a
+    // failed lazy SDK load would in a Lambda.
+    process.env['ASSISTANT_MODEL_ID'] = 'global.anthropic.claude-opus-5'
+    try {
+      const res = await post(opsAdmin(), '/chat', { question: 'hi' })
+      expect(res.status).toBe(503)
+      expect(((await res.json()) as { code: string }).code).toBe('ASSISTANT_UNAVAILABLE')
+      expect(await db.assistantConversation.count({ where: { tenantId: tenantA } })).toBe(0)
+    } finally {
+      delete process.env['ASSISTANT_MODEL_ID']
+    }
+  })
+
   it('denies personas without UseAssistant', async () => {
     const res = await app({ tenantId: tenantA, roleNames: ['viewer'], userId: 'u' }).request(
       '/api/v1/assistant/tools',

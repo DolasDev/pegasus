@@ -23,7 +23,7 @@ import { requirePermission } from '../middleware/rbac'
 import { authorize } from '../lib/authz'
 import { logger } from '../lib/logger'
 import { assistantEnabled } from '../lib/assistant-feature'
-import { resolveInferenceProvider } from '../lib/inference/provider'
+import { resolveInferenceProvider, type InferenceProvider } from '../lib/inference/provider'
 import {
   createConversation,
   createPromptVersion,
@@ -125,6 +125,25 @@ async function bodyOf<S extends z.ZodType>(
   return { ok: true, data: r.data }
 }
 
+/**
+ * The inference provider, or a 503 if it can't be loaded (the Bedrock SDK is
+ * imported lazily — see lib/inference/provider.ts — so a load failure surfaces
+ * here, per request, instead of crashing the Lambda at INIT).
+ */
+async function providerOr503(
+  c: Context<AppEnv>,
+): Promise<{ ok: true; provider: InferenceProvider } | { ok: false; res: Response }> {
+  try {
+    return { ok: true, provider: await resolveInferenceProvider() }
+  } catch (err) {
+    logger.error('assistant: inference provider unavailable', { error: String(err) })
+    return {
+      ok: false,
+      res: c.json({ error: 'The assistant is unavailable', code: 'ASSISTANT_UNAVAILABLE' }, 503),
+    }
+  }
+}
+
 async function canManagePrompt(c: Context<AppEnv>): Promise<boolean> {
   const d = await authorize({
     principal: c.get('principal'),
@@ -180,6 +199,11 @@ export function createAssistantRouter(fetchApp: InProcessFetch): Hono<AppEnv> {
     const tenantId = c.get('tenantId')
     const userId = c.get('userId')!
 
+    // Resolve the model first: if it can't load, fail before writing anything.
+    const resolved = await providerOr503(c)
+    if (!resolved.ok) return resolved.res
+    const provider = resolved.provider
+
     // A draft prompt is a Lab feature: it needs the authoring action.
     let prompt: PromptSource
     let source: ConversationSource = 'chat'
@@ -211,7 +235,6 @@ export function createAssistantRouter(fetchApp: InProcessFetch): Hono<AppEnv> {
     }
 
     const tool = toolContext(c, fetchApp)
-    const provider = resolveInferenceProvider()
     const convId = conversationId
 
     return streamSSE(c, async (stream) => {
@@ -338,7 +361,9 @@ export function createAssistantRouter(fetchApp: InProcessFetch): Hono<AppEnv> {
     }
 
     const tool = toolContext(c, fetchApp)
-    const provider = resolveInferenceProvider()
+    const resolved = await providerOr503(c)
+    if (!resolved.ok) return resolved.res
+    const provider = resolved.provider
 
     return streamSSE(c, async (stream) => {
       const results: CaseResult[] = []
