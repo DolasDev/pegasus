@@ -22,6 +22,7 @@ import { Actions } from '../authz/actions'
 import { requirePermission } from '../middleware/rbac'
 import { authorize } from '../lib/authz'
 import { logger } from '../lib/logger'
+import { assistantEnabled } from '../lib/assistant-feature'
 import { resolveInferenceProvider } from '../lib/inference/provider'
 import {
   createConversation,
@@ -77,10 +78,6 @@ const EvalBody = z
     effort: Effort.optional(),
   })
   .strict()
-
-export function assistantEnabled(): boolean {
-  return process.env['ASSISTANT_ENABLED'] === 'true'
-}
 
 function toPromptSource(row: PromptVersionRow | null): PromptSource {
   return row

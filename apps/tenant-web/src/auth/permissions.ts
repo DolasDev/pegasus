@@ -34,6 +34,8 @@ export type Capabilities = {
   longhaul?: boolean
   /** The reporting surface is enabled on this deployment. */
   reporting?: boolean
+  /** The AI assistant is switched on for this deployment (ASSISTANT_ENABLED). */
+  assistant?: boolean
 }
 
 export type MePermissions = {

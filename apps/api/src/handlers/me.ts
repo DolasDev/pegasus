@@ -35,6 +35,7 @@ import type { Context } from 'hono'
 import type { AppEnv } from '../types'
 import { listAllowedPermissions } from '../lib/authz'
 import { isReportingEnabled } from '../lib/reporting-feature'
+import { assistantEnabled } from '../lib/assistant-feature'
 import { executeSql } from '../lib/mssql-executor-client'
 import { logger } from '../lib/logger'
 import { driverWeekFor } from '../lib/driver-week'
@@ -60,6 +61,12 @@ export interface Capabilities {
    * the permission alone is not enough to decide whether to show the nav entry.
    */
   reporting: boolean
+  /**
+   * The AI assistant is enabled on this deployment (ASSISTANT_ENABLED, set by
+   * CDK). Same reason as `reporting`: `assistant:use` is a Cedar grant that
+   * exists whether or not the assistant is switched on.
+   */
+  assistant: boolean
 }
 
 // Resolve tenant capability flags. Defensive: an M2M / service-account
@@ -70,13 +77,14 @@ async function resolveCapabilities(c: Context<AppEnv>): Promise<Capabilities> {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
   const reporting = isReportingEnabled()
-  if (!db || !tenantId) return { longhaul: false, reporting }
+  const assistant = assistantEnabled()
+  if (!db || !tenantId) return { longhaul: false, reporting, assistant }
 
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
     select: { mssqlConnectionString: true },
   })
-  return { longhaul: tenant?.mssqlConnectionString != null, reporting }
+  return { longhaul: tenant?.mssqlConnectionString != null, reporting, assistant }
 }
 
 // No requirePermission gate — every authenticated principal may read their

@@ -8,6 +8,13 @@ export type JumpToOrderConfig = {
 
 export type WebConfig = {
   apiUrl: string
+  /**
+   * The AI assistant's streaming Function URL (no trailing slash). Streaming
+   * calls (/assistant/chat, /assistant/evals/run) go here because API Gateway
+   * buffers and caps at 29 s. Falls back to `apiUrl` when absent (local dev,
+   * older config.json), where the same routes are served by the API.
+   */
+  assistantUrl: string
   cognito: {
     region: string
     userPoolId: string
@@ -77,8 +84,14 @@ export async function loadConfig(): Promise<void> {
         : 'pegasus-desktop',
   }
 
+  const assistantUrl =
+    typeof cfg['assistantUrl'] === 'string' && /^https?:\/\//.test(cfg['assistantUrl'])
+      ? cfg['assistantUrl'].replace(/\/+$/, '')
+      : cfg['apiUrl'].replace(/\/+$/, '')
+
   _config = {
     apiUrl: cfg['apiUrl'],
+    assistantUrl,
     cognito: {
       region: cognito['region'],
       userPoolId: cognito['userPoolId'],

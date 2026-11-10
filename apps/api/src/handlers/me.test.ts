@@ -111,7 +111,7 @@ describe('GET /permissions', () => {
       const { app, tenantFindUnique } = buildApp(['tenant_admin'], 'Server=legacy;Database=lh;')
       const res = await app.request('/permissions')
       const body = (await res.json()) as { capabilities: { longhaul: boolean } }
-      expect(body.capabilities).toEqual({ longhaul: true, reporting: false })
+      expect(body.capabilities).toEqual({ longhaul: true, reporting: false, assistant: false })
       expect(tenantFindUnique).toHaveBeenCalledWith({
         where: { id: 'test-tenant-id' },
         select: { mssqlConnectionString: true },
@@ -121,7 +121,7 @@ describe('GET /permissions', () => {
     it('is false when the tenant has no mssqlConnectionString', async () => {
       const res = await buildApp(['tenant_admin'], null).app.request('/permissions')
       const body = (await res.json()) as { capabilities: { longhaul: boolean } }
-      expect(body.capabilities).toEqual({ longhaul: false, reporting: false })
+      expect(body.capabilities).toEqual({ longhaul: false, reporting: false, assistant: false })
     })
 
     it('is false (no throw) for a principal with no tenant-scoped db', async () => {
@@ -132,7 +132,7 @@ describe('GET /permissions', () => {
       const res = await app.request('/permissions')
       expect(res.status).toBe(200)
       const body = (await res.json()) as { capabilities: { longhaul: boolean } }
-      expect(body.capabilities).toEqual({ longhaul: false, reporting: false })
+      expect(body.capabilities).toEqual({ longhaul: false, reporting: false, assistant: false })
     })
   })
 })
