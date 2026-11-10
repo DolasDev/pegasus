@@ -535,3 +535,22 @@ wins, a null clears. A write names the item by key AND its listed day, and the h
 caller's own itinerary for that day and refuses a key that isn't there — the key alone proves nothing.
 Where legacy already has an editor the driver may use (an activity's ETA), route to it instead of
 keeping a second store.
+
+## Reading API data on a user's behalf from server code — call the endpoint in-process, as them
+
+When server code must read "what this user can see" (the AI assistant's tools,
+`apps/api/src/assistant/tools/`), don't re-query the repositories and don't HTTP-call the
+deployed API. Build the endpoint path and run it through the app in-process
+(`app.fetch(new Request(path, { headers }))`), forwarding the caller's own `Authorization`
+header. `tenantMiddleware` re-derives the principal from the token, so Cedar, driver row
+scoping and the longhaul MSSQL path all behave exactly as they do for the browser. The
+longhaul reads in particular have no repository layer to reuse. Hand the router the app
+lazily (`createAssistantRouter((req) => app.fetch(req))` in `app.ts`) to avoid an import
+cycle. Two rules:
+
+- **Re-check the gate in your own code before calling** (Cedar action, or `OPERATIONS_ROLES`
+  for longhaul). Several v1 GETs (`/customers`, `/quotes`, `/invoices`) carry no
+  `requirePermission`, so your check is the only one.
+- **Never let a request choose its principal.** Only the token decides. That's why the eval
+  runner can narrow the tool _offer_ to a case's role, but the lookups still run as the
+  caller.

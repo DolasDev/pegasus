@@ -3943,3 +3943,19 @@ instead of `sys.exit` — don't "tidy" that back. Not the signal: ECS SIGTERMs
 only PID 1, and the runner sends the child the same shutdown line as an
 idle-exit. A one-off clean stop proves nothing here (it's a race) — judge a
 fix over several stops with a worker that has been up a few minutes.
+
+## The Anthropic SDK tool runner defaults to server-held threads — pass `thread: false` on Bedrock
+
+Found building the AI assistant (2026-11-10). In `@anthropic-ai/sdk` 1.8,
+`client.beta.messages.toolRunner(...)` opens a **server-held message thread** by
+default. Round 1 sends `thread: {type: "create"}`, and every later round sends only
+the new `tool_result` plus `thread: {type: "continue", previous_message_id}`: no
+`system`, no `tools`, no history. That works only where the provider holds the thread
+(Anthropic-hosted). On Bedrock's invoke path there is no thread to continue, so the
+second round would arrive without its prompt, its tools or the conversation. A
+single-round test never notices.
+`apps/api/src/assistant/loop.ts` passes `thread: false`, and `loop.test.ts` asserts
+that no request carries `thread` and that round 2 has all three messages. Keep both
+whenever you touch the loop or bump the SDK. The scripted provider
+(`lib/inference/fake.ts`, a real `Anthropic` client over a fake `fetch`) is what made
+this visible, because it records the actual request bodies.
