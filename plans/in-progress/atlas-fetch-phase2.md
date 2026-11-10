@@ -742,7 +742,12 @@ correlation key the cache lookup cannot happen.
   `local_entity_type` / `local_entity_id`. Extended later by `#812` (SDK 0.46.0); SDK is
   now 0.56.0.
 
-### Phase 2 — Declarative fetch (Gap B) — increment 1 `[x]`, increment 2 `[ ]`
+### Phase 2 — Declarative fetch (Gap B) — increments 1, 2a, 2b all `[x]`
+
+> **Phase 2 is CODE-COMPLETE as of 2026-11-10.** A published `fetch` block is
+> authorable, gated, discoverable and **executable** end to end. What remains is not
+> engineering: the Atlas pilot config needs a populated `settlementDate` from Atlas
+> (see "Still open"), and the floor's `localEntityType` edit needs one DB query.
 
 Split into two increments on purpose. **Increment 1 is the declarative SURFACE** —
 column, schema, gate, discovery, SDK authoring — and lands without touching the
@@ -832,7 +837,10 @@ reused, not re-implemented), so it gets its own review.
   SSRF guard and the token/retry logic is the failure mode to avoid.
   Use the exported `FETCH_TEMPLATE_RE` for substitution so the runtime and the gate can
   never disagree about what `{{…}}` is legal.
-- `[ ]` SDK `fetch_external(integration_id, operation, **params)`; docs + MCP + OpenAPI
+- `[x]` SDK **0.59.0** `fetch_external(integration_id, operation, *, params, group)` +
+  OpenAPI + MCP + README + CHANGELOG + the authoring repo's `CLAUDE.md`. Signature
+  deliberately exposes NO method/path/header argument — a test asserts the parameter set,
+  so a later convenience addition cannot quietly reopen the escape hatch.
 - `[ ]` **Pilot: endpoint UNBLOCKED 2026-11-06, mapping STILL BLOCKED.** The transport is
   real and in our grant: `GET /settlement/v1/settlement?settlementDate={{settlementDate}}`,
   no `On-Behalf-Of`. The grain question is **settled** (record = `Document`, per order).

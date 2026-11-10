@@ -521,3 +521,112 @@ function fillBody(
   }
   return value
 }
+
+// ---------------------------------------------------------------------------
+// Response handling — decode, then extract records. Pure; the handler owns I/O.
+// ---------------------------------------------------------------------------
+
+/**
+ * Which `{{config:KEY}}` keys an operation references.
+ *
+ * The handler resolves exactly these from the tenant's config store rather than
+ * reading the whole group: a descriptor that names two keys should not make the
+ * set of readable config depend on what else happens to live in the group.
+ */
+export function referencedConfigKeys(operation: FetchOperation): string[] {
+  const keys = new Set<string>()
+  for (const [, text] of templatedStrings('op', operation)) {
+    for (const match of text.match(TEMPLATE_SCAN_RE) ?? []) {
+      if (!FETCH_TEMPLATE_RE.test(match)) continue
+      const inner = match.slice(2, -2)
+      if (inner.startsWith('config:')) keys.add(inner.slice('config:'.length))
+    }
+  }
+  return [...keys].sort()
+}
+
+/** A partner body that could not be decoded or walked. */
+export interface FetchExtractProblem {
+  problem: string
+}
+
+/**
+ * Apply the descriptor's `decode` step.
+ *
+ * `jsonString` exists for a real partner shape: Atlas's settlement response is
+ * a JSON **string** whose content is JSON. Without this, `recordsPath` has
+ * nothing to walk and the first call fails on a body that looks valid.
+ */
+export function decodeFetchBody(
+  raw: unknown,
+  decode: (typeof FETCH_DECODES)[number] | undefined,
+): { ok: true; body: unknown } | { ok: false; problem: string } {
+  if (decode !== 'jsonString') return { ok: true, body: raw }
+  if (typeof raw !== 'string') {
+    // Not an error: a partner that stops double-encoding is a FIX, and failing
+    // the call would turn their improvement into our outage.
+    return { ok: true, body: raw }
+  }
+  try {
+    return { ok: true, body: JSON.parse(raw) }
+  } catch {
+    return { ok: false, problem: 'decode "jsonString" failed: the body is not valid JSON' }
+  }
+}
+
+/** Walk a dot-path, returning undefined at the first missing or non-object hop. */
+function readPath(value: unknown, path: string): unknown {
+  let cur = value
+  for (const seg of path.split('.')) {
+    if (cur === null || typeof cur !== 'object') return undefined
+    cur = (cur as Record<string, unknown>)[seg]
+  }
+  return cur
+}
+
+/**
+ * Pull the record array out of a decoded body.
+ *
+ * No `recordsPath` ⇒ the whole body IS the single record, which is the honest
+ * reading for a partner that returns one object per call.
+ *
+ * A path that resolves to NOTHING yields an empty list rather than an error: an
+ * empty period is a legitimate answer (Atlas QA returns exactly that for every
+ * date tried), and failing the call would make "no settlements this week"
+ * indistinguishable from a broken descriptor. A path that resolves to a
+ * NON-array is a descriptor bug and does fail.
+ */
+export function extractFetchRecords(
+  body: unknown,
+  recordsPath: string | undefined,
+): { ok: true; records: unknown[] } | { ok: false; problem: string } {
+  if (recordsPath === undefined) {
+    return { ok: true, records: body === undefined || body === null ? [] : [body] }
+  }
+  const at = readPath(body, recordsPath)
+  if (at === undefined || at === null) return { ok: true, records: [] }
+  if (!Array.isArray(at)) {
+    return {
+      ok: false,
+      problem: `recordsPath "${recordsPath}" resolved to ${typeof at}, not an array`,
+    }
+  }
+  return { ok: true, records: at }
+}
+
+/** Read the next cursor for `page.style: "cursor"`. Absent/blank ⇒ stop paging. */
+export function readNextCursor(body: unknown, cursorPath: string): string | null {
+  const v = readPath(body, cursorPath)
+  if (v === undefined || v === null) return null
+  if (typeof v === 'string') return v === '' ? null : v
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  return null
+}
+
+/**
+ * Hard ceiling on requests per fetch when the descriptor names none. A runaway
+ * guard, not a tuning knob: a partner whose cursor never terminates would
+ * otherwise spend the whole Lambda budget, and an unbounded loop against an
+ * unknown rate budget (C5) is how you discover the limit in production.
+ */
+export const FETCH_DEFAULT_MAX_PAGES = 20

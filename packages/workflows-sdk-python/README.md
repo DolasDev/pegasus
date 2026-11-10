@@ -1839,6 +1839,36 @@ Two things worth knowing before you write one:
 `page.style: "none"` is the honest answer when the endpoint exposes no paging
 parameters, not a shortcut.
 
+**Running a published descriptor — `fetch_external` (0.59.0+).** Authoring
+`fetch.json` is one half; this is the half that runs it:
+
+```python
+result = client.fetch_external(
+    "atlas_settlement", "settlements",
+    params={"settlementDate": "2026-11-06"},
+)
+for record in result["records"]:
+    ...
+```
+
+There is deliberately **no `method` or `path` argument** — transport comes from
+the published descriptor, so a caller cannot reach an endpoint the publish gate
+never saw. That is the difference from `call_external`, which is the escape
+hatch for exactly those cases.
+
+Two things to handle in calling code:
+
+- **Check `truncated`.** `True` means the page cap (`page.maxPages`, default 20)
+  was reached, so `records` is a PARTIAL read — not an empty tail.
+- **An empty result is a 200 with no records**, not an error; an empty period is
+  a legitimate answer. An unsupplied `{{param}}`, by contrast, is a 400 and no
+  call is made, so a half-filled template never reaches the partner.
+
+Transport is the same code path as `call_external` — same `AUTH_MODE`, reserved
+headers, timeout and 429 retry — with one difference: a fetch is always treated
+as a **read**, so a `POST` descriptor still retries a 429. Being side-effect-free
+it also runs **live** under `run --dry-run` rather than being captured.
+
 **Reformatting a date is a `coerce`, not a workaround.** Partners document their own
 date format while the native payload carries .NET datetimes
 (`2026-07-16T00:00:00`), so `mapping.json` has two date coercions —

@@ -2245,6 +2245,105 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def fetch_external(
+        self,
+        integration_id: str,
+        operation: str,
+        *,
+        params: dict[str, Any] | None = None,
+        group: str = "global",
+    ) -> dict[str, Any]:
+        """Run a PUBLISHED ``fetch`` descriptor — pull a source from config alone.
+
+        The declarative counterpart to :meth:`call_external`. There you name the
+        ``method`` and ``path`` yourself, which means partner transport knowledge
+        lives in workflow code and a NEW SOURCE NEEDS A NEW WORKFLOW even when
+        its mapping and rules are pure config. Here the transport comes from the
+        integration's published ``fetch`` block, so one generic workflow serves
+        every source that publishes the same capability.
+
+        **You cannot name a path, method, header or credential.** Those are in
+        the descriptor, which the publish gate already checked. You supply only
+        ``params`` for its ``{{param}}`` placeholders; ``{{config:KEY}}`` values
+        come from the tenant's CONFIG store (only the keys the descriptor
+        actually references).
+
+        ``operation`` is a **capability name**, not a free-form string — it must
+        be one the floor declares. Read the legal names from the floor itself::
+
+            client.get_floor("financial_settlement")["capabilities"]  # ["settlements"]
+
+        Authoring the descriptor is a separate step: see
+        :meth:`get_fetch_schema` for its shape and ``fetch.json`` in the
+        integration-config working directory.
+
+        Example — pull a settlement period from whichever source the tenant uses::
+
+            result = client.fetch_external(
+                "atlas_settlement", "settlements",
+                params={"settlementDate": "2026-11-06"},
+            )
+            for record in result["records"]:
+                ...
+
+        **Transport is identical to** :meth:`call_external` — the same
+        ``AUTH_MODE`` handling, reserved-header rules, ``REQUEST_TIMEOUT_MS`` and
+        ``429``/``503`` retry policy, because it is literally the same code path.
+        One difference matters: **a fetch is always treated as a READ**, so a
+        descriptor whose ``method`` is ``POST`` (some partners expose reads that
+        way) still retries a ``429``, where ``call_external`` would not.
+
+        Being side-effect-free, a fetch **runs LIVE under ``run --dry-run``** and
+        returns real data, like a ``GET`` through ``call_external``. It is never
+        captured.
+
+        The response body is decoded per the descriptor's ``decode`` (use
+        ``jsonString`` for a partner that returns a JSON *string* containing
+        JSON), records are extracted per ``recordsPath``, and pages are followed
+        per ``page.style``.
+
+        Args:
+            integration_id: The integration whose descriptor to run.
+            operation: The capability name, e.g. ``"settlements"``.
+            params: Values for the descriptor's ``{{param}}`` placeholders. A
+                value substituted into the PATH may not contain ``/``, ``?`` or
+                ``#`` — a descriptor constrains which endpoint is called, and
+                allowing those would defeat that.
+            group: Config/secret group the descriptor's ``BASE_URL``, credential
+                and any ``{{config:KEY}}`` values live in.
+
+        Returns:
+            ``{operation, records, recordCount, pages, attempts, status,
+            truncated}``. ``records`` is the flattened list across pages.
+            **Check ``truncated``**: ``True`` means the page cap
+            (``page.maxPages``, default 20) was reached, so the record set is
+            INCOMPLETE — treat it as a partial read, not an empty tail.
+            ``attempts`` counts actual HTTP requests, retries included.
+
+        Raises:
+            PegasusApiError: On 400 (a ``{{param}}`` you did not supply — the
+                call is NOT made, so a template never reaches the partner; a
+                malformed stored descriptor; or a ``recordsPath`` that resolved
+                to a non-array), 403 (manifest lacks ``CallExternal``), 404
+                (unknown integration, no published ``fetch`` block, unknown
+                operation, or an unset config/secret), 409 (the operation is no
+                longer a capability the floor declares — republish the config),
+                502 (partner error, or the call could not be completed), 504
+                (partner did not respond within the timeout).
+
+        Note:
+            An empty result is a **200 with no records**, not an error: a period
+            with nothing in it is a legitimate answer, and failing would make
+            "nothing settled" indistinguishable from a broken descriptor.
+        """
+        payload: dict[str, Any] = {"params": params or {}, "group": group}
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/fetch/{operation}", json=payload
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     # -- blobs (opaque byte storage for document transfer) ------------------
     #
     # A workflow stages a file to upload or lands a file it fetched, without
