@@ -51,7 +51,8 @@ describe('ApiStack — Lambda function', () => {
     // UsageStatementCloseFunction + PushForwardFunction + the CDK Triggers
     // framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 15)
+    // …plus the streaming AssistantFunction.
+    template.resourceCountIs('AWS::Lambda::Function', 16)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -907,9 +908,9 @@ describe('ApiStack — RingCentral master switch (ringcentralEnabled)', () => {
     const enabled = Object.values(fns).filter(
       (fn) => fn.Properties?.Environment?.Variables?.RINGCENTRAL_ENABLED === 'true',
     )
-    // api Lambda + capture/sync/renew/token-refresh crons = 5.
-    if (enabled.length !== 5) {
-      throw new Error(`expected 5 Lambdas with RINGCENTRAL_ENABLED=true, found ${enabled.length}`)
+    // api Lambda + its assistant twin + capture/sync/renew/token-refresh crons = 6.
+    if (enabled.length !== 6) {
+      throw new Error(`expected 6 Lambdas with RINGCENTRAL_ENABLED=true, found ${enabled.length}`)
     }
   })
 
@@ -972,9 +973,11 @@ describe('ApiStack — integration-config publish switch (integrationConfigPubli
     const enabled = Object.values(fns).filter(
       (fn) => fn.Properties?.Environment?.Variables?.INTEGRATION_CONFIG_PUBLISH_ENABLED === 'true',
     )
-    if (enabled.length !== 1) {
+    // The api Lambda and its streaming assistant twin (AssistantFunction mirrors
+    // every api env var via addApiEnvironment) — and no cron or executor.
+    if (enabled.length !== 2) {
       throw new Error(
-        `expected exactly 1 Lambda with INTEGRATION_CONFIG_PUBLISH_ENABLED=true, found ${enabled.length}`,
+        `expected exactly 2 Lambdas (api + assistant) with INTEGRATION_CONFIG_PUBLISH_ENABLED=true, found ${enabled.length}`,
       )
     }
   })
@@ -1009,9 +1012,11 @@ describe('ApiStack — reporting switch (reportingEnabled)', () => {
       (fn) => fn.Properties?.Environment?.Variables?.REPORTING_ENABLED === 'true',
     )
     // No cron or executor reads this flag — the api Lambda is the whole surface.
-    if (enabled.length !== 1) {
+    // The api Lambda and its streaming assistant twin (AssistantFunction mirrors
+    // every api env var via addApiEnvironment) — and no cron or executor.
+    if (enabled.length !== 2) {
       throw new Error(
-        `expected exactly 1 Lambda with REPORTING_ENABLED=true, found ${enabled.length}`,
+        `expected exactly 2 Lambdas (api + assistant) with REPORTING_ENABLED=true, found ${enabled.length}`,
       )
     }
   })
@@ -1048,9 +1053,11 @@ describe('ApiStack — feedback switch (feedbackEnabled / feedbackPublicWebUrl)'
         fn.Properties?.Environment?.Variables?.FEEDBACK_PUBLIC_WEB_URL ===
           'https://pegasus.dolas.dev',
     )
-    if (enabled.length !== 1) {
+    // The api Lambda and its streaming assistant twin (AssistantFunction mirrors
+    // every api env var via addApiEnvironment) — and no cron or executor.
+    if (enabled.length !== 2) {
       throw new Error(
-        `expected exactly 1 Lambda with FEEDBACK_ENABLED + FEEDBACK_PUBLIC_WEB_URL, found ${enabled.length}`,
+        `expected exactly 2 Lambdas (api + assistant) with FEEDBACK_ENABLED + FEEDBACK_PUBLIC_WEB_URL, found ${enabled.length}`,
       )
     }
   })
@@ -1088,9 +1095,11 @@ describe('ApiStack — outbound OAuth shared token cache (outboundOAuthSharedCac
     const enabled = Object.values(fns).filter(
       (fn) => fn.Properties?.Environment?.Variables?.OUTBOUND_OAUTH_SHARED_CACHE_ENABLED === 'true',
     )
-    if (enabled.length !== 1) {
+    // The api Lambda and its streaming assistant twin (AssistantFunction mirrors
+    // every api env var via addApiEnvironment) — and no cron or executor.
+    if (enabled.length !== 2) {
       throw new Error(
-        `expected exactly 1 Lambda with OUTBOUND_OAUTH_SHARED_CACHE_ENABLED=true, found ${enabled.length}`,
+        `expected exactly 2 Lambdas (api + assistant) with OUTBOUND_OAUTH_SHARED_CACHE_ENABLED=true, found ${enabled.length}`,
       )
     }
   })
@@ -1597,8 +1606,10 @@ describe('ApiStack — Temporal namespace provisioner (Phase 3b)', () => {
       )
       // The dispatcher requests a namespace for a trigger-fired start and
       // retries failed provisions (legacy-runner retirement).
+      // AssistantFunction is the API's streaming twin and mirrors its env.
       expect(withName.map(([id]) => id.replace(/[0-9A-F]{8}$/, '')).sort()).toEqual([
         'ApiFunction',
+        'AssistantFunction',
         'DispatchWorkflowTriggersFunction',
       ])
       for (const [, fn] of withName) {
@@ -1731,8 +1742,10 @@ describe('ApiStack — move chat kicks the push forwarder', () => {
     const withName = Object.entries(functions).filter(
       ([, fn]) => vars(fn)['PUSH_FORWARD_FUNCTION_NAME'] !== undefined,
     )
+    // The API Lambda and its streaming assistant twin (which mirrors its env).
     expect(withName.map(([id]) => id)).toEqual([
       expect.stringMatching(/^ApiFunction/) as unknown as string,
+      expect.stringMatching(/^AssistantFunction/) as unknown as string,
     ])
     expect(vars(withName[0]![1])['PUSH_FORWARD_FUNCTION_NAME']).toEqual({ Ref: forwarderId })
     template.hasResourceProperties('AWS::IAM::Policy', {
@@ -1781,9 +1794,11 @@ describe('ApiStack — crew-leader link switch (crewLeaderLinkEnabled)', () => {
         fn.Properties?.Environment?.Variables?.CREW_LEADER_LINK_PUBLIC_WEB_URL ===
           'https://pegasus-qa.dolas.dev',
     )
-    if (enabled.length !== 1) {
+    // The api Lambda and its streaming assistant twin (AssistantFunction mirrors
+    // every api env var via addApiEnvironment) — and no cron or executor.
+    if (enabled.length !== 2) {
       throw new Error(
-        `expected exactly 1 Lambda with the crew-link flag + URL, found ${enabled.length}`,
+        `expected exactly 2 Lambdas (api + assistant) with the crew-link flag + URL, found ${enabled.length}`,
       )
     }
   })
@@ -1795,5 +1810,112 @@ describe('ApiStack — crew-leader link switch (crewLeaderLinkEnabled)', () => {
     if (!headers.includes('X-Crew-Session')) {
       throw new Error(`expected CORS AllowHeaders to include X-Crew-Session, got ${headers}`)
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AI assistant (plans/in-progress/ai-chat-assistant.md)
+// ---------------------------------------------------------------------------
+describe('ApiStack — AI assistant', () => {
+  type Props = NonNullable<ConstructorParameters<typeof ApiStack>[2]>
+  const synth = (props: Partial<Props> = {}) => {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const stack = new ApiStack(app, 'TestApiAssistant', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      ...props,
+    })
+    return Template.fromStack(stack)
+  }
+
+  type FnProps = {
+    Timeout: number
+    Role: unknown
+    ReservedConcurrentExecutions?: number
+    Environment: { Variables: Record<string, unknown> }
+  }
+  /** Lambda properties keyed by timeout: 29 = the API Lambda, 300 = the assistant. */
+  const fnByTimeout = (t: Template, timeout: number): FnProps => {
+    const matches = Object.values(t.findResources('AWS::Lambda::Function'))
+      .map((f) => f['Properties'] as FnProps)
+      .filter(
+        (p) =>
+          p.Timeout === timeout && p.Environment?.Variables?.['COGNITO_JWKS_URL'] !== undefined,
+      )
+    expect(matches).toHaveLength(1)
+    return matches[0]!
+  }
+
+  it('deploys the assistant Lambda with reserved concurrency and the pinned US geo model id', () => {
+    const fn = fnByTimeout(synth(), 300)
+    expect(fn.ReservedConcurrentExecutions).toBe(50)
+    expect(fn.Environment.Variables['ASSISTANT_MODEL_ID']).toBe('us.anthropic.claude-opus-5')
+  })
+
+  it('shares the API Lambda role (same reach, grants cannot drift)', () => {
+    const t = synth()
+    expect(JSON.stringify(fnByTimeout(t, 300).Role)).toBe(JSON.stringify(fnByTimeout(t, 29).Role))
+  })
+
+  it('mirrors every API env var onto the assistant (no drift)', () => {
+    const t = synth({ reportingEnabled: true, corsAllowedOrigins: ['https://a.example'] })
+    const api = fnByTimeout(t, 29).Environment.Variables
+    const assistant = fnByTimeout(t, 300).Environment.Variables
+    expect(Object.keys(api).length).toBeGreaterThan(10)
+    for (const key of Object.keys(api)) {
+      expect(JSON.stringify(assistant[key]), key).toBe(JSON.stringify(api[key]))
+    }
+  })
+
+  it('grants exactly bedrock:InvokeModel + InvokeModelWithResponseStream on the profile and US model ARNs', () => {
+    const t = synth()
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'AssistantBedrockInvoke',
+            Effect: 'Allow',
+            Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+            Resource: [
+              'arn:aws:bedrock:us-east-1:111111111111:inference-profile/us.anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-west-1::foundation-model/anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-5',
+            ],
+          }),
+        ]),
+      }),
+    })
+    // Nothing wider: no wildcard bedrock action, no API-key auth, no global profile.
+    const policies = JSON.stringify(t.findResources('AWS::IAM::Policy'))
+    expect(policies).not.toContain('bedrock:*')
+    expect(policies).not.toContain('bedrock:CallWithBearerToken')
+    expect(policies).not.toMatch(/inference-profile\/global\./)
+  })
+
+  it('exposes a streaming Function URL with in-function auth and the CORS allowlist', () => {
+    const t = synth({ corsAllowedOrigins: ['https://pegasus.dolas.dev'] })
+    t.hasResourceProperties('AWS::Lambda::Url', {
+      AuthType: 'NONE',
+      InvokeMode: 'RESPONSE_STREAM',
+      Cors: Match.objectLike({
+        AllowOrigins: ['https://pegasus.dolas.dev'],
+        AllowMethods: ['GET', 'POST'],
+      }),
+    })
+  })
+
+  it('exports the Function URL under a pinned name for the frontend-assets stack', () => {
+    const outputs = synth().findOutputs('AssistantUrlExport')
+    expect(Object.values(outputs)[0]?.['Export']).toEqual({ Name: 'TestApiAssistant:AssistantUrl' })
+  })
+
+  it('is OFF by default: ASSISTANT_ENABLED is absent unless assistantEnabled is set', () => {
+    expect(JSON.stringify(synth().findResources('AWS::Lambda::Function'))).not.toContain(
+      'ASSISTANT_ENABLED',
+    )
+    const on = synth({ assistantEnabled: true })
+    expect(fnByTimeout(on, 29).Environment.Variables['ASSISTANT_ENABLED']).toBe('true')
+    expect(fnByTimeout(on, 300).Environment.Variables['ASSISTANT_ENABLED']).toBe('true')
   })
 })

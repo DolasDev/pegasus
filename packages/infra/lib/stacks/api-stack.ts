@@ -25,6 +25,25 @@ import {
   PEGASUS_USAGE_METRIC_NAMESPACE,
 } from '../metrics'
 
+// ---------------------------------------------------------------------------
+// AI assistant inference (plans/in-progress/ai-chat-assistant.md, §2).
+// Claude in Amazon Bedrock through the US GEO cross-region inference profile —
+// never `global.*`, which routes worldwide. AWS is the sole data processor.
+// ---------------------------------------------------------------------------
+export const ASSISTANT_FOUNDATION_MODEL_ID = 'anthropic.claude-opus-5'
+export const ASSISTANT_INFERENCE_PROFILE_ID = `us.${ASSISTANT_FOUNDATION_MODEL_ID}`
+/**
+ * Every region the US geo profile can route to, across US source regions (from
+ * us-east-1 it is us-east-1/us-east-2/us-west-2; us-west-1 adds itself). The
+ * foundation-model grant must cover each one the profile may pick.
+ */
+export const ASSISTANT_PROFILE_DESTINATION_REGIONS = [
+  'us-east-1',
+  'us-east-2',
+  'us-west-1',
+  'us-west-2',
+] as const
+
 export interface ApiStackProps extends cdk.StackProps {
   /**
    * Name of the upstream CognitoStack — used to build stable Fn::ImportValue
@@ -290,11 +309,23 @@ export interface ApiStackProps extends cdk.StackProps {
    * origin, preserving the original permissive dev behavior.
    */
   readonly corsAllowedOrigins?: string[]
+
+  /**
+   * AI assistant master switch → ASSISTANT_ENABLED on the API and assistant
+   * Lambdas. The function and its Function URL are always deployed (dark);
+   * absent/false makes every /api/v1/assistant route answer 404. Turn on only
+   * after the account's one-time Bedrock Anthropic use-case form is submitted
+   * (plan Infrastructure §2) — before that, every model call fails.
+   */
+  readonly assistantEnabled?: boolean
 }
 
 export class ApiStack extends cdk.Stack {
   /** The HTTP API endpoint URL — used by other stacks to inject into frontend config. */
   public readonly apiUrl: string
+
+  /** The assistant Lambda's streaming Function URL (trailing slash included). */
+  public readonly assistantUrl: string
 
   /** The Lambda function name — used by MonitoringStack to scope CloudWatch alarms. */
   public readonly lambdaFunctionName: string
@@ -392,101 +423,108 @@ export class ApiStack extends cdk.Stack {
         ])
       : ''
 
+    // Shared by ApiFunction and the streaming AssistantFunction (same bundle,
+    // same env). Env vars added later go through addApiEnvironment() so the
+    // two can never drift.
+    const apiEnvironment: Record<string, string> = {
+      NODE_ENV: 'production',
+      // CloudFormation dynamic reference — resolved to plaintext at deploy time
+      DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+      // Structured log level consumed by @aws-lambda-powertools/logger.
+      LOG_LEVEL: 'INFO',
+      // Defensive: if an X-Ray-captured downstream client (mssql-executor /
+      // tunnel-proxy invoke) is ever called outside an active segment, log
+      // the context-missing condition instead of throwing a runtime error
+      // (the SDK default). Active tracing normally guarantees a segment.
+      AWS_XRAY_CONTEXT_MISSING: 'LOG_ERROR',
+      // Cognito JWKS endpoint for JWT verification. Used by:
+      //   - adminAuthMiddleware: verifies admin access tokens
+      //   - /api/auth/validate-token: verifies tenant ID tokens
+      // Keys are cached in-process after the first fetch (jose handles this).
+      COGNITO_JWKS_URL: cognitoJwksUrl,
+      // Tenant app client ID. Used by /api/auth/validate-token to validate
+      // the `aud` claim on Cognito ID tokens. Prevents tokens issued to the
+      // admin app client from being accepted as tenant credentials.
+      COGNITO_TENANT_CLIENT_ID: cognitoTenantClientId,
+      // User Pool ID. Used by POST /api/admin/tenants to provision the
+      // initial tenant administrator via Cognito AdminCreateUser.
+      COGNITO_USER_POOL_ID: cognitoUserPoolId,
+      // User Pool ARN — required by AVP CreateIdentitySource when the API
+      // provisions a per-tenant policy store (apps/api/src/lib/authz-provision.ts).
+      // Built from the imported pool ID + this stack's account/region so it
+      // matches whatever pool the rest of this stack is wired against.
+      COGNITO_USER_POOL_ARN: cognitoStackName
+        ? cdk.Fn.join('', [
+            `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/`,
+            cognitoUserPoolId,
+          ])
+        : '',
+      // Mobile app client ID. Returned by GET /api/auth/mobile-config so the
+      // mobile app can authenticate against Cognito without baking credentials
+      // into the app bundle.
+      COGNITO_MOBILE_CLIENT_ID: cognitoMobileClientId,
+      // Desktop (MoveManager) app client ID — cloud identity I4. Accepted as an
+      // ID-token audience by tenantMiddleware + /validate-token, and SSO IdPs
+      // are attached to it alongside the tenant client (cognito-app-client.ts).
+      COGNITO_DESKTOP_CLIENT_ID: cognitoDesktopClientId,
+      // Cognito Hosted UI domain. Returned by GET /api/auth/mobile-config so
+      // the mobile app can build OAuth authorize URLs for SSO login flows.
+      COGNITO_HOSTED_UI_DOMAIN: cognitoHostedUiDomain,
+      // WireGuard hub identity — consumed by apps/api/src/handlers/admin/vpn.ts
+      // to render client.conf. Absent in environments without WireGuardStack;
+      // the handler returns 503 VPN_HUB_UNCONFIGURED.
+      WIREGUARD_HUB_PUBLIC_KEY: props.wireguardHubPublicKey ?? '',
+      WIREGUARD_HUB_ENDPOINT: props.wireguardHubEndpoint ?? '',
+      // Platform-key hash for the WireGuard hub reconcile agent. Resolved
+      // at deploy time from SSM (WireGuardStack writes it via custom
+      // resource). Empty string when WireGuardStack is absent — the
+      // platform-key path in api-client-auth.ts treats empty as disabled.
+      VPN_AGENT_APIKEY_HASH: props.wireguardAgentApiKeyHashParameterName
+        ? ssm.StringParameter.valueForStringParameter(
+            this,
+            props.wireguardAgentApiKeyHashParameterName,
+          )
+        : '',
+    }
+
+    const apiBundling: nodejs.BundlingOptions = {
+      minify: true,
+      sourceMap: true,
+      externalModules: ['@aws-sdk/*'],
+      // @cedar-policy/cedar-wasm/nodejs loads `${__dirname}/cedar_wasm_bg.wasm`
+      // synchronously at module init via require('fs').readFileSync. esbuild
+      // can't bundle that — the .wasm asset must live next to the JS file at
+      // runtime. Listing the package under `nodeModules` (not externalModules)
+      // tells CDK to skip bundling it AND install it as a real node_modules
+      // dependency in the Lambda asset, preserving the package layout. Without
+      // this, init throws ENOENT on `/var/task/cedar_wasm_bg.wasm` and the
+      // Lambda returns a bare API Gateway 500 before our onError sees it.
+      nodeModules: ['@cedar-policy/cedar-wasm'],
+      // apps/api/src/authz/load.ts reads `cedar.schema.json` and the
+      // `policies/` tree from `__dirname` at runtime to push them into AVP
+      // (POST /api/admin/tenants → provisionTenantPolicyStore) and to feed
+      // the offline cedar-wasm backend. esbuild can't see those reads, so
+      // the files have to be copied next to the bundled `index.js` in the
+      // Lambda asset; without this, tenant provisioning fails with
+      // `ENOENT: /var/task/cedar.schema.json` and the offline /me/permissions
+      // path breaks the same way.
+      commandHooks: {
+        beforeBundling: () => [],
+        beforeInstall: () => [],
+        afterBundling: (_inputDir, outputDir) => [
+          `cp ${path.join(__dirname, '../../../../apps/api/src/authz/cedar.schema.json')} ${outputDir}/`,
+          `cp -R ${path.join(__dirname, '../../../../apps/api/src/authz/policies')} ${outputDir}/`,
+        ],
+      },
+    }
+
     const apiFunction = new nodejs.NodejsFunction(this, 'ApiFunction', {
       runtime: lambda.Runtime.NODEJS_24_X,
       // Entry resolved relative to this file at deploy time by esbuild
       entry: path.join(__dirname, '../../../../apps/api/src/lambda.ts'),
       handler: 'handler',
-      environment: {
-        NODE_ENV: 'production',
-        // CloudFormation dynamic reference — resolved to plaintext at deploy time
-        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
-        // Structured log level consumed by @aws-lambda-powertools/logger.
-        LOG_LEVEL: 'INFO',
-        // Defensive: if an X-Ray-captured downstream client (mssql-executor /
-        // tunnel-proxy invoke) is ever called outside an active segment, log
-        // the context-missing condition instead of throwing a runtime error
-        // (the SDK default). Active tracing normally guarantees a segment.
-        AWS_XRAY_CONTEXT_MISSING: 'LOG_ERROR',
-        // Cognito JWKS endpoint for JWT verification. Used by:
-        //   - adminAuthMiddleware: verifies admin access tokens
-        //   - /api/auth/validate-token: verifies tenant ID tokens
-        // Keys are cached in-process after the first fetch (jose handles this).
-        COGNITO_JWKS_URL: cognitoJwksUrl,
-        // Tenant app client ID. Used by /api/auth/validate-token to validate
-        // the `aud` claim on Cognito ID tokens. Prevents tokens issued to the
-        // admin app client from being accepted as tenant credentials.
-        COGNITO_TENANT_CLIENT_ID: cognitoTenantClientId,
-        // User Pool ID. Used by POST /api/admin/tenants to provision the
-        // initial tenant administrator via Cognito AdminCreateUser.
-        COGNITO_USER_POOL_ID: cognitoUserPoolId,
-        // User Pool ARN — required by AVP CreateIdentitySource when the API
-        // provisions a per-tenant policy store (apps/api/src/lib/authz-provision.ts).
-        // Built from the imported pool ID + this stack's account/region so it
-        // matches whatever pool the rest of this stack is wired against.
-        COGNITO_USER_POOL_ARN: cognitoStackName
-          ? cdk.Fn.join('', [
-              `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/`,
-              cognitoUserPoolId,
-            ])
-          : '',
-        // Mobile app client ID. Returned by GET /api/auth/mobile-config so the
-        // mobile app can authenticate against Cognito without baking credentials
-        // into the app bundle.
-        COGNITO_MOBILE_CLIENT_ID: cognitoMobileClientId,
-        // Desktop (MoveManager) app client ID — cloud identity I4. Accepted as an
-        // ID-token audience by tenantMiddleware + /validate-token, and SSO IdPs
-        // are attached to it alongside the tenant client (cognito-app-client.ts).
-        COGNITO_DESKTOP_CLIENT_ID: cognitoDesktopClientId,
-        // Cognito Hosted UI domain. Returned by GET /api/auth/mobile-config so
-        // the mobile app can build OAuth authorize URLs for SSO login flows.
-        COGNITO_HOSTED_UI_DOMAIN: cognitoHostedUiDomain,
-        // WireGuard hub identity — consumed by apps/api/src/handlers/admin/vpn.ts
-        // to render client.conf. Absent in environments without WireGuardStack;
-        // the handler returns 503 VPN_HUB_UNCONFIGURED.
-        WIREGUARD_HUB_PUBLIC_KEY: props.wireguardHubPublicKey ?? '',
-        WIREGUARD_HUB_ENDPOINT: props.wireguardHubEndpoint ?? '',
-        // Platform-key hash for the WireGuard hub reconcile agent. Resolved
-        // at deploy time from SSM (WireGuardStack writes it via custom
-        // resource). Empty string when WireGuardStack is absent — the
-        // platform-key path in api-client-auth.ts treats empty as disabled.
-        VPN_AGENT_APIKEY_HASH: props.wireguardAgentApiKeyHashParameterName
-          ? ssm.StringParameter.valueForStringParameter(
-              this,
-              props.wireguardAgentApiKeyHashParameterName,
-            )
-          : '',
-      },
-      bundling: {
-        minify: true,
-        sourceMap: true,
-        externalModules: ['@aws-sdk/*'],
-        // @cedar-policy/cedar-wasm/nodejs loads `${__dirname}/cedar_wasm_bg.wasm`
-        // synchronously at module init via require('fs').readFileSync. esbuild
-        // can't bundle that — the .wasm asset must live next to the JS file at
-        // runtime. Listing the package under `nodeModules` (not externalModules)
-        // tells CDK to skip bundling it AND install it as a real node_modules
-        // dependency in the Lambda asset, preserving the package layout. Without
-        // this, init throws ENOENT on `/var/task/cedar_wasm_bg.wasm` and the
-        // Lambda returns a bare API Gateway 500 before our onError sees it.
-        nodeModules: ['@cedar-policy/cedar-wasm'],
-        // apps/api/src/authz/load.ts reads `cedar.schema.json` and the
-        // `policies/` tree from `__dirname` at runtime to push them into AVP
-        // (POST /api/admin/tenants → provisionTenantPolicyStore) and to feed
-        // the offline cedar-wasm backend. esbuild can't see those reads, so
-        // the files have to be copied next to the bundled `index.js` in the
-        // Lambda asset; without this, tenant provisioning fails with
-        // `ENOENT: /var/task/cedar.schema.json` and the offline /me/permissions
-        // path breaks the same way.
-        commandHooks: {
-          beforeBundling: () => [],
-          beforeInstall: () => [],
-          afterBundling: (_inputDir, outputDir) => [
-            `cp ${path.join(__dirname, '../../../../apps/api/src/authz/cedar.schema.json')} ${outputDir}/`,
-            `cp -R ${path.join(__dirname, '../../../../apps/api/src/authz/policies')} ${outputDir}/`,
-          ],
-        },
-      },
+      environment: { ...apiEnvironment },
+      bundling: apiBundling,
       memorySize: 512,
       timeout: cdk.Duration.seconds(29),
       logGroup: apiLogGroup,
@@ -497,6 +535,106 @@ export class ApiStack extends cdk.Stack {
       // tunnel-client.ts) so each downstream call renders as its own subsegment.
       tracing: lambda.Tracing.ACTIVE,
     })
+
+    // ---------------------------------------------------------------------------
+    // AI assistant — the streaming twin of ApiFunction.
+    // Plan: plans/in-progress/ai-chat-assistant.md ("The 29-second problem",
+    // Infrastructure §2/§3/§4).
+    //
+    // Same bundle and env (apps/api/src/lambda-assistant.ts runs the same Hono
+    // app with streamHandle, serving ONLY /api/v1/assistant/*), and the SAME
+    // execution role: assistant tools are existing read endpoints executed
+    // in-process as the caller, so they need exactly ApiFunction's reach (Neon,
+    // mssql-executor invoke, AVP, KMS…). Every grant below that targets
+    // apiFunction lands on that shared role, so the two cannot drift.
+    //
+    // Differences, all about time and blast radius:
+    //   - Function URL in RESPONSE_STREAM mode instead of API Gateway's buffered
+    //     29-second integration;
+    //   - timeout 5 min (a multi-tool turn; an eval run streams case by case);
+    //   - reserved concurrency, so held streaming connections can never starve
+    //     the shared pool (account limit 1,000; up to 900 is reservable).
+    // ---------------------------------------------------------------------------
+    const assistantLogGroup = new logs.LogGroup(this, 'AssistantLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    const assistantFunction = new nodejs.NodejsFunction(this, 'AssistantFunction', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-assistant.ts'),
+      handler: 'handler',
+      role: apiFunction.role!,
+      environment: {
+        ...apiEnvironment,
+        // Bedrock inference — Infrastructure §2. The US geo profile keeps
+        // inference in us-east-1/us-east-2/us-west-2; the provider refuses any
+        // global.* id.
+        ASSISTANT_MODEL_ID: ASSISTANT_INFERENCE_PROFILE_ID,
+      },
+      bundling: apiBundling,
+      memorySize: 1024,
+      timeout: cdk.Duration.minutes(5),
+      reservedConcurrentExecutions: 50,
+      logGroup: assistantLogGroup,
+      tracing: lambda.Tracing.ACTIVE,
+    })
+
+    /**
+     * Set an env var on ApiFunction AND AssistantFunction. Every env var the
+     * API Lambda needs, the assistant needs too (it runs the same app).
+     */
+    const addApiEnvironment = (key: string, value: string): void => {
+      apiFunction.addEnvironment(key, value)
+      assistantFunction.addEnvironment(key, value)
+    }
+
+    // The pinned Bedrock grant (Infrastructure §2). The default AnthropicBedrock
+    // client calls /model/{id}/invoke[-with-response-stream], which the Service
+    // Authorization Reference maps to exactly these two actions. A geo inference
+    // profile needs the grant on the profile AND on the foundation model in every
+    // region it can route to — the profile grant alone does not cover the model.
+    // The role is shared, so ApiFunction holds this grant too. That is intended:
+    // the main API mounts the same /api/v1/assistant routes (behind the same
+    // ASSISTANT_ENABLED + Cedar gates), and a /chat that arrives through API
+    // Gateway still works — it is just buffered and capped at 29 s. The SPA sends
+    // /chat and /evals/run to the Function URL.
+    assistantFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'AssistantBedrockInvoke',
+        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+        resources: [
+          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/${ASSISTANT_INFERENCE_PROFILE_ID}`,
+          ...ASSISTANT_PROFILE_DESTINATION_REGIONS.map(
+            (region) =>
+              `arn:aws:bedrock:${region}::foundation-model/${ASSISTANT_FOUNDATION_MODEL_ID}`,
+          ),
+        ],
+      }),
+    )
+
+    // Public Function URL (authType NONE), decided in plan §3: the HTTP API also
+    // has no gateway authorizer — every request is authenticated in-function by
+    // tenantMiddleware (Cognito ID token), and lambda-assistant.ts refuses every
+    // path outside /api/v1/assistant. Reserved concurrency above caps the blast
+    // radius that API Gateway's stage throttle would otherwise provide.
+    const assistantUrl = assistantFunction.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+      invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
+      cors: {
+        allowedOrigins: props.corsAllowedOrigins ?? ['*'],
+        allowedMethods: [lambda.HttpMethod.GET, lambda.HttpMethod.POST],
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'X-Tenant-Slug'],
+        exposedHeaders: ['x-correlation-id'],
+        maxAge: cdk.Duration.hours(1),
+      },
+    })
+    this.assistantUrl = assistantUrl.url
+
+    // Kill switch (plan §4: not real until it is in CDK). Absent is off — both
+    // functions answer every /api/v1/assistant route with 404 ASSISTANT_DISABLED.
+    if (props.assistantEnabled) {
+      addApiEnvironment('ASSISTANT_ENABLED', 'true')
+    }
 
     // ---------------------------------------------------------------------------
     // IAM: sm:GetSecretValue to read the Neon connection string
@@ -525,7 +663,7 @@ export class ApiStack extends cdk.Stack {
       resources: [ringcentralSecretArnPattern],
     })
     apiFunction.addToRolePolicy(ringcentralSecretPolicy)
-    apiFunction.addEnvironment('RINGCENTRAL_SECRET_PREFIX', ringcentralSecretPrefix)
+    addApiEnvironment('RINGCENTRAL_SECRET_PREFIX', ringcentralSecretPrefix)
 
     // ---------------------------------------------------------------------------
     // Usage meter — the API Lambda publishes Pegasus/Usage MeterWriteFailed when
@@ -550,7 +688,7 @@ export class ApiStack extends cdk.Stack {
     // no IAM/secret wiring is needed (the store is the shared Neon DB).
     // ---------------------------------------------------------------------------
     if (props.integrationConfigPublishEnabled) {
-      apiFunction.addEnvironment('INTEGRATION_CONFIG_PUBLISH_ENABLED', 'true')
+      addApiEnvironment('INTEGRATION_CONFIG_PUBLISH_ENABLED', 'true')
     }
 
     // ---------------------------------------------------------------------------
@@ -560,7 +698,7 @@ export class ApiStack extends cdk.Stack {
     // holds grantEncryptDecrypt (see below) — so there is no new IAM to wire.
     // ---------------------------------------------------------------------------
     if (props.outboundOAuthSharedCacheEnabled) {
-      apiFunction.addEnvironment('OUTBOUND_OAUTH_SHARED_CACHE_ENABLED', 'true')
+      addApiEnvironment('OUTBOUND_OAUTH_SHARED_CACHE_ENABLED', 'true')
     }
 
     // ---------------------------------------------------------------------------
@@ -570,20 +708,17 @@ export class ApiStack extends cdk.Stack {
     // is the tenant SPA origin the mint uses to build the `/f/<token>` link.
     // ---------------------------------------------------------------------------
     if (props.feedbackEnabled) {
-      apiFunction.addEnvironment('FEEDBACK_ENABLED', 'true')
+      addApiEnvironment('FEEDBACK_ENABLED', 'true')
       if (props.feedbackPublicWebUrl) {
-        apiFunction.addEnvironment('FEEDBACK_PUBLIC_WEB_URL', props.feedbackPublicWebUrl)
+        addApiEnvironment('FEEDBACK_PUBLIC_WEB_URL', props.feedbackPublicWebUrl)
       }
     }
 
     // Crew-leader links (lib/crew-link.ts) — env vars only, like feedback above.
     if (props.crewLeaderLinkEnabled) {
-      apiFunction.addEnvironment('CREW_LEADER_LINK_ENABLED', 'true')
+      addApiEnvironment('CREW_LEADER_LINK_ENABLED', 'true')
       if (props.crewLeaderLinkPublicWebUrl) {
-        apiFunction.addEnvironment(
-          'CREW_LEADER_LINK_PUBLIC_WEB_URL',
-          props.crewLeaderLinkPublicWebUrl,
-        )
+        addApiEnvironment('CREW_LEADER_LINK_PUBLIC_WEB_URL', props.crewLeaderLinkPublicWebUrl)
       }
     }
 
@@ -597,7 +732,7 @@ export class ApiStack extends cdk.Stack {
     // there is deliberately no 'false' entry in the environment block above.
     // ---------------------------------------------------------------------------
     if (props.reportingEnabled) {
-      apiFunction.addEnvironment('REPORTING_ENABLED', 'true')
+      addApiEnvironment('REPORTING_ENABLED', 'true')
     }
 
     // ---------------------------------------------------------------------------
@@ -609,7 +744,7 @@ export class ApiStack extends cdk.Stack {
     if (props.documentsBucket) {
       props.documentsBucket.grantReadWrite(apiFunction)
       props.documentsBucket.grantDelete(apiFunction)
-      apiFunction.addEnvironment('DOCUMENTS_BUCKET_NAME', props.documentsBucket.bucketName)
+      addApiEnvironment('DOCUMENTS_BUCKET_NAME', props.documentsBucket.bucketName)
     }
 
     // ---------------------------------------------------------------------------
@@ -627,7 +762,7 @@ export class ApiStack extends cdk.Stack {
       enableKeyRotation: true,
     })
     workflowTokenKey.grantEncryptDecrypt(apiFunction)
-    apiFunction.addEnvironment('WORKFLOW_TOKEN_KMS_KEY_ID', workflowTokenKey.keyId)
+    addApiEnvironment('WORKFLOW_TOKEN_KMS_KEY_ID', workflowTokenKey.keyId)
 
     // ---------------------------------------------------------------------------
     // KMS: pegII token signing key (cloud identity I1).
@@ -658,9 +793,9 @@ export class ApiStack extends cdk.Stack {
         resources: [pegiiTokenSigningKey.keyArn],
       }),
     )
-    apiFunction.addEnvironment('PEGII_TOKEN_KMS_KEY_IDS', pegiiTokenSigningKey.keyId)
+    addApiEnvironment('PEGII_TOKEN_KMS_KEY_IDS', pegiiTokenSigningKey.keyId)
     if (props.pegiiTokenIssuer) {
-      apiFunction.addEnvironment('PEGII_TOKEN_ISSUER', props.pegiiTokenIssuer)
+      addApiEnvironment('PEGII_TOKEN_ISSUER', props.pegiiTokenIssuer)
     }
 
     // ---------------------------------------------------------------------------
@@ -690,9 +825,9 @@ export class ApiStack extends cdk.Stack {
       props.temporalTaskQueue &&
       props.temporalCloudSecretArn
     ) {
-      apiFunction.addEnvironment('TEMPORAL_ADDRESS', props.temporalAddress)
-      apiFunction.addEnvironment('TEMPORAL_NAMESPACE', props.temporalNamespace)
-      apiFunction.addEnvironment('TEMPORAL_TASK_QUEUE', props.temporalTaskQueue)
+      addApiEnvironment('TEMPORAL_ADDRESS', props.temporalAddress)
+      addApiEnvironment('TEMPORAL_NAMESPACE', props.temporalNamespace)
+      addApiEnvironment('TEMPORAL_TASK_QUEUE', props.temporalTaskQueue)
       // `fromSecretCompleteArn` is the form that matches the no-suffix-rejection
       // bug captured in the bin/app.ts comment. Lambda's runtime SDK call works
       // with either form, but threading the full ARN here gives the IAM grant
@@ -707,7 +842,7 @@ export class ApiStack extends cdk.Stack {
       // deploy time; the Lambda boots with a literal string and the client
       // (lib/temporal-client.ts) reads it from `process.env`. Matches the
       // DATABASE_URL pattern above — no AWS SDK call needed at runtime.
-      apiFunction.addEnvironment(
+      addApiEnvironment(
         'TEMPORAL_CLOUD_API_KEY',
         temporalSecret.secretValueFromJson('apiKey').unsafeUnwrap(),
       )
@@ -867,10 +1002,7 @@ export class ApiStack extends cdk.Stack {
       // A finished TENANT_RUNNER run (broker PATCH) kicks the dispatcher to
       // fill the freed concurrency-cap slot now (lib/trigger-dispatch-kick.ts).
       dispatchTriggersFunction.grantInvoke(apiFunction)
-      apiFunction.addEnvironment(
-        'TRIGGER_DISPATCHER_FUNCTION_NAME',
-        dispatchTriggersFunction.functionName,
-      )
+      addApiEnvironment('TRIGGER_DISPATCHER_FUNCTION_NAME', dispatchTriggersFunction.functionName)
 
       dbSecret.grantRead(dispatchTriggersFunction)
       temporalSecret.grantRead(dispatchTriggersFunction)
@@ -989,10 +1121,7 @@ export class ApiStack extends cdk.Stack {
         workflowTokenKey.grantEncryptDecrypt(provisionerFunction)
 
         provisionerFunction.grantInvoke(apiFunction)
-        apiFunction.addEnvironment(
-          'TEMPORAL_PROVISIONER_FUNCTION_NAME',
-          provisionerFunction.functionName,
-        )
+        addApiEnvironment('TEMPORAL_PROVISIONER_FUNCTION_NAME', provisionerFunction.functionName)
         // The dispatcher requests a tenant's namespace too (a trigger-fired
         // start for a tenant with none; phase 0 re-invokes a killed provision
         // and retries a FAILED one), and its start path gates on the variable.
@@ -1142,7 +1271,7 @@ export class ApiStack extends cdk.Stack {
       // Materialise the secret string as a deploy-time env var on the function.
       // Mirrors how DATABASE_URL is fed in — at runtime the handler reads
       // `process.env.WORKFLOW_BROKER_SECRET` directly, no AWS SDK call.
-      apiFunction.addEnvironment('WORKFLOW_BROKER_SECRET', brokerSecret.secretValue.unsafeUnwrap())
+      addApiEnvironment('WORKFLOW_BROKER_SECRET', brokerSecret.secretValue.unsafeUnwrap())
       // Also grant read so a future code path that wants the live value via
       // GetSecretValue (e.g. for rotation) has IAM coverage already.
       brokerSecret.grantRead(apiFunction)
@@ -1156,10 +1285,7 @@ export class ApiStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     if (props.tunnelProxyFunction) {
       props.tunnelProxyFunction.grantInvoke(apiFunction)
-      apiFunction.addEnvironment(
-        'TUNNEL_PROXY_FUNCTION_NAME',
-        props.tunnelProxyFunction.functionName,
-      )
+      addApiEnvironment('TUNNEL_PROXY_FUNCTION_NAME', props.tunnelProxyFunction.functionName)
     }
 
     // ---------------------------------------------------------------------------
@@ -1174,8 +1300,8 @@ export class ApiStack extends cdk.Stack {
     // No pegII credential secrets: every bridge call carries a cloud-issued token
     // (apps/api/src/lib/pegii-token.ts, KMS-signed). The retired hub service-user
     // secrets under `pegasus/<env>/pegii/` are deliberately NOT readable.
-    apiFunction.addEnvironment('PEGII_API_TUNNEL_SCHEME', 'http')
-    apiFunction.addEnvironment('PEGII_API_TUNNEL_PORT', '65274')
+    addApiEnvironment('PEGII_API_TUNNEL_SCHEME', 'http')
+    addApiEnvironment('PEGII_API_TUNNEL_PORT', '65274')
 
     // ---------------------------------------------------------------------------
     // MSSQL executor — grant invoke + surface function name as env var.
@@ -1185,10 +1311,7 @@ export class ApiStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     if (props.mssqlExecutorFunction) {
       props.mssqlExecutorFunction.grantInvoke(apiFunction)
-      apiFunction.addEnvironment(
-        'MSSQL_EXECUTOR_FUNCTION_NAME',
-        props.mssqlExecutorFunction.functionName,
-      )
+      addApiEnvironment('MSSQL_EXECUTOR_FUNCTION_NAME', props.mssqlExecutorFunction.functionName)
     }
 
     // ---------------------------------------------------------------------------
@@ -1750,7 +1873,7 @@ export class ApiStack extends cdk.Stack {
 
     // Wire the webhook (api Lambda) as the producer.
     ringcentralCaptureQueue.grantSendMessages(apiFunction)
-    apiFunction.addEnvironment('RINGCENTRAL_WEBHOOK_QUEUE_URL', ringcentralCaptureQueue.queueUrl)
+    addApiEnvironment('RINGCENTRAL_WEBHOOK_QUEUE_URL', ringcentralCaptureQueue.queueUrl)
 
     // ---------------------------------------------------------------------------
     // RingCentral on-prem forwarder cron
@@ -1871,7 +1994,7 @@ export class ApiStack extends cdk.Stack {
     // only one that can load it. Each row is claimed before sending, so a
     // kicked run overlapping the scheduled one never sends a row twice.
     pushForwardFunction.grantInvoke(apiFunction)
-    apiFunction.addEnvironment('PUSH_FORWARD_FUNCTION_NAME', pushForwardFunction.functionName)
+    addApiEnvironment('PUSH_FORWARD_FUNCTION_NAME', pushForwardFunction.functionName)
 
     new events.Rule(this, 'PushForwardSchedule', {
       // Near-real-time: drivers expect assignment/request pushes promptly.
@@ -2143,7 +2266,7 @@ export class ApiStack extends cdk.Stack {
     // Mirror the allowlist into the Lambda so the Hono cors() middleware
     // enforces the same origins on the non-preflight / direct-served path.
     // Empty (dev) → Hono reflects any origin.
-    apiFunction.addEnvironment('CORS_ALLOWED_ORIGINS', (props.corsAllowedOrigins ?? []).join(','))
+    addApiEnvironment('CORS_ALLOWED_ORIGINS', (props.corsAllowedOrigins ?? []).join(','))
 
     // Stage-wide throttling — a free token bucket at the API GW edge. Excess
     // requests get 429 without consuming a Lambda slot, mitigating the
@@ -2218,6 +2341,7 @@ export class ApiStack extends cdk.Stack {
     if (props.ringcentralEnabled) {
       for (const fn of [
         apiFunction,
+        assistantFunction,
         ringcentralCaptureFunction,
         ringcentralSyncFunction,
         ringcentralRenewFunction,
@@ -2234,6 +2358,13 @@ export class ApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: httpApi.apiEndpoint,
       exportName: 'PegasusApiUrl',
+    })
+
+    // Pinned export name (same reasoning as AssetsApiEndpointExport below): the
+    // tenant frontend-assets stack imports it into config.json as `assistantUrl`.
+    new cdk.CfnOutput(this, 'AssistantUrlExport', {
+      value: this.assistantUrl,
+      exportName: `${this.stackName}:AssistantUrl`,
     })
 
     new cdk.CfnOutput(this, 'WorkflowTokenKeyArn', {
