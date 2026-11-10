@@ -1633,6 +1633,9 @@ def order_event(self, event: dict | None = None) -> None:
 - **The key** is the value at `correlation_path`, a dot path into the event
   envelope `{domainEventId, eventType, occurredAt, payload}` — a string or an
   integer matching `[A-Za-z0-9._:-]{1,128}`. Each key gets its own instance.
+  Key on an **entity id** (an order or shipment number), never personal data
+  such as a phone number: the key becomes part of the Temporal workflow id,
+  which appears in logs and the Temporal UI.
 - **The signal's argument** is that envelope.
 - **`START`** creates the key's instance when none is open. The event is then
   both its run input (`arg["input"]`) and its first signal, so dedupe. It counts
