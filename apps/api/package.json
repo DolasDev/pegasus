@@ -12,7 +12,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed-run.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "assistant:eval": "tsx scripts/assistant-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "1.1.1",
