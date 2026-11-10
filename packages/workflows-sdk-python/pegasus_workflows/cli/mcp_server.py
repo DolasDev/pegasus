@@ -426,8 +426,18 @@ runtime, so it can wait for days:
   Change behaviour by publishing a new version, never by expecting a running
   Workflow to pick it up.
 - ``signals = ["name", ...]`` declares the ``@workflow.signal`` methods it
-  accepts. Declared now; sending signals into a running Workflow through the
-  Pegasus API is not available yet.
+  accepts. Only declared names can be delivered. Send one to a running Workflow
+  with ``PegasusClient.signal_execution(workflow_id, execution_id, name,
+  payload=None)`` or ``pegasus-workflows executions signal <workflow-id>
+  <execution-id> --name <name> [--payload JSON]`` (needs
+  ``SignalWorkflowExecution``, in the ``workflow_developer`` role). The payload
+  (any JSON, ≤ 128 KiB) is the handler's single argument, and omitted it sends
+  none, so write handlers as ``def name(self, payload: dict | None = None)``.
+  Delivery is **at-least-once** (a retried call delivers again): make handlers
+  idempotent. Signals are not runs: no quota or cap charge, and the kill switch
+  does not block them. Undeclared name → 400 ``SIGNAL_NOT_DECLARED``; an
+  Automation / closed / not-yet-started execution → 409
+  ``EXECUTION_NOT_SIGNALLABLE``.
 - Activities work as in an Automation (``PegasusClient.from_runtime()``) and get
   Temporal's per-activity retries.
 - No dry runs (422 ``DRY_RUN_UNSUPPORTED``) — test locally against a Temporal dev
@@ -672,6 +682,8 @@ def resource_reference_manifest() -> str:
         "pinned for life to the version it started on. Workflow-only fields:\n"
         f"``max_lifetime_days`` (1–{MAX_LIFETIME_DAYS}, default {DEFAULT_MAX_LIFETIME_DAYS})\n"
         f"and ``signals`` (identifiers matching ``{SIGNAL_NAME_REGEX.pattern}``, at most 50).\n"
+        "``signals`` names the ``@workflow.signal`` methods; only declared names can be\n"
+        "delivered (``PegasusClient.signal_execution`` / ``executions signal``).\n"
         "Each kind's fields are refused on the other kind.\n\n"
         "## Packaging requirement — Automation diagram\n\n"
         f"Every Automation must ship a Mermaid diagram at ``<source_dir>/{DIAGRAM_FILENAME}``.\n"

@@ -41,15 +41,18 @@ const {
   mockGetHandle,
   mockHandleCancel,
   mockHandleFetchHistory,
+  mockHandleSignal,
   mockTemporalTargets,
   mockNamespaceFindUnique,
 } = vi.hoisted(() => {
   const start = vi.fn()
   const handleCancel = vi.fn()
   const handleFetchHistory = vi.fn()
+  const handleSignal = vi.fn()
   const getHandle = vi.fn(() => ({
     cancel: handleCancel,
     fetchHistory: handleFetchHistory,
+    signal: handleSignal,
   }))
   const client = { workflow: { start, getHandle } }
   return {
@@ -96,6 +99,7 @@ const {
     mockGetHandle: getHandle,
     mockHandleCancel: handleCancel,
     mockHandleFetchHistory: handleFetchHistory,
+    mockHandleSignal: handleSignal,
     mockTemporalTargets: [] as unknown[],
     mockNamespaceFindUnique: vi.fn(async (): Promise<unknown> => null),
   }
@@ -1777,6 +1781,152 @@ describe('workflows handler', () => {
       const res = await buildApp().request('/wf-1/executions/exec-1/cancel', post({}))
       expect(res.status).toBe(502)
       expect((await json(res)).code).toBe('TEMPORAL_CANCEL_FAILED')
+    })
+  })
+
+  // ── POST /:id/executions/:executionId/signal ──────────────────────────────
+
+  describe('POST /:id/executions/:executionId/signal', () => {
+    const durableRow = {
+      ...provisionedRow,
+      // A non-curated name: curated names route STDLIB and are never durable.
+      name: 'order_lifecycle',
+      kind: 'WORKFLOW' as const,
+      manifest: {
+        ...validManifest,
+        name: 'order_lifecycle',
+        kind: 'workflow',
+        signals: ['proceed', 'note'],
+      },
+    }
+    const runningExec = {
+      id: 'exec-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      status: 'RUNNING' as const,
+      input: {},
+      result: null,
+      errorMessage: null,
+      temporalWorkflowId: 'wf/test-tenant-id/send_quote_followup/exec-1',
+      temporalRunId: 'run-1',
+      temporalNamespace: null,
+      triggeredByUserId: 'user-1',
+      triggerSource: 'USER' as const,
+      triggeredByTriggerId: null,
+      queuedAt: now,
+      startedAt: now,
+      finishedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+    const url = '/wf-1/executions/exec-1/signal'
+
+    beforeEach(() => {
+      mockRepo.findByIdForTenant.mockResolvedValue(durableRow)
+      mockExecutionRepo.findById.mockResolvedValue(runningExec)
+      mockHandleSignal.mockResolvedValue(undefined)
+    })
+
+    it('returns 403 for a viewer', async () => {
+      const res = await buildApp(['viewer']).request(url, post({ name: 'proceed' }))
+      expect(res.status).toBe(403)
+      expect(mockHandleSignal).not.toHaveBeenCalled()
+    })
+
+    it('lets a workflow_developer signal: 202, payload as the single argument', async () => {
+      const res = await buildApp(['workflow_developer']).request(
+        url,
+        post({ name: 'note', payload: { text: 'hi' } }),
+      )
+      expect(res.status).toBe(202)
+      expect(mockGetHandle).toHaveBeenCalledWith(runningExec.temporalWorkflowId, undefined, {
+        firstExecutionRunId: 'run-1',
+      })
+      expect(mockHandleSignal).toHaveBeenCalledWith('note', { text: 'hi' })
+      expect(((await json(res)).data as JsonBody)['id']).toBe('exec-1')
+    })
+
+    it('sends no argument when payload is absent, one when it is JSON null', async () => {
+      await buildApp().request(url, post({ name: 'proceed' }))
+      expect(mockHandleSignal).toHaveBeenLastCalledWith('proceed')
+      await buildApp().request(url, post({ name: 'proceed', payload: null }))
+      expect(mockHandleSignal).toHaveBeenLastCalledWith('proceed', null)
+    })
+
+    it('is NOT blocked by the kill switch', async () => {
+      mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+      const res = await buildApp().request(url, post({ name: 'proceed' }))
+      expect(res.status).toBe(202)
+      expect(mockHandleSignal).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns 400 SIGNAL_NOT_DECLARED for a name the version does not declare', async () => {
+      const res = await buildApp().request(url, post({ name: 'approve' }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('SIGNAL_NOT_DECLARED')
+      expect(mockHandleSignal).not.toHaveBeenCalled()
+    })
+
+    it('returns 400 VALIDATION_ERROR for a malformed name', async () => {
+      const res = await buildApp().request(url, post({ name: 'quote.accepted' }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('returns 413 SIGNAL_PAYLOAD_TOO_LARGE over 128 KiB', async () => {
+      const res = await buildApp().request(
+        url,
+        post({ name: 'note', payload: 'x'.repeat(128 * 1024) }),
+      )
+      expect(res.status).toBe(413)
+      expect((await json(res)).code).toBe('SIGNAL_PAYLOAD_TOO_LARGE')
+    })
+
+    it('returns 409 for an Automation execution (before the declared check)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request(url, post({ name: 'proceed' }))
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('EXECUTION_NOT_SIGNALLABLE')
+    })
+
+    it('returns 409 for a terminal execution', async () => {
+      mockExecutionRepo.findById.mockResolvedValue({ ...runningExec, status: 'COMPLETED' })
+      const res = await buildApp().request(url, post({ name: 'proceed' }))
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('EXECUTION_NOT_SIGNALLABLE')
+      expect(mockHandleSignal).not.toHaveBeenCalled()
+    })
+
+    it('returns 409 when the execution has no Temporal id yet', async () => {
+      mockExecutionRepo.findById.mockResolvedValue({
+        ...runningExec,
+        status: 'QUEUED',
+        temporalWorkflowId: null,
+      })
+      const res = await buildApp().request(url, post({ name: 'proceed' }))
+      expect(res.status).toBe(409)
+    })
+
+    it('returns 409 when Temporal reports the Workflow is no longer running', async () => {
+      const notFound = new Error('workflow execution already completed')
+      notFound.name = 'WorkflowNotFoundError'
+      mockHandleSignal.mockRejectedValue(notFound)
+      const res = await buildApp().request(url, post({ name: 'proceed' }))
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('EXECUTION_NOT_SIGNALLABLE')
+    })
+
+    it('returns 502 TEMPORAL_SIGNAL_FAILED on any other Temporal error', async () => {
+      mockHandleSignal.mockRejectedValue(new Error('grpc down'))
+      const res = await buildApp().request(url, post({ name: 'proceed' }))
+      expect(res.status).toBe(502)
+      expect((await json(res)).code).toBe('TEMPORAL_SIGNAL_FAILED')
+    })
+
+    it('returns 404 for an execution of another workflow', async () => {
+      mockExecutionRepo.findById.mockResolvedValue({ ...runningExec, workflowId: 'wf-other' })
+      const res = await buildApp().request(url, post({ name: 'proceed' }))
+      expect(res.status).toBe(404)
     })
   })
 

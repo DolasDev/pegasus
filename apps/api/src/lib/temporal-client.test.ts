@@ -75,6 +75,29 @@ describe('summarizeWorkflowHistory', () => {
     expect(events[1]).toMatchObject({ id: '2', type: 'WorkflowExecutionTimedOut', timestamp: null })
   })
 
+  it('labels a signal with its name, and maps the workflow-task events', () => {
+    const events = summarizeWorkflowHistory({
+      events: [
+        { eventId: 1, workflowTaskScheduledEventAttributes: {} },
+        { eventId: 2, workflowTaskStartedEventAttributes: {} },
+        { eventId: 3, workflowTaskCompletedEventAttributes: {} },
+        { eventId: 4, workflowExecutionSignaledEventAttributes: { signalName: 'proceed' } },
+      ],
+    })
+    expect(events.map((e) => e.type)).toEqual([
+      'WorkflowTaskScheduled',
+      'WorkflowTaskStarted',
+      'WorkflowTaskCompleted',
+      'WorkflowExecutionSignaled',
+    ])
+    expect(events[3]).toEqual({
+      id: '4',
+      type: 'WorkflowExecutionSignaled',
+      timestamp: null,
+      signalName: 'proceed',
+    })
+  })
+
   it('labels an unrecognized event Unknown rather than dropping it', () => {
     const events = summarizeWorkflowHistory({
       events: [{ eventId: 9, someBrandNewEventAttributes: {} }],

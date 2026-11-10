@@ -82,6 +82,8 @@ export type WorkflowHistoryEvent = {
   attempt?: number
   /** Failure message, on failed workflow/activity events. */
   failure?: string
+  /** Signal name, on WorkflowExecutionSignaled events. */
+  signalName?: string
 }
 
 /** Map each `<kind>EventAttributes` field name to a clean event label. */
@@ -93,13 +95,24 @@ const HISTORY_EVENT_ATTR_TYPES: Readonly<Record<string, string>> = {
   workflowExecutionCanceledEventAttributes: 'WorkflowExecutionCanceled',
   workflowExecutionTerminatedEventAttributes: 'WorkflowExecutionTerminated',
   workflowExecutionContinuedAsNewEventAttributes: 'WorkflowExecutionContinuedAsNew',
+  workflowExecutionSignaledEventAttributes: 'WorkflowExecutionSignaled',
+  workflowExecutionCancelRequestedEventAttributes: 'WorkflowExecutionCancelRequested',
+  workflowTaskScheduledEventAttributes: 'WorkflowTaskScheduled',
+  workflowTaskStartedEventAttributes: 'WorkflowTaskStarted',
+  workflowTaskCompletedEventAttributes: 'WorkflowTaskCompleted',
+  workflowTaskFailedEventAttributes: 'WorkflowTaskFailed',
+  workflowTaskTimedOutEventAttributes: 'WorkflowTaskTimedOut',
   activityTaskScheduledEventAttributes: 'ActivityTaskScheduled',
   activityTaskStartedEventAttributes: 'ActivityTaskStarted',
   activityTaskCompletedEventAttributes: 'ActivityTaskCompleted',
   activityTaskFailedEventAttributes: 'ActivityTaskFailed',
   activityTaskTimedOutEventAttributes: 'ActivityTaskTimedOut',
+  activityTaskCancelRequestedEventAttributes: 'ActivityTaskCancelRequested',
+  activityTaskCanceledEventAttributes: 'ActivityTaskCanceled',
   timerStartedEventAttributes: 'TimerStarted',
   timerFiredEventAttributes: 'TimerFired',
+  timerCanceledEventAttributes: 'TimerCanceled',
+  markerRecordedEventAttributes: 'MarkerRecorded',
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -196,6 +209,10 @@ export function summarizeWorkflowHistory(history: unknown): WorkflowHistoryEvent
       const failure = asObject(attrs['failure'])
       if (failure && typeof failure['message'] === 'string') {
         summary.failure = failure['message']
+      }
+      if (attrKey === 'workflowExecutionSignaledEventAttributes') {
+        const signalName = attrs['signalName']
+        if (typeof signalName === 'string') summary.signalName = signalName
       }
     }
 

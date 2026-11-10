@@ -1,19 +1,24 @@
-"""``pegasus-workflows executions`` — inspect Automation executions from the terminal.
+"""``pegasus-workflows executions`` — inspect executions and signal durable Workflows.
 
-A read-only window onto the same tenant-scoped execution data the tenant web UI
-shows, for developers who live in the terminal:
+A window onto the same tenant-scoped execution data the tenant web UI shows, for
+developers who live in the terminal:
 
 * ``executions list <workflow-id>`` — recent runs (status, trigger, timing).
 * ``executions show <workflow-id> <execution-id>`` — one run's input / result /
-  error plus its Temporal event-history timeline.
+  error plus its Temporal event-history timeline (signals show their name).
+* ``executions signal <workflow-id> <execution-id> --name proceed [--payload JSON]``
+  — deliver a declared signal to a running durable Workflow.
 
 Auth mirrors ``push``: a ``vnd_`` API key via ``--token`` /
-``$PEGASUS_WORKFLOW_TOKEN`` (the ``workflow_developer`` role's ``ReadWorkflow``
-covers both). Cancel/retry are intentionally UI-only in v1.
+``$PEGASUS_WORKFLOW_TOKEN``. ``list`` / ``show`` need ``ReadWorkflow``;
+``signal`` needs ``SignalWorkflowExecution`` (both in the ``workflow_developer``
+role). Cancel/retry stay UI-only (or ``PegasusClient.cancel_execution`` /
+``retry_execution``).
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import typer
@@ -25,7 +30,7 @@ __all__ = ["executions_app"]
 
 executions_app = typer.Typer(
     name="executions",
-    help="Inspect Automation executions (read-only).",
+    help="Inspect executions; signal a running durable Workflow.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -107,6 +112,50 @@ def executions_show_command(
         line = f"  {_fmt(event.get('timestamp')):<26}  {_fmt(event.get('type'))}"
         if event.get("activityType"):
             line += f"  [{event['activityType']}]"
+        if event.get("signalName"):
+            line += f"  signal: {event['signalName']}"
         if event.get("failure"):
             line += f"  failure: {event['failure']}"
         typer.echo(line)
+
+
+@executions_app.command("signal")
+def executions_signal_command(
+    workflow_id: str = typer.Argument(..., help="The durable Workflow (version) id."),
+    execution_id: str = typer.Argument(..., help="The QUEUED / RUNNING execution to signal."),
+    name: str = typer.Option(
+        ...,
+        "--name",
+        help="A signal the Workflow declares (manifest `signals`; the @workflow.signal "
+        "method's name).",
+    ),
+    payload: str | None = typer.Option(
+        None,
+        "--payload",
+        help="JSON passed as the signal's single argument (≤ 128 KiB). Omit to send none.",
+    ),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
+) -> None:
+    """Deliver a signal to a running durable Workflow.
+
+    Not blocked by the kill switch and not charged against any quota. Delivery is
+    at-least-once — a re-run of this command delivers again, so make the handler
+    idempotent.
+    """
+    parsed: Any = None
+    if payload is not None:
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            typer.secho(f"--payload is not valid JSON: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from exc
+
+    client = _client(token, base_url, profile)
+    try:
+        client.signal_execution(workflow_id, execution_id, name, parsed)
+    except PegasusApiError as exc:
+        typer.secho(f"failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"signal {name} delivered to {execution_id}", fg=typer.colors.GREEN)

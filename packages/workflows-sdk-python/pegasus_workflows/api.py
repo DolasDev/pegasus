@@ -845,6 +845,54 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def signal_execution(
+        self,
+        workflow_id: str,
+        execution_id: str,
+        name: str,
+        payload: Any = None,
+    ) -> dict[str, Any]:
+        """Deliver a signal to a running durable Workflow (manifest ``kind = "workflow"``).
+
+        ``name`` must be one of the signals the execution's Workflow version declares
+        (manifest ``signals``) — it is the ``@workflow.signal`` method's name. ``payload``
+        (any JSON value, ≤ 128 KiB) is passed as the signal's single argument; ``None``
+        sends no argument, so declare the handler
+        ``def name(self, payload: dict | None = None)``.
+
+        A signal is not a run: it counts toward no quota or cap, and the tenant kill
+        switch does not block it. Delivery is at-least-once (a retried call delivers
+        again) — make the handler idempotent. Requires ``SignalWorkflowExecution``
+        (the ``workflow_developer`` role).
+
+        Args:
+            workflow_id: The Workflow (version) id the execution belongs to.
+            execution_id: The QUEUED / RUNNING execution to signal.
+            name: The declared signal name.
+            payload: The signal's argument, or ``None`` for none.
+
+        Returns:
+            The (unchanged) ``ExecutionResponse``.
+
+        Raises:
+            PegasusApiError: 400 ``SIGNAL_NOT_DECLARED`` (the message lists the
+                declared names) or ``VALIDATION_ERROR``; 404 (unknown execution);
+                409 ``EXECUTION_NOT_SIGNALLABLE`` (an Automation, terminal, not
+                started yet, or no longer running); 413
+                ``SIGNAL_PAYLOAD_TOO_LARGE``; 502 ``TEMPORAL_SIGNAL_FAILED``; or any
+                non-2xx.
+        """
+        body: dict[str, Any] = {"name": name}
+        if payload is not None:
+            body["payload"] = payload
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/workflows/{workflow_id}/executions/{execution_id}/signal",
+                json=body,
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def retry_execution(self, workflow_id: str, execution_id: str) -> dict[str, Any]:
         """Retry a terminal-failed execution as a brand-new run with the same input.
 

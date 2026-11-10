@@ -1,4 +1,4 @@
-"""Tests for ``pegasus-workflows executions`` (list / show).
+"""Tests for ``pegasus-workflows executions`` (list / show / signal).
 
 A fake PegasusClient is swapped in so the tests exercise arg parsing and output
 without a live API.
@@ -57,7 +57,21 @@ class _FakeClient:
                 "activityType": "compose_followup",
                 "failure": "boom 401",
             },
+            {
+                "id": "3",
+                "type": "WorkflowExecutionSignaled",
+                "timestamp": "t3",
+                "signalName": "proceed",
+            },
         ]
+
+    def signal_execution(self, workflow_id, execution_id, name, payload=None):  # noqa: ANN001
+        _FakeClient.last["signal"] = (workflow_id, execution_id, name, payload)
+        if name == "nope":
+            raise ex.PegasusApiError(
+                status_code=400, code="SIGNAL_NOT_DECLARED", message="not declared"
+            )
+        return {"id": execution_id, "status": "RUNNING"}
 
 
 @pytest.fixture(autouse=True)
@@ -79,18 +93,63 @@ def test_list_calls_api_and_prints_rows() -> None:
 
 
 def test_show_prints_execution_and_timeline() -> None:
-    result = runner.invoke(
-        ex.executions_app, ["show", "wf-1", "exec-1", "--token", _TOKEN]
-    )
+    result = runner.invoke(ex.executions_app, ["show", "wf-1", "exec-1", "--token", _TOKEN])
     assert result.exit_code == 0, result.output
     assert _FakeClient.last["show"] == ("wf-1", "exec-1")
     assert _FakeClient.last["history"] == ("wf-1", "exec-1")
     assert "boom" in result.output  # errorMessage
     assert "WorkflowExecutionStarted" in result.output
     assert "compose_followup" in result.output  # correlated activity name
+    assert "signal: proceed" in result.output
 
 
 def test_list_requires_a_token() -> None:
     result = runner.invoke(ex.executions_app, ["list", "wf-1"])
     assert result.exit_code == 1
     assert "no token" in result.output
+
+
+def test_signal_sends_name_and_parsed_payload() -> None:
+    result = runner.invoke(
+        ex.executions_app,
+        [
+            "signal",
+            "wf-1",
+            "exec-1",
+            "--name",
+            "note",
+            "--payload",
+            '{"text":"hi"}',
+            "--token",
+            _TOKEN,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["signal"] == ("wf-1", "exec-1", "note", {"text": "hi"})
+    assert "delivered" in result.output
+
+
+def test_signal_without_payload_sends_none() -> None:
+    result = runner.invoke(
+        ex.executions_app, ["signal", "wf-1", "exec-1", "--name", "proceed", "--token", _TOKEN]
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["signal"] == ("wf-1", "exec-1", "proceed", None)
+
+
+def test_signal_rejects_invalid_json_payload() -> None:
+    result = runner.invoke(
+        ex.executions_app,
+        ["signal", "wf-1", "exec-1", "--name", "note", "--payload", "{nope", "--token", _TOKEN],
+    )
+    assert result.exit_code == 2
+    assert "not valid JSON" in result.output
+    assert "signal" not in _FakeClient.last
+
+
+def test_signal_reports_api_error() -> None:
+    result = runner.invoke(
+        ex.executions_app, ["signal", "wf-1", "exec-1", "--name", "nope", "--token", _TOKEN]
+    )
+    assert result.exit_code == 1
+    assert "SIGNAL_NOT_DECLARED" in result.output or "not declared" in result.output
