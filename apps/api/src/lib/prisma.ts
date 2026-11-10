@@ -176,6 +176,13 @@ export const TENANT_SCOPED_MODELS = new Set([
   // `db` (it resolves the tenant FROM the presented token), like feedback.
   // Its OTP/session/audit children carry no tenantId — they hang off the link.
   'CrewAccessLink',
+  // AI assistant — conversations, turn and tool-call traces, and the prompt
+  // store. Purely tenant-owned, served only through the scoped client by the
+  // assistant handlers and the streaming assistant Lambda; creates set tenantId.
+  'AssistantConversation',
+  'AssistantTurn',
+  'AssistantToolCall',
+  'AssistantPromptVersion',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the
