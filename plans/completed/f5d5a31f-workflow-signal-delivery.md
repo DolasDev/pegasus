@@ -7,7 +7,7 @@
   domain event to the Workflow instance for a business key (`START` =
   signal-with-start, `DELIVER` = signal only). Exposed and discoverable through
   the SDK, CLI, MCP and OpenAPI.
-- **Status:** APPROVED 2026-11-10 (two PRs) — PR 1 (A + C-direct, SDK 0.60.0) built 2026-11-10; PR 2 (B + C-triggers) not started.
+- **Status:** PR 1 SHIPPED (#943, SDK 0.60.0, staging-accepted 2026-11-10). PR 2 (B + C-triggers, SDK 0.61.0) built 2026-11-10 — post-merge steps in `plans/todo/workflow-signal-delivery-followups.md`.
 - **Parent:** `plans/in-progress/long-running-workflows-and-automations.md`
   Phase 4 (this plan = its event-delivery slice; see "Out of scope").
 
@@ -162,6 +162,36 @@ payload}`. Body cap 128 KiB (413 `SIGNAL_PAYLOAD_TOO_LARGE`).
 
 12. **Two PRs, one worktree each** — see "Delivery" below.
 
+### Refinements made while building PR 2 (2026-11-10)
+
+13. **"Started or signalled?" is read from the memo, not `signaledRunId`**
+    (supersedes decision 6's mechanism, keeps its intent). Every start now
+    carries `memo.executionId` = the row that started it; after
+    `signalWithStart` the dispatcher describes the instance and, if
+    `memo.executionId` is not the row it just inserted, an already-running
+    instance took the signal → the new row is deleted, `SIGNALLED_EXISTING`.
+    Why: the `signaledRunId == another row's temporalRunId` rule misses both
+    cases decision 6 targets — a `START_FAILED` row never reached `markStarted`
+    (null run id), and after continue-as-new the row holds the FIRST run id
+    while `signaledRunId` is the current one. A failed describe keeps the row
+    (worst case two rows on one instance, both closed by the reconciler) —
+    never a lost delivery. A NEW instance stores `signaledRunId` as its first
+    run id, so PR 1's chain-safe signalling works on keyed rows.
+14. **`ALREADY_STARTED` on signal-with-start deletes the inserted row.** It can
+    only mean a CLOSED instance under REJECT_DUPLICATE (a running one is
+    signalled); unlike a plain start no other row tracks a live run, and a
+    QUEUED `wfl/` row would be found as "the open instance" by every later event.
+15. **The INSTANCE's version must declare the signal**, not only the trigger's:
+    an open instance runs the version it started on, which may predate the
+    trigger's current target. Undeclared → `BINDING_INVALID`, not signalled.
+16. **A START's event is both the run input and the first signal** (input
+    `{executionId, input: envelope, dryRun}`, signal arg = envelope). Documented
+    as "dedupe on `domainEventId`"; it rides the same at-least-once rule.
+17. **No CLI for EVENT triggers** — none existed before (`schedule create` is
+    cron-only), so the binding is reachable through the SDK client, MCP docs
+    and OpenAPI; a CLI command for EVENT triggers is a pre-existing gap, not
+    this plan's scope.
+
 ## Delivery
 
 - **PR 1 (this worktree, `feat/workflow-signal-delivery`):** Checklist A +
@@ -209,20 +239,20 @@ rewrite + QA scenario; a persisted delivery-log table / UI.
 
 ### B. Event-routed signals (triggers + dispatcher)
 
-- [ ] Migration: `WorkflowTriggerMode` enum + `mode` (default `NEW`),
+- [x] Migration: `WorkflowTriggerMode` enum + `mode` (default `NEW`),
       `correlation_path`, `signal_name` on `workflow_triggers`; index on
       `workflow_executions (tenant_id, temporal_workflow_id)` for the open-
       instance lookup. `schema.prisma` is a HOT FILE.
-- [ ] Trigger API: `CreateTriggerBody` / update accept `mode`,
+- [x] Trigger API: `CreateTriggerBody` / update accept `mode`,
       `correlationPath`, `signalName`; validate (decisions 3-5): START/DELIVER
       only for EVENT + WORKFLOW kind; both fields required; signal declared;
       path syntax. Responses + OpenAPI include the fields. Tests.
-- [ ] `startWorkflowExecution`: `startSignal` option → `signalWithStart`
+- [x] `startWorkflowExecution`: `startSignal` option → `signalWithStart`
       (same pin/timeout/memo/reuse). Tests incl. pinned-version-not-present →
       `WORKFLOW_VERSION_STARTING` on the signal-with-start path, and the
       `signaledRunId` already-has-a-row case → new row deleted,
       `SIGNALLED_EXISTING` (decision 6).
-- [ ] Dispatcher: for `mode` START/DELIVER — extract key (decision 5) →
+- [x] Dispatcher: for `mode` START/DELIVER — extract key (decision 5) →
       lookup open `wfl/` row (decision 6) → `signalDurableExecution` or START
       via `startWorkflowExecution({temporalWorkflowId, startSignal})`; re-check
       the signal is declared on the target version; outcomes → metrics + logs
@@ -231,38 +261,40 @@ rewrite + QA scenario; a persisted delivery-log table / UI.
       a second event signals the same instance; DELIVER with no instance fails;
       missing/invalid key; undeclared signal; kill switch on (open → signals,
       none → skipped); version starting parks; NEW mode unchanged.
-- [ ] Infra: metric names only (no new resources expected) — confirm nothing
+- [x] Infra: metric names only (no new resources expected) — confirm nothing
       in `packages/infra` needs the new metrics/alarms; add an alarm only if
-      cheap and obviously useful.
+      cheap and obviously useful. **Done: nothing needed** — infra only holds
+      constants for alarmed metrics, and a failed delivery is an expected
+      tenant-config outcome (no key, no instance), not a platform fault.
 
 ### C. SDK 0.60.0 + discovery surfaces
 
-- [ ] `PegasusClient.signal_execution(workflow_id, execution_id, name,
+- [x] `PegasusClient.signal_execution(workflow_id, execution_id, name,
 payload=None)` (+ classify in `testing/__init__.py`); typed errors reuse
       `PegasusApiError` codes. `create_trigger` / `update_trigger` gain `mode`,
       `correlation_path`, `signal_name`. Tests (`tests/test_api.py`,
       `tests/test_durable_workflows.py`, `tests/test_api_triggers.py`).
-- [ ] **(PR 1 half DONE: `executions signal` + `show` prints `signal: <name>`;
-      PR 2: trigger flags)** CLI: `pegasus-workflows executions signal <workflow> <execution-id>
+- [x] **(PR 1 half DONE: `executions signal` + `show` prints `signal: <name>`;
+      PR 2: none — no CLI creates EVENT triggers, decision 17)** CLI: `pegasus-workflows executions signal <workflow> <execution-id>
 --name proceed [--payload JSON]`; `schedule`/trigger CLI (find where EVENT
       triggers are created) gains `--mode/--correlation-path/--signal-name`.
       Update the executions docstring ("cancel/retry UI-only" — signal is
       CLI-able now). Tests.
-- [ ] **(PR 1 half DONE: direct delivery documented; PR 2: event-routed +
+- [x] **(PR 1 half DONE: direct delivery documented; PR 2: event-routed +
       `domainEventId` dedupe)** MCP: `resource_guide_authoring` durable section (signals now
       deliverable, both ways, at-least-once + dedupe on `domainEventId`,
       handler signature `def name(self, payload: dict | None = None)`),
       `resource_reference_manifest` `signals` text.
-- [ ] **(PR 1 half DONE: intro fixed, "Sending a signal", CHANGELOG 0.60.0,
+- [x] **(PR 1 half DONE: intro fixed, "Sending a signal", CHANGELOG 0.60.0,
       bump; PR 2: triggers section, 0.61.0)** README: durable section + triggers section; fix the stale intro lines.
       CHANGELOG 0.60.0. `pyproject.toml` + `uv.lock` bump.
-- [ ] **(DECISIONS entry "Signals reach a durable Workflow by workflow id…"
+- [x] **(DECISIONS entry "Signals reach a durable Workflow by workflow id…"
       added in PR 1 — PR 2 extends it with REJECT_DUPLICATE per key)** GOTCHAS/DECISIONS: decision 3 (explicit signalName), 6 (REJECT_DUPLICATE
       per key), 9 (at-least-once) as a DECISIONS entry.
 
 ### D. Verify + land
 
-- [ ] `npm run typecheck`, API tests (`apps/api`, Docker Postgres), SDK
+- [x] `npm run typecheck`, API tests (`apps/api`, Docker Postgres), SDK
       `uv run pytest` + `ruff check`, `openapi` coverage test.
 - [ ] `/workstream-finish` (self-review incl. `/security-review`: authz +
       migration + workflows). One PR PER DELIVERY STEP (see Delivery), merge queue.
@@ -324,22 +356,44 @@ Prisma migration.
   same trust boundary as today's trigger input; nothing new, but don't add
   platform-internal fields to the envelope.
 - **Temporal limits:** 10,000 signals per execution, 2 MB payload; our 128 KiB
-  cap keeps us well inside.
+  cap keeps us well inside. A keyed instance fed by a chatty event type could
+  approach 10,000 over a long life; Workflows that expect that should
+  continue-as-new (signals follow the chain — decision 7).
+- **A stranded key (known, not fixed here):** a QUEUED `wfl/` row whose
+  Temporal start never happened (a crash between insert and start) is found as
+  "the open instance" by every later event, each delivery failing NOT_RUNNING,
+  until something closes the row. Rare (the dispatcher is serialized and the
+  start is immediate after the insert); the fix — the reconciler closing a
+  QUEUED durable row Temporal has never heard of — belongs with reconciler work.
+
+## PR 1 staging acceptance log (AVP Smoke, 2026-11-10) — ALL PASS
+
+Scratch `accept_sig@0.1.0` (id `1ed8e529-fa78-4334-8697-2cd5295e880e`, signals
+`proceed`/`note`, waits ≤ 2 h on `proceed`), SDK 0.60.0 CLI, `--profile avp-smoke`.
+
+- 20:37:49Z push; 20:37:58Z run → 409 `WORKFLOW_VERSION_STARTING`; 20:38:19Z →
+  exec `a90e3b4b-a9c5-4e26-81b9-4d596a6bbebe` RUNNING.
+- 20:38:25Z `--name approve` → **400 `SIGNAL_NOT_DECLARED`** (lists `proceed, note`).
+- `note` with payload, then without → delivered; timeline shows
+  `WorkflowExecutionSignaled  signal: note` (no `Unknown` rows).
+- Kill switch ON (Steve, admin-web): 21:32:57Z new run → **423
+  `WORKFLOWS_DISABLED`**; 21:32:58Z `proceed` with payload → **delivered**;
+  Temporal completed 21:33:00.858Z, row COMPLETED 21:33:39Z, result
+  `{'notes': [{'n': 1, 'text': 'first note'}, None], 'outcome': 'proceeded',
+'proceedPayload': {'by': 'kill-switch-on check'}}`.
+- Signal to the closed execution → **409 `EXECUTION_NOT_SIGNALLABLE`**.
+- The runner was up, so relaunch-past-the-switch was not re-exercised (3c
+  acceptance 2026-11-06 proved it: 24 s).
+- Switch OFF again (verified 21:34:16Z: run `7f6c2d98` accepted, then
+  cancelled → CANCELLED 21:40:03Z); `accept_sig` retired.
 
 ## Resume here
 
-**PR 1 built (2026-11-10)** on `feat/workflow-signal-delivery`: Checklist A
-complete; C-direct done (SDK `signal_execution`, CLI `executions signal`, MCP
-guide + manifest reference, README "Sending a signal" + stale intro fixed,
-CHANGELOG/pyproject/uv.lock 0.60.0, DECISIONS entry). Verified: `npm run
-typecheck`, `npm run lint`, all `apps/api` tests (4976), SDK `pytest` (572) +
-`ruff check`. History mapping also labels WorkflowTask*/CancelRequested/
-Marker/TimerCanceled events.
-
-Next: land PR 1 (`/workstream-finish`), then tag `sdk-python-v0.60.0` on the
-real merge commit, add the authoring-repo `CLAUDE.md` note, and run PR 1's
-staging acceptance (D items 1, 2 and the kill-switch half of 5). (Atlas-fetch #942
-landed first and took SDK 0.59.0, so PR 1 is 0.60.0 and PR 2 is 0.61.0.) Then PR 2 in a fresh worktree
-(`feat/workflow-signal-triggers`) — Checklist B + the C-trigger halves, SDK
-0.61.0, archive this plan. Never commit `apps/e2e/.env.test` /
-`package-lock.json` (local provisioning artifacts).
+**Both PRs built.** PR 1 shipped (#943). PR 2 built 2026-11-10 on
+`feat/workflow-signal-triggers`: migration `20261110220000_workflow_trigger_signal_modes`,
+trigger API binding (`lib/workflow-signal-routing.ts`), signal-with-start in
+`startWorkflowExecution`, dispatcher `routeSignalTrigger`, SDK 0.61.0 +
+README/MCP/OpenAPI. Decisions 13-17 record what changed while building. This
+plan is archived with PR 2; the post-merge steps (tag 0.61.0, authoring-repo
+note, staging acceptance items 3-5) live in
+`plans/todo/workflow-signal-delivery-followups.md`.

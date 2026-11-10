@@ -3,6 +3,25 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.61.0
+
+### Added — event-routed signals: one durable Workflow instance per business key
+
+- `create_trigger` / `update_trigger` take `mode` (`"NEW"` default, `"START"`,
+  `"DELIVER"`), `correlation_path` and `signal_name`. In START / DELIVER an EVENT
+  trigger on a durable Workflow delivers each matching event — the envelope
+  `{domainEventId, eventType, occurredAt, payload}` — as the declared signal to
+  the instance for the event's business key (the value at `correlation_path`,
+  e.g. `"payload.orderId"`). START creates the instance when none is open (the
+  event is also its run input) and is gated like any start; DELIVER only signals
+  an open one. One instance per key for life.
+- Delivery is at-least-once (dedupe on `domainEventId`); undelivered events are
+  counted and logged, not retried. `update_trigger(..., mode="NEW")` clears the
+  binding. Trigger rows now carry `mode`, `correlationPath`, `signalName`.
+- README "Routing events to an instance", the MCP authoring guide and input
+  contract (Shape 5), and OpenAPI document it. No CLI command creates EVENT
+  triggers yet — use the client.
+
 ## 0.60.0
 
 ### Added — deliver signals to running durable Workflows

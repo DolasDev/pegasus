@@ -64,6 +64,7 @@ import {
   startWorkflowExecution,
 } from '../lib/start-workflow-execution'
 import { declaredSignals, signalDurableExecution } from '../lib/signal-workflow-execution'
+import { signalBindingError } from '../lib/workflow-signal-routing'
 import {
   summarizeWorkflowHistory,
   TenantTemporalKeyUnavailableError,
@@ -360,6 +361,13 @@ const CreateTriggerBody = z
     // Every execution the trigger starts runs dry (mutations captured, never
     // performed) — validate the wiring before letting it act. TENANT_RUNNER only.
     dryRun: z.boolean().optional().default(false),
+    // EVENT on a durable Workflow: route each event to the instance for its
+    // business key as a signal (START creates it, DELIVER only signals). The
+    // binding needs the workflow, so it is checked in the handler body
+    // (signalBindingError).
+    mode: z.enum(['NEW', 'START', 'DELIVER']).optional().default('NEW'),
+    correlationPath: z.string().max(400).optional(),
+    signalName: z.string().max(64).optional(),
   })
   .superRefine((body, ctx) => {
     if (body.kind === 'EVENT') {
@@ -416,6 +424,10 @@ const UpdateTriggerBody = z
     eventType: z.string().optional(),
     filter: z.unknown().optional(),
     cronExpression: z.string().optional(),
+    mode: z.enum(['NEW', 'START', 'DELIVER']).optional(),
+    // null clears the field (switching a trigger back to NEW).
+    correlationPath: z.string().max(400).nullable().optional(),
+    signalName: z.string().max(64).nullable().optional(),
   })
   .strict()
 
@@ -686,6 +698,9 @@ type WorkflowTriggerResponse = {
   cronExpression: string | null
   enabled: boolean
   dryRun: boolean
+  mode: WorkflowTriggerRow['mode']
+  correlationPath: string | null
+  signalName: string | null
   createdByUserId: string
   createdAt: string
   updatedAt: string
@@ -702,6 +717,9 @@ function toTriggerResponse(row: WorkflowTriggerRow): WorkflowTriggerResponse {
     cronExpression: row.cronExpression,
     enabled: row.enabled,
     dryRun: row.dryRun,
+    mode: row.mode,
+    correlationPath: row.correlationPath,
+    signalName: row.signalName,
     createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -1760,6 +1778,9 @@ workflowsHandler.post(
       if (refused) return c.json(refused, 400)
     }
 
+    const bindingError = signalBindingError(body, workflow)
+    if (bindingError) return c.json({ error: bindingError, code: 'VALIDATION_ERROR' }, 400)
+
     // EVENT triggers may subscribe to a built-in OR a registered custom event
     // type (Unit 6). The Zod schema only checked presence; the membership check
     // is here because it needs the tenant's event-type registry.
@@ -1780,6 +1801,9 @@ workflowsHandler.post(
       cronExpression: body.cronExpression ?? null,
       enabled: body.enabled,
       dryRun: body.dryRun,
+      mode: body.mode,
+      correlationPath: body.correlationPath ?? null,
+      signalName: body.signalName ?? null,
       createdByUserId: userId,
     })
 
@@ -1791,6 +1815,8 @@ workflowsHandler.post(
       eventType: row.eventType,
       enabled: row.enabled,
       dryRun: row.dryRun,
+      mode: row.mode,
+      signalName: row.signalName,
     })
     return c.json({ data: toTriggerResponse(row) }, 201)
   },
@@ -1896,18 +1922,46 @@ workflowsHandler.patch(
       }
     }
 
+    // The signal binding is validated on the MERGED state (stored row + this
+    // patch), so e.g. {mode: 'START'} on a row with no signalName is refused.
+    // A START / DELIVER trigger is re-validated on EVERY patch — re-enabling one
+    // whose version no longer declares its signal must fail here, not as a
+    // BINDING_INVALID on every event at dispatch.
+    const merged = {
+      kind: trigger.kind,
+      mode: body.mode ?? trigger.mode,
+      correlationPath:
+        body.correlationPath !== undefined ? body.correlationPath : trigger.correlationPath,
+      signalName: body.signalName !== undefined ? body.signalName : trigger.signalName,
+    }
+    if (
+      merged.mode !== 'NEW' ||
+      body.mode !== undefined ||
+      body.correlationPath !== undefined ||
+      body.signalName !== undefined
+    ) {
+      const bindingError = signalBindingError(merged, workflow)
+      if (bindingError) return c.json({ error: bindingError, code: 'VALIDATION_ERROR' }, 400)
+    }
+
     const updateInput: {
       enabled?: boolean
       dryRun?: boolean
       eventType?: string
       filter?: Prisma.InputJsonValue
       cronExpression?: string
+      mode?: 'NEW' | 'START' | 'DELIVER'
+      correlationPath?: string | null
+      signalName?: string | null
     } = {}
     if (body.enabled !== undefined) updateInput.enabled = body.enabled
     if (body.dryRun !== undefined) updateInput.dryRun = body.dryRun
     if (body.eventType !== undefined) updateInput.eventType = body.eventType
     if (body.filter !== undefined) updateInput.filter = body.filter as Prisma.InputJsonValue
     if (body.cronExpression !== undefined) updateInput.cronExpression = body.cronExpression
+    if (body.mode !== undefined) updateInput.mode = body.mode
+    if (body.correlationPath !== undefined) updateInput.correlationPath = body.correlationPath
+    if (body.signalName !== undefined) updateInput.signalName = body.signalName
 
     const updated = await triggerRepo.update(triggerId, updateInput)
 

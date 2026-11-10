@@ -158,3 +158,49 @@ def test_update_trigger_raises_on_404() -> None:
     with pytest.raises(PegasusApiError) as err:
         client.update_trigger("wf-1", "nope", enabled=False)
     assert (err.value.status_code, err.value.code) == (404, "NOT_FOUND")
+
+
+def test_create_trigger_sends_the_signal_binding() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(201, json={"data": {"id": "trg-9", "mode": "START"}})
+
+    _client_with(handler).create_trigger(
+        "wf-1",
+        kind="EVENT",
+        event_type="pegii.shipment.opened",
+        mode="START",
+        correlation_path="payload.orderId",
+        signal_name="order_event",
+    )
+    assert captured["json"] == {
+        "kind": "EVENT",
+        "enabled": True,
+        "eventType": "pegii.shipment.opened",
+        "mode": "START",
+        "correlationPath": "payload.orderId",
+        "signalName": "order_event",
+    }
+
+
+def test_update_trigger_sends_binding_fields_and_clears_them_for_new() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(200, json={"data": {"id": "trg-1"}})
+
+    _client_with(handler).update_trigger(
+        "wf-1", "trg-1", mode="DELIVER", correlation_path="payload.id", signal_name="proceed"
+    )
+    assert captured["json"] == {
+        "mode": "DELIVER",
+        "correlationPath": "payload.id",
+        "signalName": "proceed",
+    }
+
+    # Back to NEW: the stored binding must be cleared, so both go as null.
+    _client_with(handler).update_trigger("wf-1", "trg-1", mode="NEW")
+    assert captured["json"] == {"mode": "NEW", "correlationPath": None, "signalName": None}

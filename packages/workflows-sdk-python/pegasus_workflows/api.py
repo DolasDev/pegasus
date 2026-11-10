@@ -1023,8 +1023,35 @@ class PegasusClient:
         filter: dict[str, Any] | None = None,
         enabled: bool = True,
         dry_run: bool = False,
+        mode: str | None = None,
+        correlation_path: str | None = None,
+        signal_name: str | None = None,
     ) -> dict[str, Any]:
         """Attach a trigger to a workflow. Requires ``ManageWorkflowTriggers``.
+
+        **Event-routed signals** (SDK 0.61.0+; EVENT triggers on a durable
+        Workflow): ``mode="START"`` or ``"DELIVER"`` delivers each matching
+        event to ONE Workflow instance per business key instead of starting a
+        new execution per event::
+
+            client.create_trigger(
+                wf_id, kind="EVENT", event_type="pegii.shipment.opened",
+                mode="START", correlation_path="payload.orderId",
+                signal_name="order_event",
+            )
+
+        The key is the value at ``correlation_path`` — a dot path into the
+        event envelope ``{domainEventId, eventType, occurredAt, payload}``; a
+        string or integer matching ``[A-Za-z0-9._:-]{1,128}``. The signal
+        (``signal_name``, one the Workflow version declares) carries the
+        envelope as its single argument. ``START`` creates the key's instance
+        when none is open (the event is then both its run input and its first
+        signal) and is gated like any start (kill switch, open-Workflow cap,
+        daily quota); ``DELIVER`` only signals an open instance. One instance
+        per key for life: a key whose instance already closed is not
+        restarted. Delivery is at-least-once — dedupe on
+        ``payload["domainEventId"]`` in the handler. Failed deliveries (no open
+        instance, missing key, …) are counted and logged, not retried.
 
         Args:
             workflow_id: The workflow row id to bind the trigger to.
@@ -1042,19 +1069,32 @@ class PegasusClient:
                 :meth:`update_trigger` once the wiring is right. Tenant-runner
                 Automations only — a curated workflow can't run dry (400
                 ``DRY_RUN_UNSUPPORTED``).
+            mode: ``"NEW"`` (default: a new execution per event), ``"START"`` or
+                ``"DELIVER"`` (event-routed signals, see above).
+            correlation_path: START / DELIVER: where the business key is, e.g.
+                ``"payload.orderId"``.
+            signal_name: START / DELIVER: the declared signal to deliver.
 
         Returns:
             The created trigger row ``{id, workflowId, kind, cronExpression,
-            eventType, filter, enabled, dryRun, ...}``.
+            eventType, filter, enabled, dryRun, mode, correlationPath,
+            signalName, ...}``.
 
         Raises:
-            PegasusApiError: On 400 (invalid cron / shape, or
-                ``DRY_RUN_UNSUPPORTED``), 403 (missing action), 404 (unknown
-                workflow).
+            PegasusApiError: On 400 (invalid cron / shape, an incomplete or
+                invalid signal binding — Automation target, undeclared signal,
+                bad path — or ``DRY_RUN_UNSUPPORTED``), 403 (missing action),
+                404 (unknown workflow).
         """
         body: dict[str, Any] = {"kind": kind, "enabled": enabled}
         if dry_run:
             body["dryRun"] = True
+        if mode is not None:
+            body["mode"] = mode
+        if correlation_path is not None:
+            body["correlationPath"] = correlation_path
+        if signal_name is not None:
+            body["signalName"] = signal_name
         if cron_expression is not None:
             body["cronExpression"] = cron_expression
         if event_type is not None:
@@ -1088,6 +1128,9 @@ class PegasusClient:
         filter: dict[str, Any] | None = None,
         cron_expression: str | None = None,
         dry_run: bool | None = None,
+        mode: str | None = None,
+        correlation_path: str | None = None,
+        signal_name: str | None = None,
     ) -> dict[str, Any]:
         """Partially update one of a workflow's triggers. Requires ``ManageWorkflowTriggers``.
 
@@ -1108,17 +1151,30 @@ class PegasusClient:
             dry_run: ``True`` makes every execution the trigger starts run in
                 dry-run mode (mutations captured, never performed) — see
                 :meth:`create_trigger`; ``False`` lets it act for real.
+            mode: ``"NEW"``, ``"START"`` or ``"DELIVER"`` (event-routed signals —
+                see :meth:`create_trigger`). The binding is validated on the
+                stored row merged with this update, so switching to START /
+                DELIVER needs ``correlation_path`` and ``signal_name`` (sent here
+                or already stored). ``mode="NEW"`` alone sends both as null
+                (clearing the stored binding); passing either with ``"NEW"``
+                is a 400.
+            correlation_path: New business-key path (START / DELIVER).
+            signal_name: New declared signal (START / DELIVER).
 
         Returns:
             The updated trigger row ``{id, workflowId, kind, cronExpression,
-            eventType, filter, enabled, dryRun, ...}``.
+            eventType, filter, enabled, dryRun, mode, correlationPath,
+            signalName, ...}``.
 
         Raises:
             ValueError: If no field is given (nothing to update).
             PegasusApiError: 400 (a field that doesn't fit the trigger's kind,
-                an unknown event type, an invalid cron or filter), 403 (missing
-                action), 404 (no such workflow, or the trigger is not this
-                tenant's or not on this workflow).
+                an unknown event type, an invalid cron or filter, or an invalid
+                signal binding — checked on EVERY update of a START / DELIVER
+                trigger, so re-enabling one whose Workflow version no longer
+                declares its signal is refused), 403 (missing action), 404 (no
+                such workflow, or the trigger is not this tenant's or not on
+                this workflow).
         """
         body: dict[str, Any] = {}
         if enabled is not None:
@@ -1131,10 +1187,20 @@ class PegasusClient:
             body["cronExpression"] = cron_expression
         if dry_run is not None:
             body["dryRun"] = dry_run
+        if mode is not None:
+            body["mode"] = mode
+        if correlation_path is not None:
+            body["correlationPath"] = correlation_path
+        if signal_name is not None:
+            body["signalName"] = signal_name
+        if mode == "NEW" and correlation_path is None and signal_name is None:
+            # Back to a new execution per event: the binding fields must be cleared.
+            body["correlationPath"] = None
+            body["signalName"] = None
         if not body:
             raise ValueError(
                 "update_trigger needs at least one of enabled, event_type, filter, "
-                "cron_expression, dry_run"
+                "cron_expression, dry_run, mode, correlation_path, signal_name"
             )
         with self._client() as client:
             response = client.patch(

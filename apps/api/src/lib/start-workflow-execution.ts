@@ -263,6 +263,18 @@ export type StartWorkflowExecutionOptions = {
    * live.
    */
   dryRun?: boolean
+  /**
+   * Event-routed signals (START triggers): start with Temporal's
+   * signal-with-start instead of a plain start — same pin, timeout, memo and
+   * reuse policy, plus this signal delivered as the first event. If an
+   * instance with `temporalWorkflowId` is already RUNNING, Temporal signals it
+   * instead of starting one: the row this call inserted is deleted and the
+   * outcome is SIGNALLED_EXISTING (no double row, no quota charge). A CLOSED
+   * instance under REJECT_DUPLICATE is not restarted: ALREADY_STARTED, and the
+   * inserted row is deleted too. Durable Workflows only (the dispatcher's
+   * binding guarantees it).
+   */
+  startSignal?: { name: string; args: unknown[] }
 }
 
 export type StartWorkflowExecutionResult =
@@ -353,6 +365,14 @@ export type StartWorkflowExecutionResult =
    * Unreachable on the manual path (fresh-UUID workflow ids).
    */
   | { outcome: 'ALREADY_STARTED'; execution: WorkflowExecutionRow }
+  /**
+   * `startSignal` only: Temporal already had a RUNNING instance with this id,
+   * so signal-with-start signalled it instead of starting one (the DB lagged
+   * Temporal: the open row was missing or closed). The row this call inserted
+   * was deleted. `existingExecutionId` is the execution row that started the
+   * instance (read back from its memo), or null if unknown.
+   */
+  | { outcome: 'SIGNALLED_EXISTING'; existingExecutionId: string | null }
   /** Temporal start threw; the row was rolled forward to FAILED. */
   | { outcome: 'START_FAILED'; message: string; execution: WorkflowExecutionRow | null }
 
@@ -562,6 +582,18 @@ async function countTenantRunnerDailyExecutions(
  *     present and ≤ default) overrides it. Values > 900 are rejected at
  *     finalize (ManifestSchema validation), never silently clamped here.
  */
+/** Delete a QUEUED row whose Temporal start never happened; best effort. */
+async function deleteNeverStartedRow(db: PrismaClient, executionId: string): Promise<void> {
+  await db.workflowExecution
+    .deleteMany({ where: { id: executionId, status: 'QUEUED' } })
+    .catch((err: unknown) => {
+      logger.error('Failed to delete a never-started execution row', {
+        executionId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
+}
+
 export async function startWorkflowExecution(
   db: PrismaClient,
   opts: StartWorkflowExecutionOptions,
@@ -851,35 +883,84 @@ export async function startWorkflowExecution(
   // execution FAILED with the error so we don't leak QUEUED rows for
   // runtime failures.
   const dryRun = opts.dryRun ?? false
+  const target = { tenantId, namespace: temporalNamespace }
+  const startOptions = {
+    // dryRun rides the envelope so the tenant runner's subprocess driver sees
+    // it and injects the dry-run client + trace capture.
+    args: [{ executionId: inserted.id, input, dryRun }],
+    taskQueue,
+    workflowId: temporalWorkflowId,
+    // Tag the execution in Temporal so dry-runs are filterable in the Web UI
+    // and never mistaken for a real run. `executionId` names the row that
+    // started the instance — how a signal-with-start tells "started" from
+    // "signalled an instance that was already running".
+    memo: { dryRun, executionId: inserted.id },
+    // Idempotent re-submit: if a previous call already started this id,
+    // we'd rather error here than start a second run.
+    workflowIdReusePolicy: 'REJECT_DUPLICATE' as const,
+    // (a) Timeout — TENANT_RUNNER only (undefined = Temporal default for STDLIB)
+    ...(workflowExecutionTimeout !== undefined
+      ? { workflowExecutionTimeout: `${workflowExecutionTimeout}s` }
+      : {}),
+    ...(versioningOverride ? { versioningOverride } : {}),
+  }
   try {
-    const handle = await withTemporalClient({ tenantId, namespace: temporalNamespace }, (client) =>
-      client.workflow.start(workflow.name, {
-        // dryRun rides the envelope so the tenant runner's subprocess driver sees
-        // it and injects the dry-run client + trace capture.
-        args: [{ executionId: inserted.id, input, dryRun }],
-        taskQueue,
-        workflowId: temporalWorkflowId,
-        // Tag the execution in Temporal so dry-runs are filterable in the Web UI
-        // and never mistaken for a real run.
-        memo: { dryRun },
-        // Idempotent re-submit: if a previous call already started this id,
-        // we'd rather error here than start a second run.
-        workflowIdReusePolicy: 'REJECT_DUPLICATE',
-        // (a) Timeout — TENANT_RUNNER only (undefined = Temporal default for STDLIB)
-        ...(workflowExecutionTimeout !== undefined
-          ? { workflowExecutionTimeout: `${workflowExecutionTimeout}s` }
-          : {}),
-        ...(versioningOverride ? { versioningOverride } : {}),
-      }),
-    )
+    let startedRunId: string
+    const startSignal = opts.startSignal
+    if (startSignal) {
+      const handle = await withTemporalClient(target, (client) =>
+        client.workflow.signalWithStart(workflow.name, {
+          ...startOptions,
+          signal: startSignal.name,
+          signalArgs: startSignal.args,
+        }),
+      )
+      // signal-with-start signals a RUNNING instance regardless of the reuse
+      // policy and reports no "started" flag, so ask the instance which row
+      // started it. A failed describe keeps the row (worst case two rows on
+      // one instance, both closed by the reconciler) — never a lost delivery.
+      let startedBy: unknown = inserted.id
+      try {
+        const description = await withTemporalClient(target, (client) =>
+          client.workflow.getHandle(temporalWorkflowId).describe(),
+        )
+        startedBy = description.memo?.['executionId']
+      } catch (describeErr) {
+        logger.warn('Signal-with-start: describe failed — keeping the new row', {
+          executionId: inserted.id,
+          temporalWorkflowId,
+          error: describeErr instanceof Error ? describeErr.message : String(describeErr),
+        })
+      }
+      if (startedBy !== inserted.id) {
+        await deleteNeverStartedRow(db, inserted.id)
+        logger.warn('Signal-with-start signalled an instance that was already running', {
+          workflowId: workflow.id,
+          tenantId,
+          temporalWorkflowId,
+          existingExecutionId: typeof startedBy === 'string' ? startedBy : null,
+        })
+        return {
+          outcome: 'SIGNALLED_EXISTING',
+          existingExecutionId: typeof startedBy === 'string' ? startedBy : null,
+        }
+      }
+      // A new instance: the signalled run IS its first run.
+      startedRunId = handle.signaledRunId
+    } else {
+      const handle = await withTemporalClient(target, (client) =>
+        client.workflow.start(workflow.name, startOptions),
+      )
+      startedRunId = handle.firstExecutionRunId ?? ''
+    }
 
     // Eagerly transition QUEUED → RUNNING so the row reflects reality
     // before the worker write-back lands. The worker's PATCH will be a
     // RUNNING-self update (idempotent) once it sees the activity.
     const execRepo = createWorkflowExecutionRepository(db)
     const running = await execRepo.markStarted(inserted.id, {
-      temporalWorkflowId: handle.workflowId,
-      temporalRunId: handle.firstExecutionRunId ?? '',
+      temporalWorkflowId,
+      temporalRunId: startedRunId,
       startedAt: new Date(),
     })
 
@@ -889,9 +970,10 @@ export async function startWorkflowExecution(
       tenantId,
       route,
       taskQueue,
-      temporalWorkflowId: handle.workflowId,
-      temporalRunId: handle.firstExecutionRunId ?? null,
+      temporalWorkflowId,
+      temporalRunId: startedRunId || null,
       workflowExecutionTimeout: workflowExecutionTimeout ?? null,
+      ...(startSignal ? { startSignal: startSignal.name } : {}),
     })
 
     return { outcome: 'STARTED', execution: running }
@@ -903,6 +985,12 @@ export async function startWorkflowExecution(
     // instanceof is safe across package copies — the Temporal SDK uses
     // Symbol.hasInstance-based identification for its error classes.
     if (err instanceof WorkflowExecutionAlreadyStartedError) {
+      // Signal-with-start: a RUNNING instance would have been signalled, so
+      // this is a CLOSED one under REJECT_DUPLICATE — the key is not restarted.
+      // Unlike a plain start, no other row tracks a live run here, and a
+      // QUEUED row with this keyed id would be found as "the open instance" by
+      // every later event: delete it.
+      if (opts.startSignal) await deleteNeverStartedRow(db, inserted.id)
       logger.warn('Temporal workflow already started — treating as already handled', {
         executionId: inserted.id,
         workflowId: workflow.id,

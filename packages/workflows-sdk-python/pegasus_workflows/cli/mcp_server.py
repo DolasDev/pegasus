@@ -438,6 +438,24 @@ runtime, so it can wait for days:
   does not block them. Undeclared name → 400 ``SIGNAL_NOT_DECLARED``; an
   Automation / closed / not-yet-started execution → 409
   ``EXECUTION_NOT_SIGNALLABLE``.
+- **Event-routed signals** (SDK 0.61.0+): an EVENT trigger can deliver each
+  matching event to ONE instance per business key instead of starting a run
+  per event — ``create_trigger(wf_id, kind="EVENT", event_type=...,
+  mode="START" | "DELIVER", correlation_path="payload.orderId",
+  signal_name="order_event")``. The key is the value at ``correlation_path``
+  (a dot path into the envelope ``{domainEventId, eventType, occurredAt,
+  payload}``; a string or integer, ``[A-Za-z0-9._:-]{1,128}``); the signal's
+  single argument is that envelope. ``START`` creates the key's instance when
+  none is open — the event is then BOTH its run input
+  (``arg["input"]``) and its first signal, so dedupe — and is gated like any
+  start (kill switch, open-Workflow cap, daily quota). ``DELIVER`` only signals
+  an open instance. One instance per key for life: a key whose instance
+  already closed is not restarted. Delivery is **at-least-once**: keep the
+  ``domainEventId``s you have handled and ignore repeats. Failed deliveries
+  (no open instance, missing / invalid key, undeclared signal) are counted
+  and logged, never retried. ``update_trigger(..., mode="NEW")`` returns a
+  trigger to one-run-per-event. There is no CLI command for EVENT triggers;
+  use the client.
 - Activities work as in an Automation (``PegasusClient.from_runtime()``) and get
   Temporal's per-activity retries.
 - No dry runs (422 ``DRY_RUN_UNSUPPORTED``) — test locally against a Temporal dev
@@ -527,6 +545,15 @@ fires on every real match, but each run is a dry run — reads live, mutations
 captured in the execution trace, never performed — so a rehearsal needs no
 hand-fed events. ``update_trigger(..., dry_run=False)`` / ``--off`` goes live.
 Tenant-runner Automations only (400 ``DRY_RUN_UNSUPPORTED`` for curated ones).
+
+## Shape 5 — A signal from an event-routed trigger (durable Workflows)
+
+An EVENT trigger with ``mode="START"`` or ``"DELIVER"`` does not start a run
+per event; it delivers the event envelope above (Shape 1's dict) as the single
+argument of its ``signal_name`` signal to the Workflow instance for the event's
+business key. A ``START`` that creates the instance also passes that envelope
+as the run input (``arg["input"]``), so its first event arrives twice — dedupe
+on ``domainEventId``. See the authoring guide's "Durable Workflows" section.
 
 ## Recommended pattern: a module-level resolver (unit-testable)
 
