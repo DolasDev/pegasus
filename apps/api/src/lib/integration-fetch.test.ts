@@ -6,6 +6,10 @@ import {
   FETCH_TEMPLATE_RE,
   resolveFetchOperation,
   substituteFetchTemplates,
+  referencedConfigKeys,
+  decodeFetchBody,
+  extractFetchRecords,
+  readNextCursor,
   type FetchBlock,
 } from './integration-fetch'
 
@@ -566,5 +570,121 @@ describe('substituteFetchTemplates', () => {
     const r = substituteFetchTemplates(plain, {})
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.operation).toEqual(plain)
+  })
+})
+
+describe('referencedConfigKeys', () => {
+  it('finds config keys across path, query, headers and body — deduped and sorted', () => {
+    const op = parse({
+      settlements: {
+        method: 'POST',
+        path: '/s/{{config:B}}',
+        query: { v: '{{config:A}}', w: '{{plain}}' },
+        headers: { 'X-H': '{{config:A}}' },
+        body: { deep: [{ k: '{{config:C}}' }] },
+      },
+    })['settlements']!
+    expect(referencedConfigKeys(op)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('returns none for a descriptor with only plain params', () => {
+    expect(referencedConfigKeys(parse(atlasSettlements)['settlements']!)).toEqual([])
+  })
+
+  it('ignores secretHeaders — those are key names, not config templates', () => {
+    const op = parse({
+      settlements: {
+        method: 'GET',
+        path: '/s',
+        secretHeaders: { 'Ocp-Apim-Subscription-Key': 'ATLAS_SUB_KEY' },
+      },
+    })['settlements']!
+    expect(referencedConfigKeys(op)).toEqual([])
+  })
+})
+
+describe('decodeFetchBody', () => {
+  it('passes the body through when decode is absent or "none"', () => {
+    for (const d of [undefined, 'none' as const]) {
+      const r = decodeFetchBody({ a: 1 }, d)
+      expect(r).toEqual({ ok: true, body: { a: 1 } })
+    }
+  })
+
+  it('parses a double-encoded body for decode "jsonString"', () => {
+    // Atlas's settlement response is a JSON STRING containing JSON.
+    const r = decodeFetchBody(JSON.stringify({ agentSettlements: [] }), 'jsonString')
+    expect(r).toEqual({ ok: true, body: { agentSettlements: [] } })
+  })
+
+  it('passes an OBJECT through under "jsonString" rather than failing', () => {
+    // A partner that stops double-encoding is a FIX; failing the call would turn
+    // their improvement into our outage.
+    const r = decodeFetchBody({ agentSettlements: [] }, 'jsonString')
+    expect(r).toEqual({ ok: true, body: { agentSettlements: [] } })
+  })
+
+  it('reports a problem when the string is not valid JSON', () => {
+    const r = decodeFetchBody('<html>nope</html>', 'jsonString')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.problem).toContain('not valid JSON')
+  })
+})
+
+describe('extractFetchRecords', () => {
+  it('treats the whole body as ONE record when recordsPath is absent', () => {
+    expect(extractFetchRecords({ a: 1 }, undefined)).toEqual({ ok: true, records: [{ a: 1 }] })
+  })
+
+  it('yields no records for an empty body with no recordsPath', () => {
+    expect(extractFetchRecords(null, undefined)).toEqual({ ok: true, records: [] })
+  })
+
+  it('reads a nested dot-path', () => {
+    const body = { outer: { inner: [1, 2, 3] } }
+    expect(extractFetchRecords(body, 'outer.inner')).toEqual({ ok: true, records: [1, 2, 3] })
+  })
+
+  it('returns EMPTY (not an error) when the path is absent', () => {
+    // An empty period is a legitimate answer — Atlas QA returns exactly that for
+    // every settlementDate tried. Failing here would make "nothing this week"
+    // indistinguishable from a broken descriptor.
+    expect(extractFetchRecords({ other: 1 }, 'agentSettlements')).toEqual({
+      ok: true,
+      records: [],
+    })
+    expect(extractFetchRecords({ agentSettlements: null }, 'agentSettlements')).toEqual({
+      ok: true,
+      records: [],
+    })
+  })
+
+  it('FAILS when the path resolves to a non-array — that is a descriptor bug', () => {
+    const r = extractFetchRecords({ agentSettlements: { not: 'an array' } }, 'agentSettlements')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.problem).toContain('not an array')
+  })
+
+  it('does not walk through a non-object hop', () => {
+    expect(extractFetchRecords({ a: 'string' }, 'a.b')).toEqual({ ok: true, records: [] })
+  })
+})
+
+describe('readNextCursor', () => {
+  it('reads a string cursor', () => {
+    expect(readNextCursor({ meta: { next: 'abc' } }, 'meta.next')).toBe('abc')
+  })
+
+  it('stringifies a numeric cursor', () => {
+    expect(readNextCursor({ next: 7 }, 'next')).toBe('7')
+  })
+
+  it.each([
+    ['absent', {}],
+    ['null', { next: null }],
+    ['an empty string', { next: '' }],
+    ['an object', { next: { a: 1 } }],
+  ])('returns null (stop paging) for %s', (_label, body) => {
+    expect(readNextCursor(body, 'next')).toBeNull()
   })
 })

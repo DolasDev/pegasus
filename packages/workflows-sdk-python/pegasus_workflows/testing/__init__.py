@@ -128,6 +128,9 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "get_mapping_schema": None,
     "get_inbound_schema": None,
     "get_fetch_schema": None,
+    # fetch_external is a READ (side-effect-free), so it runs live rather than
+    # being captured — offline it needs a staged fixture like any other read.
+    "fetch_external": None,
     # feedback form authoring reads (validate is a no-write pre-check, like
     # validate_integration_config)
     "validate_feedback_form": None,

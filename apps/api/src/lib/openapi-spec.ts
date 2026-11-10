@@ -3480,6 +3480,59 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/integrations/{integrationId}/fetch/{operation}': {
+        post: {
+          operationId: 'fetchExternal',
+          summary: 'Run a published fetch descriptor — pull a source from config alone',
+          description:
+            'Executes the named operation from the integration\u2019s published `fetch` block (see /integrations/fetch-schema). The CALLER CANNOT name a path, method, header or credential \u2014 those come from the descriptor, which the publish gate already checked; supply only `params` for its {{param}} placeholders. {{config:KEY}} values are read from the tenant\u2019s CONFIG store (only the keys the descriptor references). Transport is identical to call-external \u2014 same AUTH_MODE handling, reserved-header rules, REQUEST_TIMEOUT_MS and 429/503 retry \u2014 and a fetch is always treated as a READ, so a POST descriptor still retries a 429. The response body is decoded per `decode` (use `jsonString` for a double-encoded body) and the records extracted per `recordsPath`, paging per `page.style` up to `page.maxPages` (default 20). Returns {records, recordCount, pages, attempts, status, truncated}; `truncated: true` means the page cap was hit, so the record set is incomplete. Gated by CallExternal and metered like call-external. An unfillable {{param}} is a 400 and no call is made; an operation the floor no longer declares is a 409.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+            {
+              name: 'operation',
+              in: 'path',
+              required: true,
+              description: 'Capability name, e.g. `settlements`. Must be declared by the floor.',
+              schema: { type: 'string' },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    params: {
+                      type: 'object',
+                      description:
+                        'Values for the descriptor\u2019s {{param}} placeholders. A path param may not contain "/", "?" or "#".',
+                      additionalProperties: {
+                        oneOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }],
+                      },
+                    },
+                    group: { type: 'string', default: 'global' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Records pulled from the partner' },
+            '400': { description: 'Unfillable template, malformed descriptor, or bad recordsPath' },
+            '403': { description: 'Cedar denied (no CallExternal)' },
+            '404': {
+              description:
+                'Unknown integration, no fetch block, unknown operation, or unset config/secret',
+            },
+            '409': { description: 'The operation is no longer a capability of the floor' },
+            '502': { description: 'Partner error or call could not be completed' },
+            '504': { description: 'Partner did not respond within the timeout' },
+          },
+        },
+      },
       '/api/v1/integrations/{integrationId}/call-external': {
         post: {
           operationId: 'callExternal',

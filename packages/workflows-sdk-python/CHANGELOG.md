@@ -3,6 +3,34 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.59.0
+
+### Added — `fetch_external`: run a published fetch descriptor
+
+- `fetch_external(integration_id, operation, *, params=None, group="global")`
+  executes the named operation from the integration's published `fetch` block.
+  0.58.0 shipped the authoring half; this is the half that runs it, so a
+  `fetch` block is now executable end to end.
+- **The caller cannot name a method, path, header or credential** — those come
+  from the descriptor, which the publish gate already checked. You supply only
+  `params` for its `{{param}}` placeholders; `{{config:KEY}}` values are read
+  from the tenant's CONFIG store (only the keys the descriptor references).
+  `operation` must be a capability the floor declares — read the legal names
+  from `get_floor(id)["capabilities"]`.
+- Transport is the SAME code path as `call_external` (identical `AUTH_MODE`
+  handling, reserved-header rules, `REQUEST_TIMEOUT_MS`, 429/503 retry). One
+  difference: **a fetch is always treated as a READ**, so a `POST` descriptor
+  still retries a 429 where `call_external` would not.
+- Being side-effect-free it **runs live under `run --dry-run`** and returns real
+  data; it is never captured.
+- Returns `{operation, records, recordCount, pages, attempts, status,
+truncated}`. **Check `truncated`** — `True` means the page cap
+  (`page.maxPages`, default 20) was hit and the record set is incomplete.
+- An empty result is a 200 with no records, not an error: an empty period is a
+  legitimate answer, and failing would make "nothing settled" indistinguishable
+  from a broken descriptor. An unsupplied `{{param}}` IS an error (400) and no
+  call is made, so a template never reaches the partner.
+
 ## 0.58.0
 
 ### Added — declarative pull: the `fetch` block (authoring half)

@@ -172,6 +172,12 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   // still goes through c.get('db').
   'integration-call.ts',
   'integration-delivery.ts',
+  // Declarative fetch (Gap B) — same single reason as the two above: ONE
+  // basePrisma call, `resolveIntegrationDefinition`, because a GLOBAL config row
+  // carries no tenantId and the scoped client cannot see it. Everything tenant-
+  // owned goes through c.get('db'): the config row (findActiveForScope), the
+  // referenced CONFIG values, and the outbound call's secrets/tokens.
+  'integration-fetch.ts',
   // Integration-validator config: both read the base client only for the
   // cross-tenant registry overlay (GLOBAL configs span tenants) — tenant data
   // still flows through c.get('db'). See integration-validation/registry.ts.
