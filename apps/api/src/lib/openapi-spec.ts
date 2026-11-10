@@ -946,7 +946,7 @@ export function getOpenApiSpec() {
       {
         name: 'Workflows',
         description:
-          'Automations: short, sandboxed Python runs (up to 900 s each) started manually, by a domain event, or on a schedule. The product concept was renamed from "workflows" to "Automations"; the `/workflows` paths, operation ids, and Cedar action names (e.g. ReadWorkflow) keep their original names for compatibility. Long-running, event-driven Workflows are a separate, upcoming capability.',
+          'Automations: short, sandboxed Python runs (up to 900 s each) started manually, by a domain event, or on a schedule. The product concept was renamed from "workflows" to "Automations"; the `/workflows` paths, operation ids, and Cedar action names (e.g. ReadWorkflow) keep their original names for compatibility. Durable Workflows (manifest kind = "workflow") share these paths: long-running Temporal workflows that wait on timers and signals — see POST /workflows/{id}/run and POST …/executions/{executionId}/signal.',
       },
     ],
     paths: {
@@ -2972,6 +2972,47 @@ export function getOpenApiSpec() {
             { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
           ],
           responses: { '202': { description: 'Cancellation requested ({data: execution})' } },
+        },
+      },
+      '/api/v1/workflows/{id}/executions/{executionId}/signal': {
+        post: {
+          operationId: 'signalWorkflowExecution',
+          summary: 'Deliver a signal to a running durable Workflow (SignalWorkflowExecution)',
+          description:
+            'Body { name, payload? }. `name` must be one of the signals the execution’s Workflow version declares in its manifest `signals` (400 SIGNAL_NOT_DECLARED otherwise — the error lists them). `payload`, when present (JSON null included), is the signal’s single argument; absent, the signal carries none — so declare the handler `def name(self, payload: dict | None = None)`. Payload ≤ 128 KiB (413 SIGNAL_PAYLOAD_TOO_LARGE). ' +
+            'Only durable Workflows (kind WORKFLOW) that are QUEUED or RUNNING take signals: 409 EXECUTION_NOT_SIGNALLABLE for an Automation, a terminal execution, one not yet started on Temporal, or one Temporal reports is no longer running. ' +
+            'A signal is not a run: it counts toward no quota or cap, and the kill switch (WORKFLOWS_DISABLED) does not block it — open Workflows keep running and keep receiving signals. Delivery is at-least-once (a retried request delivers again), so make the handler idempotent. 202 means Temporal accepted the signal; the returned row is unchanged.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]{0,63}$' },
+                    payload: { description: 'Any JSON value; the signal’s single argument' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '202': { description: 'Signal delivered ({data: execution})' },
+            '400': {
+              description: 'SIGNAL_NOT_DECLARED, or VALIDATION_ERROR (malformed body / name)',
+            },
+            '404': { description: 'NOT_FOUND (workflow or execution)' },
+            '409': { description: 'EXECUTION_NOT_SIGNALLABLE' },
+            '413': { description: 'SIGNAL_PAYLOAD_TOO_LARGE (payload over 128 KiB)' },
+            '502': { description: 'TEMPORAL_SIGNAL_FAILED' },
+          },
         },
       },
       '/api/v1/workflows/{id}/executions/{executionId}/retry': {

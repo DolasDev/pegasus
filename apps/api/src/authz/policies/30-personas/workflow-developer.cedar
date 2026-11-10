@@ -6,6 +6,8 @@
 // workflow without needing a separate tenant_admin grant.
 // CancelWorkflowExecution + RetryWorkflowExecution let a developer drive
 // executions from the tenant UI (cancel a stuck run, retry a failed one).
+// SignalWorkflowExecution lets a developer deliver a signal to a running
+// durable Workflow (SDK / CLI).
 // ManageEventTypes
 // lets a developer register the custom event types their workflows trigger on.
 // ManageWorkflowSecrets/ManageWorkflowConfigs let a developer publish the
@@ -21,6 +23,7 @@ permit (
     Pegasus::Action::"ManageWorkflowTriggers",
     Pegasus::Action::"CancelWorkflowExecution",
     Pegasus::Action::"RetryWorkflowExecution",
+    Pegasus::Action::"SignalWorkflowExecution",
     Pegasus::Action::"ManageEventTypes",
     Pegasus::Action::"ManageWorkflowSecrets",
     Pegasus::Action::"ManageWorkflowConfigs",

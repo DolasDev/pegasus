@@ -17,6 +17,7 @@
 //   GET    /:id/triggers      — list the caller-tenant's triggers
 //   PATCH  /:id/triggers/:triggerId   — partial update (kind immutable)
 //   DELETE /:id/triggers/:triggerId   — hard delete
+//   POST   /:id/executions/:executionId/signal — signal a running durable Workflow
 //
 // Visibility is derived server-side: tenants flagged isPlatformTenant=true
 // upload as GLOBAL; everyone else uploads as TENANT. There is no client-facing
@@ -62,6 +63,7 @@ import {
   provisionRuntimeServiceAccount,
   startWorkflowExecution,
 } from '../lib/start-workflow-execution'
+import { declaredSignals, signalDurableExecution } from '../lib/signal-workflow-execution'
 import {
   summarizeWorkflowHistory,
   TenantTemporalKeyUnavailableError,
@@ -1611,6 +1613,107 @@ workflowsHandler.post(
     })
 
     return startResultToResponse(c, workflow.name, result)
+  },
+)
+
+// ---------------------------------------------------------------------------
+// POST /:id/executions/:executionId/signal
+//
+// Deliver a signal to a running durable Workflow (kind WORKFLOW). `name` must
+// be one of the signals that execution's Workflow version declares; `payload`,
+// when present (JSON null included), is the signal's single argument — absent,
+// the signal carries none. NOT gated by the kill switch: it stops new runs,
+// and open Workflows keep running (DECIDE-4). A signal is not an execution —
+// no quota or open-cap charge. Delivery is at-least-once (a client retry
+// re-delivers), so handlers should be idempotent.
+//
+// Response: { data: WorkflowExecutionResponse } (202) | 400 | 404
+//   | 409 EXECUTION_NOT_SIGNALLABLE | 413 SIGNAL_PAYLOAD_TOO_LARGE
+//   | 502 TEMPORAL_SIGNAL_FAILED
+// ---------------------------------------------------------------------------
+const MAX_SIGNAL_PAYLOAD_BYTES = 128 * 1024
+
+const SignalBody = z.object({
+  name: z.string().regex(SIGNAL_NAME_REGEX, {
+    message: 'name must be a declared signal name (letters, digits, _; max 64)',
+  }),
+  payload: z.unknown().optional(),
+})
+
+workflowsHandler.post(
+  '/:id/executions/:executionId/signal',
+  requirePermission(Actions.SignalWorkflowExecution),
+  validator('json', (value, c) => {
+    const r = SignalBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const { name, payload } = c.req.valid('json')
+    if (
+      payload !== undefined &&
+      Buffer.byteLength(JSON.stringify(payload), 'utf8') > MAX_SIGNAL_PAYLOAD_BYTES
+    ) {
+      return c.json({ error: 'payload exceeds 128 KiB', code: 'SIGNAL_PAYLOAD_TOO_LARGE' }, 413)
+    }
+
+    const loaded = await loadExecutionForTenant(c)
+    if (!loaded.ok) return loaded.response
+    const { workflow, execution, db } = loaded
+
+    const notSignallable = (reason: string) =>
+      c.json({ error: reason, code: 'EXECUTION_NOT_SIGNALLABLE' }, 409)
+
+    if (resolveWorkflowRoute(workflow) !== 'TENANT_RUNNER' || workflow.kind !== 'WORKFLOW') {
+      return notSignallable('Only durable Workflows take signals — this is an Automation')
+    }
+    if (TERMINAL_STATUSES.has(execution.status)) {
+      return notSignallable(`Execution is already ${execution.status} — nothing to signal`)
+    }
+    if (!execution.temporalWorkflowId) {
+      return notSignallable(
+        'Execution has not started on Temporal yet — try again once it is running',
+      )
+    }
+    const declared = declaredSignals(workflow.manifest)
+    if (!declared.includes(name)) {
+      return c.json(
+        {
+          error: `Workflow ${workflow.name}@${workflow.version} does not declare signal "${name}" (declared: ${declared.length ? declared.join(', ') : 'none'})`,
+          code: 'SIGNAL_NOT_DECLARED',
+        },
+        400,
+      )
+    }
+
+    const result = await signalDurableExecution(db, {
+      workflow,
+      execution,
+      signalName: name,
+      args: payload === undefined ? [] : [payload],
+    })
+    switch (result.outcome) {
+      case 'SIGNALLED':
+        logger.info('Workflow execution signalled', {
+          executionId: execution.id,
+          workflowId: workflow.id,
+          tenantId: c.get('tenantId'),
+          signalName: name,
+        })
+        return c.json({ data: toExecutionResponse(execution) }, 202)
+      case 'NOT_RUNNING':
+        return notSignallable('Execution is no longer running on Temporal')
+      case 'NOT_DURABLE':
+      case 'TERMINAL':
+      case 'NOT_STARTED':
+        // Checked above; kept exhaustive.
+        return notSignallable(`Execution cannot be signalled (${result.outcome})`)
+      case 'SIGNAL_FAILED':
+        return c.json(
+          { error: 'Failed to deliver the signal on Temporal', code: 'TEMPORAL_SIGNAL_FAILED' },
+          502,
+        )
+    }
   },
 )
 

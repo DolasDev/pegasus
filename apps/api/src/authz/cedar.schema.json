@@ -363,6 +363,9 @@
       "RetryWorkflowExecution": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
       },
+      "SignalWorkflowExecution": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
       "SendNotification": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },

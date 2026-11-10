@@ -3,6 +3,26 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.60.0
+
+### Added — deliver signals to running durable Workflows
+
+- New `PegasusClient.signal_execution(workflow_id, execution_id, name,
+payload=None)` → `POST /api/v1/workflows/{id}/executions/{executionId}/signal`.
+  `name` must be declared in the Workflow version's manifest `signals`; `payload`
+  (any JSON, ≤ 128 KiB) is the handler's single argument, `None` sends none.
+  Errors: 400 `SIGNAL_NOT_DECLARED`, 409 `EXECUTION_NOT_SIGNALLABLE`, 413
+  `SIGNAL_PAYLOAD_TOO_LARGE`, 502 `TEMPORAL_SIGNAL_FAILED`. Needs the new
+  `SignalWorkflowExecution` action (in the `workflow_developer` role).
+- New CLI command `pegasus-workflows executions signal <workflow-id>
+<execution-id> --name <signal> [--payload JSON]`.
+- `executions show` prints a delivered signal's name in the timeline; the
+  timeline also labels workflow-task, cancel-request and marker events that
+  printed `Unknown` before.
+- Delivery is at-least-once and a signal is not a run: no quota or cap charge,
+  and the kill switch does not block it. README ("Sending a signal") and the MCP
+  authoring guide / manifest reference document all of it.
+
 ## 0.59.0
 
 ### Added — `fetch_external`: run a published fetch descriptor

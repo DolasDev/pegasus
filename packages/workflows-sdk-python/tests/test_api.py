@@ -2269,6 +2269,45 @@ def test_cancel_execution_posts_to_cancel_endpoint() -> None:
     assert data["status"] == "CANCELLED"
 
 
+def test_signal_execution_posts_name_and_payload() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(202, json={"data": {"id": "exec-1", "status": "RUNNING"}})
+
+    data = _client_with(handler).signal_execution("wf-1", "exec-1", "note", {"text": "hi"})
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/workflows/wf-1/executions/exec-1/signal"
+    assert captured["body"] == {"name": "note", "payload": {"text": "hi"}}
+    assert data["status"] == "RUNNING"
+
+
+def test_signal_execution_omits_payload_when_none() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(202, json={"data": {"id": "exec-1"}})
+
+    _client_with(handler).signal_execution("wf-1", "exec-1", "proceed")
+    assert captured["body"] == {"name": "proceed"}
+
+
+def test_signal_execution_raises_typed_error_for_undeclared_signal() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400, json={"error": "does not declare signal", "code": "SIGNAL_NOT_DECLARED"}
+        )
+
+    with pytest.raises(PegasusApiError) as exc_info:
+        _client_with(handler).signal_execution("wf-1", "exec-1", "nope")
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "SIGNAL_NOT_DECLARED"
+
+
 def test_retry_execution_posts_to_retry_endpoint() -> None:
     captured: dict = {}
 

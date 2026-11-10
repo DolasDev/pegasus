@@ -8,7 +8,7 @@ A Typer application wiring together the Automation developer flow:
 * ``package`` — zip each declared Automation into ``dist/``.
 * ``push`` — package, then upload + finalize against the Pegasus API.
 * ``run`` — trigger a server-side execution of a curated Automation.
-* ``executions`` — inspect Automation executions (list / show) from the terminal.
+* ``executions`` — inspect executions (list / show) and signal a running durable Workflow (signal).
 * ``test`` — start local Temporal and run an Automation with stubbed inputs.
 * ``integration-config`` — author the integration-validator config (mapping +
   rules) for an integration (publish / pull / versions / rollback).

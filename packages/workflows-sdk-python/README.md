@@ -6,9 +6,10 @@ automate cross-domain operations (move lifecycle, billing follow-ups, dispatch
 decisions) against the Pegasus public API, firing on their own from a trigger
 (an event, a schedule, or a manual run).
 
-> Long-running, durable **Workflows** — with signals, queries, and waits, for
-> lifecycles that span days or weeks — are a separate capability planned for
-> later. They don't exist yet; everything below is about Automations, which do.
+> Long-running, durable **Workflows** — with timers, waits, and signals, for
+> lifecycles that span days or weeks — are published from the same project with
+> `kind = "workflow"`; see [Durable Workflows](#durable-workflows-kind--workflow).
+> Everything else below is about Automations unless it says otherwise.
 
 The **developer flow**: write an Automation locally, test it against a
 Dockerized Temporal, package it, and push it. The platform then runs it in a
@@ -143,8 +144,8 @@ class HelloWorkflow:
 > class, but the platform runs it as a single sandboxed unit with a 900-second
 > ceiling — not as a durable, long-lived Temporal workflow. Signals, queries, and
 > `workflow.wait_condition` are not supported in Automations; using them will not
-> work. (Durable, long-running Workflows with those capabilities are a separate,
-> future capability — see the note at the top of this README.)
+> work. For those, publish a [durable Workflow](#durable-workflows-kind--workflow)
+> (`kind = "workflow"`).
 
 ### Input contract: how `run()` receives its argument
 
@@ -1452,6 +1453,10 @@ pegasus-workflows executions show <workflow-id> <execution-id> --token=vnd_…
 data is available programmatically via `client.list_executions`,
 `client.get_execution`, and `client.get_execution_history`.
 
+A running durable Workflow can also be signalled from here —
+`executions signal <workflow-id> <execution-id> --name <signal> [--payload JSON]`;
+see [Sending a signal](#sending-a-signal).
+
 **Which build ran.** Every execution row carries `workflowId` plus
 `workflowName` / `workflowVersion` — the published row whose code executed. The
 runner installs the artifact for exactly that row and **fails the run** rather
@@ -1470,6 +1475,7 @@ Drive an execution from the SDK too (also in the tenant web UI):
 ```python
 client.cancel_execution(workflow_id, execution_id)  # CancelWorkflowExecution — cooperative cancel
 client.retry_execution(workflow_id, execution_id)   # RetryWorkflowExecution — new run, same input
+client.signal_execution(workflow_id, execution_id, "proceed", {"ok": True})  # durable Workflows only
 ```
 
 `cancel` signals a running execution (it transitions to CANCELLED when the run
@@ -1537,8 +1543,9 @@ days. (0.56.0+)
   started on, to the end. Publishing a new version never changes a running
   Workflow; new runs get the new version.
 - **Lifetime:** up to `max_lifetime_days` (default 90, max 365).
-- **Signals:** declare the `@workflow.signal` names in `signals`. Sending a
-  signal into a running Workflow through the Pegasus API is not available yet.
+- **Signals** (0.60.0+): declare the `@workflow.signal` names in `signals`;
+  only declared names can be delivered. Send one to a QUEUED / RUNNING
+  execution — see [Sending a signal](#sending-a-signal).
 - **Activities** work as in an Automation (`PegasusClient.from_runtime()`) and
   get Temporal's per-activity retries.
 - **No dry runs** (422 `DRY_RUN_UNSUPPORTED`, and no dry-run triggers). Test
@@ -1564,6 +1571,38 @@ try:
 except WorkflowVersionStarting as err:
     time.sleep(err.retry_after_seconds or 30)  # then try again
 ```
+
+### Sending a signal
+
+```python
+client.signal_execution(workflow_id, execution_id, "note", {"text": "call first"})
+client.signal_execution(workflow_id, execution_id, "proceed")   # no argument
+```
+
+```
+pegasus-workflows executions signal <workflow-id> <execution-id> --name note --payload '{"text":"call first"}'
+```
+
+The payload (any JSON, ≤ 128 KiB) is the handler's **single argument**, and
+omitted it sends none, so give the handler a default:
+
+```python
+@workflow.signal
+def note(self, payload: dict | None = None) -> None:
+    self.notes.append(payload)
+```
+
+- **At-least-once:** a retried call delivers again. Make handlers idempotent
+  (e.g. dedupe on an id inside the payload).
+- **Not a run:** a signal counts toward no quota or cap, and the kill switch does
+  not block it (open Workflows keep running and keep receiving signals).
+- **Errors** (`PegasusApiError`): 400 `SIGNAL_NOT_DECLARED` (the message lists
+  the declared names) · 409 `EXECUTION_NOT_SIGNALLABLE` (an Automation, a closed
+  execution, one not started on Temporal yet, or one Temporal reports is no
+  longer running) · 413 `SIGNAL_PAYLOAD_TOO_LARGE` · 502 `TEMPORAL_SIGNAL_FAILED`.
+- Needs `SignalWorkflowExecution` (the `workflow_developer` role).
+- `executions show` lists each delivered signal in the timeline
+  (`WorkflowExecutionSignaled  signal: note`).
 
 ## Credentials & profiles
 
@@ -1743,6 +1782,7 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows test <workflow>`                                                | Start local Temporal and run the Automation with a stub input. |
 | `pegasus-workflows executions list <wf-id> --token=<vnd_…>`                        | List recent executions of an Automation (newest first).        |
 | `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`              | Show one execution's input/result/error + history timeline.    |
+| `pegasus-workflows executions signal <wf-id> <exec-id> --name <n> [--payload …]`   | Deliver a declared signal to a running durable Workflow.       |
 | `pegasus-workflows integration-config validate <id> [-C <dir>]`                    | Dry-run the publish gate for a config (no write).              |
 | `pegasus-workflows integration-config publish <id> [-C <dir>]`                     | Gate then publish a new config version.                        |
 | `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]`             | Fetch the active config; write the editable surface to disk.   |

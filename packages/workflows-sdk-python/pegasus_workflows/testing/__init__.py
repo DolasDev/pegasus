@@ -195,6 +195,7 @@ _IGNORED: frozenset[str] = frozenset(
         "get_execution_history",
         "cancel_execution",
         "retry_execution",
+        "signal_execution",
         "fork_workflow",
         "retire_workflow",
         "list_workflows",
