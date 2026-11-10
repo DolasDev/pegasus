@@ -2056,6 +2056,9 @@ describe('workflows handler', () => {
         cronExpression: null,
         enabled: true,
         dryRun: false,
+        mode: 'NEW',
+        correlationPath: null,
+        signalName: null,
         createdByUserId: 'user-1',
       })
       expect(data['dryRun']).toBe(false)
@@ -2500,6 +2503,146 @@ describe('workflows handler', () => {
   })
 
   // ── DELETE /:id/triggers/:triggerId ───────────────────────────────────────
+
+  // ── Trigger signal binding (mode START / DELIVER) ─────────────────────────
+
+  describe('trigger signal binding (mode / correlationPath / signalName)', () => {
+    const durableRow = {
+      ...provisionedRow,
+      // Non-curated: curated names route STDLIB and are never durable.
+      name: 'order_lifecycle',
+      kind: 'WORKFLOW' as const,
+      manifest: {
+        ...validManifest,
+        name: 'order_lifecycle',
+        kind: 'workflow',
+        signals: ['order_event'],
+      },
+    }
+    const binding = {
+      kind: 'EVENT',
+      eventType: 'quote.accepted',
+      mode: 'START',
+      correlationPath: 'payload.quoteId',
+      signalName: 'order_event',
+    }
+    const storedTrigger = {
+      id: 'trig-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      kind: 'EVENT' as const,
+      eventType: 'quote.accepted',
+      filter: null,
+      cronExpression: null,
+      enabled: true,
+      dryRun: false,
+      mode: 'NEW' as const,
+      correlationPath: null,
+      signalName: null,
+      createdByUserId: 'user-1',
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    beforeEach(() => {
+      mockRepo.findByIdForTenant.mockResolvedValue(durableRow)
+    })
+
+    it('creates a START trigger on a durable Workflow and returns the binding', async () => {
+      mockTriggerRepo.create.mockResolvedValue({
+        ...storedTrigger,
+        mode: 'START',
+        correlationPath: 'payload.quoteId',
+        signalName: 'order_event',
+      })
+      const res = await buildApp().request('/wf-1/triggers', post(binding))
+      expect(res.status).toBe(201)
+      expect(mockTriggerRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: 'START',
+          correlationPath: 'payload.quoteId',
+          signalName: 'order_event',
+        }),
+      )
+      const data = (await json(res)).data as JsonBody
+      expect(data).toMatchObject({
+        mode: 'START',
+        correlationPath: 'payload.quoteId',
+        signalName: 'order_event',
+      })
+    })
+
+    it.each([
+      ['on an Automation', { ...binding }, 'automation'],
+      ['without a signalName', { ...binding, signalName: undefined }, 'durable'],
+      ['with an undeclared signal', { ...binding, signalName: 'approve' }, 'durable'],
+      ['without a correlationPath', { ...binding, correlationPath: undefined }, 'durable'],
+      ['with a path outside the envelope', { ...binding, correlationPath: 'quoteId' }, 'durable'],
+      ['NEW with a signalName', { ...binding, mode: 'NEW', correlationPath: undefined }, 'durable'],
+      [
+        'on a SCHEDULE trigger',
+        {
+          kind: 'SCHEDULE',
+          cronExpression: '0 9 * * 1',
+          mode: 'DELIVER',
+          ...{ correlationPath: 'payload.x', signalName: 'order_event' },
+        },
+        'durable',
+      ],
+    ])('400 VALIDATION_ERROR %s', async (_label, body, target) => {
+      if (target === 'automation') mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request('/wf-1/triggers', post(body))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      expect(mockTriggerRepo.create).not.toHaveBeenCalled()
+    })
+
+    it('PATCH validates the MERGED binding: mode START alone on a NEW row is refused', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(storedTrigger)
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ mode: 'START' }))
+      expect(res.status).toBe(400)
+      expect(mockTriggerRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('PATCH sets a complete binding', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(storedTrigger)
+      mockTriggerRepo.update.mockResolvedValue({ ...storedTrigger, mode: 'DELIVER' })
+      const res = await buildApp().request(
+        '/wf-1/triggers/trig-1',
+        patch({ mode: 'DELIVER', correlationPath: 'payload.quoteId', signalName: 'order_event' }),
+      )
+      expect(res.status).toBe(200)
+      expect(mockTriggerRepo.update).toHaveBeenCalledWith('trig-1', {
+        mode: 'DELIVER',
+        correlationPath: 'payload.quoteId',
+        signalName: 'order_event',
+      })
+    })
+
+    it('PATCH back to NEW must clear the fields (null)', async () => {
+      const bound = {
+        ...storedTrigger,
+        mode: 'START' as const,
+        correlationPath: 'payload.quoteId',
+        signalName: 'order_event',
+      }
+      mockTriggerRepo.findById.mockResolvedValue(bound)
+      const refused = await buildApp().request('/wf-1/triggers/trig-1', patch({ mode: 'NEW' }))
+      expect(refused.status).toBe(400)
+
+      mockTriggerRepo.update.mockResolvedValue(storedTrigger)
+      const ok = await buildApp().request(
+        '/wf-1/triggers/trig-1',
+        patch({ mode: 'NEW', correlationPath: null, signalName: null }),
+      )
+      expect(ok.status).toBe(200)
+      expect(mockTriggerRepo.update).toHaveBeenCalledWith('trig-1', {
+        mode: 'NEW',
+        correlationPath: null,
+        signalName: null,
+      })
+    })
+  })
 
   describe('DELETE /:id/triggers/:triggerId', () => {
     const triggerRow = {

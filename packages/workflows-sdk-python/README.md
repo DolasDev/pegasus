@@ -1604,6 +1604,53 @@ def note(self, payload: dict | None = None) -> None:
 - `executions show` lists each delivered signal in the timeline
   (`WorkflowExecutionSignaled  signal: note`).
 
+### Routing events to an instance (event-routed signals)
+
+An EVENT trigger normally starts a **new** execution per event. On a durable
+Workflow it can instead deliver each event to **one instance per business key**
+(0.61.0+), so a single long-lived Workflow follows, say, one order through every
+event about it:
+
+```python
+client.create_trigger(
+    workflow_id,
+    kind="EVENT",
+    event_type="pegii.shipment.opened",
+    mode="START",                       # or "DELIVER"
+    correlation_path="payload.orderId", # where the business key is
+    signal_name="order_event",          # one of the manifest's `signals`
+)
+```
+
+```python
+@workflow.signal
+def order_event(self, event: dict | None = None) -> None:
+    if event and event["domainEventId"] not in self.seen:   # at-least-once: dedupe
+        self.seen.add(event["domainEventId"])
+        self.events.append(event)
+```
+
+- **The key** is the value at `correlation_path`, a dot path into the event
+  envelope `{domainEventId, eventType, occurredAt, payload}` — a string or an
+  integer matching `[A-Za-z0-9._:-]{1,128}`. Each key gets its own instance.
+- **The signal's argument** is that envelope.
+- **`START`** creates the key's instance when none is open. The event is then
+  both its run input (`arg["input"]`) and its first signal, so dedupe. It counts
+  as a start: the kill switch, the open-Workflow cap and the daily quota apply.
+- **`DELIVER`** only signals an instance that is already open; with none, the
+  event is not delivered.
+- **One instance per key, for life:** once a key's instance has finished, later
+  events for that key are not delivered (it is not restarted).
+- **Delivery is at-least-once** — dedupe on `domainEventId` as above.
+- **Undelivered events** (no open instance for `DELIVER`, a missing or invalid
+  key, a signal the running version doesn't declare) are counted and logged,
+  never retried. A signal to an open instance is not a run: no quota, and the
+  kill switch doesn't block it.
+- Validation is at create / update: `mode` START / DELIVER needs an EVENT trigger
+  on a durable Workflow, both `correlation_path` and `signal_name`, and a declared
+  signal (400 otherwise). `update_trigger(..., mode="NEW")` goes back to one run
+  per event. There is no CLI command for EVENT triggers — use the client.
+
 ## Credentials & profiles
 
 Every command that talks to the API needs a `vnd_` token and a base URL. Rather

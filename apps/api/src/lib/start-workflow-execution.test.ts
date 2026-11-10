@@ -777,7 +777,7 @@ describe('startWorkflowExecution (inherited Unit 3 contracts)', () => {
       args: [{ executionId: 'exec-1', input: { quote_id: 'q-1' }, dryRun: false }],
       taskQueue: 'pegasus-stdlib-test',
       workflowId: 'wf/tenant-1/send_quote_followup/exec-1',
-      memo: { dryRun: false },
+      memo: { dryRun: false, executionId: 'exec-1' },
       workflowIdReusePolicy: 'REJECT_DUPLICATE',
     })
   })
@@ -796,7 +796,7 @@ describe('startWorkflowExecution (inherited Unit 3 contracts)', () => {
       'my_custom_workflow',
       expect.objectContaining({
         args: [{ executionId: 'exec-1', input: { n: 1 }, dryRun: true }],
-        memo: { dryRun: true },
+        memo: { dryRun: true, executionId: 'exec-1' },
       }),
     )
     // The row is persisted with dryRun=true.

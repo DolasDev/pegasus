@@ -98,6 +98,21 @@
 // execution repo with an explicit tenantId (the trigger's), which is safe on
 // the root client.
 //
+// EVENT-ROUTED SIGNALS: an EVENT trigger in mode START / DELIVER does not start
+// an execution per event. It reads the event's business key at
+// `correlationPath`, finds the OPEN execution of the keyed durable Workflow
+// instance (`wfl/<tenant>/<name>/<key>`) and delivers the envelope to it as
+// `signalName` (lib/signal-workflow-execution.ts). With no open instance,
+// START creates one via signal-with-start (through the same run path, so it is
+// charged and gated like any start — the kill switch included); DELIVER fails
+// the delivery (NO_OPEN_INSTANCE). A plain signal is not a run: no quota, no
+// cap, and the kill switch does not block it. Outcomes are metrics + logs
+// (SignalDelivered, SignalDeliveryFailed{Reason}); a failed delivery is final
+// (the event is stamped) except a START parked on WORKFLOW_VERSION_STARTING or
+// deferred by a migrating / provisioning namespace. Delivery is at-least-once:
+// a redelivered event signals again, so Workflow handlers dedupe on
+// `domainEventId`.
+//
 // Scheduling lives in the CDK ApiStack (EventBridge rule, every minute).
 // ---------------------------------------------------------------------------
 
@@ -117,6 +132,13 @@ import {
   findTenantsAtRunnerConcurrencyCap,
   startWorkflowExecution,
 } from './lib/start-workflow-execution'
+import { declaredSignals, signalDurableExecution } from './lib/signal-workflow-execution'
+import {
+  correlatedTemporalWorkflowId,
+  extractCorrelationKey,
+  signalBindingError,
+  type EventEnvelope,
+} from './lib/workflow-signal-routing'
 import { sweepTenantRunners } from './lib/tenant-runner'
 import { advanceNamespaceMigrations } from './lib/temporal-namespace-cutover'
 import { tenantNamespacesConfigured } from './lib/tenant-namespace-request'
@@ -126,6 +148,8 @@ import {
   MIGRATING_STATUSES,
 } from './repositories/tenant-temporal-namespace.repository'
 import { createWorkflowRepository } from './repositories/workflow.repository'
+import { createWorkflowExecutionRepository } from './repositories/workflow-execution.repository'
+import type { WorkflowTriggerMode } from './repositories/workflow-trigger.repository'
 
 const logger = createLogger('pegasus-dispatch-workflow-triggers')
 const cloudwatch = new CloudWatchClient({})
@@ -174,6 +198,21 @@ type TriggerSkipReason =
   | 'WORKFLOW_VERSION_DEFERRED' // Phase 3c: EVENT parked until the durable version's worker has polled
   | 'WORKFLOW_VERSION_DROPPED' // Phase 3c: EVENT still parked on an unregistered version past the max park age
   | 'ERROR' // unexpected per-trigger exception
+
+/** Why an event-routed signal was not delivered — the `Reason` dimension of
+ * SignalDeliveryFailed. A START that could not create the instance reports its
+ * start outcome (WORKFLOWS_DISABLED, OPEN_WORKFLOW_LIMIT, …). */
+type SignalFailureReason =
+  | 'WORKFLOW_NOT_FOUND' // trigger's workflow no longer visible (defensive)
+  | 'BINDING_INVALID' // not a durable Workflow / signal no longer declared / bad path
+  | 'MISSING_KEY' // nothing at correlationPath in this event
+  | 'INVALID_KEY' // key not a string / integer, or unsafe in a workflow id
+  | 'NO_OPEN_INSTANCE' // DELIVER: no open instance for the key
+  | 'INSTANCE_CLOSED' // START: the key's instance already closed (REJECT_DUPLICATE)
+  | 'NOT_RUNNING' // an open row, but Temporal has no running instance
+  | 'SIGNAL_FAILED' // Temporal refused / errored on the signal
+  | 'ERROR' // unexpected exception
+  | string // a START's start outcome
 
 export { matchesTriggerFilter }
 
@@ -277,6 +316,9 @@ type MetricCounts = {
   scheduleFired: number // SCHEDULE-trigger fires
   derived: number // custom events derived from a domain condition (Unit 8)
   skipped: Map<TriggerSkipReason, number>
+  /** Event-routed signals delivered (a START that created its instance included). */
+  signalsDelivered: number
+  signalFailures: Map<SignalFailureReason, number>
   backlog: boolean
   /** TenantTemporalNamespacesUnhealthy: set by phase 0 where namespaces are
    * provisioned (0 included, so the alarm has a continuous series). */
@@ -318,6 +360,23 @@ async function flushMetrics(counts: MetricCounts): Promise<void> {
   for (const [reason, value] of counts.skipped) {
     metricData.push({
       MetricName: 'WorkflowTriggerSkipped',
+      Value: value,
+      Unit: 'Count' as const,
+      Timestamp: timestamp,
+      Dimensions: [{ Name: 'Reason', Value: reason }],
+    })
+  }
+  if (counts.signalsDelivered > 0) {
+    metricData.push({
+      MetricName: 'SignalDelivered',
+      Value: counts.signalsDelivered,
+      Unit: 'Count' as const,
+      Timestamp: timestamp,
+    })
+  }
+  for (const [reason, value] of counts.signalFailures) {
+    metricData.push({
+      MetricName: 'SignalDeliveryFailed',
       Value: value,
       Unit: 'Count' as const,
       Timestamp: timestamp,
@@ -651,6 +710,153 @@ async function fireTrigger(opts: {
   }
 }
 
+/** An EVENT trigger in mode START / DELIVER (its binding columns, as stored). */
+type SignalRoutedTrigger = FirableTrigger & {
+  mode: WorkflowTriggerMode
+  correlationPath: string | null
+  signalName: string | null
+}
+
+/**
+ * Event-routed signal delivery for one START / DELIVER trigger and one event
+ * (see the module header). Returns 'DEFERRED' / 'VERSION_STARTING' when the
+ * event must be redelivered later (same contract as fireTrigger); otherwise
+ * the delivery is final — counted, logged, and the event is stamped.
+ */
+async function routeSignalTrigger(opts: {
+  workflowRepo: ReturnType<typeof createWorkflowRepository>
+  trigger: SignalRoutedTrigger
+  envelope: EventEnvelope
+  counts: MetricCounts
+  skip: (reason: TriggerSkipReason) => void
+}): Promise<'DEFERRED' | 'VERSION_STARTING' | void> {
+  const { workflowRepo, trigger, envelope, counts, skip } = opts
+  const logContext = {
+    triggerId: trigger.id,
+    tenantId: trigger.tenantId,
+    mode: trigger.mode,
+    signalName: trigger.signalName,
+    domainEventId: envelope.domainEventId,
+  }
+  const fail = (reason: SignalFailureReason, extra: Record<string, unknown> = {}) => {
+    counts.signalFailures.set(reason, (counts.signalFailures.get(reason) ?? 0) + 1)
+    logger.warn('Event-routed signal not delivered', { reason, ...logContext, ...extra })
+  }
+
+  const workflow = await workflowRepo.findByIdForTenant(trigger.workflowId, trigger.tenantId)
+  if (!workflow) return fail('WORKFLOW_NOT_FOUND')
+  // Re-checked here, not only at trigger create: the stored binding can go
+  // stale (e.g. the trigger's version was replaced by one without the signal).
+  const bindingError = signalBindingError({ kind: 'EVENT', ...trigger }, workflow)
+  if (bindingError || !trigger.correlationPath || !trigger.signalName) {
+    return fail('BINDING_INVALID', { error: bindingError })
+  }
+  const signalName = trigger.signalName
+
+  const keyResult = extractCorrelationKey(envelope, trigger.correlationPath)
+  if (!keyResult.ok) {
+    return fail(keyResult.reason === 'MISSING' ? 'MISSING_KEY' : 'INVALID_KEY', {
+      correlationPath: trigger.correlationPath,
+    })
+  }
+  const temporalWorkflowId = correlatedTemporalWorkflowId(
+    trigger.tenantId,
+    workflow.name,
+    keyResult.key,
+  )
+
+  // The dispatcher is serialized (reserved concurrency 1) and no other path
+  // mints `wfl/` ids, so the open row, if any, is THE instance for this key.
+  const open = await createWorkflowExecutionRepository(db).findOpenByTemporalWorkflowId(
+    trigger.tenantId,
+    temporalWorkflowId,
+  )
+  if (open) {
+    // The instance runs the version it STARTED on, which may predate the
+    // trigger's: that version must declare the signal too.
+    const instanceWorkflow =
+      open.workflowId === workflow.id
+        ? workflow
+        : await workflowRepo.findByIdForTenant(open.workflowId, trigger.tenantId, {
+            includeRetired: true,
+          })
+    if (!instanceWorkflow || !declaredSignals(instanceWorkflow.manifest).includes(signalName)) {
+      return fail('BINDING_INVALID', {
+        executionId: open.id,
+        error: 'the open instance runs a version that does not declare this signal',
+      })
+    }
+    const result = await signalDurableExecution(db, {
+      workflow: instanceWorkflow,
+      execution: open,
+      signalName,
+      args: [envelope],
+    })
+    if (result.outcome !== 'SIGNALLED') {
+      return fail(result.outcome === 'NOT_RUNNING' ? 'NOT_RUNNING' : 'SIGNAL_FAILED', {
+        executionId: open.id,
+        outcome: result.outcome,
+      })
+    }
+    counts.signalsDelivered += 1
+    logger.info('Event-routed signal delivered', { ...logContext, executionId: open.id })
+    return
+  }
+
+  if (trigger.mode === 'DELIVER') return fail('NO_OPEN_INSTANCE', { temporalWorkflowId })
+
+  // START: create the instance with this event as its first signal. Through
+  // the run path, so it is gated and charged like any start (kill switch,
+  // open-Workflow cap, daily quota). The event is also the start input.
+  const result = await startWorkflowExecution(db, {
+    workflow,
+    tenantId: trigger.tenantId,
+    input: envelope,
+    provenance: {
+      triggerSource: 'EVENT',
+      triggeredByTriggerId: trigger.id,
+      runtimeAccountCreatedById: trigger.createdByUserId,
+    },
+    temporalWorkflowId,
+    startSignal: { name: signalName, args: [envelope] },
+  })
+  switch (result.outcome) {
+    case 'STARTED':
+      counts.fired += 1
+      counts.signalsDelivered += 1
+      logger.info('Event-routed signal started its Workflow instance', {
+        ...logContext,
+        executionId: result.execution.id,
+        temporalWorkflowId,
+      })
+      return
+    case 'SIGNALLED_EXISTING':
+      counts.signalsDelivered += 1
+      logger.info('Event-routed signal delivered to an instance the DB had not tracked open', {
+        ...logContext,
+        existingExecutionId: result.existingExecutionId,
+        temporalWorkflowId,
+      })
+      return
+    case 'ALREADY_STARTED':
+      return fail('INSTANCE_CLOSED', { temporalWorkflowId })
+    case 'WORKFLOW_VERSION_STARTING':
+      return 'VERSION_STARTING'
+    case 'TENANT_MIGRATING':
+    case 'TENANT_NAMESPACE_PROVISIONING':
+      skip(result.outcome)
+      logger.info('Event-routed START deferred — tenant namespace not ready', {
+        ...logContext,
+        outcome: result.outcome,
+      })
+      return 'DEFERRED'
+    case 'START_FAILED':
+      return fail('START_FAILED', { error: result.message })
+    default:
+      return fail(result.outcome)
+  }
+}
+
 /** A kick (lib/trigger-dispatch-kick.ts) vs anything else — EventBridge's
  * scheduled event, or no payload — which runs the full tick. */
 function isKick(event: unknown): boolean {
@@ -674,6 +880,8 @@ export async function handler(event?: unknown): Promise<{
     scheduleFired: 0,
     derived: 0,
     skipped: new Map(),
+    signalsDelivered: 0,
+    signalFailures: new Map(),
     backlog: false,
   }
   const skip = (reason: TriggerSkipReason) => {
@@ -833,25 +1041,29 @@ export async function handler(event?: unknown): Promise<{
             if (!matchesTriggerFilter(trigger.filter, event.payload)) {
               continue
             }
-            const fired = await fireTrigger({
-              workflowRepo,
-              trigger,
-              triggerSource: 'EVENT',
-              dedupeKey: event.id,
-              // The execution input is the event envelope. The payload is a
-              // pointer (entity ids + minimal context) — workflows refetch
-              // authoritative state via the API.
-              input: {
-                domainEventId: event.id,
-                eventType: event.eventType,
-                occurredAt: event.occurredAt.toISOString(),
-                payload: event.payload,
-              },
-              counts,
-              skip,
-              logContext: { domainEventId: event.id },
-              tenantAtCap: cappedTenants.has(event.tenantId),
-            })
+            // The execution input (NEW) / signal argument (START, DELIVER) is
+            // the event envelope. The payload is a pointer (entity ids +
+            // minimal context) — workflows refetch authoritative state via the API.
+            const envelope: EventEnvelope = {
+              domainEventId: event.id,
+              eventType: event.eventType,
+              occurredAt: event.occurredAt.toISOString(),
+              payload: event.payload,
+            }
+            const fired =
+              trigger.mode === 'NEW'
+                ? await fireTrigger({
+                    workflowRepo,
+                    trigger,
+                    triggerSource: 'EVENT',
+                    dedupeKey: event.id,
+                    input: envelope,
+                    counts,
+                    skip,
+                    logContext: { domainEventId: event.id },
+                    tenantAtCap: cappedTenants.has(event.tenantId),
+                  })
+                : await routeSignalTrigger({ workflowRepo, trigger, envelope, counts, skip })
             if (fired === 'DEFERRED') {
               deferred = true
               migratingTenants.add(event.tenantId)

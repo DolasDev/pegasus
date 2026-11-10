@@ -165,6 +165,24 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
     },
 
     /**
+     * The OPEN (QUEUED / RUNNING) execution with this Temporal workflow id —
+     * the event-routed signal dispatcher's lookup of the keyed instance
+     * (`wfl/…`), which is open at most once at a time (REJECT_DUPLICATE).
+     * Explicit tenantId: the dispatcher runs on the tenant-agnostic root client.
+     * Backed by the (tenantId, temporalWorkflowId) index.
+     */
+    async findOpenByTemporalWorkflowId(
+      tenantId: string,
+      temporalWorkflowId: string,
+    ): Promise<WorkflowExecutionRow | null> {
+      return db.workflowExecution.findFirst({
+        where: { tenantId, temporalWorkflowId, status: { in: ['QUEUED', 'RUNNING'] } },
+        orderBy: { queuedAt: 'desc' },
+        select: EXECUTION_SELECT,
+      })
+    },
+
+    /**
      * Tenant-scoped paged list of executions for one workflow, newest first.
      *
      * The pagination is keyset-by-id-and-queuedAt: `before` is the id of the
