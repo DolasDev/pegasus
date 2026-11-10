@@ -15,7 +15,7 @@
 - [ ] **Authoring repo** `~/repos/pegasus-workflows/CLAUDE.md`: under the
       `signals` manifest bullet (which says "Event-routed delivery (triggers) is
       a later release"), document `create_trigger(..., mode="START" | "DELIVER",
-  correlation_path=..., signal_name=...)`, one instance per key for life,
+correlation_path=..., signal_name=...)`, one instance per key for life,
       START's event = run input + first signal, dedupe on `domainEventId`.
       Commit ONLY that hunk (the file often carries others' uncommitted edits)
       and push.
@@ -39,10 +39,15 @@
   - [ ] End the instance (`{status: "done"}`), confirm the row closes; emit
         `A1` again → `SignalDeliveryFailed{Reason=INSTANCE_CLOSED}` and NO
         stranded QUEUED row. Retire the scratch Workflow, delete the triggers.
-  - Emitting: `client.emit_event(name, payload)` needs `EmitTenantEvent`
-    (tenant_admin / runtime / integrations — check the avp-smoke key). If the
-    key lacks it, insert a `DomainEvent` outbox row with `psql` (staging DB
-    URL from the reconcile Lambda env) and wait ≤ 1 min for the dispatcher.
+  - Emitting: `client.emit_event(name, payload)` needs `EmitTenantEvent`,
+    which `workflow_developer` (the avp-smoke CLI key's role) does NOT have —
+    the runtime service account does. So publish a second scratch
+    **Automation** `accept_emit` (`required_actions = ["EmitTenantEvent"]`)
+    whose activity calls `PegasusClient.from_runtime().emit_event(
+input["name"], input["payload"])`, and drive each emit with
+    `pegasus-workflows run accept_emit@<v> --input '{"name": …, "payload":
+{"orderId": "A1"}}'`. Fallback: insert a `DomainEvent` outbox row with
+    `psql` (staging DB URL from the reconcile Lambda env) and wait ≤ 1 min.
     Metrics: CloudWatch `Pegasus/Workflows` `SignalDelivered` /
     `SignalDeliveryFailed`; dispatcher logs say "Event-routed signal …".
 - [ ] When all of the above are done, archive this file.

@@ -2005,6 +2005,9 @@ describe('workflows handler', () => {
       cronExpression: null,
       enabled: true,
       dryRun: false,
+      mode: 'NEW' as const,
+      correlationPath: null,
+      signalName: null,
       createdByUserId: 'user-1',
       createdAt: now,
       updatedAt: now,
@@ -2346,6 +2349,9 @@ describe('workflows handler', () => {
       cronExpression: null,
       enabled: true,
       dryRun: false,
+      mode: 'NEW' as const,
+      correlationPath: null,
+      signalName: null,
       createdByUserId: 'user-1',
       createdAt: now,
       updatedAt: now,
@@ -2617,6 +2623,21 @@ describe('workflows handler', () => {
         correlationPath: 'payload.quoteId',
         signalName: 'order_event',
       })
+    })
+
+    it('PATCH re-validates a stored START binding even when the patch does not touch it', async () => {
+      // e.g. re-enabling a trigger whose target version no longer declares the signal.
+      mockTriggerRepo.findById.mockResolvedValue({
+        ...storedTrigger,
+        enabled: false,
+        mode: 'START' as const,
+        correlationPath: 'payload.quoteId',
+        signalName: 'dropped_signal',
+      })
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ enabled: true }))
+      expect(res.status).toBe(400)
+      expect(String((await json(res)).error)).toMatch(/not declared/)
+      expect(mockTriggerRepo.update).not.toHaveBeenCalled()
     })
 
     it('PATCH back to NEW must clear the fields (null)', async () => {

@@ -1155,7 +1155,9 @@ class PegasusClient:
                 see :meth:`create_trigger`). The binding is validated on the
                 stored row merged with this update, so switching to START /
                 DELIVER needs ``correlation_path`` and ``signal_name`` (sent here
-                or already stored). ``mode="NEW"`` clears both automatically.
+                or already stored). ``mode="NEW"`` alone sends both as null
+                (clearing the stored binding); passing either with ``"NEW"``
+                is a 400.
             correlation_path: New business-key path (START / DELIVER).
             signal_name: New declared signal (START / DELIVER).
 
@@ -1167,9 +1169,12 @@ class PegasusClient:
         Raises:
             ValueError: If no field is given (nothing to update).
             PegasusApiError: 400 (a field that doesn't fit the trigger's kind,
-                an unknown event type, an invalid cron or filter), 403 (missing
-                action), 404 (no such workflow, or the trigger is not this
-                tenant's or not on this workflow).
+                an unknown event type, an invalid cron or filter, or an invalid
+                signal binding — checked on EVERY update of a START / DELIVER
+                trigger, so re-enabling one whose Workflow version no longer
+                declares its signal is refused), 403 (missing action), 404 (no
+                such workflow, or the trigger is not this tenant's or not on
+                this workflow).
         """
         body: dict[str, Any] = {}
         if enabled is not None:

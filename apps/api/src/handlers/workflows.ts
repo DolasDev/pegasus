@@ -1923,8 +1923,10 @@ workflowsHandler.patch(
     }
 
     // The signal binding is validated on the MERGED state (stored row + this
-    // patch), so e.g. {mode: 'START'} on a row with no signalName is refused,
-    // and a binding that a later version stopped declaring can't be re-saved.
+    // patch), so e.g. {mode: 'START'} on a row with no signalName is refused.
+    // A START / DELIVER trigger is re-validated on EVERY patch — re-enabling one
+    // whose version no longer declares its signal must fail here, not as a
+    // BINDING_INVALID on every event at dispatch.
     const merged = {
       kind: trigger.kind,
       mode: body.mode ?? trigger.mode,
@@ -1933,6 +1935,7 @@ workflowsHandler.patch(
       signalName: body.signalName !== undefined ? body.signalName : trigger.signalName,
     }
     if (
+      merged.mode !== 'NEW' ||
       body.mode !== undefined ||
       body.correlationPath !== undefined ||
       body.signalName !== undefined
