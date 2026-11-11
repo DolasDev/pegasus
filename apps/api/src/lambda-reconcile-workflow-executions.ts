@@ -405,7 +405,7 @@ async function settleStrandedRow(row: StrandedRow): Promise<boolean> {
     }
     // Starts since event-routed signals (#944) record the starting row in the
     // memo. An instance naming another row is that row's: this one is an orphan
-    // beside it. No memo = an older start of this row's own id — adopt it.
+    // beside it.
     const owner = description.memo?.['executionId']
     if (owner !== undefined && owner !== row.id) {
       return closeNeverStarted(
@@ -413,6 +413,29 @@ async function settleStrandedRow(row: StrandedRow): Promise<boolean> {
         temporalWorkflowId,
         `its Temporal instance belongs to execution ${String(owner)}`,
       )
+    }
+    // No memo (a start before #944): the instance is this row's only if no
+    // other row already tracks it — e.g. a NEW-mode trigger's QUEUED orphan
+    // left by the ALREADY_STARTED path sits beside the RUNNING row that
+    // started the same `wf/…/trg/…` id. Adopting it would put two rows on one
+    // instance.
+    if (owner === undefined) {
+      const sibling = await db.workflowExecution.findFirst({
+        where: {
+          tenantId: row.tenantId,
+          temporalWorkflowId,
+          id: { not: row.id },
+          status: { not: 'QUEUED' },
+        },
+        select: { id: true },
+      })
+      if (sibling) {
+        return closeNeverStarted(
+          row,
+          temporalWorkflowId,
+          `execution ${sibling.id} already tracks its Temporal instance`,
+        )
+      }
     }
 
     const firstRunId = description.raw.workflowExecutionInfo?.firstRunId || description.runId

@@ -24,12 +24,13 @@ has no status predicate), oldest first, 100 per tick. For each row, describe the
 instance (the row's `temporalWorkflowId`, or the derivable manual-run id
 `wf/<tenant>/<name>/<executionId>` when it never recorded one):
 
-| Temporal says                                                   | Row becomes                                                                                               |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| not found                                                       | FAILED "Not started: … no Temporal instance exists" — frees the key                                       |
-| found, `memo.executionId` names ANOTHER row                     | FAILED "Not started: … belongs to execution X" (never adopt an orphan — two RUNNING rows on one instance) |
-| found, ours (or no memo: pre-#944 start of its own id), running | RUNNING, `temporalRunId = firstRunId` (fallback `runId`), `startedAt = startTime`                         |
-| found, ours, closed                                             | its terminal status + result / error                                                                      |
+| Temporal says                                                           | Row becomes                                                                                                        |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| not found                                                               | FAILED "Not started: … no Temporal instance exists" — frees the key                                                |
+| found, `memo.executionId` names ANOTHER row                             | FAILED "Not started: … belongs to execution X" (never adopt an orphan — two RUNNING rows on one instance)          |
+| found, ours (or no memo: pre-#944 start of its own id), running         | RUNNING, `temporalRunId = firstRunId` (fallback `runId`), `startedAt = startTime`                                  |
+| found, no memo, but ANOTHER row already tracks the id (status ≠ QUEUED) | FAILED "Not started: … execution X already tracks its Temporal instance" (a pre-#944 NEW-mode `wf/…/trg/…` orphan) |
+| found, ours, closed                                                     | its terminal status + result / error                                                                               |
 
 Every write is `updateMany({ id, status: 'QUEUED' })`. Never-started closes emit
 `Pegasus/Workflows WorkflowExecutionNeverStarted` (its own series — each is a

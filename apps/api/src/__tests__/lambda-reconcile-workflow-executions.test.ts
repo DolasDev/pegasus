@@ -24,12 +24,15 @@ import {
   _setTenantTemporalDepsForTesting,
 } from '../lib/temporal-client'
 
-const { mockSend, putMetricDataInputs, mockFindMany, mockUpdateMany } = vi.hoisted(() => ({
-  mockSend: vi.fn(),
-  putMetricDataInputs: [] as unknown[],
-  mockFindMany: vi.fn(),
-  mockUpdateMany: vi.fn(),
-}))
+const { mockSend, putMetricDataInputs, mockFindMany, mockFindFirst, mockUpdateMany } = vi.hoisted(
+  () => ({
+    mockSend: vi.fn(),
+    putMetricDataInputs: [] as unknown[],
+    mockFindMany: vi.fn(),
+    mockFindFirst: vi.fn(),
+    mockUpdateMany: vi.fn(),
+  }),
+)
 
 vi.mock('@aws-sdk/client-cloudwatch', () => ({
   CloudWatchClient: class {
@@ -48,6 +51,7 @@ vi.mock('../db', () => ({
   db: {
     workflowExecution: {
       findMany: mockFindMany,
+      findFirst: mockFindFirst,
       updateMany: mockUpdateMany,
     },
   },
@@ -134,6 +138,8 @@ beforeEach(() => {
           : automationLane,
     )
   mockUpdateMany.mockReset().mockResolvedValue({ count: 1 })
+  // QUEUED lane: no other row tracks the instance unless a test says so.
+  mockFindFirst.mockReset().mockResolvedValue(null)
   _setTemporalClientForTesting(null)
 })
 
@@ -617,6 +623,28 @@ describe('QUEUED lane (stranded durable starts)', () => {
       status: 'RUNNING',
       temporalWorkflowId: 'wf/tenant-1/order_lifecycle/exec-q',
     })
+  })
+
+  it('no memo, but another row already tracks the instance: this orphan is FAILED, not adopted', async () => {
+    const trgId = 'wf/tenant-1/order_lifecycle/trg/trg-1/evt-1'
+    queuedLane = [strandedRow({ temporalWorkflowId: trgId })]
+    clientWith({ statusName: 'RUNNING' }) // pre-#944 start: no memo
+    mockFindFirst.mockResolvedValue({ id: 'exec-running' })
+
+    await handler()
+
+    expect(mockFindFirst).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-1',
+        temporalWorkflowId: trgId,
+        id: { not: 'exec-q' },
+        status: { not: 'QUEUED' },
+      },
+      select: { id: true },
+    })
+    const [write] = writesTo('exec-q')
+    expect(write?.data).toMatchObject({ status: 'FAILED' })
+    expect(String(write?.data['errorMessage'])).toMatch(/exec-running already tracks/)
   })
 
   it('falls back to the current run id when Temporal reports no first run id', async () => {
