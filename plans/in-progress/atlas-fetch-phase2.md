@@ -167,8 +167,25 @@ durable-workflows workstream). **Not ours — leave it alone.**
   `$each`, nothing else), so a `Document` without its own amount would have been
   unmappable. It has one.
 
-  So: `recordsPath` points into `documents[]`, one `Document` → one `financial_settlement`
-  record → one order. The 1:1 holds and nothing in Phase 1 changes.
+  So: one per-order record → one `financial_settlement` record. The 1:1 holds and nothing
+  in Phase 1 changes.
+
+  > **CORRECTION 2026-11-11 — the extraction half of this entry was wrong.** It said
+  > "`recordsPath` points into `documents[]`, one `Document` → one record → one order."
+  > A `Document` is **not** 1:1 with an order (answered by Steve from domain knowledge;
+  > see gotcha 1 → the Document-grain sub-question). The per-order record is the
+  > **group-by `orderNumber`** across the envelope, which no `recordsPath` can express.
+  >
+  > **What survives, and it is the load-bearing half:** the record GRAIN is per-order, the
+  > 1:1 correlation stands, there is no migration, and `#812`'s consumer is untouched —
+  > all independently confirmed, and the floor edit to `localEntityType: 'order'` shipped
+  > on the strength of a prod+staging audit rather than on this reasoning. The
+  > `Settlement`/`AgentSettlement` levels are still a remittance envelope; the error was
+  > assuming the next level down was therefore the record.
+  >
+  > **What was wrong and is now corrected below:** the mapping table's `recordsPath`
+  > advice, and the illustrative descriptor. Nothing shipped depends on either — the
+  > Atlas config was never published, which is exactly why the pilot was sequenced last.
 
   **Consequence to state up front, so nobody expects otherwise.** With `Id ← orderNumber`
   the projection key is **stable across settlement periods**, so each new period
@@ -275,18 +292,32 @@ Each of these was measured this session and the next step depends on them.
    pilot source is **not "config alone"**, which was Gap B's whole point.
    Decide this with populated data in hand — see the sub-question immediately below.
 
-   **THE DOCUMENT-GRAIN SUB-QUESTION** (cited elsewhere by that name; it is deliberately
-   not its own numbered gotcha, because the plan cites gotchas 2/3/8 by number and
-   renumbering would break those references). **Whether a `Document` is 1:1 with an
-   `orderNumber` is UNKNOWN, and the spec cannot settle it.** `orderNumber` recurs at
-   **three** levels — `Document.orderNumber`, `DetailRecord.orderNumber`,
-   `AdjustmentRecord.orderNumber`. If a Document's detail or adjustment records can carry
-   a **different** order than the Document itself, the per-shipment record is a
-   **group-by `orderNumber` across a nested envelope** — which no bounded `recordsPath`
-   can express, and which forces branch (b) above. If they always match the parent
-   Document, branch (a) stays viable. This is now **the sharpest form of the one remaining
-   ask of Atlas** (gotcha 3), and it is what the populated `settlementDate` is actually
-   needed to answer.
+   **THE DOCUMENT-GRAIN SUB-QUESTION — ANSWERED 2026-11-11 by Steve (domain knowledge),
+   and the answer is (b).** Cited elsewhere by that name; deliberately not its own
+   numbered gotcha, because the plan cites gotchas 2/3/8 by number.
+
+   **A `Document` is NOT 1:1 with an `orderNumber`.** What IS 1:1 is the **Atlas
+   registration number ↔ the order number**: in Pegasus every order represents exactly one
+   Atlas registration. So the per-order settlement record is the set of records bearing a
+   given `orderNumber`, gathered across the envelope — `orderNumber` recurs on `Document`,
+   `DetailRecord` and `AdjustmentRecord` precisely because a Document spans orders.
+
+   **Consequences, in order of how much they cost:**
+
+   1. **The extraction is a GROUP-BY, not a path — so branch (b) wins and the Atlas
+      pilot needs Python.** No bounded `recordsPath` can express "regroup the envelope by
+      `orderNumber`", and `fetch`'s DSL deliberately has no wildcard, no arithmetic and no
+      aggregation. This is the documented escape hatch working as designed, not a defect.
+   2. **Therefore the Atlas pilot does NOT demonstrate "new partner = config alone."**
+      That was Gap B's whole selling point, so say it plainly rather than let the pilot
+      imply it. What `fetch_external` still buys for Atlas is real but narrower: path,
+      params, auth, `decode`, retry and paging all leave workflow code; only the
+      record-shaping stays. A source whose records sit at one path still gets the full
+      property — Atlas just is not that source.
+   3. **The correlation contract is UNAFFECTED, and the registration 1:1 confirms it.**
+      `localEntityType: 'order'` (shipped 2026-11-11, `#947`) is exactly right: the thing
+      that is 1:1 with an Atlas registration is the ORDER. Nothing shipped is wrong —
+      see the correction note under "Decisions & dead ends".
 
 2. **The settlement response is double-encoded** — the body is a JSON **string** whose
    content is JSON, not an object. Phase 2's `recordsPath` design assumes an object and
@@ -366,13 +397,17 @@ Other schemas present: `APDistributionRecord`, `AdjustmentRecord`, `DetailRecord
 **Corrected mapping — the record is the `Document`** (full field lists in
 `docs/atlas-world-group-api/openapi/settlement-v1.json`, exported 2026-11-06):
 
-| canonical (`financial_settlement`) | Atlas (`Document`)                                      |
-| ---------------------------------- | ------------------------------------------------------- |
-| `Id`                               | `orderNumber` — stable across periods; see decision     |
-| `Totals.Net`                       | `documentAmount` (a plain `$from`; DSL has no `$sum`)   |
-| `Subject.ShipperLastName`          | `shipper` (also `customerName`)                         |
-| `LineItems[]`                      | `detailRecords[]` + `adjustmentRecords[]`               |
-| `Reference.PartyId`                | **unmappable** — `vendorId` is on the parent (gotcha 1) |
+| canonical (`financial_settlement`) | Atlas (`Document`)                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `Id`                               | `orderNumber` — stable across periods; see decision. Supplied by the REGROUPING step, not read off one `Document` |
+| `Totals.Net`                       | `documentAmount` (a plain `$from`; DSL has no `$sum`)                                                             |
+| `Subject.ShipperLastName`          | `shipper` (also `customerName`)                                                                                   |
+| `LineItems[]`                      | `detailRecords[]` + `adjustmentRecords[]`                                                                         |
+| `Reference.PartyId`                | **unmappable** — `vendorId` is on the parent (gotcha 1)                                                           |
+
+**`recordsPath` cannot produce these rows.** A per-order record is a group-by across the
+envelope (gotcha 1), so the Atlas pilot regroups in workflow Python and feeds the result
+in; `fetch_external` still owns path, params, auth, `decode`, retry and paging.
 
 Deliberately unmapped: `atlasPaymentNumber`, `settlementId`, and the run-level totals.
 They are **payment-run** attributes with no home in a per-shipment floor — a different
@@ -1008,17 +1043,21 @@ is the first informed moment to decide.
 
 - ~~**The settlement↔shipment grain decision**~~ — **CLOSED 2026-11-06, option 3.** See
   "Decisions & dead ends". No longer gates Phase 2's platform work.
-- **Is a `Document` 1:1 with an `orderNumber`?** The successor question, and the one that
-  now gates the pilot: `orderNumber` recurs on `Document`, `DetailRecord` and
-  `AdjustmentRecord`, so a Document may or may not be single-order. Decides whether the
-  fan-out is config (bounded nested `recordsPath` + parent hoist) or Python (group-by).
-  Unanswerable from the spec — needs populated data. See gotcha 1, the Document-grain sub-question.
-- **A QA `settlementDate` that returns data** — the only remaining ask of Atlas, and far
-  narrower than August's "where does settlement data live". 14 dates tried, all empty.
-  **Ask for it with the above question attached** — the data is wanted to answer something
-  specific, not to browse.
-- **Does pegII store the Atlas order number?** Decides whether this source can correlate
-  at all (see the Phase 2 checklist). Not answerable from this repo.
+- ~~**Is a `Document` 1:1 with an `orderNumber`?**~~ — **ANSWERED 2026-11-11 by Steve: NO.**
+  The 1:1 is Atlas **registration number ↔ order number** (every Pegasus order is exactly
+  one Atlas registration). So the fan-out is **Python (group-by)**, not config, and the
+  Atlas pilot does not demonstrate "config alone". Details and consequences in gotcha 1.
+  **This no longer needs data to resolve** — which is why the remaining Atlas ask shrank.
+- **A QA `settlementDate` that returns data** — still the one Atlas ask, but **no longer a
+  blocker on the DESIGN**, only on validating the mapping against real bytes. 14 dates
+  tried, all empty. Reason it is still worth having: nothing in the settlement mapping has
+  ever been checked against a populated payload, and the regrouping step is new code whose
+  first run should not be its first test.
+- **Does pegII store the Atlas order number?** Narrowed 2026-11-11: the 1:1 Atlas
+  registration ↔ order relationship means the mapping EXISTS; what is still unverified is
+  whether `Document.orderNumber` carries the Atlas registration number directly or needs a
+  lookup on our side. Decides whether the pilot can correlate without a join. Not
+  answerable from this repo.
 - ~~**Do any `local_entity_type = 'shipment'` correlations exist?**~~ — **MEASURED
   2026-11-10, answer: NO. Gate cleared, no migration needed.**
 
