@@ -15,8 +15,10 @@
 >    `200`, sending it returns `400`. See "The `On-Behalf-Of` header".
 > 2. **Our grant is 6 APIs / 102 operations, not 8 / 117.** `RadsSupport-v1` returns `401`. See
 >    "Our measured grant".
-> 3. **The settlements pilot has no identified Atlas source.** The word "settlement" appears twice
->    in the entire catalog, both incidental. See "Financial data — where settlements are not".
+> 3. ~~**The settlements pilot has no identified Atlas source.**~~ **OVERTAKEN 2026-11-06** —
+>    Atlas published `settlement-v1`, it is in our grant, and it needs no `On-Behalf-Of`. The spec
+>    is exported to `openapi/settlement-v1.json`. The section below is kept as the record of why
+>    the pilot stalled for three months; read its correction banner first.
 >
 > Anything not marked **VERIFIED** below is still spec-inferred and may fail the same way.
 
@@ -255,6 +257,26 @@ On a pull-only integration this budget, not the endpoint list, is the binding de
 
 ### Financial data — where settlements are not
 
+> ## ⚠️ SUPERSEDED — read this before the section below
+>
+> **This section's conclusion is no longer true.** Atlas published a purpose-built
+> **`settlement-v1`** API (first seen 2026-11-06, catalog grown 24 → 27); it is in our grant and
+> needs no `On-Behalf-Of`. `GET /settlement/v1/settlement?settlementDate=<date>` is the endpoint,
+> and the exported spec is at `openapi/settlement-v1.json`.
+>
+> What is still true, and worth keeping: the three invoice-bearing APIs named below
+> (`RatingSystem-v1`, `atlasorder-v1`, `authorizations-v1`) remain **401** for our subscription, and
+> `shipment-management-v1`'s `invoices` property still declares no schema. Atlas did not open those
+> up — it added a new API alongside them.
+>
+> What replaced this as the open question: not _where_ settlement data lives but **whether a
+> `Document` is 1:1 with an `orderNumber`** (`orderNumber` recurs on `Document`, `DetailRecord` and
+> `AdjustmentRecord`), plus the fact that **no QA `settlementDate` we have tried returns data** — 14
+> values spanning 2024-12 → 2026-11, all `200` with `agentSettlements: []`. Both are asks 1 and 2 in
+> [`OUTREACH.md`](./OUTREACH.md).
+>
+> _Original finding, true as measured on 2026-08-20:_
+>
 > **VERIFIED 2026-08-20.** This is a plan-level finding, not a documentation detail. The
 > `vanline-source-binding` design nominates **`settlements`** as its pilot capability
 > (`financial-settlement.floor.ts`). Atlas's published catalog does not obviously serve it.
