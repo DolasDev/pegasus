@@ -475,7 +475,7 @@ Files: `apps/api/src/assistant/{http,loop,prompt}.ts`, `assistant/tools/*`,
 `assistant/evals/runner.ts`, `lib/inference/{provider,fake}.ts`, `lib/assistant-feature.ts`,
 `repositories/assistant.repository.ts`, `lambda-assistant.ts`,
 `scripts/assistant-eval.ts` (`npm run assistant:eval` in `apps/api`), migration
-`20261110214645_assistant_persistence`, `packages/api-http` (`createStreamClient`),
+`20261111190000_assistant_persistence`, `packages/api-http` (`createStreamClient`),
 `apps/tenant-web/src/routes/assistant-lab.tsx` + `features/assistant/*`, infra in
 `api-stack.ts` / `frontend-assets-stack.ts` / `frontend-stack.ts` / `bin/app.ts`.
 
