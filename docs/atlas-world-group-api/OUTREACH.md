@@ -21,12 +21,12 @@ data. Old Q2 (subscription scope) is reduced to a footnote: the grant is stable 
 
 ## Draft
 
-**Subject:** Pegasus ↔ Atlas — one settlement date with data, and a question about Document grain
+**Subject:** Pegasus ↔ Atlas — one QA settlement date with data
 
 Hi <name>,
 
 Thanks for publishing `settlement-v1` — that was exactly the gap we flagged in August, and our
-integration is now built against it end to end. Two things we can't resolve ourselves.
+integration is now built against it end to end. One ask and one small confirmation.
 
 **1. Could you point us at one QA `settlementDate` that has data?**
 
@@ -36,30 +36,20 @@ Every date we've tried comes back successful but empty. We've tested 14 values s
 record found" rather than "found, but empty" — so we don't think we're asking wrongly, just asking
 for dates that have nothing behind them.
 
-We don't need much: **one date in QA that returns a populated payload** would be enough. If
-settlement data simply isn't loaded in QA, knowing that is just as useful — we'd stop guessing at
-dates and plan around a production read instead.
+We don't need much: **one date in QA that returns a populated payload** would be enough. Our
+mapping has never been exercised against a real settlement body, and we'd rather its first run not
+also be its first test. If settlement data simply isn't loaded in QA, knowing that is just as
+useful — we'd stop guessing at dates and plan around a production read instead.
 
-**2. Is a `Document` always about exactly one `orderNumber`?**
+**2. One detail we'd still like confirmed.**
 
-This is the question the data would answer, and you may be able to answer it directly.
+We understand a `Document` can cover more than one order, and that the Atlas registration number
+corresponds one-to-one with an order number — so we group the response by `orderNumber` to build a
+per-order view. If that's not how you'd describe it, we'd rather be corrected now.
 
-`orderNumber` appears at three levels of the response: on `Document`, and again on each
-`DetailRecord` and `AdjustmentRecord` inside it. So we can't tell from the spec whether:
-
-- **(a)** a `Document` is one order's settlement, and the `orderNumber` on its detail and
-  adjustment records always repeats the parent's; or
-- **(b)** a `Document` can span several orders, with the per-record `orderNumber` being the
-  meaningful one.
-
-It matters because our model binds one settlement record to one move. Under (a) we can read each
-`Document` as a record directly. Under (b) we have to regroup the response by `orderNumber` before
-we can map it — a different and more fragile piece of code, which we'd rather write knowingly than
-discover in production.
-
-A related detail if it's easy: for a single order's settlement, should we take `documentAmount` on
-the `Document` as the authoritative figure, or sum the `detailRecords`? We'd prefer to read the
-number you consider canonical rather than compute our own and risk disagreeing with your statement.
+The narrow question: for a single order, should we treat `documentAmount` as the authoritative
+figure, or sum the `detailRecords` (plus `adjustmentRecords`)? We'd rather read the number you
+consider canonical than compute our own and risk disagreeing with your statement.
 
 **3. A small bug report, offered as a courtesy.**
 
@@ -104,14 +94,17 @@ Dolas LLC
 
 ## Notes (not part of the email)
 
-- **Q1 and Q2 are the same blocker, split so either can unblock us.** Q2 is the thing we actually
-  need to know; Q1 is how we'd find out ourselves. A good respondent may answer Q2 outright and
-  make Q1 unnecessary — which is why Q2 is phrased as a question about _their_ model rather than a
-  request for data.
-- **What Q2 gates on our side.** Branch (a) ⇒ the Atlas settlement source is publishable as
-  configuration alone, which is the whole property the declarative-fetch work exists to buy.
-  Branch (b) ⇒ the regrouping has to live in a bespoke workflow, and this pilot stops demonstrating
-  "new partner = config only." See `plans/in-progress/atlas-fetch-phase2.md` → gotcha 1.
+- **The Document-grain question was ANSWERED internally on 2026-11-11, so do not ask it.** A
+  `Document` is not 1:1 with an order; the 1:1 is Atlas **registration number ↔ order number**
+  (every Pegasus order is exactly one Atlas registration). An earlier draft of this file asked
+  Atlas to settle it — asking a partner something we already know spends goodwill for nothing, and
+  it was the headline question. Q2 is now only the narrow `documentAmount`-vs-sum confirmation,
+  phrased so a correction is welcome if our understanding is off.
+- **Q1 is no longer a design blocker, only a validation one.** The grain answer settled the design
+  (the regrouping lives in workflow Python — see
+  `plans/in-progress/atlas-fetch-phase2.md` → gotcha 1). Populated data is still wanted because
+  nothing in the settlement mapping has been checked against real bytes, and the regrouping step is
+  new code. Lower urgency, same request.
 - **Q3 is safe to send.** Our decode step accepts both the double-encoded string and a plain
   object, so Atlas fixing it cannot break us. Verified by test, not assumed.
 - **Q4 still has the widest design blast radius**, unchanged from August: "one subscription per
