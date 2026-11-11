@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // Assistant Lab — the operations admin's authoring surface for the AI
-// assistant (plans/in-progress/ai-chat-assistant.md, 1e): prompt editor, chat,
+// assistant (plans/*/ai-chat-assistant.md, 1e): prompt editor, chat,
 // trace viewer, eval runner.
 //
 // Route guard: operations_admin + tenant_admin (router.tsx). NOT under

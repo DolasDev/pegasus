@@ -26,7 +26,7 @@ import {
 } from '../metrics'
 
 // ---------------------------------------------------------------------------
-// AI assistant inference (plans/in-progress/ai-chat-assistant.md, §2).
+// AI assistant inference (plans/*/ai-chat-assistant.md, §2).
 // Claude in Amazon Bedrock through the US GEO cross-region inference profile —
 // never `global.*`, which routes worldwide. AWS is the sole data processor.
 // ---------------------------------------------------------------------------
@@ -538,7 +538,7 @@ export class ApiStack extends cdk.Stack {
 
     // ---------------------------------------------------------------------------
     // AI assistant — the streaming twin of ApiFunction.
-    // Plan: plans/in-progress/ai-chat-assistant.md ("The 29-second problem",
+    // Plan: plans/*/ai-chat-assistant.md ("The 29-second problem",
     // Infrastructure §2/§3/§4).
     //
     // Same bundle and env (apps/api/src/lambda-assistant.ts runs the same Hono

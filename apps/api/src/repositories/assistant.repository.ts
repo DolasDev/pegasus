@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // AI assistant persistence: the ops-owned prompt store and the conversation /
-// turn / tool-call traces. Plan: plans/in-progress/ai-chat-assistant.md (1d).
+// turn / tool-call traces. Plan: plans/*/ai-chat-assistant.md (1d).
 //
 // All four models are in TENANT_SCOPED_MODELS, so the request's scoped client
 // already confines every read and write to the caller's tenant. Every query

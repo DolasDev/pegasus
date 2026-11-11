@@ -175,7 +175,7 @@ const NAV_ITEMS = [
     children: null,
   },
   {
-    // AI assistant Lab (plans/in-progress/ai-chat-assistant.md). Gated by the
+    // AI assistant Lab (plans/*/ai-chat-assistant.md). Gated by the
     // Cedar permission (fails closed: absent on an older API) AND the deployment
     // flag, since the grant exists whether or not ASSISTANT_ENABLED is on. The
     // route guard in router.tsx carries the matching role list.

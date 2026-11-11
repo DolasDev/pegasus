@@ -1814,7 +1814,7 @@ describe('ApiStack — crew-leader link switch (crewLeaderLinkEnabled)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// AI assistant (plans/in-progress/ai-chat-assistant.md)
+// AI assistant (plans/*/ai-chat-assistant.md)
 // ---------------------------------------------------------------------------
 describe('ApiStack — AI assistant', () => {
   type Props = NonNullable<ConstructorParameters<typeof ApiStack>[2]>

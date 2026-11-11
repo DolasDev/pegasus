@@ -2,7 +2,7 @@
 // The agent loop: one user question → one streamed answer, with every tool call
 // traced. Built on the SDK tool runner (not a hand-rolled loop); the runnable
 // tools' `run` callbacks are where the permission re-check and trace capture
-// attach. Plan: plans/in-progress/ai-chat-assistant.md (1c).
+// attach. Plan: plans/*/ai-chat-assistant.md (1c).
 // ---------------------------------------------------------------------------
 
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'

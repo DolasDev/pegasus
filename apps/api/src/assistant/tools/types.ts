@@ -6,7 +6,7 @@
 // real Hono app AS THE CALLER (their own ID token), and `project()` narrows the
 // response to the few columns an answer needs. Auth, Cedar, driver scoping and
 // the on-prem SQL path are therefore the endpoint's own — nothing is
-// re-implemented here. See plans/in-progress/ai-chat-assistant.md (1b).
+// re-implemented here. See plans/*/ai-chat-assistant.md (1b).
 // ---------------------------------------------------------------------------
 
 import type { z } from 'zod'

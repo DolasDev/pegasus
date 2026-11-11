@@ -546,7 +546,7 @@ export const Actions = {
     permission: 'usage:read',
   },
 
-  // ── AI assistant (plans/in-progress/ai-chat-assistant.md) ─────────────────
+  // ── AI assistant (plans/*/ai-chat-assistant.md) ─────────────────
   // UseAssistant gates the chat endpoint and the Assistant Lab. It is a coarse
   // feature gate only: every tool the model may call is filtered by, and then
   // re-authorized against, the caller's OWN action for that data, so the

@@ -2,7 +2,9 @@
 
 > ## ▶ PHASE 1 BUILT 2026-11-10 — branch `feat/ai-chat-assistant`, deployed DARK
 >
-> Resumed from `plans/todo/` and implemented on this branch. Everything below Phase 1 in
+> Implemented on that branch, then **parked back in `plans/todo/`** when it merged: Phases
+> 2–3 are not started, and the next step (below) is an AWS action, not code. Move it to
+> `plans/in-progress/` when someone picks it up again. Everything below Phase 1 in
 > this file still stands except where the "Phase 1 — as built" section says otherwise.
 > **Read that section first**; it records the decisions taken while building and every
 > place the build departs from the text below.

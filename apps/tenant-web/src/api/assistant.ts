@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// AI assistant API — /api/v1/assistant (plans/in-progress/ai-chat-assistant.md).
+// AI assistant API — /api/v1/assistant (plans/*/ai-chat-assistant.md).
 //
 // CRUD reads go to the API like everything else. The two streaming calls
 // (chat, eval run) go to `assistantUrl` — the assistant Lambda's Function URL —

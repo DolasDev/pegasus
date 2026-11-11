@@ -261,7 +261,7 @@ const reportingEditRoute = createRoute({
   component: ReportingEditPage,
 })
 
-// AI assistant Lab (plans/in-progress/ai-chat-assistant.md, 1e). Hangs off
+// AI assistant Lab (plans/*/ai-chat-assistant.md, 1e). Hangs off
 // authLayout, NOT settingsLayout (which is tenant_admin-only — an operations
 // admin would never reach it there). The guard mirrors the Cedar grant of
 // UseAssistant (policies/60-assistant.cedar + tenant_admin permit-all); Cedar

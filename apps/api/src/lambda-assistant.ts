@@ -4,7 +4,7 @@
 // Same bundle, same Hono app, same middleware; the differences are all about
 // time: it is invoked through a Function URL in RESPONSE_STREAM mode (minutes,
 // and tokens flush as they are produced) instead of API Gateway's buffered
-// 29-second integration. See plans/in-progress/ai-chat-assistant.md,
+// 29-second integration. See plans/*/ai-chat-assistant.md,
 // "The 29-second problem".
 //
 // The Function URL is public (authType NONE) — exactly like the HTTP API, which

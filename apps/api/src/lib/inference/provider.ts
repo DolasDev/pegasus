@@ -2,7 +2,7 @@
 // Inference provider seam — the one place that knows WHICH LLM backend serves
 // a request. Deliberately neutral (lib/, not assistant/): the assistant is the
 // first consumer, and LLM calls from workflows (plan "Phase 4") are a foreseen
-// second one. See plans/in-progress/ai-chat-assistant.md, Infrastructure §2.
+// second one. See plans/*/ai-chat-assistant.md, Infrastructure §2.
 //
 // Production backend: Claude in Amazon Bedrock through the DEFAULT
 // `AnthropicBedrock` client. That client calls

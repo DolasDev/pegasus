@@ -195,7 +195,7 @@ const pegiiTokenIssuer = envName === 'dev' ? undefined : PEGII_TOKEN_ISSUER[envN
 const reportingEnabled = envName === 'staging' || envName === 'prod'
 
 // ── AI assistant master switch ───────────────────────────────────────────────
-// plans/in-progress/ai-chat-assistant.md. The assistant Lambda + its Function
+// plans/*/ai-chat-assistant.md. The assistant Lambda + its Function
 // URL deploy in every env regardless (dark); this only sets ASSISTANT_ENABLED.
 // OFF everywhere until BOTH of these are done for the env's AWS account:
 //   1. The one-time Bedrock Anthropic use-case form

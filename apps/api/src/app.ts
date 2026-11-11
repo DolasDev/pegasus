@@ -524,7 +524,7 @@ v1.get('/dashboard/pegii', dashboardPegiiHandler)
 // `use('*')` middleware — see GOTCHAS.md, "a sub-app mount claims the whole
 // prefix's middleware".
 v1.route('/reporting', reportingHandler)
-// AI assistant (plans/in-progress/ai-chat-assistant.md). Its tools ARE existing
+// AI assistant (plans/*/ai-chat-assistant.md). Its tools ARE existing
 // read endpoints, executed in-process against this same `app` with the caller's
 // own token — so auth, Cedar and row scoping are the endpoints' own. The app is
 // handed over lazily (it is still being built here). Off unless ASSISTANT_ENABLED;
