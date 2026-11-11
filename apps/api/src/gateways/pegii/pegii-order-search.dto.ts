@@ -9,15 +9,43 @@
 // unchanged, so this file is the cloud's declaration of that contract.
 // ---------------------------------------------------------------------------
 
-/** The accepted `dateField` values (movemanager OrderSearchCriteria.DateFields). */
-export const ORDER_SEARCH_DATE_FIELDS = [
+/**
+ * `dateField` values every search-capable site accepts (`pegii.orders.search.v1`).
+ * Each is a `sales` column; its desktop KeyDate meaning does NOT follow the name:
+ * `pack_date`/`load_date` are Pack/Load `Planned`, `plan_pack`/`plan_load` their
+ * `Latest`, `del_actual` Delivery `Actual` (`LoHiConverters_Sale.vb`).
+ */
+export const ORDER_SEARCH_V1_DATE_FIELDS = [
   'plan_pack',
   'plan_load',
   'del_actual',
   'pack_date',
   'load_date',
 ] as const
+
+/**
+ * `dateField` values added by `pegii.orders.search.v2`: `del_date` = Delivery
+ * `Planned`, `plan_del` = Delivery `Latest`, `sit_date` = SIT-out `Planned`,
+ * `lng_dis_del_plan` = LongDistance `Planned` (the desktop's "ETA Date").
+ */
+export const ORDER_SEARCH_V2_DATE_FIELDS = [
+  'del_date',
+  'plan_del',
+  'sit_date',
+  'lng_dis_del_plan',
+] as const
+
+/** The accepted `dateField` values (movemanager OrderSearchCriteria.DateFields). */
+export const ORDER_SEARCH_DATE_FIELDS = [
+  ...ORDER_SEARCH_V1_DATE_FIELDS,
+  ...ORDER_SEARCH_V2_DATE_FIELDS,
+] as const
 export type OrderSearchDateField = (typeof ORDER_SEARCH_DATE_FIELDS)[number]
+
+/** True when searching on `dateField` needs a site with `pegii.orders.search.v2`. */
+export function isV2OrderSearchDateField(dateField: OrderSearchDateField): boolean {
+  return (ORDER_SEARCH_V2_DATE_FIELDS as readonly string[]).includes(dateField)
+}
 
 /** movemanager OrderSearchCriteria limits. */
 export const ORDER_SEARCH_MAX_LIMIT = 500
@@ -65,6 +93,11 @@ export interface PegiiOrderSearchItemDto {
   pack: PegiiKeyDateDto
   load: PegiiKeyDateDto
   delivery: PegiiKeyDateDto
+  /**
+   * `sales.lng_dis_del_plan` = KeyMoveDates.LongDistance.Planned (the desktop's
+   * "ETA Date"). Absent from sites older than `pegii.orders.search.v2`.
+   */
+  longDistancePlanned?: string | null
   sitIn: PegiiPlannedActualDto
   sitOut: PegiiPlannedActualDto
   planSit: string | null

@@ -352,7 +352,18 @@ def _raise_for_sms_channel_not_connected(response: httpx.Response) -> None:
 
 
 #: ``date_field`` values :meth:`PegasusClient.search_orders` accepts (the site's whitelist).
-ORDER_SEARCH_DATE_FIELDS = ("plan_pack", "plan_load", "del_actual", "pack_date", "load_date")
+#: The last four need a site with ``pegii.orders.search.v2`` (SDK 0.63.0+).
+ORDER_SEARCH_DATE_FIELDS = (
+    "plan_pack",
+    "plan_load",
+    "del_actual",
+    "pack_date",
+    "load_date",
+    "del_date",
+    "plan_del",
+    "sit_date",
+    "lng_dis_del_plan",
+)
 
 
 #: ``create_task`` priorities (the pegII site's vocabulary).
@@ -2589,12 +2600,20 @@ class PegasusClient:
         the search for a pre-send re-check rather than reading the snapshot.
 
         Args:
-            date_field: Which date column to range over:
+            date_field: Which ``sales`` date column to range over. The desktop
+                KeyDate meaning does not follow the column name:
 
-                * ``"plan_pack"`` / ``"plan_load"`` — the desktop KeyDate
-                  **Latest** for pack / load.
-                * ``"pack_date"`` / ``"load_date"`` — its **Planned**.
+                * ``"pack_date"`` / ``"load_date"`` / ``"del_date"`` — the
+                  **Planned** pack / load / delivery date.
+                * ``"plan_pack"`` / ``"plan_load"`` / ``"plan_del"`` — their
+                  **Latest**.
                 * ``"del_actual"`` — the actual delivery date.
+                * ``"sit_date"`` — the planned SIT **out** date.
+                * ``"lng_dis_del_plan"`` — the long-distance **Planned** date
+                  (the desktop's "ETA Date"; returned as ``longDistancePlanned``).
+
+                ``del_date``, ``plan_del``, ``sit_date`` and
+                ``lng_dis_del_plan`` need a site with ``pegii.orders.search.v2``.
             date_from: Inclusive start, a ``date`` or ``"YYYY-MM-DD"``.
             date_to: Inclusive end, at most 366 days after ``date_from``.
             status: One shipment-status letter (default ``"A"``, active), or
@@ -2608,6 +2627,7 @@ class PegasusClient:
 
                 {orderNumber, shipmentStatus,
                  pack, load, delivery,          # {planned, earliest, latest, actual}
+                 longDistancePlanned,           # lng_dis_del_plan, the ETA date
                  sitIn, sitOut,                 # {planned, actual}
                  planSit, actSitOut,
                  coordinatorCode, coordinatorName,
@@ -2619,7 +2639,9 @@ class PegasusClient:
                  texting,                       # the desktop's own verdict, below
                  shipperZip, shipperState, consigneeZip, consigneeState}
 
-            Dates are ``"YYYY-MM-DD"`` or ``None``. ``texting`` is
+            Dates are ``"YYYY-MM-DD"`` or ``None``. ``longDistancePlanned`` is
+            absent (not ``None``) from sites older than
+            ``pegii.orders.search.v2`` — read it with ``.get``. ``texting`` is
             ``{status, orderAllows, accountBlocks, parentAccountBlocks}``, where
             ``status`` is ``"Allowed"``, ``"NotApprovedOnOrder"`` or
             ``"BlockedByAccount"`` (an account or parent-account block always
@@ -2632,7 +2654,8 @@ class PegasusClient:
             PegasusApiError: On 400 ``VALIDATION_ERROR`` (bad date, range over
                 366 days, bad status); 403 (manifest lacks ``ReadOrder``); 503
                 ``PEGII_CAPABILITY_MISSING`` when the site's pegII API predates
-                ``pegii.orders.search.v1``; 502 when the site is unreachable; or
+                ``pegii.orders.search.v1`` (or ``v2``, for the four newer
+                ``date_field`` values); 502 when the site is unreachable; or
                 any other non-2xx.
         """
         if date_field not in ORDER_SEARCH_DATE_FIELDS:

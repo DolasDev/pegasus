@@ -321,6 +321,42 @@ describe('createPegiiOrderGateway.searchOrders', () => {
     expect(page).toEqual({ items: [item], nextCursor: 490317 })
   })
 
+  it.each(['del_date', 'plan_del', 'sit_date', 'lng_dis_del_plan'] as const)(
+    'requires pegii.orders.search.v2 too for the v2 dateField %s',
+    async (dateField) => {
+      const get = vi.fn().mockResolvedValue({ items: [], nextCursor: null })
+      const { gateway, requireCapabilities } = gatewayWith(get)
+
+      await gateway.searchOrders({ dateField, from: '2026-10-20', to: '2026-10-20' })
+
+      expect(requireCapabilities).toHaveBeenCalledWith(
+        'https://pegii.test:8443',
+        ['pegii.orders.search.v1', 'pegii.orders.search.v2'],
+        {},
+      )
+      expect(get).toHaveBeenCalledWith(
+        '/api/v1/pegii/orders/search',
+        expect.objectContaining({ dateField }),
+      )
+    },
+  )
+
+  it.each(['plan_pack', 'plan_load', 'del_actual', 'pack_date', 'load_date'] as const)(
+    'needs only pegii.orders.search.v1 for the v1 dateField %s (older sites keep working)',
+    async (dateField) => {
+      const get = vi.fn().mockResolvedValue({ items: [], nextCursor: null })
+      const { gateway, requireCapabilities } = gatewayWith(get)
+
+      await gateway.searchOrders({ dateField, from: '2026-10-20', to: '2026-10-20' })
+
+      expect(requireCapabilities).toHaveBeenCalledWith(
+        'https://pegii.test:8443',
+        ['pegii.orders.search.v1'],
+        {},
+      )
+    },
+  )
+
   it('leaves omitted criteria undefined so the site applies its defaults', async () => {
     const get = vi.fn().mockResolvedValue({ items: [], nextCursor: null })
     const { gateway } = gatewayWith(get)

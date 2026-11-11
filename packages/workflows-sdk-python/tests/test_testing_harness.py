@@ -88,6 +88,15 @@ def test_whole_value_read_passthrough() -> None:
     assert client.captured == []
 
 
+@pytest.mark.parametrize("date_field", ["del_date", "plan_del", "sit_date", "lng_dis_del_plan"])
+def test_whole_value_read_passthrough_accepts_the_newer_search_date_fields(date_field: str) -> None:
+    # sdk-feedback/0050: a fixture serves a search on the 0.63.0 fields without error.
+    rows = [{"orderNumber": 1, "delivery": {"planned": "2026-11-10"}}]
+    client = fake_client(reads={"search_orders": rows})
+    assert client.search_orders(date_field, "2026-11-10", "2026-11-10") == rows
+    assert client.captured == []
+
+
 def test_missing_fixture_raises() -> None:
     client = fake_client()
     with pytest.raises(CaptureError, match="no fixture for read 'get_order'"):

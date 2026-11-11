@@ -28,6 +28,11 @@ export const PegiiCapabilities = {
   SalesmenList: 'pegii.salesmen.list.v1',
   /** `GET /api/v1/pegii/orders/search` — live order search over `sales` (NW pulse Phase 5). */
   OrdersSearch: 'pegii.orders.search.v1',
+  /**
+   * v1 plus `dateField` del_date | plan_del | sit_date | lng_dis_del_plan and the
+   * `longDistancePlanned` result field. Required only for the new date fields.
+   */
+  OrdersSearchV2: 'pegii.orders.search.v2',
   /** `PATCH /api/v1/pegii/orders/{n}` — allowlisted order write-back (sdk-feedback 0044). */
   OrdersWrite: 'pegii.orders.write.v1',
   /**

@@ -286,6 +286,21 @@ describe('GET /pegii/orders/search', () => {
     expect(findOrderById).not.toHaveBeenCalled()
   })
 
+  it.each(['del_date', 'plan_del', 'sit_date', 'lng_dis_del_plan'])(
+    'accepts the delivery/SIT dateField %s',
+    async (dateField) => {
+      searchOrders.mockResolvedValue({ items: [], nextCursor: null })
+      const app = buildApp(['workflow_runtime'])
+      const res = await app.request(url(`dateField=${dateField}&from=2026-10-01&to=2026-10-07`))
+      expect(res.status).toBe(200)
+      expect(searchOrders).toHaveBeenCalledWith({
+        dateField,
+        from: '2026-10-01',
+        to: '2026-10-07',
+      })
+    },
+  )
+
   it('omits criteria the caller left out, so the site applies its defaults', async () => {
     searchOrders.mockResolvedValue({ items: [], nextCursor: null })
     const app = buildApp(['workflow_runtime'])

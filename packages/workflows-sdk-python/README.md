@@ -1260,11 +1260,20 @@ paths, such as a delivery actual entered by a trigger or a longhaul trip save,
 never reach it. Decide eligibility from `search_orders`, and re-run the search
 for a pre-send re-check, rather than reading the snapshot.
 
-| `date_field`              | Column                                         |
-| ------------------------- | ---------------------------------------------- |
-| `plan_pack` / `plan_load` | The desktop KeyDate **Latest** for pack / load |
-| `pack_date` / `load_date` | Its **Planned**                                |
-| `del_actual`              | The actual delivery date                       |
+Each `date_field` is a `sales` column. Its desktop KeyDate meaning does not
+follow the column name:
+
+| `date_field`                           | Meaning                                                     |
+| -------------------------------------- | ----------------------------------------------------------- |
+| `pack_date` / `load_date` / `del_date` | **Planned** pack / load / delivery date                     |
+| `plan_pack` / `plan_load` / `plan_del` | Their **Latest**                                            |
+| `del_actual`                           | The actual delivery date                                    |
+| `sit_date`                             | The planned SIT **out** date                                |
+| `lng_dis_del_plan`                     | The long-distance **Planned** date (the desktop's ETA date) |
+
+`del_date`, `plan_del`, `sit_date` and `lng_dis_del_plan` are 0.63.0+ and need a
+site with `pegii.orders.search.v2`; an older site answers 503
+`PEGII_CAPABILITY_MISSING` for them.
 
 - `date_from` / `date_to` take a `date` or `"YYYY-MM-DD"`, inclusive, at most 366 days apart.
 - `status` is one shipment-status letter (default `"A"`) or `"*"` for every status.
@@ -1275,6 +1284,7 @@ Each item:
 ```text
 {orderNumber, shipmentStatus,
  pack, load, delivery,       # {planned, earliest, latest, actual}
+ longDistancePlanned,        # lng_dis_del_plan, the ETA date (pegii.orders.search.v2 sites)
  sitIn, sitOut,              # {planned, actual}
  planSit, actSitOut,
  coordinatorCode, coordinatorName,
@@ -1286,7 +1296,9 @@ Each item:
  shipperZip, shipperState, consigneeZip, consigneeState}
 ```
 
-Dates are `"YYYY-MM-DD"` or `None`. `texting.status` is MoveManager's own
+Dates are `"YYYY-MM-DD"` or `None`. `longDistancePlanned` is missing entirely
+from sites older than `pegii.orders.search.v2`, so read it with `.get`.
+`texting.status` is MoveManager's own
 shipper-texting verdict: `Allowed`, `NotApprovedOnOrder`, or `BlockedByAccount`
 (an account or parent-account block always wins). It is separate from the
 platform's SMS opt-out list, so check `get_sms_opt_out` as well.

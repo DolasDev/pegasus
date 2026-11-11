@@ -3,6 +3,18 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.63.0
+
+### Added — `search_orders` on the delivery and SIT dates; the long-distance ETA date (sdk-feedback/0050)
+
+- `search_orders` takes four more `date_field` values: `del_date` (planned
+  delivery), `plan_del` (latest delivery), `sit_date` (planned SIT out) and
+  `lng_dis_del_plan` (the long-distance planned date, the desktop's "ETA Date").
+  They need a site with `pegii.orders.search.v2`; an older site answers 503
+  `PEGII_CAPABILITY_MISSING` for them. The existing five are unchanged.
+- Each item now carries `longDistancePlanned` (`sales.lng_dis_del_plan`), next to
+  `delivery`. Missing from items served by older sites, so read it with `.get`.
+
 ## 0.62.1
 
 ### Docs — keyed Workflow instances: no retry, and stranded starts free their key
