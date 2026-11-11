@@ -3,6 +3,17 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.62.1
+
+### Docs — keyed Workflow instances: no retry, and stranded starts free their key
+
+- `retry_execution` documents the new 409 `EXECUTION_NOT_RETRYABLE` for the
+  instance of an event-routed key (a retry would start a copy no event for the
+  key reaches).
+- README "Routing events to an instance": an instance whose start never happened
+  (a platform crash) is closed FAILED "Not started" within about 10 minutes,
+  freeing its key — the next START event creates it. No API change for callers.
+
 ## 0.62.0
 
 ### Changed — `financial_settlement` correlates to `"order"`, not `"shipment"`

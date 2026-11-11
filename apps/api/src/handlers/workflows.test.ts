@@ -1958,6 +1958,18 @@ describe('workflows handler', () => {
       expect(res.status).toBe(403)
     })
 
+    it('refuses to retry a keyed (wfl/) instance — a retry would start an unkeyed copy', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue({
+        ...failedExec,
+        temporalWorkflowId: 'wfl/test-tenant-id/order_lifecycle/A1',
+      })
+      const res = await buildApp().request('/wf-1/executions/exec-1/retry', post({}))
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('EXECUTION_NOT_RETRYABLE')
+      expect(mockTemporalStart).not.toHaveBeenCalled()
+    })
+
     it('starts a new execution with the original input and returns 201', async () => {
       mockTenantFindUnique.mockResolvedValue({
         isPlatformTenant: false,

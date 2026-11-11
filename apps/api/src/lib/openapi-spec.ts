@@ -3036,7 +3036,7 @@ export function getOpenApiSpec() {
             '201': { description: 'New execution started ({data: execution})' },
             '409': {
               description:
-                'Execution not in a retryable state, TENANT_MIGRATING (runs paused while the tenant’s automations move namespace), or TENANT_NAMESPACE_PROVISIONING (the tenant’s own namespace is still being created); honour Retry-After',
+                'EXECUTION_NOT_RETRYABLE (not FAILED / TIMED_OUT / CANCELLED, or the instance of an event-routed key — temporalWorkflowId wfl/…, whose retry would start a copy no event reaches), TENANT_MIGRATING (runs paused while the tenant’s automations move namespace), or TENANT_NAMESPACE_PROVISIONING (the tenant’s own namespace is still being created); honour Retry-After',
             },
             '503': {
               description:

@@ -898,8 +898,11 @@ class PegasusClient:
 
         Starts a fresh execution through the same path as ``run_workflow`` (identical
         limit/quota/Temporal handling); the original row is left untouched. Only a
-        FAILED / TIMED_OUT / CANCELLED execution can be retried. Requires
-        ``RetryWorkflowExecution`` (the ``workflow_developer`` role).
+        FAILED / TIMED_OUT / CANCELLED execution can be retried — and not the
+        instance of an event-routed key (``mode`` START / DELIVER trigger): a
+        retry would start a copy no event for the key reaches (409
+        ``EXECUTION_NOT_RETRYABLE``). Requires ``RetryWorkflowExecution`` (the
+        ``workflow_developer`` role).
 
         Args:
             workflow_id: The workflow the execution belongs to.

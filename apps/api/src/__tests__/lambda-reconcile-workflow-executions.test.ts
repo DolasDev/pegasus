@@ -108,6 +108,7 @@ function fakeClient(opts: {
 // The handler queries two lanes (Phase 3c); route the mock by the lane's kind.
 let automationLane: unknown[] = []
 let workflowLane: unknown[] = []
+let queuedLane: unknown[] = []
 function setAutomationLane(rows: unknown[]): void {
   automationLane = rows
 }
@@ -118,14 +119,19 @@ function setWorkflowLane(rows: unknown[]): void {
 beforeEach(() => {
   automationLane = []
   workflowLane = []
+  queuedLane = []
   vi.useFakeTimers()
   vi.setSystemTime(now)
   mockSend.mockReset().mockResolvedValue({})
   putMetricDataInputs.length = 0
   mockFindMany
     .mockReset()
-    .mockImplementation(async (args: { where: { workflow: { kind: string } } }) =>
-      args.where.workflow.kind === 'WORKFLOW' ? workflowLane : automationLane,
+    .mockImplementation(async (args: { where: { status: string; workflow: { kind: string } } }) =>
+      args.where.status === 'QUEUED'
+        ? queuedLane
+        : args.where.workflow.kind === 'WORKFLOW'
+          ? workflowLane
+          : automationLane,
     )
   mockUpdateMany.mockReset().mockResolvedValue({ count: 1 })
   _setTemporalClientForTesting(null)
@@ -140,7 +146,7 @@ describe('lambda-reconcile-workflow-executions', () => {
     await handler()
 
     // Two lanes (Phase 3c); this is the AUTOMATION one.
-    expect(mockFindMany).toHaveBeenCalledTimes(2)
+    expect(mockFindMany).toHaveBeenCalledTimes(3)
     const arg = mockFindMany.mock.calls[0]![0] as {
       where: { status: string; startedAt: { lt: Date }; workflow: { kind: string } }
       take: number
@@ -450,5 +456,200 @@ describe('WORKFLOW lane (Phase 3c)', () => {
       where: { id: 'wfl-1', status: 'RUNNING' },
       data: { reconciledAt: now },
     })
+  })
+})
+
+// ── QUEUED lane: stranded durable starts ─────────────────────────────────
+
+describe('QUEUED lane (stranded durable starts)', () => {
+  const KEYED_ID = 'wfl/tenant-1/order_lifecycle/A1'
+  const startTime = new Date(now.getTime() - 20 * 60 * 1000)
+
+  function strandedRow(overrides: Record<string, unknown> = {}) {
+    return runningRow({
+      id: 'exec-q',
+      status: 'QUEUED',
+      temporalWorkflowId: KEYED_ID,
+      temporalRunId: null,
+      temporalNamespace: null,
+      startedAt: null,
+      queuedAt: new Date(now.getTime() - 20 * 60 * 1000),
+      workflow: { name: 'order_lifecycle' },
+      ...overrides,
+    })
+  }
+
+  /** describe() → the given instance, or WorkflowNotFoundError when null. */
+  function clientWith(
+    instance: {
+      statusName: string
+      memo?: Record<string, unknown>
+      firstRunId?: string
+      resultValue?: unknown
+    } | null,
+  ) {
+    const notFound = Object.assign(new Error('workflow not found'), {
+      name: 'WorkflowNotFoundError',
+    })
+    const handle = {
+      describe: vi.fn(async () => {
+        if (!instance) throw notFound
+        return {
+          status: { name: instance.statusName },
+          memo: instance.memo,
+          runId: 'run-current',
+          startTime,
+          raw: { workflowExecutionInfo: { firstRunId: instance.firstRunId ?? 'run-first' } },
+        }
+      }),
+      result: vi.fn(async () => instance?.resultValue),
+    }
+    const getHandle = vi.fn(() => handle)
+    _setTemporalClientForTesting({ workflow: { getHandle } } as unknown as Client)
+    return { getHandle }
+  }
+
+  function writesTo(id: string) {
+    return mockUpdateMany.mock.calls
+      .map((c) => c[0] as { where: { id: string; status: string }; data: Record<string, unknown> })
+      .filter((c) => c.where.id === id)
+  }
+
+  function neverStartedMetrics() {
+    return putMetricDataInputs.filter((i) =>
+      (i as { MetricData: Array<{ MetricName: string }> }).MetricData.some(
+        (m) => m.MetricName === 'WorkflowExecutionNeverStarted',
+      ),
+    )
+  }
+
+  it('queries QUEUED durable rows older than 10 minutes, oldest first, with the workflow name', async () => {
+    await handler()
+
+    const queuedQuery = mockFindMany.mock.calls
+      .map((c) => c[0] as { where: { status: string } })
+      .find((a) => a.where.status === 'QUEUED')
+    expect(queuedQuery).toEqual({
+      where: {
+        status: 'QUEUED',
+        queuedAt: { lt: new Date(now.getTime() - 10 * 60 * 1000) },
+        workflow: { kind: 'WORKFLOW' },
+      },
+      include: { workflow: { select: { name: true } } },
+      take: 100,
+      orderBy: { queuedAt: 'asc' },
+    })
+  })
+
+  it('no Temporal instance: FAILED as never started (frees the key), only while still QUEUED', async () => {
+    queuedLane = [strandedRow()]
+    clientWith(null)
+
+    const out = await handler()
+
+    expect(out.reconciled).toBe(1)
+    const [write] = writesTo('exec-q')
+    expect(write?.where).toEqual({ id: 'exec-q', status: 'QUEUED' })
+    expect(write?.data).toMatchObject({ status: 'FAILED' })
+    expect(String(write?.data['errorMessage'])).toMatch(/^Not started: .*no Temporal instance/)
+    expect(neverStartedMetrics()).toHaveLength(1)
+  })
+
+  it('an instance owned by this row and still running: adopted as RUNNING with the first run id', async () => {
+    queuedLane = [strandedRow()]
+    clientWith({ statusName: 'RUNNING', memo: { dryRun: false, executionId: 'exec-q' } })
+
+    await handler()
+
+    const [write] = writesTo('exec-q')
+    expect(write).toEqual({
+      where: { id: 'exec-q', status: 'QUEUED' },
+      data: {
+        status: 'RUNNING',
+        temporalWorkflowId: KEYED_ID,
+        temporalRunId: 'run-first',
+        startedAt: startTime,
+      },
+    })
+    expect(neverStartedMetrics()).toHaveLength(0)
+  })
+
+  it('an instance owned by ANOTHER row: this orphan is FAILED, never adopted', async () => {
+    queuedLane = [strandedRow()]
+    clientWith({ statusName: 'RUNNING', memo: { dryRun: false, executionId: 'exec-other' } })
+
+    await handler()
+
+    const [write] = writesTo('exec-q')
+    expect(write?.data).toMatchObject({ status: 'FAILED' })
+    expect(String(write?.data['errorMessage'])).toMatch(/belongs to execution exec-other/)
+  })
+
+  it('an owned instance that already finished: closed with its terminal status and result', async () => {
+    queuedLane = [strandedRow()]
+    clientWith({
+      statusName: 'COMPLETED',
+      memo: { executionId: 'exec-q' },
+      resultValue: { outcome: 'done' },
+    })
+
+    await handler()
+
+    const [write] = writesTo('exec-q')
+    expect(write?.where).toEqual({ id: 'exec-q', status: 'QUEUED' })
+    expect(write?.data).toMatchObject({
+      status: 'COMPLETED',
+      result: { outcome: 'done' },
+      temporalRunId: 'run-first',
+      startedAt: startTime,
+    })
+  })
+
+  it('a row with no Temporal id: looks up the derived manual-run id; no memo = its own start', async () => {
+    queuedLane = [strandedRow({ temporalWorkflowId: null })]
+    const { getHandle } = clientWith({ statusName: 'RUNNING' })
+
+    await handler()
+
+    expect(getHandle).toHaveBeenCalledWith('wf/tenant-1/order_lifecycle/exec-q')
+    const [write] = writesTo('exec-q')
+    expect(write?.data).toMatchObject({
+      status: 'RUNNING',
+      temporalWorkflowId: 'wf/tenant-1/order_lifecycle/exec-q',
+    })
+  })
+
+  it('falls back to the current run id when Temporal reports no first run id', async () => {
+    queuedLane = [strandedRow()]
+    clientWith({ statusName: 'RUNNING', memo: { executionId: 'exec-q' }, firstRunId: '' })
+
+    await handler()
+
+    expect(writesTo('exec-q')[0]?.data).toMatchObject({ temporalRunId: 'run-current' })
+  })
+
+  it('a Temporal error leaves the row for the next tick', async () => {
+    queuedLane = [strandedRow()]
+    _setTemporalClientForTesting({
+      workflow: {
+        getHandle: () => ({ describe: vi.fn().mockRejectedValue(new Error('grpc unavailable')) }),
+      },
+    } as unknown as Client)
+
+    const out = await handler()
+
+    expect(out.reconciled).toBe(0)
+    expect(writesTo('exec-q')).toHaveLength(0)
+  })
+
+  it('a row that left QUEUED meanwhile is not overwritten (and not counted)', async () => {
+    queuedLane = [strandedRow()]
+    clientWith(null)
+    mockUpdateMany.mockResolvedValue({ count: 0 })
+
+    const out = await handler()
+
+    expect(out.reconciled).toBe(0)
+    expect(neverStartedMetrics()).toHaveLength(0)
   })
 })

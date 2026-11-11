@@ -1649,7 +1649,11 @@ def order_event(self, event: dict | None = None) -> None:
 - **`DELIVER`** only signals an instance that is already open; with none, the
   event is not delivered.
 - **One instance per key, for life:** once a key's instance has finished, later
-  events for that key are not delivered (it is not restarted).
+  events for that key are not delivered (it is not restarted), and the
+  instance's execution can't be retried (409 — a retry would start a copy no
+  event reaches). An instance whose start never happened (a platform crash) is
+  closed as FAILED "Not started" within about 10 minutes, which frees the key:
+  the next START event creates it.
 - **Delivery is at-least-once** — dedupe on `domainEventId` as above.
 - **Undelivered events** (no open instance for `DELIVER`, a missing or invalid
   key, a signal the running version doesn't declare) are counted and logged,
