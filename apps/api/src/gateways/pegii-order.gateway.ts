@@ -21,6 +21,7 @@ import { requirePegiiCapabilities, PegiiCapabilities } from '../lib/pegii-capabi
 import { mapPegiiOrderToRecord } from './pegii/pegii-order.mapper'
 import type { PegiiOrderDto } from './pegii/pegii-order.dto'
 import type { PegiiOrderSearchPageDto } from './pegii/pegii-order-search.dto'
+import { isV2OrderSearchDateField } from './pegii/pegii-order-search.dto'
 
 /** The serialized-entity name for orders on the pegII API. */
 const SERIALIZED_ORDER_ENTITY = 'orders'
@@ -81,7 +82,12 @@ export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGa
     },
 
     async searchOrders(criteria) {
-      await requireCaps(opts.baseUrl, [PegiiCapabilities.OrdersSearch], {
+      // The v2 date fields 400 on an older site; ask for v2 only when they're used,
+      // so v1 callers keep working on sites that haven't updated yet.
+      const caps = isV2OrderSearchDateField(criteria.dateField)
+        ? [PegiiCapabilities.OrdersSearch, PegiiCapabilities.OrdersSearchV2]
+        : [PegiiCapabilities.OrdersSearch]
+      await requireCaps(opts.baseUrl, caps, {
         ...(opts.caller ? { correlationId: opts.caller.correlationId } : {}),
       })
       const page = await client.get<PegiiOrderSearchPageDto>('/api/v1/pegii/orders/search', {

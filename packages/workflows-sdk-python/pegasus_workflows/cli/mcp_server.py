@@ -283,10 +283,15 @@ the site's ``sales`` table LIVE, and follows every page for you. ``get_order``
 reads a stored SNAPSHOT that DB triggers and direct ``sales`` updates never
 touch (a delivery actual entered by a trigger, a longhaul trip save), so decide
 eligibility, and re-check it before a side effect, from the search, not the
-snapshot. ``date_field`` is ``plan_pack`` / ``plan_load`` (the desktop KeyDate
-"Latest"), ``pack_date`` / ``load_date`` (its "Planned") or ``del_actual``. The
-range is inclusive and at most 366 days. Each item carries ``pack`` / ``load`` /
-``delivery`` as ``{planned, earliest, latest, actual}``, coordinator, account,
+snapshot. ``date_field`` is a ``sales`` column whose KeyDate meaning does not
+follow its name: ``pack_date`` / ``load_date`` / ``del_date`` are the "Planned"
+pack / load / delivery date, ``plan_pack`` / ``plan_load`` / ``plan_del`` their
+"Latest", ``del_actual`` the actual delivery, ``sit_date`` the planned SIT-out,
+and ``lng_dis_del_plan`` the long-distance "Planned" (ETA) date. The last four
+are SDK 0.63.0+ and need a site with ``pegii.orders.search.v2``. The range is
+inclusive and at most 366 days. Each item carries ``pack`` / ``load`` /
+``delivery`` as ``{planned, earliest, latest, actual}``, ``longDistancePlanned``
+(absent on older sites — use ``.get``), coordinator, account,
 relo company, ``moveType``, shipper first name + cell, zip/state, and
 ``texting.status`` (``Allowed`` / ``NotApprovedOnOrder`` / ``BlockedByAccount``,
 MoveManager's own consent rule; also check ``get_sms_opt_out``). ``list_orders``

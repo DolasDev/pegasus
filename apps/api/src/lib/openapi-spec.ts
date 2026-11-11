@@ -6,6 +6,8 @@
 // the core /api/v1/customers resource and expand with each new handler.
 // ---------------------------------------------------------------------------
 
+import { ORDER_SEARCH_DATE_FIELDS } from '../gateways/pegii/pegii-order-search.dto'
+
 /** Compact builder for a simple `vnd_`-authenticated GET path (path + query
  *  params, one 200). Keeps the many operational read routes DRY; richer routes
  *  stay hand-authored below. */
@@ -151,12 +153,14 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
         "Orders whose dateField falls in [from, to], read live from the site's sales table — not the serialized " +
         'snapshot GET /orders/{orderId} returns, which DB triggers and direct sales updates leave stale (e.g. a delivery ' +
         'actual entered by a trigger). Each item carries the eligibility fields a scheduled workflow needs: ' +
-        'pack/load/delivery as {planned, earliest, latest, actual}, sitIn/sitOut {planned, actual}, planSit, actSitOut, ' +
+        'pack/load/delivery as {planned, earliest, latest, actual}, longDistancePlanned (sales.lng_dis_del_plan, the ' +
+        "desktop's ETA date; absent from sites older than pegii.orders.search.v2), sitIn/sitOut {planned, actual}, planSit, actSitOut, " +
         'coordinatorCode/Name, nationalAccountCode/Name, reloCompanyCode/Name, moveType (import_export) and moveTypeLegacy, ' +
         "shipperFirstName, shipperCellPhone, shipper/consignee zip + state, and texting: the desktop's own shipper-texting " +
         'verdict {status: Allowed | NotApprovedOnOrder | BlockedByAccount, orderAllows, accountBlocks, parentAccountBlocks}. ' +
         'Dates are YYYY-MM-DD. Keyset-paged on order number: pass meta.nextCursor back as cursor; null means the last page. ' +
-        "503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.orders.search.v1.",
+        "503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.orders.search.v1 — or v2, when dateField " +
+        'is del_date, plan_del, sit_date or lng_dis_del_plan.',
       tags: ['pegII'],
       security: [{ ApiKeyAuth: [] }],
       parameters: [
@@ -166,11 +170,13 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
           required: true,
           schema: {
             type: 'string',
-            enum: ['plan_pack', 'plan_load', 'del_actual', 'pack_date', 'load_date'],
+            enum: [...ORDER_SEARCH_DATE_FIELDS],
           },
           description:
-            "plan_pack / plan_load are the desktop KeyDate 'Latest' for pack/load; pack_date / load_date its 'Planned'; " +
-            'del_actual the actual delivery date.',
+            'Each is a sales column; its desktop KeyDate meaning does not follow the name. pack_date / load_date / del_date: ' +
+            "pack/load/delivery 'Planned'. plan_pack / plan_load / plan_del: their 'Latest'. del_actual: delivery 'Actual'. " +
+            "sit_date: SIT-out 'Planned'. lng_dis_del_plan: long-distance 'Planned' (the desktop's ETA date). " +
+            'del_date, plan_del, sit_date and lng_dis_del_plan need a site with pegii.orders.search.v2.',
         },
         {
           name: 'from',

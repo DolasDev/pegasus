@@ -1410,6 +1410,21 @@ def test_search_orders_defaults_to_active_status_and_passes_string_dates() -> No
     assert captured["from"] == "2026-10-01"
 
 
+@pytest.mark.parametrize("date_field", ["del_date", "plan_del", "sit_date", "lng_dis_del_plan"])
+def test_search_orders_accepts_the_delivery_and_sit_date_fields(date_field: str) -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(dict(request.url.params))
+        item = {**_search_item(7), "longDistancePlanned": "2026-10-28"}
+        return httpx.Response(200, json={"data": [item], "meta": {"count": 1, "nextCursor": None}})
+
+    client = _client_with(handler)
+    orders = client.search_orders(date_field, "2026-10-01", "2026-10-07")
+    assert captured["dateField"] == date_field
+    assert orders[0]["longDistancePlanned"] == "2026-10-28"
+
+
 def test_search_orders_rejects_unknown_date_field_before_any_request() -> None:
     def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
         raise AssertionError("no request expected")
