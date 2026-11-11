@@ -46,6 +46,7 @@ export type ResourceType =
   | 'Feedback'
   | 'Report'
   | 'Usage'
+  | 'Assistant'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -548,6 +549,29 @@ export const Actions = {
     id: 'ReadUsage',
     resourceType: 'Usage',
     permission: 'usage:read',
+  },
+
+  // ── AI assistant (plans/*/ai-chat-assistant.md) ─────────────────
+  // UseAssistant gates the chat endpoint and the Assistant Lab. It is a coarse
+  // feature gate only: every tool the model may call is filtered by, and then
+  // re-authorized against, the caller's OWN action for that data, so the
+  // assistant can never read more than the user already can.
+  //
+  // Granted to operations_admin through a dedicated feature policy
+  // (policies/60-assistant.cedar), NOT by editing the operations-admin.cedar
+  // placeholder; tenant_admin gets both via its permit-everything policy.
+  // Fails closed for every other persona (lib/authz.test.ts).
+  UseAssistant: {
+    id: 'UseAssistant',
+    resourceType: 'Assistant',
+    permission: 'assistant:use',
+  },
+  // Authoring the assistant's context: save, publish and roll back system
+  // prompt + glossary versions, and run the eval set. Same grant as UseAssistant.
+  ManageAssistantPrompt: {
+    id: 'ManageAssistantPrompt',
+    resourceType: 'Assistant',
+    permission: 'assistant:manage_prompt',
   },
 } as const satisfies Record<string, ActionDef>
 

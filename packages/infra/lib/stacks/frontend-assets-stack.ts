@@ -132,6 +132,12 @@ export class FrontendAssetsStack extends cdk.Stack {
           `${props.apiStackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
         )
 
+    // The assistant's streaming Function URL (ApiStack pins the export name).
+    // The SPA sends /api/v1/assistant/chat and /evals/run here instead of to
+    // apiUrl, because API Gateway buffers and caps at 29 s. Trailing slash
+    // included; the client strips it.
+    const assistantUrl = cdk.Fn.importValue(`${props.apiStackName}:AssistantUrl`)
+
     // Cognito values via stable named imports — see CognitoStack for the
     // pinned CfnOutput declarations and the rationale.
     const cognitoRegion = props.cognitoRegion ?? 'us-east-1'
@@ -172,6 +178,7 @@ export class FrontendAssetsStack extends cdk.Stack {
           s3deploy.Source.asset(distPath),
           s3deploy.Source.jsonData('config.json', {
             apiUrl,
+            assistantUrl,
             cognito: {
               region: cognitoRegion,
               userPoolId: cognitoUserPoolId,

@@ -194,6 +194,19 @@ const pegiiTokenIssuer = envName === 'dev' ? undefined : PEGII_TOKEN_ISSUER[envN
 // independently requires the action it reports on).
 const reportingEnabled = envName === 'staging' || envName === 'prod'
 
+// ── AI assistant master switch ───────────────────────────────────────────────
+// plans/*/ai-chat-assistant.md. The assistant Lambda + its Function
+// URL deploy in every env regardless (dark); this only sets ASSISTANT_ENABLED.
+// OFF everywhere until BOTH of these are done for the env's AWS account:
+//   1. The one-time Bedrock Anthropic use-case form
+//      (`aws bedrock put-use-case-for-model-access`) — without it every model
+//      call fails with ResourceNotFoundException.
+//   2. One verified InvokeModel against us.anthropic.claude-opus-5 from the
+//      account (rules out a missing form vs an IAM problem).
+// Flip staging first. Access is still Cedar-gated: UseAssistant is held only by
+// operations_admin (policies/60-assistant.cedar) and tenant_admin.
+const assistantEnabled = false
+
 // ── CORS allowlist (staging/prod) ────────────────────────────────────────────
 // Browser origins allowed to call the API cross-origin. Tenant + admin SPA
 // hostnames per env (the same dolas-managed domains the frontend stacks attach
@@ -464,6 +477,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   ...(pegiiTokenIssuer ? { pegiiTokenIssuer } : {}),
   reportingEnabled,
   corsAllowedOrigins,
+  assistantEnabled,
 })
 apiStack.addDependency(cognitoStack)
 

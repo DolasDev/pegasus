@@ -81,8 +81,15 @@ if (!explicitSkip && !fs.existsSync(path.join(REPO_ROOT, 'packages/domain/dist/i
   )
 }
 
+// Two functions ship this bundle configuration: ApiFunction (lambda.ts) and its
+// streaming twin AssistantFunction (lambda-assistant.ts). Both read the Cedar
+// files and the wasm at runtime, so the contract is asserted on each. The
+// assistant asset is told apart by its path-guard literal, which only
+// lambda-assistant.ts contains.
+const ASSISTANT_MARKER = '/api/v1/assistant'
+
 describe.skipIf(explicitSkip)(`ApiStack — bundled asset contract`, () => {
-  let assetDir: string
+  const assets: Record<'api' | 'assistant', string> = { api: '', assistant: '' }
 
   beforeAll(() => {
     // Synth into an isolated tmpdir so this test doesn't trample the
@@ -94,10 +101,10 @@ describe.skipIf(explicitSkip)(`ApiStack — bundled asset contract`, () => {
     })
     app.synth()
 
-    // Find the api function asset: it's the only asset directory with
-    // `index.js` AND a `node_modules/@cedar-policy/cedar-wasm` subtree.
-    // (Other asset directories belong to other constructs — e.g. CDK
-    // bootstrap assets — and don't have those markers.)
+    // The function assets are the directories with `index.js` AND a
+    // `node_modules/@cedar-policy/cedar-wasm` subtree. (Other asset
+    // directories belong to other constructs — e.g. CDK bootstrap assets —
+    // and don't have those markers.)
     const candidates = fs
       .readdirSync(outdir)
       .filter((name) => name.startsWith('asset.'))
@@ -111,70 +118,93 @@ describe.skipIf(explicitSkip)(`ApiStack — bundled asset contract`, () => {
         )
       })
 
-    if (candidates.length !== 1) {
+    if (candidates.length !== 2) {
       throw new Error(
-        `Expected exactly one api-function asset directory in ${outdir}, found ${candidates.length}: ${candidates.join(', ')}. ` +
+        `Expected exactly two cedar-wasm function assets (api + assistant) in ${outdir}, found ${candidates.length}: ${candidates.join(', ')}. ` +
           `If a new bundled Lambda was added that also depends on cedar-wasm, this test's heuristic needs updating.`,
       )
     }
-    assetDir = candidates[0]!
-  }, 300_000) // A real esbuild bundle of the whole API. ~8s locally on 12 cores,
-  // but this runs inside `turbo test`'s 15-task fan-out on a 2-core CI runner,
-  // and aws-cdk-lib 2.267 synthesizes ~2.5x slower than 2.261 — the old 60s
-  // budget timed out there. The assertions below are about bundle *contents*,
-  // never speed, so the budget is deliberately far above the observed cost.
+    for (const dir of candidates) {
+      const isAssistant = fs
+        .readFileSync(path.join(dir, 'index.js'), 'utf8')
+        .includes(ASSISTANT_MARKER)
+      assets[isAssistant ? 'assistant' : 'api'] = dir
+    }
+    if (!assets.api || !assets.assistant) {
+      throw new Error(`Could not tell the api and assistant assets apart: ${candidates.join(', ')}`)
+    }
+  }, 300_000) // A real esbuild bundle of the whole API (twice). ~8s locally on
+  // 12 cores, but this runs inside `turbo test`'s 15-task fan-out on a 2-core
+  // CI runner, and aws-cdk-lib 2.267 synthesizes ~2.5x slower than 2.261 — the
+  // old 60s budget timed out there. The assertions below are about bundle
+  // *contents*, never speed, so the budget is deliberately far above the
+  // observed cost.
 
-  it('includes the bundled index.js and source map', () => {
-    expect(fs.existsSync(path.join(assetDir, 'index.js'))).toBe(true)
-    expect(fs.existsSync(path.join(assetDir, 'index.js.map'))).toBe(true)
-  })
+  describe.each(['api', 'assistant'] as const)('%s function asset', (which) => {
+    it('includes the bundled index.js and source map', () => {
+      const assetDir = assets[which]
+      expect(fs.existsSync(path.join(assetDir, 'index.js'))).toBe(true)
+      expect(fs.existsSync(path.join(assetDir, 'index.js.map'))).toBe(true)
+    })
 
-  it('includes the cedar-wasm package as a real node_modules dependency (not bundled)', () => {
-    // Regression for 19c0798 — cedar-wasm reads its .wasm asset via
-    // readFileSync(__dirname + 'cedar_wasm_bg.wasm') at module init, which
-    // requires the .wasm to live next to the package's JS file inside the
-    // asset's node_modules tree.
-    expect(
-      fs.existsSync(
-        path.join(assetDir, 'node_modules/@cedar-policy/cedar-wasm/nodejs/cedar_wasm_bg.wasm'),
-      ),
-    ).toBe(true)
-  })
+    it('includes the cedar-wasm package as a real node_modules dependency (not bundled)', () => {
+      // Regression for 19c0798 — cedar-wasm reads its .wasm asset via
+      // readFileSync(__dirname + 'cedar_wasm_bg.wasm') at module init, which
+      // requires the .wasm to live next to the package's JS file inside the
+      // asset's node_modules tree.
+      expect(
+        fs.existsSync(
+          path.join(
+            assets[which],
+            'node_modules/@cedar-policy/cedar-wasm/nodejs/cedar_wasm_bg.wasm',
+          ),
+        ),
+      ).toBe(true)
+    })
 
-  it('includes cedar.schema.json at the asset root', () => {
-    // Regression for 5588b18 — apps/api/src/authz/load.ts loads this via
-    // readFileSync(__dirname + '/cedar.schema.json'), which after bundling
-    // means the asset root.
-    const bundled = path.join(assetDir, 'cedar.schema.json')
-    expect(fs.existsSync(bundled)).toBe(true)
+    it('includes cedar.schema.json at the asset root', () => {
+      // Regression for 5588b18 — apps/api/src/authz/load.ts loads this via
+      // readFileSync(__dirname + '/cedar.schema.json'), which after bundling
+      // means the asset root.
+      const bundled = path.join(assets[which], 'cedar.schema.json')
+      expect(fs.existsSync(bundled)).toBe(true)
 
-    // Sanity-check: bundled content matches source so we don't ship a
-    // stale or empty schema.
-    const source = fs.readFileSync(path.join(AUTHZ_SRC, 'cedar.schema.json'), 'utf8')
-    expect(fs.readFileSync(bundled, 'utf8')).toBe(source)
-  })
+      // Sanity-check: bundled content matches source so we don't ship a
+      // stale or empty schema.
+      const source = fs.readFileSync(path.join(AUTHZ_SRC, 'cedar.schema.json'), 'utf8')
+      expect(fs.readFileSync(bundled, 'utf8')).toBe(source)
+    })
 
-  it('includes every .cedar policy file under policies/, preserving the directory structure', () => {
-    // Walk the source tree, then assert every .cedar file is present at the
-    // matching path inside the asset's policies/. Catches both "policy file
-    // forgotten" and "policy subdirectory like 30-personas/ flattened."
-    const sourcePolicies: string[] = []
-    function walk(dir: string, prefix = ''): void {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const rel = prefix ? `${prefix}/${entry.name}` : entry.name
-        if (entry.isDirectory()) {
-          walk(path.join(dir, entry.name), rel)
-        } else if (entry.isFile() && entry.name.endsWith('.cedar')) {
-          sourcePolicies.push(rel)
+    it('includes every .cedar policy file under policies/, preserving the directory structure', () => {
+      // Walk the source tree, then assert every .cedar file is present at the
+      // matching path inside the asset's policies/. Catches both "policy file
+      // forgotten" and "policy subdirectory like 30-personas/ flattened."
+      const sourcePolicies: string[] = []
+      function walk(dir: string, prefix = ''): void {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+          if (entry.isDirectory()) {
+            walk(path.join(dir, entry.name), rel)
+          } else if (entry.isFile() && entry.name.endsWith('.cedar')) {
+            sourcePolicies.push(rel)
+          }
         }
       }
-    }
-    walk(path.join(AUTHZ_SRC, 'policies'))
-    expect(sourcePolicies.length).toBeGreaterThan(0)
+      walk(path.join(AUTHZ_SRC, 'policies'))
+      expect(sourcePolicies.length).toBeGreaterThan(0)
 
-    const missing = sourcePolicies.filter(
-      (rel) => !fs.existsSync(path.join(assetDir, 'policies', rel)),
-    )
-    expect(missing).toEqual([])
+      const missing = sourcePolicies.filter(
+        (rel) => !fs.existsSync(path.join(assets[which], 'policies', rel)),
+      )
+      expect(missing).toEqual([])
+    })
+  })
+
+  it('bundles the Bedrock SDK into the assistant asset (CJS, no INIT-time ESM import)', () => {
+    // The plan's §4 bundling check: the assistant's inference client must be
+    // bundled like any other dependency, not left as an external require.
+    const bundle = fs.readFileSync(path.join(assets.assistant, 'index.js'), 'utf8')
+    expect(bundle).toContain('invoke-with-response-stream')
+    expect(bundle).not.toMatch(/require\(["']@anthropic-ai\//)
   })
 })

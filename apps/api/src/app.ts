@@ -125,6 +125,7 @@ import { crewLinkPublicHandler } from './handlers/crew-link-public'
 import { integrationsHandler } from './handlers/integrations/list'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
+import { createAssistantRouter } from './assistant/http'
 import { DomainError } from '@pegasus/domain'
 import { db as basePrisma } from './db'
 
@@ -525,6 +526,16 @@ v1.get('/dashboard/pegii', dashboardPegiiHandler)
 // `use('*')` middleware — see GOTCHAS.md, "a sub-app mount claims the whole
 // prefix's middleware".
 v1.route('/reporting', reportingHandler)
+// AI assistant (plans/*/ai-chat-assistant.md). Its tools ARE existing
+// read endpoints, executed in-process against this same `app` with the caller's
+// own token — so auth, Cedar and row scoping are the endpoints' own. The app is
+// handed over lazily (it is still being built here). Off unless ASSISTANT_ENABLED;
+// streamed by the assistant Lambda (lambda-assistant.ts), which serves only this
+// prefix.
+v1.route(
+  '/assistant',
+  createAssistantRouter((req) => app.fetch(req)),
+)
 // PegII-rendered report documents (order profile / "trip sheet"), fetched from
 // the pegII team's on-prem report endpoint over the WireGuard tunnel and
 // relayed as base64 — or as a raw PDF with `?format=pdf`. Session surface: the

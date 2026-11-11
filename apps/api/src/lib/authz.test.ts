@@ -145,12 +145,30 @@ describe('authorize — offline (cedar-wasm)', () => {
 
   it('a pure placeholder persona grants only the shared baseline (invariant f)', async () => {
     // The placeholder Cedar files for the legacy-derived personas
-    // (operations_admin, coordinator, senior_management, …) carry no permit
-    // clause of their own, so assigning such a role grants nothing BEYOND the
-    // universal document read/upload baseline — a stray persona permit would
-    // show up here as an extra id.
-    const ids = new Set(await allowedActionIds(principal(['operations_admin'])))
+    // (coordinator, senior_management, …) carry no permit clause of their
+    // own, so assigning such a role grants nothing BEYOND the universal
+    // document read/upload baseline — a stray persona permit would show up
+    // here as an extra id.
+    const ids = new Set(await allowedActionIds(principal(['coordinator'])))
     expect(ids).toEqual(new Set(SHARED_BASELINE))
+  })
+
+  it('operations_admin gets the shared baseline plus ONLY the assistant actions', async () => {
+    // operations-admin.cedar stays a placeholder. The assistant grant lives in
+    // its own feature policy (60-assistant.cedar) so it is the one, named
+    // exception: Operations itself is still gated by role name, not Cedar.
+    const ids = new Set(await allowedActionIds(principal(['operations_admin'])))
+    expect(ids).toEqual(
+      new Set([Actions.UseAssistant.id, Actions.ManageAssistantPrompt.id, ...SHARED_BASELINE]),
+    )
+  })
+
+  it('the assistant is withheld from every other persona (fails closed)', async () => {
+    for (const role of ['viewer', 'sales', 'accountant', 'driver', 'coordinator', 'reporting']) {
+      expect(await isAllowed(principal([role]), Actions.UseAssistant)).toBe(false)
+      expect(await isAllowed(principal([role]), Actions.ManageAssistantPrompt)).toBe(false)
+    }
+    expect(await isAllowed(principal(['tenant_admin']), Actions.UseAssistant)).toBe(true)
   })
 
   it('billing_manager may delete documents (billing/accounting role)', async () => {

@@ -204,6 +204,13 @@
           "type": "Record",
           "attributes": {}
         }
+      },
+      "Assistant": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
       }
     },
     "actions": {
@@ -476,6 +483,12 @@
       },
       "ManageDashboards": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Report"] }
+      },
+      "UseAssistant": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Assistant"] }
+      },
+      "ManageAssistantPrompt": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Assistant"] }
       }
     }
   }

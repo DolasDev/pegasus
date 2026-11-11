@@ -1,6 +1,21 @@
 # AI Chat Assistant — role-scoped Q&A over the Pegasus API
 
-> ## ⏸ PAUSED 2026-09-28 — parked in `plans/todo/`
+> ## ▶ PHASE 1 BUILT 2026-11-10 — branch `feat/ai-chat-assistant`, deployed DARK
+>
+> Implemented on that branch, then **parked back in `plans/todo/`** when it merged: Phases
+> 2–3 are not started, and the next step (below) is an AWS action, not code. Move it to
+> `plans/in-progress/` when someone picks it up again. Everything below Phase 1 in
+> this file still stands except where the "Phase 1 — as built" section says otherwise.
+> **Read that section first**; it records the decisions taken while building and every
+> place the build departs from the text below.
+>
+> **Off until a person does two AWS things per account** (`assistantEnabled = false` in
+> `packages/infra/bin/app.ts`): submit the Bedrock Anthropic use-case form, then verify
+> one `InvokeModel` against `us.anthropic.claude-opus-5`. The function, Function URL,
+> grant and tables all deploy; every `/api/v1/assistant` route answers 404 until the
+> flag flips.
+
+> ## ⏸ (history) PAUSED 2026-09-28 — parked in `plans/todo/`
 >
 > **Phase 0 shipped** 2026-08-21 (#651, #652). Phases 1–3 are **not started**: no
 > assistant code, no infrastructure, no AWS account provisioning. The only thing on
@@ -407,6 +422,87 @@ Four panes:
    against the last published version. This is what makes prompt iteration a measured loop rather
    than vibes, and it is the single highest-value pane. Do not defer it.
 
+### Phase 1 — as built (2026-11-10, `feat/ai-chat-assistant`)
+
+Decisions taken with the user while building, and every departure from the text above:
+
+- **Tools call the existing endpoints in-process, not the repository layer** (1b said
+  repositories). The headline Operations reads (`shipments-list`, `trips-list`,
+  `trip-detail`, `drivers`) are Hono handlers that query on-prem MSSQL through the executor
+  Lambda; there is no repository to call. Each tool builds a path, the loop runs it with
+  `app.fetch` carrying the caller's own `Authorization` header, and the endpoint
+  authenticates, scopes and queries exactly as it does for the browser. Nothing is
+  re-implemented and new read endpoints are tool-eligible with one registry entry.
+  Consequence: the assistant Lambda needs the API's reach, so it **shares the API Lambda's
+  role and env** (`addApiEnvironment()` in `api-stack.ts`; a test pins zero drift).
+- **§3 decided: public Function URL** (`authType: NONE`, `RESPONSE_STREAM`). The HTTP API
+  already has no gateway authorizer, so in-function JWT auth is the existing posture.
+  `lambda-assistant.ts` serves only `/api/v1/assistant/*` (pinned by a test), so the URL
+  can't reach the rest of the API around the stage throttle; reserved concurrency **50**
+  caps the blast radius.
+- **No token-verify extraction.** The assistant router is mounted on `v1`, so it inherits
+  `tenantMiddleware` untouched; the streaming Lambda serves the same app with
+  `streamHandle`. "Modified: `middleware/tenant.ts`" in Critical files did not happen.
+- **Two gates per tool, and they differ by surface.** Longhaul Operations tools gate on
+  `OPERATIONS_ROLES` (that surface is not Cedar anywhere; see `lib/longhaul-read-scope.ts`).
+  Entity tools gate on their Cedar read action. That gate is **load-bearing**, not just
+  defense in depth: `GET /customers`, `/quotes` and `/invoices` on v1 carry no
+  `requirePermission` at all (a separate pre-existing gap, not fixed here).
+- **operations_admin's grant lives in `policies/60-assistant.cedar`**, not in the
+  `30-personas/operations-admin.cedar` placeholder (which stays comment-only by design). The
+  placeholder-persona invariant test moved to `coordinator`; a new test pins
+  operations_admin to the shared baseline plus exactly the two assistant actions.
+- **Verification 1 corrected:** operations_admin is NOT offered `list_invoices`. Its Cedar
+  persona grants no entity reads, so it gets the four Operations tools only. The registry
+  test asserts that, and uses accountant / tenant_admin for the invoice case.
+- **SDK gotcha (fixed, pinned):** `@anthropic-ai/sdk` 1.8's tool runner defaults to
+  server-held message threads. Later rounds then carry only the new `tool_result` plus
+  `previous_message_id`, with no system prompt, tools or history. Bedrock can't continue
+  such a thread. The loop passes `thread: false`; `loop.test.ts` asserts every round is a
+  complete request.
+- **Eval grading is deterministic** (`mustInclude` / `mustNotInclude`, case-insensitive). A
+  case with neither is `ungraded` and never counts toward the pass rate. The tool OFFER is
+  the case's `askedAs` role, but lookups run as the Lab user. Nothing lets a request claim
+  another role, so endpoint-level row scoping (a driver's own moves) reflects the Lab
+  user. Cost is reported as tokens; there's no price table in code.
+- **Kill switch is real now** (§4): `ApiStackProps.assistantEnabled` → `ASSISTANT_ENABLED`
+  on both Lambdas. `/me/permissions` reports `capabilities.assistant`, and the nav entry
+  needs that capability plus `assistant:use`.
+- **Not built in phase 1:** `CfnApplicationInferenceProfile` (optional per §2), a spend
+  alarm, and an infra-level per-tenant budget (phase 3).
+
+Files: `apps/api/src/assistant/{http,loop,prompt}.ts`, `assistant/tools/*`,
+`assistant/evals/runner.ts`, `lib/inference/{provider,fake}.ts`, `lib/assistant-feature.ts`,
+`repositories/assistant.repository.ts`, `lambda-assistant.ts`,
+`scripts/assistant-eval.ts` (`npm run assistant:eval` in `apps/api`), migration
+`20261111190000_assistant_persistence`, `packages/api-http` (`createStreamClient`),
+`apps/tenant-web/src/routes/assistant-lab.tsx` + `features/assistant/*`, infra in
+`api-stack.ts` / `frontend-assets-stack.ts` / `frontend-stack.ts` / `bin/app.ts`.
+
+**Still owed before phase 1 can exit** (its exit is "the ops admin's baseline passes"):
+
+1. Per account (staging first): the Bedrock use-case form, then one verified `InvokeModel`.
+   Check first whether prod and staging share an Organization.
+2. **Right after this merges, before any AWS step:** `curl` the staging Function URL
+   (`AssistantUrlExport` output) at `/api/v1/assistant/tools`. It should answer **401**
+   (no token) or **404 `ASSISTANT_DISABLED`**. A **502** means the Lambda failed INIT, the
+   #594 class that synth, deploy and the bundle test all miss. (`@aws-sdk/*` stays external
+   and resolves from the runtime; the Bedrock SDK is imported lazily so it can't take the
+   main API's INIT down, but the assistant entry still loads the whole app.)
+3. Flip `assistantEnabled` for staging and deploy. Then, **from the SPA in a browser**
+   (not curl):
+   - exactly one `Access-Control-Allow-Origin` on the Function URL response. The Function
+     URL's CORS and Hono's `cors()` could both set it.
+   - Bedrock accepts `output_config.effort` and the runner's `type: "custom"` tool entries
+     on the invoke path.
+   - `cache_read_input_tokens > 0` on a second turn (Verification 6).
+   - no `stop_reason: max_tokens` in the traces. Adaptive thinking is on by default and
+     shares the 4,096-token ceiling, so raise `maxTokens` if it shows up.
+4. The eval set: still three placeholders, so the gate content doesn't exist yet. The
+   runner, the Lab pane and `npm run assistant:eval` are ready for it.
+5. Manual checks (Verification 4/5): operations_admin asks "which trips are running late
+   this week?" and reads the trace; a driver-only login can't reach the Lab at all.
+
 ---
 
 ## Phase 2 — Chat UI for gated roles
@@ -540,7 +636,11 @@ Ordered by what unblocks what. The first three are the resume checklist from the
       stale figure.
 - [ ] **The eval set** (Phase 0 step 4) — still three placeholder cases. Gates phase 1's prompt
       work.
-- [ ] **Decide the Function URL exposure** (`authType: NONE`, public, outside API Gateway).
+- [x] ~~**Decide the Function URL exposure**~~ Decided 2026-11-10: public `authType: NONE`
+      with in-function auth, assistant-prefix-only entry and reserved concurrency 50 (see
+      "Phase 1 — as built").
+- [ ] **Smoke-invoke the deployed assistant Function URL** once `assistantEnabled` is on for
+      staging. Includes the cache-read check and Bedrock accepting the runner's tool entries.
 - [x] ~~Claude Platform on AWS workspace provisioning + Marketplace billing.~~ Superseded
       2026-11-07: the host is now Bedrock, and the grant is pinned (Infrastructure §2).
 - [ ] **Submit the Bedrock Anthropic use-case form** (`put-use-case-for-model-access`). First

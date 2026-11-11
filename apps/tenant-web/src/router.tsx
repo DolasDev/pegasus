@@ -17,6 +17,7 @@ import { requireRole, AUTOMATION_VIEW_ROLES, OPERATIONS_ROLES } from '@/auth/rol
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MessagesPage } from '@/routes/messages'
+import { AssistantLabPage } from '@/routes/assistant-lab'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
 import { QuotesPage } from '@/routes/quotes.index'
 import { QuoteDetailPage } from '@/routes/quotes.$quoteId'
@@ -258,6 +259,20 @@ const reportingEditRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/reporting/edit/$slug',
   component: ReportingEditPage,
+})
+
+// AI assistant Lab (plans/*/ai-chat-assistant.md, 1e). Hangs off
+// authLayout, NOT settingsLayout (which is tenant_admin-only — an operations
+// admin would never reach it there). The guard mirrors the Cedar grant of
+// UseAssistant (policies/60-assistant.cedar + tenant_admin permit-all); Cedar
+// and ASSISTANT_ENABLED remain the real gates server-side.
+const ASSISTANT_LAB_ROLES = ['operations_admin', 'tenant_admin'] as const
+
+const assistantLabRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/assistant-lab',
+  beforeLoad: requireRole(...ASSISTANT_LAB_ROLES),
+  component: AssistantLabPage,
 })
 
 // Integrations — read-only mapping/ruleset visualization. Hangs off authLayout
@@ -572,6 +587,7 @@ const routeTree = rootRoute.addChildren([
     reportingRoute,
     reportingNewRoute,
     reportingEditRoute,
+    assistantLabRoute,
     integrationsIndexRoute,
     integrationDetailRoute,
     automationsIndexRoute,

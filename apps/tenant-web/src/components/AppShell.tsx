@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
@@ -171,6 +172,20 @@ const NAV_ITEMS = [
     icon: Zap,
     exact: false,
     roles: AUTOMATION_VIEW_ROLES,
+    children: null,
+  },
+  {
+    // AI assistant Lab (plans/*/ai-chat-assistant.md). Gated by the
+    // Cedar permission (fails closed: absent on an older API) AND the deployment
+    // flag, since the grant exists whether or not ASSISTANT_ENABLED is on. The
+    // route guard in router.tsx carries the matching role list.
+    to: '/assistant-lab' as const,
+    label: 'Assistant Lab',
+    icon: Sparkles,
+    exact: false,
+    roles: null,
+    permission: 'assistant:use' as const,
+    capability: 'assistant' as const,
     children: null,
   },
 ] as const

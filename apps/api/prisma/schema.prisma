@@ -336,6 +336,12 @@ model Tenant {
   // Longhaul — archived (rejected/canceled) trip snapshots
   archivedTrips ArchivedTrip[]
 
+  // AI assistant (plans/in-progress/ai-chat-assistant.md)
+  assistantConversations  AssistantConversation[]
+  assistantTurns          AssistantTurn[]
+  assistantToolCalls      AssistantToolCall[]
+  assistantPromptVersions AssistantPromptVersion[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -4067,5 +4073,140 @@ model GeoPostalCode {
 
   @@id([country, code])
   @@map("geo_postal_codes")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// AI assistant — conversations, per-turn traces, per-tool-call traces and the
+// ops-owned prompt store. Plan: plans/in-progress/ai-chat-assistant.md (1d).
+//
+// All four are tenant-owned and in TENANT_SCOPED_MODELS; creates set tenantId.
+// User ids are TenantUser.id, denormalized (not FKs) like publishedBy elsewhere,
+// so a trace outlives a deactivated user. The trace rows ARE the Assistant Lab's
+// debugger, the audit log and the eval substrate.
+// ---------------------------------------------------------------------------
+
+/// One chat thread. Belongs to the user who started it; only they read it.
+model AssistantConversation {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  /// TenantUser.id of the owner.
+  userId    String   @map("user_id")
+  title     String
+  /// Lab conversations run a draft prompt; product chat runs the published one.
+  source    String   @default("chat")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  turns  AssistantTurn[]
+
+  @@index([tenantId, userId, updatedAt])
+  @@map("assistant_conversations")
+  @@schema("public")
+}
+
+/// One message in a conversation. A user turn holds the question; an assistant
+/// turn holds the final answer plus the usage of the whole model exchange that
+/// produced it (every tool round summed).
+model AssistantTurn {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  conversationId   String   @map("conversation_id")
+  /// 0-based position within the conversation.
+  seq              Int
+  /// `user` | `assistant`
+  role             String
+  /// Messages-API content blocks for this turn (text only is persisted for
+  /// history replay; tool traffic lives in AssistantToolCall).
+  content          Json
+  modelId          String?  @map("model_id")
+  promptVersionId  String?  @map("prompt_version_id")
+  stopReason       String?  @map("stop_reason")
+  inputTokens      Int      @default(0) @map("input_tokens")
+  outputTokens     Int      @default(0) @map("output_tokens")
+  cacheReadTokens  Int      @default(0) @map("cache_read_tokens")
+  cacheWriteTokens Int      @default(0) @map("cache_write_tokens")
+  /// Model rounds (requests to the provider) it took to answer.
+  modelRounds      Int      @default(0) @map("model_rounds")
+  latencyMs        Int?     @map("latency_ms")
+  /// Set when the exchange failed; the turn is kept for the trace.
+  error            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  conversation AssistantConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  toolCalls    AssistantToolCall[]
+
+  @@unique([conversationId, seq])
+  @@index([tenantId, createdAt])
+  @@map("assistant_turns")
+  @@schema("public")
+}
+
+/// One tool invocation the model requested while producing an assistant turn.
+/// `allowed = false` records a denial (the defense-in-depth re-authorize).
+model AssistantToolCall {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  turnId        String   @map("turn_id")
+  /// The model's tool_use id.
+  toolUseId     String   @map("tool_use_id")
+  toolName      String   @map("tool_name")
+  input         Json
+  allowed       Boolean
+  /// Rows returned (when the tool returns a list).
+  resultCount   Int?     @map("result_count")
+  /// Truncated JSON of what the model saw — enough to debug, bounded in size.
+  resultSummary String?  @map("result_summary")
+  error         String?
+  durationMs    Int      @map("duration_ms")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  turn   AssistantTurn @relation(fields: [turnId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([turnId])
+  @@index([tenantId, toolName, createdAt])
+  @@map("assistant_tool_calls")
+  @@schema("public")
+}
+
+enum AssistantPromptStatus {
+  /// Saved but never published. The Lab's chat and eval runner can target it.
+  DRAFT
+  /// The one version product chat uses for its tenant.
+  PUBLISHED
+  /// Was published, replaced by a later publish or a rollback.
+  SUPERSEDED
+
+  @@schema("public")
+}
+
+/// The ops-owned context: system prompt + domain glossary, versioned. Saves are
+/// immutable new versions; publish flips one to PUBLISHED and supersedes the
+/// previous one; rollback is a publish of an older version. At most one
+/// PUBLISHED row per tenant (enforced in the repository transaction).
+model AssistantPromptVersion {
+  id           String                @id @default(uuid())
+  tenantId     String                @map("tenant_id")
+  /// Monotonic per tenant.
+  version      Int
+  status       AssistantPromptStatus @default(DRAFT)
+  systemPrompt String                @map("system_prompt")
+  glossary     String                @default("")
+  /// Free-text change note from the author.
+  note         String?
+  /// TenantUser.id of the author / publisher.
+  authorUserId String                @map("author_user_id")
+  publishedBy  String?               @map("published_by")
+  publishedAt  DateTime?             @map("published_at") @db.Timestamptz(6)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([tenantId, version])
+  @@index([tenantId, status])
+  @@map("assistant_prompt_versions")
   @@schema("public")
 }

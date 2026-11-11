@@ -12,9 +12,12 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed-run.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "assistant:eval": "tsx scripts/assistant-eval.ts"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "1.1.1",
+    "@anthropic-ai/sdk": "1.8.0",
     "@aws-lambda-powertools/logger": "^2.36.0",
     "@aws-sdk/client-cloudwatch": "^3.1161.0",
     "@aws-sdk/client-ec2": "^3.1161.0",
