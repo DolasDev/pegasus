@@ -1160,12 +1160,12 @@ def test_put_projection_with_correlation_sends_local_entity() -> None:
         "settlement",
         "SO-1",
         {"Id": "SO-1"},
-        local_entity_type="shipment",
+        local_entity_type="order",
         local_entity_id="ship-7",
     )
     assert captured["json"] == {
         "state": {"Id": "SO-1"},
-        "localEntityType": "shipment",
+        "localEntityType": "order",
         "localEntityId": "ship-7",
     }
     # The binding outcome must reach the caller — a projection can succeed while
@@ -1189,7 +1189,7 @@ def test_put_projection_surfaces_a_correlation_conflict() -> None:
         "settlement",
         "SO-1",
         {"Id": "SO-1"},
-        local_entity_type="shipment",
+        local_entity_type="order",
         local_entity_id="ship-9",
     )
     # Not an exception: the state WAS cached. The caller decides whether a
@@ -1214,7 +1214,7 @@ def test_put_projection_without_correlation_omits_the_fields() -> None:
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"local_entity_type": "shipment"},
+        {"local_entity_type": "order"},
         {"local_entity_id": "ship-7"},
     ],
 )
@@ -1248,11 +1248,11 @@ def test_get_correlated_state_success() -> None:
         )
 
     client = _client_with(handler)
-    row = client.get_correlated_state("atlas_settlement", "settlement", "shipment", "ship-7")
+    row = client.get_correlated_state("atlas_settlement", "settlement", "order", "ord-7")
     assert captured["method"] == "GET"
     assert captured["path"] == (
         "/api/v1/integration-projections/runtime/atlas_settlement/settlement"
-        "/by-local/shipment/ship-7"
+        "/by-local/order/ord-7"
     )
     assert row is not None
     assert row["entityKey"] == "SETT-1:PARTY-9"
@@ -1264,7 +1264,7 @@ def test_get_correlated_state_unbound_returns_none() -> None:
         return httpx.Response(404, json={"error": "No correlation", "code": "NOT_FOUND"})
 
     client = _client_with(handler)
-    assert client.get_correlated_state("atlas_settlement", "settlement", "shipment", "x") is None
+    assert client.get_correlated_state("atlas_settlement", "settlement", "order", "x") is None
 
 
 def test_get_correlated_state_binding_without_cached_state() -> None:
@@ -1275,7 +1275,7 @@ def test_get_correlated_state_binding_without_cached_state() -> None:
         )
 
     client = _client_with(handler)
-    row = client.get_correlated_state("atlas_settlement", "settlement", "shipment", "ship-7")
+    row = client.get_correlated_state("atlas_settlement", "settlement", "order", "ord-7")
     # Distinct from the unbound case above: we know their key, so the caller can
     # fetch it directly instead of searching the partner's API.
     assert row is not None
@@ -1289,7 +1289,7 @@ def test_get_correlated_state_forbidden_raises() -> None:
 
     client = _client_with(handler)
     with pytest.raises(PegasusApiError) as exc_info:
-        client.get_correlated_state("atlas_settlement", "settlement", "shipment", "ship-7")
+        client.get_correlated_state("atlas_settlement", "settlement", "order", "ord-7")
     assert exc_info.value.status_code == 403
 
 

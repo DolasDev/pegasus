@@ -89,12 +89,27 @@ export const financialSettlementFloor: TypeFloor = {
   factDocs: financialSettlementFactDocs,
   defaultAction: 'save',
   // Natural key {Id}:{PartyId} (0026).
-  // A settlement is always ABOUT a shipment (the Subject block is the shipment's
+  // A settlement is always ABOUT one move (the Subject block is its
   // shipper/origin/destination/weight), so a settlement record binds to exactly
-  // one Pegasus shipment. Note the canonical shape carries no Pegasus id — see
+  // one Pegasus entity. Note the canonical shape carries no Pegasus id — see
   // IntegrationCorrelationBinding for why the id is supplied rather than derived.
+  //
+  // WHY 'order' AND NOT 'shipment'. There is no Pegasus "shipment id" a caller
+  // could supply: moves live in pegII and are addressed by ORDER NUMBER
+  // (services/pegii-orders.ts, /api/v1/pegii/orders/{orderNumber}; `grep
+  // orderNumber prisma/schema.prisma` returns nothing). `shipment_status_update`
+  // already declares 'order' for exactly this identifier (#812), so 'shipment'
+  // here named a kind the caller cannot produce and disagreed with the only
+  // other floor that declares a correlation.
+  //
+  // Safe to change because this is a free string validated only against this
+  // declaration — and because it was measured, not assumed: on 2026-11-10 a
+  // read-only audit of prod AND staging found ZERO correlation rows at all
+  // (prod also had zero projections), against databases holding 19 and 3
+  // tenants respectively. So no stored row is orphaned by the rename and no
+  // data migration is needed.
   correlation: {
-    localEntityType: 'shipment',
+    localEntityType: 'order',
   },
   // The one capability needed to ship the pilot (Gap B). Deliberately NOT
   // joined by `documents`/`status`/`estimates`: with a single example there is
