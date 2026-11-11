@@ -2269,6 +2269,45 @@ def test_cancel_execution_posts_to_cancel_endpoint() -> None:
     assert data["status"] == "CANCELLED"
 
 
+def test_signal_execution_posts_name_and_payload() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(202, json={"data": {"id": "exec-1", "status": "RUNNING"}})
+
+    data = _client_with(handler).signal_execution("wf-1", "exec-1", "note", {"text": "hi"})
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/workflows/wf-1/executions/exec-1/signal"
+    assert captured["body"] == {"name": "note", "payload": {"text": "hi"}}
+    assert data["status"] == "RUNNING"
+
+
+def test_signal_execution_omits_payload_when_none() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(202, json={"data": {"id": "exec-1"}})
+
+    _client_with(handler).signal_execution("wf-1", "exec-1", "proceed")
+    assert captured["body"] == {"name": "proceed"}
+
+
+def test_signal_execution_raises_typed_error_for_undeclared_signal() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400, json={"error": "does not declare signal", "code": "SIGNAL_NOT_DECLARED"}
+        )
+
+    with pytest.raises(PegasusApiError) as exc_info:
+        _client_with(handler).signal_execution("wf-1", "exec-1", "nope")
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "SIGNAL_NOT_DECLARED"
+
+
 def test_retry_execution_posts_to_retry_endpoint() -> None:
     captured: dict = {}
 
@@ -2605,3 +2644,73 @@ def test_requirements_summary_raises_on_403() -> None:
     with pytest.raises(PegasusApiError) as exc_info:
         client.requirements_summary()
     assert exc_info.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# fetch_external — the declarative pull. Unlike call_external the caller cannot
+# name a method/path/header, so these pin the narrow surface and the URL shape.
+# ---------------------------------------------------------------------------
+
+
+def _capture_fetch_external(operation: str = "settlements", **kwargs: object) -> dict:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["method"] = request.method
+        seen["body"] = json.loads(request.read())
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "operation": operation,
+                    "records": [{"orderNumber": "123"}],
+                    "recordCount": 1,
+                    "pages": 1,
+                    "attempts": 1,
+                    "status": 200,
+                    "truncated": False,
+                }
+            },
+        )
+
+    result = _client_with(handler).fetch_external(
+        "atlas_settlement", operation, **kwargs
+    )  # type: ignore[arg-type]
+    seen["result"] = result
+    return seen
+
+
+def test_fetch_external_posts_to_the_operation_route() -> None:
+    seen = _capture_fetch_external(params={"settlementDate": "2026-11-06"})
+    assert seen["method"] == "POST"
+    assert seen["url"].endswith("/api/v1/integrations/atlas_settlement/fetch/settlements")
+
+
+def test_fetch_external_sends_params_and_group() -> None:
+    seen = _capture_fetch_external(params={"settlementDate": "2026-11-06"}, group="atlas")
+    assert seen["body"] == {"params": {"settlementDate": "2026-11-06"}, "group": "atlas"}
+
+
+def test_fetch_external_defaults_params_to_empty_and_group_to_global() -> None:
+    # An operation with no placeholders should need no arguments at all.
+    seen = _capture_fetch_external()
+    assert seen["body"] == {"params": {}, "group": "global"}
+
+
+def test_fetch_external_returns_the_record_envelope() -> None:
+    seen = _capture_fetch_external()
+    assert seen["result"]["records"] == [{"orderNumber": "123"}]
+    # `truncated` is part of the contract: a caller has to be able to tell a
+    # complete read from one that hit the page cap.
+    assert seen["result"]["truncated"] is False
+    assert seen["result"]["pages"] == 1
+
+
+def test_fetch_external_exposes_no_method_or_path_argument() -> None:
+    # The whole point: transport comes from the published descriptor, so the
+    # caller cannot smuggle in a path the publish gate never saw.
+    import inspect
+
+    sig = inspect.signature(PegasusClient.fetch_external)
+    assert set(sig.parameters) == {"self", "integration_id", "operation", "params", "group"}

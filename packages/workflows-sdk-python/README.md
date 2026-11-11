@@ -6,9 +6,10 @@ automate cross-domain operations (move lifecycle, billing follow-ups, dispatch
 decisions) against the Pegasus public API, firing on their own from a trigger
 (an event, a schedule, or a manual run).
 
-> Long-running, durable **Workflows** — with signals, queries, and waits, for
-> lifecycles that span days or weeks — are a separate capability planned for
-> later. They don't exist yet; everything below is about Automations, which do.
+> Long-running, durable **Workflows** — with timers, waits, and signals, for
+> lifecycles that span days or weeks — are published from the same project with
+> `kind = "workflow"`; see [Durable Workflows](#durable-workflows-kind--workflow).
+> Everything else below is about Automations unless it says otherwise.
 
 The **developer flow**: write an Automation locally, test it against a
 Dockerized Temporal, package it, and push it. The platform then runs it in a
@@ -143,8 +144,8 @@ class HelloWorkflow:
 > class, but the platform runs it as a single sandboxed unit with a 900-second
 > ceiling — not as a durable, long-lived Temporal workflow. Signals, queries, and
 > `workflow.wait_condition` are not supported in Automations; using them will not
-> work. (Durable, long-running Workflows with those capabilities are a separate,
-> future capability — see the note at the top of this README.)
+> work. For those, publish a [durable Workflow](#durable-workflows-kind--workflow)
+> (`kind = "workflow"`).
 
 ### Input contract: how `run()` receives its argument
 
@@ -1452,6 +1453,10 @@ pegasus-workflows executions show <workflow-id> <execution-id> --token=vnd_…
 data is available programmatically via `client.list_executions`,
 `client.get_execution`, and `client.get_execution_history`.
 
+A running durable Workflow can also be signalled from here —
+`executions signal <workflow-id> <execution-id> --name <signal> [--payload JSON]`;
+see [Sending a signal](#sending-a-signal).
+
 **Which build ran.** Every execution row carries `workflowId` plus
 `workflowName` / `workflowVersion` — the published row whose code executed. The
 runner installs the artifact for exactly that row and **fails the run** rather
@@ -1470,6 +1475,7 @@ Drive an execution from the SDK too (also in the tenant web UI):
 ```python
 client.cancel_execution(workflow_id, execution_id)  # CancelWorkflowExecution — cooperative cancel
 client.retry_execution(workflow_id, execution_id)   # RetryWorkflowExecution — new run, same input
+client.signal_execution(workflow_id, execution_id, "proceed", {"ok": True})  # durable Workflows only
 ```
 
 `cancel` signals a running execution (it transitions to CANCELLED when the run
@@ -1537,8 +1543,9 @@ days. (0.56.0+)
   started on, to the end. Publishing a new version never changes a running
   Workflow; new runs get the new version.
 - **Lifetime:** up to `max_lifetime_days` (default 90, max 365).
-- **Signals:** declare the `@workflow.signal` names in `signals`. Sending a
-  signal into a running Workflow through the Pegasus API is not available yet.
+- **Signals** (0.60.0+): declare the `@workflow.signal` names in `signals`;
+  only declared names can be delivered. Send one to a QUEUED / RUNNING
+  execution — see [Sending a signal](#sending-a-signal).
 - **Activities** work as in an Automation (`PegasusClient.from_runtime()`) and
   get Temporal's per-activity retries.
 - **No dry runs** (422 `DRY_RUN_UNSUPPORTED`, and no dry-run triggers). Test
@@ -1564,6 +1571,88 @@ try:
 except WorkflowVersionStarting as err:
     time.sleep(err.retry_after_seconds or 30)  # then try again
 ```
+
+### Sending a signal
+
+```python
+client.signal_execution(workflow_id, execution_id, "note", {"text": "call first"})
+client.signal_execution(workflow_id, execution_id, "proceed")   # no argument
+```
+
+```
+pegasus-workflows executions signal <workflow-id> <execution-id> --name note --payload '{"text":"call first"}'
+```
+
+The payload (any JSON, ≤ 128 KiB) is the handler's **single argument**, and
+omitted it sends none, so give the handler a default:
+
+```python
+@workflow.signal
+def note(self, payload: dict | None = None) -> None:
+    self.notes.append(payload)
+```
+
+- **At-least-once:** a retried call delivers again. Make handlers idempotent
+  (e.g. dedupe on an id inside the payload).
+- **Not a run:** a signal counts toward no quota or cap, and the kill switch does
+  not block it (open Workflows keep running and keep receiving signals).
+- **Errors** (`PegasusApiError`): 400 `SIGNAL_NOT_DECLARED` (the message lists
+  the declared names) · 409 `EXECUTION_NOT_SIGNALLABLE` (an Automation, a closed
+  execution, one not started on Temporal yet, or one Temporal reports is no
+  longer running) · 413 `SIGNAL_PAYLOAD_TOO_LARGE` · 502 `TEMPORAL_SIGNAL_FAILED`.
+- Needs `SignalWorkflowExecution` (the `workflow_developer` role).
+- `executions show` lists each delivered signal in the timeline
+  (`WorkflowExecutionSignaled  signal: note`).
+
+### Routing events to an instance (event-routed signals)
+
+An EVENT trigger normally starts a **new** execution per event. On a durable
+Workflow it can instead deliver each event to **one instance per business key**
+(0.61.0+), so a single long-lived Workflow follows, say, one order through every
+event about it:
+
+```python
+client.create_trigger(
+    workflow_id,
+    kind="EVENT",
+    event_type="pegii.shipment.opened",
+    mode="START",                       # or "DELIVER"
+    correlation_path="payload.orderId", # where the business key is
+    signal_name="order_event",          # one of the manifest's `signals`
+)
+```
+
+```python
+@workflow.signal
+def order_event(self, event: dict | None = None) -> None:
+    if event and event["domainEventId"] not in self.seen:   # at-least-once: dedupe
+        self.seen.add(event["domainEventId"])
+        self.events.append(event)
+```
+
+- **The key** is the value at `correlation_path`, a dot path into the event
+  envelope `{domainEventId, eventType, occurredAt, payload}` — a string or an
+  integer matching `[A-Za-z0-9._:-]{1,128}`. Each key gets its own instance.
+  Key on an **entity id** (an order or shipment number), never personal data
+  such as a phone number: the key becomes part of the Temporal workflow id,
+  which appears in logs and the Temporal UI.
+- **The signal's argument** is that envelope.
+- **`START`** creates the key's instance when none is open. The event is then
+  both its run input (`arg["input"]`) and its first signal, so dedupe. It counts
+  as a start: the kill switch, the open-Workflow cap and the daily quota apply.
+- **`DELIVER`** only signals an instance that is already open; with none, the
+  event is not delivered.
+- **One instance per key, for life:** once a key's instance has finished, later
+  events for that key are not delivered (it is not restarted).
+- **Delivery is at-least-once** — dedupe on `domainEventId` as above.
+- **Undelivered events** (no open instance for `DELIVER`, a missing or invalid
+  key, a signal the running version doesn't declare) are counted and logged,
+  never retried. A signal to an open instance is not a run: no quota, and the
+  kill switch doesn't block it.
+- Validation is at create / update: `mode` START / DELIVER needs an EVENT trigger
+  on a durable Workflow, both `correlation_path` and `signal_name`, and a declared
+  signal (400 otherwise). `update_trigger(..., mode="NEW")` goes back to one run
+  per event. There is no CLI command for EVENT triggers — use the client.
 
 ## Credentials & profiles
 
@@ -1743,6 +1832,7 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows test <workflow>`                                                | Start local Temporal and run the Automation with a stub input. |
 | `pegasus-workflows executions list <wf-id> --token=<vnd_…>`                        | List recent executions of an Automation (newest first).        |
 | `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`              | Show one execution's input/result/error + history timeline.    |
+| `pegasus-workflows executions signal <wf-id> <exec-id> --name <n> [--payload …]`   | Deliver a declared signal to a running durable Workflow.       |
 | `pegasus-workflows integration-config validate <id> [-C <dir>]`                    | Dry-run the publish gate for a config (no write).              |
 | `pegasus-workflows integration-config publish <id> [-C <dir>]`                     | Gate then publish a new config version.                        |
 | `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]`             | Fetch the active config; write the editable surface to disk.   |
@@ -1838,6 +1928,36 @@ Two things worth knowing before you write one:
 
 `page.style: "none"` is the honest answer when the endpoint exposes no paging
 parameters, not a shortcut.
+
+**Running a published descriptor — `fetch_external` (0.59.0+).** Authoring
+`fetch.json` is one half; this is the half that runs it:
+
+```python
+result = client.fetch_external(
+    "atlas_settlement", "settlements",
+    params={"settlementDate": "2026-11-06"},
+)
+for record in result["records"]:
+    ...
+```
+
+There is deliberately **no `method` or `path` argument** — transport comes from
+the published descriptor, so a caller cannot reach an endpoint the publish gate
+never saw. That is the difference from `call_external`, which is the escape
+hatch for exactly those cases.
+
+Two things to handle in calling code:
+
+- **Check `truncated`.** `True` means the page cap (`page.maxPages`, default 20)
+  was reached, so `records` is a PARTIAL read — not an empty tail.
+- **An empty result is a 200 with no records**, not an error; an empty period is
+  a legitimate answer. An unsupplied `{{param}}`, by contrast, is a 400 and no
+  call is made, so a half-filled template never reaches the partner.
+
+Transport is the same code path as `call_external` — same `AUTH_MODE`, reserved
+headers, timeout and 429 retry — with one difference: a fetch is always treated
+as a **read**, so a `POST` descriptor still retries a 429. Being side-effect-free
+it also runs **live** under `run --dry-run` rather than being captured.
 
 **Reformatting a date is a `coerce`, not a workaround.** Partners document their own
 date format while the native payload carries .NET datetimes

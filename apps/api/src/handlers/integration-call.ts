@@ -54,7 +54,6 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import { logger } from '../lib/logger'
 import { requirePermission } from '../middleware/rbac'
 import { meterUsage } from '../middleware/meter-usage'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
@@ -62,33 +61,15 @@ import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
 import { resolveIntegrationDefinition } from '../integration-validation/registry'
 import { db as basePrisma } from '../db'
-import { createWorkflowSecretConfigRepository } from '../repositories/workflow-secret-config.repository'
-import { createOutboundOAuthTokenRepository } from '../repositories/outbound-oauth-token.repository'
-import { decryptSecretValue, encryptSecretValue } from '../lib/secret-value-crypto'
-import { isOutboundOAuthSharedCacheEnabled } from '../lib/outbound-oauth-feature'
 import { assertDeliverableUrl } from './integration-delivery'
-import {
-  acquireOutboundToken,
-  invalidateOutboundTokenEverywhere,
-  outboundTokenCacheKey,
-  OutboundOAuthError,
-  type SharedTokenTier,
-} from '../services/outbound-oauth'
 import { buildBlobS3Key, newBlobId, getObjectBuffer, putObjectBuffer } from '../lib/documents-s3'
+import { collectResponseHeaders, MAX_HEADER_VALUE } from '../lib/outbound-headers'
 import {
-  validateHeaderMaps,
-  resolveOutboundHeaders,
-  collectResponseHeaders,
-  MissingHeaderSecretError,
-  MAX_HEADER_VALUE,
-} from '../lib/outbound-headers'
-import {
-  isRetryableStatus,
-  isIdempotent,
-  retryDelayMs,
-  clampMaxRetries,
-  clampTimeoutMs,
-} from '../lib/outbound-retry'
+  performOutboundCall,
+  outboundFailureToHttp,
+  resolveOutboundUrl,
+  DEFAULT_API_KEY_HEADER,
+} from '../lib/outbound-call'
 
 // Small-file ceiling for the blob<->Lambda paths (sdk-feedback/0025, phased):
 // resolving a `{"$blob": id}` upload inline as base64, or landing a partner GET
@@ -203,24 +184,13 @@ const CallBody = z.object({
   maxRetriesConfig: z.string().min(1).max(128).default('MAX_RETRIES'),
 })
 
-/** Default header name for `AUTH_MODE=apikey` — the Azure APIM convention. */
-const DEFAULT_API_KEY_HEADER = 'Ocp-Apim-Subscription-Key'
-
 type CallInput = z.infer<typeof CallBody>
 
-/** Join a base URL and a path without dropping the base's own path segment. */
-export function resolveOutboundUrl(
-  baseUrl: string,
-  path: string,
-  query?: Record<string, string | number | boolean>,
-): string {
-  const joined = `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
-  const url = new URL(joined)
-  if (query) {
-    for (const [k, v] of Object.entries(query)) url.searchParams.set(k, String(v))
-  }
-  return url.toString()
-}
+// `resolveOutboundUrl` and `DEFAULT_API_KEY_HEADER` now live in lib/outbound-call
+// (the extracted core owns URL building and the APIM default). Re-exported here
+// because existing consumers — including this handler's own tests — import them
+// from this module.
+export { resolveOutboundUrl, DEFAULT_API_KEY_HEADER }
 
 /** Parse a partner response body as JSON, falling back to the raw text. */
 function parseResponseBody(text: string): unknown {
@@ -267,132 +237,10 @@ integrationCallHandler.post(
     }
 
     const input = c.req.valid('json') as CallInput
-    const repo = createWorkflowSecretConfigRepository(c.get('db'))
-
-    // Reject bad custom headers BEFORE any config/secret read — a reserved name
-    // or a CRLF-bearing value is a client error, not a lookup failure.
-    const headerError = validateHeaderMaps(input)
-    if (headerError) return c.json({ error: headerError, code: 'VALIDATION_ERROR' }, 400)
-
-    // ── resolve config ──────────────────────────────────────────────────────
-    const baseUrlRow = await repo.findByKey('CONFIG', input.group, input.baseUrlConfig)
-    if (!baseUrlRow || baseUrlRow.value == null) {
-      return c.json(
-        { error: `Config '${input.baseUrlConfig}' (base URL) is not set`, code: 'NOT_FOUND' },
-        404,
-      )
-    }
-    const authModeRow = await repo.findByKey('CONFIG', input.group, input.authModeConfig)
-    const authMode = (authModeRow?.value ?? 'oauth2_client_credentials').trim()
-
-    const url = resolveOutboundUrl(baseUrlRow.value, input.path, input.query)
-    const urlError = assertDeliverableUrl(url)
-    if (urlError) return c.json({ error: urlError, code: 'VALIDATION_ERROR' }, 400)
-
-    // ── resolve auth ────────────────────────────────────────────────────────
-    // For OAuth we keep a re-mint closure so a 401 can invalidate + retry once.
-    let cacheKey: string | null = null
-    let remint: (() => Promise<string>) | null = null
-    let sharedTier: SharedTokenTier | undefined
-    const headers: Record<string, string> = { Accept: 'application/json' }
-
-    if (authMode === 'oauth2_client_credentials') {
-      const tokenUrlRow = await repo.findByKey('CONFIG', input.group, input.tokenUrlConfig)
-      if (!tokenUrlRow || tokenUrlRow.value == null) {
-        return c.json(
-          { error: `Config '${input.tokenUrlConfig}' (token URL) is not set`, code: 'NOT_FOUND' },
-          404,
-        )
-      }
-      const idRow = await repo.findByKey('SECRET', input.group, input.clientIdSecret)
-      const secretRow = await repo.findByKey('SECRET', input.group, input.clientSecretSecret)
-      if (!idRow?.valueCiphertext || !secretRow?.valueCiphertext) {
-        return c.json(
-          {
-            error: `Secrets '${input.clientIdSecret}'/'${input.clientSecretSecret}' are not set`,
-            code: 'NOT_FOUND',
-          },
-          404,
-        )
-      }
-      const clientId = await decryptSecretValue(idRow.valueCiphertext, tenantId)
-      const clientSecret = await decryptSecretValue(secretRow.valueCiphertext, tenantId)
-      cacheKey = outboundTokenCacheKey(tenantId, integrationId, tokenUrlRow.value)
-      const cfg = { tokenUrl: tokenUrlRow.value, clientId, clientSecret }
-      // The shared (L2) tier is opt-in — flag off, this is byte-for-byte the
-      // previous in-memory-only behavior. Tokens are KMS-encrypted with the same
-      // per-tenant encryption context as the tenant's workflow secrets.
-      if (isOutboundOAuthSharedCacheEnabled()) {
-        sharedTier = {
-          key: { tenantId, integrationId, tokenUrl: tokenUrlRow.value },
-          repo: createOutboundOAuthTokenRepository(c.get('db')),
-          encrypt: (plaintext) => encryptSecretValue(plaintext, tenantId),
-          decrypt: (ciphertext) => decryptSecretValue(ciphertext, tenantId),
-        }
-      }
-      remint = () =>
-        acquireOutboundToken(cacheKey!, cfg, { ...(sharedTier ? { shared: sharedTier } : {}) })
-      try {
-        headers.Authorization = `Bearer ${await remint()}`
-      } catch (err) {
-        if (err instanceof OutboundOAuthError) {
-          return c.json({ error: err.message, code: 'UPSTREAM_ERROR' }, 502)
-        }
-        throw err
-      }
-    } else if (authMode === 'bearer') {
-      const keyRow = await repo.findByKey('SECRET', input.group, input.bearerSecret)
-      if (!keyRow?.valueCiphertext) {
-        return c.json(
-          { error: `Secret '${input.bearerSecret}' (bearer) is not set`, code: 'NOT_FOUND' },
-          404,
-        )
-      }
-      headers.Authorization = `Bearer ${await decryptSecretValue(keyRow.valueCiphertext, tenantId)}`
-    } else if (authMode === 'apikey') {
-      // Azure APIM and friends: the credential is a named header, not a bearer.
-      // The header NAME is config (non-secret); only the value is a secret.
-      const keyRow = await repo.findByKey('SECRET', input.group, input.bearerSecret)
-      if (!keyRow?.valueCiphertext) {
-        return c.json(
-          { error: `Secret '${input.bearerSecret}' (api key) is not set`, code: 'NOT_FOUND' },
-          404,
-        )
-      }
-      const nameRow = await repo.findByKey('CONFIG', input.group, input.apiKeyHeaderConfig)
-      const headerName = (nameRow?.value ?? DEFAULT_API_KEY_HEADER).trim()
-      // The name comes from tenant config, so it gets the same syntax + reserved
-      // check as a caller-supplied header — otherwise `AUTH_MODE=apikey` with
-      // `API_KEY_HEADER=Authorization` would quietly reintroduce the override
-      // the reserved list exists to prevent.
-      const nameError = validateHeaderMaps({ headers: { [headerName]: 'x' } })
-      if (nameError) {
-        return c.json(
-          { error: `Config '${input.apiKeyHeaderConfig}': ${nameError}`, code: 'VALIDATION_ERROR' },
-          400,
-        )
-      }
-      headers[headerName] = await decryptSecretValue(keyRow.valueCiphertext, tenantId)
-    } else if (authMode !== 'none') {
-      return c.json({ error: `Unsupported AUTH_MODE '${authMode}'`, code: 'VALIDATION_ERROR' }, 400)
-    }
-
-    // ── overlay the caller's custom headers ─────────────────────────────────
-    let finalHeaders: Record<string, string>
-    try {
-      finalHeaders = await resolveOutboundHeaders(headers, input, async (secretKey) => {
-        const row = await repo.findByKey('SECRET', input.group, secretKey)
-        if (!row?.valueCiphertext) return null
-        return decryptSecretValue(row.valueCiphertext, tenantId)
-      })
-    } catch (err) {
-      if (err instanceof MissingHeaderSecretError) {
-        return c.json({ error: err.message, code: 'NOT_FOUND' }, 404)
-      }
-      throw err
-    }
 
     // ── resolve any {"$blob": id} refs in the body to inline base64 ──────────
+    // Stays HERE, not in the extracted core: blob refs are a call-external
+    // input shape. A declarative fetch has no blob inputs.
     let outboundBody = input.body
     if (input.body !== undefined) {
       try {
@@ -405,84 +253,40 @@ integrationCallHandler.post(
       }
     }
 
-    // ── perform the call (timeout + 429/503 retry + one OAuth re-mint on 401) ─
-    const hasBody = outboundBody !== undefined && input.method !== 'GET'
-    if (hasBody) finalHeaders['Content-Type'] = 'application/json'
-
-    const timeoutRow = await repo.findByKey('CONFIG', input.group, input.timeoutConfig)
-    const retriesRow = await repo.findByKey('CONFIG', input.group, input.maxRetriesConfig)
-    const timeoutMs = clampTimeoutMs(timeoutRow?.value)
-    const maxRetries = clampMaxRetries(retriesRow?.value)
-    // A partner that throttles us is only safe to re-send when the request is
-    // idempotent; otherwise we would risk a duplicate write at the partner.
-    const mayRetry = isIdempotent(input.method, input.mutating)
-
-    const doRequest = (): Promise<Response> =>
-      fetch(url, {
+    // ── the authenticated call itself (lib/outbound-call) ───────────────────
+    // Config, the SSRF guard, all four auth modes, the secret-header overlay and
+    // the timeout/retry/re-mint loop live in the shared core so the declarative
+    // `fetch` endpoint performs the SAME transport. Failures come back typed and
+    // map through one shared contract, so the (status, code) pairs this endpoint
+    // has always returned are unchanged.
+    const result = await performOutboundCall(
+      { db: c.get('db'), tenantId, integrationId },
+      {
         method: input.method,
-        headers: finalHeaders,
-        // Before this, a partner that accepted the connection and went quiet
-        // burned the whole Lambda budget.
-        signal: AbortSignal.timeout(timeoutMs),
-        ...(hasBody ? { body: JSON.stringify(outboundBody) } : {}),
-      })
-
-    /** Run the request, re-minting once on 401 and retrying 429/503 per policy. */
-    const performWithRetries = async (): Promise<{ response: Response; attempts: number }> => {
-      let attempts = 0
-      let retries = 0
-      for (;;) {
-        attempts += 1
-        let response = await doRequest()
-
-        if (response.status === 401 && cacheKey && remint) {
-          // Clear BOTH tiers: a 401 means the partner killed the token early, so
-          // leaving it in the shared row would let other containers keep
-          // presenting it until its nominal expiry. The re-mint is deliberately
-          // NOT charged against the retry budget — it is a different failure.
-          await invalidateOutboundTokenEverywhere(cacheKey, sharedTier)
-          finalHeaders.Authorization = `Bearer ${await remint()}`
-          attempts += 1
-          response = await doRequest()
-        }
-
-        if (!mayRetry || retries >= maxRetries || !isRetryableStatus(response.status)) {
-          return { response, attempts }
-        }
-
-        const delay = retryDelayMs(response.headers.get('retry-after'), retries, Date.now())
-        logger.info('outbound call throttled — retrying', {
-          integrationId,
-          status: response.status,
-          attempt: attempts,
-          delayMs: delay,
-        })
-        retries += 1
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
+        path: input.path,
+        ...(input.query !== undefined ? { query: input.query } : {}),
+        ...(outboundBody !== undefined ? { body: outboundBody } : {}),
+        ...(input.mutating !== undefined ? { mutating: input.mutating } : {}),
+        ...(input.headers !== undefined ? { headers: input.headers } : {}),
+        ...(input.secretHeaders !== undefined ? { secretHeaders: input.secretHeaders } : {}),
+        group: input.group,
+        baseUrlConfig: input.baseUrlConfig,
+        authModeConfig: input.authModeConfig,
+        tokenUrlConfig: input.tokenUrlConfig,
+        clientIdSecret: input.clientIdSecret,
+        clientSecretSecret: input.clientSecretSecret,
+        bearerSecret: input.bearerSecret,
+        apiKeyHeaderConfig: input.apiKeyHeaderConfig,
+        timeoutConfig: input.timeoutConfig,
+        maxRetriesConfig: input.maxRetriesConfig,
+      },
+      assertDeliverableUrl,
+    )
+    if (!result.ok) {
+      const { status, body } = outboundFailureToHttp(result.failure)
+      return c.json(body, status)
     }
-
-    let response: Response
-    let attempts: number
-    try {
-      ;({ response, attempts } = await performWithRetries())
-    } catch (err) {
-      // AbortSignal.timeout rejects with a TimeoutError; a caller-side abort
-      // surfaces as AbortError. Both mean "no answer", which is a distinct
-      // operational condition from "the call could not be made".
-      const name = err instanceof Error ? err.name : ''
-      if (name === 'TimeoutError' || name === 'AbortError') {
-        return c.json(
-          {
-            error: `partner did not respond within ${timeoutMs}ms`,
-            code: 'UPSTREAM_TIMEOUT',
-          },
-          504,
-        )
-      }
-      const message = err instanceof Error ? err.message : 'outbound call failed'
-      return c.json({ error: message, code: 'UPSTREAM_ERROR' }, 502)
-    }
+    const { response, attempts } = result
 
     const contentType = response.headers.get('content-type') ?? undefined
     const responseHeaders = collectResponseHeaders(response.headers)

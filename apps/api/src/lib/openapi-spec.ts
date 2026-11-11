@@ -946,7 +946,7 @@ export function getOpenApiSpec() {
       {
         name: 'Workflows',
         description:
-          'Automations: short, sandboxed Python runs (up to 900 s each) started manually, by a domain event, or on a schedule. The product concept was renamed from "workflows" to "Automations"; the `/workflows` paths, operation ids, and Cedar action names (e.g. ReadWorkflow) keep their original names for compatibility. Long-running, event-driven Workflows are a separate, upcoming capability.',
+          'Automations: short, sandboxed Python runs (up to 900 s each) started manually, by a domain event, or on a schedule. The product concept was renamed from "workflows" to "Automations"; the `/workflows` paths, operation ids, and Cedar action names (e.g. ReadWorkflow) keep their original names for compatibility. Durable Workflows (manifest kind = "workflow") share these paths: long-running Temporal workflows that wait on timers and signals — see POST /workflows/{id}/run and POST …/executions/{executionId}/signal.',
       },
     ],
     paths: {
@@ -2833,7 +2833,8 @@ export function getOpenApiSpec() {
           operationId: 'createWorkflowTrigger',
           summary: 'Attach an EVENT or SCHEDULE trigger to an automation (ManageWorkflowTriggers)',
           description:
-            'Body { kind: EVENT | SCHEDULE, eventType? (EVENT: a built-in or registered custom event type), filter? (EVENT: payload match), cronExpression? (SCHEDULE: 5-field UTC cron), enabled? (default true), dryRun? (default false) }. The trigger row belongs to the caller’s tenant, even on a GLOBAL automation. dryRun: the trigger fires on every matching event / cron minute, but every execution it starts is a dry run — reads live, mutations (send_sms, send_email, …) captured in the execution trace, never performed — so the wiring can be validated before it acts; PATCH dryRun:false to go live. Tenant-runner automations only: 400 DRY_RUN_UNSUPPORTED for a curated workflow or a durable Workflow (kind WORKFLOW). SDK: create_trigger; CLI: schedule create [--dry-run].',
+            'Body { kind: EVENT | SCHEDULE, eventType? (EVENT: a built-in or registered custom event type), filter? (EVENT: payload match), cronExpression? (SCHEDULE: 5-field UTC cron), enabled? (default true), dryRun? (default false) }. The trigger row belongs to the caller’s tenant, even on a GLOBAL automation. dryRun: the trigger fires on every matching event / cron minute, but every execution it starts is a dry run — reads live, mutations (send_sms, send_email, …) captured in the execution trace, never performed — so the wiring can be validated before it acts; PATCH dryRun:false to go live. Tenant-runner automations only: 400 DRY_RUN_UNSUPPORTED for a curated workflow or a durable Workflow (kind WORKFLOW). SDK: create_trigger; CLI: schedule create [--dry-run].' +
+            ' Event-routed signals (durable Workflows, EVENT only): mode NEW (default) starts a new execution per event; mode START / DELIVER instead delivers each matching event to ONE Workflow instance per business key — the value at correlationPath (a dot path into the event envelope {domainEventId, eventType, occurredAt, payload}, e.g. payload.orderId; a string or integer, [A-Za-z0-9._:-]{1,128}) — as the signal signalName (one the Workflow version declares). The signal’s single argument is the event envelope. START creates the instance (signal-with-start; the event is also its run input) when none is open, and is gated and charged like any start (kill switch, open-Workflow cap, daily quota); DELIVER only signals an open one. One instance per key for life: a key whose instance already closed is not restarted. A plain signal is not a run — no quota, and the kill switch does not block it. Delivery is at-least-once (dedupe on domainEventId). Failed deliveries (no open instance, missing key, …) are logged and counted, not retried. 400 VALIDATION_ERROR when the binding is incomplete, the target is an Automation, or the signal is undeclared; NEW takes neither field.',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -2851,6 +2852,9 @@ export function getOpenApiSpec() {
                     cronExpression: { type: 'string' },
                     enabled: { type: 'boolean', default: true },
                     dryRun: { type: 'boolean', default: false },
+                    mode: { type: 'string', enum: ['NEW', 'START', 'DELIVER'], default: 'NEW' },
+                    correlationPath: { type: 'string' },
+                    signalName: { type: 'string' },
                   },
                 },
               },
@@ -2859,7 +2863,7 @@ export function getOpenApiSpec() {
           responses: {
             '201': {
               description:
-                '{data: {id, tenantId, workflowId, kind, eventType, filter, cronExpression, enabled, dryRun, createdByUserId, createdAt, updatedAt}}',
+                '{data: {id, tenantId, workflowId, kind, eventType, filter, cronExpression, enabled, dryRun, mode, correlationPath, signalName, createdByUserId, createdAt, updatedAt}}',
             },
             '400': {
               description:
@@ -2874,7 +2878,7 @@ export function getOpenApiSpec() {
           operationId: 'updateWorkflowTrigger',
           summary: 'Partially update a trigger — pause/resume, re-target (ManageWorkflowTriggers)',
           description:
-            'Body (all optional, at least one): { enabled, dryRun, eventType, filter, cronExpression }. enabled and dryRun apply to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. A dryRun trigger keeps firing, but every execution it starts is a dry run (reads live, mutations captured in the trace, never performed) — validate the wiring, then set dryRun:false; 400 DRY_RUN_UNSUPPORTED turning it on for a curated workflow or a durable Workflow. SDK: update_trigger; CLI: schedule disable|enable|dry-run [--off].',
+            'Body (all optional, at least one): { enabled, dryRun, eventType, filter, cronExpression, mode, correlationPath, signalName }. mode/correlationPath/signalName (EVENT on a durable Workflow — see POST) are validated on the merged row + patch, so switching to START needs both fields, and back to NEW needs both set to null. enabled and dryRun apply to both kinds; eventType/filter to EVENT only; cronExpression to SCHEDULE only. kind is immutable (unknown keys are a 400). A disabled trigger is kept but never fires. A dryRun trigger keeps firing, but every execution it starts is a dry run (reads live, mutations captured in the trace, never performed) — validate the wiring, then set dryRun:false; 400 DRY_RUN_UNSUPPORTED turning it on for a curated workflow or a durable Workflow. SDK: update_trigger; CLI: schedule disable|enable|dry-run [--off].',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [
@@ -2894,6 +2898,9 @@ export function getOpenApiSpec() {
                     eventType: { type: 'string' },
                     filter: { type: 'object' },
                     cronExpression: { type: 'string' },
+                    mode: { type: 'string', enum: ['NEW', 'START', 'DELIVER'] },
+                    correlationPath: { type: ['string', 'null'] },
+                    signalName: { type: ['string', 'null'] },
                   },
                 },
               },
@@ -2972,6 +2979,47 @@ export function getOpenApiSpec() {
             { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
           ],
           responses: { '202': { description: 'Cancellation requested ({data: execution})' } },
+        },
+      },
+      '/api/v1/workflows/{id}/executions/{executionId}/signal': {
+        post: {
+          operationId: 'signalWorkflowExecution',
+          summary: 'Deliver a signal to a running durable Workflow (SignalWorkflowExecution)',
+          description:
+            'Body { name, payload? }. `name` must be one of the signals the execution’s Workflow version declares in its manifest `signals` (400 SIGNAL_NOT_DECLARED otherwise — the error lists them). `payload`, when present (JSON null included), is the signal’s single argument; absent, the signal carries none — so declare the handler `def name(self, payload: dict | None = None)`. Payload ≤ 128 KiB (413 SIGNAL_PAYLOAD_TOO_LARGE). ' +
+            'Only durable Workflows (kind WORKFLOW) that are QUEUED or RUNNING take signals: 409 EXECUTION_NOT_SIGNALLABLE for an Automation, a terminal execution, one not yet started on Temporal, or one Temporal reports is no longer running. ' +
+            'A signal is not a run: it counts toward no quota or cap, and the kill switch (WORKFLOWS_DISABLED) does not block it — open Workflows keep running and keep receiving signals. Delivery is at-least-once (a retried request delivers again), so make the handler idempotent. 202 means Temporal accepted the signal; the returned row is unchanged.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]{0,63}$' },
+                    payload: { description: 'Any JSON value; the signal’s single argument' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '202': { description: 'Signal delivered ({data: execution})' },
+            '400': {
+              description: 'SIGNAL_NOT_DECLARED, or VALIDATION_ERROR (malformed body / name)',
+            },
+            '404': { description: 'NOT_FOUND (workflow or execution)' },
+            '409': { description: 'EXECUTION_NOT_SIGNALLABLE' },
+            '413': { description: 'SIGNAL_PAYLOAD_TOO_LARGE (payload over 128 KiB)' },
+            '502': { description: 'TEMPORAL_SIGNAL_FAILED' },
+          },
         },
       },
       '/api/v1/workflows/{id}/executions/{executionId}/retry': {
@@ -3477,6 +3525,59 @@ export function getOpenApiSpec() {
           responses: {
             '200': { description: '{ canonical, valid, issues[], degraded }' },
             '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/fetch/{operation}': {
+        post: {
+          operationId: 'fetchExternal',
+          summary: 'Run a published fetch descriptor — pull a source from config alone',
+          description:
+            'Executes the named operation from the integration\u2019s published `fetch` block (see /integrations/fetch-schema). The CALLER CANNOT name a path, method, header or credential \u2014 those come from the descriptor, which the publish gate already checked; supply only `params` for its {{param}} placeholders. {{config:KEY}} values are read from the tenant\u2019s CONFIG store (only the keys the descriptor references). Transport is identical to call-external \u2014 same AUTH_MODE handling, reserved-header rules, REQUEST_TIMEOUT_MS and 429/503 retry \u2014 and a fetch is always treated as a READ, so a POST descriptor still retries a 429. The response body is decoded per `decode` (use `jsonString` for a double-encoded body) and the records extracted per `recordsPath`, paging per `page.style` up to `page.maxPages` (default 20). Returns {records, recordCount, pages, attempts, status, truncated}; `truncated: true` means the page cap was hit, so the record set is incomplete. Gated by CallExternal and metered like call-external. An unfillable {{param}} is a 400 and no call is made; an operation the floor no longer declares is a 409.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+            {
+              name: 'operation',
+              in: 'path',
+              required: true,
+              description: 'Capability name, e.g. `settlements`. Must be declared by the floor.',
+              schema: { type: 'string' },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    params: {
+                      type: 'object',
+                      description:
+                        'Values for the descriptor\u2019s {{param}} placeholders. A path param may not contain "/", "?" or "#".',
+                      additionalProperties: {
+                        oneOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }],
+                      },
+                    },
+                    group: { type: 'string', default: 'global' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Records pulled from the partner' },
+            '400': { description: 'Unfillable template, malformed descriptor, or bad recordsPath' },
+            '403': { description: 'Cedar denied (no CallExternal)' },
+            '404': {
+              description:
+                'Unknown integration, no fetch block, unknown operation, or unset config/secret',
+            },
+            '409': { description: 'The operation is no longer a capability of the floor' },
+            '502': { description: 'Partner error or call could not be completed' },
+            '504': { description: 'Partner did not respond within the timeout' },
           },
         },
       },

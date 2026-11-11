@@ -1731,6 +1731,20 @@ enum WorkflowTriggerKind {
   @@schema("public")
 }
 
+/// What an EVENT trigger does with a matching event. NEW starts a new execution
+/// per event (every Automation trigger, and the default). START and DELIVER
+/// route the event to the durable Workflow instance for the event's business
+/// key (`correlationPath`) as the signal `signalName`: START creates that
+/// instance (signal-with-start) when none is open, DELIVER only signals an
+/// open one.
+enum WorkflowTriggerMode {
+  NEW
+  START
+  DELIVER
+
+  @@schema("public")
+}
+
 /// Provenance of a WorkflowExecution: started manually by a user (USER) or
 /// fired by a trigger (EVENT / SCHEDULE). Trigger-fired executions have no
 /// triggeredByUserId.
@@ -1927,6 +1941,9 @@ model WorkflowExecution {
   @@index([tenantId, createdAt])
   /// The reconciler's WORKFLOW lane: RUNNING rows, least recently checked first.
   @@index([status, reconciledAt])
+  /// Event-routed signals: the dispatcher's open-instance lookup for a
+  /// business key (`temporalWorkflowId = wfl/<tenant>/<name>/<key>`).
+  @@index([tenantId, temporalWorkflowId])
   @@map("workflow_executions")
   @@schema("public")
 }
@@ -1973,6 +1990,19 @@ model WorkflowTrigger {
 
   /// Disabled triggers are kept but never fired.
   enabled Boolean @default(true)
+
+  /// EVENT kind: NEW (default — a new execution per event) or START / DELIVER
+  /// (route the event as a signal to the durable Workflow instance for its
+  /// business key). SCHEDULE rows are always NEW.
+  mode WorkflowTriggerMode @default(NEW)
+
+  /// START / DELIVER: dot path into the event envelope (e.g. `payload.orderId`)
+  /// whose string / integer value is the instance's business key. Null for NEW.
+  correlationPath String? @map("correlation_path")
+
+  /// START / DELIVER: the signal delivered, one of the target version's
+  /// manifest `signals`. Null for NEW.
+  signalName String? @map("signal_name")
 
   /// Dry-run triggers fire like any other, but every execution they start runs
   /// in DRY-RUN mode (reads live, mutations captured, never performed) — for

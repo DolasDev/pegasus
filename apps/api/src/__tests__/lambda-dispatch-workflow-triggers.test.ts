@@ -177,6 +177,9 @@ function triggerRow(overrides: Record<string, unknown> = {}) {
     cronExpression: null,
     enabled: true,
     dryRun: false,
+    mode: 'NEW',
+    correlationPath: null,
+    signalName: null,
     createdByUserId: 'user-1',
     createdAt: now,
     updatedAt: now,
@@ -1748,5 +1751,333 @@ describe('durable Workflows (Phase 3c)', () => {
         Dimensions: [{ Name: 'Reason', Value: 'OPEN_WORKFLOW_LIMIT' }],
       }),
     )
+  })
+})
+
+// ── Event-routed signals (trigger mode START / DELIVER) ───────────────────
+
+describe('event-routed signals (mode START / DELIVER)', () => {
+  const KEYED_ID = 'wfl/tenant-1/order_lifecycle/o-1'
+  const durable = workflowRow({
+    id: 'wf-durable',
+    name: 'order_lifecycle',
+    executable: true,
+    kind: 'WORKFLOW',
+    artifactSha256: 'f'.repeat(64),
+    manifest: {
+      name: 'order_lifecycle',
+      version: '1.0.0',
+      kind: 'workflow',
+      signals: ['order_event', 'proceed'],
+    },
+  })
+  const notRegistered = new Error('Failed to start Workflow', {
+    cause: new Error(
+      "9 FAILED_PRECONDITION: Pinned version 'order_lifecycle:fff' is not present in task queue 'q'",
+    ),
+  })
+
+  function signalTrigger(overrides: Record<string, unknown> = {}) {
+    return triggerRow({
+      workflowId: 'wf-durable',
+      mode: 'START',
+      correlationPath: 'payload.orderId',
+      signalName: 'order_event',
+      ...overrides,
+    })
+  }
+
+  const orderEvent = (overrides: Record<string, unknown> = {}) =>
+    eventRow({ payload: { orderId: 'o-1', status: 'booked' }, ...overrides })
+
+  const envelope = {
+    domainEventId: 'evt-1',
+    eventType: 'quote.accepted',
+    occurredAt: now.toISOString(),
+    payload: { orderId: 'o-1', status: 'booked' },
+  }
+
+  /** The keyed instance's open row (what findOpenByTemporalWorkflowId returns). */
+  const openRow = queuedExecution({
+    id: 'exec-open',
+    workflowId: 'wf-durable',
+    status: 'RUNNING',
+    temporalWorkflowId: KEYED_ID,
+    temporalRunId: 'run-first',
+    temporalNamespace: null,
+  })
+
+  let signalWithStart: ReturnType<typeof vi.fn>
+  let signal: ReturnType<typeof vi.fn>
+  let getHandle: ReturnType<typeof vi.fn>
+  let describe_: ReturnType<typeof vi.fn>
+  let start: ReturnType<typeof vi.fn>
+
+  /** Open-row lookup (has a status filter) vs the NEW-mode duplicate pre-check. */
+  function setOpenInstance(row: unknown) {
+    mockExecutionFindFirst.mockImplementation((args: { where: { status?: unknown } }) =>
+      Promise.resolve(args.where.status ? row : null),
+    )
+  }
+
+  function signalCounts() {
+    return emittedMetrics().filter((m) => m.MetricName.startsWith('Signal'))
+  }
+
+  beforeEach(() => {
+    mockWorkflowFindFirst.mockResolvedValue(durable)
+    setTriggers({ event: [signalTrigger()] })
+    mockDomainEventFindMany.mockResolvedValue([orderEvent()])
+    setOpenInstance(null)
+    signal = vi.fn().mockResolvedValue(undefined)
+    describe_ = vi.fn().mockResolvedValue({ memo: { dryRun: false, executionId: 'exec-1' } })
+    getHandle = vi.fn(() => ({ signal, describe: describe_ }))
+    signalWithStart = vi.fn().mockResolvedValue({ workflowId: KEYED_ID, signaledRunId: 'run-new' })
+    start = vi.fn()
+    _setTemporalClientForTesting({
+      workflow: { start, signalWithStart, getHandle },
+    } as unknown as Client)
+  })
+
+  it('START with no open instance: signal-with-start on the keyed id, pinned, event as input + signal', async () => {
+    const out = await handler()
+
+    expect(start).not.toHaveBeenCalled()
+    expect(signalWithStart).toHaveBeenCalledTimes(1)
+    const [type, options] = signalWithStart.mock.calls[0] as [string, Record<string, unknown>]
+    expect(type).toBe('order_lifecycle')
+    expect(options).toMatchObject({
+      workflowId: KEYED_ID,
+      signal: 'order_event',
+      signalArgs: [envelope],
+      workflowIdReusePolicy: 'REJECT_DUPLICATE',
+      memo: { dryRun: false, executionId: 'exec-1' },
+      versioningOverride: {
+        pinnedTo: { deploymentName: 'order_lifecycle', buildId: 'f'.repeat(64) },
+      },
+      args: [{ executionId: 'exec-1', input: envelope, dryRun: false }],
+    })
+    // The row records the keyed id at insert, and the signalled run as its first run.
+    expect(mockExecutionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ temporalWorkflowId: KEYED_ID, triggerSource: 'EVENT' }),
+      }),
+    )
+    expect(mockExecutionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ temporalRunId: 'run-new', status: 'RUNNING' }),
+      }),
+    )
+    expect(out.fired).toBe(1)
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({ MetricName: 'SignalDelivered', Value: 1 }),
+    ])
+  })
+
+  it('a later event for the same key signals the open instance — no new row', async () => {
+    setOpenInstance(openRow)
+
+    const out = await handler()
+
+    expect(signalWithStart).not.toHaveBeenCalled()
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(getHandle).toHaveBeenCalledWith(KEYED_ID, undefined, {
+      firstExecutionRunId: 'run-first',
+    })
+    expect(signal).toHaveBeenCalledWith('order_event', envelope)
+    expect(out.fired).toBe(0)
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({ MetricName: 'SignalDelivered', Value: 1 }),
+    ])
+  })
+
+  it('DELIVER with no open instance: failed delivery NO_OPEN_INSTANCE, nothing started, stamped', async () => {
+    setTriggers({ event: [signalTrigger({ mode: 'DELIVER' })] })
+
+    await handler()
+
+    expect(signalWithStart).not.toHaveBeenCalled()
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({
+        MetricName: 'SignalDeliveryFailed',
+        Dimensions: [{ Name: 'Reason', Value: 'NO_OPEN_INSTANCE' }],
+      }),
+    ])
+  })
+
+  it('DELIVER with an open instance signals it', async () => {
+    setTriggers({ event: [signalTrigger({ mode: 'DELIVER' })] })
+    setOpenInstance(openRow)
+
+    await handler()
+
+    expect(signal).toHaveBeenCalledWith('order_event', envelope)
+  })
+
+  it.each([
+    ['MISSING_KEY', { status: 'booked' }],
+    ['INVALID_KEY', { orderId: { nested: true } }],
+    ['INVALID_KEY', { orderId: 'has spaces/and slashes' }],
+  ])('%s: never starts or signals', async (reason, payload) => {
+    mockDomainEventFindMany.mockResolvedValue([orderEvent({ payload })])
+
+    await handler()
+
+    expect(signalWithStart).not.toHaveBeenCalled()
+    expect(signal).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({ Dimensions: [{ Name: 'Reason', Value: reason }] }),
+    ])
+  })
+
+  it('an integer key is normalized to a string', async () => {
+    mockDomainEventFindMany.mockResolvedValue([orderEvent({ payload: { orderId: 42 } })])
+
+    await handler()
+
+    expect(signalWithStart.mock.calls[0]?.[1]).toMatchObject({
+      workflowId: 'wfl/tenant-1/order_lifecycle/42',
+    })
+  })
+
+  it('a signal the target version no longer declares: BINDING_INVALID', async () => {
+    setTriggers({ event: [signalTrigger({ signalName: 'dropped_signal' })] })
+
+    await handler()
+
+    expect(signalWithStart).not.toHaveBeenCalled()
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({ Dimensions: [{ Name: 'Reason', Value: 'BINDING_INVALID' }] }),
+    ])
+  })
+
+  it('the open instance runs an older version without the signal: BINDING_INVALID, not signalled', async () => {
+    setOpenInstance({ ...openRow, workflowId: 'wf-old' })
+    mockWorkflowFindFirst.mockImplementation((args: { where: { id: string } }) =>
+      Promise.resolve(
+        args.where.id === 'wf-old'
+          ? { ...durable, id: 'wf-old', manifest: { ...durable.manifest, signals: ['proceed'] } }
+          : durable,
+      ),
+    )
+
+    await handler()
+
+    expect(signal).not.toHaveBeenCalled()
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({ Dimensions: [{ Name: 'Reason', Value: 'BINDING_INVALID' }] }),
+    ])
+  })
+
+  it('kill switch ON: an open instance is still signalled', async () => {
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+    setOpenInstance(openRow)
+
+    await handler()
+
+    expect(signal).toHaveBeenCalledWith('order_event', envelope)
+    expect(signalCounts()).toEqual([expect.objectContaining({ MetricName: 'SignalDelivered' })])
+  })
+
+  it('kill switch ON: START for a new key creates nothing (WORKFLOWS_DISABLED)', async () => {
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+
+    await handler()
+
+    expect(signalWithStart).not.toHaveBeenCalled()
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({ Dimensions: [{ Name: 'Reason', Value: 'WORKFLOWS_DISABLED' }] }),
+    ])
+  })
+
+  it('START while the version has not registered: parked (not stamped), row deleted', async () => {
+    signalWithStart.mockRejectedValue(notRegistered)
+    // A fresh event: one older than the 24 h park bound would be dropped instead.
+    mockDomainEventFindMany.mockResolvedValue([orderEvent({ occurredAt: new Date() })])
+
+    await handler()
+
+    expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
+    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1', status: 'QUEUED' } })
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'WORKFLOW_VERSION_DEFERRED' }],
+      }),
+    )
+  })
+
+  it('signal-with-start hit an instance the DB did not track open: new row deleted, delivered', async () => {
+    describe_.mockResolvedValue({ memo: { dryRun: false, executionId: 'exec-earlier' } })
+
+    const out = await handler()
+
+    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1', status: 'QUEUED' } })
+    expect(mockExecutionUpdate).not.toHaveBeenCalled() // never marked started
+    expect(out.fired).toBe(0)
+    expect(signalCounts()).toEqual([expect.objectContaining({ MetricName: 'SignalDelivered' })])
+  })
+
+  it('describe() failing after signal-with-start keeps the new row (never a lost delivery)', async () => {
+    describe_.mockRejectedValue(new Error('describe timed out'))
+
+    const out = await handler()
+
+    expect(mockExecutionDelete).not.toHaveBeenCalled()
+    expect(mockExecutionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ temporalRunId: 'run-new' }) }),
+    )
+    expect(out.fired).toBe(1)
+  })
+
+  it("the key's instance already closed (REJECT_DUPLICATE): INSTANCE_CLOSED, orphan row deleted", async () => {
+    signalWithStart.mockRejectedValue(
+      new WorkflowExecutionAlreadyStartedError('already started', KEYED_ID, 'order_lifecycle'),
+    )
+
+    await handler()
+
+    expect(mockExecutionDelete).toHaveBeenCalledWith({ where: { id: 'exec-1', status: 'QUEUED' } })
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({ Dimensions: [{ Name: 'Reason', Value: 'INSTANCE_CLOSED' }] }),
+    ])
+  })
+
+  it('an open row Temporal no longer runs: NOT_RUNNING, stamped', async () => {
+    setOpenInstance(openRow)
+    const gone = new Error('workflow execution already completed')
+    gone.name = 'WorkflowNotFoundError'
+    signal.mockRejectedValue(gone)
+
+    await handler()
+
+    expect(signalWithStart).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(signalCounts()).toEqual([
+      expect.objectContaining({ Dimensions: [{ Name: 'Reason', Value: 'NOT_RUNNING' }] }),
+    ])
+  })
+
+  it("a NEW-mode trigger beside a START one keeps today's behaviour", async () => {
+    setTriggers({
+      event: [signalTrigger(), triggerRow({ id: 'trg-new', workflowId: 'wf-durable' })],
+    })
+    start.mockResolvedValue({ workflowId: 'x', firstExecutionRunId: 'run-x' })
+
+    await handler()
+
+    expect(start).toHaveBeenCalledTimes(1)
+    expect((start.mock.calls[0] as [string, { workflowId: string }])[1].workflowId).toBe(
+      'wf/tenant-1/order_lifecycle/trg/trg-new/evt-1',
+    )
+    expect(signalWithStart).toHaveBeenCalledTimes(1)
   })
 })

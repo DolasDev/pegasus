@@ -845,6 +845,54 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def signal_execution(
+        self,
+        workflow_id: str,
+        execution_id: str,
+        name: str,
+        payload: Any = None,
+    ) -> dict[str, Any]:
+        """Deliver a signal to a running durable Workflow (manifest ``kind = "workflow"``).
+
+        ``name`` must be one of the signals the execution's Workflow version declares
+        (manifest ``signals``) — it is the ``@workflow.signal`` method's name. ``payload``
+        (any JSON value, ≤ 128 KiB) is passed as the signal's single argument; ``None``
+        sends no argument, so declare the handler
+        ``def name(self, payload: dict | None = None)``.
+
+        A signal is not a run: it counts toward no quota or cap, and the tenant kill
+        switch does not block it. Delivery is at-least-once (a retried call delivers
+        again) — make the handler idempotent. Requires ``SignalWorkflowExecution``
+        (the ``workflow_developer`` role).
+
+        Args:
+            workflow_id: The Workflow (version) id the execution belongs to.
+            execution_id: The QUEUED / RUNNING execution to signal.
+            name: The declared signal name.
+            payload: The signal's argument, or ``None`` for none.
+
+        Returns:
+            The (unchanged) ``ExecutionResponse``.
+
+        Raises:
+            PegasusApiError: 400 ``SIGNAL_NOT_DECLARED`` (the message lists the
+                declared names) or ``VALIDATION_ERROR``; 404 (unknown execution);
+                409 ``EXECUTION_NOT_SIGNALLABLE`` (an Automation, terminal, not
+                started yet, or no longer running); 413
+                ``SIGNAL_PAYLOAD_TOO_LARGE``; 502 ``TEMPORAL_SIGNAL_FAILED``; or any
+                non-2xx.
+        """
+        body: dict[str, Any] = {"name": name}
+        if payload is not None:
+            body["payload"] = payload
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/workflows/{workflow_id}/executions/{execution_id}/signal",
+                json=body,
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def retry_execution(self, workflow_id: str, execution_id: str) -> dict[str, Any]:
         """Retry a terminal-failed execution as a brand-new run with the same input.
 
@@ -975,8 +1023,35 @@ class PegasusClient:
         filter: dict[str, Any] | None = None,
         enabled: bool = True,
         dry_run: bool = False,
+        mode: str | None = None,
+        correlation_path: str | None = None,
+        signal_name: str | None = None,
     ) -> dict[str, Any]:
         """Attach a trigger to a workflow. Requires ``ManageWorkflowTriggers``.
+
+        **Event-routed signals** (SDK 0.61.0+; EVENT triggers on a durable
+        Workflow): ``mode="START"`` or ``"DELIVER"`` delivers each matching
+        event to ONE Workflow instance per business key instead of starting a
+        new execution per event::
+
+            client.create_trigger(
+                wf_id, kind="EVENT", event_type="pegii.shipment.opened",
+                mode="START", correlation_path="payload.orderId",
+                signal_name="order_event",
+            )
+
+        The key is the value at ``correlation_path`` — a dot path into the
+        event envelope ``{domainEventId, eventType, occurredAt, payload}``; a
+        string or integer matching ``[A-Za-z0-9._:-]{1,128}``. The signal
+        (``signal_name``, one the Workflow version declares) carries the
+        envelope as its single argument. ``START`` creates the key's instance
+        when none is open (the event is then both its run input and its first
+        signal) and is gated like any start (kill switch, open-Workflow cap,
+        daily quota); ``DELIVER`` only signals an open instance. One instance
+        per key for life: a key whose instance already closed is not
+        restarted. Delivery is at-least-once — dedupe on
+        ``payload["domainEventId"]`` in the handler. Failed deliveries (no open
+        instance, missing key, …) are counted and logged, not retried.
 
         Args:
             workflow_id: The workflow row id to bind the trigger to.
@@ -994,19 +1069,32 @@ class PegasusClient:
                 :meth:`update_trigger` once the wiring is right. Tenant-runner
                 Automations only — a curated workflow can't run dry (400
                 ``DRY_RUN_UNSUPPORTED``).
+            mode: ``"NEW"`` (default: a new execution per event), ``"START"`` or
+                ``"DELIVER"`` (event-routed signals, see above).
+            correlation_path: START / DELIVER: where the business key is, e.g.
+                ``"payload.orderId"``.
+            signal_name: START / DELIVER: the declared signal to deliver.
 
         Returns:
             The created trigger row ``{id, workflowId, kind, cronExpression,
-            eventType, filter, enabled, dryRun, ...}``.
+            eventType, filter, enabled, dryRun, mode, correlationPath,
+            signalName, ...}``.
 
         Raises:
-            PegasusApiError: On 400 (invalid cron / shape, or
-                ``DRY_RUN_UNSUPPORTED``), 403 (missing action), 404 (unknown
-                workflow).
+            PegasusApiError: On 400 (invalid cron / shape, an incomplete or
+                invalid signal binding — Automation target, undeclared signal,
+                bad path — or ``DRY_RUN_UNSUPPORTED``), 403 (missing action),
+                404 (unknown workflow).
         """
         body: dict[str, Any] = {"kind": kind, "enabled": enabled}
         if dry_run:
             body["dryRun"] = True
+        if mode is not None:
+            body["mode"] = mode
+        if correlation_path is not None:
+            body["correlationPath"] = correlation_path
+        if signal_name is not None:
+            body["signalName"] = signal_name
         if cron_expression is not None:
             body["cronExpression"] = cron_expression
         if event_type is not None:
@@ -1040,6 +1128,9 @@ class PegasusClient:
         filter: dict[str, Any] | None = None,
         cron_expression: str | None = None,
         dry_run: bool | None = None,
+        mode: str | None = None,
+        correlation_path: str | None = None,
+        signal_name: str | None = None,
     ) -> dict[str, Any]:
         """Partially update one of a workflow's triggers. Requires ``ManageWorkflowTriggers``.
 
@@ -1060,17 +1151,30 @@ class PegasusClient:
             dry_run: ``True`` makes every execution the trigger starts run in
                 dry-run mode (mutations captured, never performed) — see
                 :meth:`create_trigger`; ``False`` lets it act for real.
+            mode: ``"NEW"``, ``"START"`` or ``"DELIVER"`` (event-routed signals —
+                see :meth:`create_trigger`). The binding is validated on the
+                stored row merged with this update, so switching to START /
+                DELIVER needs ``correlation_path`` and ``signal_name`` (sent here
+                or already stored). ``mode="NEW"`` alone sends both as null
+                (clearing the stored binding); passing either with ``"NEW"``
+                is a 400.
+            correlation_path: New business-key path (START / DELIVER).
+            signal_name: New declared signal (START / DELIVER).
 
         Returns:
             The updated trigger row ``{id, workflowId, kind, cronExpression,
-            eventType, filter, enabled, dryRun, ...}``.
+            eventType, filter, enabled, dryRun, mode, correlationPath,
+            signalName, ...}``.
 
         Raises:
             ValueError: If no field is given (nothing to update).
             PegasusApiError: 400 (a field that doesn't fit the trigger's kind,
-                an unknown event type, an invalid cron or filter), 403 (missing
-                action), 404 (no such workflow, or the trigger is not this
-                tenant's or not on this workflow).
+                an unknown event type, an invalid cron or filter, or an invalid
+                signal binding — checked on EVERY update of a START / DELIVER
+                trigger, so re-enabling one whose Workflow version no longer
+                declares its signal is refused), 403 (missing action), 404 (no
+                such workflow, or the trigger is not this tenant's or not on
+                this workflow).
         """
         body: dict[str, Any] = {}
         if enabled is not None:
@@ -1083,10 +1187,20 @@ class PegasusClient:
             body["cronExpression"] = cron_expression
         if dry_run is not None:
             body["dryRun"] = dry_run
+        if mode is not None:
+            body["mode"] = mode
+        if correlation_path is not None:
+            body["correlationPath"] = correlation_path
+        if signal_name is not None:
+            body["signalName"] = signal_name
+        if mode == "NEW" and correlation_path is None and signal_name is None:
+            # Back to a new execution per event: the binding fields must be cleared.
+            body["correlationPath"] = None
+            body["signalName"] = None
         if not body:
             raise ValueError(
                 "update_trigger needs at least one of enabled, event_type, filter, "
-                "cron_expression, dry_run"
+                "cron_expression, dry_run, mode, correlation_path, signal_name"
             )
         with self._client() as client:
             response = client.patch(
@@ -2241,6 +2355,105 @@ class PegasusClient:
         with self._client() as client:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/call-external", json=payload
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def fetch_external(
+        self,
+        integration_id: str,
+        operation: str,
+        *,
+        params: dict[str, Any] | None = None,
+        group: str = "global",
+    ) -> dict[str, Any]:
+        """Run a PUBLISHED ``fetch`` descriptor — pull a source from config alone.
+
+        The declarative counterpart to :meth:`call_external`. There you name the
+        ``method`` and ``path`` yourself, which means partner transport knowledge
+        lives in workflow code and a NEW SOURCE NEEDS A NEW WORKFLOW even when
+        its mapping and rules are pure config. Here the transport comes from the
+        integration's published ``fetch`` block, so one generic workflow serves
+        every source that publishes the same capability.
+
+        **You cannot name a path, method, header or credential.** Those are in
+        the descriptor, which the publish gate already checked. You supply only
+        ``params`` for its ``{{param}}`` placeholders; ``{{config:KEY}}`` values
+        come from the tenant's CONFIG store (only the keys the descriptor
+        actually references).
+
+        ``operation`` is a **capability name**, not a free-form string — it must
+        be one the floor declares. Read the legal names from the floor itself::
+
+            client.get_floor("financial_settlement")["capabilities"]  # ["settlements"]
+
+        Authoring the descriptor is a separate step: see
+        :meth:`get_fetch_schema` for its shape and ``fetch.json`` in the
+        integration-config working directory.
+
+        Example — pull a settlement period from whichever source the tenant uses::
+
+            result = client.fetch_external(
+                "atlas_settlement", "settlements",
+                params={"settlementDate": "2026-11-06"},
+            )
+            for record in result["records"]:
+                ...
+
+        **Transport is identical to** :meth:`call_external` — the same
+        ``AUTH_MODE`` handling, reserved-header rules, ``REQUEST_TIMEOUT_MS`` and
+        ``429``/``503`` retry policy, because it is literally the same code path.
+        One difference matters: **a fetch is always treated as a READ**, so a
+        descriptor whose ``method`` is ``POST`` (some partners expose reads that
+        way) still retries a ``429``, where ``call_external`` would not.
+
+        Being side-effect-free, a fetch **runs LIVE under ``run --dry-run``** and
+        returns real data, like a ``GET`` through ``call_external``. It is never
+        captured.
+
+        The response body is decoded per the descriptor's ``decode`` (use
+        ``jsonString`` for a partner that returns a JSON *string* containing
+        JSON), records are extracted per ``recordsPath``, and pages are followed
+        per ``page.style``.
+
+        Args:
+            integration_id: The integration whose descriptor to run.
+            operation: The capability name, e.g. ``"settlements"``.
+            params: Values for the descriptor's ``{{param}}`` placeholders. A
+                value substituted into the PATH may not contain ``/``, ``?`` or
+                ``#`` — a descriptor constrains which endpoint is called, and
+                allowing those would defeat that.
+            group: Config/secret group the descriptor's ``BASE_URL``, credential
+                and any ``{{config:KEY}}`` values live in.
+
+        Returns:
+            ``{operation, records, recordCount, pages, attempts, status,
+            truncated}``. ``records`` is the flattened list across pages.
+            **Check ``truncated``**: ``True`` means the page cap
+            (``page.maxPages``, default 20) was reached, so the record set is
+            INCOMPLETE — treat it as a partial read, not an empty tail.
+            ``attempts`` counts actual HTTP requests, retries included.
+
+        Raises:
+            PegasusApiError: On 400 (a ``{{param}}`` you did not supply — the
+                call is NOT made, so a template never reaches the partner; a
+                malformed stored descriptor; or a ``recordsPath`` that resolved
+                to a non-array), 403 (manifest lacks ``CallExternal``), 404
+                (unknown integration, no published ``fetch`` block, unknown
+                operation, or an unset config/secret), 409 (the operation is no
+                longer a capability the floor declares — republish the config),
+                502 (partner error, or the call could not be completed), 504
+                (partner did not respond within the timeout).
+
+        Note:
+            An empty result is a **200 with no records**, not an error: a period
+            with nothing in it is a legitimate answer, and failing would make
+            "nothing settled" indistinguishable from a broken descriptor.
+        """
+        payload: dict[str, Any] = {"params": params or {}, "group": group}
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/fetch/{operation}", json=payload
             )
         _raise_for_status(response)
         return response.json()["data"]

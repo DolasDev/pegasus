@@ -3,6 +3,73 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.61.0
+
+### Added — event-routed signals: one durable Workflow instance per business key
+
+- `create_trigger` / `update_trigger` take `mode` (`"NEW"` default, `"START"`,
+  `"DELIVER"`), `correlation_path` and `signal_name`. In START / DELIVER an EVENT
+  trigger on a durable Workflow delivers each matching event — the envelope
+  `{domainEventId, eventType, occurredAt, payload}` — as the declared signal to
+  the instance for the event's business key (the value at `correlation_path`,
+  e.g. `"payload.orderId"`). START creates the instance when none is open (the
+  event is also its run input) and is gated like any start; DELIVER only signals
+  an open one. One instance per key for life.
+- Delivery is at-least-once (dedupe on `domainEventId`); undelivered events are
+  counted and logged, not retried. `update_trigger(..., mode="NEW")` clears the
+  binding. Trigger rows now carry `mode`, `correlationPath`, `signalName`.
+- README "Routing events to an instance", the MCP authoring guide and input
+  contract (Shape 5), and OpenAPI document it. No CLI command creates EVENT
+  triggers yet — use the client.
+
+## 0.60.0
+
+### Added — deliver signals to running durable Workflows
+
+- New `PegasusClient.signal_execution(workflow_id, execution_id, name,
+payload=None)` → `POST /api/v1/workflows/{id}/executions/{executionId}/signal`.
+  `name` must be declared in the Workflow version's manifest `signals`; `payload`
+  (any JSON, ≤ 128 KiB) is the handler's single argument, `None` sends none.
+  Errors: 400 `SIGNAL_NOT_DECLARED`, 409 `EXECUTION_NOT_SIGNALLABLE`, 413
+  `SIGNAL_PAYLOAD_TOO_LARGE`, 502 `TEMPORAL_SIGNAL_FAILED`. Needs the new
+  `SignalWorkflowExecution` action (in the `workflow_developer` role).
+- New CLI command `pegasus-workflows executions signal <workflow-id>
+<execution-id> --name <signal> [--payload JSON]`.
+- `executions show` prints a delivered signal's name in the timeline; the
+  timeline also labels workflow-task, cancel-request and marker events that
+  printed `Unknown` before.
+- Delivery is at-least-once and a signal is not a run: no quota or cap charge,
+  and the kill switch does not block it. README ("Sending a signal") and the MCP
+  authoring guide / manifest reference document all of it.
+
+## 0.59.0
+
+### Added — `fetch_external`: run a published fetch descriptor
+
+- `fetch_external(integration_id, operation, *, params=None, group="global")`
+  executes the named operation from the integration's published `fetch` block.
+  0.58.0 shipped the authoring half; this is the half that runs it, so a
+  `fetch` block is now executable end to end.
+- **The caller cannot name a method, path, header or credential** — those come
+  from the descriptor, which the publish gate already checked. You supply only
+  `params` for its `{{param}}` placeholders; `{{config:KEY}}` values are read
+  from the tenant's CONFIG store (only the keys the descriptor references).
+  `operation` must be a capability the floor declares — read the legal names
+  from `get_floor(id)["capabilities"]`.
+- Transport is the SAME code path as `call_external` (identical `AUTH_MODE`
+  handling, reserved-header rules, `REQUEST_TIMEOUT_MS`, 429/503 retry). One
+  difference: **a fetch is always treated as a READ**, so a `POST` descriptor
+  still retries a 429 where `call_external` would not.
+- Being side-effect-free it **runs live under `run --dry-run`** and returns real
+  data; it is never captured.
+- Returns `{operation, records, recordCount, pages, attempts, status,
+truncated}`. **Check `truncated`** — `True` means the page cap
+  (`page.maxPages`, default 20) was hit and the record set is incomplete.
+- An empty result is a 200 with no records, not an error: an empty period is a
+  legitimate answer, and failing would make "nothing settled" indistinguishable
+  from a broken descriptor. An unsupplied `{{param}}` IS an error (400) and no
+  call is made, so a template never reaches the partner.
+
 ## 0.58.0
 
 ### Added — declarative pull: the `fetch` block (authoring half)

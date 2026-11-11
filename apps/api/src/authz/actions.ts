@@ -255,6 +255,11 @@ export const Actions = {
     resourceType: 'Workflow',
     permission: 'workflow:retry_execution',
   },
+  SignalWorkflowExecution: {
+    id: 'SignalWorkflowExecution',
+    resourceType: 'Workflow',
+    permission: 'workflow:signal_execution',
+  },
   // ── Notifications (staff-initiated push to drivers/crew) ────────────────────
   SendNotification: {
     id: 'SendNotification',

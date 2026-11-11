@@ -21,6 +21,14 @@ import type { PrismaClient, Prisma } from '@prisma/client'
 /** Trigger kind as it appears at the API boundary. Mirrors the Prisma enum. */
 export type WorkflowTriggerKind = 'EVENT' | 'SCHEDULE'
 
+/**
+ * What an EVENT trigger does with a matching event. Mirrors the Prisma enum.
+ * NEW = a new execution per event; START / DELIVER = deliver the event as
+ * `signalName` to the durable Workflow instance for its business key
+ * (`correlationPath`), START creating it when none is open.
+ */
+export type WorkflowTriggerMode = 'NEW' | 'START' | 'DELIVER'
+
 export type WorkflowTriggerRow = {
   id: string
   tenantId: string
@@ -35,6 +43,11 @@ export type WorkflowTriggerRow = {
   enabled: boolean
   /** Every execution this trigger starts runs in dry-run mode. */
   dryRun: boolean
+  mode: WorkflowTriggerMode
+  /** START / DELIVER: dot path into the event envelope naming the business key. */
+  correlationPath: string | null
+  /** START / DELIVER: the declared signal the event is delivered as. */
+  signalName: string | null
   createdByUserId: string
   createdAt: Date
   updatedAt: Date
@@ -50,6 +63,9 @@ const TRIGGER_SELECT = {
   cronExpression: true,
   enabled: true,
   dryRun: true,
+  mode: true,
+  correlationPath: true,
+  signalName: true,
   createdByUserId: true,
   createdAt: true,
   updatedAt: true,
@@ -79,6 +95,9 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
       cronExpression?: string | null
       enabled: boolean
       dryRun?: boolean
+      mode?: WorkflowTriggerMode
+      correlationPath?: string | null
+      signalName?: string | null
       createdByUserId: string
     }): Promise<WorkflowTriggerRow> {
       const data: Prisma.WorkflowTriggerUncheckedCreateInput = {
@@ -89,6 +108,9 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
         cronExpression: input.cronExpression ?? null,
         enabled: input.enabled,
         dryRun: input.dryRun ?? false,
+        mode: input.mode ?? 'NEW',
+        correlationPath: input.correlationPath ?? null,
+        signalName: input.signalName ?? null,
         createdByUserId: input.createdByUserId,
       }
       // Omitted filter stays SQL NULL — the column has no default.
@@ -148,6 +170,10 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
         eventType?: string
         filter?: Prisma.InputJsonValue
         cronExpression?: string
+        mode?: WorkflowTriggerMode
+        /** null clears it (a trigger switched back to NEW). */
+        correlationPath?: string | null
+        signalName?: string | null
       },
     ): Promise<WorkflowTriggerRow> {
       const data: Prisma.WorkflowTriggerUncheckedUpdateInput = {}
@@ -156,6 +182,9 @@ export function createWorkflowTriggerRepository(db: PrismaClient) {
       if (input.eventType !== undefined) data.eventType = input.eventType
       if (input.filter !== undefined) data.filter = input.filter
       if (input.cronExpression !== undefined) data.cronExpression = input.cronExpression
+      if (input.mode !== undefined) data.mode = input.mode
+      if (input.correlationPath !== undefined) data.correlationPath = input.correlationPath
+      if (input.signalName !== undefined) data.signalName = input.signalName
       return db.workflowTrigger.update({
         where: { id: triggerId },
         data,
