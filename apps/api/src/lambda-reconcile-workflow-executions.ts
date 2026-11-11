@@ -33,6 +33,26 @@
 //     check, so a row closes within about ⌈open Workflows / 100⌉ minutes of
 //     finishing. Its closes are counted as WorkflowExecutionClosed, never as
 //     WorkflowExecutionReconciled (the crashed-runner alarm).
+//
+// QUEUED LANE (stranded durable starts). A durable row is inserted QUEUED and
+// moved to RUNNING right after Temporal accepts the start; a start that never
+// happened (a crash between the insert and the start, or a failed cleanup)
+// leaves it QUEUED, which neither lane above ever looks at. Such a row holds an
+// open-Workflow slot, keeps the runner sweep demanding a runner, and — for an
+// event-routed `wfl/` key — is found as "the open instance" by every later
+// event, so the key is stranded. Past STRANDED_QUEUED_MS this lane asks
+// Temporal and settles the row:
+//   - no instance                                → FAILED (never started)
+//   - an instance OWNED BY THIS ROW (memo.executionId), still running
+//                                                → RUNNING (adopted)
+//   - an instance owned by this row, closed      → its terminal status
+//   - an instance owned by ANOTHER row           → FAILED (never started; the
+//     row is an orphan beside a live instance, and adopting it would put two
+//     RUNNING rows on one instance)
+// A FAILED close frees the key: the dispatcher's open-instance lookup reads
+// QUEUED / RUNNING rows only, so the next event STARTs a fresh instance.
+// Automation QUEUED rows are out of scope (their crash recovery is the runner
+// write-back contract, a separate decision).
 // ---------------------------------------------------------------------------
 
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
@@ -51,6 +71,16 @@ const cloudwatch = new CloudWatchClient({})
 const METRIC_NAMESPACE = 'Pegasus/Workflows'
 const METRIC_NAME = 'WorkflowExecutionReconciled'
 const CLOSED_METRIC_NAME = 'WorkflowExecutionClosed'
+/** A stranded QUEUED durable row closed as never started — each one means a
+ * start crashed (or a cleanup failed); kept apart from normal closes. */
+const NEVER_STARTED_METRIC_NAME = 'WorkflowExecutionNeverStarted'
+
+/** How long a durable row may stay QUEUED before the QUEUED lane settles it.
+ * Only two Lambdas start runs: the API (29 s timeout) and the trigger
+ * dispatcher (2 min), so after 10 min no start can still be in flight — which
+ * is what makes it safe to close a row `markStarted` (no status predicate)
+ * could otherwise still be about to write. */
+const STRANDED_QUEUED_MS = 10 * 60 * 1000
 
 /** Don't touch a row until it has been RUNNING for at least this long — gives
  * the worker write-back time to land before we go ask Temporal. */
@@ -175,8 +205,13 @@ async function readTemporalOutcome(
 
 type ExecutionRow = Awaited<ReturnType<typeof db.workflowExecution.findMany>>[number]
 
+/** A QUEUED-lane row: the execution plus its workflow's name (to derive the
+ * manual-run Temporal id of a row that never recorded one). */
+type StrandedRow = ExecutionRow & { workflow: { name: string } }
+
 export async function handler(): Promise<{ scanned: number; reconciled: number }> {
   const cutoff = new Date(Date.now() - GRACE_MS)
+  const strandedCutoff = new Date(Date.now() - STRANDED_QUEUED_MS)
 
   const orphans = await db.workflowExecution.findMany({
     where: { status: 'RUNNING', startedAt: { lt: cutoff }, workflow: { kind: 'AUTOMATION' } },
@@ -188,10 +223,17 @@ export async function handler(): Promise<{ scanned: number; reconciled: number }
     take: BATCH_SIZE,
     orderBy: { reconciledAt: { sort: 'asc', nulls: 'first' } },
   })
+  const stranded = (await db.workflowExecution.findMany({
+    where: { status: 'QUEUED', queuedAt: { lt: strandedCutoff }, workflow: { kind: 'WORKFLOW' } },
+    include: { workflow: { select: { name: true } } },
+    take: BATCH_SIZE,
+    orderBy: { queuedAt: 'asc' },
+  })) as StrandedRow[]
 
   logger.info('Scanned for orphaned RUNNING executions', {
     scanned: orphans.length,
     durableScanned: durables.length,
+    strandedScanned: stranded.length,
     cutoff: cutoff.toISOString(),
   })
 
@@ -202,6 +244,9 @@ export async function handler(): Promise<{ scanned: number; reconciled: number }
   for (const row of durables) {
     if (await reconcileRow(row, 'WORKFLOW')) reconciled += 1
   }
+  for (const row of stranded) {
+    if (await settleStrandedRow(row)) reconciled += 1
+  }
 
   // The AUTOMATION lane only: the WORKFLOW lane is full by design whenever 100+
   // durable Workflows are open, so a full batch there is not a backlog.
@@ -211,7 +256,14 @@ export async function handler(): Promise<{ scanned: number; reconciled: number }
     })
   }
 
-  const scanned = orphans.length + durables.length
+  // Stranded rows are an anomaly (a crashed start each), so a full batch is.
+  if (stranded.length === BATCH_SIZE) {
+    logger.warn('Stranded QUEUED backlog — hit batch cap; next tick will continue', {
+      batchSize: BATCH_SIZE,
+    })
+  }
+
+  const scanned = orphans.length + durables.length + stranded.length
   logger.info('Reconcile tick finished', { scanned, reconciled })
   return { scanned, reconciled }
 }
@@ -327,4 +379,156 @@ async function stampChecked(id: string, checkedAt: Date): Promise<void> {
         error: err instanceof Error ? err.message : String(err),
       })
     })
+}
+
+/**
+ * Settle one stranded QUEUED durable row (see "QUEUED LANE" in the header).
+ * Returns true when the row was changed. Never throws; every write is
+ * conditional on the row still being QUEUED.
+ */
+async function settleStrandedRow(row: StrandedRow): Promise<boolean> {
+  // A manual run records its Temporal id only at markStarted; it is derivable.
+  const temporalWorkflowId =
+    row.temporalWorkflowId ?? `wf/${row.tenantId}/${row.workflow.name}/${row.id}`
+  const target = { tenantId: row.tenantId, namespace: row.temporalNamespace }
+  try {
+    const description = await withTemporalClient(target, async (client) => {
+      try {
+        return await client.workflow.getHandle(temporalWorkflowId).describe()
+      } catch (err) {
+        if (err instanceof Error && err.name === 'WorkflowNotFoundError') return null
+        throw err
+      }
+    })
+    if (description === null) {
+      return closeNeverStarted(row, temporalWorkflowId, 'no Temporal instance exists for it')
+    }
+    // Starts since event-routed signals (#944) record the starting row in the
+    // memo. An instance naming another row is that row's: this one is an orphan
+    // beside it.
+    const owner = description.memo?.['executionId']
+    if (owner !== undefined && owner !== row.id) {
+      return closeNeverStarted(
+        row,
+        temporalWorkflowId,
+        `its Temporal instance belongs to execution ${String(owner)}`,
+      )
+    }
+    // No memo (a start before #944): the instance is this row's only if no
+    // other row already tracks it — e.g. a NEW-mode trigger's QUEUED orphan
+    // left by the ALREADY_STARTED path sits beside the RUNNING row that
+    // started the same `wf/…/trg/…` id. Adopting it would put two rows on one
+    // instance.
+    if (owner === undefined) {
+      const sibling = await db.workflowExecution.findFirst({
+        where: {
+          tenantId: row.tenantId,
+          temporalWorkflowId,
+          id: { not: row.id },
+          status: { not: 'QUEUED' },
+        },
+        select: { id: true },
+      })
+      if (sibling) {
+        return closeNeverStarted(
+          row,
+          temporalWorkflowId,
+          `execution ${sibling.id} already tracks its Temporal instance`,
+        )
+      }
+    }
+
+    const firstRunId = description.raw.workflowExecutionInfo?.firstRunId || description.runId
+    const started = {
+      temporalWorkflowId,
+      temporalRunId: firstRunId,
+      startedAt: description.startTime,
+    }
+    const terminal = mapTemporalStatus(description.status.name)
+    if (terminal === null) {
+      const { count } = await db.workflowExecution.updateMany({
+        where: { id: row.id, status: 'QUEUED' },
+        data: { status: 'RUNNING', ...started },
+      })
+      if (count > 0) {
+        logger.warn('Adopted a stranded QUEUED execution that was running on Temporal', {
+          executionId: row.id,
+          tenantId: row.tenantId,
+          temporalWorkflowId,
+        })
+      }
+      return count > 0
+    }
+
+    const outcome = await withTemporalClient(target, (client) =>
+      readTemporalOutcome(client, temporalWorkflowId, row.id),
+    )
+    const data: Prisma.WorkflowExecutionUncheckedUpdateInput = {
+      status: terminal,
+      finishedAt: new Date(),
+      ...started,
+    }
+    if (outcome.result !== undefined) data.result = outcome.result
+    if (outcome.errorMessage !== undefined) data.errorMessage = outcome.errorMessage
+    const { count } = await db.workflowExecution.updateMany({
+      where: { id: row.id, status: 'QUEUED' },
+      data,
+    })
+    if (count === 0) return false
+    await emitReconciledMetric(terminal, 'WORKFLOW')
+    logger.warn('Closed a stranded QUEUED execution that had finished on Temporal', {
+      executionId: row.id,
+      tenantId: row.tenantId,
+      temporalWorkflowId,
+      terminalStatus: terminal,
+    })
+    return true
+  } catch (err) {
+    // Transient (gRPC, a key rotation): the next tick retries the row.
+    logger.error('Failed to settle stranded QUEUED execution', {
+      executionId: row.id,
+      tenantId: row.tenantId,
+      temporalWorkflowId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
+
+/** Close a stranded row as never started (FAILED), freeing its key. */
+async function closeNeverStarted(
+  row: StrandedRow,
+  temporalWorkflowId: string,
+  reason: string,
+): Promise<boolean> {
+  const { count } = await db.workflowExecution.updateMany({
+    where: { id: row.id, status: 'QUEUED' },
+    data: {
+      status: 'FAILED',
+      finishedAt: new Date(),
+      errorMessage: `Not started: this execution stayed queued and ${reason}. Nothing ran.`,
+    },
+  })
+  if (count === 0) return false
+  try {
+    await cloudwatch.send(
+      new PutMetricDataCommand({
+        Namespace: METRIC_NAMESPACE,
+        MetricData: [
+          { MetricName: NEVER_STARTED_METRIC_NAME, Value: 1, Unit: 'Count', Timestamp: new Date() },
+        ],
+      }),
+    )
+  } catch (err) {
+    logger.warn('Failed to publish never-started metric', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  logger.warn('Closed a stranded QUEUED execution as never started', {
+    executionId: row.id,
+    tenantId: row.tenantId,
+    temporalWorkflowId,
+    reason,
+  })
+  return true
 }

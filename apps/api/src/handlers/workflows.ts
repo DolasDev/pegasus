@@ -1615,6 +1615,20 @@ workflowsHandler.post(
         409,
       )
     }
+    // A keyed instance of an event-routed trigger (`wfl/…`): a retry would
+    // start an UNKEYED copy that no later event for the key ever reaches. (A
+    // keyed row that never started frees its key, so the next START event
+    // creates the instance; one that ran stays the key's only instance.)
+    if (execution.temporalWorkflowId?.startsWith('wfl/')) {
+      return c.json(
+        {
+          error:
+            'This execution is the Workflow instance for an event-routed key and cannot be retried: a retry would start a copy that no event for the key reaches.',
+          code: 'EXECUTION_NOT_RETRYABLE',
+        },
+        409,
+      )
+    }
 
     // Re-use the original input. Stored input is workflow-defined JSON; default
     // to {} if it is not a plain object (matches the RunBody default).
