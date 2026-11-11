@@ -3,6 +3,27 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.62.0
+
+### Changed — `financial_settlement` correlates to `"order"`, not `"shipment"`
+
+- **Breaking for anyone who passed `local_entity_type="shipment"`** on a
+  `financial_settlement` projection: the server now rejects it. Pass `"order"`
+  with the pegII order number.
+- There is no Pegasus _shipment_ id to supply — moves live in pegII and are
+  addressed by order number, which is what `shipment_status_update` has always
+  used. `financial_settlement` asking for `"shipment"` named a kind no caller
+  could produce, and disagreed with the only other floor declaring a
+  correlation. Every floor that declares one now binds to `"order"`.
+- Read the kind from the floor rather than from docs:
+  `get_floor(id)["projection"]["localEntityType"]`.
+- The README example and the `get_correlated_state` docstring taught
+  `"shipment"`; both are corrected. If you copied that example, update it.
+
+Safe to change rather than deprecate: a read-only audit of prod AND staging on
+2026-11-10 found **zero** correlation rows in either (prod had zero projections
+too), so no stored binding is orphaned and no migration is required.
+
 ## 0.61.0
 
 ### Added — event-routed signals: one durable Workflow instance per business key

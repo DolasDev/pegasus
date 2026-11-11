@@ -793,11 +793,21 @@ reused, not re-implemented), so it gets its own review.
 
 **Increment 2 — execution. Not started.**
 
-- `[ ]` **Floor one-liner, decided 2026-11-06:** `financial_settlement`'s
-  `correlation.localEntityType` → `'order'` (matching `#812`), **after** querying for
-  existing `'shipment'` correlations. Deliberately NOT folded into increment 1: it has
-  its own blast radius (the SDK README teaches `"shipment"`) and its own DB precheck,
-  which cannot be run from this worktree. See "Decisions & dead ends".
+- `[x]` **Floor one-liner — DONE 2026-11-11, SDK 0.62.0.** `financial_settlement`'s
+  `correlation.localEntityType` → `'order'`, after the prod+staging audit cleared the
+  gate (zero rows either side — see "Still open"). Blast radius closed with it: the SDK
+  README (which _taught_ `"shipment"` and was the only plausible source of a stray row),
+  the `get_correlated_state` docstring, the SDK test fixtures, and the authoring repo's
+  `CLAUDE.md`.
+
+  **The part worth remembering:** the full API suite passed **5013/5013 before any test
+  was added**, so this change was invisible to it and nothing had ever asserted the two
+  correlating floors agreed — which is exactly how the drift survived since August. Five
+  tests now pin the vocabulary (including a guard against a vacuous pass on an empty
+  floor list), and they were verified to DISCRIMINATE by reverting the floor to
+  `'shipment'` and watching three fail. A one-line change whose test suite does not
+  notice it is a change with no coverage, not a safe one.
+
 - `[x]` ~~**Prerequisite: thread `fetch` into the resolved definition**~~ —
   **DISSOLVED 2026-11-06, the prescription was wrong.** It is true that
   `IntegrationDefinition` has no `fetch` field, but it does not need one: **`inbound`
@@ -1009,8 +1019,37 @@ is the first informed moment to decide.
   specific, not to browse.
 - **Does pegII store the Atlas order number?** Decides whether this source can correlate
   at all (see the Phase 2 checklist). Not answerable from this repo.
-- **Do any `local_entity_type = 'shipment'` correlations exist?** Gates the one-line floor
-  edit to `'order'`. One query against staging/prod settles it.
+- ~~**Do any `local_entity_type = 'shipment'` correlations exist?**~~ — **MEASURED
+  2026-11-10, answer: NO. Gate cleared, no migration needed.**
+
+  Read-only audit against both environments (Secrets Manager `pegasus/<env>/database-url`
+  via the `dolas-pegasus-<env>` SSO profile, `default_transaction_read_only=on`):
+
+  |                                                  | prod         | staging    |
+  | ------------------------------------------------ | ------------ | ---------- |
+  | `local_entity_type = 'shipment'` rows            | **0**        | **0**      |
+  | rename collisions against the local unique index | **0**        | **0**      |
+  | `integration_correlations` total rows            | **0**        | **0**      |
+  | `integration_projections` total rows             | 0            | 2          |
+  | tenants / integration_configs / workflows        | 19 / 32 / 52 | 3 / 2 / 11 |
+
+  The last row is the point: **the zeros are real, not a false green.** Four zeros
+  against an empty table is indistinguishable from querying the wrong database, so the
+  audit also proves the connection sees populated data (`current_database()` = `neondb`,
+  one `integration_correlations` table, in `public`). Scripts:
+  `correlation_audit.sql` + `run_correlation_audit.sh` (session scratchpad — re-create
+  from this entry if needed; the AWS managed **ReadOnly** policy does NOT include
+  `secretsmanager:GetSecretValue`, so the `-ro` profiles cannot fetch the URL and the
+  writable profile is required for that one read).
+
+- **CORRECTION, same measurement: Phase 1 is NOT "in production use".** This plan has
+  said so since August. The data says correlations have **never been written in either
+  environment**, and prod has **no projections at all**. Staging has 2 projections and 0
+  correlations — so even where `put_projection` was called, `local_entity_type` was never
+  passed. The API shipped and is live; nothing exercises it. Two consequences:
+  the floor edit's risk is essentially nil (there is no legacy data to preserve), and
+  **the Atlas pilot would be the FIRST real user of the projection + correlation path**,
+  so expect first-contact problems there rather than in the edit.
 - **LATENT BUG found 2026-11-06, NOT fixed here (out of scope — record only).**
   `handlers/ingress.ts` loads the `inbound` block with
   `findFirst({ where: { integrationId, tenantId, status: 'PUBLISHED' } })` — **no GLOBAL

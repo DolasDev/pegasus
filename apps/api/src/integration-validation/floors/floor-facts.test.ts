@@ -162,3 +162,58 @@ describe('document_record facts + key', () => {
     expect(key({})).toBeNull()
   })
 })
+
+// ---------------------------------------------------------------------------
+// The correlation LOCAL-ENTITY VOCABULARY.
+//
+// `localEntityType` is a free string validated only against the declaring
+// floor's own `correlation` block — there is no enum, no FK and no registry. So
+// nothing stopped two floors naming the same Pegasus identifier differently,
+// and for a while two did: `financial_settlement` said 'shipment' while
+// `shipment_status_update` said 'order', for the identical pegII order number.
+//
+// That drift was invisible to this suite (the whole floor edit that fixed it
+// changed no test), which is exactly why these exist.
+// ---------------------------------------------------------------------------
+
+describe('correlation local-entity vocabulary', () => {
+  /** Every floor that declares a correlation, with its declared local kind. */
+  const declaring = listFloorIds()
+    .map((id) => ({ id, floor: getFloor(id)! }))
+    .filter((f) => f.floor.correlation !== undefined)
+
+  it('has at least one declaring floor (guards a vacuous pass below)', () => {
+    // Without this, every assertion in this block would pass on an empty list —
+    // the failure mode a filter-based test is most prone to.
+    expect(declaring.length).toBeGreaterThan(0)
+  })
+
+  it('declares "order" for the pegII order number, never "shipment"', () => {
+    // There is no Pegasus *shipment* id to supply: moves live in pegII and are
+    // addressed by order number. A floor asking for 'shipment' names a kind the
+    // caller cannot produce.
+    for (const { id, floor } of declaring) {
+      expect(floor.correlation?.localEntityType, `floor ${id}`).not.toBe('shipment')
+    }
+  })
+
+  it('uses ONE name across every floor, so the same id is never two kinds', () => {
+    const names = [...new Set(declaring.map((f) => f.floor.correlation!.localEntityType))]
+    expect(names).toEqual(['order'])
+  })
+
+  it('financial_settlement and shipment_status_update agree', () => {
+    // Named explicitly because these are the two that disagreed. A future floor
+    // is covered by the set assertion above; these two get a regression guard.
+    expect(financialSettlementFloor.correlation?.localEntityType).toBe('order')
+    expect(getFloor('shipment_status_update')?.correlation?.localEntityType).toBe('order')
+  })
+
+  it('a declaring floor also declares a projection — the correlation indexes it', () => {
+    // A correlation whose floor has no projection binding would resolve to a
+    // row that can never exist: the correlation is an index INTO the projection.
+    for (const { id, floor } of declaring) {
+      expect(floor.projection, `floor ${id} declares a correlation`).toBeDefined()
+    }
+  })
+})

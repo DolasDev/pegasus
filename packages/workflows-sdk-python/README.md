@@ -948,11 +948,17 @@ state:
 ```python
 client.put_projection(
     "atlas_settlement", "settlement", settlement["Id"], settlement,
-    local_entity_type="shipment", local_entity_id=shipment_id,
+    local_entity_type="order", local_entity_id=order_number,
 )
 
-found = client.get_correlated_state("atlas_settlement", "settlement", "shipment", shipment_id)
+found = client.get_correlated_state("atlas_settlement", "settlement", "order", order_number)
 ```
+
+**The kind is `"order"`, and it is not a free choice** — the floor declares it and
+the server rejects anything else. Read it from the floor rather than from this
+example: `get_floor("financial_settlement")["projection"]["localEntityType"]`.
+There is no Pegasus _shipment_ id to pass; moves are addressed by **pegII order
+number**, which is what `shipment_status_update` has always used too.
 
 You supply the local id because the partner's payload does not contain it — it
 carries _their_ identifiers. The floor declares which **kind** of entity its

@@ -4237,7 +4237,9 @@ class PegasusClient:
         Args:
             integration: Integration slug, e.g. ``"atlas_settlement"``.
             entity_type: Logical record type, e.g. ``"settlement"``.
-            local_entity_type: Pegasus entity kind, e.g. ``"shipment"``.
+            local_entity_type: Pegasus entity kind, e.g. ``"order"``. Must match
+                the floor's declared kind — read it from
+                ``get_floor(id)["projection"]["localEntityType"]``.
             local_entity_id: The Pegasus entity's id.
 
         Returns:
