@@ -1,86 +1,100 @@
 # Atlas — outstanding questions
 
-Draft correspondence. Rewritten **2026-08-20** after the first working QA subscription key let us
-test the API instead of inferring from specs. Every question below is one that measurement could
-not settle; the evidence for each is in [`README.md`](./README.md).
+Draft correspondence. Rewritten **2026-11-11**, after `settlement-v1` appeared in the catalog and
+our integration was built against it. Every question below is one that measurement could not
+settle; the evidence for each is in [`README.md`](./README.md) and the spec we exported to
+[`openapi/settlement-v1.json`](./openapi/settlement-v1.json).
 
 **Still no recipient.** Nothing on the developer portal publishes a support or developer contact —
 no mailto, no support page, no address in any product description. This needs to go to the Atlas
-account manager or integration contact.
+account manager or integration contact. _That is the only thing blocking this from being sent._
 
-**What changed from the 2026-08-06 draft.** The old Q4 ("please provision a QA subscription key")
-is **done**. Q5 ("is `On-Behalf-Of` required, and what identifier?") is answered mechanically —
-never send it — but reopened as an identity question, now Q3. Q1 (push feed) is unchanged. Two
-questions are new and outrank everything else: settlements (Q1) and subscription scope (Q2).
+**What changed from the 2026-08-20 draft.** The old Q1 — "where does settlement data live?" — is
+**answered**: Atlas published `settlement-v1`, it is in our grant, and it needs no `On-Behalf-Of`.
+That retires the single biggest blocker in the previous draft. The settlement question is still
+first, but it is now **one narrow, answerable thing** instead of an open-ended hunt, and it comes
+with a specific structural question that a knowledgeable person can answer _without_ sending us any
+data. Old Q2 (subscription scope) is reduced to a footnote: the grant is stable and now includes
+`settlement-v1`. Q3–Q6 are unchanged in substance, trimmed in length.
 
 ---
 
 ## Draft
 
-**Subject:** Pegasus ↔ Atlas API — settlement data, subscription scope, and identity
+**Subject:** Pegasus ↔ Atlas — one settlement date with data, and a question about Document grain
 
 Hi <name>,
 
-Thanks for the QA subscription key — it's working, and we've now exercised the API properly. That
-turned up a few things we can't resolve from the published specs.
+Thanks for publishing `settlement-v1` — that was exactly the gap we flagged in August, and our
+integration is now built against it end to end. Two things we can't resolve ourselves.
 
-**1. Where does settlement data live?**
+**1. Could you point us at one QA `settlementDate` that has data?**
 
-Our integration's first use case is pulling settlement / agent-compensation records. We can't find
-them. Searching all 24 published specs, "settlement" appears twice and both look like incidental
-field names; "remittance" and "disbursement" don't appear at all. The APIs that do carry invoice
-data — `RatingSystem-v1`, `atlasorder-v1`, `authorizations-v1` — all return 401 for our key.
+Every date we've tried comes back successful but empty. We've tested 14 values spanning 2024-12 to
+2026-11; each returns `200` with `agentSettlements: []`, `netSettlement: 0.0`, and
+`settlementDate: "0001-01-01T00:00:00"`. That last value is .NET's zero date, which we read as "no
+record found" rather than "found, but empty" — so we don't think we're asking wrongly, just asking
+for dates that have nothing behind them.
 
-The closest we can reach is `GET /shipment-management/v1/shipments/{orderNumber}`, which has an
-`invoices` property, but the spec declares it with no schema so we can't tell what it contains.
+We don't need much: **one date in QA that returns a populated payload** would be enough. If
+settlement data simply isn't loaded in QA, knowing that is just as useful — we'd stop guessing at
+dates and plan around a production read instead.
 
-Two asks: is there an endpoint (published or otherwise) that serves settlement or agent-payable
-records? And could you share **one QA order number** with representative invoice data, so we can
-see the real payload shape? This is currently our main blocker.
+**2. Is a `Document` always about exactly one `orderNumber`?**
 
-**2. What product is our subscription actually on?**
+This is the question the data would answer, and you may be able to answer it directly.
 
-We understood we were scoped to Agent-Limited. The portal lists `RadsSupport-v1` under that
-product, but our key gets 401 on it. In practice we can reach six APIs — `estimating-v2`,
-`documents-v1`, `customers-v2`, `agents-v1`, `cubesheets-v1`, `shipment-management-v1` — and not
-`RadsSupport-v1`. Is that exclusion intentional, or has the subscription been scoped differently?
+`orderNumber` appears at three levels of the response: on `Document`, and again on each
+`DetailRecord` and `AdjustmentRecord` inside it. So we can't tell from the spec whether:
 
-Related: the subscription doesn't appear in our developer-portal account, which shows zero
-subscriptions. That means we can't view or rotate the key ourselves. Could it be attached to
-`dolasllc@gmail.com`?
+- **(a)** a `Document` is one order's settlement, and the `orderNumber` on its detail and
+  adjustment records always repeats the parent's; or
+- **(b)** a `Document` can span several orders, with the per-record `orderNumber` being the
+  meaningful one.
 
-**3. Whose identity does our key act as?**
+It matters because our model binds one settlement record to one move. Under (a) we can read each
+`Document` as a record directly. Under (b) we have to regroup the response by `orderNumber` before
+we can map it — a different and more fragile piece of code, which we'd rather write knowingly than
+discover in production.
+
+A related detail if it's easy: for a single order's settlement, should we take `documentAmount` on
+the `Document` as the authoritative figure, or sum the `detailRecords`? We'd prefer to read the
+number you consider canonical rather than compute our own and risk disagreeing with your statement.
+
+**3. A small bug report, offered as a courtesy.**
+
+The settlement response body is **double-encoded**: it arrives as a JSON _string_ whose contents
+are JSON, rather than as a JSON object. Most clients will need an extra decode step that no other
+Atlas endpoint requires. We handle both shapes, so **if you fix this it will not break us** — we
+mention it only because it's likely unintended and will trip other integrators.
+
+**4. Whose identity does our subscription key act as?**
 
 Sending `On-Behalf-Of` returns 400 — _"User is not allowed to make request on behalf of another
-user."_ That's fine, and we've stopped sending it. But it implies calls run as some fixed identity
-on your side, and we'd like to know which, and what data that identity can see. When
-`agents/v1/Companies` returns an empty list, we can't currently tell whether that reflects
-permissions or just sparse QA data.
+user."_ We've stopped sending it. But it implies calls run as a fixed identity on your side, and
+we'd like to know which, and what data it can see. When a list endpoint comes back empty we
+currently can't tell permissions from sparse QA data — which is part of why question 1 is hard for
+us to diagnose alone.
 
-The reason this matters: our platform is multi-tenant, and different customers of ours may be
-different Atlas agents. Is the intended model one subscription per agent, or would you grant
-impersonation so a single subscription can act for several agents via `On-Behalf-Of`? That choice
-changes our design, so we'd rather build to the right one now.
+The design reason this matters: our platform is multi-tenant and different customers of ours may be
+different Atlas agents. Is the intended model **one subscription per agent**, or would you grant
+impersonation so one subscription can act for several agents? One subscription per agent costs us
+nothing; impersonation changes our design. We'd rather build to the right one now.
 
-**4. What's the rate limit, including any weekly quota?**
+**5. What's the rate limit — specifically, is there a weekly quota?**
 
-We saw no throttling at roughly 24 calls/minute, and responses carry no rate-limit headers. The
-only published figure anywhere is on the Starter product (5/min, 100/week). Since we'll be polling,
-knowing the real per-minute and per-week budget up front would save us discovering it through 429s.
-We do honor `Retry-After` and back off.
+We've seen no throttling at roughly 24 calls/minute across two separate sessions, and responses
+carry no rate-limit headers. The only published figure anywhere is on the Starter product (5/min,
+100/week). Since settlement reads will be scheduled, the **weekly** number is the one we can't
+discover safely: a per-minute limit announces itself, a weekly cap announces itself by running out
+mid-month. We honor `Retry-After` and back off.
 
-**5. Is there a push or event feed?**
+**6. Is there a push or event feed, and what's the path to production?**
 
-Everything published is request/response. The webhook-shaped paths we found (`/WebHooks/Atlas/Order`,
-`/WebHooks/HubSpot/Survey`, Move4U `/callbacks`) all look like endpoints Atlas _receives_ on rather
-than ones that call out. If there's any push mechanism outside the catalog — webhooks, a change
-feed, a notification service, even a scheduled file drop or SFTP export — we'd much rather build
-shipment status against that than poll.
-
-**6. Production access.**
-
-What's the process for production credentials, and does the production catalog match QA? We noticed
-a third environment (`dev-azapi`) as well — is that one relevant to partners, or internal only?
+Everything published is request/response. If there's any push mechanism outside the catalog —
+webhooks, a change feed, even a scheduled file drop — we'd rather build against that than poll.
+Separately: what's the process for production credentials, and does the production catalog match
+QA?
 
 Thanks,
 Steve Dolatowski
@@ -90,14 +104,23 @@ Dolas LLC
 
 ## Notes (not part of the email)
 
-- **Q1 is the one that matters.** It blocks the `settlements` pilot in
-  `plans/in-progress/vanline-source-binding.md`, and no amount of engineering routes around a
-  dataset that isn't exposed. If the answer is "we don't publish that," the fallback is piloting a
-  capability we _can_ reach — the plan doesn't freeze capability names, so that's a substitution
-  rather than a redesign.
-- **Q3 has the widest design blast radius.** "One subscription per agent" costs nothing — per-tenant
-  credentials already work that way. "We'll grant impersonation" means the fetch descriptor needs
-  per-principal substitution plus a Pegasus-user → Atlas-user mapping.
-- **Q4 is worth pressing on the weekly figure specifically.** A per-minute limit we'd discover
-  safely; a weekly cap we'd discover by exhausting it mid-month.
-- **Trim freely** — Q5 and Q6 are lower stakes and can be dropped if you'd rather keep the ask short.
+- **Q1 and Q2 are the same blocker, split so either can unblock us.** Q2 is the thing we actually
+  need to know; Q1 is how we'd find out ourselves. A good respondent may answer Q2 outright and
+  make Q1 unnecessary — which is why Q2 is phrased as a question about _their_ model rather than a
+  request for data.
+- **What Q2 gates on our side.** Branch (a) ⇒ the Atlas settlement source is publishable as
+  configuration alone, which is the whole property the declarative-fetch work exists to buy.
+  Branch (b) ⇒ the regrouping has to live in a bespoke workflow, and this pilot stops demonstrating
+  "new partner = config only." See `plans/in-progress/atlas-fetch-phase2.md` → gotcha 1.
+- **Q3 is safe to send.** Our decode step accepts both the double-encoded string and a plain
+  object, so Atlas fixing it cannot break us. Verified by test, not assumed.
+- **Q4 still has the widest design blast radius**, unchanged from August: "one subscription per
+  agent" costs nothing, "we'll grant impersonation" means the fetch descriptor needs per-principal
+  substitution plus a Pegasus-user → Atlas-user mapping.
+- **Q5: press on the weekly figure.** Measured twice now (Aug and Nov) with no per-minute
+  throttling observed, so the per-minute number is the one we care least about.
+- **Dropped from the August draft:** the subscription-scope question. The grant has been stable
+  across both measurement sessions and now includes `settlement-v1`; `RadsSupport-v1` is still 401
+  but no longer blocks anything. Not worth the words. (`RadsData-v1` and `yembo-v2`, new in the
+  catalog, remain unprobed — not worth asking about until we want them.)
+- **Trim freely.** Q6 is lowest stakes. Do not trim Q1 or Q2.
