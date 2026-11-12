@@ -112,11 +112,13 @@ def collect_activities(module: Any) -> list[Any]:
 def builtin_activities() -> list[Any]:
     """The SDK's platform activities (``pegasus_workflows.steps.BUILTIN_ACTIVITIES``).
 
-    Imported from the TENANT's venv, so they match the SDK version the
-    Workflow was published with: ``run_automation()`` (SDK 0.65.0+) runs as
-    the ``pegasus.run_automation`` activity, which must be registered on the
-    Workflow's own worker. An older SDK (or none) has no such module, and
-    nothing is added.
+    ``run_automation()`` (SDK 0.65.0+) runs as the ``pegasus.run_automation``
+    activity, which must be registered on the Workflow's own worker. The
+    tenant venv is ``--system-site-packages`` over THIS image, whose SDK is the
+    repo's, so in production this is the image's SDK whatever version the
+    author pinned — unless the artifact vendors its own ``pegasus_workflows``
+    (``PYTHONPATH`` = the source dir wins), in which case an older copy has
+    no such module and nothing is added.
     """
     try:
         from pegasus_workflows.steps import BUILTIN_ACTIVITIES

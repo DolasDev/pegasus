@@ -477,8 +477,11 @@ runtime, so it can wait for days:
   ``STEP_TARGET_NOT_AUTOMATION`` — a step can't be a durable Workflow), raises
   ``AutomationStepFailed`` (``.status``, ``.code``, ``.execution_id``,
   ``.error_message``); uncaught, it fails the Workflow. Cancelling the step
-  cancels the Automation. Only a Workflow can call it — an Automation's runtime
-  token is refused.
+  cancels the Automation (a platform runner restart does not). A step whose
+  Automation is killed by a runner stop ends FAILED and is not re-run for you
+  (an Automation runs once): catch ``AutomationStepFailed`` and call again to
+  retry. Only a Workflow can call it — an Automation's runtime token is
+  refused.
 - Activities work as in an Automation (``PegasusClient.from_runtime()``) and get
   Temporal's per-activity retries.
 - No dry runs (422 ``DRY_RUN_UNSUPPORTED``) — test locally against a Temporal dev

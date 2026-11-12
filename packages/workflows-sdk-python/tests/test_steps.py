@@ -262,6 +262,31 @@ async def test_cancelling_the_activity_cancels_the_automation(monkeypatch) -> No
     assert api.paths()[-1] == "POST /api/v1/automation-steps/exec-step-1/cancel"
 
 
+@_sync
+async def test_a_worker_shutdown_does_not_cancel_the_automation(monkeypatch) -> None:
+    # A draining worker (runner stop) cancels in-flight activities. That is not
+    # the Workflow cancelling the step: the Automation must be left alone, and
+    # the retried activity resumes polling the same row. (Staging, 2026-11-12:
+    # a runner stop cancelled a sleeping step's Automation.)
+    api = FakeApi([_started()], [_execution("RUNNING")] * 100)
+    _use_api(monkeypatch, api)
+    env = _env()
+    polled = asyncio.Event()
+
+    async def slow_sleep(seconds: float, details: dict[str, Any]) -> None:
+        polled.set()
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(steps, "_sleep_heartbeating", slow_sleep)
+    task = asyncio.ensure_future(env.run(steps.run_automation_activity, REQUEST))
+    await polled.wait()
+    env.worker_shutdown()
+    env.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not any(path.endswith("/cancel") for path in api.paths())
+
+
 def test_step_failed_round_trips_through_the_activity_boundary() -> None:
     original = steps.AutomationStepFailed(
         "ended FAILED",

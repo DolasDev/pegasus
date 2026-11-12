@@ -3,6 +3,27 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.65.1
+
+### Fixed — a runner restart no longer cancels a step's Automation
+
+- When the platform runner shut down (a restart or a drain), the in-flight
+  `run_automation` activity treated the shutdown as the Workflow cancelling the
+  step, and cancelled the Automation. It now leaves the Automation alone. The
+  retried activity picks the same run back up, so a step is never started
+  twice.
+- Documented: a step whose Automation is itself killed by a runner stop ends
+  FAILED and raises `AutomationStepFailed`. It is not re-run, because an
+  Automation runs once and may already have had side effects. Catch the error
+  and call again to retry.
+
+### Corrected — which SDK runs a step
+
+The 0.65.0 note below says to publish with 0.65.0+. That was wrong: a
+Workflow runs on the platform runner's SDK, which registers the step activity
+on every Workflow worker. You need 0.65.0+ locally only to import
+`run_automation`.
+
 ## 0.65.0
 
 ### Added — a durable Workflow runs Automations as steps: `run_automation()`
