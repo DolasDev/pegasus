@@ -1,6 +1,8 @@
 # Workflow automation steps (`run_automation()`): follow-ups after it ships
 
-- **Status:** TODO. Release steps, the authoring-repo note, and live acceptance.
+- **Status:** DONE 2026-11-12. Every acceptance bullet passed, apart from the
+  tenant-web badge eyeball (see below).
+  Previously: TODO. Release steps, the authoring-repo note, and live acceptance.
 - **Branch:** none for the release/docs steps; a fix branch only if acceptance
   fails.
 - **Goal:** finish what the `feat/workflow-automation-steps` PR couldn't do
@@ -32,7 +34,7 @@
       **Done 2026-11-12:** `pegasus-workflows` `165d19b` (note + pin 0.65.0).
       Its "publish with 0.65.0+" line is wrong; it is corrected after 0.65.1
       (see below).
-- [ ] **Staging acceptance (AVP Smoke, scratch project outside the repo,
+- [x] **Staging acceptance (AVP Smoke, scratch project outside the repo,
       always `name@version`):**
   - Workflow `accept_steps` (SDK 0.65.0) calls Automation `step_echo` and gets
     its result back; the step row has trigger source WORKFLOW and
@@ -83,18 +85,34 @@ envelope `{executionId, input, dryRun}`, not the raw input. Read
     instead. Steve decided 2026-11-12 not to re-run it automatically; the
     behavior is documented.
 
-## Still open
+## Closing log (2026-11-12)
 
-- [ ] After the 0.65.1 fix merges: Deploy green (new runner image) → tag
-      `sdk-python-v0.65.1` → PyPI → correct the authoring-repo note ("publish
-      with 0.65.0+" is wrong: the runner image's SDK runs every Workflow) and
-      add the runner-stop → FAILED line.
-- [ ] Re-run the runner-stop check on the fixed image: the Automation shows
-      no `WorkflowExecutionCancelRequested`, and the step ends FAILED (not
-      CANCELLED).
-- [ ] Kill switch (needs Steve in admin-web): switch ON → `go` to `8e020987`
-      → step 3 refused (no new row) and waiting; switch OFF → it starts and
-      the Workflow completes.
-- [ ] tenant-web badge eyeball (AVP Smoke, Automations → step_echo history).
-- [ ] Cleanup: retire `accept_steps`, `step_echo`, `step_fail`; verify the
-      kill switch is OFF. Then archive this plan.
+- [x] 0.65.1 fix: #958 merged as `bc929c91`. Deploy run 43320209750 and the
+      tenant-runner image are green. Tag `sdk-python-v0.65.1`; on PyPI.
+      Authoring repo `f5ef317`: note corrected (the runner image's SDK runs
+      every Workflow; 0.65.0+ only to import `run_automation`), the
+      runner-stop → FAILED line added, pin 0.65.1.
+- [x] Runner-stop re-check on the fixed image. The old runner `4152f775`
+      (digest `07cad3cc…`, started before the image push) was stopped. Fresh
+      runner `10a37ad3` has digest `96a5459d…`. Run `accept_steps@0.1.1`
+      `12c6d833`: `go` at 22:41:16Z → step 3 row `9693a0bd`; `ecs stop-task`
+      at 22:41:19Z. The Automation's proxy activity failed at 22:41:26Z
+      ("Worker is shutting down…"), and this time there was **no
+      `WorkflowExecutionCancelRequested`**. Before the fix it came 6 s after.
+      The row closed **FAILED**, and the Workflow FAILED: "Automation step
+      'step_echo' ended FAILED". That is decision 2's behavior. **PASS.**
+- [x] Kill switch (Steve flipped it in admin-web). Switch ON, then `go` to
+      `8e020987` at 22:30:15Z: the signal was delivered (signals aren't
+      blocked). The API logged "Workflow start blocked — tenant workflows
+      disabled" at 22:30:15, :21, :31, :52 and 22:31:32. That is the
+      activity's backoff, about 5/10/20/40 s, and no step row was created.
+      Switch OFF: the step started on its next retry (row `558c3c24`,
+      22:36:33Z), ran its 120 s sleep and COMPLETED. `8e020987` COMPLETED at
+      22:39Z. **PASS.**
+- [ ] tenant-web "Workflow step" badge: NOT eyeballed (no browser in the
+      session). The API returns `triggerSource: "WORKFLOW"` +
+      `parentExecutionId` (seen via the CLI); the badge is a pure render
+      branch. Glance at it next time a step runs.
+- [x] Cleanup: retired `accept_steps` (0.1.0, 0.1.1), `step_echo` (0.1.0,
+      0.1.1) and `step_fail` (0.1.0). Kill switch OFF verified by run
+      `ns_canary@0.1.0` → `e669e25d` accepted.
