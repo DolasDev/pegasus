@@ -45,20 +45,37 @@ Remaining: **4** (entity facts + binding) `[ ]`, **5** (ship sources as GLOBAL c
 
 1. **Start Phase 4** (entity facts + binding, Gap C) — the next engineering step, and the
    big one. Scope the fact derivation down first; see its checklist and the Risks note.
-2. **Send the Atlas email** — still blocked on a recipient, which only Steve can supply.
-   The draft is `docs/atlas-world-group-api/OUTREACH.md` and is ready to send as written.
-3. **Get the two answers from Steve** (both asked 2026-11-12, neither blocking):
-   - the Atlas recipient above;
-   - whether `Document.orderNumber` holds the Atlas **registration number** directly, or
-     Atlas's own order number needing a lookup to reach the pegII order. **Measured this
-     session: the committed spec cannot answer it** — `orderNumber` on `Document`,
-     `DetailRecord` and `AdjustmentRecord` is a bare `{"type":"string","nullable":true}`
-     with no description, and "registration" appears nowhere in `settlement-v1` (only in
-     `assetmanagement-v1` and `questionnaire-v1`). So it is a question for Steve or Atlas,
-     not a grep.
+2. **Nothing else.** Both of the questions the 2026-11-11 session left open were **answered
+   on 2026-11-12** — see "Two answers from Steve" immediately below. Neither leaves work
+   behind that this plan can act on.
 
 **Do NOT** start the Atlas pilot config. It needs a populated `settlementDate` from Atlas
-(ask 1 in OUTREACH.md) before its mapping can be validated against real bytes.
+(ask 1 in OUTREACH.md) before its mapping can be validated against real bytes. That is now
+the **only** thing the pilot waits on.
+
+### Two answers from Steve, 2026-11-12
+
+- **`Document.orderNumber` IS the Atlas registration number.** Not Atlas's own order number,
+  so **no lookup is needed** — `orderNumber` → registration → pegII order is 1:1 the whole
+  way, and `localEntityType: 'order'` (shipped in `#947`) is directly satisfiable from the
+  payload. The pilot can **correlate**, not merely project, and **Gap A does not stay open
+  for this source**.
+
+  This closes the "Resolve `localEntityId` for this source" checklist item in Phase 2 and the
+  matching entry under "Verification still owed". It also retires the worry recorded there
+  that pegII might not store the van line's number in a queryable field — irrelevant now,
+  because nothing has to be looked up.
+
+  Worth recording how this was settled, because the cheap check genuinely failed: the
+  **committed spec cannot answer it.** `orderNumber` on `Document`, `DetailRecord` and
+  `AdjustmentRecord` is a bare `{"type":"string","nullable":true}` with no description, and
+  "registration" appears nowhere in `settlement-v1` (only in `assetmanagement-v1` and
+  `questionnaire-v1`). It was domain knowledge, not a grep — so do not go looking for it in
+  the spec again.
+
+- **The Atlas email: Steve is sending it himself**, from the `OUTREACH.md` draft as written.
+  Nothing is owed here, and the plan no longer needs a recipient. Do not re-raise it; the
+  next Atlas question is whether a populated `settlementDate` comes back.
 
 ### What Phase 3 shipped, and the three judgement calls inside it
 
@@ -482,8 +499,9 @@ What is still owed beyond that — none of it blocks the shipped code:
 - **The regrouping step does not exist yet**, and it is new code (per-order grouping across the
   envelope — see gotcha 1). Its first run should not also be its first test, which is the reason
   populated data is still wanted.
-- **Whether `Document.orderNumber` is the Atlas registration number** or needs a lookup — gates
-  whether the pilot correlates without a join. A question for Steve, not a test.
+- ~~**Whether `Document.orderNumber` is the Atlas registration number** or needs a lookup~~ —
+  **ANSWERED 2026-11-12: it IS the registration number**, so the pilot correlates without a
+  join. See "Two answers from Steve" in the resume block. Nothing owed.
 - `RadsData-v1` / `yembo-v2`: grant and contents still unprobed. Not worth probing until wanted.
 
 **Environment traps that cost real time this session, both of which re-verification must survive:**
@@ -955,20 +973,28 @@ reused, not re-implemented), so it gets its own review.
   real and in our grant: `GET /settlement/v1/settlement?settlementDate={{settlementDate}}`,
   no `On-Behalf-Of`. The grain question is **settled** (record = `Document`, per order).
   Two constraints remain, both designed for above: the **double-encoded** body (`decode`),
-  and the **fan-out** — whose config-vs-Python branch cannot be chosen until a populated
-  `settlementDate` shows whether a `Document` is 1:1 with an `orderNumber` (gotcha 1, the Document-grain sub-question).
+  and the **fan-out**, whose branch is now **decided** — regrouping is Python (gotcha 1, the
+  Document-grain sub-question, answered 2026-11-11). Correlation is no longer a constraint at
+  all: `orderNumber` is the registration number, so the record carries its own
+  `localEntityId` (answered 2026-11-12). **What the pilot still waits on is exactly one
+  thing: a populated `settlementDate`.**
   Build the platform items above first; publish the Atlas config last.
   Substituting a reachable capability (`documents` via `documents-v1`, `status` via
   `shipment-management-v1`) remains the fallback if Atlas never supplies data — and note
   it would prove the fetch surface **without** proving Gap B's "config alone" property, so
   it is a weaker pilot, not an equivalent one.
-- `[ ]` **Resolve `localEntityId` for this source.** Correlating needs
-  Atlas `orderNumber` → pegII order number. Pegasus addresses shipments by pegII order
-  number only, and Atlas mints its own order numbers; whether pegII stores the van line's
-  number in a queryable field is **unverified** (nothing in this repo answers it — it is a
-  legacy-DB question). If it does not, the pilot can **project but not correlate**, and
-  Gap A stays open for this source regardless of the grain decision. Verify before
-  writing the pilot workflow.
+- `[x]` **Resolve `localEntityId` for this source — ANSWERED 2026-11-12 by Steve, and the
+  answer is the good one.** `Document.orderNumber` **is the Atlas registration number**, which
+  is 1:1 with a pegII order, so there is **nothing to look up**: the payload carries the
+  correlating id directly and `localEntityType: 'order'` is satisfiable as shipped.
+
+  The pilot can **correlate**, not merely project, and **Gap A does not stay open for this
+  source**. The earlier worry — that Atlas mints its own order numbers and pegII might not
+  store the van line's number in a queryable field — is moot, not unresolved.
+
+  Note the committed spec could NOT have answered this (`orderNumber` is an undescribed
+  nullable string; "registration" does not occur in `settlement-v1`). It was domain
+  knowledge. Do not re-derive it from the spec.
 
 ### Phase 3 — Freshness + provenance (C4) `[x]` DONE 2026-11-12
 
