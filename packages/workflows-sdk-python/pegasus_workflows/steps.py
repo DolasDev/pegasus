@@ -142,9 +142,14 @@ async def run_automation(
 ) -> Any:
     """Run the Automation *name* as a step and return its result.
 
-    Call this from a durable Workflow (``kind = "workflow"``) only. It needs
-    tenant runner support, which ships with SDK 0.65.0, so publish the
-    Workflow with SDK 0.65.0 or newer.
+    Call this from a durable Workflow (``kind = "workflow"``) only. At run
+    time your code uses the platform runner's SDK, which registers the step
+    activity on every Workflow worker; you need 0.65.0+ locally only to import
+    this.
+
+    A step whose Automation is killed by a platform runner stop ends FAILED
+    (an Automation runs once; it may have had side effects), and raises
+    :class:`AutomationStepFailed`. To retry, catch it and call again.
 
     Args:
         name: The Automation's name. Your own versions win over a GLOBAL one
@@ -288,7 +293,11 @@ async def run_automation_activity(request: dict[str, Any]) -> Any:
         # The Workflow cancelled the step: stop the Automation too. Best effort
         # — a step that already finished or hasn't reached Temporal yet can't
         # be cancelled, and the cancellation must still propagate.
-        if execution_id is not None:
+        #
+        # NOT when the worker is shutting down (a runner stop or drain): that
+        # cancels every in-flight activity, but the Workflow still wants the
+        # step, and the retried activity resumes polling the same row.
+        if execution_id is not None and not activity.is_worker_shutdown():
             try:
                 await asyncio.to_thread(client.cancel_automation_step, execution_id)
             except Exception as exc:  # noqa: BLE001

@@ -1740,6 +1740,14 @@ class OrderLifecycle:
   `code`, `execution_id`, `error_message`, `automation`. Uncaught, it fails the
   Workflow.
 - **Cancelling** the step (e.g. cancelling the Workflow) cancels the Automation.
+  A platform runner restart does not: the step keeps waiting on the same run.
+- **A runner stop mid-Automation ends the step FAILED.** An Automation runs
+  once (it may already have had side effects), so a step whose Automation is
+  killed by a platform runner stop is not re-run for you: it raises
+  `AutomationStepFailed`. To retry, catch it and call `run_automation` again.
+- **Which SDK runs it:** your Workflow runs on the platform runner's SDK, which
+  registers the step activity on every Workflow worker. You need 0.65.0+
+  locally only to import `run_automation`.
 - **Only a durable Workflow can call it.** An Automation's runtime token is
   refused (403 `STEP_CALLER_NOT_WORKFLOW`), so Automations can't start each other.
 - **Testing:** in a Temporal test environment, register a stand-in activity named
