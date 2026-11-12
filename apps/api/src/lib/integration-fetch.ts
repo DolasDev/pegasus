@@ -51,6 +51,7 @@
 // neither does I/O, so the gate stays pure and synchronous.
 // ---------------------------------------------------------------------------
 
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { RESERVED_HEADERS } from './outbound-headers'
 
@@ -81,6 +82,32 @@ export const FETCH_PAGE_STYLES = ['none', 'pageNumber', 'cursor'] as const
  * hatch for anything richer is a bespoke workflow.
  */
 export const FETCH_DECODES = ['none', 'jsonString'] as const
+
+/**
+ * Default cache TTL for a fetched result, in seconds (C4).
+ *
+ * The constraint this number has to satisfy is not "how long is the data
+ * useful" — it is "how long can we serve a cached answer and still claim we
+ * answered the question the caller asked". Sixty seconds is short enough that
+ * serving it is defensible without the caller having opted in; anything longer
+ * belongs to an explicit `maxAge` or a declared `maxAgeSeconds`.
+ *
+ * It is also the rate control (C5): with no single-flight, the TTL is the only
+ * thing bounding N callers asking one question into fewer than N partner calls.
+ * Judgement, not measurement — Atlas publishes no quota headers, and ~70 live
+ * calls at ~24/min drew no 429, which rules out an aggressive per-minute
+ * throttle but says nothing about a weekly quota.
+ */
+export const FETCH_DEFAULT_MAX_AGE_SECONDS = 60
+
+/**
+ * Ceiling on any TTL, descriptor-declared or caller-supplied: 24 hours.
+ *
+ * A bound exists so a stale read cannot be declared fresh indefinitely — past a
+ * day, "cached external state" is a sync pipeline's job (and has `fetchedAt` on
+ * the projection to describe it), not a read-through cache's.
+ */
+export const FETCH_MAX_MAX_AGE_SECONDS = 86_400
 
 const PageSchema = z
   .object({
@@ -160,6 +187,21 @@ export const FetchOperationSchema = z
           'wildcards: a record set that needs regrouping is a bespoke workflow.',
       ),
     page: PageSchema.optional().describe('Paging descriptor. Absent ⇒ {"style":"none"}.'),
+    maxAgeSeconds: z
+      .number()
+      .int()
+      .min(0)
+      .max(FETCH_MAX_MAX_AGE_SECONDS)
+      .optional()
+      .describe(
+        'How long a fetched result may be served from the platform cache for THIS ' +
+          "capability, in seconds. Absent ⇒ 60s. A caller's own max_age overrides " +
+          'it, and 0 means "always call the partner". Raise it for a feed that ' +
+          'changes daily (a settlement period); leave it alone for anything a user ' +
+          'expects to be live. Note the cache key covers this descriptor and the ' +
+          'config group but NOT the resolved BASE_URL, so rotating a base URL can ' +
+          'serve the old host for up to this long — pass refresh=true after a rotation.',
+      ),
   })
   .strict()
 
@@ -630,3 +672,88 @@ export function readNextCursor(body: unknown, cursorPath: string): string | null
  * unknown rate budget (C5) is how you discover the limit in production.
  */
 export const FETCH_DEFAULT_MAX_PAGES = 20
+
+// ---------------------------------------------------------------------------
+// FRESHNESS half (C4) — how old a cached result may be, and what identifies
+// the request it answers. Both pure.
+// ---------------------------------------------------------------------------
+
+/**
+ * How old a served result may be, in seconds.
+ *
+ * Precedence, most specific first: the CALL SITE, then the descriptor's
+ * `maxAgeSeconds`, then the platform default. C4 puts freshness at the call
+ * site because only the caller knows whether it is rendering a dashboard or
+ * settling money.
+ *
+ * Written with explicit `undefined` checks rather than `??`-free truthiness for
+ * a reason worth stating: `callSite || descriptor` would read an explicit 0 —
+ * "do not serve me a cached row" — as "unset", and quietly hand back a
+ * fifteen-minute-old result to the one caller who asked for live data.
+ */
+export function resolveFetchMaxAge(
+  callSiteSeconds: number | undefined,
+  descriptorSeconds: number | undefined,
+): number {
+  if (callSiteSeconds !== undefined) return callSiteSeconds
+  if (descriptorSeconds !== undefined) return descriptorSeconds
+  return FETCH_DEFAULT_MAX_AGE_SECONDS
+}
+
+/** The parts of the request environment that are not in the descriptor itself. */
+export interface FetchRequestEnvironment {
+  /** WorkflowSecretConfig group the credentials and `{{config:KEY}}` came from. */
+  group: string
+  /** The caller's config/secret key-name overrides, as sent. */
+  overrides: Record<string, string>
+}
+
+/**
+ * The cache key for one resolved fetch request: sha256 over the FULLY
+ * SUBSTITUTED operation plus the config group and key-name overrides.
+ *
+ * Hashing the whole descriptor rather than just the caller's params is the
+ * correctness argument for the cache, not thoroughness for its own sake.
+ * `decode`, `recordsPath` and `page` determine what `records` CONTAINS, so a
+ * republish that moves `recordsPath` from `agentSettlements` to `documents`
+ * must not keep serving rows of the old shape until the TTL lapses — under a
+ * params-only key it would. Changing any of them simply yields a new key, and
+ * the old row ages out unread.
+ *
+ * `maxAgeSeconds` is in the hash too. That is a deliberate (harmless) extra
+ * miss on a pure TTL edit, in exchange for not having to reason about whether
+ * it shapes the result.
+ *
+ * The KNOWN GAP, bounded rather than closed: `BASE_URL`, `AUTH_MODE` and the
+ * credentials resolve deeper inside `performOutboundCall` and never reach this
+ * function, so rotating a base URL can serve the old host for up to `maxAge`.
+ * The short default bounds the exposure and `refresh` escapes it; pulling the
+ * resolved values up here would mean reading every credential on a cache HIT,
+ * which trades a real secret-handling surface for a rare operator event.
+ *
+ * Only the digest is ever stored, so a path, a query value or a config value
+ * substituted into the request never lands in the cache table.
+ */
+export function fetchRequestHash(
+  operation: FetchOperation,
+  environment: FetchRequestEnvironment,
+): string {
+  // Canonical JSON: object keys sorted at every level, so two descriptors that
+  // differ only in authoring order are one cache entry. Arrays keep their order
+  // — in a request body it is meaningful.
+  const canonical = stableStringify({ operation, environment })
+  return createHash('sha256').update(canonical, 'utf8').digest('hex')
+}
+
+/** JSON with every object's keys sorted — `JSON.stringify` preserves insertion order. */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const entries = Object.entries(value as Record<string, unknown>)
+    // `undefined` members are absent in JSON, so they must not contribute a key
+    // either — otherwise `{a: undefined}` and `{}` would hash differently.
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`)
+  return `{${entries.join(',')}}`
+}

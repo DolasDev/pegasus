@@ -60,10 +60,13 @@ INBOUND_FILE = "inbound.json"
 #: Optional declarative PULL block — the counterpart to inbound.json, which only
 #: ever described push. Maps a capability name to one operation
 #: { method, path, query?, body?, headers?, secretHeaders?, decode?, recordsPath?,
-#: page? }. Operation names must be capabilities the FLOOR declares (read them
-#: from GET /api/v1/integrations/floors/<floor> → `capabilities`). See the JSON
-#: Schema at GET /api/v1/integrations/fetch-schema. Present ⇒ this source can be
-#: pulled generically, no per-source workflow. Absent ⇒ push-only.
+#: page?, maxAgeSeconds? }. Operation names must be capabilities the FLOOR
+#: declares (read them from GET /api/v1/integrations/floors/<floor> →
+#: `capabilities`). `maxAgeSeconds` (0–86400) is how long a fetched result may be
+#: served from the platform cache for that capability — absent ⇒ 60s, 0 ⇒ always
+#: call the partner; a caller's own `max_age` overrides it. See the JSON Schema at
+#: GET /api/v1/integrations/fetch-schema. Present ⇒ this source can be pulled
+#: generically, no per-source workflow. Absent ⇒ push-only.
 FETCH_FILE = "fetch.json"
 
 

@@ -1,144 +1,171 @@
 # Pluggable data sources — correlation, declarative fetch, and entity→source binding
 
-> **Status: APPROVED — Phase 1 SHIPPED and in production use. Phase 2 not started,
-> and as of 2026-11-06 NO LONGER BLOCKED.** Phases land as separate PRs and serialize
-> (schema.prisma + Cedar are merge magnets).
+> **Status (2026-11-12): Phases 1, 2 and 3 SHIPPED. Phases 4-5 not started.**
+> Phases land as separate PRs and serialize (schema.prisma + Cedar are merge magnets).
+>
+> Two corrections to earlier versions of this banner, both measured rather than assumed:
+> Phase 1 is **NOT "in production use"** — a read-only audit found zero correlation rows in
+> prod _and_ staging, and zero projections in prod (see "Still open"); and Phase 2 is no
+> longer "not started" — it is complete. The Atlas **pilot** is the only part not shipped,
+> and it waits on Atlas, not on engineering.
 
 ## Resume here
 
-Written 2026-11-06 for a fresh session. Nothing in this workstream is committed yet.
+Rewritten **2026-11-12** at the end of the session that shipped all of Phase 3.
 
 ### Where
 
-- Branch `feat/atlas-fetch-phase2`, worktree `/home/steve/repos/pegasus-atlas-fetch-phase2`
-  (isolated Postgres, provisioned by `scripts/workstream-start.sh`).
-- Last commit `e0671fa7 chore(security): allowlist the qs and minimatch advisories` —
-  that is **main's HEAD**, i.e. this branch has **zero commits of its own**.
-- This file is the workstream's plan, seeded as a copy of
-  `plans/in-progress/vanline-source-binding.md` (which still exists on `main`, carrying
-  the stale "Phase 1 in flight" header). **Commit this file with the implementation**;
-  decide at PR time whether to also fix or delete the `main` copy so the two do not drift.
+- Worktree `/home/steve/repos/pegasus-atlas-fetch-phase2`, branch
+  `feat/atlas-fetch-phase3`, cut fresh off `origin/main` (`6ae1cc35`, `#951`).
+- A note for anyone returning to the old branch: `docs/atlas-document-grain-answered`
+  holds a local commit `698e967f` that is the **pre-squash twin** of `c52bcdae` (`#954`),
+  already on `main`. Do not rebase it — it double-applies. `git checkout -B <new> origin/main`
+  carries the dirty files across and leaves the twin behind, which is what this session did.
+- `apps/e2e/.env.test` is the worktree's isolated Postgres port (5477), written by
+  `scripts/workstream-start.sh`. **Never commit it.**
 
 ### Status
 
-- **2026-11-06, this session:** the grain decision was taken (option 3 — see "Next
-  action" and "Decisions & dead ends"), `settlement-v1.json` was re-exported into
-  `docs/atlas-world-group-api/openapi/`, and **Phase 2 increment 1 (the declarative
-  authoring surface) was BUILT and is green** — see the Phase 2 checklist. Nothing is
-  committed; the branch still has zero commits of its own.
-- Phase 1 (correlation) — **`[x]` DONE, including the SDK**, and in production use:
-  - `#648` API side, `#649` SDK 0.37.0 (published to PyPI). The plan's SDK checkbox was
-    never ticked because the plan rode in on the `#648` branch; it IS shipped.
-  - **Another workstream extended it**: `#812` / `sdk-feedback 0045` / SDK 0.46.0 gave
-    `shipment_status_update` a correlation binding keyed on **pegII order number**, and
-    added `correlation {outcome: "dryRun"}` to the offline `put_projection` result.
-    Two floors now declare correlations (`shipment_status_update`, `financial_settlement`).
-  - SDK is now at **0.56.0** — far past 0.37.0; re-read `api.py` before assuming shapes.
-- Phase 2 (declarative fetch) — `[ ]` **not started**. Verified absent in code: no
-  `apps/api/src/handlers/integration-fetch.ts`, no `lib/integration-fetch.ts`, no `fetch`
-  column on `IntegrationConfig` in `apps/api/prisma/schema.prisma`, no `fetch_external`
-  in the SDK.
-- Phases 3–5 — `[ ]` not started.
+**Phase 3 (freshness + provenance, C4) is CODE-COMPLETE.** All four checklist items are
+done — see the Phase 3 checklist. The measured premise that shaped it: the fetch endpoint
+returns raw records and **never writes a projection**, so the TTL cache and the projection's
+provenance are two separate stores, not one.
+
+| Phase | What landed                                                                |
+| ----- | -------------------------------------------------------------------------- |
+| 1     | `#648` / `#649` correlation + SDK 0.37.0; extended by `#812` / SDK 0.46.0  |
+| 2     | `#931` `#932` `#934` `#942` `#947` `#952` `#954`; SDK 0.58.0/0.59.0/0.62.0 |
+| 3     | this branch — `IntegrationFetchCache`, `max_age`/`refresh`, SDK 0.64.0     |
+
+Remaining: **4** (entity facts + binding) `[ ]`, **5** (ship sources as GLOBAL configs) `[ ]`.
 
 ### Next action
 
-**The grain decision is MADE — 2026-11-06, option 3.** See
-"Decisions & dead ends → the grain decision" below for the reasoning and the two
-one-line corrections it implies. Net effect: **no migration, no new `entityType`, no
-change to `IntegrationCorrelation`'s dual-unique contract**, so `#812`'s
-`shipment_status_update` consumer is untouched.
+**Phase 3 leaves no unblocked engineering task behind it.** Pick one of:
 
-Phase 2's **platform** work is unblocked, and **increment 1 of it is DONE** (the
-declarative surface: column, `capabilities`, schema, gate, discovery endpoints, SDK
-0.58.0 authoring half). All green, uncommitted.
+1. **Start Phase 4** (entity facts + binding, Gap C) — the next engineering step, and the
+   big one. Scope the fact derivation down first; see its checklist and the Risks note.
+2. **Send the Atlas email** — still blocked on a recipient, which only Steve can supply.
+   The draft is `docs/atlas-world-group-api/OUTREACH.md` and is ready to send as written.
+3. **Get the two answers from Steve** (both asked 2026-11-12, neither blocking):
+   - the Atlas recipient above;
+   - whether `Document.orderNumber` holds the Atlas **registration number** directly, or
+     Atlas's own order number needing a lookup to reach the pegII order. **Measured this
+     session: the committed spec cannot answer it** — `orderNumber` on `Document`,
+     `DetailRecord` and `AdjustmentRecord` is a bare `{"type":"string","nullable":true}`
+     with no description, and "registration" appears nowhere in `settlement-v1` (only in
+     `assetmanagement-v1` and `questionnaire-v1`). So it is a question for Steve or Atlas,
+     not a grep.
 
-**The next action is to land increment 1 as a PR**, then start increment 2 (the
-`POST /integrations/:id/fetch/:operation` endpoint + `fetch_external`).
+**Do NOT** start the Atlas pilot config. It needs a populated `settlementDate` from Atlas
+(ask 1 in OUTREACH.md) before its mapping can be validated against real bytes.
 
-**All three DONE 2026-11-06** (kept for the record and the standing rule):
+### What Phase 3 shipped, and the three judgement calls inside it
 
-1. `[x]` Deleted `plans/in-progress/vanline-source-binding.md` in `#931`.
-2. **Publish the SDK.** The bump is **0.58.0**, not 0.57.0 — `#930` (an unrelated
-   `run`/`schedule` fix) was ahead in the merge queue and took 0.57.0. Worth knowing
-   because the collision was nearly silent: `pyproject.toml` and `uv.lock` MERGE
-   CLEANLY when two branches make the identical `0.56.0 → 0.57.0` edit, so only the
-   CHANGELOG conflicted. A naive CHANGELOG resolution would have shipped two feature
-   sets under one version number, and whichever got published would be missing half
-   its changes. **Check the queue for a competing SDK bump before picking a version.**
-   `[x]` Published: tag `sdk-python-v0.58.0` on the verified merge commit `a25ec20a`
-   (not on `main` — an empty `mergeCommit` silently tags whatever `main` points at),
-   release workflow green, and **0.58.0 confirmed live on PyPI** (wheel + sdist, with
-   provenance). Note PyPI's `/pypi/<pkg>/json` endpoint is CDN-stale for a minute after
-   a publish and still reported 0.57.0 — `/simple/<pkg>/` showed the artifacts
-   immediately, so verify there.
-3. `[x]` Committed `~/repos/pegasus-workflows/CLAUDE.md` (`103c3e7`, pushed straight to
-   that repo's `main` — it takes no PRs), after the publish. It says
-   "SDK 0.58.0+", so it must not land before 0.58.0 exists on PyPI. The split is
-   deliberate: increment 2 must extract the outbound core out of
-   `handlers/integration-call.ts` rather than copy it, which is a security-sensitive
-   refactor that deserves its own review rather than riding along behind a schema change.
+- **`IntegrationFetchCache`** — a Postgres table, keyed
+  `(tenant, integration, operation, requestHash)`. It is a table and not a per-container Map
+  for a measured reason: that is exactly what failed for the OAuth token cache on scaled
+  Lambda (#521/#532/#535). Same last-write-wins upsert, same absence of a lock.
+- **`requestHash` covers the WHOLE resolved descriptor**, not just the caller's params —
+  plus the config group and the key-name overrides. `decode`, `recordsPath` and `page`
+  determine what `records` CONTAINS, so under a params-only key a republish that moved
+  `recordsPath` would keep serving rows of the old shape for a full TTL.
+- **`attempts`/`pages` are 0 on a hit**, deliberately. They describe THIS call, so
+  `sum(attempts)` still counts real partner requests — which is the thing C5 said would make
+  the duplicate rate observable. `status`/`truncated`/`records` describe the DATA and come
+  off the row, so a cached truncated read stays recognizably incomplete.
+- **The repository does NOT filter by freshness**, diverging from the OAuth token repo's
+  `findFresh`. It cannot: a freshness-filtered read collapses "no row" and "stale row" into
+  one `null`, and the row's prior `fetchedAt` is exactly what makes a concurrent duplicate
+  detectable without single-flight. The handler judges age instead — also one read on the
+  hit path instead of two.
 
-Phase 2's **pilot mapping** is still blocked, but now for one specific, answerable
-reason rather than a general one — see "Still open → is a `Document` 1:1 with an
-`orderNumber`". Build the platform surface against the descriptor shape; publish the
-Atlas config only once a populated `settlementDate` exists.
+### Known gaps in Phase 3, declared rather than discovered
 
-A cheap, useful parallel task: finish the **docs PR**. `settlement-v1.json` is now
-exported into `docs/atlas-world-group-api/openapi/` (it is the primary evidence for the
-grain decision); `RadsData-v1` and `yembo-v2` are still missing, and
-`docs/atlas-world-group-api/README.md`'s "Financial data — where settlements are not"
-section is **factually wrong**.
-
-### Uncommitted work
-
-- `plans/in-progress/atlas-fetch-phase2.md` (this file) — untracked. Seeded plan **plus
-  the 2026-11-06 grain decision**. The Atlas portal password that gotcha 5 used to quote
-  verbatim has been **redacted** — the seed contradicted itself ("commit this file" vs.
-  "do not put it in a commit"), and gitleaks would not have caught a 12-char
-  alphanumeric. **Keep it redacted.**
-- `docs/atlas-world-group-api/openapi/settlement-v1.json` — untracked, **new**. The
-  re-exported spec; primary evidence for the grain decision. **Commit it** (it is also
-  the first piece of the docs PR).
-- `apps/e2e/.env.test` — worktree-local DB port written by the provisioner. **Never
-  commit**; recurring churn.
-- `package-lock.json` — churn from the provisioner's `npm install`. **Never commit**
-  unless a dependency actually changed.
-
-**Increment 1's implementation is also uncommitted.** New: `apps/api/src/lib/
-integration-fetch.ts` (+test), `apps/api/src/integration-validation/gate-fetch.test.ts`,
-`apps/api/prisma/migrations/20261106183000_integration_config_fetch/`. Modified:
-`schema.prisma`, `integration-validation/{types,registry,gate-pipeline}.ts`,
-`floors/financial-settlement.floor.ts`,
-`repositories/integration-config.repository.ts`,
-`handlers/integration-validation/{config,validate}.ts` (+their tests),
-`lib/openapi-spec.ts`, and the SDK (`api.py`, `cli/integration_config.py`,
-`cli/mcp_server.py`, `testing/__init__.py`, README, CHANGELOG, `pyproject.toml`,
-`uv.lock`, `tests/test_cli_integration_config.py`).
-
-**Outside this repo:** `~/repos/pegasus-workflows/CLAUDE.md` is modified too (the
-authoring repo's `fetch.json` docs — a required discovery surface per this repo's
-CLAUDE.md). It needs its own commit in that repo; it will NOT ride along with this PR.
-
-Plan + docs files are Prettier-clean (`plans/` is formatted here and lint-staged runs
-`prettier --write` on `*.md` / `*.json` at pre-commit).
+- **`BASE_URL` is not in the cache key.** It and the credentials resolve deeper inside
+  `performOutboundCall`, so rotating a base URL can serve the old host for up to `maxAge`.
+  The 60s default bounds it and `refresh=True` escapes it; both the descriptor field's
+  description and the SDK docstring say so. Pulling the resolved values up would mean
+  reading every credential on a cache HIT — a real secret-handling surface traded for a
+  rare operator event.
+- **No eviction.** One row per distinct request identity, forever. Growth is bounded by the
+  distinct `(operation, params)` identities a tenant asks for, and the token cache above it
+  has carried the same deferral since #521 without trouble. `fetchedAt` is indexed for
+  exactly that, if it ever matters.
+- **Projection `fetchedAt` is provenance only.** Phase 3 stores and reports it; nothing
+  reads it to make a freshness decision. `get_or_fetch` is Phase 4's business.
+- **The fetch route is not metered**, and that is pre-existing, not new: `BILLABLE_ACTIONS`
+  gates `CallExternal` on `data.ok === true`, which the fetch response has never carried. So
+  a cache hit is not billed as a partner call — there was nothing to get wrong.
 
 ### In flight
 
-No PR for this branch yet, no background watchers, no CI or deploy runs started by this
-session. `main` was green at `e0671fa7` (CI, Deploy and the daily Dependency Audit all
-success).
+**Check, do not assume — this block was written before the push, so verify it rather than
+trusting it:**
 
-**The increment-1 boundary, so the next session knows what is trustworthy.** Everything
-listed `[x]` under Phase 2 increment 1 was run and passed in this worktree at
-2026-11-06: `tsc --noEmit` clean, 4914/4914 API tests, 556/556 SDK tests,
-`turbo run typecheck` 15/15, `turbo run lint` 10/10. The migration was applied to this
-worktree's isolated Postgres via `prisma migrate deploy` (needed, or the repository
-tests fail on the missing column). Nothing was run against staging or prod, and nothing
-in increment 2 exists yet.
+`gh pr list --state open --json number,title,headRefName`
 
-Unrelated but adjacent: `main`'s working tree in the primary checkout has an uncommitted
-`plans/todo/durable-workflows-3c-followups.md` (91 added lines, a handoff note from the
-durable-workflows workstream). **Not ours — leave it alone.**
+Two things are owed after the merge, in this order:
+
+1. **Publish SDK 0.64.0.** Tag `sdk-python-v0.64.0` on the **verified merge commit**, never on
+   `main` — an empty `mergeCommit` silently tags whatever `main` points at. Then confirm the
+   artifacts at `/simple/pegasus-workflows-sdk/`, not `/pypi/<pkg>/json`, which is CDN-stale
+   for about a minute after a publish.
+2. **Then** the authoring repo's `CLAUDE.md` (`~/repos/pegasus-workflows`, pushed straight to
+   its `main` — it takes no PRs). It names "0.64.0+", so it must land only once PyPI has it.
+   The edits are fully specified; three anchors, all present as of 2026-11-12:
+   - the `requirements.txt` pin line, `0.63.0` → `0.64.0`;
+   - after "Two things calling code must handle" in the `fetch_external` section — the
+     freshness/provenance block (`source`/`asOf`, the three-level precedence, `attempts` 0 on
+     a hit, no single-flight, the BASE_URL caveat, `maxAgeSeconds` in `fetch.json`);
+   - the "Projection cache + correlation (0.37.0+)" bullet — add `fetched_at=None` to the
+     signature, and before "You supply the local id" the provenance block (`fetchedAt` vs
+     `updatedAt`, the `asOf` round-trip example, cleared-when-omitted, null means unknown).
+
+   Mirror the wording already committed in the SDK README's "Freshness and provenance" and
+   "Record when the state was true at the partner" sections — they are the source of truth and
+   were written to be transplanted.
+
+### Version-picking warning (cost us three collisions in one day)
+
+`main`'s SDK version was **0.63.0** on 2026-11-12 (`#951`), confirmed live on PyPI, so this
+branch took **0.64.0**. Other sessions bump it constantly. **Before choosing a version,
+check both** `main`'s `pyproject.toml` **and** PyPI —
+`curl -sS "https://pypi.org/simple/pegasus-workflows-sdk/?x=$RANDOM"`.
+
+The collision is near-silent: two branches bumping `0.6x → 0.6y` make the **identical** edit
+to `pyproject.toml` and `uv.lock`, so those **merge cleanly** and only `CHANGELOG.md`
+conflicts. A naive CHANGELOG resolution ships two unrelated feature sets under one version
+number, and whichever publishes is missing half its changes.
+
+Also: PyPI's `/simple/` and `/pypi/<pkg>/json` are **CDN-cached for ~a minute** after a
+publish. "My version isn't there" is not evidence of a failed publish — check the release
+run's status and bust the cache before concluding anything.
+
+### Environment traps, re-confirmed 2026-11-12
+
+- **A fresh branch off `origin/main` leaves `node_modules` and the Prisma client stale**, and
+  the symptom is a typecheck failure in SOMEONE ELSE'S files — this session saw
+  `Cannot find module '@anthropic-ai/sdk'` (added by `#948`) plus a pending migration. Fix:
+  `npm install` at the root, then `npx prisma migrate deploy && npx prisma generate` in
+  `apps/api`. A previously-green `tsc` and a `turbo` cache hit both predate the branch and
+  will lie to you.
+- **`npm install` rewrites `package-lock.json` to drop `"peer": true` markers.** Pure churn
+  from an npm-version difference. **Discard it** rather than committing it into a feature PR.
+- **Never `git stash` in a worktree** — the stack is shared, and this session briefly stashed
+  its own entire Phase 3 working tree chasing a question not worth asking (whether `api.py`
+  was already unformatted on `main`: it was). Recovery needed `git stash apply <sha>` by the
+  SHA captured from `git stash list`, then `drop`. The cheap version of that probe is
+  `git show origin/main:<path> > /tmp/… && ruff format --check /tmp/…`, which touches nothing.
+- **`ruff format --check` fails on ~20 pre-existing SDK files, `api.py` among them.** CI runs
+  `ruff check` only, which passes. Do not "fix" it inside a feature PR — the diff would bury
+  the change.
+- **The worktree-isolation guard refuses heredocs, `xargs`, runtime-computed `python3 -c` and
+  nested command substitution** (gotcha 8). Write a script to the scratchpad and run
+  `python3 <path>`.
+- **GitHub Actions runs can wedge `queued` indefinitely** while other branches' runs proceed.
+  `gh run cancel` then refuses with "Cannot cancel a workflow run that is completed" while
+  `gh run view` still says `queued`. Recovery: `gh pr close <N> && gh pr reopen <N>`.
 
 ### Decisions & dead ends
 
@@ -434,12 +461,42 @@ curl -sS -o settlement-v1.json "$(python3 -c "import json;print(json.load(open('
 
 ### Verification still owed
 
-- **Nothing was run** in this worktree: no `npx tsc --noEmit`, no `npx vitest run`, no
-  lint, no `npm run build`. There is no code to verify yet.
-- The provisioner applied migrations to the isolated DB; that was not re-checked.
-- `RadsData-v1` / `yembo-v2`: grant and contents unverified.
-- The settlement payload has never been seen populated (gotcha 3), so any mapping written
-  against the schema above is unvalidated against real bytes.
+**Everything shipped was verified.** As of 2026-11-12, on the Phase 3 branch: `tsc --noEmit`
+clean, `turbo run typecheck lint` 25/25, the full API suite green (**5229** tests, 328 files),
+the SDK suite green (**595**), `ruff check` clean. Phase 2's merges were the same at `#947`
+(5018 API, 579 SDK) and every main-branch CI + Deploy run came back `success`.
+
+**Phase 3's own gap, stated plainly: nothing has exercised the cache against a real partner.**
+Every path is covered by tests — hit, miss, forced refresh, descriptor-vs-call-site precedence,
+the duplicate metric, oversize skip, read-throw and write-throw degradation — but all of it is
+against a mocked outbound call. The first REAL hit/miss cycle will be whenever a tenant fetch
+runs, and the completion log (`cache`, `duplicate`, `cacheWrite`, `ageSeconds`) is the thing to
+read when it does. That log is also the whole point: C5's no-single-flight call was taken as a
+reversible bet, and the duplicate rate is what would reverse it.
+
+What is still owed beyond that — none of it blocks the shipped code:
+
+- **The settlement payload has never been seen populated** (gotcha 3), so the mapping in "The new
+  Atlas settlements API" is unvalidated against real bytes. This is the one thing the Atlas ask
+  exists for now that the grain question is answered.
+- **The regrouping step does not exist yet**, and it is new code (per-order grouping across the
+  envelope — see gotcha 1). Its first run should not also be its first test, which is the reason
+  populated data is still wanted.
+- **Whether `Document.orderNumber` is the Atlas registration number** or needs a lookup — gates
+  whether the pilot correlates without a join. A question for Steve, not a test.
+- `RadsData-v1` / `yembo-v2`: grant and contents still unprobed. Not worth probing until wanted.
+
+**Environment traps that cost real time this session, both of which re-verification must survive:**
+
+- **A rebase that pulls in another workstream's migration leaves the generated Prisma client
+  stale**, and the symptom is a typecheck failure in THEIR files (e.g. `WorkflowTrigger.mode` does
+  not exist). A previously-green `tsc` and a `turbo` cache hit both predate the rebase and will lie
+  to you. Fix: `npx prisma migrate deploy && npx prisma generate` in `apps/api`, then re-run.
+- **GitHub Actions runs can wedge `queued` indefinitely** while other branches' runs proceed.
+  `gh run cancel` then refuses with "Cannot cancel a workflow run that is completed" while
+  `gh run view` still says `queued` — two contradictory states. `gh pr checks` reports "no checks
+  reported", which looks like a gh quirk but is really reporting on wedged runs. Recovery:
+  `gh pr close <N> && gh pr reopen <N>` re-fires the `pull_request` event and produces fresh runs.
 
 > **Sequencing correction (2026-08-21).** An earlier note claimed Phases 1, 3 and 4
 > were source-agnostic and only Phase 2 waited on Atlas. That does not compile:
@@ -714,6 +771,14 @@ Modeled as a decision table, matching the existing rules format:
 
 ### C4. Freshness + provenance (the contract that keeps this honest)
 
+> **SHIPPED 2026-11-12** — see the Phase 3 checklist for what each bullet became, and the
+> resume block for the three judgement calls the design did not anticipate. One correction the
+> build forced: this section reads as though one store holds both the TTL and `fetchedAt`. It
+> does not. The fetch endpoint returns raw records and never writes a projection, so the
+> read-through cache is its own table (`IntegrationFetchCache`) and `fetchedAt` on
+> `IntegrationProjection` is separate provenance that a caller threads through from a fetch's
+> `asOf`.
+
 `IntegrationProjection` has a `version` counter but **no TTL and no `fetchedAt`** — `updatedAt`
 means "when we last wrote a row", not "when this was true at the partner". A generic
 `get_or_fetch` that silently returns it would answer a _different question_ than the caller
@@ -905,14 +970,44 @@ reused, not re-implemented), so it gets its own review.
   Gap A stays open for this source regardless of the grain decision. Verify before
   writing the pilot workflow.
 
-### Phase 3 — Freshness + provenance (C4) `[ ]`
+### Phase 3 — Freshness + provenance (C4) `[x]` DONE 2026-11-12
 
-- `[ ]` `fetchedAt` on `IntegrationProjection` + migration
-- `[ ]` `max_age` / `refresh` on the fetch surface; `source` + `as_of` in every response
-- `[ ]` Short default TTL (60s, per-capability overridable). **No single-flight** — decided in
-  C5; the provenance fields make the duplicate rate observable so this can be revisited on data
-- `[ ]` Emit a metric/log for cache hit vs miss vs duplicate-in-flight, so "do we need
-  single-flight?" is answerable later without a code change
+Shipped as one PR. The premise that split it in two: the fetch endpoint returns raw records
+and **never writes a projection**, so the TTL cache and the projection's provenance are
+separate stores. Confirmed by reading `handlers/integration-fetch.ts`, not assumed.
+
+- `[x]` `fetchedAt` on `IntegrationProjection` + migration. Nullable, **not backfilled** —
+  a pre-existing row has no honest value to claim. A null means UNKNOWN and must be read as
+  stale; it is explicitly **not** a fall-back to `updatedAt`, which answers a different
+  question. Cleared (not inherited) by a write that omits it, because `state` is replaced
+  wholesale. Written via `put_projection(..., fetched_at=)`, whose natural source is a
+  `fetch_external` response's `asOf`.
+- `[x]` `max_age` / `refresh` on the fetch surface; `source` + `asOf` in **every** response,
+  the miss path included. Precedence: call-site `maxAge` > descriptor `maxAgeSeconds` >
+  60s default. `maxAge: 0` and `refresh: true` both force a call, and a forced call still
+  writes through. `resolveFetchMaxAge` uses explicit `undefined` checks, because
+  `callSite || descriptor` would read an explicit 0 as "unset".
+- `[x]` Short default TTL (`FETCH_DEFAULT_MAX_AGE_SECONDS = 60`), per-capability overridable
+  via the descriptor's `maxAgeSeconds` (0–86400, `FETCH_MAX_MAX_AGE_SECONDS`). **No
+  single-flight**, per C5. New model `IntegrationFetchCache` (in `TENANT_SCOPED_MODELS`),
+  repository `integration-fetch-cache.repository.ts`.
+- `[x]` The metric, which Risks called non-optional. One structured completion log carries
+  `cache` (`hit`/`miss`/`refresh`), `duplicate`, `cacheWrite`
+  (`stored`/`skipped:oversize`/`failed`) and, on a hit, `ageSeconds`. Duplicates are detected
+  **without** coordination: the row's `fetchedAt` is read before the partner call and again
+  after, and a change means another container fetched concurrently — one extra indexed read,
+  on the miss path only. Tested, not merely emitted.
+- `[x]` Every cache failure degrades instead of failing a good read: an unreadable cache is a
+  miss, an unwritable one still returns the records, and a result over 256 KB (the projection
+  `state` cap) is served **uncached**.
+- `[x]` Discovery surfaces, per CLAUDE.md's SDK rule: `fetchBlockJsonSchema()` (so the
+  discovery endpoint publishes `maxAgeSeconds`), OpenAPI, SDK `fetch_external` +
+  `put_projection`, README, CHANGELOG, MCP resource text, CLI `fetch.json` help. The
+  authoring repo's `CLAUDE.md` lands **after** the PyPI publish, since it names 0.64.0.
+- `[x]` `test_fetch_external_exposes_no_method_or_path_argument` updated **deliberately**, not
+  loosened: the pinned set is now
+  `{self, integration_id, operation, params, group, max_age, refresh}`, and the comment says
+  why those two are not transport.
 
 ### Phase 4 — Entity fact source + binding (Gap C) `[ ]`
 
@@ -998,17 +1093,23 @@ reused, not re-implemented), so it gets its own review.
   configured source on demand", just with the integration named explicitly) and defer binding.
 - **SSRF posture unchanged** — resolved URLs still go through `assertDeliverableUrl`. The fetch
   block adds a path/query template, not a new egress.
-- **Unknown rate budget** — see C5. Worth resolving with Atlas before Phase 3 lands, since it is
-  the only input that would move the TTL default off judgement. **Partially measured 2026-08-20:**
+- **Unknown rate budget** — see C5. **Phase 3 landed 2026-11-12 WITHOUT this resolved**, so the
+  60s default is still judgement rather than measurement. That was the right trade only because
+  the TTL is now a declared, per-capability, call-site-overridable field rather than a constant:
+  moving it is a config edit, not a deploy. Still worth asking Atlas. **Partially measured
+  2026-08-20:**
   ~70 live calls at ~24/min drew no `429` and no rate-limit headers, so there is no aggressive
   per-minute throttle — but a _weekly_ quota (the `starter` product publishes 100/week) would not
   have surfaced, and Atlas exposes no quota headers to read it from. The 60s TTL default remains
   judgement, not measurement.
-- **Deferring single-flight is a bet, and it is instrumented as one.** If duplicate fetches turn
-  out to matter, the fix is additive (a shared lease tier, the L2 pattern from #521/#532/#535)
-  and does not invalidate anything built in Phases 1–3. The failure mode to avoid is shipping it
-  _without_ the hit/miss/duplicate metric — that is what would turn a reversible bet into a
-  guess, so treat that checklist item in Phase 3 as non-optional.
+- ~~**Deferring single-flight is a bet, and it is instrumented as one.**~~ **DISCHARGED
+  2026-11-12.** The metric shipped with the cache rather than after it, so the bet stayed
+  reversible: the completion log carries `cache` (hit/miss/refresh), `duplicate` and
+  `cacheWrite`, and the duplicate is detected with no coordination at all — the row's
+  `fetchedAt` read before and after the partner call. If duplicates turn out to matter the fix
+  is still additive (a shared lease tier, the L2 pattern from #521/#532/#535) and invalidates
+  nothing in Phases 1–3. What remains is to actually READ that log once real traffic exists;
+  see "Verification still owed".
 
 ## Decisions (2026-08-06)
 

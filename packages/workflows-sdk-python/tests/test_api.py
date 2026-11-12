@@ -1211,6 +1211,45 @@ def test_put_projection_without_correlation_omits_the_fields() -> None:
     assert "correlation" not in row
 
 
+def _capture_put_projection(**kwargs: object) -> dict:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "entityKey": "SO-1",
+                    "version": 1,
+                    "fetchedAt": kwargs.get("fetched_at"),
+                }
+            },
+        )
+
+    captured["row"] = _client_with(handler).put_projection(
+        "demo_partner", "order", "SO-1", {"x": 1}, **kwargs  # type: ignore[arg-type]
+    )
+    return captured
+
+
+def test_put_projection_sends_fetched_at() -> None:
+    # Provenance: when the state was true AT THE PARTNER, which the row stores
+    # separately from updatedAt (C4).
+    seen = _capture_put_projection(fetched_at="2026-11-12T09:30:00Z")
+    assert seen["json"]["fetchedAt"] == "2026-11-12T09:30:00Z"
+
+
+def test_put_projection_omits_fetched_at_when_not_supplied() -> None:
+    seen = _capture_put_projection()
+    assert "fetchedAt" not in seen["json"]
+
+
+def test_put_projection_returns_the_stored_fetched_at() -> None:
+    seen = _capture_put_projection(fetched_at="2026-11-12T09:30:00Z")
+    assert seen["row"]["fetchedAt"] == "2026-11-12T09:30:00Z"
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -2685,6 +2724,8 @@ def _capture_fetch_external(operation: str = "settlements", **kwargs: object) ->
                     "attempts": 1,
                     "status": 200,
                     "truncated": False,
+                    "source": "fetched",
+                    "asOf": "2026-11-12T09:30:00.000Z",
                 }
             },
         )
@@ -2722,10 +2763,54 @@ def test_fetch_external_returns_the_record_envelope() -> None:
     assert seen["result"]["pages"] == 1
 
 
+def test_fetch_external_surfaces_provenance() -> None:
+    # `source` + `asOf` are the C4 contract: a caller must be able to tell a
+    # cached answer from a live one without guessing from its own clock.
+    seen = _capture_fetch_external()
+    assert seen["result"]["source"] == "fetched"
+    assert seen["result"]["asOf"] == "2026-11-12T09:30:00.000Z"
+
+
+def test_fetch_external_omits_freshness_when_the_caller_has_no_opinion() -> None:
+    # Sending maxAge/refresh unconditionally would override the descriptor's own
+    # maxAgeSeconds with the SDK's defaults, which is not the caller's intent.
+    seen = _capture_fetch_external()
+    assert "maxAge" not in seen["body"]
+    assert "refresh" not in seen["body"]
+
+
+def test_fetch_external_sends_max_age() -> None:
+    seen = _capture_fetch_external(max_age=300)
+    assert seen["body"]["maxAge"] == 300
+
+
+def test_fetch_external_sends_an_explicit_zero_max_age() -> None:
+    # 0 means "call the partner". A truthiness check would drop it and serve a
+    # cached row to the one caller who asked for live data.
+    seen = _capture_fetch_external(max_age=0)
+    assert seen["body"]["maxAge"] == 0
+
+
+def test_fetch_external_sends_refresh_only_when_true() -> None:
+    assert _capture_fetch_external(refresh=True)["body"]["refresh"] is True
+    assert "refresh" not in _capture_fetch_external(refresh=False)["body"]
+
+
 def test_fetch_external_exposes_no_method_or_path_argument() -> None:
     # The whole point: transport comes from the published descriptor, so the
-    # caller cannot smuggle in a path the publish gate never saw.
+    # caller cannot smuggle in a path the publish gate never saw. `max_age` and
+    # `refresh` were added deliberately for freshness (C4) and name no transport;
+    # this set is pinned so a later "convenience" argument cannot quietly reopen
+    # the escape hatch.
     import inspect
 
     sig = inspect.signature(PegasusClient.fetch_external)
-    assert set(sig.parameters) == {"self", "integration_id", "operation", "params", "group"}
+    assert set(sig.parameters) == {
+        "self",
+        "integration_id",
+        "operation",
+        "params",
+        "group",
+        "max_age",
+        "refresh",
+    }

@@ -10,7 +10,12 @@ import {
   decodeFetchBody,
   extractFetchRecords,
   readNextCursor,
+  resolveFetchMaxAge,
+  fetchRequestHash,
+  FETCH_DEFAULT_MAX_AGE_SECONDS,
+  FETCH_MAX_MAX_AGE_SECONDS,
   type FetchBlock,
+  type FetchOperation,
 } from './integration-fetch'
 
 /** The Atlas settlements descriptor, as far as it can be written today. */
@@ -686,5 +691,148 @@ describe('readNextCursor', () => {
     ['an object', { next: { a: 1 } }],
   ])('returns null (stop paging) for %s', (_label, body) => {
     expect(readNextCursor(body, 'next')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Freshness (C4): maxAgeSeconds on the descriptor, maxAge/refresh at the call
+// site, and the precedence between them.
+// ---------------------------------------------------------------------------
+
+describe('maxAgeSeconds — the per-capability TTL override', () => {
+  it('is optional: a descriptor without it is still valid', () => {
+    expect(FetchBlockSchema.safeParse(atlasSettlements).success).toBe(true)
+  })
+
+  it('accepts a declared override', () => {
+    const r = FetchBlockSchema.safeParse({
+      settlements: { ...atlasSettlements['settlements'], maxAgeSeconds: 900 },
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('accepts 0 — "never serve this from cache" is a legitimate declaration', () => {
+    const r = FetchBlockSchema.safeParse({
+      settlements: { ...atlasSettlements['settlements'], maxAgeSeconds: 0 },
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it.each([
+    ['negative', -1],
+    ['fractional', 1.5],
+    ['over the ceiling', FETCH_MAX_MAX_AGE_SECONDS + 1],
+  ])('refuses a %s maxAgeSeconds at publish', (_label, value) => {
+    const r = FetchBlockSchema.safeParse({
+      settlements: { ...atlasSettlements['settlements'], maxAgeSeconds: value },
+    })
+    expect(r.success).toBe(false)
+  })
+
+  it('appears in the published JSON Schema, so an authoring agent can discover it', () => {
+    expect(JSON.stringify(fetchBlockJsonSchema())).toContain('maxAgeSeconds')
+  })
+})
+
+describe('resolveFetchMaxAge — precedence', () => {
+  it('defaults to the platform TTL when neither side says anything', () => {
+    expect(resolveFetchMaxAge(undefined, undefined)).toBe(FETCH_DEFAULT_MAX_AGE_SECONDS)
+  })
+
+  it('is 60s by default — short enough that serving it is defensible (C4)', () => {
+    expect(FETCH_DEFAULT_MAX_AGE_SECONDS).toBe(60)
+  })
+
+  it('uses the descriptor override when the caller is silent', () => {
+    expect(resolveFetchMaxAge(undefined, 900)).toBe(900)
+  })
+
+  it('lets the CALL SITE win over the descriptor — freshness is explicit at the call site', () => {
+    expect(resolveFetchMaxAge(5, 900)).toBe(5)
+  })
+
+  it('honours an explicit call-site 0 over a descriptor override', () => {
+    // The trap this pins: `callSite || descriptor` would treat 0 as "unset" and
+    // silently serve a 15-minute-old row to a caller who asked for live data.
+    expect(resolveFetchMaxAge(0, 900)).toBe(0)
+  })
+
+  it('honours an explicit descriptor 0 over the platform default', () => {
+    expect(resolveFetchMaxAge(undefined, 0)).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// fetchRequestHash — the cache key. What it includes is the whole correctness
+// argument: anything that changes the RECORDS but not the hash would be served
+// stale for a full TTL.
+// ---------------------------------------------------------------------------
+
+describe('fetchRequestHash', () => {
+  const op: FetchOperation = {
+    method: 'GET',
+    path: '/settlement/v1/settlement',
+    query: { settlementDate: '2026-11-06' },
+    decode: 'jsonString',
+    recordsPath: 'agentSettlements',
+    page: { style: 'none' },
+  }
+  const env = { group: 'global', overrides: { baseUrlConfig: 'BASE_URL' } }
+
+  it('is a lowercase sha256 hex digest', () => {
+    expect(fetchRequestHash(op, env)).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('is stable across calls', () => {
+    expect(fetchRequestHash(op, env)).toBe(fetchRequestHash(op, env))
+  })
+
+  it('ignores key ORDER — the same request written two ways is one cache entry', () => {
+    const reordered: FetchOperation = {
+      recordsPath: 'agentSettlements',
+      page: { style: 'none' },
+      decode: 'jsonString',
+      query: { settlementDate: '2026-11-06' },
+      path: '/settlement/v1/settlement',
+      method: 'GET',
+    }
+    expect(fetchRequestHash(reordered, env)).toBe(fetchRequestHash(op, env))
+  })
+
+  it.each([
+    ['the filled path', { path: '/settlement/v1/other' }],
+    ['a filled query value', { query: { settlementDate: '2026-12-06' } }],
+    ['the method', { method: 'POST' as const }],
+    ['a literal header', { headers: { 'X-Thing': 'a' } }],
+    ['a secret header KEY NAME', { secretHeaders: { 'Ocp-Apim-Subscription-Key': 'K' } }],
+    ['the body', { method: 'POST' as const, body: { a: 1 } }],
+  ])('changes when %s changes', (_label, patch) => {
+    expect(fetchRequestHash({ ...op, ...patch }, env)).not.toBe(fetchRequestHash(op, env))
+  })
+
+  it.each([
+    ['decode', { decode: 'none' as const }],
+    ['recordsPath', { recordsPath: 'documents' }],
+    ['page', { page: { style: 'pageNumber' as const, param: 'page' } }],
+  ])('changes when %s changes — these SHAPE the records, not just the request', (_label, patch) => {
+    // The bug this pins: hashing only the caller's params would let a republish
+    // that moves `recordsPath` keep serving rows of the OLD shape for a full TTL.
+    expect(fetchRequestHash({ ...op, ...patch }, env)).not.toBe(fetchRequestHash(op, env))
+  })
+
+  it('changes when the config GROUP changes — a different group is different credentials', () => {
+    expect(fetchRequestHash(op, { ...env, group: 'atlas' })).not.toBe(fetchRequestHash(op, env))
+  })
+
+  it('changes when a config-key override changes', () => {
+    expect(
+      fetchRequestHash(op, { ...env, overrides: { baseUrlConfig: 'ATLAS_BASE_URL' } }),
+    ).not.toBe(fetchRequestHash(op, env))
+  })
+
+  it('does not leak the request into the digest — only the hash is storable', () => {
+    const hash = fetchRequestHash(op, env)
+    expect(hash).not.toContain('settlement')
+    expect(hash).not.toContain('2026')
   })
 })
