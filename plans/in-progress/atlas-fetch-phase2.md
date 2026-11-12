@@ -117,31 +117,30 @@ the **only** thing the pilot waits on.
 
 ### In flight
 
-**Check, do not assume — this block was written before the push, so verify it rather than
-trusting it:**
+**Nothing.** Everything Phase 3 owed is delivered and verified — this block was rewritten
+AFTER the fact, not before it:
+
+- **`#955` MERGED** as `081d1f8b` (2026-11-12). Every main-branch run on that commit came
+  back `success`: CI (×2), Deploy — which carried the migration — Push on main, Tenant runner
+  image, Temporal worker image, Graph Update.
+- **SDK 0.64.0 PUBLISHED.** Tag `sdk-python-v0.64.0` was cut on the **verified merge commit**
+  `081d1f8b`, not on `main`; release run `43272478142` succeeded; and the wheel + sdist are
+  confirmed on PyPI `/simple/` with provenance (not `/pypi/<pkg>/json`, which is CDN-stale for
+  about a minute after a publish).
+- **The authoring repo is updated.** `~/repos/pegasus-workflows` commit `91f1200`, pushed
+  straight to its `main` (it takes no PRs), AFTER the publish since it names 0.64.0. It also
+  moves `requirements.txt` `0.63.0` → `0.64.0`, which the earlier draft had missed — CLAUDE.md
+  advertises that pin, so the two must agree.
+
+Re-check rather than trusting the above:
 
 `gh pr list --state open --json number,title,headRefName`
 
-Two things are owed after the merge, in this order:
-
-1. **Publish SDK 0.64.0.** Tag `sdk-python-v0.64.0` on the **verified merge commit**, never on
-   `main` — an empty `mergeCommit` silently tags whatever `main` points at. Then confirm the
-   artifacts at `/simple/pegasus-workflows-sdk/`, not `/pypi/<pkg>/json`, which is CDN-stale
-   for about a minute after a publish.
-2. **Then** the authoring repo's `CLAUDE.md` (`~/repos/pegasus-workflows`, pushed straight to
-   its `main` — it takes no PRs). It names "0.64.0+", so it must land only once PyPI has it.
-   The edits are fully specified; three anchors, all present as of 2026-11-12:
-   - the `requirements.txt` pin line, `0.63.0` → `0.64.0`;
-   - after "Two things calling code must handle" in the `fetch_external` section — the
-     freshness/provenance block (`source`/`asOf`, the three-level precedence, `attempts` 0 on
-     a hit, no single-flight, the BASE_URL caveat, `maxAgeSeconds` in `fetch.json`);
-   - the "Projection cache + correlation (0.37.0+)" bullet — add `fetched_at=None` to the
-     signature, and before "You supply the local id" the provenance block (`fetchedAt` vs
-     `updatedAt`, the `asOf` round-trip example, cleared-when-omitted, null means unknown).
-
-   Mirror the wording already committed in the SDK README's "Freshness and provenance" and
-   "Record when the state was true at the partner" sections — they are the source of truth and
-   were written to be transplanted.
+**Worktree teardown is the only loose end.** `/home/steve/repos/pegasus-atlas-fetch-phase2`
+still exists on the merged branch `docs/atlas-phase3-landed`; tear it down with
+`scripts/rm-worktree.sh atlas-fetch-phase2` when nothing else needs it. Note its
+`apps/e2e/.env.test` edit is provisioner churn and must never be committed, and a background
+watcher whose cwd is the worktree exits 1 when it goes away — that is benign.
 
 ### Version-picking warning (cost us three collisions in one day)
 
