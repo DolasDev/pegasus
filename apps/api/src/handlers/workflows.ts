@@ -86,8 +86,8 @@ const DOWNLOAD_URL_TTL_SECONDS = 5 * 60
  * (name, version) characters allowed in S3 keys without escaping. Locked
  * down so the path component below is safe to interpolate into an S3 key.
  */
-const NAME_REGEX = /^[a-z0-9][a-z0-9_-]{0,63}$/
-const VERSION_REGEX = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/
+export const NAME_REGEX = /^[a-z0-9][a-z0-9_-]{0,63}$/
+export const VERSION_REGEX = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/
 
 /**
  * Hard cap on the embedded Mermaid diagram. A workflow flowchart is small
@@ -484,6 +484,9 @@ type WorkflowExecutionResponse = {
   triggeredByUserId: string | null
   triggerSource: WorkflowExecutionRow['triggerSource']
   triggeredByTriggerId: string | null
+  /** triggerSource WORKFLOW only: the durable Workflow execution that ran
+   * this Automation as a step (`run_automation()`). Null otherwise. */
+  parentExecutionId: string | null
   /** True when this execution was started in dry-run mode. */
   dryRun: boolean
   queuedAt: string
@@ -493,7 +496,7 @@ type WorkflowExecutionResponse = {
   updatedAt: string
 }
 
-function toExecutionResponse(row: WorkflowExecutionRow): WorkflowExecutionResponse {
+export function toExecutionResponse(row: WorkflowExecutionRow): WorkflowExecutionResponse {
   return {
     id: row.id,
     tenantId: row.tenantId,
@@ -509,6 +512,7 @@ function toExecutionResponse(row: WorkflowExecutionRow): WorkflowExecutionRespon
     triggeredByUserId: row.triggeredByUserId,
     triggerSource: row.triggerSource,
     triggeredByTriggerId: row.triggeredByTriggerId,
+    parentExecutionId: row.parentExecutionId,
     dryRun: row.dryRun,
     queuedAt: row.queuedAt.toISOString(),
     startedAt: row.startedAt ? row.startedAt.toISOString() : null,
@@ -520,10 +524,11 @@ function toExecutionResponse(row: WorkflowExecutionRow): WorkflowExecutionRespon
 
 /**
  * Map a startWorkflowExecution result to the HTTP response. Shared by
- * `POST /:id/run` and `POST /:id/executions/:executionId/retry` so both expose
- * the identical limit/quota/fork/Temporal outcome surface.
+ * `POST /:id/run`, `POST /:id/executions/:executionId/retry` and the step
+ * route (handlers/automation-steps.ts) so all expose the identical
+ * limit/quota/fork/Temporal outcome surface.
  */
-function startResultToResponse(
+export function startResultToResponse(
   c: Context<AppEnv>,
   workflowName: string,
   result: Awaited<ReturnType<typeof startWorkflowExecution>>,
@@ -1524,57 +1529,68 @@ workflowsHandler.post(
   async (c) => {
     const loaded = await loadExecutionForTenant(c)
     if (!loaded.ok) return loaded.response
-    const { workflow, execution } = loaded
-
-    if (TERMINAL_STATUSES.has(execution.status)) {
-      return c.json(
-        {
-          error: `Execution is already ${execution.status} — nothing to cancel`,
-          code: 'EXECUTION_NOT_CANCELLABLE',
-        },
-        409,
-      )
-    }
-    if (!execution.temporalWorkflowId) {
-      return c.json(
-        {
-          error: 'Execution has not started on Temporal yet — try again once it is running',
-          code: 'EXECUTION_NOT_CANCELLABLE',
-        },
-        409,
-      )
-    }
-
-    try {
-      const temporalWorkflowId = execution.temporalWorkflowId
-      await withTemporalClient(
-        { tenantId: execution.tenantId, namespace: execution.temporalNamespace },
-        (client) =>
-          client.workflow
-            .getHandle(temporalWorkflowId, execution.temporalRunId ?? undefined)
-            .cancel(),
-      )
-    } catch (err) {
-      logger.error('Failed to cancel workflow execution', {
-        executionId: execution.id,
-        workflowId: workflow.id,
-        tenantId: c.get('tenantId'),
-        error: err instanceof Error ? err.message : String(err),
-      })
-      return c.json(
-        { error: 'Failed to request cancellation on Temporal', code: 'TEMPORAL_CANCEL_FAILED' },
-        502,
-      )
-    }
-
-    logger.info('Workflow execution cancellation requested', {
-      executionId: execution.id,
-      workflowId: workflow.id,
-      tenantId: c.get('tenantId'),
-    })
-    return c.json({ data: toExecutionResponse(execution) }, 202)
+    return requestCancelResponse(c, loaded.workflow.id, loaded.execution)
   },
 )
+
+/**
+ * Ask Temporal to cancel a non-terminal execution and map the outcome to the
+ * HTTP response (202 / 409 EXECUTION_NOT_CANCELLABLE / 502). Shared by
+ * `POST /:id/executions/:executionId/cancel` and the step route's cancel.
+ */
+export async function requestCancelResponse(
+  c: Context<AppEnv>,
+  workflowId: string,
+  execution: WorkflowExecutionRow,
+): Promise<Response> {
+  if (TERMINAL_STATUSES.has(execution.status)) {
+    return c.json(
+      {
+        error: `Execution is already ${execution.status} — nothing to cancel`,
+        code: 'EXECUTION_NOT_CANCELLABLE',
+      },
+      409,
+    )
+  }
+  if (!execution.temporalWorkflowId) {
+    return c.json(
+      {
+        error: 'Execution has not started on Temporal yet — try again once it is running',
+        code: 'EXECUTION_NOT_CANCELLABLE',
+      },
+      409,
+    )
+  }
+
+  try {
+    const temporalWorkflowId = execution.temporalWorkflowId
+    await withTemporalClient(
+      { tenantId: execution.tenantId, namespace: execution.temporalNamespace },
+      (client) =>
+        client.workflow
+          .getHandle(temporalWorkflowId, execution.temporalRunId ?? undefined)
+          .cancel(),
+    )
+  } catch (err) {
+    logger.error('Failed to cancel workflow execution', {
+      executionId: execution.id,
+      workflowId,
+      tenantId: c.get('tenantId'),
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return c.json(
+      { error: 'Failed to request cancellation on Temporal', code: 'TEMPORAL_CANCEL_FAILED' },
+      502,
+    )
+  }
+
+  logger.info('Workflow execution cancellation requested', {
+    executionId: execution.id,
+    workflowId,
+    tenantId: c.get('tenantId'),
+  })
+  return c.json({ data: toExecutionResponse(execution) }, 202)
+}
 
 // ---------------------------------------------------------------------------
 // POST /:id/executions/:executionId/retry

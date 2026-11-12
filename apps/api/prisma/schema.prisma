@@ -1746,13 +1746,15 @@ enum WorkflowTriggerMode {
   @@schema("public")
 }
 
-/// Provenance of a WorkflowExecution: started manually by a user (USER) or
-/// fired by a trigger (EVENT / SCHEDULE). Trigger-fired executions have no
-/// triggeredByUserId.
+/// Provenance of a WorkflowExecution: started manually by a user (USER),
+/// fired by a trigger (EVENT / SCHEDULE), or started as a step by an open
+/// durable Workflow's `run_automation()` (WORKFLOW — parentExecutionId names
+/// the Workflow's execution). Only USER executions have a triggeredByUserId.
 enum WorkflowExecutionTriggerSource {
   USER
   EVENT
   SCHEDULE
+  WORKFLOW
 
   @@schema("public")
 }
@@ -1919,6 +1921,17 @@ model WorkflowExecution {
   /// executions. Denormalized; not an FK so the row survives trigger deletion.
   triggeredByTriggerId String? @map("triggered_by_trigger_id")
 
+  /// WORKFLOW-source (step) executions only: the open durable Workflow
+  /// execution that started this Automation. Denormalized like
+  /// triggeredByTriggerId; not an FK.
+  parentExecutionId String? @map("parent_execution_id")
+
+  /// WORKFLOW-source (step) executions only: idempotency key the step route
+  /// builds from the calling activity (`<temporalWorkflowId>/<runId>/
+  /// <activityId>`). Unique per tenant, so an activity retried after a crash
+  /// gets the row it already started instead of a second run.
+  stepKey String? @map("step_key")
+
   queuedAt   DateTime  @map("queued_at")
   startedAt  DateTime? @map("started_at")
   finishedAt DateTime? @map("finished_at")
@@ -1934,6 +1947,8 @@ model WorkflowExecution {
 
   workflow Workflow @relation(fields: [workflowId], references: [id])
 
+  /// Step idempotency. NULLs never collide, so non-step rows are unaffected.
+  @@unique([tenantId, stepKey])
   @@index([tenantId, workflowId])
   @@index([status])
   /// Composite index for the TENANT_RUNNER daily-quota count (Phase 3 Unit 10):
@@ -1945,6 +1960,8 @@ model WorkflowExecution {
   /// Event-routed signals: the dispatcher's open-instance lookup for a
   /// business key (`temporalWorkflowId = wfl/<tenant>/<name>/<key>`).
   @@index([tenantId, temporalWorkflowId])
+  /// A Workflow's steps — the step routes scope reads/cancels by parent.
+  @@index([parentExecutionId])
   @@map("workflow_executions")
   @@schema("public")
 }

@@ -260,6 +260,16 @@ export const Actions = {
     resourceType: 'Workflow',
     permission: 'workflow:signal_execution',
   },
+  // A durable Workflow's runtime token starting / polling / cancelling an
+  // Automation step (handlers/automation-steps.ts). Granted only to
+  // workflow_runtime; the handler further requires the CALLER to be a
+  // WORKFLOW-kind row — Cedar can't see that, so an Automation's token that
+  // passes this check is still refused there.
+  RunAutomationStep: {
+    id: 'RunAutomationStep',
+    resourceType: 'Workflow',
+    permission: 'workflow:run_automation_step',
+  },
   // ── Notifications (staff-initiated push to drivers/crew) ────────────────────
   SendNotification: {
     id: 'SendNotification',

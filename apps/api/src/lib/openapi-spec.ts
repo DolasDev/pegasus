@@ -3028,6 +3028,98 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/automation-steps': {
+        post: {
+          operationId: 'startAutomationStep',
+          summary: 'Run an Automation as a step of a durable Workflow (RunAutomationStep)',
+          description:
+            'Called by the SDK’s `run_automation()` activity on a durable Workflow’s own runtime key — authors call `await run_automation("name", input)` in the Workflow, not this route. Body { automation, version?, input?, parentTemporalWorkflowId, parentTemporalRunId, activityId }. ' +
+            'The caller must be a durable Workflow’s runtime key (403 STEP_CALLER_NOT_WORKFLOW otherwise — an Automation can’t start another), and the parent must be an open instance of that Workflow (404 PARENT_NOT_OPEN). The target must be an ACTIVE Automation (404 AUTOMATION_NOT_FOUND; 422 STEP_TARGET_NOT_AUTOMATION for a durable Workflow): the tenant’s own versions win over GLOBAL ones; `version` pins exactly, a bare name takes the newest ACTIVE version (semver) at call time. ' +
+            'Idempotent on (parentTemporalWorkflowId, parentTemporalRunId, activityId): a repeat returns 200 with the step already started, whatever its status. The start is an ordinary Automation run — the same concurrency cap, daily quota, kill switch and namespace outcomes as POST /workflows/{id}/run; the execution row has triggerSource WORKFLOW and parentExecutionId.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: [
+                    'automation',
+                    'parentTemporalWorkflowId',
+                    'parentTemporalRunId',
+                    'activityId',
+                  ],
+                  properties: {
+                    automation: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
+                    version: {
+                      type: 'string',
+                      description: 'Exact semver; omit for the newest ACTIVE version',
+                    },
+                    input: { type: 'object', additionalProperties: true },
+                    parentTemporalWorkflowId: { type: 'string' },
+                    parentTemporalRunId: { type: 'string' },
+                    activityId: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Step started ({data: execution})' },
+            '200': { description: 'This activity already started the step ({data: execution})' },
+            '400': { description: 'VALIDATION_ERROR' },
+            '403': { description: 'STEP_CALLER_NOT_WORKFLOW, or WORKFLOW_MUST_FORK' },
+            '404': { description: 'PARENT_NOT_OPEN or AUTOMATION_NOT_FOUND' },
+            '409': { description: 'TENANT_MIGRATING / TENANT_NAMESPACE_PROVISIONING (transient)' },
+            '422': { description: 'STEP_TARGET_NOT_AUTOMATION' },
+            '423': { description: 'WORKFLOWS_DISABLED (kill switch; transient for a step)' },
+            '429': {
+              description: 'CONCURRENCY_LIMIT or DAILY_QUOTA_EXCEEDED (transient for a step)',
+            },
+            '502': { description: 'TEMPORAL_START_FAILED' },
+            '503': { description: 'TENANT_NAMESPACE_UNAVAILABLE, or STEP_START_RACE (transient)' },
+          },
+        },
+      },
+      '/api/v1/automation-steps/{executionId}': {
+        get: {
+          operationId: 'getAutomationStep',
+          summary: 'Poll a step this Workflow started (RunAutomationStep)',
+          description:
+            'The step’s execution row: status, result (COMPLETED) or errorMessage (FAILED / TIMED_OUT / CANCELLED). 404 unless the step was started by an execution of the calling Workflow.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': { description: '{data: execution}' },
+            '403': { description: 'STEP_CALLER_NOT_WORKFLOW' },
+            '404': { description: 'NOT_FOUND' },
+          },
+        },
+      },
+      '/api/v1/automation-steps/{executionId}/cancel': {
+        post: {
+          operationId: 'cancelAutomationStep',
+          summary: 'Cancel a step this Workflow started (RunAutomationStep)',
+          description:
+            'Sent by the `run_automation()` activity when the Workflow cancels the step. Same outcomes as POST /workflows/{id}/executions/{executionId}/cancel, scoped like GET /automation-steps/{executionId}.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '202': { description: 'Cancellation requested ({data: execution})' },
+            '403': { description: 'STEP_CALLER_NOT_WORKFLOW' },
+            '404': { description: 'NOT_FOUND' },
+            '409': { description: 'EXECUTION_NOT_CANCELLABLE' },
+            '502': { description: 'TEMPORAL_CANCEL_FAILED' },
+          },
+        },
+      },
       '/api/v1/workflows/{id}/executions/{executionId}/retry': {
         post: {
           operationId: 'retryWorkflowExecution',

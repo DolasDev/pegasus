@@ -232,6 +232,19 @@ export type StartWorkflowExecutionProvenance =
        */
       runtimeAccountCreatedById: string
     }
+  | {
+      /** A step: an Automation started by an open durable Workflow's
+       * `run_automation()` (handlers/automation-steps.ts). */
+      triggerSource: 'WORKFLOW'
+      /** The open Workflow execution that started it. */
+      parentExecutionId: string
+      /** Idempotency key, unique per tenant — a duplicate insert throws
+       * Prisma P2002, which the step route resolves to the existing row. */
+      stepKey: string
+      /** As for triggers: the closest accountable principal if a runtime
+       * service account must be lazily minted. */
+      runtimeAccountCreatedById: string
+    }
 
 export type StartWorkflowExecutionOptions = {
   /** The workflow to run — already loaded + visibility-checked by the caller. */
@@ -824,7 +837,12 @@ export async function startWorkflowExecution(
       triggeredByUserId: provenance.triggerSource === 'USER' ? provenance.triggeredByUserId : null,
       triggerSource: provenance.triggerSource,
       triggeredByTriggerId:
-        provenance.triggerSource === 'USER' ? null : provenance.triggeredByTriggerId,
+        provenance.triggerSource === 'EVENT' || provenance.triggerSource === 'SCHEDULE'
+          ? provenance.triggeredByTriggerId
+          : null,
+      parentExecutionId:
+        provenance.triggerSource === 'WORKFLOW' ? provenance.parentExecutionId : null,
+      stepKey: provenance.triggerSource === 'WORKFLOW' ? provenance.stepKey : null,
       temporalWorkflowId: opts.temporalWorkflowId ?? null,
       input: input as Prisma.InputJsonValue,
       dryRun: opts.dryRun ?? false,

@@ -115,8 +115,9 @@ export type WorkflowExecutionStatus =
   'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'TIMED_OUT' | 'CANCELLED'
 
 /** How an execution was started: a user's manual run, an EVENT trigger
- * matching a domain event, or a SCHEDULE trigger's cron fire. */
-export type WorkflowTriggerSource = 'USER' | 'EVENT' | 'SCHEDULE'
+ * matching a domain event, a SCHEDULE trigger's cron fire, or a durable
+ * Workflow running this Automation as a step (`run_automation()`). */
+export type WorkflowTriggerSource = 'USER' | 'EVENT' | 'SCHEDULE' | 'WORKFLOW'
 
 export interface WorkflowExecution {
   id: string
@@ -136,6 +137,8 @@ export interface WorkflowExecution {
   triggerSource: WorkflowTriggerSource
   /** The WorkflowTrigger that fired this run (EVENT/SCHEDULE), else null. */
   triggeredByTriggerId: string | null
+  /** WORKFLOW source only: the durable Workflow execution that ran this step. */
+  parentExecutionId: string | null
   /**
    * True when this execution was a DRY RUN — a benign rehearsal in which reads
    * ran live but every mutation was captured, never performed. For a dry run
