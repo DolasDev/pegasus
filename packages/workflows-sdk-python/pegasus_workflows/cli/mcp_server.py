@@ -461,6 +461,24 @@ runtime, so it can wait for days:
   and logged, never retried. ``update_trigger(..., mode="NEW")`` returns a
   trigger to one-run-per-event. There is no CLI command for EVENT triggers;
   use the client.
+- **Automations as steps** (SDK 0.65.0+): inside the Workflow,
+  ``result = await run_automation("price_order", {"orderId": oid})`` (``from
+  pegasus_workflows import run_automation, AutomationStepFailed``) runs a
+  published Automation and returns its result. A bare name runs the newest
+  ACTIVE version at the moment of the call; ``version="0.3.0"`` pins one; your
+  own versions win over a GLOBAL one. The step is an ordinary Automation run
+  (its own execution row, trigger source ``WORKFLOW``), so it counts toward the
+  5-run concurrency cap and the daily quota — and those, the kill switch and a
+  namespace move are WAITED OUT, not raised: the step keeps retrying until it
+  starts or ``timeout`` (default 6 h, the whole step) ends. It starts once per
+  call even across activity retries (keyed on the calling activity); calling
+  ``run_automation`` twice runs it twice. A step that ends FAILED / TIMED_OUT /
+  CANCELLED, or is refused for good (``AUTOMATION_NOT_FOUND``,
+  ``STEP_TARGET_NOT_AUTOMATION`` — a step can't be a durable Workflow), raises
+  ``AutomationStepFailed`` (``.status``, ``.code``, ``.execution_id``,
+  ``.error_message``); uncaught, it fails the Workflow. Cancelling the step
+  cancels the Automation. Only a Workflow can call it — an Automation's runtime
+  token is refused.
 - Activities work as in an Automation (``PegasusClient.from_runtime()``) and get
   Temporal's per-activity retries.
 - No dry runs (422 ``DRY_RUN_UNSUPPORTED``) — test locally against a Temporal dev
@@ -716,6 +734,8 @@ def resource_reference_manifest() -> str:
         f"and ``signals`` (identifiers matching ``{SIGNAL_NAME_REGEX.pattern}``, at most 50).\n"
         "``signals`` names the ``@workflow.signal`` methods; only declared names can be\n"
         "delivered (``PegasusClient.signal_execution`` / ``executions signal``).\n"
+        "A Workflow runs an Automation as a step with ``await run_automation(name, input)``\n"
+        "(SDK 0.65.0+); nothing in the manifest declares it.\n"
         "Each kind's fields are refused on the other kind.\n\n"
         "## Packaging requirement — Automation diagram\n\n"
         f"Every Automation must ship a Mermaid diagram at ``<source_dir>/{DIAGRAM_FILENAME}``.\n"

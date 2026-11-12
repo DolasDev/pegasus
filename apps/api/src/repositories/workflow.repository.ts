@@ -185,6 +185,33 @@ export function createWorkflowRepository(db: PrismaClient) {
     },
 
     /**
+     * The workflow row whose per-workflow runtime service account is
+     * `apiClientId`, i.e. the row a `vnd_` runtime token belongs to. Owned by
+     * `tenantId` (a runtime account is minted under the tenant that runs it).
+     * Retired rows included: the caller decides what a retired caller may do.
+     */
+    async findByRuntimeApiClientId(
+      apiClientId: string,
+      tenantId: string,
+    ): Promise<WorkflowRow | null> {
+      return db.workflow.findFirst({
+        where: { runtimeApiClientId: apiClientId, tenantId },
+        select: WORKFLOW_SELECT,
+      })
+    },
+
+    /**
+     * Every ACTIVE row named `name` the tenant can see (its own + GLOBAL),
+     * all versions — the candidates a step's name resolves among.
+     */
+    async listActiveByNameForTenant(name: string, tenantId: string): Promise<WorkflowRow[]> {
+      return db.workflow.findMany({
+        where: { name, OR: [{ tenantId }, { visibility: 'GLOBAL' }], status: 'ACTIVE' },
+        select: WORKFLOW_SELECT,
+      })
+    },
+
+    /**
      * List every workflow visible to a tenant: the tenant's own rows union
      * everything tagged GLOBAL. Sorted newest-first for display. Retired rows
      * are left out unless the caller opts in.

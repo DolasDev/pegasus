@@ -14,7 +14,10 @@ Versioning. Pins the properties Phase 3c rests on:
   (``FailedPrecondition``), but **a version that polled once accepts pinned
   starts with zero pollers** — the plan's gate for design B (pin at start):
   a runner that idle-exits must not make the next start fail;
-* a rotated key reaches a live worker over its control channel.
+* a rotated key reaches a live worker over its control channel;
+* a Workflow's ``run_automation()`` step (SDK 0.65.0) runs as the built-in
+  activity the driver registers, on the Workflow's runtime token, waits out a
+  "not now" refusal and returns the Automation's result.
 
 Skipped when the dev server can't be downloaded/started (offline) — except
 with ``PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER=1`` (set in CI), where that fails.
@@ -23,13 +26,16 @@ with ``PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER=1`` (set in CI), where that fails.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import textwrap
+import threading
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +48,8 @@ from temporalio.testing import WorkflowEnvironment
 from pegasus_tenant_runner.artifacts import PreparedWorkflow
 from pegasus_tenant_runner.broker_client import ExecutableWorkflow, TemporalCredentials
 from pegasus_tenant_runner.workflow_workers import WorkflowWorkerSupervisor, workflow_task_queue
+
+SDK_SRC = Path(__file__).resolve().parents[3] / "packages/workflows-sdk-python/pegasus_workflows"
 
 TENANT_QUEUE = "pegasus-tenant-11111111-1111-4111-8111-111111111111-test"
 NAME = "lifecycle"
@@ -113,11 +121,17 @@ class LocalPreparer:
     def __init__(self, root: Path) -> None:
         self._root = root
 
-    def install(self, wid: str, version: str) -> None:
+    def install(
+        self, wid: str, version: str, source: str = WORKFLOW_SOURCE, *, with_sdk: bool = False
+    ) -> None:
         src = self._root / wid / "src" / NAME
         src.mkdir(parents=True)
         (src / "__init__.py").write_text("")
-        (src / "workflow.py").write_text(WORKFLOW_SOURCE.format(version=version, name=NAME))
+        (src / "workflow.py").write_text(source.format(version=version, name=NAME))
+        if with_sdk:
+            # A tenant venv carries the SDK the Workflow was published with;
+            # here the repo's SDK source rides next to the Workflow code.
+            (self._root / wid / "src" / "pegasus_workflows").symlink_to(SDK_SRC)
         (self._root / wid / "scratch" / "tmp").mkdir(parents=True)
 
     @asynccontextmanager
@@ -332,3 +346,112 @@ async def test_drain_with_an_open_workflow_exits_cleanly(
         assert await _finish(handle) == "done:v1:token"
     finally:
         await supervisor.drain_all()
+
+
+STEP_WORKFLOW_SOURCE = textwrap.dedent(
+    """
+    from pegasus_workflows import run_automation, workflow
+
+
+    @workflow.defn(name="{name}")
+    class Lifecycle:  # the entry point _row() names
+        @workflow.run
+        async def run(self, payload: dict) -> dict:
+            return await run_automation("price_order", {{"orderId": "o-1"}}, version="{version}")
+    """
+)
+
+
+class StepApi:
+    """The platform's /automation-steps routes, scripted: the first start is
+    refused by the kill switch, the second starts, the first poll is RUNNING."""
+
+    def __init__(self) -> None:
+        self.requests: list[tuple[str, str, str | None, dict[str, Any] | None]] = []
+        self._starts = 0
+        self._polls = 0
+        api = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def _reply(self, status: int, body: dict[str, Any]) -> None:
+                data = json.dumps(body).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_POST(self) -> None:  # noqa: N802
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(length) or b"{}")
+                api.requests.append(("POST", self.path, self.headers.get("Authorization"), body))
+                api._starts += 1
+                if api._starts == 1:
+                    self._reply(423, {"error": "disabled", "code": "WORKFLOWS_DISABLED"})
+                else:
+                    self._reply(201, {"data": {"id": "step-1", "status": "QUEUED"}})
+
+            def do_GET(self) -> None:  # noqa: N802
+                api.requests.append(("GET", self.path, self.headers.get("Authorization"), None))
+                api._polls += 1
+                if api._polls == 1:
+                    self._reply(200, {"data": {"id": "step-1", "status": "RUNNING"}})
+                else:
+                    self._reply(
+                        200,
+                        {"data": {"id": "step-1", "status": "COMPLETED", "result": {"total": 42}}},
+                    )
+
+            def log_message(self, *args: Any) -> None:
+                pass
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.base_url = f"http://127.0.0.1:{self._server.server_address[1]}"
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self._server.shutdown()
+
+
+async def test_run_automation_step_against_a_real_server(
+    env: WorkflowEnvironment, tmp_path: Path
+) -> None:
+    client = env.client
+    preparer = LocalPreparer(tmp_path)
+    preparer.install("w1", "0.3.0", STEP_WORKFLOW_SOURCE, with_sdk=True)
+    sha = "3" * 64
+    creds = TemporalCredentials(
+        address=client.service_client.config.target_host, namespace=client.namespace, api_key=""
+    )
+    api = StepApi()
+    supervisor = WorkflowWorkerSupervisor(
+        broker=GrantBroker(),  # type: ignore[arg-type]
+        preparer=preparer,  # type: ignore[arg-type]
+        credentials=lambda: creds,
+        tenant_task_queue=TENANT_QUEUE,
+        api_base_url=api.base_url,
+        backoff_base_seconds=0.2,
+        stop_grace_seconds=15,
+    )
+    try:
+        await supervisor.reconcile([_row("w1", sha, "2026-06-01T00:00:00Z")])
+        handle = await _eventually(lambda: _start_pinned(client, sha))
+        assert await asyncio.wait_for(handle.result(), timeout=60) == {"total": 42}
+
+        posts = [r for r in api.requests if r[0] == "POST"]
+        assert len(posts) == 2  # refused by the kill switch, then started
+        assert all(auth == "Bearer vnd_w1" for _, _, auth, _ in api.requests)
+        body = posts[1][3]
+        assert body is not None
+        assert body["automation"] == "price_order"
+        assert body["version"] == "0.3.0"
+        assert body["input"] == {"orderId": "o-1"}
+        assert body["parentTemporalWorkflowId"] == handle.id
+        assert posts[0][3] == body  # the same activity, so the same step key
+        assert [r[1] for r in api.requests if r[0] == "GET"] == [
+            "/api/v1/automation-steps/step-1",
+            "/api/v1/automation-steps/step-1",
+        ]
+    finally:
+        await supervisor.drain_all()
+        api.close()

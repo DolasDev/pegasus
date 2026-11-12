@@ -1582,6 +1582,9 @@ days. (0.56.0+)
 - **Signals** (0.60.0+): declare the `@workflow.signal` names in `signals`;
   only declared names can be delivered. Send one to a QUEUED / RUNNING
   execution — see [Sending a signal](#sending-a-signal).
+- **Steps** (0.65.0+): `await run_automation("name", input)` runs a published
+  Automation and returns its result — see
+  [Running an Automation as a step](#running-an-automation-as-a-step).
 - **Activities** work as in an Automation (`PegasusClient.from_runtime()`) and
   get Temporal's per-activity retries.
 - **No dry runs** (422 `DRY_RUN_UNSUPPORTED`, and no dry-run triggers). Test
@@ -1693,6 +1696,54 @@ def order_event(self, event: dict | None = None) -> None:
   on a durable Workflow, both `correlation_path` and `signal_name`, and a declared
   signal (400 otherwise). `update_trigger(..., mode="NEW")` goes back to one run
   per event. There is no CLI command for EVENT triggers — use the client.
+
+### Running an Automation as a step
+
+A Workflow calls a published Automation and waits for its result (0.65.0+):
+
+```python
+from pegasus_workflows import AutomationStepFailed, pegasus_workflow, run_automation, workflow
+
+@pegasus_workflow(name="order_lifecycle", version="1.0.0")
+class OrderLifecycle:
+    @workflow.run
+    async def run(self, order: dict) -> dict:
+        quote = await run_automation("price_order", {"orderId": order["id"]})
+        try:
+            await run_automation("notify_crew", {"orderId": order["id"]}, version="0.3.0")
+        except AutomationStepFailed as err:
+            workflow.logger.warning("crew not notified: %s (%s)", err.error_message, err.status)
+        return quote
+```
+
+- **Which version:** a bare name runs the newest ACTIVE version **at the moment
+  of the call**, so publishing a new version of an Automation changes what a
+  running Workflow's later steps run (the Workflow itself stays pinned).
+  `version="0.3.0"` pins one. Your own versions win over a GLOBAL one of the same
+  name.
+- **It is an ordinary Automation run:** its own execution row (trigger source
+  `WORKFLOW`, with `parentExecutionId` naming the Workflow's execution; tenant-web
+  shows "Workflow step"), counted toward the 5-run concurrency cap and the daily
+  quota.
+- **"Not now" is waited out, not raised:** the kill switch (423
+  `WORKFLOWS_DISABLED`), the concurrency cap and daily quota (429) and a runtime
+  move (409) make the step wait and try again, until it starts or `timeout`
+  (default 6 hours, the whole step) runs out. On timeout the Workflow gets an
+  `ActivityError` (a timeout), not `AutomationStepFailed`.
+- **Once per call:** the platform keys the start on the calling activity, so an
+  activity retry never starts the Automation twice. Calling `run_automation`
+  twice runs it twice.
+- **`AutomationStepFailed`** (not retried) when the Automation ends `FAILED`,
+  `TIMED_OUT` or `CANCELLED`, or the platform refuses it for good:
+  `AUTOMATION_NOT_FOUND` (no ACTIVE version), `STEP_TARGET_NOT_AUTOMATION` (the
+  name is a durable Workflow — a step must be an Automation). Fields: `status`,
+  `code`, `execution_id`, `error_message`, `automation`. Uncaught, it fails the
+  Workflow.
+- **Cancelling** the step (e.g. cancelling the Workflow) cancels the Automation.
+- **Only a durable Workflow can call it.** An Automation's runtime token is
+  refused (403 `STEP_CALLER_NOT_WORKFLOW`), so Automations can't start each other.
+- **Testing:** in a Temporal test environment, register a stand-in activity named
+  `pegasus.run_automation` (it receives `{"automation", "version", "input"}`).
 
 ## Credentials & profiles
 

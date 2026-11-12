@@ -109,6 +109,31 @@ def collect_activities(module: Any) -> list[Any]:
     return list(by_name.values())
 
 
+def builtin_activities() -> list[Any]:
+    """The SDK's platform activities (``pegasus_workflows.steps.BUILTIN_ACTIVITIES``).
+
+    Imported from the TENANT's venv, so they match the SDK version the
+    Workflow was published with: ``run_automation()`` (SDK 0.65.0+) runs as
+    the ``pegasus.run_automation`` activity, which must be registered on the
+    Workflow's own worker. An older SDK (or none) has no such module, and
+    nothing is added.
+    """
+    try:
+        from pegasus_workflows.steps import BUILTIN_ACTIVITIES
+    except ImportError:
+        return []
+    return list(BUILTIN_ACTIVITIES)
+
+
+def with_builtin_activities(activities: list[Any], builtins: list[Any]) -> list[Any]:
+    """*activities* plus *builtins*, one per registered name; a builtin wins a clash."""
+    by_name: dict[str, Any] = {}
+    for value in [*activities, *builtins]:
+        defn = getattr(value, "__temporal_activity_definition", None)
+        by_name[getattr(defn, "name", None) or value.__name__] = value
+    return list(by_name.values())
+
+
 def _read_start_request() -> dict[str, Any]:
     line = sys.stdin.readline()
     request = json.loads(line)
@@ -167,7 +192,7 @@ async def _serve(request: dict[str, Any]) -> None:
     from temporalio.worker import Worker, WorkerDeploymentConfig
 
     module, workflow_cls = _import_entry_point(request["entryPoint"])
-    activities = collect_activities(module)
+    activities = with_builtin_activities(collect_activities(module), builtin_activities())
 
     client = await Client.connect(
         request["address"],

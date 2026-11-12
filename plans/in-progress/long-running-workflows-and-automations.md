@@ -11,7 +11,9 @@
   workflows, tenant-authored in Python) as a new capability, and rebrand what
   exists today as **Automations**: short sandboxed runs that fire on their own
   from triggers or run as steps called by a Workflow.
-- **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 done (2026-11-05: 3b.1, 3b.2 #855, legacy runner retired #919, 3c.1 #924, 3c.2; plan `plans/completed/7d167652-durable-workflow-worker.md`, follow-ups `plans/todo/durable-workflows-3c-followups.md`). Phase 4 next.
+- **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 done (2026-11-05: 3b.1, 3b.2 #855, legacy runner retired #919, 3c.1 #924, 3c.2; plan `plans/completed/7d167652-durable-workflow-worker.md`, follow-ups `plans/todo/durable-workflows-3c-followups.md`). Phase 4 in progress: signal delivery #943/#944 (+ #953), `run_automation()`
+  steps in `feat/workflow-automation-steps`. Left: open-Workflow list/query/
+  terminate surfaces, and the tenant-web Workflows section.
 - **Supersedes:** `plans/sdk/long-running-event-correlated-workflows.md`
   (spec 0008, Proposed since 2026-06-29). Marked superseded in
   `plans/sdk/README.md` and the spec itself by Phase 1. Still owed: mirror
@@ -199,11 +201,15 @@ Candidates, in order of preference:
   **activity** in the workflow worker that calls the API's existing run path
   (`POST /workflows/:id/run`, using the runtime token) and waits for the
   result, either by polling with heartbeats or by async activity completion.
-  It is _not_ a child workflow, because child workflows only work within one
-  namespace, and under D5 option A the Workflow (tenant namespace) and the
-  Automation proxy (platform namespace) live in different ones. Going
-  through the API also gives execution rows, runtime tokens, quotas and the
-  concurrency cap for free, because it's the same path as any other run.
+  It is _not_ a child workflow. (This originally said child workflows can't
+  cross namespaces, and that Workflows and Automations sit in different
+  ones. Since #919 both run in the tenant's namespace, so that reason is
+  stale.) The reason that holds: only the API path writes the execution row,
+  mints the runtime token, and applies the daily quota, the concurrency cap
+  and the kill switch. A child workflow would bypass all of them. Built in
+  `plans/completed/df49a7ef-workflow-automation-steps.md`: the routes are
+  `/api/v1/automation-steps`, polled with heartbeats, idempotent on the
+  calling activity.
 - **Event delivery:** a `WorkflowTrigger` bound to a `WORKFLOW`-kind target
   gets a `correlationPath` (a JSON path into the event payload, e.g.
   `payload.orderId`) and a mode, chosen per binding:
@@ -394,27 +400,39 @@ Done 2026-09-29. Evidence, transcripts and probe scripts are in
 
 ### Phase 4: Event delivery + Automations as steps (branch `feat/workflow-event-delivery`)
 
-- [ ] `WorkflowTrigger`: add `mode` (`START` = signal-with-start,
+- [x] `WorkflowTrigger`: add `mode` (`START` = signal-with-start,
       `DELIVER` = signal only; existing Automation triggers keep today's
       "start a new execution" behavior) and `correlationPath`, plus a
       migration. When a `DELIVER` binding is made, check that the
       event type is in the Workflow's declared `signals`.
-- [ ] Dispatcher phase 1: for Workflow triggers, `START` does
+      **Done #944** (2026-11-10): `mode` NEW|START|DELIVER + `correlationPath` + `signalName`; plan `plans/completed/f5d5a31f-workflow-signal-delivery.md`.
+      A direct signal route also shipped (#943).
+- [x] Dispatcher phase 1: for Workflow triggers, `START` does
       signal-with-start and `DELIVER` does a plain signal (if there's no
       running instance, record a failed delivery) on
       `wfl/<tenant>/<name>/<key>`, then call `ensureTenantRunner`. If the
       correlation key is missing from the payload, record a failed delivery;
       never silently start an execution with no key.
-- [ ] SDK: add the `run_automation()` helper, an activity that calls the
+      **Done #944**; stranded-QUEUED recovery for `wfl/` keys #953.
+- [x] SDK: add the `run_automation()` helper, an activity that calls the
       API's run path and waits for the result (see §3).
+      **Done** in `feat/workflow-automation-steps` (SDK 0.65.0): its own
+      routes `/api/v1/automation-steps` (not `POST /:id/run`, so Automations
+      can't start each other), polled with heartbeats, idempotent on the
+      calling activity. Plan: `plans/completed/df49a7ef-workflow-automation-steps.md`.
 - [ ] API and SDK surfaces: list open Workflows, run a Workflow's query
       (status), cancel or terminate. Add Cedar actions for these (Cedar
       schema, `actions.ts` and persona files are hot files).
-- [ ] Execution rows: give `WORKFLOW`-kind executions their own state (open
+- [x] Execution rows: give `WORKFLOW`-kind executions their own state (open
       or closed), keep them out of `TENANT_RUNNER_CONCURRENCY_CAP`, and add
       a per-tenant cap on open Workflows.
-- [ ] Reconciler: stop re-scanning long-lived RUNNING `WORKFLOW` rows every
+      **Done in 3c.2 (#925)**: out of the Automation cap; 500 open per tenant
+      (`OPEN_WORKFLOW_LIMIT`). Rows reuse QUEUED/RUNNING/terminal rather than
+      a separate open/closed state.
+- [x] Reconciler: stop re-scanning long-lived RUNNING `WORKFLOW` rows every
       tick (paginate, or reconcile on close events).
+      **Done in 3c.2 (#925)**: a WORKFLOW lane that round-robins on
+      `reconciledAt`, separate from the AUTOMATION lane.
 - [ ] tenant-web: add a Workflows section (open instances, their status from
       the query, delivered signals) next to Automations.
 

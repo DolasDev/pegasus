@@ -41,6 +41,10 @@
 // primitive; the workflow sends it via SendSms), same persona shape as SendSms.
 // ReadUsage lets a workflow read the tenant's usage summary (billable actions
 // against the plan's pool) so it can check its own consumption.
+// RunAutomationStep lets a durable Workflow start, poll and cancel an Automation
+// as a step (`run_automation()`, handlers/automation-steps.ts). Every runtime
+// token passes this check; the handler refuses unless the calling token
+// belongs to a WORKFLOW-kind row, so Automations still can't start each other.
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -75,7 +79,8 @@ permit (
     Pegasus::Action::"ReadBlob",
     Pegasus::Action::"WriteBlob",
     Pegasus::Action::"CreateFeedbackRequest",
-    Pegasus::Action::"ReadUsage"
+    Pegasus::Action::"ReadUsage",
+    Pegasus::Action::"RunAutomationStep"
   ],
   resource
 );

@@ -155,9 +155,25 @@ function TriggerKindBadge({ kind }: { kind: WorkflowTriggerKind }) {
   return <Badge className={SCHEDULE_BADGE_CLASS}>Schedule</Badge>
 }
 
-function TriggerSourceBadge({ source }: { source: WorkflowTriggerSource }) {
+function TriggerSourceBadge({
+  source,
+  parentExecutionId,
+}: {
+  source: WorkflowTriggerSource
+  parentExecutionId?: string | null
+}) {
   if (source === 'EVENT') return <Badge variant="info">Event</Badge>
   if (source === 'SCHEDULE') return <Badge className={SCHEDULE_BADGE_CLASS}>Schedule</Badge>
+  if (source === 'WORKFLOW') {
+    return (
+      <Badge
+        variant="muted"
+        title={parentExecutionId ? `Started by Workflow execution ${parentExecutionId}` : undefined}
+      >
+        Workflow step
+      </Badge>
+    )
+  }
   return <Badge variant="muted">Manual</Badge>
 }
 
@@ -324,7 +340,10 @@ function ExecutionsList({ workflowId }: { workflowId: string }) {
         <li key={exec.id} className="rounded-md border border-border bg-background px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">
             <WorkflowExecutionStatusBadge status={exec.status} />
-            <TriggerSourceBadge source={exec.triggerSource} />
+            <TriggerSourceBadge
+              source={exec.triggerSource}
+              parentExecutionId={exec.parentExecutionId}
+            />
             {exec.dryRun && <DryRunBadge />}
             <span className="text-xs text-muted-foreground">
               Queued {new Date(exec.queuedAt).toLocaleString()}

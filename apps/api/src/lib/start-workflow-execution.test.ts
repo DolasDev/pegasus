@@ -768,6 +768,8 @@ describe('startWorkflowExecution (inherited Unit 3 contracts)', () => {
       triggeredByUserId: 'user-1',
       triggerSource: 'USER',
       triggeredByTriggerId: null,
+      parentExecutionId: null,
+      stepKey: null,
       temporalWorkflowId: null,
       input: { quote_id: 'q-1' },
       dryRun: false,
@@ -851,6 +853,47 @@ describe('startWorkflowExecution (inherited Unit 3 contracts)', () => {
         triggerSource: 'EVENT',
         triggeredByTriggerId: 'trg-1',
       }),
+    )
+  })
+
+  it('WORKFLOW provenance: inserts a step row with its parent and step key, no user or trigger', async () => {
+    await startWorkflowExecution(fakeDb(), {
+      workflow: curatedWorkflow,
+      tenantId: 'tenant-1',
+      input: { orderId: 'o-1' },
+      provenance: {
+        triggerSource: 'WORKFLOW',
+        parentExecutionId: 'exec-parent',
+        stepKey: 'wfl/tenant-1/lifecycle/o-1/run-1/3',
+        runtimeAccountCreatedById: 'user-9',
+      },
+    })
+
+    expect(mockExecutionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        triggeredByUserId: null,
+        triggerSource: 'WORKFLOW',
+        triggeredByTriggerId: null,
+        parentExecutionId: 'exec-parent',
+        stepKey: 'wfl/tenant-1/lifecycle/o-1/run-1/3',
+      }),
+    )
+  })
+
+  it('USER and EVENT rows carry no parent or step key', async () => {
+    await startWorkflowExecution(fakeDb(), {
+      workflow: curatedWorkflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: {
+        triggerSource: 'EVENT',
+        triggeredByTriggerId: 'trg-1',
+        runtimeAccountCreatedById: 'user-9',
+      },
+    })
+
+    expect(mockExecutionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ parentExecutionId: null, stepKey: null }),
     )
   })
 

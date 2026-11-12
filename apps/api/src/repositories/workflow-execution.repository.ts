@@ -32,8 +32,9 @@ export const TERMINAL_STATUSES: ReadonlySet<WorkflowExecutionStatus> = new Set([
 ])
 
 /** Execution provenance as it appears at the API boundary. Mirrors the
- * Prisma enum: USER = manual run, EVENT / SCHEDULE = trigger-fired. */
-export type WorkflowExecutionTriggerSource = 'USER' | 'EVENT' | 'SCHEDULE'
+ * Prisma enum: USER = manual run, EVENT / SCHEDULE = trigger-fired, WORKFLOW =
+ * a step started by an open durable Workflow's `run_automation()`. */
+export type WorkflowExecutionTriggerSource = 'USER' | 'EVENT' | 'SCHEDULE' | 'WORKFLOW'
 
 export type WorkflowExecutionRow = {
   id: string
@@ -55,6 +56,8 @@ export type WorkflowExecutionRow = {
   triggerSource: WorkflowExecutionTriggerSource
   /** WorkflowTrigger.id that fired this execution; null for USER source. */
   triggeredByTriggerId: string | null
+  /** WORKFLOW source only: the durable Workflow execution that started this step. */
+  parentExecutionId: string | null
   /** True when started in dry-run mode (reads live, mutations captured). */
   dryRun: boolean
   /**
@@ -87,6 +90,7 @@ const EXECUTION_SELECT = {
   triggeredByUserId: true,
   triggerSource: true,
   triggeredByTriggerId: true,
+  parentExecutionId: true,
   dryRun: true,
   workflow: { select: { name: true, version: true } },
   queuedAt: true,
@@ -125,6 +129,10 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
       triggerSource?: WorkflowExecutionTriggerSource
       /** WorkflowTrigger.id that fired this execution; null for USER source. */
       triggeredByTriggerId?: string | null
+      /** WORKFLOW source only: the parent Workflow execution and the step's
+       * idempotency key (unique per tenant — a duplicate throws P2002). */
+      parentExecutionId?: string | null
+      stepKey?: string | null
       /** Pre-assigned Temporal workflow id (dispatcher); null for manual runs
        * — those only record it at markStarted. */
       temporalWorkflowId?: string | null
@@ -141,6 +149,8 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
           triggeredByUserId: input.triggeredByUserId,
           triggerSource: input.triggerSource ?? 'USER',
           triggeredByTriggerId: input.triggeredByTriggerId ?? null,
+          parentExecutionId: input.parentExecutionId ?? null,
+          stepKey: input.stepKey ?? null,
           temporalWorkflowId: input.temporalWorkflowId ?? null,
           input: input.input,
           dryRun: input.dryRun ?? false,
@@ -157,6 +167,26 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
      * tenantId predicate is added implicitly; the explicit id-only query is
      * still safe because the extension AND-merges it on top.
      */
+    /** The step this activity already started, if any (step-key replay). */
+    async findByStepKey(stepKey: string): Promise<WorkflowExecutionRow | null> {
+      return db.workflowExecution.findFirst({
+        where: { stepKey },
+        select: EXECUTION_SELECT,
+      })
+    },
+
+    /**
+     * Drop a step row's idempotency key. Used when its Temporal start failed:
+     * the row stays FAILED for the record, and the activity's retry starts a
+     * fresh run instead of replaying the failure.
+     */
+    async releaseStepKey(executionId: string): Promise<void> {
+      await db.workflowExecution.updateMany({
+        where: { id: executionId },
+        data: { stepKey: null },
+      })
+    },
+
     async findById(executionId: string): Promise<WorkflowExecutionRow | null> {
       return db.workflowExecution.findFirst({
         where: { id: executionId },

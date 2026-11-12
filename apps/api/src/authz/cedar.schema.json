@@ -373,6 +373,9 @@
       "SignalWorkflowExecution": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
       },
+      "RunAutomationStep": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
       "SendNotification": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },

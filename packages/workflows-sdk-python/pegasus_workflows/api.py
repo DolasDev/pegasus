@@ -904,6 +904,83 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def start_automation_step(
+        self,
+        automation: str,
+        input: dict[str, Any] | None = None,
+        *,
+        version: str | None = None,
+        parent_workflow_id: str,
+        parent_run_id: str,
+        activity_id: str,
+    ) -> tuple[int, dict[str, Any]]:
+        """Start an Automation as a step of the calling durable Workflow (0.65.0+).
+
+        The transport under :func:`pegasus_workflows.run_automation` — call that
+        from a Workflow instead. Only a durable Workflow's runtime token may call
+        this (403 ``STEP_CALLER_NOT_WORKFLOW`` otherwise), for an open instance of
+        that Workflow (``parent_workflow_id`` / ``parent_run_id`` are its Temporal
+        ids). Idempotent on (``parent_workflow_id``, ``parent_run_id``,
+        ``activity_id``): a repeat returns the step already started.
+
+        Args:
+            automation: The Automation's name.
+            input: JSON-shaped input dict. Defaults to ``{}``.
+            version: Exact version; ``None`` takes the newest ACTIVE version.
+            parent_workflow_id: The calling Workflow's Temporal workflow id.
+            parent_run_id: The calling Workflow's Temporal run id.
+            activity_id: The calling activity's id.
+
+        Returns:
+            ``(status_code, execution)`` — 201 when this call started the step,
+            200 when an earlier attempt of the same activity already had.
+
+        Raises:
+            TenantMigrating, TenantNamespaceProvisioning: 409, transient.
+            PegasusApiError: 403 ``STEP_CALLER_NOT_WORKFLOW``; 404
+                ``PARENT_NOT_OPEN`` / ``AUTOMATION_NOT_FOUND``; 422
+                ``STEP_TARGET_NOT_AUTOMATION``; 423 ``WORKFLOWS_DISABLED``; 429
+                ``CONCURRENCY_LIMIT`` / ``DAILY_QUOTA_EXCEEDED``; 502; 503; or any
+                other non-2xx.
+        """
+        body: dict[str, Any] = {
+            "automation": automation,
+            "input": input or {},
+            "parentTemporalWorkflowId": parent_workflow_id,
+            "parentTemporalRunId": parent_run_id,
+            "activityId": activity_id,
+        }
+        if version is not None:
+            body["version"] = version
+        with self._client() as client:
+            response = client.post("/api/v1/automation-steps", json=body)
+        _raise_for_tenant_migrating(response)
+        _raise_for_tenant_namespace(response)
+        _raise_for_status(response)
+        return response.status_code, response.json()["data"]
+
+    def get_automation_step(self, execution_id: str) -> dict[str, Any]:
+        """Fetch a step this Workflow started: ``status``, ``result``, ``errorMessage`` (0.65.0+).
+
+        Raises:
+            PegasusApiError: 404 unless an execution of the calling Workflow
+                started it.
+        """
+        return self._get_json(f"/api/v1/automation-steps/{execution_id}")["data"]
+
+    def cancel_automation_step(self, execution_id: str) -> dict[str, Any]:
+        """Request cancellation of a step this Workflow started (0.65.0+).
+
+        Raises:
+            PegasusApiError: 404 (not this Workflow's step); 409
+                ``EXECUTION_NOT_CANCELLABLE`` (finished, or not started on
+                Temporal yet); 502 ``TEMPORAL_CANCEL_FAILED``.
+        """
+        with self._client() as client:
+            response = client.post(f"/api/v1/automation-steps/{execution_id}/cancel")
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def retry_execution(self, workflow_id: str, execution_id: str) -> dict[str, Any]:
         """Retry a terminal-failed execution as a brand-new run with the same input.
 
@@ -4307,11 +4384,7 @@ class PegasusClient:
                 # Carry the key whenever a binding was requested, so an author's
                 # `correlation` check runs in a rehearsal instead of reading None
                 # (sdk-feedback 0045 B).
-                **(
-                    {"correlation": {"outcome": "dryRun"}}
-                    if local_entity_type is not None
-                    else {}
-                ),
+                **({"correlation": {"outcome": "dryRun"}} if local_entity_type is not None else {}),
             },
         )
         if captured is not _NOT_CAPTURED:

@@ -3,6 +3,32 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.65.0
+
+### Added — a durable Workflow runs Automations as steps: `run_automation()`
+
+`result = await run_automation("price_order", {"orderId": oid})` inside a
+`kind = "workflow"` Workflow runs a published Automation and returns its
+result. See the README, "Running an Automation as a step".
+
+- A bare name runs the newest ACTIVE version at the moment of the call;
+  `version=` pins one. Your own versions win over a GLOBAL one.
+- The step is an ordinary Automation run (trigger source `WORKFLOW`, with
+  `parentExecutionId`), counted toward the concurrency cap and the daily quota.
+  The kill switch, the cap, the quota and a runtime move are waited out until
+  the step starts or its `timeout` (default 6 h) ends; they are not raised.
+- Started once per call, even across activity retries.
+- `AutomationStepFailed` (not retried) when the Automation ends FAILED /
+  TIMED_OUT / CANCELLED or is refused for good (`AUTOMATION_NOT_FOUND`,
+  `STEP_TARGET_NOT_AUTOMATION`). Cancelling the step cancels the Automation.
+- Only a durable Workflow's runtime token may start steps (403
+  `STEP_CALLER_NOT_WORKFLOW` otherwise), so Automations can't start each other.
+- New transport methods `PegasusClient.start_automation_step` /
+  `get_automation_step` / `cancel_automation_step` (used by the built-in
+  activity — call `run_automation` instead).
+- The tenant runner registers the built-in `pegasus.run_automation` activity on
+  every durable Workflow worker whose SDK has it: publish with 0.65.0+.
+
 ## 0.64.0
 
 ### Added — freshness and provenance on a fetch; `fetched_at` on a projection

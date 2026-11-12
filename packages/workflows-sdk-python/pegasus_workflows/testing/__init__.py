@@ -220,6 +220,11 @@ _IGNORED: frozenset[str] = frozenset(
         # in-activity surface either.
         "requirements_summary",
         "integration_requirements_summary",
+        # The step transport: called only by the built-in run_automation
+        # activity (pegasus_workflows.steps), never from author activity code.
+        "start_automation_step",
+        "get_automation_step",
+        "cancel_automation_step",
     }
 )
 
