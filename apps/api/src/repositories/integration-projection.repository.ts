@@ -22,6 +22,7 @@ export type IntegrationProjectionRow = {
   entityKey: string
   state: Prisma.JsonValue
   version: number
+  fetchedAt: Date | null
   updatedByUserId: string
   createdAt: Date
   updatedAt: Date
@@ -35,6 +36,7 @@ const SELECT = {
   entityKey: true,
   state: true,
   version: true,
+  fetchedAt: true,
   updatedByUserId: true,
   createdAt: true,
   updatedAt: true,
@@ -112,6 +114,13 @@ export function createIntegrationProjectionRepository(db: PrismaClient) {
       entityType: string
       entityKey: string
       state: Prisma.InputJsonValue
+      /**
+       * When `state` was true at the partner, if the caller knows. Describes
+       * THIS write, so an omitted value CLEARS any previous one rather than
+       * inheriting it: `state` is replaced wholesale, and the old row's
+       * provenance no longer describes what is now stored.
+       */
+      fetchedAt?: Date | null
       updatedByUserId: string
     }): Promise<{ row: IntegrationProjectionRow; created: boolean }> {
       const existing = await db.integrationProjection.findFirst({
@@ -129,6 +138,7 @@ export function createIntegrationProjectionRepository(db: PrismaClient) {
           data: {
             state: input.state,
             version: existing.version + 1,
+            fetchedAt: input.fetchedAt ?? null,
             updatedByUserId: input.updatedByUserId,
           },
           select: SELECT,
@@ -142,6 +152,7 @@ export function createIntegrationProjectionRepository(db: PrismaClient) {
         entityType: input.entityType,
         entityKey: input.entityKey,
         state: input.state,
+        fetchedAt: input.fetchedAt ?? null,
         updatedByUserId: input.updatedByUserId,
       }
       const row = await db.integrationProjection.create({ data, select: SELECT })

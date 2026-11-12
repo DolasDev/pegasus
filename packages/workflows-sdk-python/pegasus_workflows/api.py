@@ -2380,6 +2380,8 @@ class PegasusClient:
         *,
         params: dict[str, Any] | None = None,
         group: str = "global",
+        max_age: int | None = None,
+        refresh: bool = False,
     ) -> dict[str, Any]:
         """Run a PUBLISHED ``fetch`` descriptor — pull a source from config alone.
 
@@ -2423,12 +2425,39 @@ class PegasusClient:
 
         Being side-effect-free, a fetch **runs LIVE under ``run --dry-run``** and
         returns real data, like a ``GET`` through ``call_external``. It is never
-        captured.
+        captured. A rehearsal does populate the platform's fetch cache, which is
+        harmless — the cached bytes are an idempotent read either way.
 
         The response body is decoded per the descriptor's ``decode`` (use
         ``jsonString`` for a partner that returns a JSON *string* containing
         JSON), records are extracted per ``recordsPath``, and pages are followed
         per ``page.style``.
+
+        **FRESHNESS — the result may come from a cache, and the response always
+        says so.** Fetches are served through a short-TTL read-through cache, so
+        N callers asking the same question inside the window cost ONE partner
+        call. Every response carries ``source`` (``"cached"`` or ``"fetched"``)
+        and ``asOf`` — when the partner was actually called. Never infer
+        freshness from when you made the call::
+
+            result = client.fetch_external(
+                "atlas_settlement", "settlements",
+                params={"settlementDate": "2026-11-06"},
+            )
+            if result["source"] == "cached":
+                log(f"serving data read at {result['asOf']}")
+
+        How old is acceptable is YOUR decision, because only you know whether
+        you are painting a dashboard or settling money. ``max_age`` (seconds)
+        here beats the descriptor's own ``maxAgeSeconds``, which beats the 60s
+        platform default. ``max_age=0`` or ``refresh=True`` forces a partner
+        call; a forced call still refreshes the cache for everyone else.
+
+        There is deliberately **no single-flight**: a fetch is an idempotent
+        read, so two containers fetching at once is a wasted request rather than
+        a wrong answer, and the TTL bounds how often that can happen. Worth
+        knowing if you are about to fan out over many keys — the first call
+        populates the cache and the rest hit it.
 
         Args:
             integration_id: The integration whose descriptor to run.
@@ -2439,14 +2468,27 @@ class PegasusClient:
                 allowing those would defeat that.
             group: Config/secret group the descriptor's ``BASE_URL``, credential
                 and any ``{{config:KEY}}`` values live in.
+            max_age: Oldest cached result you will accept, in seconds (0 to
+                86400). ``0`` forces a partner call. Omit to accept the
+                descriptor's ``maxAgeSeconds``, or the 60s default.
+            refresh: Call the partner regardless of what is cached. Use it after
+                rotating a ``BASE_URL`` — the cache key covers the descriptor
+                and the config group but NOT the resolved base URL, so a rotation
+                can otherwise serve the old host until the TTL lapses.
 
         Returns:
             ``{operation, records, recordCount, pages, attempts, status,
-            truncated}``. ``records`` is the flattened list across pages.
-            **Check ``truncated``**: ``True`` means the page cap
+            truncated, source, asOf}``. ``records`` is the flattened list across
+            pages. **Check ``truncated``**: ``True`` means the page cap
             (``page.maxPages``, default 20) was reached, so the record set is
             INCOMPLETE — treat it as a partial read, not an empty tail.
-            ``attempts`` counts actual HTTP requests, retries included.
+
+            Mind which fields describe WHICH thing. ``attempts`` and ``pages``
+            describe THIS call and are **0 on a cache hit**, so summing
+            ``attempts`` across calls still counts real partner requests.
+            ``status``, ``truncated``, ``recordCount`` and ``records`` describe
+            the DATA, and on a hit they come off the cached row — so a cached
+            truncated read stays recognizably incomplete.
 
         Raises:
             PegasusApiError: On 400 (a ``{{param}}`` you did not supply — the
@@ -2465,6 +2507,12 @@ class PegasusClient:
             "nothing settled" indistinguishable from a broken descriptor.
         """
         payload: dict[str, Any] = {"params": params or {}, "group": group}
+        # `refresh` only when asked and `max_age` only when given, so a caller
+        # with no freshness opinion leaves the descriptor's own default in force.
+        if max_age is not None:
+            payload["maxAge"] = max_age
+        if refresh:
+            payload["refresh"] = True
         with self._client() as client:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/fetch/{operation}", json=payload
@@ -4114,6 +4162,7 @@ class PegasusClient:
         state: Any,
         local_entity_type: str | None = None,
         local_entity_id: str | None = None,
+        fetched_at: str | None = None,
     ) -> dict[str, Any]:
         """Upsert the cached state for one record. Requires ``WriteIntegrationProjection``.
 
@@ -4136,6 +4185,26 @@ class PegasusClient:
         Which kind a floor binds to is published as
         ``get_floor(...)["projection"]["localEntityType"]``. When it is absent,
         the floor has no binding.
+
+        **RECORD THE PROVENANCE.** Pass ``fetched_at`` — when the state was true
+        AT THE PARTNER. It is stored separately from the row's ``updatedAt``,
+        which only says when the platform last wrote, and the two answer
+        different questions: a reader deciding "is this fresh enough to act on"
+        needs the first, and would be misled by the second. The natural source is
+        a :meth:`fetch_external` response's ``asOf``::
+
+            result = client.fetch_external("atlas_settlement", "settlements",
+                                           params={"settlementDate": "2026-11-06"})
+            for record in result["records"]:
+                client.put_projection("atlas_settlement", "settlement",
+                                      record["orderNumber"], record,
+                                      fetched_at=result["asOf"])
+
+        It describes THIS write. Omitting it on an overwrite **clears** any
+        stored value rather than keeping the old one — ``state`` is replaced
+        wholesale, so the previous timestamp no longer describes what is stored.
+        A stored ``null`` means UNKNOWN, which a reader must treat as stale; it
+        is never a licence to fall back to ``updatedAt``.
 
         Args:
             integration: Integration slug, e.g. ``"demo_partner"``.
@@ -4163,6 +4232,11 @@ class PegasusClient:
                 ``local_entity_id``.
             local_entity_id: YOUR id for that entity (e.g. the pegII order
                 number). Must be given together with ``local_entity_type``.
+            fetched_at: ISO-8601 instant (with offset, e.g.
+                ``"2026-11-12T09:30:00Z"``) when this state was true at the
+                partner — normally a ``fetch_external`` result's ``asOf``. A date
+                without a time is rejected: provenance is an instant, not a day.
+                Omit it and the row's provenance is recorded as unknown.
 
         Returns:
             The created/updated projection row (including its ``state`` and
@@ -4195,8 +4269,9 @@ class PegasusClient:
             ValueError: If only one of ``local_entity_type`` / ``local_entity_id``
                 is supplied. A half-binding would report success while leaving
                 the cache unreachable by local id.
-            PegasusApiError: On 400 (bad key/state), 403 (lacks the action),
-                413 (state too large), or any other non-2xx.
+            PegasusApiError: On 400 (bad key/state, or a ``fetched_at`` that is
+                not an ISO-8601 instant), 403 (lacks the action), 413 (state too
+                large), or any other non-2xx.
         """
         if (local_entity_type is None) != (local_entity_id is None):
             raise ValueError("local_entity_type and local_entity_id must be supplied together")
@@ -4204,6 +4279,8 @@ class PegasusClient:
         if local_entity_type is not None and local_entity_id is not None:
             payload["localEntityType"] = local_entity_type
             payload["localEntityId"] = local_entity_id
+        if fetched_at is not None:
+            payload["fetchedAt"] = fetched_at
 
         captured = self._capture_mutation(
             "WriteIntegrationProjection",
@@ -4218,10 +4295,14 @@ class PegasusClient:
                     if local_entity_type is not None
                     else {}
                 ),
+                **({"fetched_at": fetched_at} if fetched_at is not None else {}),
             },
             {
                 "state": state,
                 "version": 1,
+                # Echo the provenance a real write would store, so an author's
+                # freshness check runs in a rehearsal instead of reading None.
+                "fetchedAt": fetched_at,
                 "dryRun": True,
                 # Carry the key whenever a binding was requested, so an author's
                 # `correlation` check runs in a rehearsal instead of reading None

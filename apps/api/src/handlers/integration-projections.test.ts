@@ -93,6 +93,7 @@ function projectionRow(overrides: Record<string, unknown> = {}) {
     entityKey: 'SO-1',
     state: { serviceOrderNumber: 'SO-1' },
     version: 1,
+    fetchedAt: null,
     updatedByUserId: 'svc-user-1',
     createdAt: now,
     updatedAt: now,
@@ -366,5 +367,99 @@ describe('GET .../by-local/:localEntityType/:localEntityId', () => {
     const res = await app.request(LOCAL)
     expect(res.status).toBe(403)
     expect(mockCorrRepo.findByLocal).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// fetchedAt — provenance, distinct from updatedAt (C4). The question each
+// answers is different: `updatedAt` is when WE wrote, `fetchedAt` is when it was
+// true at the partner. These pin that the two never substitute for each other.
+// ---------------------------------------------------------------------------
+
+describe('fetchedAt provenance', () => {
+  const AT = '2026-11-12T09:30:00.000Z'
+
+  it('stores a supplied fetchedAt as a Date', async () => {
+    mockRepo.upsert.mockResolvedValue({ row: projectionRow(), created: true })
+    const res = await buildApp().request(`${BASE}/SO-1`, put({ state: { a: 1 }, fetchedAt: AT }))
+    expect(res.status).toBe(201)
+    expect(mockRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ fetchedAt: new Date(AT) }),
+    )
+  })
+
+  it('CLEARS fetchedAt when a write omits it — state is replaced wholesale', async () => {
+    // The trap: inheriting the previous timestamp would claim provenance for
+    // bytes it never described.
+    mockRepo.upsert.mockResolvedValue({ row: projectionRow(), created: false })
+    await buildApp().request(`${BASE}/SO-1`, put({ state: { a: 2 } }))
+    expect(mockRepo.upsert).toHaveBeenCalledWith(expect.objectContaining({ fetchedAt: null }))
+  })
+
+  it('reports fetchedAt on the write response', async () => {
+    mockRepo.upsert.mockResolvedValue({
+      row: projectionRow({ fetchedAt: new Date(AT) }),
+      created: false,
+    })
+    const res = await buildApp().request(`${BASE}/SO-1`, put({ state: { a: 1 }, fetchedAt: AT }))
+    expect((await json(res))['data']).toMatchObject({ fetchedAt: AT })
+  })
+
+  it('reports fetchedAt as null — never absent — when provenance is unknown', async () => {
+    // A reader has to be able to tell "we do not know" from "it is old". An
+    // absent key would make those two indistinguishable.
+    mockRepo.findByKey.mockResolvedValue(projectionRow({ fetchedAt: null }))
+    const res = await buildApp().request(`${BASE}/SO-1`)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data).toHaveProperty('fetchedAt')
+    expect(data['fetchedAt']).toBeNull()
+  })
+
+  it('never substitutes updatedAt for an unknown fetchedAt', async () => {
+    mockRepo.findByKey.mockResolvedValue(projectionRow({ fetchedAt: null }))
+    const res = await buildApp().request(`${BASE}/SO-1`)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['updatedAt']).toBe(now.toISOString())
+    expect(data['fetchedAt']).not.toBe(data['updatedAt'])
+  })
+
+  it('reports a fetchedAt OLDER than updatedAt without complaint', async () => {
+    // The normal case for a replayed/backfilled read, and the whole reason the
+    // two columns exist separately.
+    const older = new Date('2026-01-01T00:00:00.000Z')
+    mockRepo.findByKey.mockResolvedValue(projectionRow({ fetchedAt: older }))
+    const res = await buildApp().request(`${BASE}/SO-1`)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['fetchedAt']).toBe(older.toISOString())
+    expect(Date.parse(data['updatedAt'] as string)).toBeGreaterThan(older.getTime())
+  })
+
+  it('400s on a fetchedAt that is not an ISO datetime', async () => {
+    const res = await buildApp().request(
+      `${BASE}/SO-1`,
+      put({ state: { a: 1 }, fetchedAt: 'last tuesday' }),
+    )
+    expect(res.status).toBe(400)
+    expect(mockRepo.upsert).not.toHaveBeenCalled()
+  })
+
+  it('400s on a date without a time — provenance is an instant, not a day', async () => {
+    const res = await buildApp().request(
+      `${BASE}/SO-1`,
+      put({ state: { a: 1 }, fetchedAt: '2026-11-12' }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('round-trips the asOf a fetch_external response hands back', async () => {
+    // The intended wiring: fetch_external returns `asOf`, the workflow passes it
+    // straight to put_projection, and provenance survives the hop.
+    const asOf = new Date().toISOString()
+    mockRepo.upsert.mockResolvedValue({
+      row: projectionRow({ fetchedAt: new Date(asOf) }),
+      created: true,
+    })
+    const res = await buildApp().request(`${BASE}/SO-1`, put({ state: { a: 1 }, fetchedAt: asOf }))
+    expect((await json(res))['data']).toMatchObject({ fetchedAt: asOf })
   })
 })

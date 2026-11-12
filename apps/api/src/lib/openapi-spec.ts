@@ -332,7 +332,7 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
   ),
   '/api/v1/integration-projections/runtime/{integrationId}/{entityType}/{entityKey}': apiKeyGet(
     'getRuntimeProjection',
-    'Read one cached projection (ReadIntegrationProjection)',
+    'Read one cached projection. Every projection carries `fetchedAt` — when the state was true AT THE PARTNER — separately from `updatedAt`, which only says when we last wrote the row. It is null when the writer did not supply it, and a null means UNKNOWN: read it as stale, never as `updatedAt` (ReadIntegrationProjection)',
     { tags: ['Projections'], path: ['integrationId', 'entityType', 'entityKey'] },
   ),
   '/api/v1/integration-projections/runtime/{integrationId}/{entityType}/by-local/{localEntityType}/{localEntityId}':
@@ -3539,7 +3539,7 @@ export function getOpenApiSpec() {
           operationId: 'fetchExternal',
           summary: 'Run a published fetch descriptor — pull a source from config alone',
           description:
-            'Executes the named operation from the integration\u2019s published `fetch` block (see /integrations/fetch-schema). The CALLER CANNOT name a path, method, header or credential \u2014 those come from the descriptor, which the publish gate already checked; supply only `params` for its {{param}} placeholders. {{config:KEY}} values are read from the tenant\u2019s CONFIG store (only the keys the descriptor references). Transport is identical to call-external \u2014 same AUTH_MODE handling, reserved-header rules, REQUEST_TIMEOUT_MS and 429/503 retry \u2014 and a fetch is always treated as a READ, so a POST descriptor still retries a 429. The response body is decoded per `decode` (use `jsonString` for a double-encoded body) and the records extracted per `recordsPath`, paging per `page.style` up to `page.maxPages` (default 20). Returns {records, recordCount, pages, attempts, status, truncated}; `truncated: true` means the page cap was hit, so the record set is incomplete. Gated by CallExternal and metered like call-external. An unfillable {{param}} is a 400 and no call is made; an operation the floor no longer declares is a 409.',
+            'Executes the named operation from the integration\u2019s published `fetch` block (see /integrations/fetch-schema). The CALLER CANNOT name a path, method, header or credential \u2014 those come from the descriptor, which the publish gate already checked; supply only `params` for its {{param}} placeholders. {{config:KEY}} values are read from the tenant\u2019s CONFIG store (only the keys the descriptor references). Transport is identical to call-external \u2014 same AUTH_MODE handling, reserved-header rules, REQUEST_TIMEOUT_MS and 429/503 retry \u2014 and a fetch is always treated as a READ, so a POST descriptor still retries a 429. The response body is decoded per `decode` (use `jsonString` for a double-encoded body) and the records extracted per `recordsPath`, paging per `page.style` up to `page.maxPages` (default 20). Returns {records, recordCount, pages, attempts, status, truncated, source, asOf}; `truncated: true` means the page cap was hit, so the record set is incomplete. FRESHNESS: the result is served through a short-TTL read-through cache. `source` is "cached" or "fetched" and `asOf` is when the partner was actually called, so the payload always states its own provenance. How old is acceptable: `maxAge` (seconds) here beats the descriptor’s `maxAgeSeconds`, which beats the 60s default; `maxAge: 0` or `refresh: true` forces a partner call (and still refreshes the cache). `attempts` and `pages` describe THIS call and are 0 on a cache hit, so summing `attempts` still counts real partner requests; `status`, `truncated` and the records describe the data and come off the cached row. There is deliberately no single-flight — a concurrent duplicate is a wasted idempotent GET, and the TTL bounds it. A cache failure never fails a fetch: an unreadable cache is a miss, an unwritable one still returns the records, and an over-cap result is served uncached. Gated by CallExternal and metered like call-external. An unfillable {{param}} is a 400 and no call is made; an operation the floor no longer declares is a 409.',
           tags: ['Integrations'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [
@@ -3568,13 +3568,29 @@ export function getOpenApiSpec() {
                       },
                     },
                     group: { type: 'string', default: 'global' },
+                    maxAge: {
+                      type: 'integer',
+                      minimum: 0,
+                      maximum: 86400,
+                      description:
+                        'Oldest cached result this caller accepts, in seconds. Overrides the descriptor\u2019s maxAgeSeconds, which overrides the 60s default. 0 forces a partner call.',
+                    },
+                    refresh: {
+                      type: 'boolean',
+                      default: false,
+                      description:
+                        'Call the partner regardless of what is cached, and write the result through.',
+                    },
                   },
                 },
               },
             },
           },
           responses: {
-            '200': { description: 'Records pulled from the partner' },
+            '200': {
+              description:
+                'Records, with provenance: source ("cached" | "fetched") and asOf (when the partner was called)',
+            },
             '400': { description: 'Unfillable template, malformed descriptor, or bad recordsPath' },
             '403': { description: 'Cedar denied (no CallExternal)' },
             '404': {

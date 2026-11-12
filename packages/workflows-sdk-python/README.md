@@ -922,6 +922,24 @@ async def cache_order(order: dict) -> None:
 `PegasusApiError` (403) if the matching action is absent from `required_actions`,
 and `put_projection` raises 413 if the serialized state exceeds 256 KB.
 
+**Record when the state was true at the partner — `fetched_at` (0.64.0+).** Every
+row carries a `fetchedAt` alongside `updatedAt`, and they answer different
+questions: `updatedAt` is when the platform last wrote the row, `fetchedAt` is
+when the bytes were true at the partner. A reader deciding "is this fresh enough
+to act on" needs the second and would be misled by the first, so pass it
+whenever you know it — normally a `fetch_external` result's `asOf`:
+
+```python
+client.put_projection("demo_partner", "order", order["serviceOrderNumber"], order,
+                      fetched_at=result["asOf"])
+```
+
+It describes **this** write: omitting it on an overwrite clears the stored value
+rather than inheriting the old one, because `state` is replaced wholesale. A
+stored `null` means **unknown**, which a reader must treat as stale — never as
+`updatedAt`. Rows written before 0.64.0 have `fetchedAt: null`; they were not
+backfilled, because there is no honest value to claim for them.
+
 **What the server does and doesn't check:**
 
 - `state` is an **opaque JSON blob**. Cache the partner's record in the partner's
@@ -1951,6 +1969,29 @@ Two things worth knowing before you write one:
 `page.style: "none"` is the honest answer when the endpoint exposes no paging
 parameters, not a shortcut.
 
+**`maxAgeSeconds` (0.64.0+) — the per-capability TTL.** One optional freshness
+field per operation, `0`–`86400`, saying how long a fetched result may be served
+from the platform cache for that capability. Absent means 60 seconds; `0` means
+always call the partner. Raise it for a feed that only changes daily (a
+settlement period); leave it alone for anything a user expects to be live. A
+caller's own `max_age` overrides it either way.
+
+```jsonc
+"settlements": {
+  "method": "GET",
+  "path": "/settlement/v1/settlement",
+  "query": { "settlementDate": "{{settlementDate}}" },
+  "decode": "jsonString",
+  "maxAgeSeconds": 900        // a settlement period does not change every minute
+}
+```
+
+One caveat worth declaring rather than discovering: the cache key covers the
+whole descriptor and the config group, but **not** the resolved `BASE_URL` —
+that is resolved deeper, where the credentials live. So rotating a base URL can
+serve the old host for up to `maxAgeSeconds`. Pass `refresh=True` once after a
+rotation.
+
 **Running a published descriptor — `fetch_external` (0.59.0+).** Authoring
 `fetch.json` is one half; this is the half that runs it:
 
@@ -1975,6 +2016,75 @@ Two things to handle in calling code:
 - **An empty result is a 200 with no records**, not an error; an empty period is
   a legitimate answer. An unsupplied `{{param}}`, by contrast, is a 400 and no
   call is made, so a half-filled template never reaches the partner.
+
+### Freshness and provenance (0.64.0+)
+
+A fetch is served through a **short-TTL read-through cache**, so N callers asking
+the same question inside the window cost one partner call. Because that happens
+on your behalf, **the response always says where its records came from**:
+
+```python
+result = client.fetch_external(
+    "atlas_settlement", "settlements",
+    params={"settlementDate": "2026-11-06"},
+    max_age=300,        # I will accept data up to 5 minutes old
+)
+result["source"]   # "cached" | "fetched"
+result["asOf"]     # when the PARTNER was actually called
+```
+
+Never infer freshness from when you made the call — `asOf` is the only thing
+that knows.
+
+How old is acceptable is **your** decision, because only you know whether you
+are painting a dashboard or settling money. Precedence, most specific first:
+
+| Where                           | Wins over            |
+| ------------------------------- | -------------------- |
+| `max_age=` on the call          | the descriptor       |
+| `maxAgeSeconds` in `fetch.json` | the platform default |
+| 60 seconds                      | —                    |
+
+`max_age=0` or `refresh=True` forces a partner call, and a forced call still
+refreshes the cache for everyone else.
+
+**Mind which fields describe which thing.** `attempts` and `pages` describe THIS
+call and are **0 on a cache hit**, so summing `attempts` across calls still
+counts real partner requests. `status`, `truncated`, `recordCount` and `records`
+describe the DATA, and on a hit they come off the cached row — so a cached
+truncated read stays recognizably incomplete.
+
+There is deliberately **no single-flight**. A fetch is an idempotent read, so two
+containers fetching at once is a wasted request rather than a wrong answer, and
+the TTL bounds how often it can happen. Worth knowing when you fan out over many
+keys: the first call populates the cache and the rest hit it.
+
+**Carry the provenance into the projection.** `put_projection` takes
+`fetched_at` (0.64.0+) — when the state was true AT THE PARTNER. It is stored
+separately from the row's `updatedAt`, which only says when the platform last
+wrote, and the two answer different questions. Pass the `asOf` you were given:
+
+```python
+result = client.fetch_external(
+    "atlas_settlement", "settlements",
+    params={"settlementDate": "2026-11-06"},
+)
+for record in result["records"]:
+    client.put_projection(
+        "atlas_settlement", "settlement", record["orderNumber"], record,
+        local_entity_type="order", local_entity_id=record["orderNumber"],
+        fetched_at=result["asOf"],
+    )
+```
+
+Two rules about that field, both of which will bite otherwise:
+
+- It describes **this** write. Omitting it on an overwrite **clears** the stored
+  value rather than keeping the old one — `state` is replaced wholesale, so the
+  previous timestamp no longer describes what is stored.
+- A stored `null` means **unknown**, and a reader must treat that as stale. It is
+  never a licence to fall back to `updatedAt`; that would answer a different
+  question than the one asked.
 
 Transport is the same code path as `call_external` — same `AUTH_MODE`, reserved
 headers, timeout and 429 retry — with one difference: a fetch is always treated

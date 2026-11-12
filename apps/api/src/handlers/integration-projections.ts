@@ -35,6 +35,18 @@
 //
 // State is arbitrary JSON in the integration's NATIVE payload shape (identical
 // to the validate `order`/`prior` body) and is capped in serialized size.
+//
+// PROVENANCE (vanline-source-binding C4). A row carries `fetchedAt` — when the
+// state was true AT THE PARTNER — separately from `updatedAt`, which only says
+// when we last wrote. The two answer different questions, and conflating them is
+// how a generic read-through ends up serving an answer to a question nobody
+// asked. The caller supplies it (typically from a `fetch_external` response's
+// `asOf`), because only the caller knows when the bytes were read. It is
+// nullable, never backfilled, and a null means UNKNOWN — read as stale.
+//
+// Phase 3 stores and reports provenance; it does not yet ENFORCE freshness
+// here. The TTL that does live on the fetch endpoint, whose own cache is a
+// separate store (that endpoint returns raw records and writes no projection).
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -73,6 +85,18 @@ const PutBody = z
      */
     localEntityType: z.string().min(1).max(64).optional(),
     localEntityId: z.string().min(1).max(256).optional(),
+    /**
+     * When `state` was TRUE AT THE PARTNER — provenance, distinct from
+     * `updatedAt`, which only says when we last wrote a row (C4). A caller that
+     * read the record through `fetch_external` passes that response's `asOf`
+     * here, so the provenance survives the hop from partner read to projection.
+     *
+     * Describes THIS write. Omitting it on an overwrite CLEARS the stored value
+     * rather than keeping the old one, because `state` is replaced wholesale and
+     * the previous timestamp no longer describes what is stored. A null is read
+     * as "unknown", which must be treated as stale — never as `updatedAt`.
+     */
+    fetchedAt: z.iso.datetime({ offset: true }).optional(),
   })
   .strict()
 
@@ -84,6 +108,10 @@ function toResponse(row: IntegrationProjectionRow) {
     entityKey: row.entityKey,
     state: row.state,
     version: row.version,
+    // Always present, null when unknown — a reader deciding whether this is
+    // fresh enough must be able to tell "we do not know" from "it is old", and
+    // an absent field would make the two indistinguishable.
+    fetchedAt: row.fetchedAt ? row.fetchedAt.toISOString() : null,
     updatedByUserId: row.updatedByUserId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -155,7 +183,7 @@ integrationProjectionsHandler.put(
       return c.json({ error: SEGMENT_HELP, code: 'VALIDATION_ERROR' }, 400)
     }
 
-    const { state, localEntityType, localEntityId } = c.req.valid('json')
+    const { state, localEntityType, localEntityId, fetchedAt } = c.req.valid('json')
     if (state === undefined) {
       return c.json({ error: 'state is required', code: 'VALIDATION_ERROR' }, 400)
     }
@@ -186,6 +214,7 @@ integrationProjectionsHandler.put(
       entityType,
       entityKey,
       state: state as object,
+      fetchedAt: fetchedAt !== undefined ? new Date(fetchedAt) : null,
       updatedByUserId: userId,
     })
     // Correlation is written AFTER the projection and never blocks it: the

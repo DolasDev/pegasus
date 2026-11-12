@@ -292,6 +292,7 @@ model Tenant {
   workflowSecretConfigs   WorkflowSecretConfig[]
   integrationProjections  IntegrationProjection[]
   integrationCorrelations IntegrationCorrelation[]
+  integrationFetchCache   IntegrationFetchCache[]
   workflowStates          WorkflowState[]
   smsOptOuts              SmsOptOut[]
   smsSends                SmsSend[]
@@ -2220,6 +2221,21 @@ model IntegrationProjection {
   /// Monotonic counter bumped on each write — observability + future If-Match.
   version Int @default(1)
 
+  /// When `state` was TRUE AT THE PARTNER, as reported by the caller — distinct
+  /// from `updatedAt`, which only says when we last wrote a row. A generic
+  /// read-through that served a row on the strength of `updatedAt` would answer
+  /// a different question than the caller asked (vanline-source-binding C4).
+  ///
+  /// NULL means the provenance is unknown, and that is NOT the same as
+  /// "`updatedAt` instead": a null must be read as stale, never as fresh.
+  /// Deliberately not backfilled — rows written before this column existed have
+  /// no honest value to claim.
+  ///
+  /// Describes THIS write's `state`. A write that omits it clears it, because
+  /// `state` is replaced wholesale and the previous row's provenance no longer
+  /// describes what is now stored.
+  fetchedAt DateTime? @map("fetched_at")
+
   /// workflow_runtime service-account user id that last wrote the row.
   updatedByUserId String   @map("updated_by_user_id")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -2309,6 +2325,85 @@ model IntegrationCorrelation {
   @@unique([tenantId, integrationId, entityType, entityKey], name: "correlation_external", map: "integration_correlations_external_key")
   @@index([tenantId, integrationId, entityType])
   @@map("integration_correlations")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Fetch read-through cache (vanline-source-binding C4/C5) — the SHARED tier
+// behind POST /integrations/:id/fetch/:operation.
+//
+// On-demand fetch against an unknown partner rate budget is how you discover the
+// limit in production: N callers asking for the same settlement period is N
+// partner calls. The decision (C5) is a SHORT-TTL read-through with NO
+// single-flight — these are idempotent GETs, so a concurrent duplicate is
+// wasteful, not wrong, and a coordination tier would pay the expensive part of
+// the design for a problem we have no evidence of. The TTL *is* the rate control.
+//
+// It is a table and not a per-container Map for a measured reason: that is
+// exactly what failed for the outbound OAuth token cache (#521/#532/#535) on a
+// horizontally-scaled Lambda. See OutboundOAuthToken below — same shape, same
+// last-write-wins upsert, same absence of a lock.
+//
+//   - `requestHash` is a sha256 over the FULLY RESOLVED operation descriptor
+//     (method, path, query, body, literal headers, secret-header KEY NAMES,
+//     decode, recordsPath, page, maxAgeSeconds) plus the config group and the
+//     config-key overrides. Hashing the whole descriptor — not just the caller's
+//     params — means a republish that changes `recordsPath` or `decode` cannot
+//     serve rows of the old shape for a full TTL. Only the digest is stored.
+//   - A known, bounded blind spot: BASE_URL and the credentials resolve deeper
+//     inside performOutboundCall and are invisible to the hash, so a BASE_URL
+//     rotation can serve the old host for up to `maxAge`. The short default
+//     bounds it; an operator rotating a base URL should pass `refresh`.
+//   - Rows are PURE CACHE. Losing any of them costs one re-fetch, so there is no
+//     versioning and no history.
+//   - No sweeper, deliberately: growth is bounded by the number of distinct
+//     (operation, resolved-request) identities a tenant actually asks for, and
+//     the token cache above it has carried the same deferral since #521 without
+//     trouble. If it ever matters, `fetchedAt` is indexed for exactly that.
+//
+// Tenant-owned only (no GLOBAL case), so the model lives in
+// TENANT_SCOPED_MODELS — the same call as IntegrationProjection.
+// ---------------------------------------------------------------------------
+model IntegrationFetchCache {
+  id            String @id @default(uuid())
+  tenantId      String @map("tenant_id")
+  integrationId String @map("integration_id")
+
+  /// The capability name the descriptor was published under (e.g. "settlements").
+  operation String
+
+  /// sha256 (lowercase hex) of the resolved request identity — see the comment
+  /// above for exactly what goes in, and why it is the whole descriptor.
+  requestHash String @map("request_hash")
+
+  /// The extracted records, flattened across pages, exactly as the endpoint
+  /// returned them. Capped at the same 256 KB as a projection's `state`; an
+  /// over-cap result is served but NOT cached, because failing a fetch over a
+  /// cache write would be the wrong trade.
+  records Json
+
+  /// Provenance of the stored records: how many requests it took to collect
+  /// them, how many pages, the last partner status, and whether the page cap cut
+  /// the record set short. Served back on a hit so a cached `truncated` result is
+  /// never mistaken for a complete one.
+  recordCount Int     @map("record_count")
+  pages       Int
+  attempts    Int
+  status      Int
+  truncated   Boolean @default(false)
+
+  /// When the partner was actually called. This — not `updatedAt` — is what
+  /// `maxAge` is measured against, and what the response reports as `asOf`.
+  fetchedAt DateTime @map("fetched_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, integrationId, operation, requestHash], map: "integration_fetch_cache_key")
+  @@index([fetchedAt])
+  @@map("integration_fetch_cache")
   @@schema("public")
 }
 

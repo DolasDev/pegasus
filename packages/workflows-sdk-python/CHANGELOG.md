@@ -3,6 +3,51 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.64.0
+
+### Added — freshness and provenance on a fetch; `fetched_at` on a projection
+
+Fetches are served through a short-TTL read-through cache, so N callers asking
+the same question inside the window cost ONE partner call. Because that happens
+on your behalf, the response now always says so.
+
+- `fetch_external` returns two more fields: `source` (`"cached"` | `"fetched"`)
+  and `asOf`, when the partner was actually called. Never infer freshness from
+  when you made the call.
+- `fetch_external(..., max_age=<seconds>, refresh=<bool>)` puts freshness at the
+  call site, where it belongs — only the caller knows whether it is painting a
+  dashboard or settling money. `max_age` beats the descriptor's `maxAgeSeconds`,
+  which beats the 60s default; `max_age=0` or `refresh=True` forces a partner
+  call and still refreshes the cache for everyone else.
+- **`attempts` and `pages` are 0 on a cache hit.** They describe THIS call, so
+  summing `attempts` still counts real partner requests. `status`, `truncated`,
+  `recordCount` and `records` describe the DATA and come off the cached row — a
+  cached truncated read stays recognizably incomplete.
+- `fetch.json` operations take an optional `maxAgeSeconds` (0–86400): the TTL for
+  that capability. Absent ⇒ 60s; `0` ⇒ always call the partner.
+- `put_projection(..., fetched_at=<ISO instant>)` records when the state was true
+  AT THE PARTNER, and every projection row now reports `fetchedAt` alongside
+  `updatedAt`. The two answer different questions — `updatedAt` is when the
+  platform last wrote — so pass a `fetch_external` result's `asOf` through.
+
+Two rules that will bite otherwise:
+
+- `fetched_at` describes **this** write. Omitting it on an overwrite CLEARS the
+  stored value rather than inheriting it, because `state` is replaced wholesale.
+- A `fetchedAt` of `null` means **unknown**, and must be read as stale. It is
+  never a licence to fall back to `updatedAt`. Rows written before 0.64.0 are
+  `null` and were not backfilled, because there is no honest value to claim.
+
+There is deliberately **no single-flight**: a fetch is an idempotent read, so a
+concurrent duplicate is a wasted request rather than a wrong answer, and the TTL
+bounds it. One caveat declared rather than discovered: the cache key covers the
+descriptor and the config group but NOT the resolved `BASE_URL`, so rotating a
+base URL can serve the old host for up to `max_age` — pass `refresh=True` once
+after a rotation.
+
+No breaking change: every argument is optional and every new response field is
+additive.
+
 ## 0.63.0
 
 ### Added — `search_orders` on the delivery and SIT dates; the long-distance ETA date (sdk-feedback/0050)

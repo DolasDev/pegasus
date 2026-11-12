@@ -19,23 +19,40 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { seedPrincipal } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
+import { logger } from '../lib/logger'
 import { __resetOutboundTokenCacheForTests } from '../services/outbound-oauth'
 
-const { mockFindByKey, mockDecrypt, mockEncrypt, mockResolveDef, mockFetch, mockFindActive } =
-  vi.hoisted(() => ({
-    mockFindByKey: vi.fn(),
-    mockDecrypt: vi.fn(),
-    mockEncrypt: vi.fn(),
-    mockResolveDef: vi.fn(),
-    mockFetch: vi.fn(),
-    mockFindActive: vi.fn(),
-  }))
+const {
+  mockFindByKey,
+  mockDecrypt,
+  mockEncrypt,
+  mockResolveDef,
+  mockFetch,
+  mockFindActive,
+  mockCacheFind,
+  mockCacheUpsert,
+} = vi.hoisted(() => ({
+  mockFindByKey: vi.fn(),
+  mockDecrypt: vi.fn(),
+  mockEncrypt: vi.fn(),
+  mockResolveDef: vi.fn(),
+  mockFetch: vi.fn(),
+  mockFindActive: vi.fn(),
+  mockCacheFind: vi.fn(),
+  mockCacheUpsert: vi.fn(),
+}))
 
 vi.mock('../repositories/workflow-secret-config.repository', () => ({
   createWorkflowSecretConfigRepository: () => ({ findByKey: mockFindByKey }),
 }))
 vi.mock('../repositories/integration-config.repository', () => ({
   createIntegrationConfigRepository: () => ({ findActiveForScope: mockFindActive }),
+}))
+vi.mock('../repositories/integration-fetch-cache.repository', () => ({
+  createIntegrationFetchCacheRepository: () => ({
+    find: mockCacheFind,
+    upsert: mockCacheUpsert,
+  }),
 }))
 vi.mock('../lib/secret-value-crypto', () => ({
   decryptSecretValue: mockDecrypt,
@@ -129,6 +146,9 @@ beforeEach(() => {
     capabilities: ['settlements'],
   })
   mockFindActive.mockResolvedValue({ fetch: FETCH_BLOCK })
+  // A cold cache by default, so every pre-existing test exercises the miss path.
+  mockCacheFind.mockResolvedValue(null)
+  mockCacheUpsert.mockResolvedValue(undefined)
   mockDecrypt.mockResolvedValue('the-subscription-key')
   mockFindByKey.mockImplementation(
     async (kind: string, _group: string, key: string) => APIKEY_CONFIG[`${kind}:${key}`] ?? null,
@@ -338,5 +358,305 @@ describe('fetch paging', () => {
     expect(res.status).toBe(200)
     expect((await json(res))['data']).toMatchObject({ pages: 1 })
     expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Freshness + provenance (C4/C5). What these pin: that the response ALWAYS
+// says where its records came from, that `attempts` stays a count of real
+// partner requests, that every cache failure degrades instead of failing a good
+// read, and that a hit still enforces the descriptor's own 404/409 rules.
+// ---------------------------------------------------------------------------
+
+/** A stored row as the repository hands one back. */
+const cached = (overrides: Record<string, unknown> = {}) => ({
+  records: [{ settlementId: 'S-CACHED' }],
+  recordCount: 1,
+  pages: 1,
+  attempts: 1,
+  status: 200,
+  truncated: false,
+  fetchedAt: new Date(Date.now() - 10_000),
+  ...overrides,
+})
+
+describe('freshness + provenance', () => {
+  const body = { params: { settlementDate: '2026-11-06' } }
+
+  it('states provenance on a MISS: source "fetched" and an asOf', async () => {
+    const res = await buildApp().request(ROUTE, post(body))
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['source']).toBe('fetched')
+    expect(Date.parse(data['asOf'] as string)).not.toBeNaN()
+  })
+
+  it('serves a fresh row without calling the partner, and says source "cached"', async () => {
+    mockCacheFind.mockResolvedValue(cached())
+    const res = await buildApp().request(ROUTE, post(body))
+    expect(res.status).toBe(200)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['records']).toEqual([{ settlementId: 'S-CACHED' }])
+    expect(data['source']).toBe('cached')
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('reports attempts/pages 0 on a hit — so summing attempts still counts partner calls', async () => {
+    mockCacheFind.mockResolvedValue(cached({ attempts: 4, pages: 3 }))
+    const res = await buildApp().request(ROUTE, post(body))
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['attempts']).toBe(0)
+    expect(data['pages']).toBe(0)
+  })
+
+  it('carries a cached TRUNCATED flag through — a partial read stays partial', async () => {
+    mockCacheFind.mockResolvedValue(cached({ truncated: true }))
+    const res = await buildApp().request(ROUTE, post(body))
+    expect((await json(res))['data']).toMatchObject({ truncated: true, source: 'cached' })
+  })
+
+  it('reports asOf as the row fetchedAt, not the time of this call', async () => {
+    const fetchedAt = new Date(Date.now() - 30_000)
+    mockCacheFind.mockResolvedValue(cached({ fetchedAt }))
+    const res = await buildApp().request(ROUTE, post(body))
+    expect((await json(res))['data']).toMatchObject({ asOf: fetchedAt.toISOString() })
+  })
+
+  it('MISSES a row older than the 60s default TTL', async () => {
+    mockCacheFind.mockResolvedValue(cached({ fetchedAt: new Date(Date.now() - 61_000) }))
+    const res = await buildApp().request(ROUTE, post(body))
+    expect((await json(res))['data']).toMatchObject({ source: 'fetched' })
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('honours a call-site maxAge TIGHTER than the age of the row', async () => {
+    mockCacheFind.mockResolvedValue(cached({ fetchedAt: new Date(Date.now() - 30_000) }))
+    const res = await buildApp().request(ROUTE, post({ ...body, maxAge: 5 }))
+    expect((await json(res))['data']).toMatchObject({ source: 'fetched' })
+  })
+
+  it('honours a call-site maxAge LOOSER than the default', async () => {
+    mockCacheFind.mockResolvedValue(cached({ fetchedAt: new Date(Date.now() - 600_000) }))
+    const res = await buildApp().request(ROUTE, post({ ...body, maxAge: 3600 }))
+    expect((await json(res))['data']).toMatchObject({ source: 'cached' })
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('maxAge 0 forces a partner call even against a row written a moment ago', async () => {
+    mockCacheFind.mockResolvedValue(cached({ fetchedAt: new Date() }))
+    const res = await buildApp().request(ROUTE, post({ ...body, maxAge: 0 }))
+    expect((await json(res))['data']).toMatchObject({ source: 'fetched' })
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('refresh forces a partner call and still WRITES THROUGH', async () => {
+    mockCacheFind.mockResolvedValue(cached())
+    const res = await buildApp().request(ROUTE, post({ ...body, refresh: true }))
+    expect((await json(res))['data']).toMatchObject({ source: 'fetched' })
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockCacheUpsert).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the descriptor maxAgeSeconds when the caller is silent', async () => {
+    mockFindActive.mockResolvedValue({
+      fetch: { settlements: { ...FETCH_BLOCK.settlements, maxAgeSeconds: 900 } },
+    })
+    mockCacheFind.mockResolvedValue(cached({ fetchedAt: new Date(Date.now() - 600_000) }))
+    const res = await buildApp().request(ROUTE, post(body))
+    expect((await json(res))['data']).toMatchObject({ source: 'cached' })
+  })
+
+  it('lets the CALL SITE override a descriptor maxAgeSeconds', async () => {
+    mockFindActive.mockResolvedValue({
+      fetch: { settlements: { ...FETCH_BLOCK.settlements, maxAgeSeconds: 900 } },
+    })
+    mockCacheFind.mockResolvedValue(cached({ fetchedAt: new Date(Date.now() - 600_000) }))
+    const res = await buildApp().request(ROUTE, post({ ...body, maxAge: 60 }))
+    expect((await json(res))['data']).toMatchObject({ source: 'fetched' })
+  })
+
+  it('400 — a negative maxAge is refused, not silently clamped', async () => {
+    const res = await buildApp().request(ROUTE, post({ ...body, maxAge: -1 }))
+    expect(res.status).toBe(400)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('writes the fetched result through on a miss', async () => {
+    await buildApp().request(ROUTE, post(body))
+    expect(mockCacheUpsert).toHaveBeenCalledTimes(1)
+    const [key, stored] = mockCacheUpsert.mock.calls[0] as [JsonBody, JsonBody]
+    expect(key).toMatchObject({
+      tenantId: 'test-tenant-id',
+      integrationId: 'atlas_settlement',
+      operation: 'settlements',
+    })
+    expect(key['requestHash']).toMatch(/^[0-9a-f]{64}$/)
+    expect(stored).toMatchObject({ records: [{ settlementId: 'S-1' }], recordCount: 1 })
+  })
+
+  it('keys the cache per RESOLVED request — a different param is a different entry', async () => {
+    await buildApp().request(ROUTE, post({ params: { settlementDate: '2026-11-06' } }))
+    await buildApp().request(ROUTE, post({ params: { settlementDate: '2026-12-06' } }))
+    const [first] = mockCacheUpsert.mock.calls[0] as [JsonBody]
+    const [second] = mockCacheUpsert.mock.calls[1] as [JsonBody]
+    expect(first['requestHash']).not.toBe(second['requestHash'])
+  })
+
+  it('keys the cache on the DESCRIPTOR too — a republished recordsPath cannot serve old rows', async () => {
+    await buildApp().request(ROUTE, post(body))
+    mockFindActive.mockResolvedValue({
+      fetch: { settlements: { ...FETCH_BLOCK.settlements, recordsPath: 'documents' } },
+    })
+    await buildApp().request(ROUTE, post(body))
+    const [first] = mockCacheUpsert.mock.calls[0] as [JsonBody]
+    const [second] = mockCacheUpsert.mock.calls[1] as [JsonBody]
+    expect(first['requestHash']).not.toBe(second['requestHash'])
+  })
+
+  it('does NOT cache an over-cap result, but still serves it', async () => {
+    // One record over 256 KB — serving it is right, caching it is not.
+    const big = [{ blob: 'x'.repeat(300 * 1024) }]
+    mockFetch.mockResolvedValue(plainRes({ items: big }))
+    mockFindActive.mockResolvedValue({
+      fetch: { settlements: { method: 'GET', path: '/s', recordsPath: 'items' } },
+    })
+    const res = await buildApp().request(ROUTE, post(body))
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({ recordCount: 1, source: 'fetched' })
+    expect(mockCacheUpsert).not.toHaveBeenCalled()
+  })
+
+  // The cap is a boundary, so test the boundary rather than a value far past it
+  // — an off-by-one here silently stops caching a whole class of result.
+  describe.each([
+    ['at the cap', 0, true],
+    ['one byte over the cap', 1, false],
+  ])('a payload %s', (_label, over, shouldStore) => {
+    it(`${shouldStore ? 'is' : 'is not'} cached`, async () => {
+      // `records` serializes as `[{"blob":"x…"}]` — 13 bytes of wrapper around
+      // the run of x's, so this lands the array exactly on MAX_CACHED_BYTES.
+      const wrapper = JSON.stringify([{ blob: '' }]).length
+      const blob = 'x'.repeat(256 * 1024 - wrapper + over)
+      mockFetch.mockResolvedValue(plainRes({ items: [{ blob }] }))
+      mockFindActive.mockResolvedValue({
+        fetch: { settlements: { method: 'GET', path: '/s', recordsPath: 'items' } },
+      })
+      const res = await buildApp().request(ROUTE, post(body))
+      expect(res.status).toBe(200)
+      expect(mockCacheUpsert).toHaveBeenCalledTimes(shouldStore ? 1 : 0)
+    })
+  })
+
+  it('degrades to a miss when the cache READ throws', async () => {
+    mockCacheFind.mockRejectedValue(new Error('pg is down'))
+    const res = await buildApp().request(ROUTE, post(body))
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({ source: 'fetched', recordCount: 1 })
+  })
+
+  it('still serves the records when the cache WRITE throws', async () => {
+    mockCacheUpsert.mockRejectedValue(new Error('pg is down'))
+    const res = await buildApp().request(ROUTE, post(body))
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({ source: 'fetched', recordCount: 1 })
+  })
+
+  it('404s on an unknown operation even with a warm cache — a hit is not a bypass', async () => {
+    mockCacheFind.mockResolvedValue(cached())
+    const res = await buildApp().request('/integrations/atlas_settlement/fetch/documents', post())
+    expect(res.status).toBe(404)
+  })
+
+  it('409s on a withdrawn capability even with a warm cache', async () => {
+    mockCacheFind.mockResolvedValue(cached())
+    mockResolveDef.mockResolvedValue({
+      id: 'atlas_settlement',
+      floor: 'financial_settlement',
+      capabilities: [],
+    })
+    const res = await buildApp().request(ROUTE, post(body))
+    expect(res.status).toBe(409)
+  })
+
+  it('400s on an unfillable template even with a warm cache — the hash needs the filled op', async () => {
+    mockCacheFind.mockResolvedValue(cached())
+    const res = await buildApp().request(ROUTE, post({ params: {} }))
+    expect(res.status).toBe(400)
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  // C5 defers single-flight and the plan's Risks section makes this metric the
+  // price of that: without it, adding coordination later would be a guess rather
+  // than a decision on data. So the log field is tested, not just emitted.
+  describe('the duplicate-fetch metric (the instrumented half of the C5 bet)', () => {
+    /** The `cache`/`duplicate`/`cacheWrite` fields of the completion log line. */
+    async function completionLog(reqBody: unknown): Promise<Record<string, unknown>> {
+      const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+      try {
+        await buildApp().request(ROUTE, post(reqBody))
+        const call = info.mock.calls.find(([message]) => message === 'integration fetch completed')
+        return (call?.[1] ?? {}) as Record<string, unknown>
+      } finally {
+        info.mockRestore()
+      }
+    }
+
+    it('logs duplicate false when nothing landed while we were on the wire', async () => {
+      // No row before, no row after — we are the only fetcher.
+      mockCacheFind.mockResolvedValue(null)
+      expect(await completionLog(body)).toMatchObject({ cache: 'miss', duplicate: false })
+    })
+
+    it('logs duplicate TRUE when another container cached the same request mid-flight', async () => {
+      mockCacheFind
+        .mockResolvedValueOnce(null) // pre-call: cold
+        // post-call: computed when the handler asks, i.e. DURING our call —
+        // someone else's write landed while we were on the wire.
+        .mockImplementationOnce(async () => cached({ fetchedAt: new Date() }))
+      expect(await completionLog(body)).toMatchObject({ cache: 'miss', duplicate: true })
+    })
+
+    it('does not call a STALE pre-existing row a duplicate', async () => {
+      // The row was already there and nobody refreshed it — a miss we caused, not a race.
+      const stale = cached({ fetchedAt: new Date(Date.now() - 600_000) })
+      mockCacheFind.mockResolvedValue(stale)
+      expect(await completionLog(body)).toMatchObject({ cache: 'miss', duplicate: false })
+    })
+
+    it('still serves the records, and reports OUR fetch, when a duplicate is detected', async () => {
+      // Last-write-wins: both containers asked the same idempotent question.
+      mockCacheFind
+        .mockResolvedValueOnce(null)
+        .mockImplementationOnce(async () => cached({ fetchedAt: new Date() }))
+      const res = await buildApp().request(ROUTE, post(body))
+      expect(res.status).toBe(200)
+      expect((await json(res))['data']).toMatchObject({
+        source: 'fetched',
+        records: [{ settlementId: 'S-1' }],
+      })
+      expect(mockCacheUpsert).toHaveBeenCalledTimes(1)
+    })
+
+    it('distinguishes a caller-forced refresh from an ordinary miss', async () => {
+      mockCacheFind.mockResolvedValue(cached())
+      expect(await completionLog({ ...body, refresh: true })).toMatchObject({ cache: 'refresh' })
+    })
+
+    it('records why a result was not cached', async () => {
+      const big = [{ blob: 'x'.repeat(300 * 1024) }]
+      mockFetch.mockResolvedValue(plainRes({ items: big }))
+      mockFindActive.mockResolvedValue({
+        fetch: { settlements: { method: 'GET', path: '/s', recordsPath: 'items' } },
+      })
+      expect(await completionLog(body)).toMatchObject({ cacheWrite: 'skipped:oversize' })
+    })
+
+    it('reports a hit with the age of what it served, so the TTL can be tuned on data', async () => {
+      mockCacheFind.mockResolvedValue(cached({ fetchedAt: new Date(Date.now() - 42_000) }))
+      const line = await completionLog(body)
+      expect(line['cache']).toBe('hit')
+      // A lower bound, not an equality: the age is measured when the handler
+      // runs, so a stalled runner legitimately reports more than 42.
+      expect(line['ageSeconds']).toBeGreaterThanOrEqual(42)
+    })
   })
 })

@@ -67,6 +67,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // tenant whose entity it names, and leaking one across tenants would expose
   // both a partner identifier and the existence of our entity.
   'IntegrationCorrelation',
+  // IntegrationFetchCache — the shared read-through tier behind the declarative
+  // fetch endpoint. Purely tenant-owned (no GLOBAL case): a cached row holds a
+  // partner's answer to a question asked with THAT tenant's credentials, so it
+  // must never be readable by another. Same call as IntegrationProjection above.
+  'IntegrationFetchCache',
   // WorkflowState — tenant-wide key/value state that running workflows keep
   // (send ledgers, claims, reservations). Purely tenant-owned; the claim and
   // compare-and-set paths rely on this scoping for isolation, since the
