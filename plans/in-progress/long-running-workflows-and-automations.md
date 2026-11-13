@@ -11,9 +11,51 @@
   workflows, tenant-authored in Python) as a new capability, and rebrand what
   exists today as **Automations**: short sandboxed runs that fire on their own
   from triggers or run as steps called by a Workflow.
-- **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 done (2026-11-05: 3b.1, 3b.2 #855, legacy runner retired #919, 3c.1 #924, 3c.2; plan `plans/completed/7d167652-durable-workflow-worker.md`, follow-ups `plans/todo/durable-workflows-3c-followups.md`). Phase 4 in progress: signal delivery #943/#944 (+ #953), `run_automation()`
-  steps in `feat/workflow-automation-steps`. Left: open-Workflow list/query/
-  terminate surfaces, and the tenant-web Workflows section.
+- **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 done (2026-11-05: 3b.1, 3b.2 #855, legacy runner retired #919, 3c.1 #924, 3c.2; plan `plans/completed/7d167652-durable-workflow-worker.md`, follow-ups `plans/todo/durable-workflows-3c-followups.md`). Phase 4 in progress: signal delivery #943/#944 (+ #953) and `run_automation()`
+  steps #957 + #958 (SDK 0.65.1, staging-accepted 2026-11-12) are DONE. Left:
+  open-Workflow list/query/terminate surfaces, and the tenant-web Workflows
+  section.
+
+## Resume here (2026-11-13)
+
+- **Where:** nothing is in a worktree. `main` @ `a5f700cb` (#959), plus the
+  plans-only PR that added this section. No open PR for this plan.
+- **Next action:** draft a plan for the next Phase 4 item, "API and SDK
+  surfaces: list open Workflows, run a Workflow's query (status), cancel or
+  terminate" (§4, Phase 4 checklist). Put the Cedar / route / SDK / OpenAPI /
+  CLI decisions to Steve, then `/workstream-start feat <slug> <plan>`. After
+  that comes the tenant-web Workflows section, which can then link a step's
+  "Workflow step" badge to its parent execution; today the parent id is only
+  a tooltip, because no route opens an execution by id alone.
+- **In flight:** nothing. #957 (`9d66eced`), #958 (`bc929c91`) and #959
+  (`a5f700cb`) are merged and deployed. `sdk-python-v0.65.0` and `-v0.65.1`
+  are on PyPI. The authoring repo `pegasus-workflows` is at `f5ef317`
+  (pin 0.65.1).
+- **Owed:** eyeball the tenant-web "Workflow step" badge (AVP Smoke) the next
+  time a step runs. It wasn't seen in that session (no browser); the API
+  fields it renders from (`triggerSource: "WORKFLOW"`, `parentExecutionId`)
+  were verified.
+- **Decisions to stay consistent with (from the steps work):** narrow routes
+  plus a handler check that the caller is `kind=WORKFLOW` (Cedar
+  `RunAutomationStep` on workflow_runtime; `RunWorkflow` / `ReadWorkflow` stay
+  off the runtime role). A bare name resolves to the newest ACTIVE version.
+  Not-now refusals are waited out. A step whose Automation dies with the runner
+  ends FAILED and is not re-run. Full record: DECISIONS.md, entry "A durable
+  Workflow runs an Automation as a step…", and
+  `plans/completed/df49a7ef-workflow-automation-steps.md`.
+- **Gotchas:**
+  - Tenant code runs on the RUNNER IMAGE's SDK (venv
+    `--system-site-packages`), so SDK runtime features reach every tenant when
+    the runner image deploys, whatever version the author pins.
+  - Run arguments are the `{executionId, input, dryRun}` envelope.
+  - SDK versions collide often: re-check `git tag -l 'sdk-python-v*'` and
+    `origin/main`'s `pyproject.toml` right before a bump.
+  - Staging acceptance recipe (AVP Smoke, scratch project, kill switch via
+    Steve, `aws sso login --sso-session dolas`) is in
+    `plans/completed/bc929c91-workflow-automation-steps-followups.md`.
+  - A worktree-isolated session's shell guard rejects compound
+    `git` / `gh` / `aws` one-liners. Use plain commands or script files in the
+    scratchpad.
 - **Supersedes:** `plans/sdk/long-running-event-correlated-workflows.md`
   (spec 0008, Proposed since 2026-06-29). Marked superseded in
   `plans/sdk/README.md` and the spec itself by Phase 1. Still owed: mirror
@@ -416,7 +458,7 @@ Done 2026-09-29. Evidence, transcripts and probe scripts are in
       **Done #944**; stranded-QUEUED recovery for `wfl/` keys #953.
 - [x] SDK: add the `run_automation()` helper, an activity that calls the
       API's run path and waits for the result (see §3).
-      **Done** in `feat/workflow-automation-steps` (SDK 0.65.0): its own
+      **Done #957** (`9d66eced`), shutdown fix #958 (SDK 0.65.1): its own
       routes `/api/v1/automation-steps` (not `POST /:id/run`, so Automations
       can't start each other), polled with heartbeats, idempotent on the
       calling activity. Plan: `plans/completed/df49a7ef-workflow-automation-steps.md`.
