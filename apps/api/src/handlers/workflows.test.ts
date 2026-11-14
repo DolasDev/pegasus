@@ -631,6 +631,7 @@ describe('workflows handler', () => {
         ...validManifest,
         kind: 'workflow',
         signals: ['proceed', 'cancel_move'],
+        queries: ['status'],
         maxLifetimeDays: 30,
       }
 
@@ -649,6 +650,7 @@ describe('workflows handler', () => {
             manifest: expect.objectContaining({
               kind: 'workflow',
               signals: ['proceed', 'cancel_move'],
+              queries: ['status'],
               maxLifetimeDays: 30,
             }),
           }),
@@ -682,6 +684,17 @@ describe('workflows handler', () => {
           'maxLifetimeDays',
         ],
         ['signals on an Automation', { ...validManifest, signals: ['go'] }, 'signals'],
+        ['queries on an Automation', { ...validManifest, queries: ['status'] }, 'queries'],
+        [
+          'a query that is not an identifier',
+          { ...durableManifest, queries: ['get-status'] },
+          'query',
+        ],
+        [
+          'more than 50 queries',
+          { ...durableManifest, queries: Array.from({ length: 51 }, (_, i) => `q${i}`) },
+          'queries',
+        ],
         [
           'maxLifetimeDays over 365',
           { ...durableManifest, maxLifetimeDays: 366 },
@@ -1753,6 +1766,17 @@ describe('workflows handler', () => {
       expect(mockHandleCancel).toHaveBeenCalledTimes(1)
       const data = (await json(res)).data as JsonBody
       expect(data['status']).toBe('RUNNING')
+    })
+
+    it('addresses the chain by firstExecutionRunId, never pinning the (possibly continued-as-new) run', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue(runningExec)
+      mockHandleCancel.mockResolvedValue(undefined)
+      const res = await buildApp().request('/wf-1/executions/exec-1/cancel', post({}))
+      expect(res.status).toBe(202)
+      expect(mockGetHandle).toHaveBeenCalledWith(runningExec.temporalWorkflowId, undefined, {
+        firstExecutionRunId: 'run-1',
+      })
     })
 
     it('returns 409 when the execution is already terminal', async () => {

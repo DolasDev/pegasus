@@ -80,6 +80,19 @@ export function correlatedTemporalWorkflowId(
 }
 
 /**
+ * The correlation key of a keyed instance's Temporal workflow id — the
+ * inverse of correlatedTemporalWorkflowId — or null for any other id (a
+ * manual run's `wf/<tenant>/<name>/<executionId>`, or a malformed one).
+ */
+export function correlationKeyOf(temporalWorkflowId: string | null): string | null {
+  if (!temporalWorkflowId?.startsWith('wfl/')) return null
+  const parts = temporalWorkflowId.split('/')
+  if (parts.length !== 4) return null
+  const key = parts[3] ?? ''
+  return CORRELATION_KEY_REGEX.test(key) ? key : null
+}
+
+/**
  * Null when the trigger's (merged) settings are a valid binding for `workflow`,
  * else the 400 message. NEW takes neither field; START / DELIVER need an EVENT
  * trigger on a durable Workflow, a valid correlation path, and a signal the

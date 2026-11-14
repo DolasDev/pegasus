@@ -114,6 +114,7 @@ import {
 } from './handlers/integration-projections'
 import { workflowStateHandler } from './handlers/workflow-state'
 import { automationStepsHandler } from './handlers/automation-steps'
+import { workflowExecutionsHandler } from './handlers/workflow-executions'
 import { usageHandler } from './handlers/usage'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
@@ -366,6 +367,10 @@ m2mV1.route('/workflow-state', workflowStateHandler)
 // the handler refuses any caller that isn't a WORKFLOW-kind row's token. See
 // handlers/automation-steps.ts.
 m2mV1.route('/automation-steps', automationStepsHandler)
+// Executions by id alone, tenant-wide: list open durable Workflows, query /
+// cancel / terminate one (UI, SDK, CLI). Dual-auth applied inside the handler;
+// nothing here is granted to workflow_runtime. See handlers/workflow-executions.ts.
+m2mV1.route('/workflow-executions', workflowExecutionsHandler)
 // Billable automated actions against the tenant's automation plan. Dual-auth
 // applied inside the handler. See handlers/usage.ts.
 m2mV1.route('/usage', usageHandler)

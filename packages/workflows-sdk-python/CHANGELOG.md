@@ -3,6 +3,42 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.66.0
+
+### Added — list, query, cancel and terminate open Workflows
+
+See the README, "Inspecting and stopping open Workflows". All of these
+address an execution by its id alone, because one Workflow's instances span
+every version you have published.
+
+- `PegasusClient.list_workflow_executions(name=None, correlation_key=None, …)`
+  lists the tenant's OPEN durable Workflows (every version, newest first). Each
+  row carries `correlationKey`, the business key of an event-routed instance.
+  `kind="AUTOMATION"` lists Automation runs.
+- `get_execution_by_id(execution_id)` returns one execution plus the
+  `signals` and `queries` its version declares.
+- `query_execution(execution_id, name, *args, wait=90)` runs a declared
+  `@workflow.query` and returns its value. The tenant's runner exits when
+  idle, and each query wakes it. Until a worker answers, the API replies 503
+  `WORKFLOW_WORKER_STARTING`; this waits that out, then raises the new
+  `WorkflowWorkerStarting`.
+- `cancel_execution_by_id(execution_id)` is a cooperative cancel.
+  `terminate_execution(execution_id, reason)` is a forcible one: the row
+  closes as `CANCELLED` with `"Terminated: <reason>"`, and the Workflow's open
+  `run_automation()` steps are cancelled too.
+- Manifest: `queries = [...]` (Workflows only, the same rules as `signals`).
+  Only declared queries can be run.
+- CLI: `executions open | query | cancel | terminate`.
+- New roles needed: `QueryWorkflowExecution` and `TerminateWorkflowExecution`,
+  both in `workflow_developer`.
+
+### Fixed (platform) — cancel reaches a Workflow that continued-as-new
+
+Cancel used to address the Workflow's first run, which closes when the
+Workflow continues-as-new, so it failed on long-lived Workflows. It now
+addresses the latest run of the chain, as signals already did. This is
+server-side; no SDK change is needed.
+
 ## 0.65.1
 
 ### Fixed — a runner restart no longer cancels a step's Automation

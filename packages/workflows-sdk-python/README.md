@@ -1546,7 +1546,7 @@ fail fast locally before any HTTP call.
 
 `kind` picks what you publish (0.56.0+). The default, `"automation"`, runs the
 whole body as one unit of work within `timeout_seconds` (max 900). `"workflow"`
-publishes a [durable Workflow](#durable-workflows-kind--workflow) and takes two
+publishes a [durable Workflow](#durable-workflows-kind--workflow) and takes
 fields of its own:
 
 ```toml
@@ -1556,11 +1556,12 @@ version = "0.1.0"
 entry_points = ["move_lifecycle.workflow:MoveLifecycle"]
 kind = "workflow"            # default "automation"
 signals = ["proceed"]        # optional, Workflows only: @workflow.signal names
+queries = ["status"]         # optional, Workflows only: @workflow.query names (0.66.0+)
 max_lifetime_days = 30       # optional, Workflows only: 1-365, default 90
 ```
 
 Each kind's fields are refused on the other kind (`timeout_seconds` on a
-Workflow, `signals` / `max_lifetime_days` on an Automation), so a manifest never
+Workflow, `signals` / `queries` / `max_lifetime_days` on an Automation), so a manifest never
 carries a setting the platform would silently drop.
 
 ## Durable Workflows (`kind = "workflow"`)
@@ -1582,6 +1583,9 @@ days. (0.56.0+)
 - **Signals** (0.60.0+): declare the `@workflow.signal` names in `signals`;
   only declared names can be delivered. Send one to a QUEUED / RUNNING
   execution — see [Sending a signal](#sending-a-signal).
+- **Queries, list, cancel, terminate** (0.66.0+): declare `@workflow.query` names
+  in `queries`, list the tenant's open instances, ask one its status, or stop
+  it — see [Inspecting and stopping open Workflows](#inspecting-and-stopping-open-workflows).
 - **Steps** (0.65.0+): `await run_automation("name", input)` runs a published
   Automation and returns its result — see
   [Running an Automation as a step](#running-an-automation-as-a-step).
@@ -1752,6 +1756,82 @@ class OrderLifecycle:
   refused (403 `STEP_CALLER_NOT_WORKFLOW`), so Automations can't start each other.
 - **Testing:** in a Temporal test environment, register a stand-in activity named
   `pegasus.run_automation` (it receives `{"automation", "version", "input"}`).
+
+### Inspecting and stopping open Workflows
+
+(0.66.0+.) These address an execution by its **id alone** — no workflow
+(version) id — because one open Workflow's instances span every version you
+have published.
+
+```python
+# Every OPEN durable Workflow in the tenant, newest first (all versions):
+for row in client.list_workflow_executions():
+    print(row["id"], row["workflowName"], row["workflowVersion"], row["correlationKey"])
+
+# The one instance following order o-42 (event-routed key):
+[inst] = client.list_workflow_executions(name="order_lifecycle", correlation_key="o-42")
+
+client.get_execution_by_id(inst["id"])     # + the version's declared "signals" / "queries"
+client.query_execution(inst["id"], "status")             # run a declared @workflow.query
+client.cancel_execution_by_id(inst["id"])                # cooperative
+client.terminate_execution(inst["id"], "order voided")   # forcible
+```
+
+```
+pegasus-workflows executions open [--name order_lifecycle [--key o-42]]
+pegasus-workflows executions query <execution-id> --name status [--args '["x"]'] [--wait 90]
+pegasus-workflows executions cancel <execution-id>
+pegasus-workflows executions terminate <execution-id> --reason "order voided" [--yes]
+```
+
+**Listing.** `list_workflow_executions(kind="WORKFLOW", open=None, name=None,
+correlation_key=None, limit=50, before=None)` — open-only by default for
+Workflows; `kind="AUTOMATION"` lists Automation runs (all statuses unless
+`open=True`). `correlationKey` is the business key of an event-routed instance
+(`None` for one started by hand). Page with `before=<last row's id>`. Needs
+`ReadWorkflow` (any tenant role).
+
+**Queries.** Declare each `@workflow.query` method in the manifest's `queries`;
+only declared names can be run, so `get_execution_by_id` tells a UI or an agent
+what a Workflow can be asked:
+
+```python
+@workflow.query
+def status(self) -> dict:
+    return {"stage": self.stage, "notes": len(self.notes)}
+```
+
+- A query is read-only (Temporal rejects state changes in one) and returns the
+  method's value as JSON (≤ 256 KiB). Extra arguments go positionally
+  (`query_execution(id, "item", "sofa")`).
+- **It needs a live worker.** Your tenant's runner exits when idle; every query
+  wakes it, and a cold start takes 30–60 s. Until a worker answers, the API
+  replies 503 `WORKFLOW_WORKER_STARTING` and `query_execution` retries on its
+  `Retry-After`, for up to `wait` seconds (default 90), then raises
+  `WorkflowWorkerStarting` (`retry_after_seconds`). **Don't poll queries on a
+  timer** — each one keeps the runner awake.
+- Not blocked by the kill switch, and not a run (no quota).
+- **Errors** (`PegasusApiError`): 422 `QUERY_NOT_DECLARED` (lists the declared
+  names) · 422 `NOT_A_WORKFLOW` (an Automation) · 422 `QUERY_FAILED` (your query
+  method raised; its message is included) · 422 `QUERY_RESULT_TOO_LARGE` · 409
+  `EXECUTION_NOT_QUERYABLE` (closed, not started on Temporal yet, or gone) ·
+  502 `TEMPORAL_QUERY_FAILED`.
+- Needs `QueryWorkflowExecution` (the `workflow_developer` role).
+
+**Cancel vs terminate.**
+
+- `cancel_execution_by_id` is **cooperative**: Temporal raises cancellation in
+  your Workflow, which can catch it and clean up (its `run_automation` steps
+  cancel their Automations). The row turns `CANCELLED` once the run ends. Same
+  as `cancel_execution(workflow_id, execution_id)`. Needs
+  `CancelWorkflowExecution`.
+- `terminate_execution(id, reason)` is **forcible**: none of the run's code runs
+  again. The row closes at once as `CANCELLED` with `errorMessage`
+  `"Terminated: <reason>"`, and a terminated Workflow's open `run_automation()`
+  steps are cancelled too. Works on Automations as well. Errors: 400 (no reason)
+  · 409 `EXECUTION_NOT_TERMINABLE` (already closed, not started, or gone) · 502.
+  Needs `TerminateWorkflowExecution` (the `workflow_developer` role).
+- Neither is blocked by the kill switch: both close things.
 
 ## Credentials & profiles
 
@@ -1932,6 +2012,10 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows executions list <wf-id> --token=<vnd_…>`                        | List recent executions of an Automation (newest first).        |
 | `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`              | Show one execution's input/result/error + history timeline.    |
 | `pegasus-workflows executions signal <wf-id> <exec-id> --name <n> [--payload …]`   | Deliver a declared signal to a running durable Workflow.       |
+| `pegasus-workflows executions open [--name <n> [--key <k>]]`                       | List open durable Workflows (every version) + their keys.      |
+| `pegasus-workflows executions query <exec-id> --name <q> [--args JSON] [--wait s]` | Run a declared query on an open Workflow; prints its result.   |
+| `pegasus-workflows executions cancel <exec-id>`                                    | Cooperative cancel by execution id.                            |
+| `pegasus-workflows executions terminate <exec-id> --reason <r> [--yes]`            | Forcibly end a run; cancels a Workflow's open steps too.       |
 | `pegasus-workflows integration-config validate <id> [-C <dir>]`                    | Dry-run the publish gate for a config (no write).              |
 | `pegasus-workflows integration-config publish <id> [-C <dir>]`                     | Gate then publish a new config version.                        |
 | `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]`             | Fetch the active config; write the editable surface to disk.   |

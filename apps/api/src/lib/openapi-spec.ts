@@ -952,7 +952,7 @@ export function getOpenApiSpec() {
       {
         name: 'Workflows',
         description:
-          'Automations: short, sandboxed Python runs (up to 900 s each) started manually, by a domain event, or on a schedule. The product concept was renamed from "workflows" to "Automations"; the `/workflows` paths, operation ids, and Cedar action names (e.g. ReadWorkflow) keep their original names for compatibility. Durable Workflows (manifest kind = "workflow") share these paths: long-running Temporal workflows that wait on timers and signals — see POST /workflows/{id}/run and POST …/executions/{executionId}/signal.',
+          'Automations: short, sandboxed Python runs (up to 900 s each) started manually, by a domain event, or on a schedule. The product concept was renamed from "workflows" to "Automations"; the `/workflows` paths, operation ids, and Cedar action names (e.g. ReadWorkflow) keep their original names for compatibility. Durable Workflows (manifest kind = "workflow") share these paths: long-running Temporal workflows that wait on timers and signals — see POST /workflows/{id}/run and POST …/executions/{executionId}/signal. A Workflow’s manifest declares the `signals` it accepts and the `queries` it answers; GET /workflow-executions lists the tenant’s open Workflows, and /workflow-executions/{executionId}/query | cancel | terminate act on one by id.',
       },
     ],
     paths: {
@@ -3117,6 +3117,151 @@ export function getOpenApiSpec() {
             '404': { description: 'NOT_FOUND' },
             '409': { description: 'EXECUTION_NOT_CANCELLABLE' },
             '502': { description: 'TEMPORAL_CANCEL_FAILED' },
+          },
+        },
+      },
+      '/api/v1/workflow-executions': {
+        get: {
+          operationId: 'listWorkflowExecutions',
+          summary:
+            'List executions tenant-wide — by default the OPEN durable Workflows (ReadWorkflow)',
+          description:
+            'Executions across every version of every workflow in the caller’s tenant, newest first. Defaults to kind=WORKFLOW and open=true (QUEUED / RUNNING), i.e. the tenant’s open durable Workflows; open defaults to false for kind=AUTOMATION. `name` narrows to one workflow name; `name` + `correlationKey` finds the one instance of an event-routed key (temporalWorkflowId wfl/<tenant>/<name>/<key>). Paged like GET /workflows/{id}/executions: pass the last row’s id as `before`. ' +
+            'Each row is the execution plus `kind` and `correlationKey` (null for a manual run). To act on one, use GET / POST /workflow-executions/{executionId}/….',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            {
+              name: 'kind',
+              in: 'query',
+              schema: { type: 'string', enum: ['WORKFLOW', 'AUTOMATION'] },
+            },
+            { name: 'open', in: 'query', schema: { type: 'string', enum: ['true', 'false'] } },
+            { name: 'name', in: 'query', schema: { type: 'string' } },
+            {
+              name: 'correlationKey',
+              in: 'query',
+              description: 'Needs name',
+              schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,128}$' },
+            },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 200 } },
+            { name: 'before', in: 'query', schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': { description: '{data: execution[], meta: {count, limit}}' },
+            '400': { description: 'VALIDATION_ERROR' },
+          },
+        },
+      },
+      '/api/v1/workflow-executions/{executionId}': {
+        get: {
+          operationId: 'getWorkflowExecutionById',
+          summary: 'One execution by id alone (ReadWorkflow)',
+          description:
+            'The execution plus `kind`, `correlationKey`, and — for a durable Workflow — the `signals` and `queries` its version declares (what you can send it and ask it). 404 for an id outside the caller’s tenant.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': { description: '{data: execution & {kind, correlationKey, signals, queries}}' },
+            '404': { description: 'NOT_FOUND' },
+          },
+        },
+      },
+      '/api/v1/workflow-executions/{executionId}/query': {
+        post: {
+          operationId: 'queryWorkflowExecution',
+          summary: 'Run a declared query on an open durable Workflow (QueryWorkflowExecution)',
+          description:
+            'Body { name, args? }. `name` must be one of the queries the execution’s Workflow version declares in its manifest `queries` (422 QUERY_NOT_DECLARED otherwise — the error lists them); `args` (≤ 20, ≤ 128 KiB) are passed positionally to the @workflow.query method. Only QUEUED / RUNNING durable Workflows are queried (422 NOT_A_WORKFLOW for an Automation; 409 EXECUTION_NOT_QUERYABLE when closed, not yet started, or gone from Temporal). ' +
+            'A query is answered by the tenant’s worker, which idle-exits: the call wakes it, and if no worker answers within ~8 s the reply is 503 WORKFLOW_WORKER_STARTING with Retry-After — retry (a cold start takes 30–60 s; the SDK’s query_execution does this for you). A query handler that raised → 422 QUERY_FAILED with its message. Result ≤ 256 KiB (422 QUERY_RESULT_TOO_LARGE). Not blocked by the kill switch. Don’t poll queries on a timer: each one wakes the runner.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['name'],
+                  properties: {
+                    name: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]{0,63}$' },
+                    args: { type: 'array', maxItems: 20, items: {} },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{data: {result}}' },
+            '400': { description: 'VALIDATION_ERROR' },
+            '404': { description: 'NOT_FOUND' },
+            '409': { description: 'EXECUTION_NOT_QUERYABLE' },
+            '422': {
+              description:
+                'NOT_A_WORKFLOW, QUERY_NOT_DECLARED, QUERY_FAILED, or QUERY_RESULT_TOO_LARGE',
+            },
+            '502': { description: 'TEMPORAL_QUERY_FAILED' },
+            '503': { description: 'WORKFLOW_WORKER_STARTING (transient; honour Retry-After)' },
+          },
+        },
+      },
+      '/api/v1/workflow-executions/{executionId}/cancel': {
+        post: {
+          operationId: 'cancelWorkflowExecutionById',
+          summary: 'Request a cooperative cancel by execution id (CancelWorkflowExecution)',
+          description:
+            'Same as POST /workflows/{id}/executions/{executionId}/cancel, addressed by execution id alone. Cooperative: the Workflow’s code sees the cancellation and decides what to do (its run_automation() steps cancel their own Automations). 202 with the still-open row; the row turns CANCELLED once Temporal reports it. Not blocked by the kill switch.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '202': { description: 'Cancellation requested ({data: execution})' },
+            '404': { description: 'NOT_FOUND' },
+            '409': { description: 'EXECUTION_NOT_CANCELLABLE' },
+            '502': { description: 'TEMPORAL_CANCEL_FAILED' },
+          },
+        },
+      },
+      '/api/v1/workflow-executions/{executionId}/terminate': {
+        post: {
+          operationId: 'terminateWorkflowExecution',
+          summary: 'Forcibly end an execution (TerminateWorkflowExecution)',
+          description:
+            'Body { reason } (1–500 chars, required). Temporal ends the run immediately — none of its code runs again, unlike cancel. Works on durable Workflows and Automations. The row closes at once as CANCELLED with errorMessage "Terminated: <reason>". A terminated Workflow’s open run_automation() steps are cancelled too (best effort). Not blocked by the kill switch.',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['reason'],
+                  properties: { reason: { type: 'string', minLength: 1, maxLength: 500 } },
+                },
+              },
+            },
+          },
+          responses: {
+            '202': { description: 'Terminated ({data: execution}, now CANCELLED)' },
+            '400': { description: 'VALIDATION_ERROR (missing reason)' },
+            '404': { description: 'NOT_FOUND' },
+            '409': {
+              description:
+                'EXECUTION_NOT_TERMINABLE (terminal, not started, or gone from Temporal)',
+            },
+            '502': { description: 'TEMPORAL_TERMINATE_FAILED' },
           },
         },
       },

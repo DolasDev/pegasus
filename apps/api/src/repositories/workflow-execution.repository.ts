@@ -68,7 +68,7 @@ export type WorkflowExecutionRow = {
    * second `GET /workflows/:id`. Optional so a hand-built row in a test (or a
    * future select that omits the relation) still type-checks.
    */
-  workflow?: { name: string; version: string } | null
+  workflow?: { name: string; version: string; kind?: 'AUTOMATION' | 'WORKFLOW' } | null
   queuedAt: Date
   startedAt: Date | null
   finishedAt: Date | null
@@ -92,7 +92,7 @@ const EXECUTION_SELECT = {
   triggeredByTriggerId: true,
   parentExecutionId: true,
   dryRun: true,
-  workflow: { select: { name: true, version: true } },
+  workflow: { select: { name: true, version: true, kind: true } },
   queuedAt: true,
   startedAt: true,
   finishedAt: true,
@@ -208,6 +208,103 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
       return db.workflowExecution.findFirst({
         where: { tenantId, temporalWorkflowId, status: { in: ['QUEUED', 'RUNNING'] } },
         orderBy: { queuedAt: 'desc' },
+        select: EXECUTION_SELECT,
+      })
+    },
+
+    /**
+     * One execution by id, only when it belongs to `tenantId` — the by-id
+     * routes (/workflow-executions) have no workflow row to scope through.
+     */
+    async findByIdForTenant(
+      executionId: string,
+      tenantId: string,
+    ): Promise<WorkflowExecutionRow | null> {
+      return db.workflowExecution.findFirst({
+        where: { id: executionId, tenantId },
+        select: EXECUTION_SELECT,
+      })
+    },
+
+    /**
+     * Tenant-wide paged list across every workflow row (all versions), newest
+     * first, with the same (queuedAt, id) keyset cursor as listByWorkflow.
+     * `kind` filters on the joined workflow row; `open` keeps QUEUED/RUNNING;
+     * `name` matches the workflow name; `temporalWorkflowId` pins one keyed
+     * instance (`wfl/<tenant>/<name>/<key>`).
+     */
+    async listForTenant(
+      tenantId: string,
+      opts: {
+        limit: number
+        before?: string | null
+        kind?: 'AUTOMATION' | 'WORKFLOW'
+        open?: boolean
+        name?: string
+        temporalWorkflowId?: string
+      },
+    ): Promise<WorkflowExecutionRow[]> {
+      const limit = Math.max(1, Math.min(opts.limit, 200))
+      const where: Prisma.WorkflowExecutionWhereInput = { tenantId }
+      if (opts.open) where.status = { in: ['QUEUED', 'RUNNING'] }
+      if (opts.temporalWorkflowId) where.temporalWorkflowId = opts.temporalWorkflowId
+      if (opts.kind || opts.name) {
+        where.workflow = {
+          ...(opts.kind ? { kind: opts.kind } : {}),
+          ...(opts.name ? { name: opts.name } : {}),
+        }
+      }
+      if (opts.before) {
+        const anchor = await db.workflowExecution.findFirst({
+          where: { id: opts.before, tenantId },
+          select: { queuedAt: true, id: true },
+        })
+        if (anchor) {
+          where.OR = [
+            { queuedAt: { lt: anchor.queuedAt } },
+            { queuedAt: anchor.queuedAt, id: { lt: anchor.id } },
+          ]
+        }
+      }
+      return db.workflowExecution.findMany({
+        where,
+        orderBy: [{ queuedAt: 'desc' }, { id: 'desc' }],
+        take: limit,
+        select: EXECUTION_SELECT,
+      })
+    },
+
+    /** The OPEN step Automations a durable Workflow execution started. */
+    async listOpenSteps(
+      tenantId: string,
+      parentExecutionId: string,
+    ): Promise<WorkflowExecutionRow[]> {
+      return db.workflowExecution.findMany({
+        where: { tenantId, parentExecutionId, status: { in: ['QUEUED', 'RUNNING'] } },
+        select: EXECUTION_SELECT,
+      })
+    },
+
+    /**
+     * Close an OPEN row as CANCELLED after Temporal accepted a terminate.
+     * Conditional (QUEUED/RUNNING only), so a row the reconciler or the
+     * runner's write-back closed first is left as it is. Returns the row as
+     * it now stands.
+     */
+    async markTerminatedIfOpen(
+      executionId: string,
+      input: { errorMessage: string; finishedAt: Date },
+    ): Promise<WorkflowExecutionRow | null> {
+      await db.workflowExecution.updateMany({
+        where: { id: executionId, status: { in: ['QUEUED', 'RUNNING'] } },
+        data: {
+          status: 'CANCELLED',
+          finishedAt: input.finishedAt,
+          errorMessage: input.errorMessage,
+        },
+      })
+      return db.workflowExecution.findFirst({
+        where: { id: executionId },
         select: EXECUTION_SELECT,
       })
     },

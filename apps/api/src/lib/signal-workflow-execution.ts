@@ -10,11 +10,8 @@
 // the switch stops new runs; open Workflows keep running — and keep receiving
 // signals).
 //
-// Addressing: by Temporal workflow id with `firstExecutionRunId` = the row's
-// run id (the FIRST run — `markStarted` stores `handle.firstExecutionRunId`),
-// never by run id. A Workflow that continues-as-new gets a new run id, so a
-// run-pinned signal would fail forever; `firstExecutionRunId` targets the
-// latest run of THIS chain and never a different instance reusing the id.
+// Addressing: `executionHandle` (workflow id + firstExecutionRunId, never a
+// pinned run id — see lib/workflow-execution-handle.ts).
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
@@ -22,6 +19,7 @@ import type { WorkflowExecutionRow } from '../repositories/workflow-execution.re
 import { TERMINAL_STATUSES } from '../repositories/workflow-execution.repository'
 import type { WorkflowRow } from '../repositories/workflow.repository'
 import { withTemporalClient } from './temporal-client'
+import { executionHandle } from './workflow-execution-handle'
 import { ensureTenantRunner } from './tenant-runner'
 import { resolveWorkflowRoute } from './workflow-route'
 import { logger } from './logger'
@@ -55,9 +53,18 @@ export type SignalDurableExecutionResult =
  * when it declares none. Publish validates the list; this only reads it.
  */
 export function declaredSignals(manifest: unknown): string[] {
+  return declaredNames(manifest, 'signals')
+}
+
+/** The query names a Workflow version declares (manifest `queries`), or `[]`. */
+export function declaredQueries(manifest: unknown): string[] {
+  return declaredNames(manifest, 'queries')
+}
+
+function declaredNames(manifest: unknown, field: 'signals' | 'queries'): string[] {
   if (typeof manifest !== 'object' || manifest === null) return []
-  const signals = (manifest as Record<string, unknown>)['signals']
-  return Array.isArray(signals) ? signals.filter((s): s is string => typeof s === 'string') : []
+  const names = (manifest as Record<string, unknown>)[field]
+  return Array.isArray(names) ? names.filter((s): s is string => typeof s === 'string') : []
 }
 
 /**
@@ -83,13 +90,7 @@ export async function signalDurableExecution(
     await withTemporalClient(
       { tenantId: execution.tenantId, namespace: execution.temporalNamespace },
       (client) =>
-        client.workflow
-          .getHandle(
-            temporalWorkflowId,
-            undefined,
-            execution.temporalRunId ? { firstExecutionRunId: execution.temporalRunId } : {},
-          )
-          .signal(signalName, ...args),
+        executionHandle(client, { ...execution, temporalWorkflowId }).signal(signalName, ...args),
     )
   } catch (err) {
     // Match the class by name (the codebase idiom — see the history route).

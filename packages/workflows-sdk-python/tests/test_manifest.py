@@ -448,6 +448,7 @@ def test_durable_workflow_fields_round_trip_to_the_api_shape(tmp_path: Path) -> 
             """
             kind = "workflow"
             signals = ["proceed", "cancel_move"]
+            queries = ["status"]
             max_lifetime_days = 30
             """,
         )
@@ -456,6 +457,7 @@ def test_durable_workflow_fields_round_trip_to_the_api_shape(tmp_path: Path) -> 
     api = m.to_api_manifest()
     assert api["kind"] == "workflow"
     assert api["signals"] == ["proceed", "cancel_move"]
+    assert api["queries"] == ["status"]
     assert api["maxLifetimeDays"] == 30
     assert "timeoutSeconds" not in api
 
@@ -471,6 +473,9 @@ def test_durable_workflow_fields_round_trip_to_the_api_shape(tmp_path: Path) -> 
         ('kind = "workflow"\nmax_lifetime_days = true', "max_lifetime_days"),
         ('kind = "workflow"\nsignals = ["go-now"]', "signal"),
         ('kind = "workflow"\nsignals = "go"', "signals"),
+        ('queries = ["status"]', "queries"),
+        ('kind = "workflow"\nqueries = ["get-status"]', "query"),
+        ('kind = "workflow"\nqueries = "status"', "queries"),
         ('kind = "saga"', "kind"),
     ],
 )
@@ -483,3 +488,15 @@ def test_too_many_signals_rejected(tmp_path: Path) -> None:
     names = ", ".join(f'"s{i}"' for i in range(51))
     with pytest.raises(ManifestError, match="at most 50"):
         load_manifest(_write(tmp_path, f'kind = "workflow"\nsignals = [{names}]'))
+
+
+def test_too_many_queries_rejected(tmp_path: Path) -> None:
+    names = ", ".join(f'"q{i}"' for i in range(51))
+    with pytest.raises(ManifestError, match="at most 50 queries"):
+        load_manifest(_write(tmp_path, f'kind = "workflow"\nqueries = [{names}]'))
+
+
+def test_queries_absent_is_not_sent(tmp_path: Path) -> None:
+    m = load_manifest(_write(tmp_path, 'kind = "workflow"'))[0]
+    assert m.queries is None
+    assert "queries" not in m.to_api_manifest()

@@ -2814,3 +2814,159 @@ def test_fetch_external_exposes_no_method_or_path_argument() -> None:
         "max_age",
         "refresh",
     }
+
+
+# ---------------------------------------------------------------------------
+# /workflow-executions — open Workflows: list, query, cancel, terminate (0.66.0)
+# ---------------------------------------------------------------------------
+
+from pegasus_workflows import api as _api_module  # noqa: E402
+from pegasus_workflows.api import WorkflowWorkerStarting  # noqa: E402
+
+
+def test_list_workflow_executions_sends_filters_and_returns_rows() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": [{"id": "e1", "correlationKey": "o-1"}]})
+
+    rows = _client_with(handler).list_workflow_executions(
+        name="order_lifecycle", correlation_key="o-1", limit=10
+    )
+    assert captured["path"] == "/api/v1/workflow-executions"
+    assert captured["params"] == {
+        "kind": "WORKFLOW",
+        "name": "order_lifecycle",
+        "correlationKey": "o-1",
+        "limit": "10",
+    }
+    assert rows == [{"id": "e1", "correlationKey": "o-1"}]
+
+
+def test_list_workflow_executions_passes_open_and_before() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": []})
+
+    _client_with(handler).list_workflow_executions(kind="AUTOMATION", open=True, before="e9")
+    assert captured["params"] == {
+        "kind": "AUTOMATION",
+        "open": "true",
+        "limit": "50",
+        "before": "e9",
+    }
+
+
+def test_get_execution_by_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/workflow-executions/e1"
+        return httpx.Response(200, json={"data": {"id": "e1", "queries": ["status"]}})
+
+    assert _client_with(handler).get_execution_by_id("e1")["queries"] == ["status"]
+
+
+def test_query_execution_returns_the_result() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"result": {"stage": "packing"}}})
+
+    result = _client_with(handler).query_execution("e1", "status", 1, "x")
+    assert captured["path"] == "/api/v1/workflow-executions/e1/query"
+    assert captured["body"] == {"name": "status", "args": [1, "x"]}
+    assert result == {"stage": "packing"}
+
+
+def test_query_execution_waits_out_a_cold_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+    slept: list[float] = []
+    monkeypatch.setattr(_api_module, "_sleep", slept.append)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return httpx.Response(
+                503,
+                headers={"Retry-After": "15"},
+                json={"error": "starting", "code": "WORKFLOW_WORKER_STARTING"},
+            )
+        return httpx.Response(200, json={"data": {"result": "ok"}})
+
+    assert _client_with(handler).query_execution("e1", "status") == "ok"
+    assert calls["n"] == 3
+    assert slept == [15, 15]
+
+
+def test_query_execution_raises_typed_error_once_wait_is_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"t": 0.0}
+    monkeypatch.setattr(_api_module, "_monotonic", lambda: clock["t"])
+    monkeypatch.setattr(_api_module, "_sleep", lambda s: clock.__setitem__("t", clock["t"] + s))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            headers={"Retry-After": "15"},
+            json={"error": "starting", "code": "WORKFLOW_WORKER_STARTING"},
+        )
+
+    with pytest.raises(WorkflowWorkerStarting) as exc_info:
+        _client_with(handler).query_execution("e1", "status", wait=40)
+    assert exc_info.value.retry_after_seconds == 15
+    # Slept 15 + 15, then only 10 s were left: one last capped sleep, then give up.
+    assert clock["t"] == 40
+
+
+def test_query_execution_wait_zero_does_not_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_api_module, "_sleep", lambda s: pytest.fail("must not sleep"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503, headers={"Retry-After": "15"}, json={"code": "WORKFLOW_WORKER_STARTING"}
+        )
+
+    with pytest.raises(WorkflowWorkerStarting):
+        _client_with(handler).query_execution("e1", "status", wait=0)
+
+
+def test_query_execution_surfaces_query_errors() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json={"error": "nope", "code": "QUERY_NOT_DECLARED"})
+
+    with pytest.raises(PegasusApiError) as exc_info:
+        _client_with(handler).query_execution("e1", "secrets")
+    assert exc_info.value.code == "QUERY_NOT_DECLARED"
+
+
+def test_cancel_execution_by_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/workflow-executions/e1/cancel"
+        return httpx.Response(202, json={"data": {"id": "e1", "status": "RUNNING"}})
+
+    assert _client_with(handler).cancel_execution_by_id("e1")["status"] == "RUNNING"
+
+
+def test_terminate_execution_sends_the_reason() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            202, json={"data": {"id": "e1", "status": "CANCELLED", "errorMessage": "Terminated: x"}}
+        )
+
+    data = _client_with(handler).terminate_execution("e1", "x")
+    assert captured == {
+        "path": "/api/v1/workflow-executions/e1/terminate",
+        "body": {"reason": "x"},
+    }
+    assert data["status"] == "CANCELLED"
