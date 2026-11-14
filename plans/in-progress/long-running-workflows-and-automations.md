@@ -123,6 +123,12 @@ There is no invented "task" or "step" entity. A Workflow "waiting on a task"
 means it waits on a signal or on an Automation's result. It is not a new
 table.
 
+**Amended (Steve, 2026-11-14):** this still holds for machine steps, but a
+**human** task is a platform entity. A Workflow creates it and awaits it (the
+completion arrives as a signal); it is not Temporal state. Role queues,
+Cedar-checked completion, flow metrics and built-in tasks all need a queryable
+table. See `plans/todo/task-queue-and-activity-feed.md` (TQ-D2, TQ-D4).
+
 ### D3: The rebrand covers the concept and presentation only
 
 - **Renamed to "Automation":** tenant-web and admin-web labels, docs, the SDK
