@@ -64,6 +64,7 @@ import {
   startWorkflowExecution,
 } from '../lib/start-workflow-execution'
 import { declaredSignals, signalDurableExecution } from '../lib/signal-workflow-execution'
+import { executionHandle } from '../lib/workflow-execution-handle'
 import { signalBindingError } from '../lib/workflow-signal-routing'
 import {
   summarizeWorkflowHistory,
@@ -124,8 +125,9 @@ const RequirementSchema = z
   })
   .strict()
 
-/** A signal name a durable Workflow declares (a Python identifier: it names a @workflow.signal). */
-const SIGNAL_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
+/** A signal or query name a durable Workflow declares (a Python identifier:
+ * it names a @workflow.signal / @workflow.query). */
+export const SIGNAL_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
 
 const ManifestSchema = z
   .object({
@@ -219,6 +221,18 @@ const ManifestSchema = z
       )
       .max(50, { message: 'at most 50 signals may be declared' })
       .optional(),
+    // Query names a durable Workflow answers (its @workflow.query methods).
+    // POST /workflow-executions/:id/query runs only declared names, so this is
+    // also how the UI and agents discover what a Workflow can be asked.
+    // Workflow only.
+    queries: z
+      .array(
+        z.string().regex(SIGNAL_NAME_REGEX, {
+          message: 'each query must be a Python identifier (letters, digits, _; max 64)',
+        }),
+      )
+      .max(50, { message: 'at most 50 queries may be declared' })
+      .optional(),
     // How long one execution of a durable Workflow may live, in days (the
     // Temporal execution timeout). Workflow only; default 90, maximum 365.
     maxLifetimeDays: z
@@ -242,7 +256,7 @@ const ManifestSchema = z
       })
     }
     if (m.kind === 'automation') {
-      for (const field of ['maxLifetimeDays', 'signals'] as const) {
+      for (const field of ['maxLifetimeDays', 'signals', 'queries'] as const) {
         if (m[field] !== undefined) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -459,7 +473,7 @@ type WorkflowResponse = {
   updatedAt: string
 }
 
-type WorkflowExecutionResponse = {
+export type WorkflowExecutionResponse = {
   id: string
   tenantId: string
   workflowId: string
@@ -1566,10 +1580,7 @@ export async function requestCancelResponse(
     const temporalWorkflowId = execution.temporalWorkflowId
     await withTemporalClient(
       { tenantId: execution.tenantId, namespace: execution.temporalNamespace },
-      (client) =>
-        client.workflow
-          .getHandle(temporalWorkflowId, execution.temporalRunId ?? undefined)
-          .cancel(),
+      (client) => executionHandle(client, { ...execution, temporalWorkflowId }).cancel(),
     )
   } catch (err) {
     logger.error('Failed to cancel workflow execution', {

@@ -373,6 +373,12 @@
       "SignalWorkflowExecution": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
       },
+      "QueryWorkflowExecution": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
+      "TerminateWorkflowExecution": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
       "RunAutomationStep": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
       },

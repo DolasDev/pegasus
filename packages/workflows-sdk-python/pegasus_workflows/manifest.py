@@ -62,7 +62,8 @@ DEFAULT_MAX_LIFETIME_DAYS = 90
 MAX_LIFETIME_DAYS = 365
 
 #: Allowed signal names (a Python identifier: it names a ``@workflow.signal``).
-#: Mirrors the server's ``SIGNAL_NAME_REGEX``; at most 50 per workflow.
+#: Mirrors the server's ``SIGNAL_NAME_REGEX``; at most 50 per workflow. Query
+#: names follow the same rule (and the same cap).
 SIGNAL_NAME_REGEX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 MAX_SIGNALS = 50
 
@@ -144,9 +145,12 @@ class Manifest:
             from the TOML → use the platform default. Automations only.
         kind: ``"automation"`` (default) or ``"workflow"`` (durable; see
             :data:`KIND_WORKFLOW`).
-        signals: Signal names a durable Workflow accepts (declared now;
-            delivering signals into running Workflows comes later). Workflows
-            only; ``None`` when absent.
+        signals: Signal names a durable Workflow accepts (its
+            ``@workflow.signal`` methods). Workflows only; ``None`` when absent.
+        queries: Query names a durable Workflow answers (its
+            ``@workflow.query`` methods). The platform runs only declared
+            queries (``PegasusClient.query_execution``). Workflows only;
+            ``None`` when absent.
         max_lifetime_days: How long one execution of a durable Workflow may
             live, 1–365 days (default 90). Workflows only.
     """
@@ -162,6 +166,7 @@ class Manifest:
     timeout_seconds: int | None = None
     kind: str = KIND_AUTOMATION
     signals: list[str] | None = None
+    queries: list[str] | None = None
     max_lifetime_days: int | None = None
 
     @property
@@ -199,6 +204,8 @@ class Manifest:
             manifest["kind"] = self.kind
         if self.signals is not None:
             manifest["signals"] = list(self.signals)
+        if self.queries is not None:
+            manifest["queries"] = list(self.queries)
         if self.max_lifetime_days is not None:
             manifest["maxLifetimeDays"] = self.max_lifetime_days
         if diagram is not None:
@@ -270,6 +277,7 @@ def validate_manifest_fields(
     kind: object = None,
     signals: object = None,
     max_lifetime_days: object = None,
+    queries: object = None,
 ) -> None:
     """Validate raw manifest field values, raising :class:`ManifestError`.
 
@@ -286,6 +294,7 @@ def validate_manifest_fields(
             Automations only.
         kind: Optional ``"automation"`` (default) or ``"workflow"``.
         signals: Optional signal names (durable Workflows only).
+        queries: Optional query names (durable Workflows only).
         max_lifetime_days: Optional lifetime, 1–365 days (durable Workflows only).
 
     Raises:
@@ -327,11 +336,31 @@ def validate_manifest_fields(
             )
     _validate_requirements(required_secrets, "required_secrets")
     _validate_requirements(required_configs, "required_configs")
-    _validate_kind_fields(kind, signals, max_lifetime_days, timeout_seconds)
+    _validate_kind_fields(kind, signals, max_lifetime_days, timeout_seconds, queries)
+
+
+def _validate_handler_names(value: object, plural: str, singular: str) -> None:
+    """Validate a declared ``signals`` / ``queries`` list (Python identifiers, ≤ 50)."""
+    if value is None:
+        return
+    if not isinstance(value, list):
+        raise ManifestError(f"{plural} must be a list of strings when present")
+    if len(value) > MAX_SIGNALS:
+        raise ManifestError(f"at most {MAX_SIGNALS} {plural} may be declared")
+    for name in value:
+        if not isinstance(name, str) or not SIGNAL_NAME_REGEX.match(name):
+            raise ManifestError(
+                f"each {singular} must be a Python identifier (letters, digits, _; max 64) "
+                f"(got {name!r})"
+            )
 
 
 def _validate_kind_fields(
-    kind: object, signals: object, max_lifetime_days: object, timeout_seconds: object
+    kind: object,
+    signals: object,
+    max_lifetime_days: object,
+    timeout_seconds: object,
+    queries: object = None,
 ) -> None:
     """The ``kind`` rules (Phase 3c), mirroring the server's ManifestSchema.
 
@@ -349,22 +378,17 @@ def _validate_kind_fields(
             "max_lifetime_days instead"
         )
     if effective == KIND_AUTOMATION:
-        for field_name, value in (("max_lifetime_days", max_lifetime_days), ("signals", signals)):
+        for field_name, value in (
+            ("max_lifetime_days", max_lifetime_days),
+            ("signals", signals),
+            ("queries", queries),
+        ):
             if value is not None:
                 raise ManifestError(
                     f'{field_name} applies to durable Workflows only — set kind = "workflow"'
                 )
-    if signals is not None:
-        if not isinstance(signals, list):
-            raise ManifestError("signals must be a list of strings when present")
-        if len(signals) > MAX_SIGNALS:
-            raise ManifestError(f"at most {MAX_SIGNALS} signals may be declared")
-        for name in signals:
-            if not isinstance(name, str) or not SIGNAL_NAME_REGEX.match(name):
-                raise ManifestError(
-                    "each signal must be a Python identifier (letters, digits, _; max 64) "
-                    f"(got {name!r})"
-                )
+    _validate_handler_names(signals, "signals", "signal")
+    _validate_handler_names(queries, "queries", "query")
     if max_lifetime_days is not None:
         if not isinstance(max_lifetime_days, int) or isinstance(max_lifetime_days, bool):
             raise ManifestError(
@@ -400,6 +424,7 @@ def load_manifest(path: str | Path) -> list[Manifest]:
         # replay) instead of a one-shot Automation:
         kind = "workflow"                     # optional, defaults to "automation"
         signals = ["proceed"]                 # optional, Workflows only
+        queries = ["status"]                  # optional, Workflows only
         max_lifetime_days = 30                # optional, Workflows only (1-365, default 90)
         # timeout_seconds is for Automations only
 
@@ -443,6 +468,7 @@ def load_manifest(path: str | Path) -> list[Manifest]:
         required_configs = entry.get("required_configs")
         kind = entry.get("kind")
         signals = entry.get("signals")
+        queries = entry.get("queries")
         max_lifetime_days = entry.get("max_lifetime_days")
         validate_manifest_fields(
             name,
@@ -456,6 +482,7 @@ def load_manifest(path: str | Path) -> list[Manifest]:
             kind=kind,
             signals=signals,
             max_lifetime_days=max_lifetime_days,
+            queries=queries,
         )
         source_dir = entry.get("source_dir", name)
         if not isinstance(source_dir, str) or source_dir == "":
@@ -473,6 +500,7 @@ def load_manifest(path: str | Path) -> list[Manifest]:
                 timeout_seconds=timeout_seconds,
                 kind=kind if isinstance(kind, str) else KIND_AUTOMATION,
                 signals=list(signals) if isinstance(signals, list) else None,
+                queries=list(queries) if isinstance(queries, list) else None,
                 max_lifetime_days=max_lifetime_days,
             )
         )

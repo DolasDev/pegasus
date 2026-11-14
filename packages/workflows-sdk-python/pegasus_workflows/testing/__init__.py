@@ -196,6 +196,13 @@ _IGNORED: frozenset[str] = frozenset(
         "cancel_execution",
         "retry_execution",
         "signal_execution",
+        # Open-Workflow inspection by execution id (0.66.0): operator / CLI
+        # calls, never granted to a runtime token.
+        "list_workflow_executions",
+        "get_execution_by_id",
+        "query_execution",
+        "cancel_execution_by_id",
+        "terminate_execution",
         "fork_workflow",
         "retire_workflow",
         "list_workflows",

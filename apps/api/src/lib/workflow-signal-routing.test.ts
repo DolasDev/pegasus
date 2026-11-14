@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   correlatedTemporalWorkflowId,
+  correlationKeyOf,
   correlationPathError,
   extractCorrelationKey,
   signalBindingError,
@@ -105,5 +106,22 @@ describe('signalBindingError', () => {
     [{ ...start, signalName: 'other' }, durable, /not declared .*declared: order_event/],
   ])('refuses %#', (trigger, workflow, message) => {
     expect(signalBindingError(trigger, workflow)).toMatch(message)
+  })
+})
+
+describe('correlationKeyOf', () => {
+  it('reads the key back out of a keyed instance id', () => {
+    expect(correlationKeyOf(correlatedTemporalWorkflowId('t-1', 'order_lifecycle', 'o:42'))).toBe(
+      'o:42',
+    )
+  })
+
+  it.each([
+    ['a manual run id', 'wf/t-1/order_lifecycle/exec-1'],
+    ['null', null],
+    ['too few segments', 'wfl/t-1/order_lifecycle'],
+    ['an invalid key', 'wfl/t-1/order_lifecycle/has space'],
+  ])('is null for %s', (_label, id) => {
+    expect(correlationKeyOf(id)).toBeNull()
   })
 })

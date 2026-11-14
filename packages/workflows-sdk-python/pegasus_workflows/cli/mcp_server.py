@@ -443,6 +443,26 @@ runtime, so it can wait for days:
   does not block them. Undeclared name → 400 ``SIGNAL_NOT_DECLARED``; an
   Automation / closed / not-yet-started execution → 409
   ``EXECUTION_NOT_SIGNALLABLE``.
+- **Queries, listing, cancel, terminate** (SDK 0.66.0+), by execution id alone:
+  ``queries = ["status"]`` declares the ``@workflow.query`` methods; only declared
+  names run. ``PegasusClient.list_workflow_executions(name=None,
+  correlation_key=None)`` lists the tenant's OPEN Workflows (every version; each
+  row has ``correlationKey``, the event-routed business key); ``get_execution_by_id``
+  adds the version's declared ``signals`` / ``queries``;
+  ``query_execution(execution_id, "status", *args, wait=90)`` returns the query's
+  value. A query needs a live worker and the tenant's runner idle-exits: the API
+  wakes it and answers 503 ``WORKFLOW_WORKER_STARTING`` (Retry-After) until a
+  worker is up (30–60 s cold); ``query_execution`` waits that out, then raises
+  ``WorkflowWorkerStarting``. Don't poll queries on a timer. Errors: 422
+  ``QUERY_NOT_DECLARED`` / ``NOT_A_WORKFLOW`` / ``QUERY_FAILED`` (the method
+  raised) / ``QUERY_RESULT_TOO_LARGE``; 409 ``EXECUTION_NOT_QUERYABLE``.
+  ``cancel_execution_by_id`` is cooperative (the Workflow sees it and can clean
+  up); ``terminate_execution(execution_id, reason)`` is forcible — no more of its
+  code runs, the row closes as CANCELLED ``"Terminated: <reason>"``, and its open
+  ``run_automation`` steps are cancelled. Neither is blocked by the kill switch.
+  CLI: ``executions open | query | cancel | terminate``. Needs
+  ``QueryWorkflowExecution`` / ``CancelWorkflowExecution`` /
+  ``TerminateWorkflowExecution`` (``workflow_developer``).
 - **Event-routed signals** (SDK 0.61.0+): an EVENT trigger can deliver each
   matching event to ONE instance per business key instead of starting a run
   per event — ``create_trigger(wf_id, kind="EVENT", event_type=...,
@@ -737,6 +757,9 @@ def resource_reference_manifest() -> str:
         f"and ``signals`` (identifiers matching ``{SIGNAL_NAME_REGEX.pattern}``, at most 50).\n"
         "``signals`` names the ``@workflow.signal`` methods; only declared names can be\n"
         "delivered (``PegasusClient.signal_execution`` / ``executions signal``).\n"
+        "``queries`` (same rules, SDK 0.66.0+) names the ``@workflow.query`` methods;\n"
+        "only declared names can be run (``PegasusClient.query_execution`` /\n"
+        "``executions query``).\n"
         "A Workflow runs an Automation as a step with ``await run_automation(name, input)``\n"
         "(SDK 0.65.0+); nothing in the manifest declares it.\n"
         "Each kind's fields are refused on the other kind.\n\n"

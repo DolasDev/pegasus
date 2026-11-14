@@ -260,6 +260,23 @@ export const Actions = {
     resourceType: 'Workflow',
     permission: 'workflow:signal_execution',
   },
+  // Run a declared @workflow.query on an open durable Workflow
+  // (POST /workflow-executions/:id/query). Read-only by Temporal's contract,
+  // but it runs tenant code and wakes the tenant's runner, so it is a
+  // developer grant, not a viewer read. Never on workflow_runtime.
+  QueryWorkflowExecution: {
+    id: 'QueryWorkflowExecution',
+    resourceType: 'Workflow',
+    permission: 'workflow:query_execution',
+  },
+  // Forcibly end a run on Temporal (POST /workflow-executions/:id/terminate):
+  // the Workflow's code gets no chance to clean up, unlike cancel. Recorded as
+  // CANCELLED with "Terminated: <reason>". Never on workflow_runtime.
+  TerminateWorkflowExecution: {
+    id: 'TerminateWorkflowExecution',
+    resourceType: 'Workflow',
+    permission: 'workflow:terminate_execution',
+  },
   // A durable Workflow's runtime token starting / polling / cancelling an
   // Automation step (handlers/automation-steps.ts). Granted only to
   // workflow_runtime; the handler further requires the CALLER to be a

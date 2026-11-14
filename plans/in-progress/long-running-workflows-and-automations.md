@@ -12,25 +12,24 @@
   exists today as **Automations**: short sandboxed runs that fire on their own
   from triggers or run as steps called by a Workflow.
 - **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 done (2026-11-05: 3b.1, 3b.2 #855, legacy runner retired #919, 3c.1 #924, 3c.2; plan `plans/completed/7d167652-durable-workflow-worker.md`, follow-ups `plans/todo/durable-workflows-3c-followups.md`). Phase 4 in progress: signal delivery #943/#944 (+ #953) and `run_automation()`
-  steps #957 + #958 (SDK 0.65.1, staging-accepted 2026-11-12) are DONE. Left:
-  open-Workflow list/query/terminate surfaces, and the tenant-web Workflows
-  section.
+  steps #957 + #958 (SDK 0.65.1, staging-accepted 2026-11-12) are DONE, and
+  so are the open-Workflow list/query/cancel/terminate surfaces
+  (`feat/workflow-instance-surfaces`, SDK 0.66.0). Left: the tenant-web
+  Workflows section.
 
-## Resume here (2026-11-13)
+## Resume here (2026-11-14)
 
-- **Where:** nothing is in a worktree. `main` @ `a5f700cb` (#959), plus the
-  plans-only PR that added this section. No open PR for this plan.
-- **Next action:** draft a plan for the next Phase 4 item, "API and SDK
-  surfaces: list open Workflows, run a Workflow's query (status), cancel or
-  terminate" (§4, Phase 4 checklist). Put the Cedar / route / SDK / OpenAPI /
-  CLI decisions to Steve, then `/workstream-start feat <slug> <plan>`. After
-  that comes the tenant-web Workflows section, which can then link a step's
-  "Workflow step" badge to its parent execution; today the parent id is only
-  a tooltip, because no route opens an execution by id alone.
-- **In flight:** nothing. #957 (`9d66eced`), #958 (`bc929c91`) and #959
-  (`a5f700cb`) are merged and deployed. `sdk-python-v0.65.0` and `-v0.65.1`
-  are on PyPI. The authoring repo `pegasus-workflows` is at `f5ef317`
-  (pin 0.65.1).
+- **Where:** the list/query/cancel/terminate surfaces land in the
+  `feat/workflow-instance-surfaces` PR (archived plan
+  `plans/completed/f4a4de71-workflow-instance-surfaces.md`). Its release steps
+  and staging acceptance are in `plans/todo/workflow-instance-surfaces-followups.md`.
+- **Next action:** once that acceptance passes, draft a plan for the last Phase
+  4 item, the tenant-web Workflows section (§4). It lists open instances via
+  `GET /api/v1/workflow-executions`, opens one by id (`GET
+/workflow-executions/:id`, which also returns the declared `signals` /
+  `queries`), and links a step's "Workflow step" badge to its parent.
+  **Don't poll queries on a timer**: each one wakes the tenant runner. Run
+  one when the page opens or on refresh.
 - **Owed:** eyeball the tenant-web "Workflow step" badge (AVP Smoke) the next
   time a step runs. It wasn't seen in that session (no browser); the API
   fields it renders from (`triggerSource: "WORKFLOW"`, `parentExecutionId`)
@@ -462,9 +461,14 @@ Done 2026-09-29. Evidence, transcripts and probe scripts are in
       routes `/api/v1/automation-steps` (not `POST /:id/run`, so Automations
       can't start each other), polled with heartbeats, idempotent on the
       calling activity. Plan: `plans/completed/df49a7ef-workflow-automation-steps.md`.
-- [ ] API and SDK surfaces: list open Workflows, run a Workflow's query
+- [x] API and SDK surfaces: list open Workflows, run a Workflow's query
       (status), cancel or terminate. Add Cedar actions for these (Cedar
       schema, `actions.ts` and persona files are hot files).
+      **Done** (`feat/workflow-instance-surfaces`, SDK 0.66.0): routes
+      `/api/v1/workflow-executions`, manifest `queries`, Cedar
+      `QueryWorkflowExecution` / `TerminateWorkflowExecution`; cancel fixed to
+      address the chain (`firstExecutionRunId`). Plan:
+      `plans/completed/f4a4de71-workflow-instance-surfaces.md`.
 - [x] Execution rows: give `WORKFLOW`-kind executions their own state (open
       or closed), keep them out of `TENANT_RUNNER_CONCURRENCY_CAP`, and add
       a per-tenant cap on open Workflows.

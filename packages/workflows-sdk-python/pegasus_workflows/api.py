@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import os
+import time
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
@@ -218,6 +219,30 @@ class WorkflowVersionStarting(PegasusApiError):
     """
 
     retry_after_seconds: int | None = None
+
+
+@dataclass
+class WorkflowWorkerStarting(PegasusApiError):
+    """No worker answered a query yet: the tenant's runner is starting (HTTP 503).
+
+    Raised by :meth:`PegasusClient.query_execution` with ``code``
+    ``"WORKFLOW_WORKER_STARTING"`` (0.66.0+) once its ``wait`` is spent. A
+    query is answered by the tenant's worker, which exits when idle; the API
+    wakes it on every query, and a cold start takes 30–60 s. Transient: retry
+    after ``retry_after_seconds``.
+
+    Attributes:
+        retry_after_seconds: From the ``Retry-After`` header (15 today), or
+            ``None`` if the server sent none.
+    """
+
+    retry_after_seconds: int | None = None
+
+
+#: Indirections so tests can drive :meth:`PegasusClient.query_execution`'s wait
+#: without sleeping.
+_sleep = time.sleep
+_monotonic = time.monotonic
 
 
 @dataclass
@@ -900,6 +925,169 @@ class PegasusClient:
             response = client.post(
                 f"/api/v1/workflows/{workflow_id}/executions/{execution_id}/signal",
                 json=body,
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    # -- open Workflows by execution id (0.66.0) ----------------------------
+
+    def list_workflow_executions(
+        self,
+        *,
+        kind: str = "WORKFLOW",
+        open: bool | None = None,  # noqa: A002 - mirrors the API's query param
+        name: str | None = None,
+        correlation_key: str | None = None,
+        limit: int = 50,
+        before: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List executions tenant-wide — by default the OPEN durable Workflows (0.66.0+).
+
+        Spans every version of every workflow, newest first. Each row is the
+        execution plus ``kind`` and ``correlationKey`` (the business key of an
+        event-routed instance; ``None`` for a manual run). Requires
+        ``ReadWorkflow`` (any tenant role).
+
+        Args:
+            kind: ``"WORKFLOW"`` (default) or ``"AUTOMATION"``.
+            open: Only QUEUED / RUNNING rows. ``None`` lets the server default:
+                open-only for Workflows, everything for Automations.
+            name: Only this workflow name.
+            correlation_key: With ``name``, the one instance of that key.
+            limit: Page size (1..200; default 50).
+            before: The last row's ``id`` from the previous page.
+
+        Returns:
+            A list of execution dicts.
+        """
+        params: dict[str, Any] = {"kind": kind}
+        if open is not None:
+            params["open"] = "true" if open else "false"
+        if name is not None:
+            params["name"] = name
+        if correlation_key is not None:
+            params["correlationKey"] = correlation_key
+        params["limit"] = limit
+        if before:
+            params["before"] = before
+        return self._get_json("/api/v1/workflow-executions", **params)["data"]
+
+    def get_execution_by_id(self, execution_id: str) -> dict[str, Any]:
+        """Fetch one execution by id alone (0.66.0+).
+
+        Includes ``kind``, ``correlationKey`` and, for a durable Workflow, the
+        ``signals`` and ``queries`` its version declares — what you can send it
+        and ask it.
+
+        Raises:
+            PegasusApiError: 404 (not in the caller's tenant).
+        """
+        return self._get_json(f"/api/v1/workflow-executions/{execution_id}")["data"]
+
+    def query_execution(
+        self,
+        execution_id: str,
+        name: str,
+        *args: Any,
+        wait: float = 90.0,
+    ) -> Any:
+        """Run a declared ``@workflow.query`` on an open durable Workflow (0.66.0+).
+
+        ``name`` must be one of the queries the execution's Workflow version
+        declares (manifest ``queries``); ``args`` are passed to the query method
+        positionally. A query is answered by the tenant's worker, which exits
+        when idle: the API wakes it, and until it answers the API replies 503
+        ``WORKFLOW_WORKER_STARTING``. This method waits that out, sleeping the
+        server's ``Retry-After`` between tries, for up to ``wait`` seconds.
+
+        A query is read-only and isn't blocked by the kill switch, but each one
+        wakes the runner — don't poll on a timer. Requires
+        ``QueryWorkflowExecution`` (the ``workflow_developer`` role).
+
+        Args:
+            execution_id: The QUEUED / RUNNING durable Workflow execution.
+            name: The declared query name.
+            *args: Query arguments (JSON values; ≤ 20, ≤ 128 KiB).
+            wait: Seconds to keep retrying while the worker starts; ``0`` makes
+                one attempt.
+
+        Returns:
+            The query method's return value.
+
+        Raises:
+            WorkflowWorkerStarting: No worker answered within ``wait``.
+            PegasusApiError: 422 ``QUERY_NOT_DECLARED`` (the message lists the
+                declared names), ``NOT_A_WORKFLOW``, ``QUERY_FAILED`` (the query
+                method raised; its message is included) or
+                ``QUERY_RESULT_TOO_LARGE``; 409 ``EXECUTION_NOT_QUERYABLE``
+                (closed, not started, or gone); 404; 502.
+        """
+        deadline = _monotonic() + max(wait, 0.0)
+        while True:
+            with self._client() as client:
+                response = client.post(
+                    f"/api/v1/workflow-executions/{execution_id}/query",
+                    json={"name": name, "args": list(args)},
+                )
+            if response.status_code != 503:
+                _raise_for_status(response)
+                return response.json()["data"]["result"]
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
+            if not isinstance(body, dict) or body.get("code") != "WORKFLOW_WORKER_STARTING":
+                _raise_for_status(response)
+            retry_after = response.headers.get("Retry-After")
+            retry_seconds = int(retry_after) if retry_after and retry_after.isdigit() else None
+            remaining = deadline - _monotonic()
+            if remaining <= 0:
+                raise WorkflowWorkerStarting(
+                    status_code=503,
+                    code="WORKFLOW_WORKER_STARTING",
+                    message=body.get("error") if isinstance(body, dict) else None,
+                    retry_after_seconds=retry_seconds,
+                )
+            _sleep(min(retry_seconds or 15, remaining))
+
+    def cancel_execution_by_id(self, execution_id: str) -> dict[str, Any]:
+        """Request a cooperative cancel of an execution by id alone (0.66.0+).
+
+        Same as :meth:`cancel_execution` without the workflow id. The Workflow's
+        code sees the cancellation and decides what to do; the row turns
+        CANCELLED once Temporal reports it. Requires ``CancelWorkflowExecution``.
+
+        Raises:
+            PegasusApiError: 404; 409 ``EXECUTION_NOT_CANCELLABLE``; 502.
+        """
+        with self._client() as client:
+            response = client.post(f"/api/v1/workflow-executions/{execution_id}/cancel")
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def terminate_execution(self, execution_id: str, reason: str) -> dict[str, Any]:
+        """Forcibly end an execution (0.66.0+).
+
+        Unlike :meth:`cancel_execution_by_id`, none of the run's code runs again.
+        The row closes at once as CANCELLED with ``errorMessage``
+        ``"Terminated: <reason>"``, and a terminated Workflow's open
+        ``run_automation()`` steps are cancelled too. Works on Automations as
+        well. Requires ``TerminateWorkflowExecution`` (the ``workflow_developer``
+        role).
+
+        Args:
+            execution_id: The QUEUED / RUNNING execution.
+            reason: Why (1–500 chars); recorded on Temporal and on the row.
+
+        Raises:
+            PegasusApiError: 400 (no reason); 404; 409
+                ``EXECUTION_NOT_TERMINABLE`` (already closed, not started, or
+                gone); 502.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/workflow-executions/{execution_id}/terminate",
+                json={"reason": reason},
             )
         _raise_for_status(response)
         return response.json()["data"]

@@ -7,7 +7,9 @@
 // CancelWorkflowExecution + RetryWorkflowExecution let a developer drive
 // executions from the tenant UI (cancel a stuck run, retry a failed one).
 // SignalWorkflowExecution lets a developer deliver a signal to a running
-// durable Workflow (SDK / CLI).
+// durable Workflow (SDK / CLI). QueryWorkflowExecution runs a declared query on
+// one (it wakes the tenant's runner, so it is not a viewer read), and
+// TerminateWorkflowExecution forcibly ends a run (/workflow-executions).
 // ManageEventTypes
 // lets a developer register the custom event types their workflows trigger on.
 // ManageWorkflowSecrets/ManageWorkflowConfigs let a developer publish the
@@ -24,6 +26,8 @@ permit (
     Pegasus::Action::"CancelWorkflowExecution",
     Pegasus::Action::"RetryWorkflowExecution",
     Pegasus::Action::"SignalWorkflowExecution",
+    Pegasus::Action::"QueryWorkflowExecution",
+    Pegasus::Action::"TerminateWorkflowExecution",
     Pegasus::Action::"ManageEventTypes",
     Pegasus::Action::"ManageWorkflowSecrets",
     Pegasus::Action::"ManageWorkflowConfigs",

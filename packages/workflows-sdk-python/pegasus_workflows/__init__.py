@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         WorkflowInUse,
         WorkflowStateConflict,
         WorkflowVersionStarting,
+        WorkflowWorkerStarting,
     )
     from .manifest import Manifest, ManifestError, load_manifest
     from .steps import AutomationStepFailed, run_automation
@@ -55,6 +56,7 @@ __all__ = [
     "TenantNamespaceProvisioning",
     "TenantNamespaceUnavailable",
     "WorkflowVersionStarting",
+    "WorkflowWorkerStarting",
     "TaskAmbiguous",
     "Manifest",
     "ManifestError",
@@ -80,6 +82,7 @@ _LAZY_EXPORTS = {
     "TenantNamespaceProvisioning": "api",
     "TenantNamespaceUnavailable": "api",
     "WorkflowVersionStarting": "api",
+    "WorkflowWorkerStarting": "api",
     "TaskAmbiguous": "api",
     "Manifest": "manifest",
     "ManifestError": "manifest",
