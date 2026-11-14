@@ -3959,3 +3959,27 @@ that no request carries `thread` and that round 2 has all three messages. Keep b
 whenever you touch the loop or bump the SDK. The scripted provider
 (`lib/inference/fake.ts`, a real `Anthropic` client over a fake `fetch`) is what made
 this visible, because it records the actual request bodies.
+
+## A Temporal query with no worker HANGS ~29 s, and a raising query handler looks like "not registered"
+
+Probed against a dev server (2026-11-14, `temporalio` server via
+`WorkflowEnvironment.start_local`, `@temporalio/client` from `apps/api`) while
+building `POST /workflow-executions/:id/query`:
+
+- **No poller is not a fast failure.** A query on a task queue with no worker
+  waits ~29–30 s, then fails with gRPC 4 `query timed out before a worker could
+process it` (a queue that never had a poller) or gRPC 9 `no poller seen for
+task queue recently` (a worker that left). That is longer than API Gateway's
+  29 s, and the tenant runner idle-exits, so a query route MUST bound it itself:
+  `client.connection.withDeadline(Date.now() + 8000, () => handle.query(…))`.
+  It then fails at ~7–8 s as a `ServiceError` whose `cause` is gRPC 1
+  (CANCELLED) or 9. `handlers/workflow-executions.ts` maps codes 1/4/9 to 503
+  `WORKFLOW_WORKER_STARTING` and wakes the runner alongside the query, not after.
+- **`QueryNotRegisteredError` means "the query failed", not only "unknown
+  name".** The TS client reports a query handler that RAISED (gRPC
+  INVALID_ARGUMENT) with that same class; the message is the handler's. Map
+  the class to "query failed + message", never to "not declared". (Our route
+  refuses undeclared names itself, from the manifest's `queries`.)
+- A probe that runs the TS client with a blocking `subprocess.run` inside the
+  Python worker's event loop starves the worker, so every query "times out".
+  Use `asyncio.create_subprocess_exec`.

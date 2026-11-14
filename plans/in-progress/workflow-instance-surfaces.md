@@ -11,6 +11,39 @@
   supplies the "open an execution by id alone" route that the tenant-web
   Workflows section (the next item) needs to link a step's badge to its parent.
 - **Status:** Approved 2026-11-13 (all four decisions → the recommended option).
+  DONE in this PR (2026-11-14). After merge: tag `sdk-python-v0.66.0`, then
+  staging acceptance (see the checklist).
+
+## Resume here (2026-11-14)
+
+Code, tests and docs are done and green locally: API vitest 5299+ (incl.
+`handlers/workflow-executions.test.ts`, 35 real-Postgres tests with real
+Cedar), typecheck and eslint clean; SDK pytest 641, ruff clean.
+
+**Deviations from the design below (all small):**
+
+- **The step cascade runs on terminate only, not on cancel.** On a cooperative
+  cancel the Workflow's own `run_automation` activity cancels its step
+  (`WAIT_CANCELLATION_COMPLETED`), and the Workflow may deliberately shield a
+  step. A cascade would override that choice. Terminate gives the activity no
+  hook, so it cascades there.
+- `FakeClient` gets no stubs for the five new client methods. They're listed in
+  `_IGNORED` (operator/CLI calls a runtime token can't make), like
+  `signal_execution`. The anti-drift test requires every method to be
+  classified.
+- No manifest-vs-`@workflow.query` warning in `package`: nothing similar exists
+  for signals to mirror.
+- The helper is named `executionHandle` (`lib/workflow-execution-handle.ts`), not
+  `durableHandle`, because it also addresses Automations (the terminate cascade).
+  The history route stays pinned to the first run on purpose: it shows that
+  run's real history.
+- Query result over 256 KiB → **422** `QUERY_RESULT_TOO_LARGE` (not 413: it's
+  the response that's too big, not the request).
+- Reconciler: no new test. Every reconciler write is already conditional on
+  `status: 'RUNNING'` / `'QUEUED'`, so a row that terminate closed is never
+  touched (verified by reading `lambda-reconcile-workflow-executions.ts`).
+- The SDK client method is `list_workflow_executions(kind="WORKFLOW", …)`, not
+  `list_open_workflows`: the same route also lists Automation runs.
 
 ## What exists today (verified on `main` @ `cb273cfd`)
 
@@ -190,23 +223,24 @@ wait=timedelta(seconds=90))` (retries 503 `WORKFLOW_WORKER_STARTING`),
 
 ## Checklist
 
-- [ ] Probe: TS client query with no poller (dev server); record in GOTCHAS.md
-- [ ] `durableHandle` helper + cancel `firstExecutionRunId` fix (failing test first)
-- [ ] Manifest `queries` (API schema + SDK) + publish-time validation tests
-- [ ] Cedar: two actions, persona grants, policy tests
-- [ ] `workflow-executions.ts` router + mount + real-Postgres integration tests:
+- [x] Probe: TS client query with no poller (dev server); record in GOTCHAS.md
+- [x] `executionHandle` helper + cancel `firstExecutionRunId` fix (failing test first)
+- [x] Manifest `queries` (API schema + SDK) + publish-time validation tests
+- [x] Cedar: two actions, persona grants; grant/non-grant tests in the router suite
+- [x] `workflow-executions.ts` router + mount + real-Postgres integration tests:
       tenant isolation (404), kind/open/name/correlationKey filters, cursor
       paging, by-id read, query (undeclared → 422, closed → 409, Automation →
       422, no worker → 503 + Retry-After, handler error → 422), cancel by id,
       terminate (reason required, terminal → 409, cascade cancels open steps,
       row closed), kill switch ON doesn't block any of them
-- [ ] Reconciler: an already-terminal row is left alone (test)
-- [ ] OpenAPI registration
-- [ ] SDK client + FakeClient + CLI + README + MCP + CHANGELOG, bump 0.66.0, pytest
-- [ ] Runner: no change expected (queries are served by the existing worker). Confirm.
+- [x] Reconciler: an already-terminal row is left alone (by reading; see deviations)
+- [x] OpenAPI registration
+- [x] SDK client + FakeClient (`_IGNORED`) + CLI + README + MCP + CHANGELOG, bump 0.66.0, pytest
+- [x] Runner: no change. Temporal answers queries from the workflow class itself;
+      staging acceptance confirms it end to end.
 - [ ] `/security-review` (parent plan §5: every Phase 4 PR)
 - [ ] Parent plan: tick the Phase 4 checklist item; update "Resume here"
-- [ ] DECISIONS.md entry; GOTCHAS.md (query-with-no-poller finding)
+- [x] DECISIONS.md entry; GOTCHAS.md (query-with-no-poller finding)
 - [ ] After merge: tag `sdk-python-v0.66.0`; staging acceptance on AVP Smoke
       (list → query while the runner sleeps → 503 then answer → terminate →
       the step cascade)
