@@ -9,9 +9,9 @@
 ## Resume here (2026-11-14)
 
 - **Next action:** start Phase 1 (driver To Do, computed when it's read) in a fresh `feat/` worktree. It needs nothing from legacy and nothing from Workflows.
-- **In parallel, two prerequisites unrelated to Phase 1:**
-  - Fix the **QMM task-list 500** (§Findings F7). Prerequisite for any QMM switchover; it also breaks SDK `list_tasks(order_id=…)` on QMM today.
-  - Ask Steve to run the **SQL measurement script** on PegNW (§Findings, "Still unmeasured"). Needed before Phase 4's NW import, not before.
+- **In parallel, unrelated to Phase 1:**
+  - The **QMM task-list 500** fix is landed on movemanager `dev` (`3d31b955`, 2026-11-14) but **not yet on QMM's site**, which runs `2026.11.12.1`, older than every channel. Once QMM's `/version` moves past it, re-run the per-order task probe (§2 method).
+  - Measurement is done for all three sites (§2 "cross-site"). Only the NW interview is still owed: _"Which reports do you open every day?"_
 - **Long-running Workflows:** its Phase 4 is done except the tenant-web section, with signal triggers, `run_automation` and list/query/cancel shipped (SDK 0.66.0). Phase 3 here depends on it and is unblocked.
 
 ---
@@ -95,15 +95,39 @@
   - ⇒ Definitions need an **"applies when"** condition over order state, plus **auto-cancel when the task no longer applies.**
 - **F3. Overdue tasks are concentrated in checks the platform could verify.** 83% of the 3,008 overdue tasks are _CONFIRM ACTUALS WITH PVO AND UPDATE SYSTEMS_ (839), _CONFIRM OA SERVICES_ (801) and _CHECK DELIVERY ETA_ (695). ⇒ These are the first **auto-satisfied** definitions for the NW coordinator pilot.
 - **F4. The legacy list is untrustworthy as a queue.** 6,560 open tasks sit on delivered orders. Some assignees hold 500+ overdue tasks each (codes 1603, 2213, 1217), probably people who left, since legacy freezes the assignee at creation. ⇒ Role queues + reassignment.
-- **F5. Unexplained: `USRDEF` tasks repeat the template titles** (e.g. "INTRO CALL-UPDATE ACCOUNT" 910×) and 95% are closed. Possibly a copy/rebuild path or a team's private checklist. **Ask NW before designing the import.**
+- **F5. `USRDEF` tasks repeat the template titles** (e.g. "INTRO CALL-UPDATE ACCOUNT" 910×) and 95% are closed. **Answered below:** most carry a `master_id`, so they are template-derived.
 - **F6. Tasks are used as a log.** About 5,000 `USRDEF` tasks carry pasted email bodies. That need belongs to Activity / memos, not tasks; don't import it as tasks.
-- **F7 — ROOT CAUSE FOUND 2026-11-14:** PegQMM's `Tasks.task_coord_id` is `smallint` (NW and RVS use `int`), and movemanager `ApiTaskRepository.ReadViews` called `GetInt32` on it. Fixed on movemanager branch `fix/qmm-task-coord-smallint` (worktree `~/repos/movemanager-qmm-task-smallint`), not yet landed on `dev`. After the site update, re-run the probe. Original symptom: **QMM's `GET /orders/{n}/tasks` returns 500 for every order** (site 2026.11.12.1, which advertises `pegii.tasks.v1`). It failed on 25 of 25 orders before the probe stopped. Not yet diagnosed; suspected missing `pegasus_api_task_meta` or `Tasks` column drift on pegQMM. Prerequisite for any QMM switchover; fix it independently.
+- **F7 — ROOT CAUSE FOUND 2026-11-14:** PegQMM's `Tasks.task_coord_id` is `smallint` (NW and RVS use `int`), and movemanager `ApiTaskRepository.ReadViews` called `GetInt32` on it. Fixed with a new `[SqlServerFact]` test on a smallint schema. Landed on movemanager `dev` as `3d31b955` (2026-11-14). After QMM's site update, re-run the probe. Original symptom: **QMM's `GET /orders/{n}/tasks` returned 500 for every order** (site 2026.11.12.1, which advertises `pegii.tasks.v1`); it failed on 25 of 25 orders before the probe stopped. `GET /tasks?taskType=` returned 200 `[]`, which ruled out a missing sidecar.
 - **Read-only SQL path (found 2026-11-14):** the prod in-VPC `mssql-executor` Lambda (`pegasus-prod-wireguard-MssqlExecutorFn…`) runs SQL against a tenant's legacy DB, using `tenants.mssql_connection_string`. The items below can be measured through it without Steve running anything: SELECT-only; adapt the script's `DECLARE`/`EXEC` parts.
-- **Still unmeasured (needs the SQL script** at session scratchpad `legacy-task-usage.sql`; re-create it from §1–3 of the measurement design if the scratchpad is gone):
-  - template selectors and base dates (`mastertasks`);
-  - hand-edited due dates (`did_edit_target`);
-  - the bodies of `sp_task_coord`, `sp_task_ops`, `sp_task_noncompleted`, `sp_task_ALL` and `TriggerTasksUpdate`. They differ per site and their filters become the first role-queue rules.
-  - Also ask NW coordinators/ops: _"Which reports do you open every day to know what to work on?"_
+- **Template selectors, hand-edited dates, report procs and triggers:** measured through that path at NW, QMM and RVS (next section). Still owed: the NW interview, _"Which reports do you open every day to know what to work on?"_
+
+### Template structure, reports and triggers, measured at all three sites (2026-11-14)
+
+**Method:** read-only SQL through the prod `mssql-executor` Lambda (§2 "Read-only SQL path"). Tasks due in the last 90 days.
+
+|                                            | NW                                     | QMM                           | RVS       |
+| ------------------------------------------ | -------------------------------------- | ----------------------------- | --------- |
+| Active templates (distinct titles)         | 215 (90)                               | 564 (158)                     | 277 (118) |
+| Owning roles                               | CSR 189, OPS 25, BOTH 1                | CSR 456, OPS 93, BOTH 9, FC 6 | CSR 277   |
+| Selectors constrained per template         | mostly 3 (move type, shipment type, …) | 3–4                           | mostly 2  |
+| Account-specific templates                 | 4                                      | 0                             | 0         |
+| Completion of template tasks due (by role) | CSR 94%, **OPS 26%**                   | CSR 98%, OPS 99%, FC 92%      | CSR 72%   |
+| Template due dates edited by hand          | 0                                      | 0                             | 0         |
+
+- **F5 answered.** The "hand-added" `USRDEF` tasks are mostly **template-generated**: they carry a `master_id` (NW 19,864 of 24,162 in the window; QMM 8,639 of 9,146; RVS 1,721 of 1,932). Only the rest are truly hand-added.
+  - Because their code is `USRDEF`, `FormSupport.UpdateTasks` **never re-dates them**: their due date is frozen when they're created.
+  - Which desktop path writes them is still unknown (a candidate is `TaskListEditUserControl`'s new-row path). The import must treat "has `master_id`" as template-derived, regardless of `code`.
+- **NW's OPS role doesn't work its tasks** (26% completion). That's where F3's overdue tasks concentrate (CONFIRM ACTUALS WITH PVO, CONFIRM OA SERVICES). QMM's OPS completes 99%, so this is NW-specific. That makes it a better pilot candidate than NW coordinators: the gain is largest, and the tasks are the auto-verifiable kind.
+- **The legacy queue reports are simple:**
+  - `sp_task_coord` / `sp_task_ops` / `sp_task_ALL` = one employee's open tasks with `target_date <= @EndDate`, filtered by `coordinator_type`.
+  - `sp_task_noncompleted` = everyone's open tasks (the manager view).
+  - All four **inner-join `mastertasks`**, so tasks without a `master_id` never appear in any report.
+  - A cloud role queue (my open / role open / overdue) is a strict superset. No hidden business rules to port.
+- **`TriggerTasksUpdate` turns task completion into data entry; port it or switchover breaks.** It fires on an `UPDATE` of `was_completed` by an employee (`completed_by <> 0`):
+  - **QMM / RVS:** completing a template task with `call_type` PACK / LOAD / DEL / SITOUT stamps `sales.<x>_actual` = the planned date. Closing a task records the actual.
+  - **NW:** DEPART / ARRIVE / UNPACK stamp `etd_date` / `eta_date` / `unpack_actual`, and **3 task→task chains** set the next template's `target_date = today` when a predecessor completes (master ids 108→335, 154→336, …). This is sequencing logic living in a trigger.
+  - ⇒ Phase 4: a cloud task's completion must perform the same order write (or its definition is "satisfied when the actual exists", reversing the direction). The chains become Workflow sequencing.
+  - ⇒ **Hazard today:** SDK `close_task` on such a task with a non-zero `completed_by` (the company's `systemEmployeeCode`) fires the same writes. Pulse only closes its own `Pulse Follow-Up` tasks (no `call_type`), so it's safe now. Document this on `close_task` before anyone closes template tasks from a Workflow.
 
 ### Legacy model being ported (movemanager, read-only reference)
 
@@ -175,7 +199,7 @@ Each phase is one `feat/` worktree and one PR (plan and code together). YAGNI ap
 - [ ] **tenant-web:** a task-definition editor for ops leads (list, edit due offset / role / applies-when params, version history).
 - [ ] **`workflows-stdlib`:** a default longhaul Workflow + definition set as the baseline tenants customize (answers long-running open question 4).
 
-### Phase 4: Web role queues + NW coordinator switchover pilot
+### Phase 4: Web role queues + NW switchover pilot (OPS is now the stronger candidate than coordinators; see the cross-site findings)
 
 - [ ] **movemanager (separate plan in that repo):**
   - Remove the `ApiTaskTypes` allowlist.
@@ -232,7 +256,7 @@ Each phase is one `feat/` worktree and one PR (plan and code together). YAGNI ap
 
 ## 6. Open questions
 
-1. F5: why NW's `USRDEF` tasks repeat the template titles (ask NW).
+1. ~~F5~~ answered (template-derived `USRDEF` rows carry a `master_id`). Open: which desktop path writes them.
 2. Does an office-scanned BOL (legacy imaging) count as done for `submit-bol`? v1: cloud documents only.
 3. Which roles see a driver's Blocked task: the order's coordinator, operations, or a configurable role?
 4. Is "WorkItem" an internal name only? The proposal is that users and the SDK always say "task".
