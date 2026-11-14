@@ -238,8 +238,9 @@ wait=timedelta(seconds=90))` (retries 503 `WORKFLOW_WORKER_STARTING`),
 - [x] SDK client + FakeClient (`_IGNORED`) + CLI + README + MCP + CHANGELOG, bump 0.66.0, pytest
 - [x] Runner: no change. Temporal answers queries from the workflow class itself;
       staging acceptance confirms it end to end.
-- [ ] `/security-review` (parent plan §5: every Phase 4 PR)
-- [ ] Parent plan: tick the Phase 4 checklist item; update "Resume here"
+- [x] `/security-review` (parent plan §5: every Phase 4 PR): no findings. Its one
+      defence-in-depth note was applied: `markTerminatedIfOpen` also filters on `tenantId`.
+- [x] Parent plan: tick the Phase 4 checklist item; update "Resume here"
 - [x] DECISIONS.md entry; GOTCHAS.md (query-with-no-poller finding)
 - [ ] After merge: tag `sdk-python-v0.66.0`; staging acceptance on AVP Smoke
       (list → query while the runner sleeps → 503 then answer → terminate →

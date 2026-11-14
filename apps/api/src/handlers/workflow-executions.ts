@@ -433,7 +433,7 @@ workflowExecutionsHandler.post(
     }
 
     const repo = createWorkflowExecutionRepository(c.get('db'))
-    const closed = await repo.markTerminatedIfOpen(execution.id, {
+    const closed = await repo.markTerminatedIfOpen(execution.id, tenantId, {
       errorMessage: `Terminated: ${reason}`,
       finishedAt: new Date(),
     })

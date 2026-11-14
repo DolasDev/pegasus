@@ -293,10 +293,11 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
      */
     async markTerminatedIfOpen(
       executionId: string,
+      tenantId: string,
       input: { errorMessage: string; finishedAt: Date },
     ): Promise<WorkflowExecutionRow | null> {
       await db.workflowExecution.updateMany({
-        where: { id: executionId, status: { in: ['QUEUED', 'RUNNING'] } },
+        where: { id: executionId, tenantId, status: { in: ['QUEUED', 'RUNNING'] } },
         data: {
           status: 'CANCELLED',
           finishedAt: input.finishedAt,
@@ -304,7 +305,7 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
         },
       })
       return db.workflowExecution.findFirst({
-        where: { id: executionId },
+        where: { id: executionId, tenantId },
         select: EXECUTION_SELECT,
       })
     },
