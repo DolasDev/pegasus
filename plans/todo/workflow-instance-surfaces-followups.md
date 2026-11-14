@@ -5,7 +5,7 @@
   fails.
 - **Goal:** finish what the `feat/workflow-instance-surfaces` PR couldn't do
   from inside the repo. Background: the archived plan
-  `plans/completed/<sha>-workflow-instance-surfaces.md` (design, decisions,
+  `plans/completed/f4a4de71-workflow-instance-surfaces.md` (design, decisions,
   deviations) and DECISIONS.md "Open Workflows are listed, queried, cancelled
   and terminated by execution id alone".
 - **Written:** 2026-11-14 in that PR.
@@ -42,5 +42,5 @@ status`: the first reply is 503 `WORKFLOW_WORKER_STARTING`, the CLI waits,
   - afterwards: retire the scratch rows, verify the kill switch is OFF.
 - [ ] **Next Phase 4 item:** the tenant-web Workflows section. It can now link a
       step's "Workflow step" badge to its parent via `GET
-    /workflow-executions/:id`. **Constraint:** don't poll queries on a timer
+  /workflow-executions/:id`. **Constraint:** don't poll queries on a timer
       (each query wakes the runner); run one on open / on refresh.

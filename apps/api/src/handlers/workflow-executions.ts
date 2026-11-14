@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // /api/v1/workflow-executions — executions by id alone, tenant-wide.
-// (plan: plans/in-progress/workflow-instance-surfaces.md)
+// (plan: plans/completed/f4a4de71-workflow-instance-surfaces.md)
 //
 //   GET  /                         list (default: OPEN durable Workflows, every version)
 //   GET  /:executionId             one execution + its Workflow's declared signals/queries

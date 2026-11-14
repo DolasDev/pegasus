@@ -21,7 +21,7 @@
 
 - **Where:** the list/query/cancel/terminate surfaces land in the
   `feat/workflow-instance-surfaces` PR (archived plan
-  `plans/completed/<sha>-workflow-instance-surfaces.md`). Its release steps
+  `plans/completed/f4a4de71-workflow-instance-surfaces.md`). Its release steps
   and staging acceptance are in `plans/todo/workflow-instance-surfaces-followups.md`.
 - **Next action:** once that acceptance passes, draft a plan for the last Phase
   4 item, the tenant-web Workflows section (§4). It lists open instances via
@@ -468,7 +468,7 @@ Done 2026-09-29. Evidence, transcripts and probe scripts are in
       `/api/v1/workflow-executions`, manifest `queries`, Cedar
       `QueryWorkflowExecution` / `TerminateWorkflowExecution`; cancel fixed to
       address the chain (`firstExecutionRunId`). Plan:
-      `plans/completed/<sha>-workflow-instance-surfaces.md`.
+      `plans/completed/f4a4de71-workflow-instance-surfaces.md`.
 - [x] Execution rows: give `WORKFLOW`-kind executions their own state (open
       or closed), keep them out of `TENANT_RUNNER_CONCURRENCY_CAP`, and add
       a per-tenant cap on open Workflows.
