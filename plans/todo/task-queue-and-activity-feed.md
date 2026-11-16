@@ -2,13 +2,16 @@
 
 **Branch (this plan):** `docs/task-queue-plan` (worktree `../pegasus-task-queue-plan`). Each phase below gets its own worktree and branch.
 **Goal:** Give drivers a To Do list and an Activity feed in the mobile app, then give office roles guided task queues on the web that replace legacy reports. Tenants control the tasks through their Workflows and through task definitions they can edit.
-**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Nothing built. Phase 1 is the next action.
+**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phase 1 built 2026-11-16 (`plans/completed/61e536c9-task-queue-driver-todo.md`). Phase 2 is next.
 
 ---
 
-## Resume here (2026-11-14)
+## Resume here (2026-11-16)
 
-- **Next action:** start Phase 1 (driver To Do, computed when it's read) in a fresh `feat/` worktree. It needs nothing from legacy and nothing from Workflows.
+- **Phase 1 (driver To Do) is built** on `feat/task-queue-driver-todo`. Its plan, `plans/completed/61e536c9-task-queue-driver-todo.md`, lists nine deviations from the Phase 1 text below. Read it before Phase 2.
+  - Still owed: a device / staging check with a tenant's rules turned on (tenant-web Settings → App → Operations → Driver To Do).
+  - Still owed: Steve's answer on open question 5 (arrival _time_ vs "mark done").
+- **Next action:** Phase 2 (Activity feed + `notify()`) in a fresh `feat/` worktree.
 - **In parallel, unrelated to Phase 1:**
   - The **QMM task-list 500** fix is landed on movemanager `dev` (`3d31b955`, 2026-11-14) but **not yet on QMM's site**, which runs `2026.11.12.1`, older than every channel. Once QMM's `/version` moves past it, re-run the per-order task probe (§2 method).
   - Measurement is done for all three sites (§2 "cross-site"). Only the NW interview is still owed: _"Which reports do you open every day?"_
@@ -146,22 +149,31 @@
 
 Each phase is one `feat/` worktree and one PR (plan and code together). YAGNI applies: each phase adds only the tables it uses.
 
-### Phase 1: Driver To Do, computed when it's read (cloud-only, no Workflows)
+### Phase 1: Driver To Do, computed when it's read (cloud-only, no Workflows) — DONE 2026-11-16
 
-- [ ] **Domain** `packages/domain/src/tasks/`: a pure rule type `(facts) => TaskSpec[]`. `TaskSpec` has a stable key `task:<rule>:<orderNum>:<itemKey>`, title, due, priority, a deep-link target and a satisfied flag. Three built-in driver rules, with unit tests:
+Built as below, with the deviations recorded in `plans/completed/61e536c9-task-queue-driver-todo.md`. In short:
+
+- "Mark done" satisfies `submit-arrival-times`, not the ETA editor.
+- Failed fact and document reads fail closed.
+- Document tasks are keyed per order.
+- The window is the last 14 days.
+- Not Cedar.
+- Snooze is a "Later" button.
+
+- [x] **Domain** `packages/domain/src/tasks/`: a pure rule type `(facts) => TaskSpec[]`. `TaskSpec` has a stable key `task:<rule>:<orderNum>:<itemKey>`, title, due, priority, a deep-link target and a satisfied flag. Three built-in driver rules, with unit tests:
   - `submit-arrival-times`: an itinerary act whose day is past or today, with no `DONE` act fact and no legacy `actual`.
   - `submit-bol`: a delivery act done, and no `bol` `Document` on the order.
   - `submit-weight-ticket`: a load act done, and no `weight_ticket` `Document`. The v1 "done" signal is that the document exists, **not** that a weight was entered; the legacy weight write path is deliberately absent.
   - Rules must declare which move types / act codes they apply to (F2's lesson), and stay off unless the tenant enables them.
-- [ ] **API** `GET /api/v1/me/tasks`: evaluated over the driver's itinerary read (`lib/itinerary/fetch.ts`), `ItineraryActFact` (`lib/itinerary/act-facts.ts`) and `Document` rows. `failedSources` from the itinerary passes through, so a partial list says it is partial. Cedar: same scope as the itinerary.
-- [ ] **Persistence:** only `TaskState` (tenantId, userId, taskKey, `snoozedUntil`, `dismissedAt`), for snooze and dismiss. Tenant-scoped, added to `TENANT_SCOPED_MODELS`.
-- [ ] **Tenant settings:** which built-in rules are on, kept in `Tenant.appSettings` like existing operations settings.
-- [ ] **Mobile:**
+- [x] **API** `GET /api/v1/me/tasks`: evaluated over the driver's itinerary read (`lib/itinerary/fetch.ts`), `ItineraryActFact` (`lib/itinerary/act-facts.ts`) and `Document` rows. `failedSources` from the itinerary passes through, so a partial list says it is partial. Cedar: same scope as the itinerary.
+- [x] **Persistence:** only `TaskState` (tenantId, userId, taskKey, `snoozedUntil`, `dismissedAt`), for snooze and dismiss. Tenant-scoped, added to `TENANT_SCOPED_MODELS`.
+- [x] **Tenant settings:** which built-in rules are on, kept in `Tenant.appSettings` like existing operations settings.
+- [x] **Mobile:**
   - `app/(drawer)/todo.tsx`: sections Overdue / Today / Upcoming, grouped by order. Tap opens `EtaEditorModal` or `AddDocumentModal` with the type preset. Swipe to snooze.
   - A drawer badge, and a "Top 3 tasks" card on the Dashboard (`app/(drawer)/index.tsx`).
   - Operations-only users don't see To Do (driver rules only, for now).
-- [ ] **Tests:** domain unit tests, an API integration test (`apps/api`), mobile jest tests for the screen's grouping.
-- [ ] **Docs:** `apps/mobile/README.md`. No SDK surface in this phase (built-in rules only).
+- [x] **Tests:** domain unit tests, an API integration test (`apps/api`), mobile jest tests for the screen's grouping.
+- [x] **Docs:** `apps/mobile/README.md`. No SDK surface in this phase (built-in rules only).
 
 ### Phase 2: Activity feed + notify()
 
@@ -260,3 +272,4 @@ Each phase is one `feat/` worktree and one PR (plan and code together). YAGNI ap
 2. Does an office-scanned BOL (legacy imaging) count as done for `submit-bol`? v1: cloud documents only.
 3. Which roles see a driver's Blocked task: the order's coordinator, operations, or a configurable role?
 4. Is "WorkItem" an internal name only? The proposal is that users and the SDK always say "task".
+5. **"Submit arrival times" vs "mark done".** Phase 1's task records only a done **day** (the act-fact shape). Do drivers need to submit an arrival **time**? That would need a new fact shape (and possibly a legacy write, which the itinerary deliberately avoids).
