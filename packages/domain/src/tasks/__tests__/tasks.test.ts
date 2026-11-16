@@ -160,6 +160,20 @@ describe('submit-bol', () => {
     expect(photo).toHaveLength(1)
   })
 
+  it('is due on the latest delivery, whatever order the acts arrive in', () => {
+    const tasks = evaluateDriverTasks(
+      facts(
+        [
+          delivered({ itemKey: 'late', day: '2026-11-15' }),
+          delivered({ itemKey: 'early', day: '2026-11-13' }),
+        ],
+        {},
+        only,
+      ),
+    )
+    expect(tasks.map((t) => t.due)).toEqual(['2026-11-15'])
+  })
+
   it('produces nothing when the documents could not be read', () => {
     expect(evaluateDriverTasks(facts([delivered()], { documentTypesByOrder: null }, only))).toEqual(
       [],
@@ -215,6 +229,13 @@ describe('evaluateDriverTasks', () => {
     const acts = [act({ actCode: 'RDEL', day: '2026-11-15' })]
     expect(evaluateDriverTasks(facts(acts, {}, []))).toEqual([])
     expect(evaluateDriverTasks(facts(acts, {}, ['submit-bol']))).toEqual([])
+  })
+
+  it('breaks a tie on due and order by key', () => {
+    const tasks = evaluateDriverTasks(
+      facts([act({ itemKey: 'b' }), act({ itemKey: 'a' })], {}, ['submit-arrival-times']),
+    )
+    expect(tasks.map((t) => t.target)).toMatchObject([{ itemKey: 'a' }, { itemKey: 'b' }])
   })
 
   it('sorts oldest due first, then by order', () => {

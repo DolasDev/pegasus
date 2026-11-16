@@ -221,10 +221,8 @@ export function evaluateDriverTasks(f: DriverTaskFacts): TaskSpec[] {
       ),
     )
   }
+  // ISO days and keys compare correctly as strings.
   return out.sort(
-    (a, b) =>
-      (a.due < b.due ? -1 : a.due > b.due ? 1 : 0) ||
-      a.orderNum - b.orderNum ||
-      (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    (a, b) => a.due.localeCompare(b.due) || a.orderNum - b.orderNum || a.key.localeCompare(b.key),
   )
 }
