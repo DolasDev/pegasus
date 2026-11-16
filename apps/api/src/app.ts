@@ -101,6 +101,7 @@ import { integrationCallHandler } from './handlers/integration-call'
 import { integrationFetchHandler } from './handlers/integration-fetch'
 import { blobsHandler } from './handlers/blobs'
 import { meHandler } from './handlers/me'
+import { meTasksHandler } from './handlers/me-tasks'
 import { clientErrorsHandler } from './handlers/client-errors'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { desktopHandler } from './handlers/desktop'
@@ -467,6 +468,9 @@ if (process.env['SKIP_AUTH'] === 'true') {
 
 // Bounded-context routers
 v1.route('/me', meHandler)
+// Driver To Do (task queue plan Phase 1): the caller's own computed tasks +
+// snooze/dismiss. Self-scoped like /onprem/longhaul/me/itinerary, so ungated.
+v1.route('/me/tasks', meTasksHandler)
 // Browser crash reports. Ungated like device-tokens below: any authenticated
 // user may report a crash in their own browser, and a permission check would
 // silently drop reports from exactly the users whose permissions are broken.

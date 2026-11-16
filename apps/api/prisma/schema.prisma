@@ -319,6 +319,7 @@ model Tenant {
   availabilityFilters    AvailabilityFilter[]
   servicesFilters        ServicesFilter[]
   itineraryActFacts      ItineraryActFact[]
+  taskStates             TaskState[]
   pushNotificationOutbox PushNotificationOutbox[]
 
   // Move chat
@@ -549,6 +550,7 @@ model TenantUser {
   availabilityFilters          AvailabilityFilter[]
   servicesFilters              ServicesFilter[]
   itineraryActFacts            ItineraryActFact[]
+  taskStates                   TaskState[]
   pushNotifications            PushNotificationOutbox[]
   chatMessages                 ChatMessage[]
   chatRoomMembers              ChatRoomMember[]
@@ -3677,6 +3679,30 @@ model ItineraryActFact {
 
   @@index([tenantId, itemKey, basis, assertedAt])
   @@map("itinerary_act_facts")
+  @@schema("public")
+}
+
+/// A user's snooze / dismiss on one computed task (driver To Do — task queue
+/// plan Phase 1). The tasks themselves are not stored: they are computed from
+/// state on every read (@pegasus/domain tasks), and this row only hides one,
+/// by its stable key, from the user who acted on it.
+model TaskState {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  userId       String    @map("user_id")
+  /// `task:<rule>:<orderNum>:<item>` — TaskSpec.key.
+  taskKey      String    @map("task_key") @db.VarChar(200)
+  /// Hidden until then; null when not snoozed.
+  snoozedUntil DateTime? @map("snoozed_until") @db.Timestamptz(6)
+  /// Hidden for good; null when not dismissed.
+  dismissedAt  DateTime? @map("dismissed_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user   TenantUser @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([tenantId, userId, taskKey])
+  @@map("task_states")
   @@schema("public")
 }
 

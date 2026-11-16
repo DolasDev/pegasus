@@ -15,6 +15,7 @@
 
 import { z } from 'zod'
 import type { PrismaClient } from '@prisma/client'
+import { DRIVER_TASK_RULES } from '@pegasus/domain'
 
 // Mirrors the LonghaulClient union in lib/longhaul-client-config.ts. Inlined
 // rather than imported because that module exports only a TS type, not a
@@ -102,6 +103,14 @@ const OperationsSchema = z
           ),
       )
       .max(50)
+      .nullable()
+      .optional(),
+    /// The built-in driver To Do rules this tenant turns on (task queue plan,
+    /// Phase 1; @pegasus/domain DRIVER_TASK_RULES). Unset or empty ⇒ drivers
+    /// get no To Do tasks — every rule is off until the tenant enables it.
+    driverTaskRules: z
+      .array(z.enum(DRIVER_TASK_RULES))
+      .max(DRIVER_TASK_RULES.length)
       .nullable()
       .optional(),
   })

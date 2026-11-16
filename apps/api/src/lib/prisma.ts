@@ -167,6 +167,10 @@ export const TENANT_SCOPED_MODELS = new Set([
   // the item's key. Tenant-owned; read and written only through the scoped
   // client on the /onprem/longhaul itinerary routes. Creates set tenantId.
   'ItineraryActFact',
+  // Driver To Do snooze / dismiss — one user's hide on one computed task.
+  // Read and written only through the scoped client on /me/tasks. Creates set
+  // tenantId.
+  'TaskState',
   'ActivityLaborPacker',
   // The company crew list — the tenant's grant to shared crews. Served only
   // through the scoped client on /labor/company; creates set tenantId.
