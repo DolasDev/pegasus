@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
+from temporalio.testing import ActivityEnvironment
+from temporalio.workflow import ActivityCancellationType
 
+from pegasus_tenant_runner import proxy as proxy_module
 from pegasus_tenant_runner.idle import IdleTracker
 from pegasus_tenant_runner.proxy import (
     ACTIVITY_NAME,
@@ -113,3 +117,62 @@ async def test_activity_decrements_in_flight_on_failure() -> None:
     with pytest.raises(RuntimeError, match="boom"):
         await regs.activities[0]({"workflow_name": "alpha", "payload": None})
     assert tracker.in_flight == 0
+
+
+class _SlowExecutor:
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+
+    async def run_entry_point(self, workflow_name: str, payload: Any) -> Any:
+        await asyncio.sleep(self.seconds)
+        return "done"
+
+
+async def test_activity_heartbeats_while_the_executor_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Temporal delivers a cancel to a running async activity only in a
+    # heartbeat response, so the activity must heartbeat for the whole run.
+    monkeypatch.setattr(proxy_module, "HEARTBEAT_INTERVAL_SECONDS", 0.05)
+    regs = build_registrations(
+        executor=_SlowExecutor(0.3),  # type: ignore[arg-type]
+        idle_tracker=IdleTracker(600, clock=lambda: 0.0),
+        execution_timeout_seconds=900,
+    )
+    beats: list[Any] = []
+    env = ActivityEnvironment()
+    env.on_heartbeat = lambda *details: beats.append(details)
+    result = await env.run(regs.activities[0], {"workflow_name": "alpha", "payload": None})
+    assert result == "done"
+    assert len(beats) >= 3
+    count = len(beats)
+    await asyncio.sleep(0.2)
+    assert len(beats) == count  # the heartbeat task stopped with the activity
+
+
+async def test_activity_cancel_reaches_the_executor(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(proxy_module, "HEARTBEAT_INTERVAL_SECONDS", 0.05)
+    tracker = IdleTracker(600, clock=lambda: 0.0)
+    regs = build_registrations(
+        executor=_SlowExecutor(30),  # type: ignore[arg-type]
+        idle_tracker=tracker,
+        execution_timeout_seconds=900,
+    )
+    env = ActivityEnvironment()
+    run = asyncio.ensure_future(
+        env.run(regs.activities[0], {"workflow_name": "a", "payload": None})
+    )
+    await asyncio.sleep(0.2)
+    env.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await run
+    assert tracker.in_flight == 0
+
+
+def test_proxy_schedules_the_activity_so_a_cancel_can_reach_it() -> None:
+    assert proxy_module.ACTIVITY_HEARTBEAT_TIMEOUT.total_seconds() > (
+        proxy_module.HEARTBEAT_INTERVAL_SECONDS * 2
+    )
+    assert proxy_module.ACTIVITY_CANCELLATION_TYPE is (
+        ActivityCancellationType.WAIT_CANCELLATION_COMPLETED
+    )
