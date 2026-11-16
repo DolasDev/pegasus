@@ -17,8 +17,17 @@ jest.mock('expo-router/drawer', () => {
 jest.mock('react-native-gesture-handler', () => ({
   GestureHandlerRootView: ({ children }: { children: React.ReactNode }) => children,
 }))
+const mockTrips = { driverId: null as number | null, localDriverId: null as number | null }
 jest.mock('../../../src/context/TripsContext', () => ({
   TripsProvider: ({ children }: { children: React.ReactNode }) => children,
+  useTrips: () => mockTrips,
+}))
+const mockTasksActive: boolean[] = []
+jest.mock('../../../src/context/TasksContext', () => ({
+  TasksProvider: ({ active, children }: { active: boolean; children: React.ReactNode }) => {
+    mockTasksActive.push(active)
+    return children
+  },
 }))
 jest.mock('../../../src/components/DrawerContent', () => ({ DrawerContent: () => null }))
 jest.mock('../../../src/components/UserMenuButton', () => ({ UserMenuButton: () => null }))
@@ -48,6 +57,9 @@ function setup(access: Partial<LaborAccess>, segments: string[]) {
 
 beforeEach(() => {
   ;(useRouter as jest.Mock).mockReturnValue({ replace })
+  mockTrips.driverId = null
+  mockTrips.localDriverId = null
+  mockTasksActive.length = 0
 })
 
 describe('DrawerLayout', () => {
@@ -60,6 +72,21 @@ describe('DrawerLayout', () => {
   it('sends an Operations-only user from My Trips to Labor', () => {
     setup(OPS_ONLY, ['(drawer)', 'trips'])
     expect(replace).toHaveBeenCalledWith('/labor')
+  })
+
+  it('sends an Operations-only user from To Do to Labor', () => {
+    setup(OPS_ONLY, ['(drawer)', 'todo'])
+    expect(replace).toHaveBeenCalledWith('/labor')
+  })
+
+  it('loads the To Do only for a mapped driver who is not Operations-only', () => {
+    setup({ isDriver: true }, ['(drawer)'])
+    expect(mockTasksActive.at(-1)).toBe(false)
+    mockTrips.localDriverId = 412
+    setup({ isDriver: true }, ['(drawer)'])
+    expect(mockTasksActive.at(-1)).toBe(true)
+    setup(OPS_ONLY, ['(drawer)', 'labor'])
+    expect(mockTasksActive.at(-1)).toBe(false)
   })
 
   it('sends an Operations-only user from My Itinerary to Labor', () => {

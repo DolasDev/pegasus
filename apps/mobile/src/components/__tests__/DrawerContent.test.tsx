@@ -20,6 +20,8 @@ jest.mock('../../context/AuthContext', () => ({
 jest.mock('../../context/TripsContext', () => ({ useTrips: () => ({ offeredCount: 0 }) }))
 jest.mock('../../chat/ChatContext', () => ({ useChat: () => ({ unreadTotal: 0 }) }))
 jest.mock('../../auth/laborAccess', () => ({ useLaborAccess: jest.fn() }))
+const mockTasks = { enabled: false, dueCount: 0 }
+jest.mock('../../context/TasksContext', () => ({ useTasks: () => mockTasks }))
 
 const base: LaborAccess = {
   isDriver: false,
@@ -38,6 +40,21 @@ function renderDrawer(access: Partial<LaborAccess>) {
 }
 
 describe('DrawerContent', () => {
+  afterEach(() => {
+    mockTasks.enabled = false
+    mockTasks.dueCount = 0
+  })
+
+  it('shows To Do with its due count only when the tenant turned it on', () => {
+    expect(renderDrawer({ isDriver: true }).queryByText('To Do')).toBeNull()
+    mockTasks.enabled = true
+    mockTasks.dueCount = 4
+    const { getByText, getByLabelText } = renderDrawer({ isDriver: true })
+    expect(getByLabelText('4 tasks due')).toBeTruthy()
+    fireEvent.press(getByText('To Do'))
+    expect(navigate).toHaveBeenCalledWith('todo')
+  })
+
   it('shows My Itinerary, My Trips, Messages and Labor to a driver', () => {
     const { getByText } = renderDrawer({ isDriver: true, canSeeLabor: true })
     fireEvent.press(getByText('My Itinerary'))

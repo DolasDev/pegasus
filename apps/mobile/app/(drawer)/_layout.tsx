@@ -5,7 +5,8 @@ import { Drawer } from 'expo-router/drawer'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { DrawerContent } from '../../src/components/DrawerContent'
 import { UserMenuButton } from '../../src/components/UserMenuButton'
-import { TripsProvider } from '../../src/context/TripsContext'
+import { TripsProvider, useTrips } from '../../src/context/TripsContext'
+import { TasksProvider } from '../../src/context/TasksContext'
 import { useLaborAccess } from '../../src/auth/laborAccess'
 import { colors, fontSize } from '../../src/theme/colors'
 
@@ -29,13 +30,19 @@ export default function DrawerLayout() {
  */
 function DrawerNavigator() {
   const { isOperations, pending, operationsOnly } = useLaborAccess()
+  const { driverId, localDriverId } = useTrips()
+  // The To Do reads the caller's own itinerary: only a mapped driver has one.
+  const tasksActive = !operationsOnly && (driverId != null || localDriverId != null)
   const router = useRouter()
   const segments = useSegments() as string[]
 
   // `/` is the Dashboard (segments: ['(drawer)']); My Trips is ['(drawer)', 'trips'].
   const onDriverScreen =
     segments[0] === '(drawer)' &&
-    (segments.length === 1 || segments[1] === 'trips' || segments[1] === 'itinerary')
+    (segments.length === 1 ||
+      segments[1] === 'trips' ||
+      segments[1] === 'itinerary' ||
+      segments[1] === 'todo')
   useEffect(() => {
     if (operationsOnly && onDriverScreen) router.replace('/labor')
   }, [operationsOnly, onDriverScreen, router])
@@ -49,37 +56,40 @@ function DrawerNavigator() {
   }
 
   return (
-    <Drawer
-      drawerContent={(props) => <DrawerContent {...props} />}
-      screenOptions={({ navigation }) => ({
-        headerStyle: { backgroundColor: colors.backgroundDark },
-        headerTintColor: colors.textLight,
-        headerTitleStyle: {
-          fontWeight: '700',
-          fontSize: fontSize.xlarge,
-        },
-        headerLeft: () => (
-          <Pressable
-            onPress={() => navigation.openDrawer()}
-            style={styles.headerButton}
-            accessibilityRole="button"
-            accessibilityLabel="Open navigation drawer"
-            hitSlop={12}
-          >
-            <Text style={styles.hamburger}>☰</Text>
-          </Pressable>
-        ),
-        headerRight: () => <UserMenuButton />,
-        drawerActiveTintColor: colors.primary,
-        drawerInactiveTintColor: colors.textPrimary,
-      })}
-    >
-      <Drawer.Screen name="index" options={{ title: 'Dashboard' }} />
-      <Drawer.Screen name="itinerary" options={{ title: 'My Itinerary' }} />
-      <Drawer.Screen name="trips" options={{ title: 'My Trips' }} />
-      <Drawer.Screen name="messages" options={{ title: 'Messages' }} />
-      <Drawer.Screen name="labor" options={{ title: 'Labor' }} />
-    </Drawer>
+    <TasksProvider active={tasksActive}>
+      <Drawer
+        drawerContent={(props) => <DrawerContent {...props} />}
+        screenOptions={({ navigation }) => ({
+          headerStyle: { backgroundColor: colors.backgroundDark },
+          headerTintColor: colors.textLight,
+          headerTitleStyle: {
+            fontWeight: '700',
+            fontSize: fontSize.xlarge,
+          },
+          headerLeft: () => (
+            <Pressable
+              onPress={() => navigation.openDrawer()}
+              style={styles.headerButton}
+              accessibilityRole="button"
+              accessibilityLabel="Open navigation drawer"
+              hitSlop={12}
+            >
+              <Text style={styles.hamburger}>☰</Text>
+            </Pressable>
+          ),
+          headerRight: () => <UserMenuButton />,
+          drawerActiveTintColor: colors.primary,
+          drawerInactiveTintColor: colors.textPrimary,
+        })}
+      >
+        <Drawer.Screen name="index" options={{ title: 'Dashboard' }} />
+        <Drawer.Screen name="itinerary" options={{ title: 'My Itinerary' }} />
+        <Drawer.Screen name="trips" options={{ title: 'My Trips' }} />
+        <Drawer.Screen name="messages" options={{ title: 'Messages' }} />
+        <Drawer.Screen name="labor" options={{ title: 'Labor' }} />
+        <Drawer.Screen name="todo" options={{ title: 'To Do' }} />
+      </Drawer>
+    </TasksProvider>
   )
 }
 

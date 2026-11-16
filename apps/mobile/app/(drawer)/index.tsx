@@ -13,6 +13,9 @@ import { useRouter } from 'expo-router'
 import { MetricCard } from '../../src/components/MetricCard'
 import { getDriverMetrics } from '../../src/services/driverMetrics'
 import { useTrips } from '../../src/context/TripsContext'
+import { useTasks } from '../../src/context/TasksContext'
+import { topTasks } from '../../src/utils/tasks'
+import { formatDay } from '../../src/utils/itinerary'
 import { logger } from '../../src/utils/logger'
 import type { DriverMetrics } from '../../src/types'
 import { colors, fontSize, spacing } from '../../src/theme/colors'
@@ -36,6 +39,8 @@ export default function DashboardScreen() {
   const [error, setError] = useState<LoadError | null>(null)
   const router = useRouter()
   const { offeredCount, refresh: refreshTrips } = useTrips()
+  const { enabled: todoEnabled, tasks, dueCount, refresh: refreshTasks } = useTasks()
+  const top = topTasks(tasks)
 
   const load = useCallback(async () => {
     try {
@@ -63,6 +68,7 @@ export default function DashboardScreen() {
   const onRefresh = () => {
     setIsRefreshing(true)
     void refreshTrips()
+    void refreshTasks()
     load()
   }
 
@@ -126,6 +132,31 @@ export default function DashboardScreen() {
           />
         }
       >
+        {todoEnabled ? (
+          <TouchableOpacity
+            style={styles.todoCard}
+            activeOpacity={0.7}
+            onPress={() => router.push('/todo')}
+            accessibilityRole="button"
+            accessibilityLabel={`To Do: ${dueCount} due. Open To Do.`}
+          >
+            <Text style={styles.todoTitle}>TO DO{dueCount > 0 ? ` · ${dueCount} due` : ''}</Text>
+            {top.length === 0 ? (
+              <Text style={styles.todoEmpty}>All caught up</Text>
+            ) : (
+              top.map((t) => (
+                <Text
+                  key={t.key}
+                  style={[styles.todoRow, t.bucket === 'overdue' && styles.todoOverdue]}
+                  numberOfLines={1}
+                >
+                  {t.title} · #{t.orderNum} · {formatDay(t.due)}
+                </Text>
+              ))
+            )}
+          </TouchableOpacity>
+        ) : null}
+
         <Text style={styles.sectionTitle}>TODAY AT A GLANCE</Text>
 
         <View style={styles.row}>
@@ -198,6 +229,19 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.md,
   },
+  todoCard: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  todoTitle: { fontSize: fontSize.small, fontWeight: '700', color: colors.textSecondary },
+  todoEmpty: { fontSize: fontSize.medium, color: colors.textSecondary },
+  todoRow: { fontSize: fontSize.medium, fontWeight: '600', color: colors.textPrimary },
+  todoOverdue: { color: colors.error },
   sectionTitle: {
     fontSize: fontSize.small,
     fontWeight: '700',

@@ -12,6 +12,15 @@ A production-ready React Native app built with Expo for truck drivers to manage 
 - **Status Management**: Update orders through workflow (Pending → In Transit → Delivered)
 - **Proof of Delivery**: Camera integration for capturing delivery photos
 - **Settings**: Driver profile, app info, and account management
+- **To Do** (`app/(drawer)/todo.tsx`): the driver's open tasks from `GET /api/v1/me/tasks`, grouped
+  Overdue / Today / Upcoming by order. The API computes them from the driver's itinerary (the last 14
+  days) and the order's documents, so a task clears itself: **Mark done** posts the same DONE fact as
+  the itinerary's button, and **Upload** opens the document modal with the type preset (BOL or weight
+  ticket). **Later** snoozes until 6 am tomorrow. One load (`src/context/TasksContext.tsx`) feeds the
+  screen, the drawer badge (overdue + today) and the Dashboard card, so each refresh is a single
+  legacy read; it reloads when the screen gains focus and on pull-to-refresh, never on a timer.
+  Hidden until the tenant enables a rule (tenant-web: Settings → App → Operations → Driver To Do), and
+  for Operations-only users.
 
 ### UI/UX
 
