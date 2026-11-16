@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   Modal,
   View,
@@ -33,6 +33,8 @@ interface Props {
   orderNum: string | number
   onClose: () => void
   onUploaded: () => void
+  /** Preselects the document type (a To Do task's `documentType`). */
+  initialType?: string
 }
 
 // Local "draft" being assembled before upload: either image pages (from the
@@ -42,15 +44,20 @@ type Draft =
   | { kind: 'pdf'; fileUri: string; filename: string; sizeBytes: number }
   | null
 
-export function AddDocumentModal({ visible, orderNum, onClose, onUploaded }: Props) {
+export function AddDocumentModal({ visible, orderNum, onClose, onUploaded, initialType }: Props) {
+  const startType = initialType ?? DEFAULT_DOCUMENT_TYPE
   const [draft, setDraft] = useState<Draft>(null)
-  const [docType, setDocType] = useState<string>(DEFAULT_DOCUMENT_TYPE)
+  const [docType, setDocType] = useState<string>(startType)
+  // Re-preset each time the modal opens (one mounted modal serves many tasks).
+  useEffect(() => {
+    if (visible) setDocType(startType)
+  }, [visible, startType])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reset = () => {
     setDraft(null)
-    setDocType(DEFAULT_DOCUMENT_TYPE)
+    setDocType(startType)
     setBusy(false)
     setError(null)
   }

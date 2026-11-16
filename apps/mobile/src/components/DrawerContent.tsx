@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTrips } from '../context/TripsContext'
 import { useChat } from '../chat/ChatContext'
 import { useLaborAccess } from '../auth/laborAccess'
+import { useTasks } from '../context/TasksContext'
 import { colors, fontSize, spacing } from '../theme/colors'
 
 export function DrawerContent(props: DrawerContentComponentProps) {
@@ -16,6 +17,7 @@ export function DrawerContent(props: DrawerContentComponentProps) {
   const { offeredCount } = useTrips()
   const { unreadTotal } = useChat()
   const { canSeeLabor, operationsOnly } = useLaborAccess()
+  const { enabled: todoEnabled, dueCount } = useTasks()
 
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={styles.container}>
@@ -29,6 +31,21 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       </View>
 
       <View style={styles.items}>
+        {todoEnabled ? (
+          <DrawerItem
+            label={() => (
+              <View style={styles.itemRow}>
+                <Text style={styles.itemLabel}>To Do</Text>
+                {dueCount > 0 ? (
+                  <View style={styles.badge} accessibilityLabel={`${dueCount} tasks due`}>
+                    <Text style={styles.badgeText}>{dueCount > 99 ? '99+' : dueCount}</Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+            onPress={() => props.navigation.navigate('todo')}
+          />
+        ) : null}
         {operationsOnly ? null : (
           <DrawerItem
             label={() => <Text style={styles.itemLabel}>My Itinerary</Text>}

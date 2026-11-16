@@ -9,6 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { DriverTaskRuleId } from '@pegasus/domain'
 import { apiFetch } from '@/api/client'
 
 // ---------------------------------------------------------------------------
@@ -23,6 +24,8 @@ export interface OperationsSettings {
   longhaulClient?: LonghaulClient | null
   /** Domains platform email may be sent to; unset/empty ⇒ email disabled. */
   emailAllowedRecipientDomains?: string[] | null
+  /** Built-in driver To Do rules turned on; unset/empty ⇒ drivers get no tasks. */
+  driverTaskRules?: DriverTaskRuleId[] | null
 }
 
 export interface AppSettings {

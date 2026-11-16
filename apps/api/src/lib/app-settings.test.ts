@@ -63,6 +63,17 @@ describe('AppSettingsSchema', () => {
     ).toThrow()
   })
 
+  it('accepts the built-in driver task rules, and nothing else', () => {
+    const parsed = AppSettingsSchema.parse({
+      operations: { driverTaskRules: ['submit-bol', 'submit-arrival-times'] },
+    })
+    expect(parsed.operations.driverTaskRules).toEqual(['submit-bol', 'submit-arrival-times'])
+    expect(AppSettingsSchema.parse({}).operations.driverTaskRules).toBeUndefined()
+    expect(() =>
+      AppSettingsSchema.parse({ operations: { driverTaskRules: ['submit-anything'] } }),
+    ).toThrow()
+  })
+
   it('accepts null for operations.longhaulClient (explicit "unconfigured")', () => {
     const parsed = AppSettingsSchema.parse({ operations: { longhaulClient: null } })
     expect(parsed.operations.longhaulClient).toBeNull()

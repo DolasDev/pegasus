@@ -127,7 +127,7 @@ async function respond(c: Context<AppEnv>, q: ItineraryQuery) {
 }
 
 /** The caller's own two driver ids, each in its own space; null when neither is mapped. */
-async function callerDriverIds(
+export async function callerDriverIds(
   c: Context<AppEnv>,
 ): Promise<{ longhaulDriverId: number | null; localDriverEmployeeId: number | null } | null> {
   const userId = c.get('userId')
@@ -144,7 +144,7 @@ async function callerDriverIds(
     : { longhaulDriverId, localDriverEmployeeId }
 }
 
-const driverNotMapped = (c: Context<AppEnv>) =>
+export const driverNotMapped = (c: Context<AppEnv>) =>
   c.json(
     {
       error:

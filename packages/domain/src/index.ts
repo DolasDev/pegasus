@@ -306,3 +306,26 @@ export {
   GOOGLE_CONTACTS_CSV_HEADERS,
   crewsToGoogleContactsCsv,
 } from './labor/index'
+
+// Tasks (driver To Do, computed from state — plans/todo/task-queue-and-activity-feed.md)
+export type {
+  DriverTaskRuleId,
+  TaskActSource,
+  TaskAct,
+  DriverTaskFacts,
+  TaskTarget,
+  TaskSpec,
+  TaskBucket,
+} from './tasks/index'
+export {
+  DRIVER_TASK_RULES,
+  DRIVER_TASK_RULE_LABELS,
+  isDriverTaskRuleId,
+  BOL_ACT_CODES,
+  WEIGHT_TICKET_ACT_CODES,
+  BOL_DOCUMENT_TYPE,
+  WEIGHT_TICKET_DOCUMENT_TYPE,
+  taskKey,
+  taskBucket,
+  evaluateDriverTasks,
+} from './tasks/index'
