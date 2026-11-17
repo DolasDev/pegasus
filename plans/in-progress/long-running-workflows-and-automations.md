@@ -23,7 +23,7 @@
   `feat/workflow-instance-surfaces` PR (archived plan
   `plans/completed/f4a4de71-workflow-instance-surfaces.md`). Its release steps
   and staging acceptance are in `plans/todo/workflow-instance-surfaces-followups.md`.
-- **Next action:** once that acceptance passes, draft a plan for the last Phase
+- **Next action:** the acceptance PASSED on 2026-11-16, and the Automation-cancel gap it found is fixed (#970). Draft a plan for the last Phase
   4 item, the tenant-web Workflows section (§4). It lists open instances via
   `GET /api/v1/workflow-executions`, opens one by id (`GET
 /workflow-executions/:id`, which also returns the declared `signals` /
