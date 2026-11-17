@@ -248,9 +248,42 @@ export async function unregisterForPush(accountKey: string): Promise<void> {
 }
 
 /**
- * Wires notification taps to navigation. The `data` payload set by the backend
- * (lib/push-triggers) carries `{ type, ...ids }`; we translate the known types
- * into deep-link routes. Returns an unsubscribe function.
+ * The screen a notification opens, from its `data` payload — the deep-link
+ * contract the backend sets (lib/push-triggers, lib/notify): `{ type, ...ids }`.
+ * Shared by push taps and Activity feed taps so both open the same screen.
+ * Null for an unknown type (nothing to open).
+ */
+export function notificationRoute(data: Record<string, unknown> | undefined | null): string | null {
+  if (!data) return null
+  switch (data['type']) {
+    // A longhaul trip assignment — the driver-facing assignment that actually
+    // exists. Deep-links straight to the trip.
+    case 'trip.assigned': {
+      const tripId = data['tripId']
+      if (typeof tripId !== 'number' && typeof tripId !== 'string') return '/(drawer)/trips'
+      return `/trip/${tripId}`
+    }
+    // Driver-facing orders now live in My Trips (sourced from longhaul); the
+    // legacy per-move order screen was removed. A cloud moveId doesn't map to
+    // a longhaul trip id, so route assignment taps to the trips list.
+    case 'move.assigned':
+      return '/(drawer)/trips'
+    // A move chat message — open that move's conversation. Not the shipment
+    // screen's Chat tab: that screen loads through the longhaul view, which
+    // has no local-only orders, so a local driver's tap would dead-end.
+    case 'chat.message': {
+      const orderNum = data['orderNum']
+      if (typeof orderNum !== 'number' && typeof orderNum !== 'string') return '/(drawer)/messages'
+      return `/chat/${orderNum}`
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * Wires notification taps to navigation (see notificationRoute). Returns an
+ * unsubscribe function.
  *
  * `navigate` is injected (rather than importing the router) so this stays
  * testable and decoupled from expo-router internals.
@@ -258,34 +291,7 @@ export async function unregisterForPush(accountKey: string): Promise<void> {
 export function setupNotificationTapHandler(navigate: (path: string) => void): {
   remove: () => void
 } {
-  const route = (data: Record<string, unknown> | undefined): string | null => {
-    if (!data) return null
-    switch (data['type']) {
-      // A longhaul trip assignment — the driver-facing assignment that actually
-      // exists. Deep-links straight to the trip.
-      case 'trip.assigned': {
-        const tripId = data['tripId']
-        if (typeof tripId !== 'number' && typeof tripId !== 'string') return '/(drawer)/trips'
-        return `/trip/${tripId}`
-      }
-      // Driver-facing orders now live in My Trips (sourced from longhaul); the
-      // legacy per-move order screen was removed. A cloud moveId doesn't map to
-      // a longhaul trip id, so route assignment taps to the trips list.
-      case 'move.assigned':
-        return '/(drawer)/trips'
-      // A move chat message — open that move's conversation. Not the shipment
-      // screen's Chat tab: that screen loads through the longhaul view, which
-      // has no local-only orders, so a local driver's tap would dead-end.
-      case 'chat.message': {
-        const orderNum = data['orderNum']
-        if (typeof orderNum !== 'number' && typeof orderNum !== 'string')
-          return '/(drawer)/messages'
-        return `/chat/${orderNum}`
-      }
-      default:
-        return null
-    }
-  }
+  const route = notificationRoute
 
   const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
     const data = response.notification.request.content.data as Record<string, unknown> | undefined
@@ -293,5 +299,14 @@ export function setupNotificationTapHandler(navigate: (path: string) => void): {
     if (path) navigate(path)
   })
 
+  return { remove: () => subscription.remove() }
+}
+
+/**
+ * Calls `onReceive` whenever a push arrives while the app is open — the
+ * Activity bell refreshes its count on it. Returns an unsubscribe function.
+ */
+export function onNotificationReceived(onReceive: () => void): { remove: () => void } {
+  const subscription = Notifications.addNotificationReceivedListener(() => onReceive())
   return { remove: () => subscription.remove() }
 }

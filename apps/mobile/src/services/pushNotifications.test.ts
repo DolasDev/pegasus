@@ -7,6 +7,7 @@ import {
   registerForPush,
   unregisterForPush,
   setupNotificationTapHandler,
+  notificationRoute,
 } from './pushNotifications'
 
 jest.mock('../api/client', () => ({ getApiClient: jest.fn() }))
@@ -223,5 +224,14 @@ describe('setupNotificationTapHandler', () => {
     setupNotificationTapHandler(navigate)
     lastListener()(responseWith({ type: 'something.else' }))
     expect(navigate).not.toHaveBeenCalled()
+  })
+})
+
+describe('notificationRoute', () => {
+  it('is the same route for a push tap and an Activity row', () => {
+    expect(notificationRoute({ type: 'trip.assigned', tripId: 9 })).toBe('/trip/9')
+    expect(notificationRoute({ type: 'chat.message', orderNum: '4242' })).toBe('/chat/4242')
+    expect(notificationRoute({ type: 'staff.message' })).toBeNull()
+    expect(notificationRoute(null)).toBeNull()
   })
 })

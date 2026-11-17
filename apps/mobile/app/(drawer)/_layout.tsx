@@ -7,6 +7,8 @@ import { DrawerContent } from '../../src/components/DrawerContent'
 import { UserMenuButton } from '../../src/components/UserMenuButton'
 import { TripsProvider, useTrips } from '../../src/context/TripsContext'
 import { TasksProvider } from '../../src/context/TasksContext'
+import { ActivityProvider } from '../../src/context/ActivityContext'
+import { ActivityBell } from '../../src/components/ActivityBell'
 import { useLaborAccess } from '../../src/auth/laborAccess'
 import { colors, fontSize } from '../../src/theme/colors'
 
@@ -14,7 +16,9 @@ export default function DrawerLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <TripsProvider>
-        <DrawerNavigator />
+        <ActivityProvider>
+          <DrawerNavigator />
+        </ActivityProvider>
       </TripsProvider>
     </GestureHandlerRootView>
   )
@@ -77,7 +81,12 @@ function DrawerNavigator() {
               <Text style={styles.hamburger}>☰</Text>
             </Pressable>
           ),
-          headerRight: () => <UserMenuButton />,
+          headerRight: () => (
+            <View style={styles.headerRight}>
+              <ActivityBell />
+              <UserMenuButton />
+            </View>
+          ),
           drawerActiveTintColor: colors.primary,
           drawerInactiveTintColor: colors.textPrimary,
         })}
@@ -88,6 +97,7 @@ function DrawerNavigator() {
         <Drawer.Screen name="messages" options={{ title: 'Messages' }} />
         <Drawer.Screen name="labor" options={{ title: 'Labor' }} />
         <Drawer.Screen name="todo" options={{ title: 'To Do' }} />
+        <Drawer.Screen name="activity" options={{ title: 'Activity' }} />
       </Drawer>
     </TasksProvider>
   )
@@ -95,6 +105,7 @@ function DrawerNavigator() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center' },
   pending: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headerButton: {
     paddingHorizontal: 16,
