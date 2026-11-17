@@ -231,7 +231,8 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
      * first, with the same (queuedAt, id) keyset cursor as listByWorkflow.
      * `kind` filters on the joined workflow row; `open` keeps QUEUED/RUNNING;
      * `name` matches the workflow name; `temporalWorkflowId` pins one keyed
-     * instance (`wfl/<tenant>/<name>/<key>`).
+     * instance (`wfl/<tenant>/<name>/<key>`); `parentExecutionId` keeps the
+     * steps one durable Workflow execution started (`(parentExecutionId)` index).
      */
     async listForTenant(
       tenantId: string,
@@ -242,10 +243,12 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
         open?: boolean
         name?: string
         temporalWorkflowId?: string
+        parentExecutionId?: string
       },
     ): Promise<WorkflowExecutionRow[]> {
       const limit = Math.max(1, Math.min(opts.limit, 200))
       const where: Prisma.WorkflowExecutionWhereInput = { tenantId }
+      if (opts.parentExecutionId) where.parentExecutionId = opts.parentExecutionId
       if (opts.open) where.status = { in: ['QUEUED', 'RUNNING'] }
       if (opts.temporalWorkflowId) where.temporalWorkflowId = opts.temporalWorkflowId
       if (opts.kind || opts.name) {

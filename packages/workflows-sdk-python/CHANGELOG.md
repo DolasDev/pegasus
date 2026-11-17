@@ -3,6 +3,20 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.66.1
+
+### Added — list a Workflow's steps
+
+- `list_workflow_executions(parent_execution_id=...)` lists the step
+  Automations one durable Workflow execution started through
+  `run_automation()`, newest first, every status unless `open=True`. It
+  backs the new `GET /workflow-executions?parentExecutionId=` filter (the
+  tenant web UI's Workflow detail page uses it too). `kind` now defaults to
+  `None`: the SDK still sends `WORKFLOW` unless you pass
+  `parent_execution_id`, when the server implies `AUTOMATION`
+  (`kind="WORKFLOW"` with a parent is a 400).
+- CLI: `executions steps <execution-id>`.
+
 ## 0.66.0
 
 ### Added — list, query, cancel and terminate open Workflows

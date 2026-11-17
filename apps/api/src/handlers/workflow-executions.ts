@@ -116,23 +116,32 @@ export const workflowExecutionsHandler = new Hono<AppEnv>()
 workflowExecutionsHandler.use('*', dualAuthMiddleware)
 
 // ---------------------------------------------------------------------------
-// GET /?kind=&open=&name=&correlationKey=&limit=&before=
+// GET /?kind=&open=&name=&correlationKey=&parentExecutionId=&limit=&before=
 //
 // kind defaults to WORKFLOW; open defaults to true for WORKFLOW and false for
 // AUTOMATION. correlationKey needs name (the key is unique per Workflow name).
+// parentExecutionId lists the step Automations one durable Workflow execution
+// started (kind AUTOMATION implied; kind=WORKFLOW with it is a 400). It is
+// tenant-scoped like every other filter: another tenant's parent id is an
+// empty list, never a 404 that would confirm the id exists.
 // ---------------------------------------------------------------------------
 const ListQuery = z
   .object({
-    kind: z.enum(['WORKFLOW', 'AUTOMATION']).optional().default('WORKFLOW'),
+    kind: z.enum(['WORKFLOW', 'AUTOMATION']).optional(),
     open: z.enum(['true', 'false']).optional(),
     name: z.string().regex(NAME_REGEX).optional(),
     correlationKey: z.string().regex(CORRELATION_KEY_REGEX).optional(),
     limit: z.coerce.number().int().positive().optional(),
+    parentExecutionId: z.string().min(1).max(64).optional(),
     before: z.string().min(1).max(64).optional(),
   })
   .refine((q) => q.correlationKey === undefined || q.name !== undefined, {
     message: 'correlationKey needs name',
     path: ['correlationKey'],
+  })
+  .refine((q) => q.parentExecutionId === undefined || q.kind !== 'WORKFLOW', {
+    message: 'parentExecutionId lists step Automations; it cannot be combined with kind=WORKFLOW',
+    path: ['parentExecutionId'],
   })
 
 workflowExecutionsHandler.get('/', requirePermission(Actions.ReadWorkflow), async (c) => {
@@ -149,14 +158,16 @@ workflowExecutionsHandler.get('/', requirePermission(Actions.ReadWorkflow), asyn
   const q = parsed.data
   const tenantId = c.get('tenantId')
   const limit = Math.min(q.limit ?? LIST_DEFAULT_LIMIT, LIST_MAX_LIMIT)
-  const open = q.open !== undefined ? q.open === 'true' : q.kind === 'WORKFLOW'
+  const kind = q.kind ?? (q.parentExecutionId ? 'AUTOMATION' : 'WORKFLOW')
+  const open = q.open !== undefined ? q.open === 'true' : kind === 'WORKFLOW'
 
   const rows = await createWorkflowExecutionRepository(c.get('db')).listForTenant(tenantId, {
     limit,
     before: q.before ?? null,
-    kind: q.kind,
+    kind,
     open,
     ...(q.name ? { name: q.name } : {}),
+    ...(q.parentExecutionId ? { parentExecutionId: q.parentExecutionId } : {}),
     ...(q.name && q.correlationKey
       ? { temporalWorkflowId: correlatedTemporalWorkflowId(tenantId, q.name, q.correlationKey) }
       : {}),

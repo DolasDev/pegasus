@@ -84,6 +84,13 @@ describe('getOpenApiSpec', () => {
     expect(props).toHaveProperty('factDocs')
   })
 
+  it('documents the parentExecutionId filter on the tenant-wide execution list', () => {
+    const list = spec.paths['/api/v1/workflow-executions']?.['get'] as
+      { parameters?: { name: string }[]; description?: string } | undefined
+    expect(list?.parameters?.map((p) => p.name)).toContain('parentExecutionId')
+    expect(list?.description).toContain('parentExecutionId')
+  })
+
   it('declares the vnd_ API-key security scheme, applied to the authoring routes', () => {
     expect(spec.components.securitySchemes).toHaveProperty('ApiKeyAuth')
     // Public discovery routes carry no security; authoring routes do.

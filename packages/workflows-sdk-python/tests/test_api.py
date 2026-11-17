@@ -2970,3 +2970,27 @@ def test_terminate_execution_sends_the_reason() -> None:
         "body": {"reason": "x"},
     }
     assert data["status"] == "CANCELLED"
+
+
+def test_list_workflow_executions_by_parent_lets_the_server_imply_automation() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": [{"id": "s1", "parentExecutionId": "p1"}]})
+
+    rows = _client_with(handler).list_workflow_executions(parent_execution_id="p1")
+    # No kind sent: the server implies AUTOMATION for parentExecutionId (kind=WORKFLOW is a 400).
+    assert captured["params"] == {"parentExecutionId": "p1", "limit": "50"}
+    assert rows == [{"id": "s1", "parentExecutionId": "p1"}]
+
+
+def test_list_workflow_executions_default_sends_kind_workflow() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": []})
+
+    _client_with(handler).list_workflow_executions()
+    assert captured["params"] == {"kind": "WORKFLOW", "limit": "50"}

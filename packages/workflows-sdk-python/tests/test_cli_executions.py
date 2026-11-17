@@ -269,3 +269,11 @@ def test_terminate_asks_and_aborts_on_no() -> None:
     )
     assert result.exit_code == 1
     assert "terminate" not in _FakeClient.last
+
+
+def test_steps_lists_a_workflows_step_automations() -> None:
+    result = runner.invoke(ex.executions_app, ["steps", "exec-parent", "--token", _TOKEN])
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["open"] == {"parent_execution_id": "exec-parent", "limit": 50}
+    assert "exec-7" in result.output
+    assert "order_lifecycle@1.1.0" in result.output

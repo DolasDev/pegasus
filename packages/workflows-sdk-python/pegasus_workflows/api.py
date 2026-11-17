@@ -934,10 +934,11 @@ class PegasusClient:
     def list_workflow_executions(
         self,
         *,
-        kind: str = "WORKFLOW",
+        kind: str | None = None,
         open: bool | None = None,  # noqa: A002 - mirrors the API's query param
         name: str | None = None,
         correlation_key: str | None = None,
+        parent_execution_id: str | None = None,
         limit: int = 50,
         before: str | None = None,
     ) -> list[dict[str, Any]]:
@@ -949,24 +950,35 @@ class PegasusClient:
         ``ReadWorkflow`` (any tenant role).
 
         Args:
-            kind: ``"WORKFLOW"`` (default) or ``"AUTOMATION"``.
+            kind: ``"WORKFLOW"`` or ``"AUTOMATION"``. ``None`` (default) means
+                ``"WORKFLOW"``, or ``"AUTOMATION"`` with ``parent_execution_id``.
             open: Only QUEUED / RUNNING rows. ``None`` lets the server default:
                 open-only for Workflows, everything for Automations.
             name: Only this workflow name.
             correlation_key: With ``name``, the one instance of that key.
+            parent_execution_id: A durable Workflow execution id: list the step
+                Automations its ``run_automation()`` calls started, all
+                statuses unless ``open=True`` (0.66.1+). Can't be combined with
+                ``kind="WORKFLOW"`` (400). Another tenant's id lists nothing.
             limit: Page size (1..200; default 50).
             before: The last row's ``id`` from the previous page.
 
         Returns:
             A list of execution dicts.
         """
-        params: dict[str, Any] = {"kind": kind}
+        params: dict[str, Any] = {}
+        if kind is not None:
+            params["kind"] = kind
+        elif parent_execution_id is None:
+            params["kind"] = "WORKFLOW"
         if open is not None:
             params["open"] = "true" if open else "false"
         if name is not None:
             params["name"] = name
         if correlation_key is not None:
             params["correlationKey"] = correlation_key
+        if parent_execution_id is not None:
+            params["parentExecutionId"] = parent_execution_id
         params["limit"] = limit
         if before:
             params["before"] = before
