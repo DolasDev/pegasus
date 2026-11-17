@@ -80,7 +80,7 @@ export function WorkflowsIndexPage() {
               <Input
                 id="wf-filter-name"
                 value={draft.name}
-                placeholder="order_lifecycle"
+                placeholder="e.g. order_lifecycle"
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 className="w-56"
               />
