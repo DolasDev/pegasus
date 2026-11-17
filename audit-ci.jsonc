@@ -255,6 +255,24 @@
     // while a 4.x would need micromatch to move first.
     "GHSA-vfj7-8cjw-p6xm",
 
+    // GHSA-fc5q-39xc-vjpf — picomatch ReDoS through single-branch repeated extglobs (high).
+    // Surfaced 2026-11-17, ejecting #971 from CI. Reproduced against main's unmodified lockfile, so
+    // it is main's and not any PR's. It is the only advisory failing the gate.
+    //
+    // No fix exists: the range is `<= 4.0.7`, `first_patched_version` is null, and 4.0.7 is the
+    // latest published picomatch (`npm view picomatch version`, 2026-11-17). An `overrides` floor
+    // has nothing to point at.
+    //
+    // Exposure is build and test tooling only. Every path runs through jest, eslint/typescript-eslint,
+    // vite/vitest, metro, expo-cli or micromatch, and `npm ls picomatch --omit=dev` is empty for
+    // apps/api and packages/domain. The ReDoS needs a hostile glob pattern, and every glob these
+    // tools compile comes from the repo's own config.
+    //
+    // Remove once picomatch publishes a release outside the advisory's range and the tree
+    // re-resolves onto it (audit-ci's "Consider not allowlisting advisories" report flags this
+    // entry once it is unused).
+    "GHSA-fc5q-39xc-vjpf",
+
     // GHSA-mrhx-c7xc-m3w5 — zod can exhaust memory validating oversized constrained collections
     // (high, vulnerable <4.6.6). Landed 2026-10-23 and turned main red. The 4.x copies (apps/api,
     // @hono/zod-openapi, stryker) were moved to 4.6.7 in the lockfile; that is the reachable
