@@ -222,6 +222,16 @@ describe.skipIf(!hasDb)('Activity feed (integration)', () => {
     expect(r.pushId).toBeTruthy()
   })
 
+  it("POST /notifications/send refuses another tenant's user", async () => {
+    const res = await call<{ code: string }>(
+      'admin',
+      '/notifications/send',
+      post({ userId: U['outsider']!.id, title: 'Hi', body: 'x' }),
+    )
+    expect(res.status).toBe(404)
+    expect(await db.notification.count({ where: { recipientUserId: U['outsider']!.id } })).toBe(0)
+  })
+
   it('POST /notifications/send writes an Activity row with the sender as actor', async () => {
     const res = await call<{ data: { id: string; notificationId: string; pushId: string } }>(
       'admin',

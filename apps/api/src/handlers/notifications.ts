@@ -64,7 +64,11 @@ notificationsHandler.post(
 
     // Verify the target exists within this tenant (scoped client → tenant-safe).
     if (userId != null) {
-      const user = await db.tenantUser.findFirst({ where: { id: userId }, select: { id: true } })
+      // TenantUser is not auto-scoped (TENANT_SCOPED_MODELS), so bind the tenant here.
+      const user = await db.tenantUser.findFirst({
+        where: { id: userId, tenantId },
+        select: { id: true },
+      })
       if (!user) {
         return c.json({ error: 'Target user not found in this tenant', code: 'NOT_FOUND' }, 404)
       }
