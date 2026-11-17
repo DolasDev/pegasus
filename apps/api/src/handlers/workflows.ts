@@ -1529,10 +1529,12 @@ workflowsHandler.get(
 // POST /:id/executions/:executionId/cancel
 //
 // Request cancellation of a non-terminal execution on Temporal. Cancellation is
-// cooperative: `handle.cancel()` signals the run, which the reconcile poller
-// (lambda-reconcile-workflow-executions) flips to CANCELLED once Temporal
-// reports it. So the row stays RUNNING here and we return 202 Accepted with the
-// current row — the UI polls for the terminal transition.
+// cooperative: `handle.cancel()` asks the run to stop. An Automation's runner
+// hears it on the activity's next heartbeat (≤ ~16 s), kills the tenant
+// subprocess and writes CANCELLED itself; a durable Workflow's row is flipped by
+// the reconcile poller (lambda-reconcile-workflow-executions) once Temporal
+// reports it closed. So the row stays RUNNING here and we return 202 Accepted
+// with the current row — the UI polls for the terminal transition.
 //
 // 409 if already terminal or not yet started on Temporal; 502 on Temporal error.
 // Response: { data: WorkflowExecutionResponse } (202) | 404 | 409 | 502

@@ -7,6 +7,8 @@ exactly what the executor builds. The broker is a recording stub.
 
 from __future__ import annotations
 
+import asyncio
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -15,6 +17,7 @@ from typing import Any
 import pytest
 from temporalio.exceptions import ApplicationError
 
+from pegasus_tenant_runner import executor as executor_module
 from pegasus_tenant_runner.artifacts import PreparedWorkflow
 from pegasus_tenant_runner.broker_client import RuntimeGrant
 from pegasus_tenant_runner.executor import TenantCodeExecutor
@@ -38,6 +41,13 @@ ECHO_WORKFLOW = textwrap.dedent(
     class SleepyWorkflow:
         async def run(self, payload):
             import asyncio
+            await asyncio.sleep(300)
+
+    class PidSleepyWorkflow:
+        async def run(self, payload):
+            import asyncio
+            with open(payload["input"]["pidfile"], "w") as fh:
+                fh.write(str(os.getpid()))
             await asyncio.sleep(300)
     """
 )
@@ -279,3 +289,57 @@ async def test_patch_failure_does_not_mask_run_result(
         "echo_wf", {"executionId": "e1", "input": {"x": 2}}
     )
     assert result["echo"] == {"x": 2}
+
+
+async def _start_and_wait_for_pid(
+    executor: TenantCodeExecutor, pidfile: Path
+) -> tuple[asyncio.Task[Any], int]:
+    task = asyncio.ensure_future(
+        executor.run_entry_point(
+            "echo_wf", {"executionId": "e1", "input": {"pidfile": str(pidfile)}}
+        )
+    )
+    for _ in range(200):
+        if pidfile.exists() and pidfile.read_text():
+            return task, int(pidfile.read_text())
+        await asyncio.sleep(0.05)
+    task.cancel()
+    raise AssertionError("tenant subprocess never wrote its pid")
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+async def test_cancel_kills_the_subprocess_and_patches_cancelled(
+    prepared: PreparedWorkflow, tmp_path: Path
+) -> None:
+    broker = StubBroker()
+    executor = _executor(broker, prepared, entry_point="echo_wf:PidSleepyWorkflow")
+    task, pid = await _start_and_wait_for_pid(executor, tmp_path / "pid")
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not _alive(pid)
+    assert [p["status"] for p in broker.patches] == ["CANCELLED"]
+    assert "cancel" in broker.patches[0]["error_message"].lower()
+
+
+async def test_worker_shutdown_kills_the_subprocess_without_a_patch(
+    prepared: PreparedWorkflow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A runner drain is not a cancel: the Automation dies with the runner and
+    # the reconciler closes its row (#958), so nothing is PATCHed here.
+    monkeypatch.setattr(executor_module, "_is_worker_shutdown", lambda: True)
+    broker = StubBroker()
+    executor = _executor(broker, prepared, entry_point="echo_wf:PidSleepyWorkflow")
+    task, pid = await _start_and_wait_for_pid(executor, tmp_path / "pid")
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not _alive(pid)
+    assert broker.patches == []

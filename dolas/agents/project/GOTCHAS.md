@@ -3983,3 +3983,29 @@ task queue recently` (a worker that left). That is longer than API Gateway's
 - A probe that runs the TS client with a blocking `subprocess.run` inside the
   Python worker's event loop starves the worker, so every query "times out".
   Use `asyncio.create_subprocess_exec`.
+
+## An activity that never heartbeats never hears its cancel — and `TRY_CANCEL` hides that
+
+Found in the staging acceptance of #963 (2026-11-16). The terminate cascade
+cancelled step Automation `8bd2d8e1`, and Temporal's history showed
+`WorkflowExecutionCancelRequested` → `ActivityTaskCancelRequested` →
+`WorkflowExecutionCanceled`, all within 30 ms. The tenant subprocess then slept
+its full 300 s, and the runner wrote the row back as **COMPLETED**.
+
+- Temporal hands a running activity its cancel **only in a heartbeat
+  response**. The tenant runner's one Automation activity
+  (`run_tenant_entry_point`) had no `heartbeat_timeout` and never heartbeated,
+  so no cancel ever reached it, whoever sent it: the tenant-web Cancel button,
+  `run_automation`'s step cancel, or a terminate cascade.
+- The default activity cancellation type, `TRY_CANCEL`, lets the **workflow**
+  close CANCELLED immediately without waiting for the activity. So Temporal
+  looked right while the code ran on. A cancel test that only checks the
+  workflow's status cannot catch this. Check that the code stopped (the
+  `cleaned_up` flag in `tests/test_proxy_cancel_e2e.py`).
+- Fixed in `fix/automation-cancel-stops-code`: the proxy schedules the activity
+  with `heartbeat_timeout=20 s` + `WAIT_CANCELLATION_COMPLETED`, the activity
+  heartbeats every 5 s, and the executor SIGTERMs (then SIGKILLs) the subprocess
+  and PATCHes CANCELLED. A worker shutdown is told apart with
+  `activity.is_worker_shutdown()` and is not PATCHed (#958's rule).
+- Cancel latency is bounded by the SDK's heartbeat throttle,
+  `0.8 × heartbeat_timeout` (16 s here), not by the heartbeat interval.
