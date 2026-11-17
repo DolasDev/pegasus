@@ -22,7 +22,11 @@ activity invocation it:
 4. captures size-capped stdout/stderr tails for the runner log,
 5. reads the verdict from the run's result file, PATCHes terminal status to
    the API (COMPLETED / FAILED / TIMED_OUT — mirror of status_sync.py via
-   the broker client), and completes/fails the Temporal activity to match.
+   the broker client), and completes/fails the Temporal activity to match,
+6. stops the subprocess when the activity is cancelled. A cancel of the run
+   (tenant-web Cancel, a Workflow cancelling its step, a terminate cascade)
+   PATCHes CANCELLED. A runner shutdown does not PATCH: the Automation dies
+   with the runner and the reconciler closes its row (#958).
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from .artifacts import (
@@ -60,6 +65,34 @@ DRIVER_PATH = Path(__file__).resolve().parent / "subprocess_driver.py"
 
 #: Cap on the error-message text persisted to the execution row.
 _MAX_ERROR_CHARS = 2_000
+
+#: How long a cancelled subprocess gets after SIGTERM before SIGKILL.
+_TERMINATE_GRACE_SECONDS = 5.0
+
+#: The row's error message when a cancel stopped the run.
+CANCELLED_MESSAGE = "Cancelled while running; the Automation's process was stopped"
+
+
+def _is_worker_shutdown() -> bool:
+    """True when this activity is being cancelled because the runner is
+    shutting down (a drain or a stop), not because the run was cancelled."""
+    return activity.in_activity() and activity.is_worker_shutdown()
+
+
+async def _stop_subprocess(proc: asyncio.subprocess.Process) -> None:
+    """SIGTERM, then SIGKILL after a grace period; always reap."""
+    try:
+        proc.terminate()
+    except ProcessLookupError:
+        pass
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=_TERMINATE_GRACE_SECONDS)
+    except TimeoutError:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        await proc.wait()
 
 
 def _utc_now_iso() -> str:
@@ -293,6 +326,27 @@ class TenantCodeExecutor:
                     self._patch_status, execution_id, "TIMED_OUT", error_message=message
                 )
                 raise ApplicationError(message, non_retryable=True) from None
+            except asyncio.CancelledError:
+                # The activity was cancelled: Temporal delivered it through a
+                # heartbeat (proxy.py). Never leave tenant code running past it.
+                await _stop_subprocess(proc)
+                shutdown = _is_worker_shutdown()
+                log.info(
+                    "runner.execution_cancelled",
+                    extra={
+                        "workflow_name": workflow_name,
+                        "execution_id": execution_id,
+                        "worker_shutdown": shutdown,
+                    },
+                )
+                if not shutdown:
+                    await asyncio.to_thread(
+                        self._patch_status,
+                        execution_id,
+                        "CANCELLED",
+                        error_message=CANCELLED_MESSAGE,
+                    )
+                raise
 
             # 4. Size-capped output tails — runner log only, never the result.
             stdout_tail = _tail(stdout, self._max_output_bytes)

@@ -12,6 +12,12 @@ the process that holds the ``wbk_`` token). It does that with a single
   with ``maximum_attempts=1`` (the executor PATCHes a terminal status after the
   first attempt; an automatic Temporal retry would collide with the row's state
   machine),
+* with a heartbeat timeout and ``WAIT_CANCELLATION_COMPLETED``, while the
+  activity heartbeats for the whole run. Temporal hands a running async
+  activity its cancel ONLY in a heartbeat response, so without heartbeats a
+  cancelled Automation kept running to the end (and wrote COMPLETED) while its
+  workflow closed CANCELLED at once. Now the cancel reaches the executor, which
+  stops the subprocess, and the workflow closes after that,
 * unsandboxed (``sandboxed=False``): the proxy is trusted shim code with a
   deterministic one-call body.
 
@@ -34,6 +40,8 @@ runner is genuinely quiet.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
@@ -48,6 +56,17 @@ from .idle import IdleTracker
 __all__ = ["ACTIVITY_NAME", "Registrations", "TenantProxyWorkflow", "build_registrations"]
 
 ACTIVITY_NAME = "run_tenant_entry_point"
+
+#: How often the activity heartbeats. The SDK throttles heartbeats to 80% of
+#: the timeout (16 s), which bounds how long a cancel takes to arrive.
+HEARTBEAT_INTERVAL_SECONDS = 5.0
+
+#: A runner that stops heartbeating this long is presumed dead.
+ACTIVITY_HEARTBEAT_TIMEOUT = timedelta(seconds=20)
+
+#: The workflow closes CANCELLED only once the activity has stopped the
+#: subprocess, so a CANCELLED run never has tenant code still running.
+ACTIVITY_CANCELLATION_TYPE = workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED
 
 #: Buffer added to the activity start_to_close timeout on top of the
 #: subprocess wall-clock budget, so the in-shim kill always fires first and
@@ -94,8 +113,16 @@ class TenantProxyWorkflow:
                 "payload": decode_dynamic_payload(args),
             },
             start_to_close_timeout=_activity_timeout,
+            heartbeat_timeout=ACTIVITY_HEARTBEAT_TIMEOUT,
+            cancellation_type=ACTIVITY_CANCELLATION_TYPE,
             retry_policy=RetryPolicy(maximum_attempts=1),
         )
+
+
+async def _heartbeat_forever() -> None:
+    while True:
+        activity.heartbeat()
+        await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
 
 
 @dataclass(frozen=True)
@@ -121,11 +148,19 @@ def build_registrations(
     @activity.defn(name=ACTIVITY_NAME)
     async def run_tenant_entry_point(request: dict[str, Any]) -> Any:
         idle_tracker.task_started()
+        # Heartbeat for the whole run so a cancel can reach us (see the module
+        # docstring). Outside an activity context (direct calls in tests)
+        # there is nothing to heartbeat to.
+        heartbeats = asyncio.create_task(_heartbeat_forever()) if activity.in_activity() else None
         try:
             return await executor.run_entry_point(
                 str(request.get("workflow_name", "")), request.get("payload")
             )
         finally:
+            if heartbeats is not None:
+                heartbeats.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await heartbeats
             idle_tracker.task_finished()
 
     return Registrations(
