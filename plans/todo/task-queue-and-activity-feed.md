@@ -11,7 +11,11 @@
 - **Phase 1 (driver To Do) is built** on `feat/task-queue-driver-todo`. Its plan, `plans/completed/61e536c9-task-queue-driver-todo.md`, lists nine deviations from the Phase 1 text below. Read it before Phase 2.
   - Still owed: a device / staging check with a tenant's rules turned on (tenant-web Settings → App → Operations → Driver To Do).
   - Still owed: Steve's answer on open question 5 (arrival _time_ vs "mark done").
-- **Next action:** Phase 2 (Activity feed + `notify()`) in a fresh `feat/` worktree.
+- **Phase 2a (Activity feed + `notify()`, mobile) is built.** Its plan is `plans/completed/6f4c8919-task-queue-activity-feed.md`.
+- **Next action:** Phase 2b, in a fresh `feat/` worktree:
+  - the tenant-web bell;
+  - SDK `notify` (bump the SDK version, update its discovery surfaces, publish after merge);
+  - Blocked (andon), which waits on open question 3.
 - **In parallel, unrelated to Phase 1:**
   - The **QMM task-list 500** fix is landed on movemanager `dev` (`3d31b955`, 2026-11-14) but **not yet on QMM's site**, which runs `2026.11.12.1`, older than every channel. Once QMM's `/version` moves past it, re-run the per-order task probe (§2 method).
   - Measurement is done for all three sites (§2 "cross-site"). Only the NW interview is still owed: _"Which reports do you open every day?"_
@@ -176,6 +180,11 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
 - [x] **Docs:** `apps/mobile/README.md`. No SDK surface in this phase (built-in rules only).
 
 ### Phase 2: Activity feed + notify()
+
+**Split 2026-11-17:**
+
+- **2a DONE** (`plans/completed/6f4c8919-task-queue-activity-feed.md`): tables, `notify()`, the four senders moved onto it, the `/me/activity` and preferences API, and mobile Activity with a bell and settings.
+- **2b open:** the tenant-web bell, SDK `notify`, and Blocked (andon).
 
 - [ ] **Prisma:**
   - `Notification` (tenantId, recipientUserId, type, actorUserId?, entityType, entityId, title, body, data/deepLink JSON, groupKey, createdAt, seenAt?, readAt?).
