@@ -8,23 +8,28 @@
   signals) next to Automations." Tenants can see their running durable
   Workflows (e.g. one per order, keyed by order id), open one, see where it
   stands, see what has been delivered to it, and stop it, without the CLI.
-- **Status:** Approved 2026-11-17 (all four decisions → the recommended option).
+- **Status:** Approved 2026-11-17 (all four decisions → the recommended option). Implemented 2026-11-17.
 
-## Resume here (2026-11-17)
+## Resume here (2026-11-17, implementation done)
 
-- **Where:** worktree `../pegasus-tenant-web-workflows-section`, branch
-  `feat/tenant-web-workflows-section`, off `main`. Only this plan is committed (a WIP
-  checkpoint); no implementation yet, nothing pushed.
-- **Next action:** implement the checklist top to bottom, TDD. Start with the API
-  `parentExecutionId` filter (the smallest, unblocks the steps panel).
-- **Before editing `router.tsx` / `AppShell.tsx`:** check the open
-  `feat/task-queue-activity-feed` worktree's diff for those files (hot files).
-- **Gotchas:** worktree sessions reject compound `git`/`gh` shell one-liners. Use
-  plain commands, or scripts in a temp dir. SDK version: re-check
-  `git tag -l 'sdk-python-v*'` and `origin/main`'s pyproject before bumping
-  (0.66.0 is the latest as of 2026-11-17). The SDK venv is
-  `packages/workflows-sdk-python/.venv`. Runner/SDK pytest needs
-  `uv run --extra dev` (the system pytest lacks pytest-asyncio).
+- **Done on this branch:** API `parentExecutionId` filter + OpenAPI + SDK 0.66.1
+  (`list_workflow_executions(parent_execution_id=)`, CLI `executions steps`);
+  `ApiError.retryAfterSeconds` + `Retry-After` in CORS `exposeHeaders` (Hono and the
+  HTTP API); tenant-web `kind` + Automations-list split + pointer; `/workflows`
+  list + nav; `/workflows/$executionId` detail; badge → link; legacy-redirect
+  comment corrected; RTL, API, infra, e2e smoke; parent plan + DECISIONS.
+- **Changed from the design:** actions and the query panel are gated by Cedar
+  permission strings from `/me/permissions` (`workflow:query_execution` /
+  `cancel_execution` / `terminate_execution`), not role names, which matches the
+  existing Automation detail page and yields the same audience (developer + admin
+  via permit-all). Added `Retry-After` CORS exposure (the browser could not read
+  it otherwise); the hook falls back to 15 s when the header is missing. Added a
+  CLI `executions steps` command (discovery surface for the new filter). Step
+  rows link to `/automations/$workflowId?tab=executions` (reachable by viewers),
+  and the Automation detail page's expanded execution links back to its parent.
+- **Owed after merge:** publish SDK 0.66.1 (`sdk-python-v0.66.1`); staging
+  eyeball (below); the authoring repo's `CLAUDE.md` (outside this repo) should
+  mention the steps listing.
 
 ## What exists (verified on `main` @ `ec250151`)
 
@@ -141,16 +146,16 @@ terminate`. Query is `QueryWorkflowExecution` and terminate is
 
 ## Checklist
 
-- [ ] Decisions recorded
-- [ ] API `parentExecutionId` filter + test + OpenAPI; SDK param + patch bump
-- [ ] tenant-web: `kind` on `Workflow`; Automations lists filter
-- [ ] `/workflows` list + nav (hot files: `router.tsx`, `AppShell.tsx`; serialize)
-- [ ] `/workflows/$executionId` detail: header, status query hook, signals, steps, actions
-- [ ] Badge → link
-- [ ] Tests (RTL, API, e2e smoke); typecheck/lint
-- [ ] Eyeball on staging AVP Smoke (browser) — this also clears the long-owed "Workflow
+- [x] Decisions recorded
+- [x] API `parentExecutionId` filter + test + OpenAPI; SDK param + patch bump
+- [x] tenant-web: `kind` on `Workflow`; Automations lists filter
+- [x] `/workflows` list + nav (hot files: `router.tsx`, `AppShell.tsx`; serialize)
+- [x] `/workflows/$executionId` detail: header, status query hook, signals, steps, actions
+- [x] Badge → link
+- [x] Tests (RTL, API, e2e smoke); typecheck/lint
+- [ ] (post-deploy) Eyeball on staging AVP Smoke (browser); local eyeball of all three pages done 2026-11-17 — this also clears the long-owed "Workflow
       step" badge eyeball
-- [ ] Docs: parent plan Phase 4 tick + Resume; DECISIONS; SDK README/CHANGELOG for the filter
+- [x] Docs: parent plan Phase 4 tick + Resume; DECISIONS; SDK README/CHANGELOG for the filter
 
 ## Risks
 

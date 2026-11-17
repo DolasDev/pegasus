@@ -14,10 +14,28 @@
 - **Status:** Approved 2026-09-25. Phase 1 shipped (#731, 2026-09-28). Phase 2 done (2026-09-29): D5 → option A. Phase 3 done (2026-11-05: 3b.1, 3b.2 #855, legacy runner retired #919, 3c.1 #924, 3c.2; plan `plans/completed/7d167652-durable-workflow-worker.md`, follow-ups `plans/todo/durable-workflows-3c-followups.md`). Phase 4 in progress: signal delivery #943/#944 (+ #953) and `run_automation()`
   steps #957 + #958 (SDK 0.65.1, staging-accepted 2026-11-12) are DONE, and
   so are the open-Workflow list/query/cancel/terminate surfaces
-  (`feat/workflow-instance-surfaces`, SDK 0.66.0). Left: the tenant-web
-  Workflows section.
+  (`feat/workflow-instance-surfaces`, SDK 0.66.0), and the tenant-web
+  Workflows section (`feat/tenant-web-workflows-section`, SDK 0.66.1; plan
+  `plans/completed/*-tenant-web-workflows-section.md`). Phase 4 is code-complete;
+  Phase 5 is next.
 
-## Resume here (2026-11-14)
+## Resume here (2026-11-17)
+
+- **Phase 4 is code-complete.** The tenant-web Workflows section landed on
+  `feat/tenant-web-workflows-section`: top-level `/workflows` (open instances,
+  name / key filters, Open/All) and `/workflows/$executionId` (the `status`
+  query once on open + Refresh, never on a timer; delivered signals; steps via
+  the new `GET /workflow-executions?parentExecutionId=`; cancel / terminate,
+  permission-gated). The Automations lists now show `kind=AUTOMATION` only, and
+  the "Workflow step" badge links to its parent instance.
+- **Owed after merge:** publish SDK 0.66.1 (tag `sdk-python-v0.66.1`); eyeball
+  `/workflows` and one instance page on staging (AVP Smoke), which also clears
+  the long-owed "Workflow step" badge eyeball below; the authoring repo's
+  `CLAUDE.md` (outside this repo) should mention
+  `list_workflow_executions(parent_execution_id=...)` / `executions steps`.
+- **Next:** Phase 5 (`nw/order_lifecycle` as a `kind="workflow"` Workflow).
+
+## Earlier resume notes (2026-11-14)
 
 - **Where:** the list/query/cancel/terminate surfaces land in the
   `feat/workflow-instance-surfaces` PR (archived plan
@@ -313,7 +331,9 @@ Low risk. No change to wire names or behavior.
       `__tests__/AppShell.test.tsx` updated for the new label. The redirect
       handlers live in `src/lib/legacy-workflow-redirects.ts` (unit-tested in
       `legacy-workflow-redirects.test.ts`) so they can be tested without
-      mounting the router; Phase 4 deletes that module.
+      mounting the router. **Changed in Phase 4 (2026-11-17):** the Workflows
+      section went to the top-level `/workflows` instead, so these redirects
+      STAY (old Automation bookmarks) and the module is kept.
 - [x] Change the same wording in admin-web: the nav label (`routes/_auth.tsx`;
       path stays `/workflows`), the global library page
       (`routes/_auth/workflows/index.tsx`), and the tenant detail page's
@@ -485,8 +505,12 @@ Done 2026-09-29. Evidence, transcripts and probe scripts are in
       tick (paginate, or reconcile on close events).
       **Done in 3c.2 (#925)**: a WORKFLOW lane that round-robins on
       `reconciledAt`, separate from the AUTOMATION lane.
-- [ ] tenant-web: add a Workflows section (open instances, their status from
+- [x] tenant-web: add a Workflows section (open instances, their status from
       the query, delivered signals) next to Automations.
+      **Done 2026-11-17 (`feat/tenant-web-workflows-section`)**: top-level
+      `/workflows` + `/workflows/$executionId`; status query on open/Refresh
+      only; `parentExecutionId` list filter (SDK 0.66.1) for the steps panel;
+      Automations lists filtered to `kind=AUTOMATION`.
 
 ### Phase 5: Prove it with `nw/order_lifecycle` + discovery surfaces (branch `feat/workflows-discoverability`)
 
