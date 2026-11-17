@@ -83,6 +83,26 @@
     // this entry then (audit-ci's "Consider not allowlisting advisories" report flags it).
     "GHSA-m9gg-hp2v-232j",
 
+    // GHSA-fc5q-39xc-vjpf — picomatch ReDoS through single-branch repeated extglobs
+    // (high, vulnerable <=4.0.7). Landed 2026-11-17 and flipped the gate red repo-wide
+    // with no code change. NO PATCHED RELEASE EXISTS: 4.0.7 is the newest picomatch
+    // (published 2026-08-24), so no override, update or bump can clear it — the
+    // allowlist is the only option until upstream ships a fix.
+    //
+    // NOT REACHABLE WITH UNTRUSTED INPUT: one copy, picomatch@4.0.4, hoisted. Every
+    // path is build/test/lint tooling — vite, vitest, jest, typescript-eslint,
+    // @parcel/watcher, and on the production-dependency side only apps/mobile's Expo
+    // CLI + Metro bundler (`npm ls picomatch --omit=dev` shows nothing but
+    // @pegasus/mobile). Those match glob patterns from our own committed config at
+    // build time; picomatch is not in the API Lambda, the web bundles or the mobile
+    // JS bundle, and no source file imports it. A ReDoS there needs a hostile
+    // pattern in our own repo.
+    //
+    // Remove once picomatch ships a release outside the advisory range and the tree
+    // re-resolves to it (audit-ci's "Consider not allowlisting advisories" report
+    // flags the entry as unused then).
+    "GHSA-fc5q-39xc-vjpf",
+
     // GHSA-w3rx-r6r6-pgpr / GHSA-5p2g-fcmc-qvqq — two image-size DoS advisories
     // (both high): infinite loops in the ICNS parser and in the JXL/HEIF parsers.
     //
