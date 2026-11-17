@@ -171,6 +171,12 @@ export const TENANT_SCOPED_MODELS = new Set([
   // Read and written only through the scoped client on /me/tasks. Creates set
   // tenantId.
   'TaskState',
+  // Activity feed rows and per-type channel preferences. Served through the
+  // scoped client on /me/activity and /me/notification-preferences; lib/notify
+  // sets tenantId explicitly on every write (including upserts, which the
+  // extension does not rewrite).
+  'Notification',
+  'NotificationPreference',
   'ActivityLaborPacker',
   // The company crew list — the tenant's grant to shared crews. Served only
   // through the scoped client on /labor/company; creates set tenantId.

@@ -102,6 +102,7 @@ import { integrationFetchHandler } from './handlers/integration-fetch'
 import { blobsHandler } from './handlers/blobs'
 import { meHandler } from './handlers/me'
 import { meTasksHandler } from './handlers/me-tasks'
+import { meActivityHandler, meNotificationPreferencesHandler } from './handlers/me-activity'
 import { clientErrorsHandler } from './handlers/client-errors'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { desktopHandler } from './handlers/desktop'
@@ -471,6 +472,10 @@ v1.route('/me', meHandler)
 // Driver To Do (task queue plan Phase 1): the caller's own computed tasks +
 // snooze/dismiss. Self-scoped like /onprem/longhaul/me/itinerary, so ungated.
 v1.route('/me/tasks', meTasksHandler)
+// Activity feed + per-type channel preferences (task queue plan Phase 2): the
+// caller's own rows only, so ungated like the rest of /me.
+v1.route('/me/activity', meActivityHandler)
+v1.route('/me/notification-preferences', meNotificationPreferencesHandler)
 // Browser crash reports. Ungated like device-tokens below: any authenticated
 // user may report a crash in their own browser, and a permission check would
 // silently drop reports from exactly the users whose permissions are broken.

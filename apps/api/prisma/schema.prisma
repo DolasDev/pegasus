@@ -320,6 +320,8 @@ model Tenant {
   servicesFilters        ServicesFilter[]
   itineraryActFacts      ItineraryActFact[]
   taskStates             TaskState[]
+  notifications          Notification[]
+  notificationPrefs      NotificationPreference[]
   pushNotificationOutbox PushNotificationOutbox[]
 
   // Move chat
@@ -551,6 +553,9 @@ model TenantUser {
   servicesFilters              ServicesFilter[]
   itineraryActFacts            ItineraryActFact[]
   taskStates                   TaskState[]
+  notificationsReceived        Notification[]           @relation("NotificationRecipient")
+  notificationsActed           Notification[]           @relation("NotificationActor")
+  notificationPrefs            NotificationPreference[]
   pushNotifications            PushNotificationOutbox[]
   chatMessages                 ChatMessage[]
   chatRoomMembers              ChatRoomMember[]
@@ -3703,6 +3708,62 @@ model TaskState {
 
   @@unique([tenantId, userId, taskKey])
   @@map("task_states")
+  @@schema("public")
+}
+
+/// One Activity feed row for one recipient (task queue plan, TQ-D1). Written
+/// by lib/notify.ts, which also enqueues the push when the recipient's channel
+/// for the type is `push`. The push outbox stays a delivery queue; this table
+/// is the feed, with its own seen / read state.
+model Notification {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  recipientUserId String    @map("recipient_user_id")
+  /// @pegasus/domain NOTIFICATION_TYPES, e.g. `trip.assigned`.
+  type            String    @db.VarChar(64)
+  actorUserId     String?   @map("actor_user_id")
+  /// What it is about, e.g. ('order', '4242'). Free-form, like Document.
+  entityType      String?   @map("entity_type") @db.VarChar(32)
+  entityId        String?   @map("entity_id") @db.VarChar(64)
+  title           String    @db.VarChar(200)
+  body            String    @db.VarChar(1000)
+  /// The deep-link payload: the same `data` the push carries.
+  data            Json      @default("{}")
+  /// Rows with one group key show as one ("3 updates on #4242").
+  groupKey        String?   @map("group_key") @db.VarChar(120)
+  /// Idempotency: a retried notify() for one logical event keeps one row.
+  dedupeKey       String?   @map("dedupe_key") @db.VarChar(255)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// The bell was opened after this row arrived (clears the unseen count).
+  seenAt          DateTime? @map("seen_at") @db.Timestamptz(6)
+  readAt          DateTime? @map("read_at") @db.Timestamptz(6)
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  recipient TenantUser  @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  actor     TenantUser? @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, recipientUserId, createdAt])
+  @@index([tenantId, recipientUserId, seenAt])
+  @@map("notifications")
+  @@schema("public")
+}
+
+/// One user's channel for one notification type (`push` | `feed` | `off`). No
+/// row means the type's default (@pegasus/domain NOTIFICATION_TYPE_INFO).
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+  type      String   @db.VarChar(64)
+  channel   String   @db.VarChar(8)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user   TenantUser @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([tenantId, userId, type])
+  @@map("notification_preferences")
   @@schema("public")
 }
 

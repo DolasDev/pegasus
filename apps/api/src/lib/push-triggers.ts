@@ -16,6 +16,7 @@
 import type { Prisma } from '@prisma/client'
 import { chatPushContent } from '@pegasus/domain'
 import { enqueuePush } from '../repositories/push-outbox.repository'
+import { notify } from './notify'
 
 export type CrewAssignmentPushInput = {
   moveId: string
@@ -33,14 +34,15 @@ export async function enqueueCrewAssignmentPush(
   tenantId: string,
   input: CrewAssignmentPushInput,
 ): Promise<void> {
-  await enqueuePush(tx, tenantId, {
-    crewMemberId: input.crewMemberId,
+  await notify(tx, tenantId, {
+    type: 'move.assigned',
+    recipient: { crewMemberId: input.crewMemberId },
     dedupeKey: `move.assigned:${input.moveId}:${input.crewMemberId}`,
-    payload: {
-      title: 'New assignment',
-      body: 'You have been assigned to a move. Tap to view the details.',
-      data: { type: 'move.assigned', moveId: input.moveId },
-    },
+    title: 'New assignment',
+    body: 'You have been assigned to a move. Tap to view the details.',
+    data: { type: 'move.assigned', moveId: input.moveId },
+    entityType: 'move',
+    entityId: input.moveId,
   })
 }
 
@@ -87,14 +89,15 @@ export async function enqueueTripAssignmentPush(
   })
   if (!user) return false
 
-  await enqueuePush(tx, tenantId, {
-    userId: user.id,
+  await notify(tx, tenantId, {
+    type: 'trip.assigned',
+    recipient: { userId: user.id },
     dedupeKey: `trip.assigned:${input.tripId}:${input.longhaulDriverId}`,
-    payload: {
-      title: 'New trip assigned',
-      body: 'You have been assigned to a trip. Tap to view the details.',
-      data: { type: 'trip.assigned', tripId: input.tripId },
-    },
+    title: 'New trip assigned',
+    body: 'You have been assigned to a trip. Tap to view the details.',
+    data: { type: 'trip.assigned', tripId: input.tripId },
+    entityType: 'trip',
+    entityId: String(input.tripId),
   })
   return true
 }
@@ -107,28 +110,48 @@ export type ChatMessagePushInput = {
   recipientUserId: string
   /** The recipient was @mentioned in this message. */
   mentioned: boolean
+  /** The message's author — the Activity row's actor on a mention. */
+  authorUserId?: string
 }
 
 /**
  * Enqueues a "new message on #<order>" push for one recipient of a move chat
  * message. The copy never includes the message text (chatPushContent, D5).
- * Idempotent per (message, recipient). Deep link: the shipment's chat
- * (`/shipment/[orderNum]` with the Chat tab in the app). Returns the outbox row
- * id so the caller can deliver it immediately.
+ * Idempotent per (message, recipient). Deep link: the move's chat. Returns the
+ * outbox row id (null when none was enqueued) so the caller can deliver it
+ * immediately.
+ *
+ * A MENTION also goes to the recipient's Activity feed (notify(), type
+ * `chat.mention`), and follows their channel for that type. Every other
+ * message stays push-only: Messages has its own unread count, and a feed row
+ * per message would double it.
  */
 export async function enqueueChatMessagePush(
   tx: Prisma.TransactionClient,
   tenantId: string,
   input: ChatMessagePushInput,
-): Promise<string> {
+): Promise<string | null> {
   const { title, body } = chatPushContent(input)
-  return enqueuePush(tx, tenantId, {
-    userId: input.recipientUserId,
-    dedupeKey: `chat.message:${input.messageId}:${input.recipientUserId}`,
-    payload: {
+  const dedupeKey = `chat.message:${input.messageId}:${input.recipientUserId}`
+  const data = { type: 'chat.message', orderNum: input.orderNum, messageId: input.messageId }
+  if (input.mentioned) {
+    const { pushId } = await notify(tx, tenantId, {
+      type: 'chat.mention',
+      recipient: { userId: input.recipientUserId },
+      dedupeKey,
       title,
       body,
-      data: { type: 'chat.message', orderNum: input.orderNum, messageId: input.messageId },
-    },
+      data,
+      actorUserId: input.authorUserId ?? null,
+      entityType: 'order',
+      entityId: input.orderNum,
+      groupKey: `order:${input.orderNum}`,
+    })
+    return pushId
+  }
+  return enqueuePush(tx, tenantId, {
+    userId: input.recipientUserId,
+    dedupeKey,
+    payload: { title, body, data },
   })
 }
