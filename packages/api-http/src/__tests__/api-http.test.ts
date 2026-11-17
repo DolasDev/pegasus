@@ -50,6 +50,39 @@ describe('createApiClient().fetch', () => {
     await expect(client.fetch('/moves/missing')).rejects.toBeInstanceOf(ApiError)
   })
 
+  it('carries a Retry-After (delta seconds) on the ApiError when the server sends one', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'starting', code: 'WORKFLOW_WORKER_STARTING' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '15' },
+      }),
+    )
+    const err = (await makeClient()
+      .fetch('/x')
+      .catch((e: unknown) => e)) as ApiError
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err.status).toBe(503)
+    expect(err.retryAfterSeconds).toBe(15)
+  })
+
+  it('leaves retryAfterSeconds undefined when the header is absent or not delta seconds', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(makeResponse({ error: 'x', code: 'X' }, 503))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'x', code: 'X' }), {
+          status: 503,
+          headers: { 'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT' },
+        }),
+      )
+    const client = makeClient()
+    expect(
+      ((await client.fetch('/a').catch((e: unknown) => e)) as ApiError).retryAfterSeconds,
+    ).toBeUndefined()
+    expect(
+      ((await client.fetch('/b').catch((e: unknown) => e)) as ApiError).retryAfterSeconds,
+    ).toBeUndefined()
+  })
+
   it('returns null for 204 No Content', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
     const client = makeClient()

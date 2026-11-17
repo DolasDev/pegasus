@@ -454,6 +454,17 @@ function ExecutionDetail({
           Finished: {execution.finishedAt ? new Date(execution.finishedAt).toLocaleString() : '—'}
         </span>
       </div>
+      {execution.parentExecutionId && (
+        <p className="text-xs">
+          <Link
+            to="/workflows/$executionId"
+            params={{ executionId: execution.parentExecutionId }}
+            className="text-primary hover:underline"
+          >
+            Workflow step: open the Workflow that started it →
+          </Link>
+        </p>
+      )}
 
       {execution.dryRun ? (
         <DryRunTrace execution={execution} result={dryRun} />

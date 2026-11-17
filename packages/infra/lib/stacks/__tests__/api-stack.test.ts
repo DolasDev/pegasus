@@ -1811,6 +1811,15 @@ describe('ApiStack — crew-leader link switch (crewLeaderLinkEnabled)', () => {
       throw new Error(`expected CORS AllowHeaders to include X-Crew-Session, got ${headers}`)
     }
   })
+
+  it('lets the browser read Retry-After (the Workflow query waits out a cold runner)', () => {
+    const template = synthApiStack()
+    const apis = Object.values(template.findResources('AWS::ApiGatewayV2::Api'))
+    const exposed: string[] = apis[0]?.Properties?.CorsConfiguration?.ExposeHeaders ?? []
+    if (!exposed.includes('Retry-After')) {
+      throw new Error(`expected CORS ExposeHeaders to include Retry-After, got ${exposed}`)
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -9,7 +9,9 @@ import {
   workflowRequirementsSummaryQueryOptions,
   workflowsQueryOptions,
 } from '@/api/queries/workflows'
+import { isAutomation } from '@/api/workflows'
 import { groupWorkflowsByName } from '@/lib/workflow-grouping'
+import { DurableWorkflowsPointer } from '@/components/DurableWorkflowsPointer'
 import { ExecutabilityBadge } from '@/routes/settings.workflows'
 
 // ---------------------------------------------------------------------------
@@ -29,11 +31,16 @@ import { ExecutabilityBadge } from '@/routes/settings.workflows'
 // The platform library (GLOBAL) is deliberately left out — those are templates
 // to fork, not something this tenant runs. Uploading, running, forking and
 // trigger management live at Settings → Automations.
+//
+// Durable Workflows (kind WORKFLOW) are not listed: their open instances live
+// at /workflows, which the pointer under the header links to.
 // ---------------------------------------------------------------------------
 
 export function AutomationsIndexPage() {
   const { data, isLoading, isError } = useQuery(workflowsQueryOptions)
-  const groups = groupWorkflowsByName((data ?? []).filter((w) => w.visibility === 'TENANT'))
+  const groups = groupWorkflowsByName(
+    (data ?? []).filter((w) => w.visibility === 'TENANT' && isAutomation(w)),
+  )
   // Best-effort: if the summary fails or predates `current`, the earlier-version
   // links still render, just without the "Still triggered" marker.
   const { data: summary } = useQuery(workflowRequirementsSummaryQueryOptions)
@@ -44,6 +51,7 @@ export function AutomationsIndexPage() {
   return (
     <div>
       <PageHeader title="Automations" breadcrumbs={[{ label: 'Automations' }]} />
+      <DurableWorkflowsPointer className="mb-4" />
 
       <Card>
         <CardContent className="pt-6">

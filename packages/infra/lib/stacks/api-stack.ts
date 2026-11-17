@@ -2259,7 +2259,8 @@ export class ApiStack extends cdk.Stack {
           'X-Tenant-Slug',
           'X-Crew-Session',
         ],
-        exposeHeaders: ['x-correlation-id'],
+        // Retry-After: read by tenant-web on 503 WORKFLOW_WORKER_STARTING.
+        exposeHeaders: ['x-correlation-id', 'Retry-After'],
       },
     })
 

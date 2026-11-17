@@ -23,6 +23,7 @@ import {
 import { DryRunBadge } from '@/components/DryRunBadge'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
+import { DurableWorkflowsPointer } from '@/components/DurableWorkflowsPointer'
 import { WorkflowExecutionStatusBadge } from '@/components/StatusBadge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -42,6 +43,7 @@ import {
   DOMAIN_EVENT_TYPES,
   INTEGRATION_EVENT_TYPES,
   getWorkflowDownloadUrl,
+  isAutomation,
   type CreateWorkflowTriggerInput,
   type Workflow,
   type WorkflowExecution,
@@ -155,7 +157,7 @@ function TriggerKindBadge({ kind }: { kind: WorkflowTriggerKind }) {
   return <Badge className={SCHEDULE_BADGE_CLASS}>Schedule</Badge>
 }
 
-function TriggerSourceBadge({
+export function TriggerSourceBadge({
   source,
   parentExecutionId,
 }: {
@@ -165,13 +167,20 @@ function TriggerSourceBadge({
   if (source === 'EVENT') return <Badge variant="info">Event</Badge>
   if (source === 'SCHEDULE') return <Badge className={SCHEDULE_BADGE_CLASS}>Schedule</Badge>
   if (source === 'WORKFLOW') {
+    // A step started by a durable Workflow's run_automation(): link to that
+    // Workflow instance (/workflows/$executionId).
+    if (!parentExecutionId) return <Badge variant="muted">Workflow step</Badge>
     return (
-      <Badge
-        variant="muted"
-        title={parentExecutionId ? `Started by Workflow execution ${parentExecutionId}` : undefined}
+      <Link
+        to="/workflows/$executionId"
+        params={{ executionId: parentExecutionId }}
+        title={`Started by Workflow execution ${parentExecutionId}`}
+        className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Workflow step
-      </Badge>
+        <Badge variant="muted" className="hover:underline">
+          Workflow step
+        </Badge>
+      </Link>
     )
   }
   return <Badge variant="muted">Manual</Badge>
@@ -1094,8 +1103,12 @@ export function WorkflowsSettingsPage() {
   // Collapse each section's flat (name, version) rows into one group per
   // workflow name — the list shows only each workflow's latest version, with
   // older versions behind a per-row expander.
-  const platformLibrary = groupWorkflowsByName(data?.filter((w) => w.visibility === 'GLOBAL') ?? [])
-  const tenantWorkflows = groupWorkflowsByName(data?.filter((w) => w.visibility === 'TENANT') ?? [])
+  // Automations only: a durable Workflow's open instances live at /workflows
+  // (the pointer below). Its version page here, by id, still works for
+  // publish / trigger management.
+  const automations = data?.filter(isAutomation) ?? []
+  const platformLibrary = groupWorkflowsByName(automations.filter((w) => w.visibility === 'GLOBAL'))
+  const tenantWorkflows = groupWorkflowsByName(automations.filter((w) => w.visibility === 'TENANT'))
 
   return (
     <div className="container mx-auto max-w-4xl py-8">
@@ -1126,6 +1139,7 @@ export function WorkflowsSettingsPage() {
               Event types
             </Link>
           </div>
+          <DurableWorkflowsPointer className="mt-3" />
         </CardHeader>
       </Card>
 

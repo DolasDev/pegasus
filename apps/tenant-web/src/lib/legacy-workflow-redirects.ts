@@ -3,8 +3,9 @@ import { redirect } from '@tanstack/react-router'
 // The Automations pages moved from /settings/workflows to /settings/automations
 // when the product concept was renamed (plans/in-progress/
 // long-running-workflows-and-automations.md, Phase 1). These `beforeLoad`
-// handlers keep old bookmarks and links working. Phase 4 gives
-// /settings/workflows to the long-running Workflows page, which replaces them.
+// handlers keep old bookmarks and links working, and they stay: the
+// long-running Workflows section (Phase 4) lives at the top-level /workflows,
+// so nothing else claims /settings/workflows.
 
 export type AutomationDetailSearch = { tab?: 'executions' }
 

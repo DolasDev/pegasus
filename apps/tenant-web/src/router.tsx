@@ -31,6 +31,8 @@ import { IntegrationsIndexPage } from '@/routes/integrations.index'
 import { IntegrationDetailPage } from '@/routes/integrations.$integrationId'
 import { AutomationsIndexPage } from '@/routes/automations.index'
 import { AutomationDetailPage } from '@/routes/automations.$workflowId'
+import { WorkflowsIndexPage } from '@/routes/workflows.index'
+import { WorkflowInstancePage } from '@/routes/workflows.$executionId'
 import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { CompaniesSettingsPage } from '@/routes/settings.companies'
@@ -317,6 +319,24 @@ const automationViewDetailRoute = createRoute({
   validateSearch: validateAutomationDetailSearch,
 })
 
+// Workflows — the tenant's durable (long-running) Workflow instances, by
+// execution id (plans/in-progress/tenant-web-workflows-section.md). Same
+// audience as Automations: every read is ReadWorkflow; the query / cancel /
+// terminate controls are hidden by their own permissions.
+const workflowsIndexRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/workflows',
+  beforeLoad: requireRole(...AUTOMATION_VIEW_ROLES),
+  component: WorkflowsIndexPage,
+})
+
+const workflowInstanceRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/workflows/$executionId',
+  beforeLoad: requireRole(...AUTOMATION_VIEW_ROLES),
+  component: WorkflowInstancePage,
+})
+
 // ---------------------------------------------------------------------------
 // Settings subtree — pathless layout that restricts every `/settings/*` route
 // to tenant_admin. New settings pages should hang off `settingsLayout` so they
@@ -393,9 +413,9 @@ const automationDetailRoute = createRoute({
   validateSearch: validateAutomationDetailSearch,
 })
 
-// Pre-rename paths redirect so existing bookmarks and links keep working. When
-// long-running Workflows get their own page (Phase 4 of the plan above), that
-// page replaces these redirects.
+// Pre-rename paths redirect so existing bookmarks and links keep working. They
+// stay: long-running Workflows live at the top-level /workflows, so nothing
+// else claims these paths.
 const legacyWorkflowsSettingsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: '/settings/workflows',
@@ -592,6 +612,8 @@ const routeTree = rootRoute.addChildren([
     integrationDetailRoute,
     automationsIndexRoute,
     automationViewDetailRoute,
+    workflowsIndexRoute,
+    workflowInstanceRoute,
     driverPlanningRoute.addChildren([
       dpAvailabilityRoute,
       dpPlanningRoute,
