@@ -20,7 +20,7 @@ import { z } from 'zod'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
-import { enqueuePush } from '../repositories/push-outbox.repository'
+import { notify } from '../lib/notify'
 
 const SendBody = z
   .object({
@@ -44,7 +44,8 @@ export const notificationsHandler = new Hono<AppEnv>()
 // ---------------------------------------------------------------------------
 // POST /send — enqueue a notification to one driver/crew member.
 //
-// Response: { data: { id } } (202 Accepted — queued, not yet delivered)
+// Response: { data: { id, notificationId, pushId } } (202 Accepted — queued,
+//           not yet delivered; `id` = the push row, else the feed row)
 //           { error, code: NOT_FOUND }        (404) — target not in this tenant
 //           { error, code: VALIDATION_ERROR } (400)
 // ---------------------------------------------------------------------------
@@ -63,7 +64,11 @@ notificationsHandler.post(
 
     // Verify the target exists within this tenant (scoped client → tenant-safe).
     if (userId != null) {
-      const user = await db.tenantUser.findFirst({ where: { id: userId }, select: { id: true } })
+      // TenantUser is not auto-scoped (TENANT_SCOPED_MODELS), so bind the tenant here.
+      const user = await db.tenantUser.findFirst({
+        where: { id: userId, tenantId },
+        select: { id: true },
+      })
       if (!user) {
         return c.json({ error: 'Target user not found in this tenant', code: 'NOT_FOUND' }, 404)
       }
@@ -80,15 +85,21 @@ notificationsHandler.post(
       }
     }
 
-    const id = await db.$transaction((tx) =>
-      enqueuePush(tx, tenantId, {
-        ...(userId != null ? { userId } : {}),
-        ...(crewMemberId != null ? { crewMemberId } : {}),
-        payload: { title, body, ...(data ? { data } : {}) },
+    // Through notify() (type `staff.message`): an Activity row for the
+    // recipient, plus the push unless they turned that type down to feed/off.
+    const { notificationId, pushId } = await db.$transaction((tx) =>
+      notify(tx, tenantId, {
+        type: 'staff.message',
+        recipient: userId != null ? { userId } : { crewMemberId: crewMemberId as string },
+        title,
+        body,
+        ...(data ? { data } : {}),
+        actorUserId: c.get('userId') ?? null,
         ...(dedupeKey != null ? { dedupeKey } : {}),
       }),
     )
 
-    return c.json({ data: { id } }, 202)
+    // `id` stays the push outbox row when there is one (the original contract).
+    return c.json({ data: { id: pushId ?? notificationId, notificationId, pushId } }, 202)
   },
 )

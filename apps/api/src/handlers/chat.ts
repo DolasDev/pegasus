@@ -394,15 +394,15 @@ chatHandler.post(`${ROOM}/messages`, requirePermission(Actions.PostChat), (c) =>
         const authorName = displayName(created.author)
         const pushIds: string[] = []
         for (const recipientUserId of recipients) {
-          pushIds.push(
-            await enqueueChatMessagePush(tx, tenantId, {
-              messageId: created.id,
-              orderNum: ref.entityId,
-              authorName,
-              recipientUserId,
-              mentioned: mentionedIds.includes(recipientUserId),
-            }),
-          )
+          const pushId = await enqueueChatMessagePush(tx, tenantId, {
+            messageId: created.id,
+            orderNum: ref.entityId,
+            authorName,
+            authorUserId: caller.userId,
+            recipientUserId,
+            mentioned: mentionedIds.includes(recipientUserId),
+          })
+          if (pushId) pushIds.push(pushId)
         }
         return { created, pushIds }
       }))

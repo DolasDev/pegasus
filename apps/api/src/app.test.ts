@@ -27,6 +27,13 @@ vi.mock('./middleware/tenant', () => ({
         create: vi.fn(async () => ({ id: 'pn-1' })),
         upsert: vi.fn(async () => ({ id: 'pn-1' })),
       },
+      // lib/notify (Activity feed): a crew target with no login gets the push only.
+      crewMember: { findFirst: vi.fn(async () => null) },
+      notificationPreference: { findFirst: vi.fn(async () => null) },
+      notification: {
+        create: vi.fn(async () => ({ id: 'n-1' })),
+        upsert: vi.fn(async () => ({ id: 'n-1' })),
+      },
       // Read by the integrations list handler's repo (findActiveForScope); null
       // = no published config, so each integration reports its built-in baseline.
       integrationConfig: { findFirst: vi.fn(async () => null) },

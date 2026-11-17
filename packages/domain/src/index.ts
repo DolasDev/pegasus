@@ -329,3 +329,19 @@ export {
   taskBucket,
   evaluateDriverTasks,
 } from './tasks/index'
+
+// Notifications (Activity feed type registry — plans/todo/task-queue-and-activity-feed.md)
+export type {
+  NotificationChannel,
+  NotificationType,
+  NotificationTypeInfo,
+} from './notifications/index'
+export {
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_TYPES,
+  NOTIFICATION_TYPE_INFO,
+  isNotificationType,
+  isNotificationChannel,
+  effectiveChannel,
+  channelWrites,
+} from './notifications/index'

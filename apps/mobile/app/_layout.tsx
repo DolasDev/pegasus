@@ -95,6 +95,10 @@ function RootLayoutNav() {
           />
           <Stack.Screen name="chat/[orderNum]" options={{ ...detailHeader, title: 'Chat' }} />
           <Stack.Screen name="settings" options={{ ...detailHeader, title: 'Settings' }} />
+          <Stack.Screen
+            name="notification-settings"
+            options={{ ...detailHeader, title: 'Notifications' }}
+          />
           <Stack.Screen name="labor/[phone]" options={{ ...detailHeader, title: 'Crew' }} />
           <Stack.Screen name="labor/new" options={{ ...detailHeader, title: 'Add crew' }} />
           <Stack.Screen
