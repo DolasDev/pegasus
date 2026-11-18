@@ -35,6 +35,7 @@ import { getCognitoConfig, buildLogoutUrl } from '@/auth/cognito'
 import { usePermissions } from '@/auth/permissions'
 import { AUTOMATION_VIEW_ROLES, OPERATIONS_ROLES } from '@/auth/role-guard'
 import { ChatUnreadBadge } from '@/features/chat/components/ChatUnreadBadge'
+import { ActivityBell } from '@/features/activity/ActivityBell'
 
 const SIDEBAR_COLLAPSED_KEY = 'pegasus.sidebar.collapsed'
 
@@ -596,6 +597,7 @@ export function AppShell({ children }: AppShellProps) {
           <span className="text-sm text-muted-foreground">{session?.tenantName ?? ''}</span>
           {session && (
             <div className="flex items-center gap-3">
+              <ActivityBell />
               <span className="text-sm text-muted-foreground">{session.email}</span>
               <Button variant="ghost" size="sm" className="gap-1.5" onClick={handleLogout}>
                 <LogOut size={14} />

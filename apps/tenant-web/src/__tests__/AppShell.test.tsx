@@ -85,6 +85,10 @@ vi.mock('@/features/chat/components/ChatUnreadBadge', () => ({
     <span data-testid="chat-unread-badge" data-collapsed={String(collapsed)} />
   ),
 }))
+// The bell has its own tests (features/activity/ActivityBell.test.tsx).
+vi.mock('@/features/activity/ActivityBell', () => ({
+  ActivityBell: () => <span data-testid="activity-bell" />,
+}))
 
 import { AppShell } from '@/components/AppShell'
 
