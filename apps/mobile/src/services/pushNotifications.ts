@@ -277,7 +277,11 @@ export function notificationRoute(data: Record<string, unknown> | undefined | nu
       return `/chat/${orderNum}`
     }
     // A driver is blocked on an order's task — open that order's chat, where
-    // operations can reach the driver.
+    // operations can reach the driver. An automation's message about an order
+    // opens the same chat; one with no order has nothing to open.
+    case 'workflow.message':
+      if (data['orderNum'] == null) return null
+    // falls through
     case 'task.blocked': {
       const orderNum = data['orderNum']
       if (typeof orderNum !== 'number' && typeof orderNum !== 'string') return '/(drawer)/messages'

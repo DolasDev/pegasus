@@ -394,6 +394,9 @@
       "SendEmail": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },
+      "NotifyUsers": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
+      },
       "UpdateTextMessage": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },

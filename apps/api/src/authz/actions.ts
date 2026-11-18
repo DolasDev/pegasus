@@ -293,6 +293,14 @@ export const Actions = {
     resourceType: 'Notification',
     permission: 'notification:send',
   },
+  // Activity feed posts from a tenant Workflow (POST /notifications/notify, SDK
+  // `notify`) — to the tenant's own users by email or role, type
+  // `workflow.message`. Internal-only, so not billable. Granted to workflow_runtime.
+  NotifyUsers: {
+    id: 'NotifyUsers',
+    resourceType: 'Notification',
+    permission: 'notification:notify',
+  },
   // ── SMS (outbound RingCentral SMS via the workflow runtime) ─────────────────
   SendSms: {
     id: 'SendSms',
