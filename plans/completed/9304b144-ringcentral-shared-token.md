@@ -70,7 +70,7 @@ invocation is a cold start. movemanager reuses its one company-wide token for ~3
 - [x] Review fixes: adopt connect token; no discard on 2nd 401; no retry on acquire failure;
       health-check EXPIRED only on token-endpoint 4xx; crypto + env-gate tests; 10 s lock timeout
 - [x] GOTCHAS.md
-- [ ] `npm test` (root) green; archive plan; one PR via merge queue
+- [x] `npm test` (root) green (16/16); plan archived; one PR via merge queue
 - [ ] Post-deploy (first hour, API + 4 RC log groups): `mint` + `mint_unshared` ≈ 1/h in total;
       zero `ringcentral shared token … failed` warns; a table/KMS problem looks like today's
       behaviour, so check, don't assume
