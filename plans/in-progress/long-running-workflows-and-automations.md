@@ -16,7 +16,7 @@
   so are the open-Workflow list/query/cancel/terminate surfaces
   (`feat/workflow-instance-surfaces`, SDK 0.66.0), and the tenant-web
   Workflows section (`feat/tenant-web-workflows-section`, SDK 0.66.1; plan
-  `plans/completed/*-tenant-web-workflows-section.md`). Phase 4 is code-complete;
+  `plans/completed/92d35285-tenant-web-workflows-section.md`). Phase 4 is code-complete;
   Phase 5 is next.
 
 ## Resume here (2026-11-17)

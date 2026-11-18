@@ -320,7 +320,7 @@ const automationViewDetailRoute = createRoute({
 })
 
 // Workflows — the tenant's durable (long-running) Workflow instances, by
-// execution id (plans/in-progress/tenant-web-workflows-section.md). Same
+// execution id (plans/completed/92d35285-tenant-web-workflows-section.md). Same
 // audience as Automations: every read is ReadWorkflow; the query / cancel /
 // terminate controls are hidden by their own permissions.
 const workflowsIndexRoute = createRoute({
