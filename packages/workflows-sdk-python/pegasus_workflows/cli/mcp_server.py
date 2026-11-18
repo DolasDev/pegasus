@@ -449,6 +449,8 @@ runtime, so it can wait for days:
   correlation_key=None)`` lists the tenant's OPEN Workflows (every version; each
   row has ``correlationKey``, the event-routed business key); ``get_execution_by_id``
   adds the version's declared ``signals`` / ``queries``;
+  ``list_workflow_executions(parent_execution_id=...)`` (0.66.1+) lists the step
+  Automations one Workflow execution's ``run_automation()`` started;
   ``query_execution(execution_id, "status", *args, wait=90)`` returns the query's
   value. A query needs a live worker and the tenant's runner idle-exits: the API
   wakes it and answers 503 ``WORKFLOW_WORKER_STARTING`` (Retry-After) until a

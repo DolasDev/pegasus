@@ -12,12 +12,14 @@ developers who live in the terminal:
   every version, with each instance's correlation key (0.66.0+).
 * ``executions query <execution-id> --name status [--args JSON-array]`` — run a
   declared ``@workflow.query``; waits out a cold runner (0.66.0+).
+* ``executions steps <execution-id>`` — the step Automations a durable
+  Workflow's ``run_automation()`` started (0.66.1+).
 * ``executions cancel <execution-id>`` — cooperative cancel, by id alone.
 * ``executions terminate <execution-id> --reason "..."`` — forcible end; also
   cancels the Workflow's open ``run_automation()`` steps.
 
 Auth mirrors ``push``: a ``vnd_`` API key via ``--token`` /
-``$PEGASUS_WORKFLOW_TOKEN``. ``list`` / ``show`` / ``open`` need ``ReadWorkflow``;
+``$PEGASUS_WORKFLOW_TOKEN``. ``list`` / ``show`` / ``open`` / ``steps`` need ``ReadWorkflow``;
 ``signal``, ``query``, ``cancel`` and ``terminate`` need the matching
 ``SignalWorkflowExecution`` / ``QueryWorkflowExecution`` /
 ``CancelWorkflowExecution`` / ``TerminateWorkflowExecution`` (all in the
@@ -206,6 +208,37 @@ def executions_open_command(
             f"{workflow:<32}  "
             f"{_fmt(row.get('status')):<8}  "
             f"{_fmt(row.get('correlationKey')):<24}  "
+            f"{_fmt(row.get('queuedAt'))}"
+        )
+
+
+@executions_app.command("steps")
+def executions_steps_command(
+    execution_id: str = typer.Argument(..., help="The durable Workflow execution (any status)."),
+    limit: int = typer.Option(50, "--limit", "-n", help="Maximum rows to show (1..200)."),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
+) -> None:
+    """List the step Automations a durable Workflow's run_automation() started (0.66.1+)."""
+    client = _client(token, base_url, profile)
+    try:
+        rows = client.list_workflow_executions(parent_execution_id=execution_id, limit=limit)
+    except PegasusApiError as exc:
+        typer.secho(f"failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    if not rows:
+        typer.echo("no steps")
+        return
+
+    typer.echo(f"{'EXECUTION ID':<38}  {'AUTOMATION':<32}  {'STATUS':<9}  QUEUED AT")
+    for row in rows:
+        automation = f"{_fmt(row.get('workflowName'))}@{_fmt(row.get('workflowVersion'))}"
+        typer.echo(
+            f"{_fmt(row.get('id')):<38}  "
+            f"{automation:<32}  "
+            f"{_fmt(row.get('status')):<9}  "
             f"{_fmt(row.get('queuedAt'))}"
         )
 

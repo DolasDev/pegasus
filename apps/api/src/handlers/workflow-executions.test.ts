@@ -266,6 +266,49 @@ describe.skipIf(!hasDb)('/workflow-executions (integration)', () => {
       const second = (await json(await app.request(`/?limit=1&before=${newer.id}`))).data as Row[]
       expect(second.map((r) => r.id)).toEqual([older.id])
     })
+    it('parentExecutionId lists that Workflow’s steps (Automations, closed included), tenant-scoped', async () => {
+      const t0 = Date.now()
+      const parent = await seedExecution(tenant.id, lifecycleV1.id)
+      const otherParent = await seedExecution(tenant.id, lifecycleV1.id)
+      const done = await seedExecution(tenant.id, automation.id, {
+        parentExecutionId: parent.id,
+        status: 'COMPLETED',
+        queuedAt: new Date(t0 - 1000),
+      })
+      const running = await seedExecution(tenant.id, automation.id, {
+        parentExecutionId: parent.id,
+        queuedAt: new Date(t0),
+      })
+      await seedExecution(tenant.id, automation.id, { parentExecutionId: otherParent.id })
+      await seedExecution(tenant.id, automation.id)
+
+      const res = await appAs(tenant.id, ['viewer']).request(`/?parentExecutionId=${parent.id}`)
+      expect(res.status).toBe(200)
+      const rows = (await json(res)).data as Row[]
+      expect(rows.map((r) => r.id)).toEqual([running.id, done.id])
+      expect(rows.every((r) => r.kind === 'AUTOMATION')).toBe(true)
+
+      // Another tenant asking for this parent sees nothing (no existence oracle).
+      const other = await appAs(otherTenant.id).request(`/?parentExecutionId=${parent.id}`)
+      expect(other.status).toBe(200)
+      expect((await json(other)).data).toEqual([])
+    })
+
+    it('parentExecutionId + open=true keeps only open steps', async () => {
+      const parent = await seedExecution(tenant.id, lifecycleV1.id)
+      await seedExecution(tenant.id, automation.id, {
+        parentExecutionId: parent.id,
+        status: 'COMPLETED',
+      })
+      const open = await seedExecution(tenant.id, automation.id, { parentExecutionId: parent.id })
+      const res = await appAs(tenant.id).request(`/?parentExecutionId=${parent.id}&open=true`)
+      expect(((await json(res)).data as Row[]).map((r) => r.id)).toEqual([open.id])
+    })
+
+    it('400 when parentExecutionId comes with kind=WORKFLOW (steps are Automations)', async () => {
+      const res = await appAs(tenant.id).request('/?parentExecutionId=abc&kind=WORKFLOW')
+      expect(res.status).toBe(400)
+    })
   })
 
   // ── GET /:executionId ─────────────────────────────────────────────────────

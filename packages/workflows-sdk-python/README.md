@@ -1772,6 +1772,7 @@ for row in client.list_workflow_executions():
 [inst] = client.list_workflow_executions(name="order_lifecycle", correlation_key="o-42")
 
 client.get_execution_by_id(inst["id"])     # + the version's declared "signals" / "queries"
+client.list_workflow_executions(parent_execution_id=inst["id"])  # its run_automation() steps (0.66.1+)
 client.query_execution(inst["id"], "status")             # run a declared @workflow.query
 client.cancel_execution_by_id(inst["id"])                # cooperative
 client.terminate_execution(inst["id"], "order voided")   # forcible
@@ -1779,15 +1780,18 @@ client.terminate_execution(inst["id"], "order voided")   # forcible
 
 ```
 pegasus-workflows executions open [--name order_lifecycle [--key o-42]]
+pegasus-workflows executions steps <execution-id>
 pegasus-workflows executions query <execution-id> --name status [--args '["x"]'] [--wait 90]
 pegasus-workflows executions cancel <execution-id>
 pegasus-workflows executions terminate <execution-id> --reason "order voided" [--yes]
 ```
 
-**Listing.** `list_workflow_executions(kind="WORKFLOW", open=None, name=None,
-correlation_key=None, limit=50, before=None)` — open-only by default for
-Workflows; `kind="AUTOMATION"` lists Automation runs (all statuses unless
-`open=True`). `correlationKey` is the business key of an event-routed instance
+**Listing.** `list_workflow_executions(kind=None, open=None, name=None,
+correlation_key=None, parent_execution_id=None, limit=50, before=None)` —
+open-only by default for Workflows; `kind="AUTOMATION"` lists Automation runs
+(all statuses unless `open=True`). `parent_execution_id=<Workflow execution id>`
+(0.66.1+) lists the step Automations that Workflow's `run_automation()` calls
+started (`kind` is implied; `kind="WORKFLOW"` with it is a 400). `correlationKey` is the business key of an event-routed instance
 (`None` for one started by hand). Page with `before=<last row's id>`. Needs
 `ReadWorkflow` (any tenant role).
 

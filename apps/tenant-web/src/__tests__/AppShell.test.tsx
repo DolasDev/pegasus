@@ -465,4 +465,19 @@ describe('AppShell — read-only Automations nav', () => {
       expect(mainNavLink()).toBeNull()
     },
   )
+
+  // The durable Workflows section sits next to Automations, for the same roles.
+  const workflowsLink = () => document.querySelector('a[href="/workflows"]')
+
+  it.each(['viewer', 'workflow_developer', 'tenant_admin'])('shows Workflows to %s', (role) => {
+    mockPermissions = { isLoading: false, roles: [role] }
+    renderShell()
+    expect(workflowsLink()).not.toBeNull()
+  })
+
+  it.each([[['driver']], [['sales']], [[]]])('hides Workflows from %j', (roles: string[]) => {
+    mockPermissions = { isLoading: false, roles }
+    renderShell()
+    expect(workflowsLink()).toBeNull()
+  })
 })

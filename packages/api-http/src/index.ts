@@ -3,10 +3,23 @@ export class ApiError extends Error {
     message: string,
     public readonly code: string,
     public readonly status: number,
+    /**
+     * The response's `Retry-After`, when it was sent as delta seconds and the
+     * browser could read it (the API lists it in CORS `exposeHeaders`).
+     * Undefined otherwise: callers that retry must keep their own default.
+     */
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message)
     this.name = 'ApiError'
   }
+}
+
+/** `Retry-After` as delta seconds; undefined for an absent or HTTP-date value. */
+function retryAfterSecondsOf(res: Response): number | undefined {
+  const raw = res.headers.get('Retry-After')?.trim()
+  if (!raw || !/^\d+$/.test(raw)) return undefined
+  return Number(raw)
 }
 
 export interface PaginationMeta {
@@ -194,7 +207,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       const json = (await res.json()) as ApiEnvelope<T>
 
       if ('error' in json) {
-        throw new ApiError(json.error, json.code, res.status)
+        throw new ApiError(json.error, json.code, res.status, retryAfterSecondsOf(res))
       }
 
       return json.data
@@ -212,7 +225,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       const json = (await res.json()) as PaginatedEnvelope<T[]> | ErrorEnvelope
 
       if ('error' in json) {
-        throw new ApiError(json.error, json.code, res.status)
+        throw new ApiError(json.error, json.code, res.status, retryAfterSecondsOf(res))
       }
 
       return json

@@ -55,6 +55,7 @@ function wf(over: Partial<Workflow> & Pick<Workflow, 'id' | 'name' | 'version'>)
     createdByUserId: 'u-1',
     artifactSha256: 'abc',
     executable: true,
+    kind: 'AUTOMATION',
     createdAt: '2026-11-01T00:00:00Z',
     updatedAt: '2026-11-01T00:00:00Z',
     ...over,
@@ -69,6 +70,7 @@ const ownV2 = wf({
   createdAt: '2026-11-05T00:00:00Z',
 })
 const ownOther = wf({ id: 'w-other', name: 'nightly-sync', version: '0.3.0', executable: false })
+const durable = wf({ id: 'w-durable', name: 'order_lifecycle', version: '1.0.0', kind: 'WORKFLOW' })
 const platform = wf({
   id: 'w-global',
   name: 'stdlib-template',
@@ -86,7 +88,11 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  listReturn = { data: [ownV1, ownV2, ownOther, platform], isLoading: false, isError: false }
+  listReturn = {
+    data: [ownV1, ownV2, ownOther, durable, platform],
+    isLoading: false,
+    isError: false,
+  }
   summaryReturn = { data: undefined }
 })
 
@@ -109,6 +115,13 @@ describe('AutomationsIndexPage', () => {
     expect(screen.getByText('pulse-texting')).toBeInTheDocument()
     expect(screen.getByText('nightly-sync')).toBeInTheDocument()
     expect(screen.queryByText('stdlib-template')).not.toBeInTheDocument()
+  })
+
+  it('leaves durable Workflows out and points to /workflows instead', () => {
+    renderPage()
+    expect(screen.queryByText('order_lifecycle')).not.toBeInTheDocument()
+    const pointer = screen.getByRole('link', { name: /durable workflows/i })
+    expect(pointer.getAttribute('href')).toBe('/workflows')
   })
 
   it('collapses versions into one row that links to the latest version', () => {
