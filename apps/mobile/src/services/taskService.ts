@@ -38,6 +38,26 @@ export class TaskService {
       body: JSON.stringify({ key, snoozedUntil: until.toISOString() }),
     })
   }
+
+  /**
+   * Mark a task blocked. The first block tells the company's operations users;
+   * returns how many were told (0 = nobody holds an operations role).
+   * `today` is the device's local day: the server re-checks the task is yours.
+   */
+  static async block(key: string, reason: string, today: string): Promise<{ notified: number }> {
+    const res = await getApiClient().fetch<{ notified?: number }>(`${TASKS}/state`, {
+      method: 'PUT',
+      body: JSON.stringify({ key, blocked: { reason }, today }),
+    })
+    return { notified: res?.notified ?? 0 }
+  }
+
+  static async unblock(key: string): Promise<void> {
+    await getApiClient().fetch(`${TASKS}/state`, {
+      method: 'PUT',
+      body: JSON.stringify({ key, blocked: null }),
+    })
+  }
 }
 
 /** 6 am local tomorrow — when a "Later" task comes back. */

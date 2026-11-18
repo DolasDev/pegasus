@@ -276,6 +276,13 @@ export function notificationRoute(data: Record<string, unknown> | undefined | nu
       if (typeof orderNum !== 'number' && typeof orderNum !== 'string') return '/(drawer)/messages'
       return `/chat/${orderNum}`
     }
+    // A driver is blocked on an order's task — open that order's chat, where
+    // operations can reach the driver.
+    case 'task.blocked': {
+      const orderNum = data['orderNum']
+      if (typeof orderNum !== 'number' && typeof orderNum !== 'string') return '/(drawer)/messages'
+      return `/chat/${orderNum}`
+    }
     default:
       return null
   }

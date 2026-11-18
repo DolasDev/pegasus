@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { AddDocumentModal } from '../../src/components/AddDocumentModal'
+import { BlockTaskModal } from '../../src/components/BlockTaskModal'
 import { useTasks } from '../../src/context/TasksContext'
 import { ItineraryService } from '../../src/services/itineraryService'
 import { TaskService, snoozeUntilTomorrow } from '../../src/services/taskService'
@@ -26,7 +27,9 @@ import { colors, fontSize, spacing, borderRadius } from '../../src/theme/colors'
 // and the order documents (task queue plan, Phase 1). A task clears itself
 // when its data arrives: "Mark done" posts the same DONE fact the itinerary's
 // button does, and "Upload" opens the document modal with the type preset.
-// "Later" snoozes until 6 am tomorrow.
+// "Later" snoozes until 6 am tomorrow. "Can't do it" blocks the task with a
+// reason and tells operations (andon); a blocked task stays on the list, marked,
+// until it's done or unblocked.
 // ---------------------------------------------------------------------------
 
 type Upload = { orderNum: number; documentType: string }
@@ -36,6 +39,8 @@ export default function TodoScreen() {
   const router = useRouter()
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [upload, setUpload] = useState<Upload | null>(null)
+  const [blocking, setBlocking] = useState<DriverTask | null>(null)
+  const [blockBusy, setBlockBusy] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // One read per visit to the screen (plus pull-to-refresh), never on a timer.
@@ -79,6 +84,30 @@ export default function TodoScreen() {
 
   const snooze = (task: DriverTask) =>
     void act(task, () => TaskService.snooze(task.key, snoozeUntilTomorrow()), 'Couldn’t snooze it')
+
+  const unblock = (task: DriverTask) =>
+    void act(task, () => TaskService.unblock(task.key), 'Couldn’t unblock it')
+
+  const submitBlock = async (reason: string) => {
+    if (!blocking) return
+    setBlockBusy(true)
+    try {
+      const { notified } = await TaskService.block(blocking.key, reason, localDay())
+      setBlocking(null)
+      if (notified === 0 && !blocking.blocked) {
+        Alert.alert(
+          'Nobody was notified',
+          'No one at your company has an operations role in Pegasus. Call the office.',
+        )
+      }
+      await refresh()
+    } catch (err) {
+      logger.warn('Failed to block a task', err)
+      Alert.alert('Couldn’t send it', err instanceof Error ? err.message : 'Please try again.')
+    } finally {
+      setBlockBusy(false)
+    }
+  }
 
   if (loading && !isRefreshing && !meta) {
     return (
@@ -143,6 +172,8 @@ export default function TodoScreen() {
             onOpenOrder={() => router.push(`/shipment/${group.orderNum}`)}
             onDo={doTask}
             onSnooze={snooze}
+            onBlock={setBlocking}
+            onUnblock={unblock}
           />
         )}
         contentContainerStyle={styles.listContent}
@@ -165,6 +196,12 @@ export default function TodoScreen() {
           />
         }
       />
+      <BlockTaskModal
+        task={blocking}
+        busy={blockBusy}
+        onClose={() => setBlocking(null)}
+        onSubmit={(reason) => void submitBlock(reason)}
+      />
       <AddDocumentModal
         visible={upload !== null}
         orderNum={upload?.orderNum ?? ''}
@@ -185,12 +222,16 @@ function OrderCard({
   onOpenOrder,
   onDo,
   onSnooze,
+  onBlock,
+  onUnblock,
 }: {
   group: TaskOrderGroup
   busyKey: string | null
   onOpenOrder: () => void
   onDo: (t: DriverTask) => void
   onSnooze: (t: DriverTask) => void
+  onBlock: (t: DriverTask) => void
+  onUnblock: (t: DriverTask) => void
 }) {
   return (
     <View style={styles.card}>
@@ -210,6 +251,15 @@ function OrderCard({
             <View style={styles.taskText}>
               <Text style={styles.taskTitle}>{t.title}</Text>
               <Text style={styles.taskDue}>{formatDay(t.due)}</Text>
+              {t.blocked ? <Text style={styles.blocked}>Blocked: {t.blocked.reason}</Text> : null}
+              <TouchableOpacity
+                onPress={() => (t.blocked ? onUnblock(t) : onBlock(t))}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={`${t.blocked ? 'Unblock' : 'Can’t do it'}: ${t.title}, order ${t.orderNum}`}
+              >
+                <Text style={styles.link}>{t.blocked ? 'Unblock' : 'Can’t do it'}</Text>
+              </TouchableOpacity>
             </View>
             {busy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
             <TouchableOpacity
@@ -298,6 +348,8 @@ const styles = StyleSheet.create({
   taskText: { flex: 1 },
   taskTitle: { fontSize: fontSize.medium, fontWeight: '600', color: colors.textPrimary },
   taskDue: { fontSize: fontSize.small, color: colors.textSecondary },
+  blocked: { fontSize: fontSize.small, fontWeight: '700', color: colors.error },
+  link: { fontSize: fontSize.small, color: colors.primary, marginTop: 2 },
   primaryButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
