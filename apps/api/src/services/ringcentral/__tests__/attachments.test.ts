@@ -80,7 +80,7 @@ describe('fetchAttachmentContent', () => {
     expect(await fetchAttachmentContent([conn('c1', '1', '2')], '9', '2')).toBeNull()
   })
 
-  it('re-mints the token once on 401', async () => {
+  it('discards the exact rejected token and retries once on 401', async () => {
     fetchMock
       .mockResolvedValueOnce(new Response('{}', { status: 401 }))
       .mockResolvedValueOnce(
@@ -89,7 +89,7 @@ describe('fetchAttachmentContent', () => {
 
     const got = await fetchAttachmentContent([conn('c1', '1', '2')], '9', '2')
 
-    expect(h.invalidateToken).toHaveBeenCalledWith('c1')
+    expect(h.invalidateToken).toHaveBeenCalledWith('c1', 'at')
     expect(h.acquireAccessToken).toHaveBeenCalledTimes(2)
     expect(got?.bytes.byteLength).toBe(1)
   })

@@ -74,6 +74,10 @@ const handlersDir = join(srcDir, 'handlers')
  */
 const ALLOWED_RAW_SQL_FILES: ReadonlySet<string> = new Set([
   'app.ts', // Health check: SELECT 1 for /health?deep=true
+  // pg_advisory_xact_lock(hashtextextended($1, 0)) — serializes RingCentral token
+  // mints per connection (each mint is a new RC session; duplicates evict other
+  // sessions). Parameterized tagged template; reads no table, no tenant data.
+  'repositories/ringcentral-access-token.repository.ts',
 ])
 
 describe('Guard 1: Raw SQL usage ($queryRaw / $executeRaw)', () => {

@@ -29,6 +29,7 @@ const h = vi.hoisted(() => {
     findConnectionById: vi.fn(),
     deleteConnectionForTenant: vi.fn(),
     enqueueBackfill: vi.fn(),
+    adoptMintedToken: vi.fn(),
   }
 })
 
@@ -47,6 +48,9 @@ vi.mock('../../../lib/ringcentral-secrets', () => ({
   deleteConnectionCredentials: h.deleteConnectionCredentials,
 }))
 vi.mock('../../../lib/ringcentral-queue', () => ({ enqueueBackfill: h.enqueueBackfill }))
+vi.mock('../../../services/ringcentral/client', () => ({
+  adoptMintedToken: h.adoptMintedToken,
+}))
 vi.mock('../../../repositories/messaging.repository', () => ({
   upsertConnection: h.upsertConnection,
   markTokenRefreshed: h.markTokenRefreshed,
@@ -133,6 +137,26 @@ describe('POST /connections (BYO JWT connect)', () => {
       'arn:secret',
     )
     expect(h.enqueueBackfill).toHaveBeenCalledWith('tnt-1', 'conn-1', undefined)
+  })
+
+  it('adopts the validation token as the shared token (no second RC session; reconnect takes effect now)', async () => {
+    const before = Date.now()
+    const res = await postConnect(VALID_BODY)
+    expect(res.status).toBe(201)
+
+    expect(h.exchangeJwtForToken).toHaveBeenCalledTimes(1)
+    expect(h.adoptMintedToken).toHaveBeenCalledWith('conn-1', {
+      accessToken: 'at',
+      apiBase: 'https://platform.devtest.ringcentral.com',
+      expiresAt: expect.any(Number),
+    })
+    const { expiresAt } = h.adoptMintedToken.mock.calls[0]![1] as { expiresAt: number }
+    expect(expiresAt).toBeGreaterThanOrEqual(before + 3_600_000)
+    expect(expiresAt).toBeLessThanOrEqual(Date.now() + 3_600_000)
+    // Adopted only after the secret it belongs to is stored.
+    expect(h.storeConnectionCredentials.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.adoptMintedToken.mock.invocationCallOrder[0]!,
+    )
   })
 
   it('400s with INVALID_CREDENTIALS and persists nothing when the JWT is rejected', async () => {

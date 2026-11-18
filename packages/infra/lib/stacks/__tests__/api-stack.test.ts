@@ -914,6 +914,43 @@ describe('ApiStack — RingCentral master switch (ringcentralEnabled)', () => {
     }
   })
 
+  it('gives every RingCentral Lambda the shared-token KMS key id + encrypt/decrypt grant', () => {
+    // A RingCentral caller without the key silently falls back to minting its
+    // own token per container — the session churn that evicted the legacy
+    // desktop's token (401 OAU-213). So every RINGCENTRAL_ENABLED Lambda must
+    // carry WORKFLOW_TOKEN_KMS_KEY_ID AND a role policy allowing kms:Encrypt +
+    // kms:Decrypt.
+    const template = synthEnabled()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const policies = Object.values(template.findResources('AWS::IAM::Policy'))
+    const rcFns = Object.entries(fns).filter(
+      ([, fn]) => fn.Properties?.Environment?.Variables?.RINGCENTRAL_ENABLED === 'true',
+    )
+    expect(rcFns).toHaveLength(6)
+
+    // The grant must be on THIS key — some roles hold KMS actions on other keys.
+    const [keyId] = Object.entries(template.findResources('AWS::KMS::Key')).find(([, k]) =>
+      String(k.Properties?.Description).startsWith('Encrypts per-workflow runtime'),
+    )!
+    type Stmt = { Action: string | string[]; Resource?: unknown }
+    const onKey = (s: Stmt) => JSON.stringify(s.Resource ?? null).includes(`"${keyId}"`)
+    const actionsOf = (s: Stmt) => (Array.isArray(s.Action) ? s.Action : [s.Action])
+    for (const [id, fn] of rcFns) {
+      expect(fn.Properties.Environment.Variables.WORKFLOW_TOKEN_KMS_KEY_ID, id).toEqual({
+        Ref: keyId,
+      })
+      const roleId = fn.Properties.Role['Fn::GetAtt'][0]
+      const actions = policies
+        .filter((p) =>
+          (p.Properties.Roles as Array<{ Ref?: string }>).some((r) => r.Ref === roleId),
+        )
+        .flatMap((p) => p.Properties.PolicyDocument.Statement as Stmt[])
+        .filter(onKey)
+        .flatMap(actionsOf)
+      expect(actions, id).toEqual(expect.arrayContaining(['kms:Encrypt', 'kms:Decrypt']))
+    }
+  })
+
   it('sets RINGCENTRAL_WEBHOOK_URL (own API endpoint) only on the renew cron', () => {
     const template = synthEnabled()
     // Exactly one Lambda — the renewal cron — registers the subscription, so it

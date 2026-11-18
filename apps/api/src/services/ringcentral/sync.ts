@@ -20,7 +20,7 @@ import type { ThreadPhonePair } from '@pegasus/domain'
 import { DomainError } from '@pegasus/domain'
 import { createLogger } from '../../lib/logger'
 import { RingCentralOAuthError } from './oauth'
-import { acquireAccessToken, makeClient, type RingCentralClient } from './client'
+import { withRingCentralToken, type RingCentralClient } from './client'
 import {
   normalizeV1Json,
   normalizeThreadJson,
@@ -126,26 +126,31 @@ export async function syncConnection(
   connection: SyncConnection,
   opts: SyncOptions = {},
 ): Promise<{ captured: number; emitted: number }> {
-  const { accessToken, apiBase } = await acquireAccessToken(connection)
-  const client = makeClient(apiBase, accessToken)
   const backfillDays = opts.backfillDays ?? DEFAULT_BACKFILL_DAYS
   const now = opts.now ?? Date.now()
 
+  // Counted across a 401 retry: anything emitted before the 401 was committed,
+  // and the idempotent re-run won't emit it again.
   let emitted = 0
   const onEmitted = () => {
     emitted++
   }
-  const v1 = await syncV1Store(db, client, connection, backfillDays, now, onEmitted)
-  let thread = 0
-  try {
-    thread = await syncThreadStore(db, client, connection, onEmitted)
-  } catch (err) {
-    if (!isThreadsFeatureOff(err)) throw err
-    logger.info('Message Threads is off for this extension — skipping the thread store', {
-      connectionId: connection.id,
-    })
-  }
-  return { captured: v1 + thread, emitted }
+  // A 401 mid-sync (token revoked early) discards the token and re-runs once.
+  // Safe: capture is idempotent (the same path the webhook converges on), so
+  // re-reading messages already captured before the 401 only dedupes.
+  return withRingCentralToken(connection, async (client) => {
+    const v1 = await syncV1Store(db, client, connection, backfillDays, now, onEmitted)
+    let thread = 0
+    try {
+      thread = await syncThreadStore(db, client, connection, onEmitted)
+    } catch (err) {
+      if (!isThreadsFeatureOff(err)) throw err
+      logger.info('Message Threads is off for this extension — skipping the thread store', {
+        connectionId: connection.id,
+      })
+    }
+    return { captured: v1 + thread, emitted }
+  })
 }
 
 // ---------------------------------------------------------------------------
