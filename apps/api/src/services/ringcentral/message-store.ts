@@ -9,11 +9,11 @@
 // reverted by the next reconciliation.
 //
 // Only V1 message-store ids are addressable here; thread-store entries are not.
-// Same stale-token retry as sendSms: a 401 drops the cached token and retries once.
+// Same stale-token retry as sendSms (withRingCentralToken): a 401 discards the
+// token and retries once.
 // ---------------------------------------------------------------------------
 
-import { acquireAccessToken, invalidateToken, makeClient, type TokenConnection } from './client'
-import { RingCentralOAuthError } from './oauth'
+import { withRingCentralToken, type TokenConnection } from './client'
 
 export type RcReadStatus = 'Read' | 'Unread'
 
@@ -25,25 +25,6 @@ interface RcMessageResource {
 
 const messagePath = (externalId: string) =>
   `/restapi/v1.0/account/~/extension/~/message-store/${encodeURIComponent(externalId)}`
-
-async function withTokenRetry<T>(
-  connection: TokenConnection,
-  call: (client: ReturnType<typeof makeClient>) => Promise<T>,
-): Promise<T> {
-  const attempt = async () => {
-    const { accessToken, apiBase } = await acquireAccessToken(connection)
-    return call(makeClient(apiBase, accessToken))
-  }
-  try {
-    return await attempt()
-  } catch (err) {
-    if (err instanceof RingCentralOAuthError && err.status === 401) {
-      invalidateToken(connection.id)
-      return await attempt()
-    }
-    throw err
-  }
-}
 
 /**
  * Marks one V1 message-store message read (or unread). Reads the current state
@@ -58,7 +39,7 @@ export async function setMessageReadStatus(
   externalId: string,
   readStatus: RcReadStatus,
 ): Promise<{ readStatus: RcReadStatus; changed: boolean }> {
-  return withTokenRetry(connection, async (client) => {
+  return withRingCentralToken(connection, async (client) => {
     const current = await client.get<RcMessageResource>(messagePath(externalId))
     if (current.readStatus === readStatus) return { readStatus, changed: false }
     const updated = await client.put<RcMessageResource>(messagePath(externalId), { readStatus })

@@ -4009,3 +4009,27 @@ its full 300 s, and the runner wrote the row back as **COMPLETED**.
   `activity.is_worker_shutdown()` and is not PATCHed (#958's rule).
 - Cancel latency is bounded by the SDK's heartbeat throttle,
   `0.8 × heartbeat_timeout` (16 s here), not by the heartbeat interval.
+
+## Every RingCentral token mint is a new session, and RingCentral keeps only ~5 per user per app
+
+- RingCentral allows about **5 live sessions per user per app** and revokes the
+  **oldest** when a new one is minted. Every `jwt-bearer` exchange is a new
+  session. The cap is per user + app, so the cloud and the legacy movemanager
+  desktops evict each other when they share an app's credentials.
+- The RingCentral crons (sync 15 m, renew 1 h, health check 30 m) and the
+  capture worker are a **cold start on every run**, so a per-container
+  in-memory token cache never helps them. In Nov 2026 NW's one connection
+  minted ~190 sessions/day. movemanager reuses one shared token for ~30 min with
+  no 401 recovery, so NW desktop users got `401 OAU-213 "Token not found"`.
+- Fixed in `fix/ringcentral-shared-token`: one KMS-encrypted token row per
+  connection (`ringcentral_access_tokens`), mints serialized by
+  `pg_advisory_xact_lock`. A 401 compare-and-deletes only the token that
+  failed (so a newer token isn't thrown away, which would cost another mint),
+  then retries once (`withRingCentralToken`). The health check probes with the
+  shared token instead of minting.
+- Rules for new RingCentral code: go through `withRingCentralToken` or
+  `acquireAccessToken`, never `exchangeJwtForToken` directly. Any new Lambda
+  that calls RingCentral needs `WORKFLOW_TOKEN_KMS_KEY_ID` + `grantEncryptDecrypt`
+  (an infra test enforces it). Without them it silently mints per container.
+- Measure in prod with the `ringcentral token` log line (`outcome`:
+  `l1_hit | l2_hit | l2_hit_after_lock | mint | mint_unshared`).

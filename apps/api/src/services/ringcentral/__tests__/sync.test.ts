@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  acquireAccessToken: vi.fn(),
-  makeClient: vi.fn(),
+  withRingCentralToken: vi.fn(),
   getSyncCursor: vi.fn(),
   saveSyncCursor: vi.fn(),
   captureMessage: vi.fn(),
@@ -12,7 +11,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../client', async (importActual) => {
   const actual = await importActual<typeof ClientModule>()
-  return { ...actual, acquireAccessToken: h.acquireAccessToken, makeClient: h.makeClient }
+  return { ...actual, withRingCentralToken: h.withRingCentralToken }
 })
 vi.mock('../../../repositories/messaging.repository', () => ({
   getSyncCursor: h.getSyncCursor,
@@ -47,12 +46,12 @@ let getMock: ReturnType<typeof vi.fn>
 beforeEach(() => {
   Object.values(h).forEach((fn) => fn.mockReset())
   Object.values(log).forEach((fn) => fn.mockReset())
-  h.acquireAccessToken.mockResolvedValue({
-    accessToken: 'at',
-    apiBase: 'https://platform.devtest.ringcentral.com',
-  })
   getMock = vi.fn()
-  h.makeClient.mockReturnValue({ get: getMock, post: vi.fn(), put: vi.fn(), del: vi.fn() })
+  const client = { get: getMock, post: vi.fn(), put: vi.fn(), del: vi.fn() }
+  // Pass-through: the 401 retry policy is tested in client.test.ts.
+  h.withRingCentralToken.mockImplementation(
+    (_conn: unknown, call: (c: typeof client) => Promise<unknown>) => call(client),
+  )
   h.getSyncCursor.mockResolvedValue(null) // no cursor → FSync by default
   h.captureMessage.mockResolvedValue({})
   h.saveSyncCursor.mockResolvedValue({})

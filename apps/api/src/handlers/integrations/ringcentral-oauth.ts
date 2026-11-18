@@ -35,6 +35,7 @@ import {
   deleteConnectionCredentials,
 } from '../../lib/ringcentral-secrets'
 import { enqueueBackfill } from '../../lib/ringcentral-queue'
+import { adoptMintedToken } from '../../services/ringcentral/client'
 import {
   upsertConnection,
   markTokenRefreshed,
@@ -111,8 +112,10 @@ ringcentralOauthHandler.post(
     // Validate the pasted credentials with a live exchange + identity read
     // before persisting anything.
     let info
+    let tokens
+    const mintedAt = Date.now()
     try {
-      const tokens = await exchangeJwtForToken(creds, apiBase)
+      tokens = await exchangeJwtForToken(creds, apiBase)
       info = await fetchExtensionInfo(apiBase, tokens.access_token)
     } catch (err) {
       if (err instanceof RingCentralOAuthError && err.isPermanent) {
@@ -143,6 +146,15 @@ ringcentralOauthHandler.post(
       connectionId = connection.id
       const secretArn = await storeConnectionCredentials(connection.id, creds)
       await markTokenRefreshed(db, connection.id, new Date(), secretArn)
+      // The validation exchange above already created a RingCentral session.
+      // Make it the connection's shared token: no second mint, and a reconnect
+      // with new credentials (e.g. a dedicated app) takes effect at once rather
+      // than when the previous credentials' token expires.
+      await adoptMintedToken(connection.id, {
+        accessToken: tokens.access_token,
+        apiBase,
+        expiresAt: mintedAt + tokens.expires_in * 1000,
+      })
     } catch (err) {
       // A failure between creating the row and storing the secret leaves the row
       // with a null tokenSecretArn — inert (the crons filter those out via

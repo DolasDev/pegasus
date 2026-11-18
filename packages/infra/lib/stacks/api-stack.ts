@@ -2339,6 +2339,26 @@ export class ApiStack extends cdk.Stack {
     // per-connection RingCentral subscription (deliveryAddress = this URL), so the
     // webhook is wired programmatically — no manual RingCentral-console setup.
     // Inert until a tenant connects (zero connections → every cron no-ops).
+    // Shared RingCentral access token (apps/api services/ringcentral/
+    // shared-token-store.ts). Every Lambda that talks to RingCentral reads and
+    // writes ONE KMS-encrypted token row per connection instead of minting its
+    // own. Each mint is a new RingCentral session, RingCentral keeps only ~5 per
+    // user per app, and these crons cold-start on almost every run, so without
+    // the shared token they minted ~190 sessions/day and evicted the legacy
+    // desktop's token (401 OAU-213). A Lambda without the key id falls back to
+    // minting per container, so every RingCentral caller must be in this list.
+    // (The api Lambda and its assistant twin, which shares the api role, already
+    // carry the key id via addApiEnvironment and the grant above.)
+    for (const fn of [
+      ringcentralCaptureFunction,
+      ringcentralSyncFunction,
+      ringcentralRenewFunction,
+      ringcentralTokenRefreshFunction,
+    ]) {
+      fn.addEnvironment('WORKFLOW_TOKEN_KMS_KEY_ID', workflowTokenKey.keyId)
+      workflowTokenKey.grantEncryptDecrypt(fn)
+    }
+
     if (props.ringcentralEnabled) {
       for (const fn of [
         apiFunction,

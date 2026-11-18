@@ -1,15 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// withRingCentralToken (401 discard + retry) is tested in client.test.ts; here
+// it is a pass-through.
 const h = vi.hoisted(() => ({
-  acquireAccessToken: vi.fn(),
-  makeClient: vi.fn(),
-  invalidateToken: vi.fn(),
+  withRingCentralToken: vi.fn(),
 }))
 
 vi.mock('../client', () => ({
-  acquireAccessToken: h.acquireAccessToken,
-  makeClient: h.makeClient,
-  invalidateToken: h.invalidateToken,
+  withRingCentralToken: h.withRingCentralToken,
 }))
 
 import { setMessageReadStatus } from '../message-store'
@@ -21,11 +19,14 @@ let get: ReturnType<typeof vi.fn>
 let put: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
-  Object.values(h).forEach((fn) => fn.mockReset())
+  h.withRingCentralToken.mockReset()
   get = vi.fn()
   put = vi.fn()
-  h.acquireAccessToken.mockResolvedValue({ accessToken: 'at', apiBase: 'https://rc.test' })
-  h.makeClient.mockReturnValue({ get, put, post: vi.fn(), del: vi.fn() })
+  const client = { get, put, post: vi.fn(), del: vi.fn() }
+  h.withRingCentralToken.mockImplementation(
+    (_conn: unknown, call: (c: typeof client, t: unknown) => Promise<unknown>) =>
+      call(client, { accessToken: 'at', apiBase: 'https://rc.test' }),
+  )
 })
 
 describe('setMessageReadStatus', () => {
@@ -37,6 +38,7 @@ describe('setMessageReadStatus', () => {
       changed: true,
     })
     expect(put).toHaveBeenCalledWith(PATH, { readStatus: 'Read' })
+    expect(h.withRingCentralToken).toHaveBeenCalledWith(connection, expect.any(Function))
   })
 
   it('skips the write when already read', async () => {
@@ -46,16 +48,6 @@ describe('setMessageReadStatus', () => {
       changed: false,
     })
     expect(put).not.toHaveBeenCalled()
-  })
-
-  it('re-mints the token once on a 401', async () => {
-    get
-      .mockRejectedValueOnce(new RingCentralOAuthError('RingCentral API 401', 401))
-      .mockResolvedValueOnce({ readStatus: 'Unread' })
-    put.mockResolvedValue({ readStatus: 'Read' })
-    await setMessageReadStatus(connection, '4455', 'Read')
-    expect(h.invalidateToken).toHaveBeenCalledWith('conn-1')
-    expect(h.acquireAccessToken).toHaveBeenCalledTimes(2)
   })
 
   it('propagates other RingCentral errors', async () => {

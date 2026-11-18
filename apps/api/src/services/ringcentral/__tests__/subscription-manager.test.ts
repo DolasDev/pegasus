@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  acquireAccessToken: vi.fn(),
-  makeClient: vi.fn(),
+  withRingCentralToken: vi.fn(),
   findSubscriptionByConnection: vi.fn(),
   upsertSubscription: vi.fn(),
   updateSubscription: vi.fn(),
@@ -11,7 +10,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../client', async (importActual) => {
   const actual = await importActual<typeof ClientModule>()
-  return { ...actual, acquireAccessToken: h.acquireAccessToken, makeClient: h.makeClient }
+  return { ...actual, withRingCentralToken: h.withRingCentralToken }
 })
 vi.mock('../../../repositories/messaging.repository', () => ({
   findSubscriptionByConnection: h.findSubscriptionByConnection,
@@ -38,12 +37,11 @@ let client: {
 
 beforeEach(() => {
   Object.values(h).forEach((fn) => fn.mockReset())
-  h.acquireAccessToken.mockResolvedValue({
-    accessToken: 'at',
-    apiBase: 'https://platform.devtest.ringcentral.com',
-  })
   client = { post: vi.fn(), put: vi.fn(), del: vi.fn(), get: vi.fn() }
-  h.makeClient.mockReturnValue(client)
+  // Pass-through: the 401 retry policy is tested in client.test.ts.
+  h.withRingCentralToken.mockImplementation(
+    (_conn: unknown, call: (c: typeof client) => Promise<unknown>) => call(client),
+  )
   h.upsertSubscription.mockResolvedValue({})
   h.updateSubscription.mockResolvedValue({})
   h.deleteSubscription.mockResolvedValue(undefined)
@@ -82,6 +80,8 @@ describe('ensureForConnection', () => {
     expect(action).toBe('noop')
     expect(client.put).not.toHaveBeenCalled()
     expect(client.post).not.toHaveBeenCalled()
+    // No RingCentral call needed ⇒ no token acquired (no session minted).
+    expect(h.withRingCentralToken).not.toHaveBeenCalled()
   })
 
   it('renews when within the renewal threshold of expiry', async () => {

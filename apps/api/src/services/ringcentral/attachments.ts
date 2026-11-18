@@ -35,11 +35,12 @@ async function getContent(
   connection: AttachmentConnection,
   messageId: string,
   attachmentId: string,
-): Promise<Response> {
+): Promise<{ res: Response; accessToken: string }> {
   const { accessToken, apiBase } = await acquireAccessToken(connection)
-  return fetch(new URL(contentPath(connection, messageId, attachmentId), apiBase), {
+  const res = await fetch(new URL(contentPath(connection, messageId, attachmentId), apiBase), {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
+  return { res, accessToken }
 }
 
 /**
@@ -57,11 +58,13 @@ export async function fetchAttachmentContent(
   attachmentId: string,
 ): Promise<AttachmentContent | null> {
   for (const connection of connections) {
-    let res = await getContent(connection, messageId, attachmentId)
+    const first = await getContent(connection, messageId, attachmentId)
+    let res = first.res
     if (res.status === 401) {
-      // RingCentral invalidated the cached token early (e.g. JWT rotation).
-      invalidateToken(connection.id)
-      res = await getContent(connection, messageId, attachmentId)
+      // RingCentral revoked the token early (e.g. its session cap evicted it):
+      // discard that exact token and retry once with a fresh one.
+      await invalidateToken(connection.id, first.accessToken)
+      res = (await getContent(connection, messageId, attachmentId)).res
     }
     if (res.status === 404) continue
     if (res.status === 429) {

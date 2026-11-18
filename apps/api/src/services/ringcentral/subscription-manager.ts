@@ -15,7 +15,7 @@ import { randomBytes } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import { createLogger } from '../../lib/logger'
 import { RingCentralOAuthError } from './oauth'
-import { acquireAccessToken, makeClient, type RingCentralClient } from './client'
+import { withRingCentralToken, type RingCentralClient } from './client'
 import {
   findSubscriptionByConnection,
   upsertSubscription,
@@ -102,8 +102,11 @@ async function createSubscription(
 
 /**
  * Ensures the connection has a healthy subscription. Returns the action taken.
- * `acquireAccessToken`/RC failures propagate to the caller (the cron isolates
- * them per connection).
+ * Token/RC failures propagate to the caller (the cron isolates them per
+ * connection).
+ *
+ * A healthy subscription that isn't due for renewal needs no RingCentral call,
+ * so it returns 'noop' without acquiring a token at all.
  */
 export async function ensureForConnection(
   db: PrismaClient,
@@ -111,8 +114,29 @@ export async function ensureForConnection(
   webhookUrl: string,
   now: number = Date.now(),
 ): Promise<'created' | 'renewed' | 'recreated' | 'noop'> {
-  const { accessToken, apiBase } = await acquireAccessToken(connection, now)
-  const client = makeClient(apiBase, accessToken)
+  const existing = await findSubscriptionByConnection(db, connection.id)
+  const needsRingCentral =
+    !existing ||
+    existing.status === 'BLACKLISTED' ||
+    existing.status === 'DEAD' ||
+    existing.expiresAt.getTime() - now <= RENEW_THRESHOLD_MS
+  if (!needsRingCentral) return 'noop'
+
+  // A 401 (token revoked early) discards the token and re-runs once. The
+  // re-run re-reads the row, so a recreate interrupted after its delete
+  // resumes as a plain create.
+  return withRingCentralToken(connection, (client) =>
+    ensureWithClient(db, client, connection, webhookUrl, now),
+  )
+}
+
+async function ensureWithClient(
+  db: PrismaClient,
+  client: RingCentralClient,
+  connection: SubManagerConnection,
+  webhookUrl: string,
+  now: number,
+): Promise<'created' | 'renewed' | 'recreated' | 'noop'> {
   const existing = await findSubscriptionByConnection(db, connection.id)
 
   if (!existing) {

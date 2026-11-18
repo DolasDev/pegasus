@@ -2980,6 +2980,7 @@ model RingCentralConnection {
   subscriptions RingCentralSubscription[]
   syncCursors   RingCentralSyncCursor[]
   messages      Message[]
+  accessToken   RingCentralAccessToken?
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -2987,6 +2988,43 @@ model RingCentralConnection {
   @@unique([tenantId, rcAccountId, rcExtensionId])
   @@index([tenantId])
   @@map("ringcentral_connections")
+  @@schema("public")
+}
+
+/// The SHARED RingCentral access token for a connection.
+///
+/// RingCentral keeps only ~5 live sessions per user per app and revokes the
+/// oldest on the next mint. Every jwt-bearer exchange is a new session, and the
+/// RingCentral crons cold-start on every run, so a per-container cache alone
+/// minted ~190 sessions/day for one connection and evicted the legacy desktop's
+/// shared token (401 OAU-213). One row per connection lets every Lambda reuse a
+/// single token; mints are serialized by an advisory lock
+/// (services/ringcentral/shared-token-store.ts).
+///
+/// Pure cache: losing a row costs one re-mint. KMS-encrypted; never returned by
+/// any API.
+model RingCentralAccessToken {
+  connectionId String @id @map("connection_id")
+
+  /// KMS-encrypted (base64) access token, context-bound to the connection id.
+  tokenCiphertext String @map("token_ciphertext")
+
+  /// sha256 (hex) of the plaintext token. A 401 deletes the row only while it
+  /// still holds the token that failed, so a newer token is never thrown away.
+  tokenHash String @map("token_hash")
+
+  /// The RingCentral environment (API base URL) the token was minted for.
+  apiBase String @map("api_base")
+
+  /// Absolute expiry computed from `expires_in` at mint time.
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  connection RingCentralConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("ringcentral_access_tokens")
   @@schema("public")
 }
 

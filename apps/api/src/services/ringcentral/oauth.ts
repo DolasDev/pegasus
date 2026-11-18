@@ -62,6 +62,19 @@ export class RingCentralOAuthError extends Error {
   }
 }
 
+/**
+ * The token endpoint itself refused the exchange — the JWT, client id or
+ * secret is the problem — as opposed to an API call rejecting a token. Lets the
+ * credential health check mark a connection EXPIRED only for a credential
+ * failure, not for a 4xx from an ordinary API call.
+ */
+export class RingCentralTokenExchangeError extends RingCentralOAuthError {
+  constructor(message: string, status?: number) {
+    super(message, status)
+    this.name = 'RingCentralTokenExchangeError'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // JWT-bearer token exchange
 // ---------------------------------------------------------------------------
@@ -105,7 +118,7 @@ export async function exchangeJwtForToken(
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new RingCentralOAuthError(
+    throw new RingCentralTokenExchangeError(
       `RingCentral token endpoint returned ${res.status}: ${text.slice(0, 200)}`,
       res.status,
     )
