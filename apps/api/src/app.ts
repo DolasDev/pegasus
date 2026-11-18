@@ -164,7 +164,9 @@ app.use(
       'X-Tenant-Slug',
       'X-Crew-Session',
     ],
-    exposeHeaders: ['x-correlation-id'],
+    // Retry-After: the tenant UI's Workflow query waits out a cold runner
+    // (503 WORKFLOW_WORKER_STARTING) on the server's hint.
+    exposeHeaders: ['x-correlation-id', 'Retry-After'],
   }),
 )
 

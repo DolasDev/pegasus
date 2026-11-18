@@ -102,8 +102,21 @@ export interface Workflow {
    * need to be re-uploaded to become executable.
    */
   executable: boolean
+  /**
+   * AUTOMATION (a short one-shot run) or WORKFLOW (a durable, long-running
+   * Workflow). The Automations lists show AUTOMATION only; open durable
+   * Workflow instances live at /workflows.
+   */
+  kind: WorkflowKind
   createdAt: string
   updatedAt: string
+}
+
+export type WorkflowKind = 'AUTOMATION' | 'WORKFLOW'
+
+/** The Automations lists show one-shot Automations only (durable Workflows live at /workflows). */
+export function isAutomation(w: Pick<Workflow, 'kind'>): boolean {
+  return w.kind === 'AUTOMATION'
 }
 
 export interface WorkflowDownload {
@@ -400,6 +413,8 @@ export interface WorkflowHistoryEvent {
   attempt?: number
   /** Failure message on failed workflow/activity events. */
   failure?: string
+  /** The signal's name on WorkflowExecutionSignaled events. */
+  signalName?: string
 }
 
 /**

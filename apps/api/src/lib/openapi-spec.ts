@@ -3173,7 +3173,7 @@ export function getOpenApiSpec() {
           summary:
             'List executions tenant-wide — by default the OPEN durable Workflows (ReadWorkflow)',
           description:
-            'Executions across every version of every workflow in the caller’s tenant, newest first. Defaults to kind=WORKFLOW and open=true (QUEUED / RUNNING), i.e. the tenant’s open durable Workflows; open defaults to false for kind=AUTOMATION. `name` narrows to one workflow name; `name` + `correlationKey` finds the one instance of an event-routed key (temporalWorkflowId wfl/<tenant>/<name>/<key>). Paged like GET /workflows/{id}/executions: pass the last row’s id as `before`. ' +
+            'Executions across every version of every workflow in the caller’s tenant, newest first. Defaults to kind=WORKFLOW and open=true (QUEUED / RUNNING), i.e. the tenant’s open durable Workflows; open defaults to false for kind=AUTOMATION. `name` narrows to one workflow name; `name` + `correlationKey` finds the one instance of an event-routed key (temporalWorkflowId wfl/<tenant>/<name>/<key>). `parentExecutionId` lists the step Automations one durable Workflow execution started via run_automation() (kind defaults to AUTOMATION and open to false; kind=WORKFLOW with it is a 400; another tenant’s id is an empty list). Paged like GET /workflows/{id}/executions: pass the last row’s id as `before`. ' +
             'Each row is the execution plus `kind` and `correlationKey` (null for a manual run). To act on one, use GET / POST /workflow-executions/{executionId}/….',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
@@ -3190,6 +3190,13 @@ export function getOpenApiSpec() {
               in: 'query',
               description: 'Needs name',
               schema: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,128}$' },
+            },
+            {
+              name: 'parentExecutionId',
+              in: 'query',
+              description:
+                'A durable Workflow execution id: list the step Automations it started (implies kind=AUTOMATION)',
+              schema: { type: 'string', maxLength: 64 },
             },
             { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 200 } },
             { name: 'before', in: 'query', schema: { type: 'string' } },
