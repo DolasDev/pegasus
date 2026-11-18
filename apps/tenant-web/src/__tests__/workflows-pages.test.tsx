@@ -24,6 +24,20 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('@/api/workflow-executions', () => api)
 
+// The name dropdown is filled from the tenant's published Workflow versions.
+const { mockListWorkflows } = vi.hoisted(() => ({ mockListWorkflows: vi.fn() }))
+vi.mock('@/api/workflows', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  listWorkflows: mockListWorkflows,
+}))
+const version = (name: string, kind: 'WORKFLOW' | 'AUTOMATION', id = `${name}-${kind}`) => ({
+  id,
+  name,
+  version: '1.0.0',
+  kind,
+  visibility: 'TENANT',
+})
+
 let permissions: string[] = []
 vi.mock('@/auth/permissions', () => ({
   usePermissions: () => ({
@@ -119,6 +133,13 @@ beforeEach(() => {
   ])
   api.listWorkflowInstances.mockResolvedValue({ data: [], limit: 200 })
   api.queryWorkflowInstance.mockResolvedValue({ stage: 'packing' })
+  mockListWorkflows.mockReset()
+  mockListWorkflows.mockResolvedValue([
+    version('order_lifecycle', 'WORKFLOW', 'v1'),
+    version('order_lifecycle', 'WORKFLOW', 'v2'),
+    version('claim_followup', 'WORKFLOW'),
+    version('send_quote_followup', 'AUTOMATION'),
+  ])
 })
 
 afterEach(() => {
@@ -148,16 +169,38 @@ describe('WorkflowsIndexPage', () => {
     expect(links).toHaveLength(1)
   })
 
-  it('sends the name + key filters and the Open/All toggle as query params', async () => {
+  it('offers the published durable Workflow names (not Automations) in a dropdown', async () => {
+    renderWith(<WorkflowsIndexPage />)
+    const select = await screen.findByLabelText('Workflow')
+    await vi.waitFor(() =>
+      expect(
+        within(select)
+          .getAllByRole('option')
+          .map((o) => o.textContent),
+      ).toEqual(['All Workflows', 'claim_followup', 'order_lifecycle']),
+    )
+  })
+
+  it('applies the chosen name at once; the key and Open/All go along as query params', async () => {
     api.listWorkflowInstances.mockResolvedValue({ data: [], limit: 50 })
     renderWith(<WorkflowsIndexPage />)
     await screen.findByText('No open Workflows')
+    const select = screen.getByLabelText('Workflow')
+    await within(select).findByRole('option', { name: 'order_lifecycle' })
 
-    fireEvent.change(screen.getByLabelText('Workflow name'), {
-      target: { value: 'order_lifecycle' },
-    })
+    expect(screen.getByLabelText('Key')).toBeDisabled()
+    fireEvent.change(select, { target: { value: 'order_lifecycle' } })
+    await vi.waitFor(() =>
+      expect(api.listWorkflowInstances).toHaveBeenLastCalledWith({
+        kind: 'WORKFLOW',
+        open: true,
+        name: 'order_lifecycle',
+        limit: 50,
+      }),
+    )
+
     fireEvent.change(screen.getByLabelText('Key'), { target: { value: 'o-7' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Find' }))
     await vi.waitFor(() =>
       expect(api.listWorkflowInstances).toHaveBeenLastCalledWith({
         kind: 'WORKFLOW',
@@ -171,10 +214,41 @@ describe('WorkflowsIndexPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'All' }))
     await vi.waitFor(() =>
       expect(api.listWorkflowInstances).toHaveBeenLastCalledWith(
-        expect.objectContaining({ open: false, name: 'order_lifecycle' }),
+        expect.objectContaining({ open: false, name: 'order_lifecycle', correlationKey: 'o-7' }),
       ),
     )
     expect(await screen.findByText('No Workflows')).toBeInTheDocument()
+
+    // Back to "All Workflows" drops the name and the key.
+    fireEvent.change(select, { target: { value: '' } })
+    await vi.waitFor(() =>
+      expect(api.listWorkflowInstances).toHaveBeenLastCalledWith({
+        kind: 'WORKFLOW',
+        open: false,
+        limit: 50,
+      }),
+    )
+    expect(screen.getByLabelText('Key')).toBeDisabled()
+  })
+
+  it('keeps a name that only a listed instance carries (e.g. every version retired)', async () => {
+    mockListWorkflows.mockResolvedValue([])
+    api.listWorkflowInstances.mockResolvedValue({
+      data: [instance({ workflowName: 'legacy_flow' })],
+      limit: 50,
+    })
+    renderWith(<WorkflowsIndexPage />)
+    const select = await screen.findByLabelText('Workflow')
+    expect(await within(select).findByRole('option', { name: 'legacy_flow' })).toBeInTheDocument()
+  })
+
+  it('says so when the tenant has no durable Workflows published', async () => {
+    mockListWorkflows.mockResolvedValue([version('send_quote_followup', 'AUTOMATION')])
+    renderWith(<WorkflowsIndexPage />)
+    expect(
+      await screen.findByText(/no durable workflows are published in this tenant/i),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Workflow')).toBeDisabled()
   })
 
   it('pages with "Load more" using the last row as the cursor', async () => {

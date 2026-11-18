@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { AlertCircle, ChevronRight, Loader2, Workflow as WorkflowIcon } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { workflowInstancesInfiniteQueryOptions } from '@/api/queries/workflow-executions'
+import { workflowsQueryOptions } from '@/api/queries/workflows'
 import type { WorkflowInstance } from '@/api/workflow-executions'
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,13 @@ import type { WorkflowInstance } from '@/api/workflow-executions'
 //
 // A cheap DB read, so it may refetch on window focus. It never runs a
 // @workflow.query (that wakes the tenant's runner).
+//
+// The name filter is a dropdown, not free text: the API's `name` matches a
+// Workflow name exactly, so typing part of one ("order") silently found
+// nothing. Its options are the tenant's published durable Workflow names
+// (GET /workflows, kind WORKFLOW) plus any name on a listed instance (a name
+// whose versions are all retired still has instances). Picking one applies at
+// once; the key is typed and applied with Find.
 // ---------------------------------------------------------------------------
 
 type Filters = { name: string; correlationKey: string; openOnly: boolean }
@@ -35,6 +43,7 @@ function fmt(iso: string | null): string {
 export function WorkflowsIndexPage() {
   const [draft, setDraft] = useState<Filters>({ name: '', correlationKey: '', openOnly: true })
   const [applied, setApplied] = useState<Filters>(draft)
+  const versions = useQuery(workflowsQueryOptions)
 
   const name = applied.name.trim()
   const key = applied.correlationKey.trim()
@@ -46,10 +55,25 @@ export function WorkflowsIndexPage() {
     }),
   )
   const rows = query.data?.pages.flatMap((p) => p.data) ?? []
+  const names = [
+    ...new Set([
+      ...(versions.data ?? []).filter((w) => w.kind === 'WORKFLOW').map((w) => w.name),
+      ...rows.map((r) => r.workflowName).filter((n): n is string => Boolean(n)),
+      ...(applied.name ? [applied.name] : []),
+    ]),
+  ].sort()
+  const noneDeclared = versions.isSuccess && names.length === 0
 
   function apply(e: FormEvent) {
     e.preventDefault()
     setApplied(draft)
+  }
+
+  function chooseName(name: string) {
+    // A key belongs to one Workflow name, so a new choice drops it.
+    const next = { ...draft, name, correlationKey: '' }
+    setDraft(next)
+    setApplied({ ...applied, name, correlationKey: '' })
   }
 
   function setOpenOnly(openOnly: boolean) {
@@ -76,14 +100,21 @@ export function WorkflowsIndexPage() {
 
           <form onSubmit={apply} className="flex flex-wrap items-end gap-3" aria-label="Filters">
             <div className="space-y-1">
-              <Label htmlFor="wf-filter-name">Workflow name</Label>
-              <Input
+              <Label htmlFor="wf-filter-name">Workflow</Label>
+              <select
                 id="wf-filter-name"
                 value={draft.name}
-                placeholder="e.g. order_lifecycle"
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                className="w-56"
-              />
+                disabled={noneDeclared}
+                onChange={(e) => chooseName(e.target.value)}
+                className="h-10 w-56 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+              >
+                <option value="">All Workflows</option>
+                {names.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1">
               <Label htmlFor="wf-filter-key">Key</Label>
@@ -91,14 +122,14 @@ export function WorkflowsIndexPage() {
                 id="wf-filter-key"
                 value={draft.correlationKey}
                 placeholder="e.g. an order id"
-                disabled={!draft.name.trim()}
-                title={draft.name.trim() ? undefined : 'Enter a Workflow name to search by key'}
+                disabled={!draft.name}
+                title={draft.name ? undefined : 'Choose a Workflow to search by key'}
                 onChange={(e) => setDraft({ ...draft, correlationKey: e.target.value })}
                 className="w-48"
               />
             </div>
-            <Button type="submit" size="sm" variant="outline">
-              Apply
+            <Button type="submit" size="sm" variant="outline" disabled={!draft.name}>
+              Find
             </Button>
             <div className="ml-auto flex rounded-md border" role="group" aria-label="Show">
               <Button
@@ -121,6 +152,13 @@ export function WorkflowsIndexPage() {
               </Button>
             </div>
           </form>
+
+          {noneDeclared && (
+            <p className="text-sm text-muted-foreground">
+              No durable Workflows are published in this tenant yet. Everything published so far is
+              a one-shot Automation.
+            </p>
+          )}
 
           {query.isPending ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
