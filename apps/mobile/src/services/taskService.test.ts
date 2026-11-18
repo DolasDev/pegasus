@@ -28,6 +28,28 @@ describe('TaskService', () => {
     })
   })
 
+  it('PUTs a block with the reason and the day, and an unblock', async () => {
+    mockFetch.mockResolvedValue({ notified: 3 })
+    expect(await TaskService.block('task:submit-bol:1:order', 'Gate locked', '2026-11-18')).toEqual(
+      {
+        notified: 3,
+      },
+    )
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/v1/me/tasks/state', {
+      method: 'PUT',
+      body: JSON.stringify({
+        key: 'task:submit-bol:1:order',
+        blocked: { reason: 'Gate locked' },
+        today: '2026-11-18',
+      }),
+    })
+    await TaskService.unblock('task:submit-bol:1:order')
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/v1/me/tasks/state', {
+      method: 'PUT',
+      body: JSON.stringify({ key: 'task:submit-bol:1:order', blocked: null }),
+    })
+  })
+
   it('PUTs a snooze', async () => {
     mockFetch.mockResolvedValue({})
     await TaskService.snooze('task:submit-bol:1:order', new Date('2026-11-17T12:00:00Z'))

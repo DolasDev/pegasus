@@ -17,6 +17,7 @@ import { requireRole, AUTOMATION_VIEW_ROLES, OPERATIONS_ROLES } from '@/auth/rol
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MessagesPage } from '@/routes/messages'
+import { NotificationSettingsPage } from '@/routes/notifications.settings'
 import { AssistantLabPage } from '@/routes/assistant-lab'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
 import { QuotesPage } from '@/routes/quotes.index'
@@ -190,6 +191,14 @@ const messagesRoomRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/messages/shipment/$orderNum',
   component: MessagesPage,
+})
+
+// The signed-in user's own notification channels — every role (task queue
+// plan Phase 2b). Reached from the header bell's Activity panel.
+const notificationSettingsRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/notifications/settings',
+  component: NotificationSettingsPage,
 })
 
 const quotesIndexRoute = createRoute({
@@ -598,6 +607,7 @@ const routeTree = rootRoute.addChildren([
     movesDetailRoute,
     messagesRoute,
     messagesRoomRoute,
+    notificationSettingsRoute,
     quotesIndexRoute,
     quotesDetailRoute,
     customersIndexRoute,

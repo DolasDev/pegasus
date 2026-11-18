@@ -1840,6 +1840,83 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def notify(
+        self,
+        title: str,
+        body: str,
+        *,
+        to_emails: str | list[str] | None = None,
+        to_roles: str | list[str] | None = None,
+        order_num: int | str | None = None,
+        dedup_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Post to your company's users' Activity feeds. Requires ``NotifyUsers``.
+
+        Each recipient gets one Activity row (type ``workflow.message``) in the
+        web app's bell and the mobile app's Activity screen. Whether it ALSO
+        pushes to their phone is the recipient's choice: the default for
+        automation messages is **Activity only**, and each person can switch it to
+        Push (or Off) in their notification settings. Internal-only: there is no
+        way to reach anyone outside the tenant, and it is not metered.
+
+        **Name recipients** by login email (``to_emails``) and/or role
+        (``to_roles``, e.g. ``"long_distance_dispatch"``, ``"driver"``). Every
+        active, human holder of a role gets it; service accounts never do. At
+        least one recipient is required.
+
+        **Nothing is sent on a 400:** ``UNKNOWN_RECIPIENT`` names any email with
+        no active user in your tenant, ``UNKNOWN_ROLE`` lists the valid roles,
+        ``TOO_MANY_RECIPIENTS`` means more than 100 people.
+
+        **Pass ``dedup_key`` for anything you must not post twice:** a retry with
+        the same key is a no-op for each recipient who already has it.
+
+        Args:
+            title: One line, ≤ 120 characters.
+            body: ≤ 500 characters.
+            to_emails: One login email or a list.
+            to_roles: One role name or a list.
+            order_num: The order it is about. Groups it under that order and
+                makes a tap open the order's chat.
+            dedup_key: Optional idempotency key, ``[A-Za-z0-9._:-]{1,200}``.
+
+        Returns:
+            ``{"recipients": n, "notified": n, "pushed": n}``. ``notified`` is how
+            many got an Activity row (the rest turned these off); ``pushed`` is how
+            many phones were also pushed.
+
+        Raises:
+            PegasusApiError: 400 as above, 403 without ``NotifyUsers``.
+        """
+        payload: dict[str, Any] = {"title": title, "body": body}
+        args: dict[str, Any] = {"title": title, "body": body}
+        if to_emails is not None:
+            emails = [to_emails] if isinstance(to_emails, str) else list(to_emails)
+            payload["toEmails"] = emails
+            args["to_emails"] = emails
+        if to_roles is not None:
+            roles = [to_roles] if isinstance(to_roles, str) else list(to_roles)
+            payload["toRoles"] = roles
+            args["to_roles"] = roles
+        if order_num is not None:
+            payload["orderNum"] = str(order_num)
+            args["order_num"] = str(order_num)
+        if dedup_key is not None:
+            payload["dedupKey"] = dedup_key
+            args["dedup_key"] = dedup_key
+        captured = self._capture_mutation(
+            "NotifyUsers",
+            "notify",
+            args,
+            {"recipients": 0, "notified": 0, "pushed": 0, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post("/api/v1/notifications/notify", json=payload)
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def check_email_recipients(
         self, to: str | list[str], *, cc: list[str] | None = None
     ) -> dict[str, Any]:

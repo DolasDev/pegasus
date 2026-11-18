@@ -231,6 +231,9 @@ describe('notificationRoute', () => {
   it('is the same route for a push tap and an Activity row', () => {
     expect(notificationRoute({ type: 'trip.assigned', tripId: 9 })).toBe('/trip/9')
     expect(notificationRoute({ type: 'chat.message', orderNum: '4242' })).toBe('/chat/4242')
+    expect(notificationRoute({ type: 'task.blocked', orderNum: '500' })).toBe('/chat/500')
+    expect(notificationRoute({ type: 'workflow.message', orderNum: '42' })).toBe('/chat/42')
+    expect(notificationRoute({ type: 'workflow.message' })).toBeNull()
     expect(notificationRoute({ type: 'staff.message' })).toBeNull()
     expect(notificationRoute(null)).toBeNull()
   })

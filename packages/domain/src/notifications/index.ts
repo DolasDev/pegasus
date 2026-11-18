@@ -23,6 +23,8 @@ export const NOTIFICATION_TYPES = [
   'move.assigned',
   'chat.mention',
   'staff.message',
+  'task.blocked',
+  'workflow.message',
 ] as const
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
 
@@ -36,6 +38,10 @@ export const NOTIFICATION_TYPE_INFO: Record<NotificationType, NotificationTypeIn
   'move.assigned': { label: 'A move is assigned to you', defaultChannel: 'push' },
   'chat.mention': { label: 'Someone @mentions you in a move chat', defaultChannel: 'push' },
   'staff.message': { label: 'The office sends you a message', defaultChannel: 'push' },
+  // Andon: a stopped driver should be heard, so this pushes by default.
+  'task.blocked': { label: 'A driver is blocked on a task', defaultChannel: 'push' },
+  // Tenant Workflows can post often; feed-only until a user opts into push.
+  'workflow.message': { label: 'Updates from your company’s automations', defaultChannel: 'feed' },
 }
 
 export function isNotificationType(v: unknown): v is NotificationType {

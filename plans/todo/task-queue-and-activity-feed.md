@@ -12,10 +12,8 @@
   - Still owed: a device / staging check with a tenant's rules turned on (tenant-web Settings → App → Operations → Driver To Do).
   - Still owed: Steve's answer on open question 5 (arrival _time_ vs "mark done").
 - **Phase 2a (Activity feed + `notify()`, mobile) is built.** Its plan is `plans/completed/6f4c8919-task-queue-activity-feed.md`.
-- **Next action:** Phase 2b, in a fresh `feat/` worktree:
-  - the tenant-web bell;
-  - SDK `notify` (bump the SDK version, update its discovery surfaces, publish after merge);
-  - Blocked (andon), which waits on open question 3.
+- **Phase 2b is built:** Blocked notifying the operations role, the tenant-web bell and settings, and SDK `notify` (0.67.0). Its plan is `plans/completed/a25abe3c-task-queue-blocked-web-sdk.md`.
+- **Next action:** Phase 3 (persistent task store, definitions as data, Workflow integration).
 - **In parallel, unrelated to Phase 1:**
   - The **QMM task-list 500** fix is landed on movemanager `dev` (`3d31b955`, 2026-11-14) but **not yet on QMM's site**, which runs `2026.11.12.1`, older than every channel. Once QMM's `/version` moves past it, re-run the per-order task probe (§2 method).
   - Measurement is done for all three sites (§2 "cross-site"). Only the NW interview is still owed: _"Which reports do you open every day?"_
@@ -184,7 +182,7 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
 **Split 2026-11-17:**
 
 - **2a DONE** (`plans/completed/6f4c8919-task-queue-activity-feed.md`): tables, `notify()`, the four senders moved onto it, the `/me/activity` and preferences API, and mobile Activity with a bell and settings.
-- **2b open:** the tenant-web bell, SDK `notify`, and Blocked (andon).
+- **2b DONE** (`plans/completed/a25abe3c-task-queue-blocked-web-sdk.md`): Blocked (notifies the operations role), the tenant-web bell and settings, and SDK `notify` 0.67.0.
 
 - [ ] **Prisma:**
   - `Notification` (tenantId, recipientUserId, type, actorUserId?, entityType, entityId, title, body, data/deepLink JSON, groupKey, createdAt, seenAt?, readAt?).
@@ -279,6 +277,6 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
 
 1. ~~F5~~ answered (template-derived `USRDEF` rows carry a `master_id`). Open: which desktop path writes them.
 2. Does an office-scanned BOL (legacy imaging) count as done for `submit-bol`? v1: cloud documents only.
-3. Which roles see a driver's Blocked task: the order's coordinator, operations, or a configurable role?
+3. ~~Which roles see a driver's Blocked task?~~ **The operations role** (Steve, 2026-11-18).
 4. Is "WorkItem" an internal name only? The proposal is that users and the SDK always say "task".
 5. **"Submit arrival times" vs "mark done".** Phase 1's task records only a done **day** (the act-fact shape). Do drivers need to submit an arrival **time**? That would need a new fact shape (and possibly a legacy write, which the itinerary deliberately avoids).

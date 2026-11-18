@@ -22,6 +22,11 @@ describe('notification types', () => {
     }
   })
 
+  it('pushes a blocked task, and keeps automation messages in the feed', () => {
+    expect(NOTIFICATION_TYPE_INFO['task.blocked'].defaultChannel).toBe('push')
+    expect(NOTIFICATION_TYPE_INFO['workflow.message'].defaultChannel).toBe('feed')
+  })
+
   it('guards types and channels', () => {
     expect(isNotificationType('chat.mention')).toBe(true)
     expect(isNotificationType('chat.message')).toBe(false)

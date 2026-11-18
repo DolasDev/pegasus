@@ -109,6 +109,13 @@ describe.skipIf(!hasDb)('Activity feed (integration)', () => {
     await mk('other', tenantA, ['driver'])
     await mk('admin', tenantA, ['tenant_admin'])
     await mk('outsider', tenantB, ['driver'])
+    await mk('dispatcher', tenantA, ['long_distance_dispatch'])
+    await mk('runtime', tenantA, ['workflow_runtime'])
+    // Workflow runtimes act as a service account, which is never a recipient.
+    await db.tenantUser.update({
+      where: { id: U['runtime']!.id },
+      data: { isServiceAccount: true },
+    })
   })
 
   const trip = (n: number, over: Partial<Parameters<typeof notify>[2]> = {}) =>
@@ -244,5 +251,87 @@ describe.skipIf(!hasDb)('Activity feed (integration)', () => {
     expect(list.body.data).toMatchObject([
       { type: 'staff.message', title: 'Call the office', actorName: 'admin@activity.test' },
     ])
+  })
+
+  describe('POST /notifications/notify (SDK notify)', () => {
+    type NotifyBody = {
+      data: { recipients: number; notified: number; pushed: number }
+      code?: string
+      error?: string
+    }
+    const send = (body: unknown, who = 'runtime') =>
+      call<NotifyBody>(who, '/notifications/notify', post(body))
+
+    it('posts workflow.message to users named by email and role, feed-only by default', async () => {
+      const r = await send({
+        toEmails: ['DRIVER@activity.test'],
+        toRoles: ['long_distance_dispatch'],
+        title: 'Weights are in',
+        body: 'Order 4242 has its weight ticket.',
+        orderNum: 4242,
+      })
+      expect(r.status).toBe(200)
+      expect(r.body.data).toEqual({ recipients: 2, notified: 2, pushed: 0 })
+      const rows = await db.notification.findMany({ where: { type: 'workflow.message' } })
+      expect(rows.map((n) => n.recipientUserId).sort()).toEqual(
+        [U['driver']!.id, U['dispatcher']!.id].sort(),
+      )
+      expect(rows[0]).toMatchObject({
+        actorUserId: U['runtime']!.id,
+        entityType: 'order',
+        entityId: '4242',
+        groupKey: 'order:4242',
+        data: { type: 'workflow.message', orderNum: '4242' },
+      })
+      // Feed-only by default: no pushes.
+      expect(await db.pushNotificationOutbox.count({ where: { tenantId: tenantA } })).toBe(0)
+    })
+
+    it('pushes to a user who chose Push for automation messages', async () => {
+      await call('driver', '/me/notification-preferences', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'workflow.message', channel: 'push' }),
+      })
+      const r = await send({ toEmails: ['driver@activity.test'], title: 'Hi', body: 'x' })
+      expect(r.body.data).toEqual({ recipients: 1, notified: 1, pushed: 1 })
+    })
+
+    it('dedupes a retry per recipient, in its own key space', async () => {
+      const body = {
+        toEmails: ['driver@activity.test'],
+        title: 'Once',
+        body: 'x',
+        dedupKey: 'run-1',
+      }
+      await send(body)
+      await send(body)
+      expect(await db.notification.count({ where: { type: 'workflow.message' } })).toBe(1)
+      const row = await db.notification.findFirstOrThrow({ where: { type: 'workflow.message' } })
+      expect(row.dedupeKey).toBe(`workflow:run-1:${U['driver']!.id}`)
+    })
+
+    it('refuses unknown emails, unknown roles, and other tenants’ users — sending nothing', async () => {
+      const unknown = await send({ toEmails: ['nobody@activity.test'], title: 't', body: 'b' })
+      expect(unknown.status).toBe(400)
+      expect(unknown.body.code).toBe('UNKNOWN_RECIPIENT')
+      const foreign = await send({ toEmails: ['outsider@activity.test'], title: 't', body: 'b' })
+      expect(foreign.body.code).toBe('UNKNOWN_RECIPIENT')
+      const role = await send({ toRoles: ['drivers'], title: 't', body: 'b' })
+      expect(role.status).toBe(400)
+      expect(role.body.code).toBe('UNKNOWN_ROLE')
+      expect(role.body.error).toContain('long_distance_dispatch')
+      expect((await send({ title: 't', body: 'b' })).status).toBe(400)
+      expect(await db.notification.count({ where: { tenantId: tenantA } })).toBe(0)
+    })
+
+    it('never notifies service accounts, and is forbidden to a driver', async () => {
+      const r = await send({ toRoles: ['workflow_runtime'], title: 't', body: 'b' })
+      expect(r.body.data.recipients).toBe(0)
+      expect(
+        (await send({ toEmails: ['driver@activity.test'], title: 't', body: 'b' }, 'driver'))
+          .status,
+      ).toBe(403)
+    })
   })
 })

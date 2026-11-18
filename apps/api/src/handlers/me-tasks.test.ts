@@ -24,6 +24,7 @@ const factFind = vi.fn()
 const docFind = vi.fn()
 const stateFind = vi.fn()
 const stateUpsert = vi.fn()
+const stateFindFirst = vi.fn()
 
 const TODAY = '2026-11-16'
 
@@ -34,13 +35,15 @@ function buildApp() {
     c.set('tenantId', 'tenant-1')
     c.set('correlationId', 'corr-1')
     c.set('userId', 'user-1')
-    c.set('db', {
+    const db: Record<string, unknown> = {
       tenant: { findUniqueOrThrow: tenantFind },
       tenantUser: { findUnique: tenantUserFind },
       itineraryActFact: { findMany: factFind },
       document: { findMany: docFind },
-      taskState: { findMany: stateFind, upsert: stateUpsert },
-    } as unknown as PrismaClient)
+      taskState: { findMany: stateFind, upsert: stateUpsert, findFirst: stateFindFirst },
+    }
+    db['$transaction'] = async (fn: (tx: unknown) => Promise<unknown>) => fn(db)
+    c.set('db', db as unknown as PrismaClient)
     await next()
   })
   app.route('/me/tasks', meTasksHandler)
@@ -80,10 +83,14 @@ beforeEach(() => {
   factFind.mockResolvedValue([])
   docFind.mockResolvedValue([])
   stateFind.mockResolvedValue([])
+  stateFindFirst.mockResolvedValue(null)
   stateUpsert.mockImplementation(async (args: { create: Record<string, unknown> }) => ({
+    id: 'state-1',
     taskKey: args.create['taskKey'],
     snoozedUntil: args.create['snoozedUntil'] ?? null,
     dismissedAt: args.create['dismissedAt'] ?? null,
+    blockedAt: args.create['blockedAt'] ?? null,
+    blockReason: args.create['blockReason'] ?? null,
   }))
 })
 
@@ -121,6 +128,7 @@ describe('GET /me/tasks', () => {
         due: '2026-11-15',
         bucket: 'overdue',
         target: { kind: 'mark-done', itemKey: 'longhaul-activity:1', day: '2026-11-15' },
+        blocked: null,
       },
     ])
     expect(body['meta']).toMatchObject({ failedSources: [], unavailable: [], hidden: 0 })
@@ -284,12 +292,21 @@ describe('PUT /me/tasks/state', () => {
         snoozedUntil: new Date('2026-11-17T08:00:00.000Z'),
       },
       update: { snoozedUntil: new Date('2026-11-17T08:00:00.000Z') },
-      select: { taskKey: true, snoozedUntil: true, dismissedAt: true },
+      select: {
+        id: true,
+        taskKey: true,
+        snoozedUntil: true,
+        dismissedAt: true,
+        blockedAt: true,
+        blockReason: true,
+      },
     })
     expect(body['data']).toEqual({
       key,
       snoozedUntil: '2026-11-17T08:00:00.000Z',
       dismissedAt: null,
+      blocked: null,
+      notified: 0,
     })
   })
 

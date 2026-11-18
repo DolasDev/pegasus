@@ -1,5 +1,6 @@
 import React from 'react'
 import type * as ReactModule from 'react'
+import { Alert } from 'react-native'
 import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import TodoScreen from '../../../app/(drawer)/todo'
 import type { DriverTask, DriverTasksMeta } from '../../../src/types/tasks'
@@ -9,8 +10,14 @@ jest.mock('../../../src/services/itineraryService', () => ({
   ItineraryService: { setDone: (...args: unknown[]) => mockSetDone(...args) },
 }))
 const mockSnooze = jest.fn()
+const mockBlock = jest.fn()
+const mockUnblock = jest.fn()
 jest.mock('../../../src/services/taskService', () => ({
-  TaskService: { snooze: (...args: unknown[]) => mockSnooze(...args) },
+  TaskService: {
+    snooze: (...args: unknown[]) => mockSnooze(...args),
+    block: (...args: unknown[]) => mockBlock(...args),
+    unblock: (...args: unknown[]) => mockUnblock(...args),
+  },
   snoozeUntilTomorrow: () => new Date('2026-11-17T11:00:00Z'),
 }))
 
@@ -149,5 +156,46 @@ describe('TodoScreen', () => {
   it('says all caught up, counting snoozed tasks', () => {
     mockState = { ...mockState, tasks: [], meta: { ...META, hidden: 2 } }
     expect(render(<TodoScreen />).getByText('Nothing to do now (2 snoozed).')).toBeTruthy()
+  })
+
+  it('blocks a task with a reason and tells operations', async () => {
+    mockBlock.mockResolvedValue({ notified: 2 })
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined)
+    const { getByLabelText } = render(<TodoScreen />)
+    fireEvent.press(getByLabelText('Can’t do it: Upload the Bill of Lading, order 200'))
+    fireEvent.changeText(getByLabelText('Reason'), '  Printer broken  ')
+    fireEvent.press(getByLabelText('Send to operations'))
+    await waitFor(() =>
+      expect(mockBlock).toHaveBeenCalledWith(
+        'task:submit-bol:200:order',
+        'Printer broken',
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      ),
+    )
+    await waitFor(() => expect(mockRefresh).toHaveBeenCalledTimes(2))
+    expect(alert).not.toHaveBeenCalled()
+  })
+
+  it('warns when nobody was notified', async () => {
+    mockBlock.mockResolvedValue({ notified: 0 })
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined)
+    const { getByLabelText } = render(<TodoScreen />)
+    fireEvent.press(getByLabelText('Can’t do it: Mark Pack done, order 100'))
+    fireEvent.changeText(getByLabelText('Reason'), 'Gate locked')
+    fireEvent.press(getByLabelText('Send to operations'))
+    await waitFor(() =>
+      expect(alert).toHaveBeenCalledWith('Nobody was notified', expect.any(String)),
+    )
+  })
+
+  it('shows a blocked task with its reason, and unblocks it', async () => {
+    mockUnblock.mockResolvedValue(undefined)
+    mockState.tasks = [
+      { ...BOL_TASK, blocked: { reason: 'Printer broken', at: '2026-11-18T10:00:00Z' } },
+    ]
+    const { getByText, getByLabelText } = render(<TodoScreen />)
+    expect(getByText('Blocked: Printer broken')).toBeTruthy()
+    fireEvent.press(getByLabelText('Unblock: Upload the Bill of Lading, order 200'))
+    await waitFor(() => expect(mockUnblock).toHaveBeenCalledWith('task:submit-bol:200:order'))
   })
 })

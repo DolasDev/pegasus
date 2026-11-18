@@ -3701,6 +3701,10 @@ model TaskState {
   snoozedUntil DateTime? @map("snoozed_until") @db.Timestamptz(6)
   /// Hidden for good; null when not dismissed.
   dismissedAt  DateTime? @map("dismissed_at") @db.Timestamptz(6)
+  /// Andon: the driver can't do this task. Notifies operations on the
+  /// not-blocked → blocked transition. Null when not blocked.
+  blockedAt    DateTime? @map("blocked_at") @db.Timestamptz(6)
+  blockReason  String?   @map("block_reason") @db.VarChar(500)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)

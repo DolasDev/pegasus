@@ -1053,6 +1053,53 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/notifications/notify': {
+        post: {
+          operationId: 'notifyUsers',
+          summary: 'Post to the tenant’s own users’ Activity feeds (NotifyUsers)',
+          description:
+            'Body { toEmails?, toRoles?, title (≤120), body (≤500), orderNum?, dedupKey? }. Name at least one recipient. toEmails are login emails of the tenant’s active users (case-insensitive); toRoles are role names (e.g. long_distance_dispatch, driver). Every role holder who is active and human gets it; service accounts never do. Each recipient gets one Activity row of type workflow.message, plus a push to their phone ONLY if they chose Push for automation messages (the default is Activity only). With orderNum the row is grouped under that order and opens its chat. dedupKey makes a retry a no-op per recipient. 400 UNKNOWN_RECIPIENT names any email with no active user here; 400 UNKNOWN_ROLE lists the valid roles; 400 TOO_MANY_RECIPIENTS above 100 people — nothing is sent on any 400. Internal-only, so not metered. SDK: notify.',
+          tags: ['Notifications'],
+          security: [{ ApiKeyAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['title', 'body'],
+                  additionalProperties: false,
+                  properties: {
+                    toEmails: {
+                      type: 'array',
+                      items: { type: 'string', format: 'email' },
+                      maxItems: 100,
+                    },
+                    toRoles: { type: 'array', items: { type: 'string' } },
+                    title: { type: 'string', minLength: 1, maxLength: 120 },
+                    body: { type: 'string', minLength: 1, maxLength: 500 },
+                    orderNum: {
+                      oneOf: [{ type: 'integer' }, { type: 'string', pattern: '^\\d{1,12}$' }],
+                    },
+                    dedupKey: { type: 'string', pattern: '^[A-Za-z0-9._:-]{1,200}$' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description:
+                '{data: {recipients, notified, pushed}} — notified = Activity rows written (others turned the type off); pushed = phones also pushed',
+            },
+            '400': {
+              description:
+                'VALIDATION_ERROR | UNKNOWN_RECIPIENT | UNKNOWN_ROLE | TOO_MANY_RECIPIENTS',
+            },
+            '403': { description: 'FORBIDDEN — the caller lacks NotifyUsers' },
+          },
+        },
+      },
       '/api/v1/sms/send': {
         post: {
           operationId: 'sendSms',

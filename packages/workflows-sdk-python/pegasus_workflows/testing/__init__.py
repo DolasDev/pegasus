@@ -151,6 +151,7 @@ _MUTATIONS: dict[str, str] = {
     "emit_event": "EmitTenantEvent",
     "send_sms": "SendSms",
     "send_email": "SendEmail",
+    "notify": "NotifyUsers",
     "record_sms_opt_out": "ManageSmsOptOut",
     "mark_text_message_read": "UpdateTextMessage",
     "create_task": "CreateTask",

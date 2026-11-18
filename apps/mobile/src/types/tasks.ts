@@ -7,7 +7,14 @@
 
 import type { DriverTaskRuleId, TaskBucket, TaskSpec } from '@pegasus/domain'
 
-export type DriverTask = TaskSpec & { bucket: TaskBucket }
+/** Andon: the driver can't do this task, and said why. Operations was told. */
+export interface TaskBlocked {
+  reason: string
+  /** When it was first blocked (ISO). */
+  at: string
+}
+
+export type DriverTask = TaskSpec & { bucket: TaskBucket; blocked?: TaskBlocked | null }
 
 export interface DriverTasksMeta {
   today: string

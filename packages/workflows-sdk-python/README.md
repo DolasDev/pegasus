@@ -336,6 +336,35 @@ if not verdict["ok"]:
 runs **live** under a dry run; offline, serve it from
 `fake_client(reads={"check_email_recipients": {...}})`.
 
+### Notifying your company's users (Activity)
+
+`client.notify(title, body, to_emails=None, to_roles=None, order_num=None, dedup_key=None)`
+(needs `NotifyUsers`) posts one Activity row (type `workflow.message`) to each
+recipient. It appears under the bell in the web app and on the Activity screen in
+the mobile app. Whether it **also pushes** to their phone is the recipient's choice:
+the default for automation messages is **Activity only**, and each person can turn
+it up to Push (or Off) in their notification settings. Internal only, and not metered.
+
+Name recipients by **login email** and/or **role** (e.g. `"long_distance_dispatch"`,
+`"driver"`, `"operations_admin"`). Every active, human holder of a role gets it, and
+service accounts never do. At most 100 people per call.
+
+```python
+client.notify(
+    "Weight ticket uploaded",
+    f"Order {order_no} now has its weight ticket.",
+    to_roles=["long_distance_dispatch"],
+    order_num=order_no,                     # groups it under the order; a tap opens its chat
+    dedup_key=f"weights:{order_no}",        # a retry is a no-op per recipient
+)
+# → {"recipients": 4, "notified": 4, "pushed": 1}
+```
+
+**Nothing is sent on a 400.** `UNKNOWN_RECIPIENT` names any email with no active
+user in your tenant, `UNKNOWN_ROLE` lists the valid roles, and `TOO_MANY_RECIPIENTS`
+means more than 100 people. In the result, `notified` counts Activity rows written
+(the others turned these off), and `pushed` counts phones also pushed.
+
 ### Receiving an SMS (`sms.received`)
 
 When a text arrives on the tenant's connected RingCentral number, the platform

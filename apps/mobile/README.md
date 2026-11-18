@@ -20,10 +20,14 @@ A production-ready React Native app built with Expo for truck drivers to manage 
   screen, the drawer badge (overdue + today) and the Dashboard card, so each refresh is a single
   legacy read; it reloads when the screen gains focus and on pull-to-refresh, never on a timer.
   Hidden until the tenant enables a rule (tenant-web: Settings → App → Operations → Driver To Do), and
-  for Operations-only users.
+  for Operations-only users. **Can't do it** (andon) blocks a task with a reason
+  (`src/components/BlockTaskModal.tsx`). The first block notifies every operations user (type
+  `task.blocked`; tapping it opens the order's chat). A blocked task stays on the list, marked, even
+  if snoozed, until it's done or unblocked. If nobody holds an operations role, the app says so.
 - **Activity** (`app/(drawer)/activity.tsx`, header bell): what happened that concerns you, from
   `GET /api/v1/me/activity`: trip and move assignments, @mentions in a move chat, and messages from
-  the office. Every push of those types is now also an Activity row (the API's `notify()`), so a
+  the office, blocked drivers (operations users), and messages from the company's automations (SDK
+  `notify`, type `workflow.message`, Activity only unless the user picks Push). Every push of those types is now also an Activity row (the API's `notify()`), so a
   dismissed notification isn't lost. Rows on one order group ("2 updates on #4242"). Tapping a row
   opens the same screen as tapping the push (`notificationRoute` in `src/services/pushNotifications.ts`
   is shared by both). Opening the screen clears the bell; tapping a row marks it read. The bell's
