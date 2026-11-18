@@ -275,6 +275,16 @@ recipient check, no send: ``{"ok", "reason", "disallowed"}`` with ``reason`` in
 ``NOT_CONFIGURED | RECIPIENT_NOT_ALLOWED | TOO_MANY_RECIPIENTS``. Side-effect
 free, so it runs live under a dry run.
 
+## Activity notifications (internal only)
+
+``client.notify(title, body, to_emails=, to_roles=, order_num=, dedup_key=)``
+(``NotifyUsers``) posts an Activity row (type ``workflow.message``) to your
+tenant's users, named by login email and/or role. Activity only by default; each
+recipient chooses whether it also pushes to their phone. Nothing is sent on 400
+``UNKNOWN_RECIPIENT`` / ``UNKNOWN_ROLE`` (lists valid roles) /
+``TOO_MANY_RECIPIENTS`` (>100). Pass ``dedup_key`` so a retried activity doesn't
+post twice; ``order_num`` groups it under the order. Not metered.
+
 ## Selecting pegII orders (live search vs the snapshot)
 
 ``client.search_orders(date_field, date_from, date_to, status="A")``

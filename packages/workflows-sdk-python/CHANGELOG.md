@@ -3,6 +3,23 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.67.0
+
+### Added — `notify`: post to your company's users' Activity
+
+- `PegasusClient.notify(title, body, *, to_emails=None, to_roles=None,
+order_num=None, dedup_key=None)` (needs the new `NotifyUsers`, granted to
+  `workflow_runtime`) posts one Activity row of type `workflow.message` to each
+  recipient: the bell in the web app and the Activity screen in the mobile app.
+- Recipients are named by login email and/or role. Unknown ones are a 400
+  (`UNKNOWN_RECIPIENT` / `UNKNOWN_ROLE`) and nothing is sent; more than 100
+  people is `TOO_MANY_RECIPIENTS`.
+- Activity only by default. Each recipient chooses whether it also pushes to
+  their phone.
+- `dedup_key` makes a retry a no-op per recipient.
+- Captured under a dry run (capability `NotifyUsers`), like other mutations.
+  See the README, "Notifying your company's users (Activity)".
+
 ## 0.66.1
 
 ### Added — list a Workflow's steps
