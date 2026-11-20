@@ -19,6 +19,8 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
 import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
+import type { TaskRecord } from '../gateways/task.gateway'
+import { pegiiTaskToRecord } from '../gateways/pegii-task.gateway'
 import type { PegiiMemoDto } from '../gateways/pegii/pegii-memo.dto'
 import type { OrderRecord } from '../services/pegii-orders'
 import type { SalesmanRecord } from '../services/pegii-salesmen'
@@ -626,28 +628,30 @@ describe('PATCH /pegii/orders/:orderId', () => {
 
 // ── Tasks (the site's task API through a TaskGateway; NW pulse Phase 6) ──
 
-const taskDto = (over: Partial<PegiiTaskDto> = {}): PegiiTaskDto => ({
-  id: 77,
-  orderNumber: 490317,
-  taskType: 'Pulse Follow-Up',
-  title: 'Call back the shipper',
-  description: 'No reply to the pulse text',
-  priority: 'high',
-  dueDate: '2026-10-20',
-  assigneeCode: 8121,
-  completed: false,
-  completedAt: null,
-  completedBy: null,
-  actualDate: null,
-  active: true,
-  createdByApi: true,
-  closeReason: null,
-  closedUtc: null,
-  createdUtc: '2026-10-16T18:00:00Z',
-  ...over,
-})
+// The gateway hands the handler neutral TaskRecords; build them from the site's DTO.
+const taskDto = (over: Partial<PegiiTaskDto> = {}): TaskRecord =>
+  pegiiTaskToRecord({
+    id: 77,
+    orderNumber: 490317,
+    taskType: 'Pulse Follow-Up',
+    title: 'Call back the shipper',
+    description: 'No reply to the pulse text',
+    priority: 'high',
+    dueDate: '2026-10-20',
+    assigneeCode: 8121,
+    completed: false,
+    completedAt: null,
+    completedBy: null,
+    actualDate: null,
+    active: true,
+    createdByApi: true,
+    closeReason: null,
+    closedUtc: null,
+    createdUtc: '2026-10-16T18:00:00Z',
+    ...over,
+  })
 
-const desktopTask = (over: Partial<PegiiTaskDto> = {}): PegiiTaskDto =>
+const desktopTask = (over: Partial<PegiiTaskDto> = {}): TaskRecord =>
   taskDto({
     id: 10,
     taskType: 'PACK',
@@ -666,7 +670,7 @@ describe('GET /pegii/tasks', () => {
     const res = await app.request('/pegii/tasks?orderId=490317')
 
     expect(res.status).toBe(200)
-    expect(listOrderTasks).toHaveBeenCalledWith(490317)
+    expect(listOrderTasks).toHaveBeenCalledWith('490317')
     const body = await json(res)
     const data = body['data'] as Array<Record<string, unknown>>
     expect(data[1]).toEqual({
@@ -687,6 +691,7 @@ describe('GET /pegii/tasks', () => {
       actualDate: null,
       createdAt: '2026-10-16T18:00:00Z',
       closedAt: null,
+      store: 'legacy',
     })
     expect(data[0]).toMatchObject({ id: '10', taskType: 'PACK', priority: null, createdAt: null })
     expect(data.every((t) => !('stub' in t))).toBe(true)
@@ -726,7 +731,7 @@ describe('GET /pegii/tasks', () => {
   })
 
   it('searches one type across orders and pages with a string cursor', async () => {
-    searchTasks.mockResolvedValue({ items: [taskDto()], nextCursor: 77 })
+    searchTasks.mockResolvedValue({ items: [taskDto()], nextCursor: '77' })
     const app = buildApp(['workflow_runtime'])
 
     const res = await app.request(
@@ -738,7 +743,7 @@ describe('GET /pegii/tasks', () => {
       taskType: 'Pulse Follow-Up',
       open: true,
       dueBefore: '2026-10-20',
-      cursor: 5,
+      cursor: '5',
       limit: 1,
     })
     expect((await json(res))['meta']).toEqual({ count: 1, nextCursor: '77' })
@@ -790,7 +795,7 @@ describe('GET /pegii/tasks/:taskId', () => {
     const res = await app.request('/pegii/tasks/77')
 
     expect(res.status).toBe(200)
-    expect(getTask).toHaveBeenCalledWith(77)
+    expect(getTask).toHaveBeenCalledWith('77')
     expect((await json(res))['data']).toMatchObject({ id: '77', orderId: '490317' })
   })
 
@@ -826,7 +831,7 @@ describe('POST /pegii/tasks (create)', () => {
     const res = await app.request('/pegii/tasks', post(create))
 
     expect(res.status).toBe(201)
-    expect(createTask).toHaveBeenCalledWith(490317, {
+    expect(createTask).toHaveBeenCalledWith('490317', {
       taskType: 'Pulse Follow-Up',
       title: 'Call back the shipper',
       description: 'No reply to the pulse text',
@@ -927,7 +932,7 @@ describe('POST /pegii/tasks/close', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(closeTask).toHaveBeenCalledWith(77, 'Customer replied')
+    expect(closeTask).toHaveBeenCalledWith('77', 'Customer replied')
     expect((await json(res))['data']).toMatchObject({
       id: '77',
       status: 'closed',
@@ -942,7 +947,7 @@ describe('POST /pegii/tasks/close', () => {
 
     const res = await app.request('/pegii/tasks/close', post({ taskId: 77 }))
 
-    expect(closeTask).toHaveBeenCalledWith(77, null)
+    expect(closeTask).toHaveBeenCalledWith('77', null)
     expect((await json(res))['data']).toMatchObject({ alreadyClosed: true })
   })
 
@@ -974,7 +979,7 @@ describe('POST /pegii/tasks/close', () => {
       const res = await app.request('/pegii/tasks/close', post(byType))
 
       expect(res.status).toBe(200)
-      expect(closeTask).toHaveBeenCalledWith(77, 'replied')
+      expect(closeTask).toHaveBeenCalledWith('77', 'replied')
     })
 
     it('two or more OPEN matches → 409 TASK_AMBIGUOUS naming them, nothing closed', async () => {

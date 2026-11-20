@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createPegiiTaskGateway } from '../pegii-task.gateway'
+import { createPegiiTaskGateway, pegiiTaskToRecord } from '../pegii-task.gateway'
 import { PegiiApiError, type PegiiApiClient } from '../../lib/pegii-api-client'
 import type { PegiiTaskDto } from '../pegii/pegii-task.dto'
 
@@ -63,13 +63,13 @@ describe('createPegiiTaskGateway — capability gate', () => {
     )
 
     // A site without the capability has no task routes: its 404 must not read as "not found".
-    await expect(gateway.listOrderTasks(1)).rejects.toBe(missing)
-    await expect(gateway.getTask(1)).rejects.toBe(missing)
+    await expect(gateway.listOrderTasks('1')).rejects.toBe(missing)
+    await expect(gateway.getTask('1')).rejects.toBe(missing)
     await expect(gateway.searchTasks({ taskType: 'Pulse Follow-Up' })).rejects.toBe(missing)
     await expect(
-      gateway.createTask(1, { taskType: 'Pulse Follow-Up', title: 't', dueDate: '2026-10-20' }),
+      gateway.createTask('1', { taskType: 'Pulse Follow-Up', title: 't', dueDate: '2026-10-20' }),
     ).rejects.toBe(missing)
-    await expect(gateway.closeTask(1, null)).rejects.toBe(missing)
+    await expect(gateway.closeTask('1', null)).rejects.toBe(missing)
 
     expect(requireCapabilities).toHaveBeenCalledTimes(5)
     expect(requireCapabilities).toHaveBeenCalledWith(BASE, ['pegii.tasks.v1'], {})
@@ -85,33 +85,34 @@ describe('createPegiiTaskGateway reads', () => {
       .mockResolvedValue({ items: [task(), task({ id: 10, createdByApi: false })] })
     const { gateway } = gatewayWith({ get })
 
-    const items = await gateway.listOrderTasks(490317)
+    const items = await gateway.listOrderTasks('490317')
 
     expect(get).toHaveBeenCalledWith('/api/v1/pegii/orders/490317/tasks')
-    expect(items?.map((t) => t.id)).toEqual([77, 10])
+    expect(items?.map((t) => t.id)).toEqual(['77', '10'])
+    expect(items?.every((t) => t.store === 'legacy')).toBe(true)
   })
 
   it('an order with no tasks is [], an unknown order is null', async () => {
     const empty = gatewayWith({ get: vi.fn().mockResolvedValue({ items: [] }) })
     const unknown = gatewayWith({ get: vi.fn().mockRejectedValue(notFound('ORDER_NOT_FOUND')) })
 
-    expect(await empty.gateway.listOrderTasks(1)).toEqual([])
-    expect(await unknown.gateway.listOrderTasks(1)).toBeNull()
+    expect(await empty.gateway.listOrderTasks('1')).toEqual([])
+    expect(await unknown.gateway.listOrderTasks('1')).toBeNull()
   })
 
   it('gets one task, null on 404', async () => {
     const found = gatewayWith({ get: vi.fn().mockResolvedValue(task()) })
     const missing = gatewayWith({ get: vi.fn().mockRejectedValue(notFound('TASK_NOT_FOUND')) })
 
-    expect(await found.gateway.getTask(77)).toEqual(task())
-    expect(await missing.gateway.getTask(77)).toBeNull()
+    expect(await found.gateway.getTask('77')).toEqual(pegiiTaskToRecord(task()))
+    expect(await missing.gateway.getTask('77')).toBeNull()
   })
 
   it('a COMPANY_NOT_FOUND 404 is a site misconfiguration, never "no such task"', async () => {
     const err = notFound('COMPANY_NOT_FOUND')
     const { gateway } = gatewayWith({ get: vi.fn().mockRejectedValue(err) })
 
-    await expect(gateway.getTask(77)).rejects.toBe(err)
+    await expect(gateway.getTask('77')).rejects.toBe(err)
   })
 
   it('searches with the criteria as query params', async () => {
@@ -122,7 +123,7 @@ describe('createPegiiTaskGateway reads', () => {
       taskType: 'Pulse Follow-Up',
       open: true,
       dueBefore: '2026-10-20',
-      cursor: 5,
+      cursor: '5',
       limit: 2,
     })
 
@@ -130,10 +131,10 @@ describe('createPegiiTaskGateway reads', () => {
       taskType: 'Pulse Follow-Up',
       open: 'true',
       dueBefore: '2026-10-20',
-      cursor: 5,
+      cursor: '5',
       limit: 2,
     })
-    expect(page).toEqual({ items: [task()], nextCursor: 77 })
+    expect(page).toEqual({ items: [pegiiTaskToRecord(task())], nextCursor: '77' })
   })
 
   it('omits open when the caller wants both', async () => {
@@ -158,10 +159,10 @@ describe('createPegiiTaskGateway writes', () => {
     const post = vi.fn().mockResolvedValue({ task: task(), alreadyExists: true })
     const { gateway } = gatewayWith({ post })
 
-    const result = await gateway.createTask(490317, body)
+    const result = await gateway.createTask('490317', body)
 
     expect(post).toHaveBeenCalledWith('/api/v1/pegii/orders/490317/tasks', body)
-    expect(result).toEqual({ found: true, task: task(), alreadyExists: true })
+    expect(result).toEqual({ found: true, task: pegiiTaskToRecord(task()), alreadyExists: true })
   })
 
   it("maps the site's 404 to found: false, keeping pegII's code", async () => {
@@ -169,7 +170,7 @@ describe('createPegiiTaskGateway writes', () => {
       post: vi.fn().mockRejectedValue(notFound('ORDER_NOT_FOUND')),
     })
 
-    expect(await gateway.createTask(5, body)).toMatchObject({
+    expect(await gateway.createTask('5', body)).toMatchObject({
       found: false,
       code: 'ORDER_NOT_FOUND',
     })
@@ -184,7 +185,7 @@ describe('createPegiiTaskGateway writes', () => {
     )
     const { gateway } = gatewayWith({ post: vi.fn().mockRejectedValue(conflict) })
 
-    await expect(gateway.createTask(5, body)).rejects.toBe(conflict)
+    await expect(gateway.createTask('5', body)).rejects.toBe(conflict)
   })
 
   it('closes by id with the reason, or an empty body without one', async () => {
@@ -193,8 +194,8 @@ describe('createPegiiTaskGateway writes', () => {
       .mockResolvedValue({ task: task({ completed: true }), alreadyClosed: false })
     const { gateway } = gatewayWith({ post })
 
-    await gateway.closeTask(77, 'Customer replied')
-    await gateway.closeTask(78, null)
+    await gateway.closeTask('77', 'Customer replied')
+    await gateway.closeTask('78', null)
 
     expect(post).toHaveBeenNthCalledWith(1, '/api/v1/pegii/tasks/77/close', {
       reason: 'Customer replied',
@@ -205,6 +206,50 @@ describe('createPegiiTaskGateway writes', () => {
   it('a close of an unknown task is null', async () => {
     const { gateway } = gatewayWith({ post: vi.fn().mockRejectedValue(notFound('TASK_NOT_FOUND')) })
 
-    expect(await gateway.closeTask(77, null)).toBeNull()
+    expect(await gateway.closeTask('77', null)).toBeNull()
+  })
+})
+
+describe('pegiiTaskToRecord', () => {
+  it('maps the site DTO to the neutral record, store legacy, string ids', () => {
+    expect(pegiiTaskToRecord(task({ completed: true, closeReason: 'done' }))).toEqual({
+      store: 'legacy',
+      id: '77',
+      orderId: '490317',
+      taskType: 'Pulse Follow-Up',
+      title: 'Call back',
+      description: null,
+      priority: 'normal',
+      dueDate: '2026-10-20',
+      assigneeCode: 8121,
+      status: 'closed',
+      reason: 'done',
+      createdByApi: true,
+      active: true,
+      completedAt: null,
+      completedBy: null,
+      actualDate: null,
+      createdAt: '2026-10-16T18:00:00Z',
+      closedAt: null,
+    })
+    expect(pegiiTaskToRecord(task()).status).toBe('open')
+  })
+})
+
+describe('createPegiiTaskGateway — ids this store cannot hold', () => {
+  it('a non-int id is null without calling the site (e.g. a cloud UUID)', async () => {
+    const get = vi.fn()
+    const post = vi.fn()
+    const { gateway } = gatewayWith({ get, post })
+    const uuid = '2b916653-df32-438d-a885-e9aedae40286'
+
+    expect(await gateway.getTask(uuid)).toBeNull()
+    expect(await gateway.closeTask(uuid, null)).toBeNull()
+    expect(await gateway.listOrderTasks('0')).toBeNull()
+    expect(
+      await gateway.createTask('x1', { taskType: 'T', title: 't', dueDate: '2026-10-20' }),
+    ).toMatchObject({ found: false, code: 'ORDER_NOT_FOUND' })
+    expect(get).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
   })
 })

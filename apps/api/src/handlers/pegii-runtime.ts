@@ -55,7 +55,8 @@ import {
 } from '../gateways/pegii/pegii-order-search.dto'
 import type { SalesmanRecord } from '../services/pegii-salesmen'
 import { resolveTaskGateway } from '../gateways/task-gateway.factory'
-import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
+import type { TaskRecord } from '../gateways/task.gateway'
+import { isPegiiInt } from '../gateways/pegii-task.gateway'
 import { TASK_SEARCH_MAX_LIMIT } from '../gateways/pegii/pegii-task.dto'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
 import { resolveMemoGateway } from '../gateways/memo-gateway.factory'
@@ -63,11 +64,6 @@ import type { PegiiMemoDto } from '../gateways/pegii/pegii-memo.dto'
 import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
 import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 import { logger } from '../lib/logger'
-
-/** A pegII order number or task id: the site's routes are `{n:int}`. */
-const PEGII_INT_RE = /^[1-9]\d{0,9}$/
-const PEGII_INT_MAX = 2_147_483_647
-const isPegiiInt = (v: string): boolean => PEGII_INT_RE.test(v) && Number(v) <= PEGII_INT_MAX
 
 const orderNumber = z
   .string({ error: 'orderId is required' })
@@ -295,33 +291,33 @@ function toMemoResponse(memo: PegiiMemoDto) {
   }
 }
 
-const statusOf = (t: PegiiTaskDto): 'open' | 'closed' => (t.completed ? 'closed' : 'open')
-
 /**
- * A pegII task in the SDK's shape. Ids are strings (opaque per instance). `createdAt` is
- * known only for a task the cloud created (pegII's `Tasks` has no created column) and
- * `closedAt` only for a close made through the API; `completedAt` is the site-local time
- * MoveManager stamps on any completion.
+ * A task in the SDK's shape. Ids are strings (opaque per store) and `store` says
+ * which store answered (`legacy` = pegII, `cloud` = the platform). For a legacy
+ * task, `createdAt` is known only when the cloud created it (pegII's `Tasks` has
+ * no created column) and `closedAt` only for a close made through the API;
+ * `completedAt` is the site-local time MoveManager stamps on any completion.
  */
-function toTaskResponse(task: PegiiTaskDto) {
+function toTaskResponse(task: TaskRecord) {
   return {
-    id: String(task.id),
-    orderId: String(task.orderNumber),
+    id: task.id,
+    orderId: task.orderId,
     taskType: task.taskType,
     title: task.title,
     description: task.description,
     priority: task.priority,
     dueDate: task.dueDate,
     assigneeCode: task.assigneeCode,
-    status: statusOf(task),
-    reason: task.closeReason,
+    status: task.status,
+    reason: task.reason,
     createdByApi: task.createdByApi,
     active: task.active,
     completedAt: task.completedAt,
     completedBy: task.completedBy,
     actualDate: task.actualDate,
-    createdAt: task.createdUtc,
-    closedAt: task.closedUtc,
+    createdAt: task.createdAt,
+    closedAt: task.closedAt,
+    store: task.store,
   }
 }
 
@@ -655,14 +651,14 @@ pegiiRuntimeHandler.get(
     const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
 
     if (q.orderId !== undefined) {
-      const all = await gateway.listOrderTasks(Number(q.orderId))
+      const all = await gateway.listOrderTasks(q.orderId)
       if (all === null) {
         return c.json({ error: `Order ${q.orderId} not found`, code: 'ORDER_NOT_FOUND' }, 404)
       }
       const tasks = all.filter(
         (t) =>
           (q.taskType === undefined || sameTaskType(t.taskType, q.taskType)) &&
-          (q.status === undefined || statusOf(t) === q.status) &&
+          (q.status === undefined || t.status === q.status) &&
           (q.dueBefore === undefined || (t.dueDate !== null && t.dueDate < q.dueBefore)),
       )
       logger.info('pegII tasks listed', { tenantId, orderId: q.orderId, count: tasks.length })
@@ -676,7 +672,7 @@ pegiiRuntimeHandler.get(
       taskType: q.taskType!,
       ...(q.status !== undefined ? { open: q.status === 'open' } : {}),
       ...(q.dueBefore !== undefined ? { dueBefore: q.dueBefore } : {}),
-      ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
+      ...(q.cursor !== undefined ? { cursor: String(q.cursor) } : {}),
       ...(q.limit !== undefined ? { limit: q.limit } : {}),
     })
     logger.info('pegII tasks searched', {
@@ -689,7 +685,7 @@ pegiiRuntimeHandler.get(
       data: page.items.map(toTaskResponse),
       meta: {
         count: page.items.length,
-        nextCursor: page.nextCursor === null ? null : String(page.nextCursor),
+        nextCursor: page.nextCursor,
       },
     })
   },
@@ -705,7 +701,7 @@ pegiiRuntimeHandler.get('/tasks/:taskId', requirePermission(Actions.ReadTask), a
   }
 
   const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
-  const task = await gateway.getTask(Number(taskId))
+  const task = await gateway.getTask(taskId)
   if (!task) {
     return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404)
   }
@@ -736,7 +732,7 @@ pegiiRuntimeHandler.post(
     const b = c.req.valid('json')
 
     const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
-    const result = await gateway.createTask(Number(b.orderId), {
+    const result = await gateway.createTask(b.orderId, {
       taskType: b.taskType,
       title: b.title,
       dueDate: b.dueDate,
@@ -787,20 +783,20 @@ pegiiRuntimeHandler.post(
     const reason = body.reason ?? null
     const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
 
-    let taskId: number
+    let taskId: string
     if (body.taskId !== undefined) {
       if (!isPegiiInt(body.taskId)) {
         return c.json({ error: `Task ${body.taskId} not found`, code: 'TASK_NOT_FOUND' }, 404)
       }
-      taskId = Number(body.taskId)
+      taskId = body.taskId
     } else {
       const { orderId, taskType } = body as { orderId: string; taskType: string }
-      const all = await gateway.listOrderTasks(Number(orderId))
+      const all = await gateway.listOrderTasks(orderId)
       if (all === null) {
         return c.json({ error: `Order ${orderId} not found`, code: 'ORDER_NOT_FOUND' }, 404)
       }
       const matches = all.filter((t) => sameTaskType(t.taskType, taskType))
-      const open = matches.filter((t) => !t.completed)
+      const open = matches.filter((t) => t.status === 'open')
       if (open.length > 1) {
         const candidateIds = open.map((t) => String(t.id))
         return c.json(
@@ -813,8 +809,9 @@ pegiiRuntimeHandler.post(
         )
       }
       if (open.length === 0) {
-        const latest = matches.reduce<PegiiTaskDto | null>(
-          (best, t) => (best === null || t.id > best.id ? t : best),
+        // Legacy ids are pegII ints: the newest is the highest.
+        const latest = matches.reduce<TaskRecord | null>(
+          (best, t) => (best === null || Number(t.id) > Number(best.id) ? t : best),
           null,
         )
         if (latest === null) {

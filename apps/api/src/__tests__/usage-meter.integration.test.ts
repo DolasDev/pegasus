@@ -18,27 +18,28 @@
  */
 import crypto from 'node:crypto'
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest'
-import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
+import type { TaskRecord } from '../gateways/task.gateway'
 import { db } from '../db'
 import { m2mV1 } from '../app'
 import { _clearAuthzCache } from '../lib/authz'
 
 // One open date_confirmation task on ORDER_NUMBER; closing it flips it closed.
 const ORDER_NUMBER = 4_900_001
-const { tasks } = vi.hoisted(() => ({ tasks: new Map<number, PegiiTaskDto>() }))
+const { tasks } = vi.hoisted(() => ({ tasks: new Map<string, TaskRecord>() }))
 vi.mock('../gateways/task-gateway.factory', () => ({
   resolveTaskGateway: vi.fn(async () => ({
-    listOrderTasks: async (n: number) => [...tasks.values()].filter((t) => t.orderNumber === n),
-    getTask: async (id: number) => tasks.get(id) ?? null,
+    store: 'legacy',
+    listOrderTasks: async (n: string) => [...tasks.values()].filter((t) => t.orderId === n),
+    getTask: async (id: string) => tasks.get(id) ?? null,
     searchTasks: async () => ({ items: [], nextCursor: null }),
     createTask: async () => {
       throw new Error('not used')
     },
-    closeTask: async (id: number) => {
+    closeTask: async (id: string) => {
       const t = tasks.get(id)
       if (!t) return null
-      if (t.completed) return { task: t, alreadyClosed: true }
-      const closed = { ...t, completed: true }
+      if (t.status === 'closed') return { task: t, alreadyClosed: true }
+      const closed: TaskRecord = { ...t, status: 'closed' }
       tasks.set(id, closed)
       return { task: closed, alreadyClosed: false }
     },
@@ -70,24 +71,25 @@ const close = (order: string) =>
   })
 
 const seedTask = () =>
-  tasks.set(501, {
-    id: 501,
-    orderNumber: ORDER_NUMBER,
+  tasks.set('501', {
+    store: 'legacy',
+    id: '501',
+    orderId: String(ORDER_NUMBER),
     taskType: 'date_confirmation',
     title: 'DATE CONFIRMATION',
     description: null,
     priority: null,
     dueDate: null,
     assigneeCode: 0,
-    completed: false,
+    status: 'open',
+    reason: null,
     completedAt: null,
     completedBy: null,
     actualDate: null,
     active: true,
     createdByApi: false,
-    closeReason: null,
-    closedUtc: null,
-    createdUtc: null,
+    createdAt: null,
+    closedAt: null,
   })
 
 const metered = () => db.usageEvent.findMany({ where: { apiClientId } })

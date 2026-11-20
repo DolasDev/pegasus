@@ -62,16 +62,5 @@ export interface PegiiTaskSearchPageDto {
   nextCursor: number | null
 }
 
-/** `GET /api/v1/pegii/tasks` — cloud-created tasks of one type across orders. */
-export interface TaskSearchCriteria {
-  taskType: string
-  /** true = open only, false = completed only, absent = both. */
-  open?: boolean
-  /** `YYYY-MM-DD`; strictly before. */
-  dueBefore?: string
-  cursor?: number
-  limit?: number
-}
-
 /** pegII's own limit on the search page (movemanager `ApiTaskSearchCriteria.MaxLimit`). */
 export const TASK_SEARCH_MAX_LIMIT = 500
