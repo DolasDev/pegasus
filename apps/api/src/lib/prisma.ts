@@ -171,6 +171,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // Read and written only through the scoped client on /me/tasks. Creates set
   // tenantId.
   'TaskState',
+  // The cloud task store (task queue Phase 3a): served only through
+  // gateways/cloud-task.gateway.ts on the scoped client; creates set tenantId.
+  // TaskDefinition has no reader or writer until 3c.
+  'WorkItem',
+  'TaskDefinition',
   // Activity feed rows and per-type channel preferences. Served through the
   // scoped client on /me/activity and /me/notification-preferences; lib/notify
   // sets tenantId explicitly on every write (including upserts, which the

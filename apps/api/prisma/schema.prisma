@@ -320,6 +320,8 @@ model Tenant {
   servicesFilters        ServicesFilter[]
   itineraryActFacts      ItineraryActFact[]
   taskStates             TaskState[]
+  workItems              WorkItem[]
+  taskDefinitions        TaskDefinition[]
   notifications          Notification[]
   notificationPrefs      NotificationPreference[]
   pushNotificationOutbox PushNotificationOutbox[]
@@ -553,6 +555,8 @@ model TenantUser {
   servicesFilters              ServicesFilter[]
   itineraryActFacts            ItineraryActFact[]
   taskStates                   TaskState[]
+  assignedWorkItems            WorkItem[]               @relation("WorkItemAssignee")
+  closedWorkItems              WorkItem[]               @relation("WorkItemClosedBy")
   notificationsReceived        Notification[]           @relation("NotificationRecipient")
   notificationsActed           Notification[]           @relation("NotificationActor")
   notificationPrefs            NotificationPreference[]
@@ -3750,6 +3754,95 @@ model TaskState {
 
   @@unique([tenantId, userId, taskKey])
   @@map("task_states")
+  @@schema("public")
+}
+
+/// Lifecycle of a cloud task (task queue plan, Phase 3a). `done` and
+/// `cancelled` are terminal; `blocked` is open-but-stuck (andon).
+enum WorkItemStatus {
+  open
+  blocked
+  done
+  cancelled
+
+  @@schema("public")
+}
+
+/// One task in the CLOUD task store (task queue plan TQ-D2, Phase 3a). The
+/// SDK calls it a "task"; "WorkItem" is the internal name. The other store is
+/// legacy pegII `Tasks`; which store a (tenant, role) uses is
+/// `appSettings.operations.taskRouting`, and both are served through one
+/// TaskGateway (gateways/cloud-task.gateway.ts). Tenant-scoped.
+model WorkItem {
+  id                   String         @id @default(uuid())
+  tenantId             String         @map("tenant_id")
+  /// The pegII order number.
+  orderNum             Int            @map("order_num")
+  taskType             String         @map("task_type") @db.VarChar(64)
+  title                String         @db.VarChar(200)
+  description          String?        @db.VarChar(1000)
+  /// low | normal | high.
+  priority             String         @default("normal") @db.VarChar(10)
+  /// The owner: `operations` (resolved to the move's dispatcher) or a Cedar
+  /// role-group name.
+  owningRole           String         @map("owning_role") @db.VarChar(64)
+  assigneeUserId       String?        @map("assignee_user_id")
+  /// The legacy employee (salesman.code) the assignee was resolved from.
+  assigneeEmployeeCode Int?           @map("assignee_employee_code")
+  /// Why an owner that resolves per move found nobody: NO_DISPATCHER |
+  /// DISPATCHER_NOT_LINKED. Null when assigned or not resolved per move.
+  assigneeUnresolved   String?        @map("assignee_unresolved") @db.VarChar(40)
+  status               WorkItemStatus @default(open)
+  dueDate              DateTime?      @map("due_date") @db.Date
+  /// Idempotency: the same key with the same request answers the original
+  /// row; with a different request (requestHash differs), 409.
+  dedupKey             String?        @map("dedup_key") @db.VarChar(190)
+  requestHash          String?        @map("request_hash") @db.VarChar(64)
+  /// The TaskDefinition it came from (Phase 3c); null for an ad-hoc task.
+  definitionKey        String?        @map("definition_key") @db.VarChar(100)
+  definitionVersion    Int?           @map("definition_version")
+  closeReason          String?        @map("close_reason") @db.VarChar(1000)
+  closedByUserId       String?        @map("closed_by_user_id")
+  /// Andon. Set and notified from Phase 3b/3c; columns only in 3a.
+  blockedAt            DateTime?      @map("blocked_at") @db.Timestamptz(6)
+  blockReason          String?        @map("block_reason") @db.VarChar(500)
+  /// The Workflow execution awaiting this task (Phase 3c signals it).
+  awaitingExecutionId  String?        @map("awaiting_execution_id")
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  doneAt               DateTime?      @map("done_at") @db.Timestamptz(6)
+  cancelledAt          DateTime?      @map("cancelled_at") @db.Timestamptz(6)
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  assignee TenantUser? @relation("WorkItemAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  closedBy TenantUser? @relation("WorkItemClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([tenantId, dedupKey])
+  @@index([tenantId, orderNum])
+  @@index([tenantId, owningRole, status, dueDate])
+  @@index([tenantId, taskType, status])
+  @@map("work_items")
+  @@schema("public")
+}
+
+/// A tenant's task definition: standard work written as data (task queue plan
+/// TQ-D2). Versioned: an edit adds a version; WorkItems keep the version they
+/// were made from. Phase 3a creates the table with only the columns it can
+/// settle; applies-when / satisfied-when / due base + offset / escalation /
+/// deep link arrive with the sweeper and the editor (3b–3d). Tenant-scoped.
+model TaskDefinition {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  key        String   @db.VarChar(100)
+  version    Int
+  title      String   @db.VarChar(200)
+  owningRole String   @map("owning_role") @db.VarChar(64)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([tenantId, key, version])
+  @@map("task_definitions")
   @@schema("public")
 }
 
