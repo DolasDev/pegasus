@@ -188,6 +188,19 @@ describe.skipIf(!hasDb)('/assistant (integration)', () => {
     })
   })
 
+  it('continues a conversation after a failed turn without sending an empty message', async () => {
+    useScript([]) // the model call fails, as it will before the use-case form is submitted
+    const first = await events(await post(opsAdmin(), '/chat', { question: 'q1' }))
+    const conversationId = (first.at(-1)![1] as { conversationId: string }).conversationId
+
+    const p = useScript([{ content: [{ type: 'text', text: 'second' }] }])
+    await events(await post(opsAdmin(), '/chat', { question: 'q2', conversationId }))
+    // The unanswered q1 is dropped: Converse needs strict alternation and no empty content.
+    const sent = p.requests[0]!.messages
+    expect(sent.map((m) => m.role)).toEqual(['user'])
+    for (const m of sent) expect(m.content.length).toBeGreaterThan(0)
+  })
+
   it('continues a conversation with its history and keeps it private to its owner', async () => {
     useScript([{ content: [{ type: 'text', text: 'first' }] }])
     const first = await events(await post(opsAdmin(), '/chat', { question: 'q1' }))

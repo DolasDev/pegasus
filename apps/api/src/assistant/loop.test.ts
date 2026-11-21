@@ -312,16 +312,27 @@ describe('historyFromTurns', () => {
       historyFromTurns([
         t('assistant', 'orphan'),
         t('user', 'q1'),
-        t('assistant'), // a failed answer: nothing stored
+        // A failed answer, exactly as recordExchange stores it (turn.text is '').
+        t('assistant', ''),
         t('user', 'q2'),
         t('assistant', 'a2'),
         t('user', 'q3'),
-        t('assistant'),
+        t('assistant', '  '),
       ]),
     ).toEqual([
       { role: 'user', content: [text('q1'), text('q2')] },
       { role: 'assistant', content: [text('a2')] },
     ])
+  })
+
+  it('never emits a message with empty content (Converse rejects it)', () => {
+    const history = historyFromTurns([
+      t('user', 'q1'),
+      t('assistant', ''),
+      t('user', 'q2'),
+      t('assistant', 'a2'),
+    ])
+    for (const m of history) expect(m.content.length).toBeGreaterThan(0)
   })
 
   it('ignores non-text and malformed blocks', () => {

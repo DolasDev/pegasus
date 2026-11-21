@@ -212,9 +212,13 @@ export async function runTurn(input: RunTurnInput): Promise<TurnResult> {
  *
  * Converse requires strict user/assistant alternation, starting with a user
  * message. The Anthropic API quietly merged same-role runs; Converse rejects
- * them. A failed exchange leaves a stored question with no stored answer, so
- * same-role runs are merged, leading assistant turns are dropped, and a
- * trailing unanswered question is dropped (the new question follows it).
+ * them. A failed exchange stores its answer as `[{type: 'text', text: ''}]`
+ * (recordExchange writes `turn.text`, which is empty on error). Blank text is
+ * therefore dropped. Otherwise it would become an empty message, which Converse
+ * rejects, and every later turn in that conversation would fail. That leaves a
+ * question with no answer, so same-role runs are merged, leading assistant
+ * turns are dropped, and a trailing unanswered question is dropped (the new
+ * question follows it).
  */
 export function historyFromTurns(
   turns: ReadonlyArray<{ role: string; content: unknown }>,
@@ -228,7 +232,8 @@ export function historyFromTurns(
           typeof b === 'object' &&
           b !== null &&
           (b as { type?: unknown }).type === 'text' &&
-          typeof (b as { text?: unknown }).text === 'string',
+          typeof (b as { text?: unknown }).text === 'string' &&
+          (b as { text: string }).text.trim() !== '',
       )
       .map((b) => ({ type: 'text' as const, text: b.text }))
     if (content.length === 0) continue

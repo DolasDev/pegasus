@@ -168,6 +168,10 @@ Departures from, and findings beyond, the text above:
   It is tested, and recorded in GOTCHAS.
 
 - **Blank text blocks are dropped** by both adapters (Converse rejects them).
+- **Bug caught in review:** a failed turn is stored as `[{type:'text', text:''}]`, because `recordExchange` writes `turn.text`.
+  - Once the adapters dropped the blank text, that became an assistant message with _empty content_, which Converse rejects.
+  - So every follow-up in a conversation with one failed turn would have failed. Staging will produce exactly that before the use-case form is in.
+  - `historyFromTurns` now drops blank text. `http.test.ts` covers fail-then-continue on the real persistence path.
 - **The trace order of tool calls is now the model's order**, not completion order: `Promise.all`, then one push per call in order.
 - **A tool the model names but wasn't offered** gets an error result with `allowed: false`. The SDK runner had no such case, because it only dispatched offered tools.
 - **Max rounds:** when the limit is reached on a `tool_use` stop, the last round's tools are **not** run (no model call would read them). `stopReason` stays `tool_use`.
