@@ -195,8 +195,7 @@ describe.skipIf(!hasDb)('/assistant (integration)', () => {
 
     const p = useScript([{ content: [{ type: 'text', text: 'second' }] }])
     await events(await post(opsAdmin(), '/chat', { question: 'q2', conversationId }))
-    const sent = p.requests[0]!['messages'] as Array<{ role: string }>
-    expect(sent.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
+    expect(p.requests[0]!.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
 
     // Another user in the same tenant cannot read or continue it…
     const other = app({ tenantId: tenantA, roleNames: ['operations_admin'], userId: 'user-b' })

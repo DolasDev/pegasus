@@ -11,8 +11,6 @@
 // on the user message instead (see userContent).
 // ---------------------------------------------------------------------------
 
-import type { BetaTextBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-
 export const BASE_INSTRUCTIONS = `You are the Pegasus operations assistant, answering questions from staff of a moving company using its own operational data.
 
 Rules that always apply:
@@ -41,18 +39,16 @@ export const DEFAULT_PROMPT: PromptSource = {
 }
 
 /**
- * System blocks. The `cache_control` breakpoint on the LAST block caches the
- * tools (which precede the system prompt in the request prefix) plus the whole
- * system prompt — the part resent on every model round.
+ * System blocks, in order. The inference adapter puts the prompt-cache point
+ * after the LAST block. That caches the tools (which precede the system prompt
+ * in the request prefix) plus the whole system prompt, the part resent on
+ * every model round.
  */
-export function systemBlocks(prompt: PromptSource): BetaTextBlockParam[] {
+export function systemBlocks(prompt: PromptSource): string[] {
   const ops = prompt.glossary.trim()
     ? `${prompt.systemPrompt.trim()}\n\nGlossary:\n${prompt.glossary.trim()}`
     : prompt.systemPrompt.trim()
-  return [
-    { type: 'text', text: BASE_INSTRUCTIONS },
-    { type: 'text', text: ops, cache_control: { type: 'ephemeral' } },
-  ]
+  return [BASE_INSTRUCTIONS, ops]
 }
 
 /**
