@@ -16,7 +16,7 @@
 // TaskRecord (task.gateway.ts) on the way out.
 // ---------------------------------------------------------------------------
 
-import type { TaskGateway, TaskRecord } from './task.gateway'
+import { TaskStoreError, type TaskGateway, type TaskRecord } from './task.gateway'
 import type { PegiiCaller } from '../lib/pegii-request-context'
 import {
   createPegiiApiClient,
@@ -60,6 +60,8 @@ export function pegiiTaskToRecord(task: PegiiTaskDto): TaskRecord {
     actualDate: task.actualDate,
     createdAt: task.createdUtc,
     closedAt: task.closedUtc,
+    role: null,
+    assigneeUnresolved: null,
   }
 }
 
@@ -138,6 +140,14 @@ export function createPegiiTaskGateway(opts: PegiiTaskGatewayOptions): TaskGatew
       await requireTasks()
       if (!isPegiiInt(orderNumber)) {
         return { found: false, code: 'ORDER_NOT_FOUND', message: `Order ${orderNumber} not found` }
+      }
+      // A desktop task with no due date never shows in a "due before" check.
+      if (input.dueDate === undefined) {
+        throw new TaskStoreError(
+          'DUE_DATE_REQUIRED',
+          400,
+          'dueDate is required for a task on the legacy (MoveManager) store',
+        )
       }
       const body: PegiiCreateTaskBody = {
         taskType: input.taskType,

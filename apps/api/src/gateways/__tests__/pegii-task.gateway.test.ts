@@ -231,6 +231,8 @@ describe('pegiiTaskToRecord', () => {
       actualDate: null,
       createdAt: '2026-10-16T18:00:00Z',
       closedAt: null,
+      role: null,
+      assigneeUnresolved: null,
     })
     expect(pegiiTaskToRecord(task()).status).toBe('open')
   })

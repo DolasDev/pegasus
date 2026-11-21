@@ -90,6 +90,8 @@ const seedTask = () =>
     createdByApi: false,
     createdAt: null,
     closedAt: null,
+    role: null,
+    assigneeUnresolved: null,
   })
 
 const metered = () => db.usageEvent.findMany({ where: { apiClientId } })

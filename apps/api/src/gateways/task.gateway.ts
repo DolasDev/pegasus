@@ -43,6 +43,23 @@ export interface TaskRecord {
   createdAt: string | null
   /** UTC. Legacy knows it only for a close made through the API. */
   closedAt: string | null
+  /** The owning role (`operations` or a Cedar role-group name). Cloud only; null on legacy. */
+  role: string | null
+  /**
+   * Why an owner that resolves per move found nobody (`NO_DISPATCHER` |
+   * `DISPATCHER_NOT_LINKED`). Cloud only; null when assigned, and on legacy.
+   */
+  assigneeUnresolved: TaskAssigneeUnresolved | null
+}
+
+export type TaskAssigneeUnresolved = 'NO_DISPATCHER' | 'DISPATCHER_NOT_LINKED'
+
+/** Who a cloud task is assigned to, as resolved by the caller (D4: `operations` → the move's dispatcher). */
+export interface TaskAssignee {
+  userId: string | null
+  /** The legacy employee (salesman.code) it was resolved from. */
+  employeeCode: number | null
+  unresolved: TaskAssigneeUnresolved | null
 }
 
 export interface TaskCreateInput {
@@ -50,11 +67,31 @@ export interface TaskCreateInput {
   title: string
   description?: string
   priority?: string
-  /** `YYYY-MM-DD`. */
-  dueDate: string
+  /** `YYYY-MM-DD`. Required on legacy (`DUE_DATE_REQUIRED`); optional on cloud. */
+  dueDate?: string
+  /** Legacy only: a MoveManager employee code (cloud → `UNSUPPORTED_ON_CLOUD_STORE`). */
   assigneeCode?: number
+  /** Cloud only, required there: the owning role. Legacy ignores it (routing already used it). */
+  role?: string
+  /** Cloud only: the resolved assignee. Absent = unassigned. */
+  assignee?: TaskAssignee
   /** The same key with the same request answers `alreadyExists`; with a different one, 409. */
   idempotencyKey?: string
+}
+
+/**
+ * A store's own refusal, with the HTTP status and code the router answers
+ * (the legacy store's equivalent is PegiiApiError, passed through from the site).
+ */
+export class TaskStoreError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status: 400 | 404 | 409,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'TaskStoreError'
+  }
 }
 
 export type TaskCreateOutcome =
