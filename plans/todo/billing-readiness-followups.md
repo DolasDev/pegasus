@@ -3,7 +3,7 @@
 - **Parent:** Phase 5 of `plans/in-progress/long-running-workflows-and-automations.md`.
 - **5a (shipped):** custom events on staging, SDK 0.67.1 event-type registry, and the
   workflows in pegasus-workflows `reliable/billing_readiness/`. Decisions, measurements and
-  the 5a design: `plans/completed/*-billing-readiness-workflow.md` and the DECISIONS.md entry
+  the 5a design: `plans/completed/37752d80-billing-readiness-workflow.md` and the DECISIONS.md entry
   "Phase 5 proves durable Workflows on RVS billing readiness".
 - **The checklist:** delivered · premium services authorized · signed BOL submitted ·
   audit date set · invoiced (done). COD and Allied alike. Start when planned or actual
@@ -40,8 +40,8 @@ afterwards (open instances keep the tenant runner up).
 
 - [ ] **5b — pegII billing facts.** An API-key (`m2mV1`) route + SDK
       `get_order_billing(order_num)` → `{deliveredActual, invoices[{invoiceNum, status,
-    invoiceDate, auditDate}], premiumServices[{id, status, accountStatus,
-    description}]}`, through the existing read-only legacy-SQL executor path (no
+  invoiceDate, auditDate}], premiumServices[{id, status, accountStatus,
+  description}]}`, through the existing read-only legacy-SQL executor path (no
       movemanager release). Then the check activity fills `premiumServicesAuthorized`,
       `audited`, `invoiced`. First measure RVS's `PremiumServiceDetail.status` codes in use
       (prod SSO login; aggregates only). Invoices join on `invoicemaster.rvs_job` at RVS —
