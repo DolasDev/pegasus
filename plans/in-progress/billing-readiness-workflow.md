@@ -11,6 +11,32 @@
 - **Status:** Approved 2026-11-22 (Steve). This branch implements **5a**; 5b–5e are
   listed so the parent plan has one place to point at.
 
+## Resume here (2026-11-22)
+
+- **Done on this branch (platform):** `CUSTOM_EVENTS_ENABLED` on staging (CDK + infra test);
+  SDK **0.67.1** `create_event_type` / `list_event_types` / `get_event_type` + CLI
+  `event-types create|list` (the registry had no SDK surface); OpenAPI `POST /event-types`
+  - `POST /event-types/{name}/emit`; README + MCP document the sweep → custom event → keyed
+    START pattern.
+- **Done (authoring repo, branch `feat/rvs-billing-readiness` @ `5064a91`, NOT published):**
+  `reliable/billing_readiness/` — `billing_delivery_sweep` + `billing_readiness`, 24 tests
+  (incl. the durable loop on Temporal's time-skipping server), both package cleanly.
+- **Next:** land this PR → deploy (staging gets the flag) → publish SDK 0.67.1 → staging
+  acceptance on Dolios (below) → land the authoring branch.
+- **Changed from the design while implementing:**
+  - The daily check is an **in-Workflow activity** (`check_billing_readiness`), not a
+    separate Automation run through `run_automation`: no execution row, cap or quota per
+    check.
+  - "Delivered" reads the **live** `search_orders(del_actual)` — the `get_order` snapshot
+    misses actuals entered by DB triggers.
+  - The two workflows have **separate source dirs** (each needs its own `workflow.mmd`)
+    with a copied `core.py` guarded by an identical-copies test.
+  - Safety settings for a staged rollout: `SWEEP` (off by default — reports only),
+    `ONLY_ORDERS`, `MAX_EMITS_PER_RUN`; `MAX_OPEN_DAYS` default 90 (needed: 5a instances
+    can't see "invoiced" yet).
+  - The built-in `pegasus_event.received` can't carry the order key (its domain payload is
+    only `{pegasusEventId, eventType, eventPublisher}`), so the custom-event flag is required.
+
 ## Decisions (Steve, 2026-11-19..22)
 
 1. **Tenant: RVS** (Allied agent; also does COD moves). **COD and Allied moves get the
@@ -129,12 +155,12 @@ invoiceDate, auditDate}], premiumServices[{id, status, accountStatus, descriptio
 
 ## Checklist
 
-- [ ] Plan seeded; parent plan Phase 5 re-targeted to this plan
-- [ ] CDK: `CUSTOM_EVENTS_ENABLED` on staging + infra test
-- [ ] Verify the custom-event START path (type registry on m2m, START + correlationPath, EmitTenantEvent)
-- [ ] Authoring repo: `billing_delivery_sweep` Automation + tests
-- [ ] Authoring repo: `check_billing_readiness` Automation (5a: delivered only) + tests
-- [ ] Authoring repo: `billing_readiness` Workflow (checklist, query, escalation, valve, continue-as-new) + tests
+- [x] Plan seeded; parent plan Phase 5 re-targeted to this plan
+- [x] CDK: `CUSTOM_EVENTS_ENABLED` on staging + infra test
+- [x] Verify the custom-event START path (type registry on m2m, START + correlationPath, EmitTenantEvent) — plus SDK/CLI/OpenAPI for the registry (SDK 0.67.1)
+- [x] Authoring repo: `billing_delivery_sweep` Automation + tests
+- [x] Authoring repo: `check_billing_readiness` (an in-Workflow activity; 5a: delivered only) + tests
+- [x] Authoring repo: `billing_readiness` Workflow (checklist, query, escalation, valve, continue-as-new) + tests
 - [ ] Land platform PR; deploy; staging acceptance on Dolios
 - [ ] Docs: DECISIONS, parent plan Resume
 
