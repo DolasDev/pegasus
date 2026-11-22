@@ -97,7 +97,7 @@ export default function TodoScreen() {
       if (notified === 0 && !blocking.blocked) {
         Alert.alert(
           'Nobody was notified',
-          'No one at your company has an operations role in Pegasus. Call the office.',
+          'Neither your dispatcher nor anyone with an operations role is set up in Pegasus. Call the office.',
         )
       }
       await refresh()

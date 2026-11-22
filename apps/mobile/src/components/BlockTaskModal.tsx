@@ -56,7 +56,7 @@ export function BlockTaskModal({ task, busy, onClose, onSubmit }: Props) {
             </Text>
           ) : null}
           <Text style={styles.help}>
-            What’s stopping you? Operations will be notified right away.
+            What’s stopping you? Your dispatcher will be notified right away.
           </Text>
           <TextInput
             style={styles.input}

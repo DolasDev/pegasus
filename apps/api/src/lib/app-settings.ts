@@ -16,6 +16,7 @@
 import { z } from 'zod'
 import type { PrismaClient } from '@prisma/client'
 import { DRIVER_TASK_RULES } from '@pegasus/domain'
+import { isTaskRole, TASK_ROLES } from './task-routing'
 
 // Mirrors the LonghaulClient union in lib/longhaul-client-config.ts. Inlined
 // rather than imported because that module exports only a TS type, not a
@@ -111,6 +112,17 @@ const OperationsSchema = z
     driverTaskRules: z
       .array(z.enum(DRIVER_TASK_RULES))
       .max(DRIVER_TASK_RULES.length)
+      .nullable()
+      .optional(),
+    /// Which task store each role uses (task queue plan Phase 3a, TQ-D4):
+    /// `{ "<role>": "legacy" | "cloud" }`, keys from TASK_ROLES (`operations`
+    /// + the Cedar role groups). A role with no entry, and a role-less task,
+    /// use legacy. Patching replaces the whole map.
+    taskRouting: z
+      .record(
+        z.string().refine(isTaskRole, { message: `must be one of: ${TASK_ROLES.join(', ')}` }),
+        z.enum(['legacy', 'cloud']),
+      )
       .nullable()
       .optional(),
   })
