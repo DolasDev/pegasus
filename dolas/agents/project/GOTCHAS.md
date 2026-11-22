@@ -4043,3 +4043,12 @@ its full 300 s, and the runner wrote the row back as **COMPLETED**.
   (an infra test enforces it). Without them it silently mints per container.
 - Measure in prod with the `ringcentral token` log line (`outcome`:
   `l1_hit | l2_hit | l2_hit_after_lock | mint | mint_unshared`).
+
+## `plans/*/x.md` inside a `/** */` comment ends the comment
+
+Code cites plans as `plans/*/<name>.md` so the citation survives a plan moving
+between `todo/`, `in-progress/` and `completed/`. Inside a JSDoc block, the `*/`
+in that path closes the comment, and the rest of the line becomes code: oxc
+(vitest) fails with "Expected a semicolon", and tsc errors far from the cause.
+Hit twice in one PR (the assistant-converse plan, PR 2). Put the citation in a
+`//` comment, or name the plan without the glob ("the assistant-converse plan").
