@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+from urllib.parse import quote as _urlquote
 
 __all__ = [
     "PegasusApiError",
@@ -402,6 +403,11 @@ def _iso_day(value: str | _dt.date) -> str:
     if isinstance(value, _dt.date):
         return value.isoformat()
     return value
+
+
+def _seg(value: str) -> str:
+    """One URL path segment: a ``/`` or ``?`` in *value* can't reach another route."""
+    return _urlquote(str(value), safe="")
 
 
 def _raise_for_status(response: httpx.Response) -> None:
@@ -1698,7 +1704,7 @@ class PegasusClient:
             return captured
         with self._client() as client:
             response = client.post(
-                f"/api/v1/event-types/{name}/emit",
+                f"/api/v1/event-types/{_seg(name)}/emit",
                 json={"payload": payload or {}},
             )
         _raise_for_status(response)
@@ -1753,7 +1759,7 @@ class PegasusClient:
 
     def get_event_type(self, name: str) -> dict[str, Any]:
         """One custom event type by name (0.67.1+). Requires ``ManageEventTypes``."""
-        return self._get_json(f"/api/v1/event-types/{name}")["data"]
+        return self._get_json(f"/api/v1/event-types/{_seg(name)}")["data"]
 
     def update_event_type(
         self,
@@ -1778,7 +1784,7 @@ class PegasusClient:
         if payload_schema is not None or clear_schema:
             body["payloadSchema"] = payload_schema
         with self._client() as client:
-            response = client.patch(f"/api/v1/event-types/{name}", json=body)
+            response = client.patch(f"/api/v1/event-types/{_seg(name)}", json=body)
         _raise_for_status(response)
         return response.json()["data"]
 
@@ -1788,7 +1794,7 @@ class PegasusClient:
         Triggers that subscribe to it are left in place (they stop matching).
         """
         with self._client() as client:
-            response = client.delete(f"/api/v1/event-types/{name}")
+            response = client.delete(f"/api/v1/event-types/{_seg(name)}")
         _raise_for_status(response)
 
     def send_sms(self, to: str, body: str, *, dedup_key: str | None = None) -> dict[str, Any]:

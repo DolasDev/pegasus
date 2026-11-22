@@ -197,3 +197,14 @@ def test_cli_list_prints_names() -> None:
     result = runner.invoke(et.event_types_app, ["list", "--token", _TOKEN])
     assert result.exit_code == 0, result.output
     assert "billing.delivery_due" in result.output
+
+
+def test_event_type_name_is_one_path_segment() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["raw"] = request.url.raw_path
+        return httpx.Response(204)
+
+    _client_with(handler).delete_event_type("x/emit")
+    assert seen["raw"] == b"/api/v1/event-types/x%2Femit"
