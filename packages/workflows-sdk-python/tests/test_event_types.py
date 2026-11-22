@@ -79,6 +79,46 @@ def test_list_and_get_event_types() -> None:
     assert client.get_event_type("a.b")["enabled"] is True
 
 
+def test_update_event_type_patches_only_given_fields() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"name": "a.b", "enabled": False}})
+
+    _client_with(handler).update_event_type("a.b", enabled=False)
+    assert seen == {
+        "method": "PATCH",
+        "path": "/api/v1/event-types/a.b",
+        "body": {"enabled": False},
+    }
+
+
+def test_update_event_type_can_clear_the_schema() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"name": "a.b"}})
+
+    _client_with(handler).update_event_type("a.b", payload_schema=None, clear_schema=True)
+    assert seen["body"] == {"payloadSchema": None}
+
+
+def test_delete_event_type() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        return httpx.Response(204)
+
+    assert _client_with(handler).delete_event_type("a.b") is None
+    assert seen == {"method": "DELETE", "path": "/api/v1/event-types/a.b"}
+
+
 def test_event_types_disabled_platform_raises_a_clear_404() -> None:
     from pegasus_workflows.api import PegasusApiError
 

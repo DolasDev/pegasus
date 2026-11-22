@@ -206,6 +206,8 @@ _IGNORED: frozenset[str] = frozenset(
         "create_event_type",
         "list_event_types",
         "get_event_type",
+        "update_event_type",
+        "delete_event_type",
         "query_execution",
         "cancel_execution_by_id",
         "terminate_execution",

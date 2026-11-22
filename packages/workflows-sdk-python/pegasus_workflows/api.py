@@ -1755,6 +1755,42 @@ class PegasusClient:
         """One custom event type by name (0.67.1+). Requires ``ManageEventTypes``."""
         return self._get_json(f"/api/v1/event-types/{name}")["data"]
 
+    def update_event_type(
+        self,
+        name: str,
+        *,
+        enabled: bool | None = None,
+        description: str | None = None,
+        payload_schema: dict[str, Any] | None = None,
+        clear_schema: bool = False,
+    ) -> dict[str, Any]:
+        """Change a custom event type (0.67.1+). Requires ``ManageEventTypes``.
+
+        Only the arguments you pass are sent. ``enabled=False`` stops new emits
+        (404) without deleting the type; ``clear_schema=True`` removes the payload
+        schema. The name can't change.
+        """
+        body: dict[str, Any] = {}
+        if enabled is not None:
+            body["enabled"] = enabled
+        if description is not None:
+            body["description"] = description
+        if payload_schema is not None or clear_schema:
+            body["payloadSchema"] = payload_schema
+        with self._client() as client:
+            response = client.patch(f"/api/v1/event-types/{name}", json=body)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def delete_event_type(self, name: str) -> None:
+        """Delete a custom event type (0.67.1+). Requires ``ManageEventTypes``.
+
+        Triggers that subscribe to it are left in place (they stop matching).
+        """
+        with self._client() as client:
+            response = client.delete(f"/api/v1/event-types/{name}")
+        _raise_for_status(response)
+
     def send_sms(self, to: str, body: str, *, dedup_key: str | None = None) -> dict[str, Any]:
         """Send an outbound SMS via the tenant's configured provider.
 

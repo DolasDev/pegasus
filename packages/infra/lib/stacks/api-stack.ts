@@ -325,7 +325,7 @@ export interface ApiStackProps extends cdk.StackProps {
    * registry (`/event-types`) and `POST …/emit` — a Workflow's `emit_event`. The
    * dispatcher's derivation path is not gated by it. Only an env var is set — no
    * IAM. Default off. Needed by the billing readiness sweep
-   * (plans/in-progress/billing-readiness-workflow.md), which starts one keyed
+   * (plans/todo/billing-readiness-followups.md), which starts one keyed
    * Workflow per order through a custom event.
    */
   readonly customEventsEnabled?: boolean

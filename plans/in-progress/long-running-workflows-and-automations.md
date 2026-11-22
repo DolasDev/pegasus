@@ -22,8 +22,10 @@
 ## Resume here (2026-11-22)
 
 - **Phase 4 done** (#974 + #977 deployed; SDK 0.66.1 published). **Phase 5 started:**
-  `feat/billing-readiness-workflow` implements 5a of
-  `plans/in-progress/billing-readiness-workflow.md` (RVS billing readiness; staging Dolios first).
+  `feat/billing-readiness-workflow` shipped slice 5a (RVS billing readiness: custom events
+  on staging, SDK 0.67.1 event-type registry, workflows in pegasus-workflows
+  `reliable/billing_readiness/`). Next — the Dolios staging acceptance, then 5b–5e — is in
+  `plans/todo/billing-readiness-followups.md`.
 
 ## Earlier resume notes (2026-11-17)
 
@@ -524,7 +526,7 @@ Done 2026-09-29. Evidence, transcripts and probe scripts are in
 Workflow for RVS (start when planned/actual delivery is on or before today; track
 delivered, premium services authorized, signed BOL submitted, audit date set; end when
 invoiced), not `nw/order_lifecycle`. Full plan and slices 5a–5e:
-`plans/in-progress/billing-readiness-workflow.md`. The `order_lifecycle` items below are
+`plans/todo/billing-readiness-followups.md`. The `order_lifecycle` items below are
 superseded by it; the discovery-surface, metrics, SDK and spec-0008 items carry over as 5e.
 **SDK publishing:** Steve's standing rule is to publish the SDK from the platform session
 after a bump merges (as done for 0.66.0/0.66.1); the "never from a platform session" wording

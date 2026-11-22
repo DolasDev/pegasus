@@ -8,7 +8,8 @@ follows [Semantic Versioning](https://semver.org/).
 ### Added — register custom event types from the SDK and CLI
 
 - `PegasusClient.create_event_type(name, *, payload_schema=None, description=None)`,
-  `list_event_types()` and `get_event_type(name)` (need `ManageEventTypes`, held by
+  `list_event_types()`, `get_event_type(name)`, `update_event_type(name, enabled=…,
+description=…, payload_schema=…)` and `delete_event_type(name)` (need `ManageEventTypes`, held by
   `workflow_developer`). Before this, `emit_event` could only fire a type someone had
   registered by hand against the API.
 - CLI: `pegasus-workflows event-types create <name> [--schema FILE] [--description …]`
