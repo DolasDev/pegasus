@@ -1,6 +1,6 @@
 # AI Chat Assistant — move inference to the Bedrock Converse API
 
-**Branch:** `feat/assistant-converse` (worktree `../pegasus-assistant-converse`). This branch is **PR 1** below; PR 2 and PR 3 get their own branches.
+**Branch:** PR 1 landed from `feat/assistant-converse`; PR 2 and PR 3 get their own branches. Parked in `plans/todo/` (not `completed/`) because step 10 and PRs 2–3 remain.
 **Goal:** the assistant's model becomes a configuration choice among the Bedrock models we allow, not a code change. It stays on Amazon Bedrock, so AWS remains the only data processor.
 
 **Status:** approved and started 2026-11-21 (Steve ran `/workstream-start`). It builds on Phase 1 of
