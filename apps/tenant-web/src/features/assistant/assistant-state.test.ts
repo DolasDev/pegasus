@@ -87,7 +87,9 @@ describe('diffRuns', () => {
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
+    rounds: 1,
     latencyMs: 0,
+    modelId: 'us.anthropic.claude-opus-5',
   })
 
   it('classifies each case against the baseline run', () => {

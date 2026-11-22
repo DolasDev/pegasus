@@ -1,6 +1,6 @@
 # AI Chat Assistant — move inference to the Bedrock Converse API
 
-**Branch:** PR 1 landed from `feat/assistant-converse`; PR 2 and PR 3 get their own branches. Parked in `plans/todo/` (not `completed/`) because step 10 and PRs 2–3 remain.
+**Branch:** PR 1 landed from `feat/assistant-converse` (#981). PR 2 (steps 11–12) is on `feat/assistant-models`. PR 3 gets its own branch. When parked, this plan goes to `plans/todo/` (not `completed/`) while step 10, 13–14 or 15 remain.
 **Goal:** the assistant's model becomes a configuration choice among the Bedrock models we allow, not a code change. It stays on Amazon Bedrock, so AWS remains the only data processor.
 
 **Status:** approved and started 2026-11-21 (Steve ran `/workstream-start`). It builds on Phase 1 of
@@ -183,13 +183,39 @@ Departures from, and findings beyond, the text above:
 
 ### PR 2 — model list + per-model evals
 
-- [ ] 11. D8 in infra:
+- [x] 11. D8 in infra:
   - `assistantModels` prop and a grant over the list
   - `ASSISTANT_ALLOWED_MODELS` env
   - tests pinning: no `bedrock:*`, no `global.*`, and exactly the listed ARNs
-- [ ] 12. Lab model picker on the eval pane, `--model` on `assistant:eval`, and the model id on every eval row. The Lab shows pass rate, tokens, rounds and latency side by side per model.
+- [x] 12. Lab model picker on the eval pane, `--model` on `assistant:eval`, and the model id on every eval row. The Lab shows pass rate, tokens, rounds and latency side by side per model.
 - [ ] 13. Add candidate models to staging's list: Claude Opus 5.5, Sonnet 5.5, Haiku 5.5, and at least one non-Anthropic model (Nova 2 Lite) to prove the neutral path. Do V5 for each.
 - [ ] 14. Run the eval set per model. Record the results here and decide the default with Steve. Switching is the one-line D8 change.
+
+### PR 2 — as built (2026-11-22, branch `feat/assistant-models`)
+
+Steps 11–12 only. Steps 13–14 need a live AWS session, the use-case form and a real eval set (the same gates as step 10), so they are not in this PR. **IAM is unchanged on deploy**: `bin/app.ts` lists Opus 5 only, and the synthesized grant is byte-for-byte the old one (the existing exact-ARN test still passes unmodified).
+
+- **Infra.**
+  - `AssistantModel {profileId, foundationModelId, destinationRegions}`, with `ASSISTANT_OPUS_5` as the one entry today.
+  - `ApiStackProps.assistantModels` and `assistantDefaultModel` (default: the first in the list).
+  - `resolveAssistantModels` refuses at synth: an empty list, a `global.*` profile, a profile that isn't `<geo>.<foundationModelId>`, no destination regions, a duplicate, or a default outside the list.
+  - `destinationRegions` is **per model**, because geo profiles differ by model. Read each one from the Bedrock user guide's inference-profile table when adding it.
+- **Env.** `ASSISTANT_MODEL_ID` and `ASSISTANT_ALLOWED_MODELS` now go through `addApiEnvironment`, so both functions get them. Before this, `ASSISTANT_MODEL_ID` was set inline on the assistant function only, and the main API, which mounts the same routes, fell back to the code default.
+- **Provider.**
+  - `resolveInferenceProvider(modelId?)` caches one provider per model.
+  - `allowedModelIds()` is `ASSISTANT_ALLOWED_MODELS` plus the default. When the list is absent, only the default is allowed (fail closed).
+  - The `anthropic` adapter refuses non-Claude ids. That check goes away with step 15.
+- **HTTP.**
+  - `POST /evals/run` takes `modelId`. An id outside the list returns 400 `MODEL_NOT_ALLOWED`, checked before anything else.
+  - New route `GET /models` returns `{default, allowed}`. It is gated by ManageAssistantPrompt.
+  - `/chat` has no `modelId` field: the schema is `.strict()`, so sending one is a 400, and a test pins that.
+- **Eval rows.**
+  - `CaseResult` carries `modelId` and `rounds`.
+  - `EvalSummary` adds `meanRounds` and `meanCacheReadTokens`.
+- **Lab.**
+  - The eval pane has a model picker (shown only when more than one model is allowed) and a **Run on every model** button.
+  - A comparison table holds every finished run in the session: model, prompt, effort, pass rate, tool calls, rounds, tokens in/out/cache read, and latency.
+- **Script.** `npm run assistant:eval -- --model <profileId>`. The summary also prints rounds and cache reads.
 
 ### PR 3 — cleanup (after G2)
 

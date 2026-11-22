@@ -37,7 +37,11 @@ export interface CaseResult {
   readonly inputTokens: number
   readonly outputTokens: number
   readonly cacheReadTokens: number
+  /** Model rounds the turn took (one per tool round-trip, plus the answer). */
+  readonly rounds: number
   readonly latencyMs: number
+  /** The model that answered, so per-model runs can be compared row by row. */
+  readonly modelId: string
 }
 
 export interface EvalSummary {
@@ -49,6 +53,8 @@ export interface EvalSummary {
   readonly meanToolCalls: number
   readonly meanInputTokens: number
   readonly meanOutputTokens: number
+  readonly meanCacheReadTokens: number
+  readonly meanRounds: number
   readonly meanLatencyMs: number
 }
 
@@ -110,7 +116,9 @@ export async function runEvalCase(input: RunCaseInput): Promise<CaseResult> {
     inputTokens: turn.usage.inputTokens,
     outputTokens: turn.usage.outputTokens,
     cacheReadTokens: turn.usage.cacheReadTokens,
+    rounds: turn.rounds,
     latencyMs: turn.latencyMs,
+    modelId: turn.modelId,
   }
   if (turn.error) return { ...base, verdict: 'error', reasons: [turn.error] }
   return { ...base, ...grade(turn.text, c.expected) }
@@ -131,6 +139,8 @@ export function summarize(results: readonly CaseResult[]): EvalSummary {
     meanToolCalls: mean((r) => r.toolsCalled.length),
     meanInputTokens: mean((r) => r.inputTokens),
     meanOutputTokens: mean((r) => r.outputTokens),
+    meanCacheReadTokens: mean((r) => r.cacheReadTokens),
+    meanRounds: mean((r) => r.rounds),
     meanLatencyMs: mean((r) => r.latencyMs),
   }
 }

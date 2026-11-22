@@ -7,6 +7,8 @@ import {
   resolveInferenceProvider,
   setInferenceProviderForTests,
   inferenceApi,
+  allowedModelIds,
+  isAllowedModel,
   DEFAULT_ASSISTANT_MODEL_ID,
 } from './provider'
 
@@ -24,7 +26,12 @@ const { converse, anthropic } = vi.hoisted(() => ({
 vi.mock('./converse', () => ({ createConverseProvider: converse }))
 vi.mock('./anthropic', () => ({ createAnthropicBedrockProvider: anthropic }))
 
-const ENV = ['ASSISTANT_MODEL_ID', 'ASSISTANT_INFERENCE_API', 'AWS_REGION'] as const
+const ENV = [
+  'ASSISTANT_MODEL_ID',
+  'ASSISTANT_ALLOWED_MODELS',
+  'ASSISTANT_INFERENCE_API',
+  'AWS_REGION',
+] as const
 const saved: Record<string, string | undefined> = {}
 
 beforeEach(() => {
@@ -82,10 +89,64 @@ describe('resolveInferenceProvider', () => {
     expect(converse).not.toHaveBeenCalled()
   })
 
+  it('serves any allowed model, one provider per model', async () => {
+    process.env['ASSISTANT_ALLOWED_MODELS'] =
+      'us.anthropic.claude-opus-5, us.amazon.nova-2-lite-v1:0'
+    const a = await resolveInferenceProvider('us.amazon.nova-2-lite-v1:0')
+    const b = await resolveInferenceProvider('us.amazon.nova-2-lite-v1:0')
+    const c = await resolveInferenceProvider()
+    expect(a).toBe(b)
+    expect(c).not.toBe(a)
+    expect(converse).toHaveBeenCalledTimes(2)
+    expect(converse).toHaveBeenCalledWith({
+      modelId: 'us.amazon.nova-2-lite-v1:0',
+      region: 'us-east-1',
+    })
+  })
+
+  it('refuses a model outside the allowed list', async () => {
+    process.env['ASSISTANT_ALLOWED_MODELS'] = 'us.anthropic.claude-opus-5'
+    await expect(resolveInferenceProvider('us.anthropic.claude-haiku-5-5')).rejects.toThrow(
+      /not in ASSISTANT_ALLOWED_MODELS/,
+    )
+    expect(converse).not.toHaveBeenCalled()
+  })
+
+  it('refuses a non-Claude model on the Anthropic Messages adapter', async () => {
+    process.env['ASSISTANT_INFERENCE_API'] = 'anthropic'
+    process.env['ASSISTANT_ALLOWED_MODELS'] = 'us.amazon.nova-2-lite-v1:0'
+    await expect(resolveInferenceProvider('us.amazon.nova-2-lite-v1:0')).rejects.toThrow(
+      /cannot serve/,
+    )
+    expect(anthropic).not.toHaveBeenCalled()
+  })
+
   it('serves the test override when one is set', async () => {
     const fake = { name: 'fake', modelId: 'm', streamRound: vi.fn() }
     setInferenceProviderForTests(fake)
     expect(await resolveInferenceProvider()).toBe(fake)
+  })
+})
+
+describe('allowedModelIds', () => {
+  it('is the default alone when the list is absent (fail closed)', () => {
+    expect(allowedModelIds()).toEqual([DEFAULT_ASSISTANT_MODEL_ID])
+    expect(isAllowedModel('us.anthropic.claude-haiku-5-5')).toBe(false)
+  })
+
+  it('always includes the default, once', () => {
+    process.env['ASSISTANT_MODEL_ID'] = 'us.anthropic.claude-haiku-5-5'
+    process.env['ASSISTANT_ALLOWED_MODELS'] = 'us.anthropic.claude-opus-5,'
+    expect(allowedModelIds()).toEqual([
+      'us.anthropic.claude-haiku-5-5',
+      'us.anthropic.claude-opus-5',
+    ])
+    process.env['ASSISTANT_ALLOWED_MODELS'] =
+      'us.anthropic.claude-opus-5,us.anthropic.claude-haiku-5-5'
+    expect(allowedModelIds()).toEqual([
+      'us.anthropic.claude-opus-5',
+      'us.anthropic.claude-haiku-5-5',
+    ])
   })
 })
 

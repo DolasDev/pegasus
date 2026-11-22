@@ -23,7 +23,13 @@ import { requirePermission } from '../middleware/rbac'
 import { authorize } from '../lib/authz'
 import { logger } from '../lib/logger'
 import { assistantEnabled } from '../lib/assistant-feature'
-import { resolveInferenceProvider, type InferenceProvider } from '../lib/inference/provider'
+import {
+  allowedModelIds,
+  defaultModelId,
+  isAllowedModel,
+  resolveInferenceProvider,
+  type InferenceProvider,
+} from '../lib/inference/provider'
 import {
   createConversation,
   createPromptVersion,
@@ -76,6 +82,8 @@ const EvalBody = z
     promptVersionId: z.string().uuid().optional(),
     caseIds: z.array(z.string()).optional(),
     effort: Effort.optional(),
+    /** Any model in ASSISTANT_ALLOWED_MODELS (plan D8). Chat has no such field: it always uses the default. */
+    modelId: z.string().min(1).max(200).optional(),
   })
   .strict()
 
@@ -132,9 +140,10 @@ async function bodyOf<S extends z.ZodType>(
  */
 async function providerOr503(
   c: Context<AppEnv>,
+  modelId?: string,
 ): Promise<{ ok: true; provider: InferenceProvider } | { ok: false; res: Response }> {
   try {
-    return { ok: true, provider: await resolveInferenceProvider() }
+    return { ok: true, provider: await resolveInferenceProvider(modelId) }
   } catch (err) {
     logger.error('assistant: inference provider unavailable', { error: String(err) })
     return {
@@ -166,6 +175,11 @@ export function createAssistantRouter(fetchApp: InProcessFetch): Hono<AppEnv> {
     }
     await next()
   })
+
+  // ── Models the Lab's eval runner may pick (plan D8) ───────────────────────
+  r.get('/models', requirePermission(Actions.ManageAssistantPrompt), (c) =>
+    c.json({ data: { default: defaultModelId(), allowed: allowedModelIds() } }),
+  )
 
   // ── What the model would be offered for this user ─────────────────────────
   r.get('/tools', requirePermission(Actions.UseAssistant), async (c) => {
@@ -342,6 +356,11 @@ export function createAssistantRouter(fetchApp: InProcessFetch): Hono<AppEnv> {
     const parsed = await bodyOf(c, EvalBody)
     if (!parsed.ok) return parsed.res
     const body = parsed.data
+    // Checked first, before any read or model call: an unknown model is the
+    // caller's mistake (400), not the assistant being unavailable (503).
+    if (body.modelId && !isAllowedModel(body.modelId)) {
+      return c.json({ error: 'That model is not enabled', code: 'MODEL_NOT_ALLOWED' }, 400)
+    }
     const db = c.get('db')
     const tenantId = c.get('tenantId')
 
@@ -361,7 +380,7 @@ export function createAssistantRouter(fetchApp: InProcessFetch): Hono<AppEnv> {
     }
 
     const tool = toolContext(c, fetchApp)
-    const resolved = await providerOr503(c)
+    const resolved = await providerOr503(c, body.modelId)
     if (!resolved.ok) return resolved.res
     const provider = resolved.provider
 
