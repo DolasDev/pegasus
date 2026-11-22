@@ -499,7 +499,15 @@ export class ApiStack extends cdk.Stack {
       // dependency in the Lambda asset, preserving the package layout. Without
       // this, init throws ENOENT on `/var/task/cedar_wasm_bg.wasm` and the
       // Lambda returns a bare API Gateway 500 before our onError sees it.
-      nodeModules: ['@cedar-policy/cedar-wasm'],
+      //
+      // @aws-sdk/client-bedrock-runtime is installed the same way, for a different
+      // reason: to pin its version. `@aws-sdk/*` is otherwise external and comes
+      // from the Lambda runtime, whose copy can lag. Smithy clients silently DROP
+      // request members they don't know, so an older runtime client would send
+      // Converse requests without `cachePoint` or `toolResult.status` and fail
+      // quietly: no error, just no cache reads (plans/*/assistant-converse.md D7).
+      // A real copy in the asset's node_modules wins over the runtime's.
+      nodeModules: ['@cedar-policy/cedar-wasm', '@aws-sdk/client-bedrock-runtime'],
       // apps/api/src/authz/load.ts reads `cedar.schema.json` and the
       // `policies/` tree from `__dirname` at runtime to push them into AVP
       // (POST /api/admin/tenants → provisionTenantPolicyStore) and to feed

@@ -1,49 +1,24 @@
 // ---------------------------------------------------------------------------
-// Inference provider seam — the one place that knows WHICH LLM backend serves
-// a request. Deliberately neutral (lib/, not assistant/): the assistant is the
-// first consumer, and LLM calls from workflows (plan "Phase 4") are a foreseen
-// second one. See plans/*/ai-chat-assistant.md, Infrastructure §2.
+// Inference provider resolution — the one place that decides WHICH backend
+// serves a request. Deliberately neutral (lib/, not assistant/): the assistant
+// is the first consumer, and LLM calls from workflows (plan "Phase 4") are a
+// foreseen second one. See plans/*/ai-chat-assistant.md, Infrastructure §2,
+// and plans/*/assistant-converse.md.
 //
-// Production backend: Claude in Amazon Bedrock through the DEFAULT
-// `AnthropicBedrock` client. That client calls
-//   /model/{id}/invoke and /model/{id}/invoke-with-response-stream
-// which the Service Authorization Reference maps to `bedrock:InvokeModel` and
-// `bedrock:InvokeModelWithResponseStream` — exactly the grant wired in
-// packages/infra. Do NOT switch to the `mantle-client` export or the
-// `bedrock-runtime…/anthropic` Messages path: neither is in that reference, so
-// the pinned grant would not cover it.
+// Production: Amazon Bedrock, SigV4 from the Lambda execution role (the
+// default AWS provider chain); there is no API key anywhere. Two adapters:
+//   - converse  (default): Bedrock Converse, any Bedrock chat model.
+//   - anthropic: Anthropic Messages on the InvokeModel path (Phase 1's path),
+//     kept for one release for A/B evals. Remove with plan step 15.
+// Both map to the pinned bedrock:InvokeModel[WithResponseStream] grant.
 //
-// Credentials: SigV4 from the Lambda execution role (the default AWS provider
-// chain). There is no API key anywhere.
+// Both adapters load their SDK LAZILY on the first model call (#594 class);
+// a load failure surfaces as 503 ASSISTANT_UNAVAILABLE in assistant/http.ts.
 // ---------------------------------------------------------------------------
 
-import type Anthropic from '@anthropic-ai/sdk'
+import type { InferenceProvider } from './types'
 
-// The Bedrock SDK is loaded LAZILY (dynamic import in createBedrockProvider), on
-// the first real model call. Its modules `require('@aws-sdk/client-bedrock-runtime')`
-// at load time, and the API bundle leaves `@aws-sdk/*` external (resolved from
-// the Lambda runtime). app.ts imports the assistant router, so a static import
-// here would put that require on the MAIN API Lambda's cold start — the #594
-// INIT-crash class. Lazy, a problem can only fail an assistant turn.
-
-/**
- * The slice of an Anthropic client the assistant uses. Both the first-party
- * `Anthropic` client (tests drive it with a scripted `fetch`) and
- * `AnthropicBedrock` satisfy it.
- */
-export interface InferenceClient {
-  readonly beta: {
-    readonly messages: Pick<Anthropic['beta']['messages'], 'toolRunner' | 'create'>
-  }
-}
-
-export interface InferenceProvider {
-  /** `bedrock` in production; `fake` in tests. Recorded on every trace. */
-  readonly name: string
-  /** The model id sent on every request (a Bedrock inference profile id). */
-  readonly modelId: string
-  readonly client: InferenceClient
-}
+export type { InferenceProvider } from './types'
 
 /**
  * US geo cross-region inference profile. From us-east-1 it routes only to
@@ -52,19 +27,13 @@ export interface InferenceProvider {
  */
 export const DEFAULT_ASSISTANT_MODEL_ID = 'us.anthropic.claude-opus-5'
 
-export async function createBedrockProvider(opts: {
-  modelId: string
-  region: string
-}): Promise<InferenceProvider> {
-  const { AnthropicBedrock } = await import('@anthropic-ai/bedrock-sdk')
-  const client = new AnthropicBedrock({ awsRegion: opts.region })
-  return {
-    name: 'bedrock',
-    modelId: opts.modelId,
-    // AnthropicBedrock omits batches/countTokens from `beta.messages`, but keeps
-    // `create` and `toolRunner`, which is all InferenceClient asks for.
-    client: client as unknown as InferenceClient,
-  }
+export type InferenceApi = 'converse' | 'anthropic'
+
+export function inferenceApi(): InferenceApi {
+  const v = process.env['ASSISTANT_INFERENCE_API']
+  if (!v || v === 'converse') return 'converse'
+  if (v === 'anthropic') return 'anthropic'
+  throw new Error(`ASSISTANT_INFERENCE_API must be converse or anthropic (got ${v})`)
 }
 
 let override: InferenceProvider | null = null
@@ -73,12 +42,12 @@ let cached: InferenceProvider | null = null
 /** Tests (and only tests) swap in a scripted provider. */
 export function setInferenceProviderForTests(provider: InferenceProvider | null): void {
   override = provider
+  cached = null
 }
 
 /**
- * Resolve the provider for this process. `ASSISTANT_MODEL_ID` overrides the
- * model (the eval sweep and the planned Sonnet step-down use it); the region is
- * the Lambda's own.
+ * Resolve the provider for this process. `ASSISTANT_MODEL_ID` sets the model,
+ * `ASSISTANT_INFERENCE_API` the adapter; the region is the Lambda's own.
  */
 export async function resolveInferenceProvider(): Promise<InferenceProvider> {
   if (override) return override
@@ -89,6 +58,12 @@ export async function resolveInferenceProvider(): Promise<InferenceProvider> {
     throw new Error(`ASSISTANT_MODEL_ID must not be a global.* profile (got ${modelId})`)
   }
   const region = process.env['AWS_REGION'] || 'us-east-1'
-  cached = await createBedrockProvider({ modelId, region })
+  if (inferenceApi() === 'anthropic') {
+    const { createAnthropicBedrockProvider } = await import('./anthropic')
+    cached = await createAnthropicBedrockProvider({ modelId, region })
+  } else {
+    const { createConverseProvider } = await import('./converse')
+    cached = await createConverseProvider({ modelId, region })
+  }
   return cached
 }

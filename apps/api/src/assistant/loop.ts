@@ -1,23 +1,28 @@
 // ---------------------------------------------------------------------------
 // The agent loop: one user question → one streamed answer, with every tool call
-// traced. Built on the SDK tool runner (not a hand-rolled loop); the runnable
-// tools' `run` callbacks are where the permission re-check and trace capture
-// attach. Plan: plans/*/ai-chat-assistant.md (1c).
+// traced. The loop is OURS and runs over the provider-neutral round seam
+// (lib/inference/types.ts), so the same loop drives Bedrock Converse or the
+// Anthropic Messages path and the model is configuration. Plans:
+// plans/*/ai-chat-assistant.md (1c) and plans/*/assistant-converse.md (D3).
+//
+// Every round is a complete, self-contained request: system prompt, tools and
+// the whole message list. Nothing depends on server-held state.
 // ---------------------------------------------------------------------------
 
-import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
-import { ToolError } from '@anthropic-ai/sdk/lib/tools/ToolError'
 import type {
-  BetaMessage,
-  BetaMessageParam,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import type { InferenceProvider } from '../lib/inference/provider'
+  ChatMessage,
+  ContentPart,
+  Effort,
+  InferenceProvider,
+  RoundEvent,
+  ToolSpec,
+} from '../lib/inference/types'
 import type { ToolCallTrace } from '../repositories/assistant.repository'
-import { offeredTools, runTool, toolInputSchema } from './tools/registry'
-import type { ToolContext } from './tools/types'
+import { offeredTools, runTool, toolInputSchema, type ToolOutcome } from './tools/registry'
+import type { AssistantTool, ToolContext } from './tools/types'
 import { systemBlocks, userContent, type PromptSource } from './prompt'
 
-export type Effort = 'low' | 'medium' | 'high'
+export type { Effort } from '../lib/inference/types'
 
 /** Streamed to the client as server-sent events. */
 export type AssistantEvent =
@@ -38,8 +43,8 @@ export interface RunTurnInput {
   readonly provider: InferenceProvider
   readonly tool: ToolContext
   readonly prompt: PromptSource
-  /** Prior turns, oldest first, already in Messages-API shape. */
-  readonly history: readonly BetaMessageParam[]
+  /** Prior turns, oldest first, text only (see historyFromTurns). */
+  readonly history: readonly ChatMessage[]
   readonly question: string
   readonly now: Date
   readonly timeZone?: string
@@ -72,107 +77,124 @@ export interface TurnResult {
 const DEFAULT_MAX_TOKENS = 4_096
 const DEFAULT_MAX_ROUNDS = 8
 
+type ToolUse = Extract<ContentPart, { type: 'tool_use' }>
+
+function failed(message: string, allowed = true): ToolOutcome {
+  return { allowed, content: message, isError: true, resultCount: null, error: message }
+}
+
 export async function runTurn(input: RunTurnInput): Promise<TurnResult> {
   const started = Date.now()
   const emit = input.onEvent ?? (() => {})
   const offered = await offeredTools(input.tool)
   emit({ type: 'tools', offered: offered.map((t) => t.name) })
 
-  const toolCalls: ToolCallTrace[] = []
-  const tools = offered.map((t) =>
-    betaTool({
-      name: t.name,
-      description: t.description,
-      inputSchema: toolInputSchema(t) as { type: 'object' },
-      run: async (args: unknown, context) => {
-        const id =
-          context?.toolUseBlock && 'id' in context.toolUseBlock ? context.toolUseBlock.id : ''
-        emit({ type: 'tool_start', id, name: t.name, input: args })
-        const t0 = Date.now()
-        const out = await runTool(t, args, input.tool)
-        const durationMs = Date.now() - t0
-        toolCalls.push({
-          toolUseId: id,
-          toolName: t.name,
-          input: args,
-          allowed: out.allowed,
-          resultCount: out.resultCount,
-          resultSummary: out.content,
-          error: out.error,
-          durationMs,
-        })
-        emit({
-          type: 'tool_end',
-          id,
-          name: t.name,
-          allowed: out.allowed,
-          isError: out.isError,
-          resultCount: out.resultCount,
-          durationMs,
-        })
-        if (out.isError) throw new ToolError(out.content)
-        return out.content
-      },
-    }),
-  )
-
+  const byName = new Map<string, AssistantTool>(offered.map((t) => [t.name, t]))
+  const tools: ToolSpec[] = offered.map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: toolInputSchema(t),
+  }))
+  const system = systemBlocks(input.prompt)
   const question = userContent(input.question, input.now, input.timeZone)
+  const messages: ChatMessage[] = [...input.history, { role: 'user', content: question }]
+  const maxRounds = input.maxRounds ?? DEFAULT_MAX_ROUNDS
+
+  const toolCalls: ToolCallTrace[] = []
   const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
   let rounds = 0
-  let last: BetaMessage | null = null
+  let lastContent: readonly ContentPart[] = []
+  let stopReason: string | null = null
   let error: string | null = null
 
+  /** Run one tool call: re-check the permission, run it as the caller, trace it. */
+  async function call(use: ToolUse): Promise<ContentPart> {
+    emit({ type: 'tool_start', id: use.id, name: use.name, input: use.input })
+    const t0 = Date.now()
+    const tool = byName.get(use.name)
+    let out: ToolOutcome
+    if (use.inputError) out = failed(use.inputError)
+    else if (!tool) out = failed(`There is no tool named ${use.name}.`, false)
+    else out = await runTool(tool, use.input, input.tool)
+    const durationMs = Date.now() - t0
+    toolCalls.push({
+      toolUseId: use.id,
+      toolName: use.name,
+      input: use.input,
+      allowed: out.allowed,
+      resultCount: out.resultCount,
+      resultSummary: out.content,
+      error: out.error,
+      durationMs,
+    })
+    emit({
+      type: 'tool_end',
+      id: use.id,
+      name: use.name,
+      allowed: out.allowed,
+      isError: out.isError,
+      resultCount: out.resultCount,
+      durationMs,
+    })
+    return { type: 'tool_result', toolUseId: use.id, content: out.content, isError: out.isError }
+  }
+
   try {
-    const runner = input.provider.client.beta.messages.toolRunner(
-      {
-        model: input.provider.modelId,
-        max_tokens: input.maxTokens ?? DEFAULT_MAX_TOKENS,
-        max_iterations: input.maxRounds ?? DEFAULT_MAX_ROUNDS,
-        system: systemBlocks(input.prompt),
-        messages: [...input.history, { role: 'user', content: question }],
-        tools,
-        // The primary cost/latency lever after tool-result size; swept in the Lab.
-        output_config: { effort: input.effort ?? 'medium' },
-        stream: true,
-        // REQUIRED. SDK 1.8's tool runner defaults to server-held message
-        // threads: round 1 sends `thread: {type: 'create'}` and later rounds send
-        // only the new tool_result plus `previous_message_id` — no system prompt,
-        // no tools, no history. Threads are an Anthropic-hosted feature; on the
-        // Bedrock invoke path there is no thread to continue. `false` makes every
-        // round a complete, self-contained request (pinned by loop.test.ts).
-        thread: false,
-      },
-      input.signal ? { signal: input.signal } : undefined,
-    )
-    for await (const stream of runner) {
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-          emit({ type: 'text', text: event.delta.text })
-        }
+    while (rounds < maxRounds) {
+      input.signal?.throwIfAborted()
+      let end: Extract<RoundEvent, { type: 'round_end' }> | null = null
+      const round = input.provider.streamRound(
+        {
+          system,
+          tools,
+          messages: [...messages],
+          maxTokens: input.maxTokens ?? DEFAULT_MAX_TOKENS,
+          // The primary cost/latency lever after tool-result size; swept in the Lab.
+          effort: input.effort ?? 'medium',
+          cache: true,
+        },
+        input.signal,
+      )
+      for await (const ev of round) {
+        if (ev.type === 'text_delta') emit({ type: 'text', text: ev.text })
+        else end = ev
       }
-      const message = await stream.finalMessage()
+      if (!end) throw new Error('The model round ended without a result.')
+
       rounds += 1
-      last = message
-      usage.inputTokens += message.usage.input_tokens
-      usage.outputTokens += message.usage.output_tokens
-      usage.cacheReadTokens += message.usage.cache_read_input_tokens ?? 0
-      usage.cacheWriteTokens += message.usage.cache_creation_input_tokens ?? 0
+      usage.inputTokens += end.usage.inputTokens
+      usage.outputTokens += end.usage.outputTokens
+      usage.cacheReadTokens += end.usage.cacheReadTokens
+      usage.cacheWriteTokens += end.usage.cacheWriteTokens
+      lastContent = end.content
+      stopReason = end.stopReason
+
+      const uses = end.content.filter((p): p is ToolUse => p.type === 'tool_use')
+      // max_tokens, content filters, guardrails and plain end_turn all stop here.
+      if (end.stopReason !== 'tool_use' || uses.length === 0 || rounds >= maxRounds) break
+
+      // The whole assistant message goes back unchanged, reasoning included:
+      // providers verify reasoning signatures on the next round of the turn.
+      messages.push({ role: 'assistant', content: end.content })
+      // Tool calls from one round run in parallel; results go back in the
+      // model's order. (The SDK tool runner this replaced did the same.)
+      const results = await Promise.all(uses.map(call))
+      messages.push({ role: 'user', content: results })
     }
   } catch (err) {
     error = err instanceof Error ? err.message : String(err)
   }
 
-  const text =
-    last?.content
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as { text: string }).text)
-      .join('') ?? ''
+  const text = lastContent
+    .filter((p): p is Extract<ContentPart, { type: 'text' }> => p.type === 'text')
+    .map((p) => p.text)
+    .join('')
 
   return {
     text,
     userContent: question,
     offered: offered.map((t) => t.name),
-    stopReason: last?.stop_reason ?? null,
+    stopReason,
     rounds,
     usage,
     toolCalls,
@@ -182,16 +204,43 @@ export async function runTurn(input: RunTurnInput): Promise<TurnResult> {
   }
 }
 
-/** Rebuild Messages-API history from stored turns (text only, as persisted). */
+/**
+ * Rebuild conversation history from stored turns. Turns are persisted as
+ * `[{type: 'text', text}]` blocks, an app-owned shape that is not tied to any
+ * provider. Only text is kept: tool traffic lives in AssistantToolCall, and
+ * reasoning never crosses turns.
+ *
+ * Converse requires strict user/assistant alternation, starting with a user
+ * message. The Anthropic API quietly merged same-role runs; Converse rejects
+ * them. A failed exchange stores its answer as `[{type: 'text', text: ''}]`
+ * (recordExchange writes `turn.text`, which is empty on error). Blank text is
+ * therefore dropped. Otherwise it would become an empty message, which Converse
+ * rejects, and every later turn in that conversation would fail. That leaves a
+ * question with no answer, so same-role runs are merged, leading assistant
+ * turns are dropped, and a trailing unanswered question is dropped (the new
+ * question follows it).
+ */
 export function historyFromTurns(
   turns: ReadonlyArray<{ role: string; content: unknown }>,
-): BetaMessageParam[] {
-  const out: BetaMessageParam[] = []
+): ChatMessage[] {
+  const out: Array<{ role: 'user' | 'assistant'; content: ContentPart[] }> = []
   for (const t of turns) {
     if (t.role !== 'user' && t.role !== 'assistant') continue
-    const content = Array.isArray(t.content) ? t.content : []
+    const content = (Array.isArray(t.content) ? (t.content as unknown[]) : [])
+      .filter(
+        (b): b is { type: 'text'; text: string } =>
+          typeof b === 'object' &&
+          b !== null &&
+          (b as { type?: unknown }).type === 'text' &&
+          typeof (b as { text?: unknown }).text === 'string' &&
+          (b as { text: string }).text.trim() !== '',
+      )
+      .map((b) => ({ type: 'text' as const, text: b.text }))
     if (content.length === 0) continue
-    out.push({ role: t.role, content } as BetaMessageParam)
+    const prev = out.at(-1)
+    if (prev?.role === t.role) prev.content.push(...content)
+    else if (out.length > 0 || t.role === 'user') out.push({ role: t.role, content })
   }
+  if (out.at(-1)?.role === 'user') out.pop()
   return out
 }
