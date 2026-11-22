@@ -1704,6 +1704,57 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    # -- custom event types (0.67.1) --------------------------------------
+
+    def create_event_type(
+        self,
+        name: str,
+        *,
+        payload_schema: dict[str, Any] | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """Register a tenant custom event type (0.67.1+). Requires ``ManageEventTypes``.
+
+        An operator step (``workflow_developer`` / ``tenant_admin`` key), not a
+        runtime one. Once registered, an Automation can :meth:`emit_event` it and an
+        EVENT trigger can subscribe to it, including ``mode="START"`` with a
+        ``correlation_path`` into the payload to start ONE durable Workflow per key
+        (e.g. ``"payload.orderNum"``).
+
+        Args:
+            name: Dotted lowercase name, e.g. ``"billing.delivery_due"``. Must not
+                collide with a built-in event type.
+            payload_schema: Optional JSON Schema; :meth:`emit_event` payloads are
+                validated against it server-side (400 on mismatch).
+            description: Optional human note.
+
+        Returns:
+            The created event-type row.
+
+        Raises:
+            PegasusApiError: 404 ``NOT_FOUND`` "Custom events are not enabled" when
+                the platform's custom-events switch is off for this environment;
+                400 (bad name / schema), 403 (lacks ``ManageEventTypes``), 409 (name
+                taken).
+        """
+        body: dict[str, Any] = {"name": name}
+        if payload_schema is not None:
+            body["payloadSchema"] = payload_schema
+        if description is not None:
+            body["description"] = description
+        with self._client() as client:
+            response = client.post("/api/v1/event-types", json=body)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def list_event_types(self) -> list[dict[str, Any]]:
+        """List the tenant's custom event types (0.67.1+). Requires ``ManageEventTypes``."""
+        return self._get_json("/api/v1/event-types")["data"]
+
+    def get_event_type(self, name: str) -> dict[str, Any]:
+        """One custom event type by name (0.67.1+). Requires ``ManageEventTypes``."""
+        return self._get_json(f"/api/v1/event-types/{name}")["data"]
+
     def send_sms(self, to: str, body: str, *, dedup_key: str | None = None) -> dict[str, Any]:
         """Send an outbound SMS via the tenant's configured provider.
 

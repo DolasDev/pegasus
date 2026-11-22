@@ -493,6 +493,16 @@ runtime, so it can wait for days:
   and logged, never retried. ``update_trigger(..., mode="NEW")`` returns a
   trigger to one-run-per-event. There is no CLI command for EVENT triggers;
   use the client.
+- **Keyed starts from a schedule** (SDK 0.67.1+): an Automation cannot start a
+  Workflow, but it can ``emit_event(name, {"orderNum": n})`` (``EmitTenantEvent``)
+  a **custom event type** that a Workflow's trigger subscribes to with
+  ``mode="START", correlation_path="payload.orderNum"``. Register the type once
+  as an operator: ``create_event_type(name, payload_schema=..., description=...)``
+  / ``list_event_types()`` (``ManageEventTypes``, ``workflow_developer``), or CLI
+  ``event-types create <name> [--schema FILE]``. Emit each key once (claim it in
+  ``put_workflow_state``) so closed keys aren't re-sent. Where the platform's
+  custom-events switch is off, the registry and ``emit_event`` answer 404 "Custom
+  events are not enabled".
 - **Automations as steps** (SDK 0.65.0+): inside the Workflow,
   ``result = await run_automation("price_order", {"orderId": oid})`` (``from
   pegasus_workflows import run_automation, AutomationStepFailed``) runs a

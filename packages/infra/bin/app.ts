@@ -207,6 +207,14 @@ const reportingEnabled = envName === 'staging' || envName === 'prod'
 // operations_admin (policies/60-assistant.cedar) and tenant_admin.
 const assistantEnabled = false
 
+// ── Tenant custom events (staging only, for now) ─────────────────────────────
+// Ungates CUSTOM_EVENTS_ENABLED on the api Lambda: the event-type registry and
+// emit_event. The billing readiness sweep (plans/in-progress/
+// billing-readiness-workflow.md) emits one `billing.delivery_due` per order to
+// start a keyed durable Workflow. Staging first (Steve, 2026-11-22); prod — where
+// RVS lives — flips after the staging proof, with approval.
+const customEventsEnabled = envName === 'staging'
+
 // ── CORS allowlist (staging/prod) ────────────────────────────────────────────
 // Browser origins allowed to call the API cross-origin. Tenant + admin SPA
 // hostnames per env (the same dolas-managed domains the frontend stacks attach
@@ -478,6 +486,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   reportingEnabled,
   corsAllowedOrigins,
   assistantEnabled,
+  customEventsEnabled,
 })
 apiStack.addDependency(cognitoStack)
 

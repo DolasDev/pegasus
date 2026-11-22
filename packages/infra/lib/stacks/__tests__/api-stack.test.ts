@@ -1965,3 +1965,36 @@ describe('ApiStack — AI assistant', () => {
     expect(fnByTimeout(on, 300).Environment.Variables['ASSISTANT_ENABLED']).toBe('true')
   })
 })
+
+describe('ApiStack — custom events (customEventsEnabled)', () => {
+  function synthEnabled() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiCustomEventsEnabled', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      customEventsEnabled: true,
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('leaves CUSTOM_EVENTS_ENABLED unset on every Lambda by default', () => {
+    const fns = synthApiStack().findResources('AWS::Lambda::Function')
+    const withFlag = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.CUSTOM_EVENTS_ENABLED !== undefined,
+    )
+    if (withFlag.length !== 0) {
+      throw new Error(`expected no Lambda to carry CUSTOM_EVENTS_ENABLED, found ${withFlag.length}`)
+    }
+  })
+
+  it('sets CUSTOM_EVENTS_ENABLED=true on the api Lambda (and its assistant twin) when enabled', () => {
+    const fns = synthEnabled().findResources('AWS::Lambda::Function')
+    const enabled = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.CUSTOM_EVENTS_ENABLED === 'true',
+    )
+    if (enabled.length !== 2) {
+      throw new Error(
+        `expected exactly 2 Lambdas (api + assistant) with CUSTOM_EVENTS_ENABLED, found ${enabled.length}`,
+      )
+    }
+  })
+})

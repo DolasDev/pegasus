@@ -318,6 +318,17 @@ export interface ApiStackProps extends cdk.StackProps {
    * (plan Infrastructure §2) — before that, every model call fails.
    */
   readonly assistantEnabled?: boolean
+
+  /**
+   * Tenant custom events master switch → `CUSTOM_EVENTS_ENABLED=true` on the api
+   * Lambda (apps/api/src/lib/custom-events-feature.ts). Ungates the event-type
+   * registry (`/event-types`) and `POST …/emit` — a Workflow's `emit_event`. The
+   * dispatcher's derivation path is not gated by it. Only an env var is set — no
+   * IAM. Default off. Needed by the billing readiness sweep
+   * (plans/in-progress/billing-readiness-workflow.md), which starts one keyed
+   * Workflow per order through a custom event.
+   */
+  readonly customEventsEnabled?: boolean
 }
 
 export class ApiStack extends cdk.Stack {
@@ -642,6 +653,12 @@ export class ApiStack extends cdk.Stack {
     // functions answer every /api/v1/assistant route with 404 ASSISTANT_DISABLED.
     if (props.assistantEnabled) {
       addApiEnvironment('ASSISTANT_ENABLED', 'true')
+    }
+
+    // Tenant custom events (registry + emit). Absent is off: every /event-types
+    // route answers 404.
+    if (props.customEventsEnabled) {
+      addApiEnvironment('CUSTOM_EVENTS_ENABLED', 'true')
     }
 
     // ---------------------------------------------------------------------------

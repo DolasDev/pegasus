@@ -201,6 +201,11 @@ _IGNORED: frozenset[str] = frozenset(
         # calls, never granted to a runtime token.
         "list_workflow_executions",
         "get_execution_by_id",
+        # Custom event-type registry (0.67.1): operator calls (ManageEventTypes),
+        # never granted to a runtime token. emit_event is the runtime side.
+        "create_event_type",
+        "list_event_types",
+        "get_event_type",
         "query_execution",
         "cancel_execution_by_id",
         "terminate_execution",
