@@ -36,34 +36,69 @@ export function inferenceApi(): InferenceApi {
   throw new Error(`ASSISTANT_INFERENCE_API must be converse or anthropic (got ${v})`)
 }
 
+/** The model chat uses: `ASSISTANT_MODEL_ID`, set by CDK from the stack's default. */
+export function defaultModelId(): string {
+  return process.env['ASSISTANT_MODEL_ID'] || DEFAULT_ASSISTANT_MODEL_ID
+}
+
+/**
+ * The models this deployment may call (assistant-converse plan, D8):
+ * `ASSISTANT_ALLOWED_MODELS` (comma list, set by CDK from the same list the IAM
+ * grant covers) plus the default. Absent → the default only (fail closed).
+ */
+export function allowedModelIds(): string[] {
+  const listed = (process.env['ASSISTANT_ALLOWED_MODELS'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+  const def = defaultModelId()
+  return listed.includes(def) ? listed : [def, ...listed]
+}
+
+export function isAllowedModel(modelId: string): boolean {
+  return allowedModelIds().includes(modelId)
+}
+
 let override: InferenceProvider | null = null
-let cached: InferenceProvider | null = null
+const cached = new Map<string, InferenceProvider>()
 
 /** Tests (and only tests) swap in a scripted provider. */
 export function setInferenceProviderForTests(provider: InferenceProvider | null): void {
   override = provider
-  cached = null
+  cached.clear()
 }
 
 /**
- * Resolve the provider for this process. `ASSISTANT_MODEL_ID` sets the model,
- * `ASSISTANT_INFERENCE_API` the adapter; the region is the Lambda's own.
+ * Resolve the provider for a model (default: `ASSISTANT_MODEL_ID`), cached per
+ * model for the life of the process. `ASSISTANT_INFERENCE_API` picks the
+ * adapter; the region is the Lambda's own. Callers taking a model id from a
+ * request check `isAllowedModel` first, so a bad id is a 400, not a 503.
  */
-export async function resolveInferenceProvider(): Promise<InferenceProvider> {
+export async function resolveInferenceProvider(requested?: string): Promise<InferenceProvider> {
   if (override) return override
-  if (cached) return cached
-  const modelId = process.env['ASSISTANT_MODEL_ID'] || DEFAULT_ASSISTANT_MODEL_ID
+  const modelId = requested ?? defaultModelId()
+  const hit = cached.get(modelId)
+  if (hit) return hit
   if (modelId.startsWith('global.')) {
     // Fail loudly rather than silently route tenant data worldwide.
-    throw new Error(`ASSISTANT_MODEL_ID must not be a global.* profile (got ${modelId})`)
+    throw new Error(`The assistant model must not be a global.* profile (got ${modelId})`)
+  }
+  if (!isAllowedModel(modelId)) {
+    throw new Error(`Model ${modelId} is not in ASSISTANT_ALLOWED_MODELS`)
   }
   const region = process.env['AWS_REGION'] || 'us-east-1'
+  let provider: InferenceProvider
   if (inferenceApi() === 'anthropic') {
+    // The Messages path serves Claude only. Dies with the adapter (plan step 15).
+    if (!/(^|\.)anthropic\./.test(modelId)) {
+      throw new Error(`ASSISTANT_INFERENCE_API=anthropic cannot serve ${modelId}`)
+    }
     const { createAnthropicBedrockProvider } = await import('./anthropic')
-    cached = await createAnthropicBedrockProvider({ modelId, region })
+    provider = await createAnthropicBedrockProvider({ modelId, region })
   } else {
     const { createConverseProvider } = await import('./converse')
-    cached = await createConverseProvider({ modelId, region })
+    provider = await createConverseProvider({ modelId, region })
   }
-  return cached
+  cached.set(modelId, provider)
+  return provider
 }

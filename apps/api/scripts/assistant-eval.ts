@@ -8,7 +8,11 @@
 //
 //   ASSISTANT_URL=https://<function-url-or-api-base> \
 //   ASSISTANT_ID_TOKEN=<your Cognito ID token> \
-//   npm run assistant:eval -- [--prompt <versionId>] [--case <id> ...] [--min-pass 0.8]
+//   npm run assistant:eval -- [--prompt <versionId>] [--model <profileId>] [--case <id> ...] [--min-pass 0.8]
+//
+// --model picks any model in the deployment's ASSISTANT_ALLOWED_MODELS (GET
+// /api/v1/assistant/models lists them); the default is the one chat uses.
+// Run once per model and compare the summaries.
 //
 // Exits 1 when a graded run's pass rate is under --min-pass (default: no gate).
 // ---------------------------------------------------------------------------
@@ -28,6 +32,8 @@ interface Summary {
   passed: number
   passRate: number | null
   meanToolCalls: number
+  meanRounds: number
+  meanCacheReadTokens: number
   meanInputTokens: number
   meanOutputTokens: number
   meanLatencyMs: number
@@ -50,6 +56,7 @@ async function main(): Promise<void> {
     process.exit(2)
   }
   const promptVersionId = arg('prompt')[0]
+  const modelId = arg('model')[0]
   const caseIds = arg('case')
   const minPass = arg('min-pass')[0] ? Number(arg('min-pass')[0]) : null
 
@@ -58,6 +65,7 @@ async function main(): Promise<void> {
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({
       ...(promptVersionId ? { promptVersionId } : {}),
+      ...(modelId ? { modelId } : {}),
       ...(caseIds.length ? { caseIds } : {}),
     }),
   })
@@ -105,8 +113,9 @@ async function main(): Promise<void> {
     `Pass rate:        ${rate}  (${summary.passed}/${summary.graded} graded, ${summary.total} total)`,
   )
   console.log(`Mean tool calls:  ${summary.meanToolCalls.toFixed(2)}`)
+  console.log(`Mean rounds:      ${summary.meanRounds.toFixed(2)}`)
   console.log(
-    `Mean tokens:      ${Math.round(summary.meanInputTokens)} in / ${Math.round(summary.meanOutputTokens)} out`,
+    `Mean tokens:      ${Math.round(summary.meanInputTokens)} in / ${Math.round(summary.meanOutputTokens)} out / ${Math.round(summary.meanCacheReadTokens)} cache read`,
   )
   console.log(`Mean latency:     ${(summary.meanLatencyMs / 1000).toFixed(1)}s`)
   console.log('Cost: multiply mean tokens by the current Bedrock price for the model above.')

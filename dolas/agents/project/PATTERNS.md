@@ -565,7 +565,15 @@ an API: `converse.ts` (Bedrock Converse, the default, any Bedrock chat model) an
 `anthropic.ts` (Anthropic Messages on the InvokeModel path, kept for A/B evals; removed by
 plans/*/assistant-converse.md step 15). Model-family quirks (which sections accept a
 `cachePoint`, Anthropic's `output_config.effort`) live in one table, `models.ts`, so
-changing models is configuration (`ASSISTANT_MODEL_ID`) plus the IAM grant. Rules:
+changing models is configuration. The models a deployment may call are ONE list in
+`packages/infra/bin/app.ts` (`assistantModels` + `assistantDefaultModel`): CDK derives
+the IAM grant (profile + per-region foundation-model ARNs) and the env
+(`ASSISTANT_MODEL_ID`, `ASSISTANT_ALLOWED_MODELS`) from it, so the grant and what the
+code may ask for cannot drift. Rules:
+
+- **A model id from a request is checked against `isAllowedModel` first** (400
+  `MODEL_NOT_ALLOWED`), then resolved with `resolveInferenceProvider(modelId)`, which
+  refuses it again. Chat never takes a model from the request; only evals do.
 
 - **Load SDKs lazily** (`await import(...)` on the first round). The API Lambda
   imports this code and must not pay for, or crash on, an SDK at INIT (#594).
