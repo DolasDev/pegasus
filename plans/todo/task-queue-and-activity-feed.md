@@ -2,20 +2,23 @@
 
 **Branch (this plan):** none (the plan lives on `main`). Each phase gets its own `feat/` worktree and branch; earlier phase plans are in `plans/completed/`.
 **Goal:** Give drivers a To Do list and an Activity feed in the mobile app, then give office roles guided task queues on the web that replace legacy reports. Tenants control the tasks through their Workflows and through task definitions they can edit.
-**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phases 1, 2a and 2b are SHIPPED (merged, deployed to prod, Android vcode 25 on closed testing). **Phase 3a is built (2026-11-23) in its own worktree, awaiting its PR.**
+**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phases 1, 2a and 2b are SHIPPED (merged, deployed to prod, Android vcode 25 on closed testing). **Phase 3a is shipped (2026-11-23); 3b is next.**
 
 ---
 
-## Resume here (2026-11-23; Phase 3a built, its PR next)
+## Resume here (2026-11-23; Phase 3a landed through the merge queue, 3b next)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-cloud-store`, branch `feat/task-queue-cloud-store`. `origin/main` was merged in at `a5cd9b36` (#983, SDK 0.67.1).
-  - Steps 1–8 of `plans/in-progress/task-queue-cloud-store.md` are committed on the branch, not pushed. Next: step 9 (full gate), then the PR.
-  - The primary checkout is clean on `main`.
+- **Phase 3a** shipped as one PR from `feat/task-queue-cloud-store`. Its plan, with every decision made while building and what changed in prod on deploy, is `plans/completed/8cde70bf-task-queue-cloud-store.md`.
+- **Owed after its merge:**
+  - Publish the SDK: tag `sdk-python-v0.68.0` on the merge commit.
+  - Update `~/repos/pegasus-workflows/CLAUDE.md` (`role=`, `store`, `get_task_routing`) and bump its pin.
+  - Ship a mobile build: the Blocked copy names the dispatcher.
 - **Steve's answers (2026-11-19/20), all built in 3a:**
   - OPS tasks go to the move's dispatcher.
   - A role with no routing entry uses legacy (the desktop).
   - Blocked notifies the move's dispatcher.
   - Cloud tasks are billable.
+- **Next: Phase 3b** (the sweeper). It decides the `TaskState` fold and fixes the `TaskDefinition` predicate columns.
 
 ### Shipped so far (all merged and deployed to prod)
 
@@ -31,7 +34,7 @@
 
 ### Next action
 
-**Phase 3a is built** (2026-11-23): worktree `../pegasus-task-queue-cloud-store`, branch `feat/task-queue-cloud-store`, plan `plans/in-progress/task-queue-cloud-store.md`. Steps 1–8 are committed; step 9 (the full gate) and the PR remain. After merge: tag `sdk-python-v0.68.0`, update the authoring repo's `CLAUDE.md`, and ship a mobile build (Blocked copy names the dispatcher). Phase 3 split, each its own PR:
+**Phase 3a is shipped** (2026-11-23; plan `plans/completed/8cde70bf-task-queue-cloud-store.md`). Phase 3 split, each its own PR:
 
 - **3a:** `WorkItem` + minimal `TaskDefinition`, a store-neutral `TaskGateway` + cloud gateway, routing per (tenant, role), the routing endpoint, guardrails 1–3, **and the SDK surface for those** (`role=`, `store`, `get_task_routing()`). The SDK moved here from 3c because guardrail 1 and CLAUDE.md require it to ship with the routes.
 - **3b:** the sweeper Lambda + `packages/infra` EventBridge schedule (auto-done/cancel, overdue `notify()`, signal awaiting Workflows, legacy awaited-task poll ≥ 15 min). Decides the `TaskState` fold.
@@ -270,7 +273,7 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
   - Overdue reminders through `notify()`.
   - Signal the awaiting Workflow on completion.
   - Poll legacy tasks that a Workflow is awaiting (TQ-D4 guardrail 4).
-- [x] **Cloud `TaskGateway` + per-(tenant, role) routing** in `task-gateway.factory.ts`, with a routing setting per tenant. **3a**, with `WorkItem` + a minimal `TaskDefinition`; see `plans/in-progress/task-queue-cloud-store.md`.
+- [x] **Cloud `TaskGateway` + per-(tenant, role) routing** in `task-gateway.factory.ts`, with a routing setting per tenant. **3a**, with `WorkItem` + a minimal `TaskDefinition`; see `plans/completed/8cde70bf-task-queue-cloud-store.md`.
 - [ ] **SDK:**
   - `create_task` gains optional `role`, `definition`, `satisfied_when`.
   - Add `await_task` (a Temporal helper: `wait_condition` on the completion signal).

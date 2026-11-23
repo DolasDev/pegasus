@@ -204,7 +204,7 @@ item-to-revision table. **Check what a plan says is owed before building on it.*
       - On cloud, it is assigned to the dispatcher's linked user, or else created unassigned with `assigneeUnresolved`.
     - **A driver's Blocked task notifies the move's dispatcher too.** It falls back to the operations roles when there's no dispatcher, the dispatcher is unlinked or is the driver, or the lookup fails.
     - **Cloud `CreateTask`/`CloseTask` are billable**, like legacy.
-    - Plan: `plans/completed/*-task-queue-cloud-store.md` once archived.
+    - Plan: `plans/completed/8cde70bf-task-queue-cloud-store.md`.
   - Plan: `plans/todo/task-queue-and-activity-feed.md`.
 
 ---
