@@ -84,8 +84,19 @@ The parent plan suggested 3a = tables + gateway, with every SDK change in 3c. Th
   - `lib/task-routing.ts`: `TASK_ROLES`, `resolveTaskStore`, `taskStoreForId`, and `TASK_ASSIGNMENT_RULES` for the routing endpoint.
   - `appSettings.operations.taskRouting`, settable through the existing `PATCH /settings/app` (`UpdateSettings`).
   - Factory: `resolveTaskGatewayForStore(store, ctx)` and `resolveCloudTaskGateway`. The cloud order check skips tenants with no pegII peer and fails loudly on an inactive one. `hasLegacyTaskStore` is for step 5's merged list. `resolveTaskGateway` (legacy) is unchanged, so the handlers still use only legacy until step 5.
-- [ ] **5. Handlers** (`pegii-runtime.ts`): `role` on create and search, guardrail 2 errors (D5), id-shape routing, merged order list, cross-store close-by-type (D6), `GET /tasks/routing` (`ReadTask`). **Register `/tasks/routing` before `/tasks/:taskId`** and test it, or the param route shadows it (this repo has been bitten by route shadowing before, #447/#526). Cedar unchanged (`ReadTask`/`CreateTask`/`CloseTask`); metering unchanged (`CreateTask`/`CloseTask` billable on both stores; Steve confirmed 2026-11-20).
-- [ ] **6. OpenAPI** (`lib/openapi-spec.ts`): `role`, `store`, the new errors, `/tasks/routing`.
+- [x] **5. Handlers** (`pegii-runtime.ts`): `role` on create and search, guardrail 2 errors (D5), id-shape routing, merged order list, cross-store close-by-type (D6), `GET /tasks/routing` (`ReadTask`). **Register `/tasks/routing` before `/tasks/:taskId`** and test it, or the param route shadows it (this repo has been bitten by route shadowing before, #447/#526). Cedar unchanged (`ReadTask`/`CreateTask`/`CloseTask`); metering unchanged (`CreateTask`/`CloseTask` billable on both stores; Steve confirmed 2026-11-20). Done 2026-11-23. Decisions made while building:
+  - **`lib/task-store-context.ts`** holds the request-side helpers: routing read, the merged order list, the `operations` dispatcher, and the cloud assignee. Tests stub only `taskRoutingFor` and `moveDispatcherFor`.
+  - **An explicit `assigneeCode` on a legacy `operations` create wins**, and skips the dispatcher read.
+  - **Dispatcher read failure → 503 `DISPATCHER_UNAVAILABLE`**, with nothing created. A tenant with no legacy DB has no dispatchers, so it gets `NO_DISPATCHER`.
+  - **Legacy `operations` with no dispatcher → 409 `ASSIGNEE_UNRESOLVED`.** The message also says "or there is no such order": an unknown order has no `sales` row, and the dispatcher check runs before the site's 404.
+  - **`role` is accepted on the cross-order search only.** `role` with `orderId` → 400. `meta.store` names the searched store.
+  - **Cursor:** now an opaque string. A non-numeric cursor on a legacy search → 400 `INVALID_CURSOR` (it was a coerce error before).
+  - **Close-by-type "none open":** the newest cloud task first (by `createdAt`), else the highest legacy id.
+  - **`/tasks/routing` is registered before `/tasks/:taskId`**, with a test proving it isn't shadowed.
+  - **Unchanged:** Cedar (`ReadTask`/`CreateTask`/`CloseTask`) and metering.
+- [x] **6. OpenAPI** (`lib/openapi-spec.ts`): `role`, `store`, the new errors, `/tasks/routing`. Done 2026-11-23.
+  - `TASK_SHAPE` gains `store`, `role` and `assigneeUnresolved`; a shared `TASK_STORES_NOTE` is used on every task route.
+  - New `getPegiiTaskRouting`; create no longer requires `dueDate` in the schema; all the new error codes are listed.
 - [ ] **7. SDK** (next free version, 0.68.0 if still free — re-check `origin/main` at landing):
   - `create_task(..., role=None)`; `due_date` becomes optional in the signature (the server enforces it for legacy).
   - `list_tasks(..., role=None)` for the cross-order search.

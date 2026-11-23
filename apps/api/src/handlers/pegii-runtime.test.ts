@@ -19,7 +19,8 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
 import type { PegiiTaskDto } from '../gateways/pegii/pegii-task.dto'
-import type { TaskRecord } from '../gateways/task.gateway'
+import type * as TaskStoreContextModule from '../lib/task-store-context'
+import { TaskStoreError, type TaskRecord } from '../gateways/task.gateway'
 import { pegiiTaskToRecord } from '../gateways/pegii-task.gateway'
 import type { PegiiMemoDto } from '../gateways/pegii/pegii-memo.dto'
 import type { OrderRecord } from '../services/pegii-orders'
@@ -67,14 +68,38 @@ const { listOrderTasks, getTask, searchTasks, createTask, closeTask } = vi.hoist
   createTask: vi.fn(),
   closeTask: vi.fn(),
 }))
-vi.mock('../gateways/task-gateway.factory', () => ({
-  resolveTaskGateway: vi.fn(async () => ({
-    listOrderTasks,
-    getTask,
-    searchTasks,
-    createTask,
-    closeTask,
-  })),
+// The cloud store's gateway, beside the legacy one above.
+const cloud = vi.hoisted(() => ({
+  listOrderTasks: vi.fn(),
+  getTask: vi.fn(),
+  searchTasks: vi.fn(),
+  createTask: vi.fn(),
+  closeTask: vi.fn(),
+}))
+const { hasLegacyTaskStore } = vi.hoisted(() => ({ hasLegacyTaskStore: vi.fn() }))
+vi.mock('../gateways/task-gateway.factory', () => {
+  const legacy = { store: 'legacy', listOrderTasks, getTask, searchTasks, createTask, closeTask }
+  const cloudGw = { store: 'cloud', ...cloud }
+  return {
+    resolveTaskGateway: vi.fn(async () => legacy),
+    resolveCloudTaskGateway: vi.fn(() => cloudGw),
+    resolveTaskGatewayForStore: vi.fn(async (store: string) =>
+      store === 'cloud' ? cloudGw : legacy,
+    ),
+    hasLegacyTaskStore,
+  }
+})
+
+// Routing and the move's dispatcher come from the tenant's settings and legacy
+// DB; stub just those two and keep the rest of the module real.
+const { taskRoutingFor, moveDispatcherFor } = vi.hoisted(() => ({
+  taskRoutingFor: vi.fn(),
+  moveDispatcherFor: vi.fn(),
+}))
+vi.mock('../lib/task-store-context', async (importOriginal) => ({
+  ...(await importOriginal<typeof TaskStoreContextModule>()),
+  taskRoutingFor,
+  moveDispatcherFor,
 }))
 
 const { createMemo, listMemoTypes } = vi.hoisted(() => ({
@@ -151,6 +176,11 @@ const salesmanRecord = (over: Partial<SalesmanRecord> = {}): SalesmanRecord => (
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Default: a tenant with a legacy store, no routing, and no cloud tasks.
+  hasLegacyTaskStore.mockResolvedValue(true)
+  taskRoutingFor.mockResolvedValue(null)
+  moveDispatcherFor.mockResolvedValue({ found: false })
+  cloud.listOrderTasks.mockResolvedValue([])
   _clearAuthzCache()
   // Default: source reachable. Individual cases override to simulate a down source.
   checkReachable.mockResolvedValue(undefined)
@@ -692,6 +722,8 @@ describe('GET /pegii/tasks', () => {
       createdAt: '2026-10-16T18:00:00Z',
       closedAt: null,
       store: 'legacy',
+      role: null,
+      assigneeUnresolved: null,
     })
     expect(data[0]).toMatchObject({ id: '10', taskType: 'PACK', priority: null, createdAt: null })
     expect(data.every((t) => !('stub' in t))).toBe(true)
@@ -746,7 +778,7 @@ describe('GET /pegii/tasks', () => {
       cursor: '5',
       limit: 1,
     })
-    expect((await json(res))['meta']).toEqual({ count: 1, nextCursor: '77' })
+    expect((await json(res))['meta']).toEqual({ count: 1, nextCursor: '77', store: 'legacy' })
   })
 
   it.each([
@@ -1254,5 +1286,394 @@ describe('GET /pegii/memo-types', () => {
     const res = await app.request('/pegii/memo-types')
 
     expect(res.status).toBe(503)
+  })
+})
+
+// ── Tasks across the two stores (task queue Phase 3a step 5) ─────────────────
+
+const CLOUD_ID = '2b916653-df32-438d-a885-e9aedae40286'
+
+const cloudTask = (over: Partial<TaskRecord> = {}): TaskRecord => ({
+  store: 'cloud',
+  id: CLOUD_ID,
+  orderId: '490317',
+  taskType: 'Confirm Actuals',
+  title: 'Confirm actuals with PVO',
+  description: null,
+  priority: 'normal',
+  dueDate: null,
+  assigneeCode: 1196,
+  status: 'open',
+  reason: null,
+  createdByApi: true,
+  active: true,
+  completedAt: null,
+  completedBy: null,
+  actualDate: null,
+  createdAt: '2026-11-23T10:00:00.000Z',
+  closedAt: null,
+  role: 'operations',
+  assigneeUnresolved: null,
+  ...over,
+})
+
+const createBody = {
+  orderId: '490317',
+  taskType: 'Confirm Actuals',
+  title: 'Confirm actuals with PVO',
+}
+
+describe('POST /pegii/tasks — routing by role', () => {
+  it('a role-less create is legacy, exactly as before (no routing read needed to decide)', async () => {
+    createTask.mockResolvedValue({ found: true, task: taskDto(), alreadyExists: false })
+
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, dueDate: '2026-12-01' }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(cloud.createTask).not.toHaveBeenCalled()
+    expect(moveDispatcherFor).not.toHaveBeenCalled()
+    expect((await json(res))['data']).toMatchObject({ store: 'legacy', role: null })
+  })
+
+  it('a role-less create without dueDate keeps the VALIDATION_ERROR contract', async () => {
+    const res = await buildApp().request('/pegii/tasks', post(createBody))
+
+    expect(res.status).toBe(400)
+    const body = await json(res)
+    expect(body['code']).toBe('VALIDATION_ERROR')
+    expect(body['error']).toMatch(/dueDate is required/)
+  })
+
+  it('an unknown role is 400 UNKNOWN_ROLE naming the valid ones', async () => {
+    const res = await buildApp().request('/pegii/tasks', post({ ...createBody, role: 'OPS' }))
+
+    expect(res.status).toBe(400)
+    const body = await json(res)
+    expect(body['code']).toBe('UNKNOWN_ROLE')
+    expect(body['error']).toMatch(/operations, tenant_admin/)
+  })
+
+  it('a role with no routing entry falls back to legacy', async () => {
+    taskRoutingFor.mockResolvedValue({ coordinator: 'cloud' })
+    createTask.mockResolvedValue({ found: true, task: taskDto(), alreadyExists: false })
+
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'sales', dueDate: '2026-12-01' }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(createTask).toHaveBeenCalledWith(
+      '490317',
+      expect.objectContaining({ role: 'sales', dueDate: '2026-12-01' }),
+    )
+    expect(cloud.createTask).not.toHaveBeenCalled()
+  })
+
+  it('a legacy-routed role without dueDate is 400 DUE_DATE_REQUIRED, before any legacy read', async () => {
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'operations' }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await json(res)).toMatchObject({ code: 'DUE_DATE_REQUIRED' })
+    expect(moveDispatcherFor).not.toHaveBeenCalled()
+    expect(createTask).not.toHaveBeenCalled()
+  })
+
+  it('legacy operations: the move dispatcher becomes the assigneeCode', async () => {
+    moveDispatcherFor.mockResolvedValue({ found: true, employeeCode: 1196, tenantUserId: null })
+    createTask.mockResolvedValue({ found: true, task: taskDto(), alreadyExists: false })
+
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'operations', dueDate: '2026-12-01' }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(moveDispatcherFor).toHaveBeenCalledWith(expect.anything(), 490317)
+    expect(createTask).toHaveBeenCalledWith(
+      '490317',
+      expect.objectContaining({ assigneeCode: 1196 }),
+    )
+  })
+
+  it('legacy operations with no dispatcher is 409 ASSIGNEE_UNRESOLVED, never the coordinator', async () => {
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'operations', dueDate: '2026-12-01' }),
+    )
+
+    expect(res.status).toBe(409)
+    expect(await json(res)).toMatchObject({ code: 'ASSIGNEE_UNRESOLVED' })
+    expect(createTask).not.toHaveBeenCalled()
+  })
+
+  it('legacy operations with an explicit assigneeCode skips the dispatcher read', async () => {
+    createTask.mockResolvedValue({ found: true, task: taskDto(), alreadyExists: false })
+
+    await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'operations', dueDate: '2026-12-01', assigneeCode: 42 }),
+    )
+
+    expect(moveDispatcherFor).not.toHaveBeenCalled()
+    expect(createTask).toHaveBeenCalledWith('490317', expect.objectContaining({ assigneeCode: 42 }))
+  })
+
+  it('cloud operations: assigned to the dispatcher’s linked user; dueDate optional; 201', async () => {
+    taskRoutingFor.mockResolvedValue({ operations: 'cloud' })
+    moveDispatcherFor.mockResolvedValue({ found: true, employeeCode: 1196, tenantUserId: 'u-d' })
+    cloud.createTask.mockResolvedValue({ found: true, task: cloudTask(), alreadyExists: false })
+
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'operations', dedupKey: 'k' }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(createTask).not.toHaveBeenCalled()
+    expect(cloud.createTask).toHaveBeenCalledWith('490317', {
+      taskType: 'Confirm Actuals',
+      title: 'Confirm actuals with PVO',
+      role: 'operations',
+      idempotencyKey: 'k',
+      assignee: { userId: 'u-d', employeeCode: 1196, unresolved: null },
+    })
+    expect((await json(res))['data']).toMatchObject({
+      id: CLOUD_ID,
+      store: 'cloud',
+      role: 'operations',
+      assigneeUnresolved: null,
+      alreadyExists: false,
+    })
+  })
+
+  it('cloud operations with no dispatcher is created unassigned, flagged NO_DISPATCHER', async () => {
+    taskRoutingFor.mockResolvedValue({ operations: 'cloud' })
+    cloud.createTask.mockResolvedValue({
+      found: true,
+      task: cloudTask({ assigneeCode: null, assigneeUnresolved: 'NO_DISPATCHER' }),
+      alreadyExists: false,
+    })
+
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'operations' }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(cloud.createTask).toHaveBeenCalledWith(
+      '490317',
+      expect.objectContaining({
+        assignee: { userId: null, employeeCode: null, unresolved: 'NO_DISPATCHER' },
+      }),
+    )
+    expect((await json(res))['data']).toMatchObject({ assigneeUnresolved: 'NO_DISPATCHER' })
+  })
+
+  it('a dispatcher read failure is 503 DISPATCHER_UNAVAILABLE, nothing created', async () => {
+    const { DispatcherUnavailableError } = await vi.importActual<typeof TaskStoreContextModule>(
+      '../lib/task-store-context',
+    )
+    taskRoutingFor.mockResolvedValue({ operations: 'cloud' })
+    moveDispatcherFor.mockRejectedValue(new DispatcherUnavailableError(new Error('tunnel down')))
+
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'operations' }),
+    )
+
+    expect(res.status).toBe(503)
+    expect(await json(res)).toMatchObject({ code: 'DISPATCHER_UNAVAILABLE' })
+    expect(cloud.createTask).not.toHaveBeenCalled()
+  })
+
+  it('assigneeCode on a cloud-routed role is 400 UNSUPPORTED_ON_CLOUD_STORE', async () => {
+    taskRoutingFor.mockResolvedValue({ coordinator: 'cloud' })
+
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'coordinator', assigneeCode: 42 }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await json(res)).toMatchObject({ code: 'UNSUPPORTED_ON_CLOUD_STORE' })
+    expect(cloud.createTask).not.toHaveBeenCalled()
+  })
+
+  it('a cloud store refusal (TaskStoreError) answers with its own code and status', async () => {
+    taskRoutingFor.mockResolvedValue({ coordinator: 'cloud' })
+    cloud.createTask.mockRejectedValue(
+      new TaskStoreError('IDEMPOTENCY_KEY_REUSED', 409, 'dedupKey k was already used'),
+    )
+
+    const res = await buildApp().request(
+      '/pegii/tasks',
+      post({ ...createBody, role: 'coordinator', dedupKey: 'k' }),
+    )
+
+    expect(res.status).toBe(409)
+    expect(await json(res)).toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' })
+  })
+})
+
+describe('GET /pegii/tasks — across stores', () => {
+  it("merges an order's tasks from both stores, legacy first, each with its store", async () => {
+    listOrderTasks.mockResolvedValue([taskDto()])
+    cloud.listOrderTasks.mockResolvedValue([cloudTask()])
+
+    const res = await buildApp().request('/pegii/tasks?orderId=490317')
+
+    expect(res.status).toBe(200)
+    const data = (await json(res))['data'] as Array<Record<string, unknown>>
+    expect(data.map((t) => t['store'])).toEqual(['legacy', 'cloud'])
+  })
+
+  it('a tenant with no legacy store lists only cloud tasks and never 404s', async () => {
+    hasLegacyTaskStore.mockResolvedValue(false)
+
+    const res = await buildApp().request('/pegii/tasks?orderId=490317')
+
+    expect(res.status).toBe(200)
+    expect(listOrderTasks).not.toHaveBeenCalled()
+    expect((await json(res))['data']).toEqual([])
+  })
+
+  it('legacy says no such order but the cloud has tasks on it: the cloud tasks', async () => {
+    listOrderTasks.mockResolvedValue(null)
+    cloud.listOrderTasks.mockResolvedValue([cloudTask()])
+
+    const res = await buildApp().request('/pegii/tasks?orderId=490317')
+
+    expect(res.status).toBe(200)
+    expect(((await json(res))['data'] as unknown[]).length).toBe(1)
+  })
+
+  it('a role-scoped search goes to that role’s store and says which', async () => {
+    taskRoutingFor.mockResolvedValue({ operations: 'cloud' })
+    cloud.searchTasks.mockResolvedValue({ items: [cloudTask()], nextCursor: 'tok' })
+
+    const res = await buildApp().request(
+      '/pegii/tasks?taskType=Confirm%20Actuals&role=operations&cursor=abc',
+    )
+
+    expect(res.status).toBe(200)
+    expect(cloud.searchTasks).toHaveBeenCalledWith({ taskType: 'Confirm Actuals', cursor: 'abc' })
+    expect(searchTasks).not.toHaveBeenCalled()
+    expect((await json(res))['meta']).toEqual({ count: 1, nextCursor: 'tok', store: 'cloud' })
+  })
+
+  it('a legacy search rejects a cursor it did not issue', async () => {
+    const res = await buildApp().request('/pegii/tasks?taskType=Pulse%20Follow-Up&cursor=abc')
+
+    expect(res.status).toBe(400)
+    expect(await json(res)).toMatchObject({ code: 'INVALID_CURSOR' })
+  })
+
+  it('role with orderId is a 400 (an order lists every store)', async () => {
+    const res = await buildApp().request('/pegii/tasks?orderId=490317&role=operations')
+
+    expect(res.status).toBe(400)
+    expect(await json(res)).toMatchObject({ code: 'VALIDATION_ERROR' })
+  })
+})
+
+describe('GET /pegii/tasks/routing', () => {
+  it('is not shadowed by /tasks/:taskId, and describes roles and stores', async () => {
+    taskRoutingFor.mockResolvedValue({ operations: 'cloud' })
+
+    const res = await buildApp().request('/pegii/tasks/routing')
+
+    expect(res.status).toBe(200)
+    expect(getTask).not.toHaveBeenCalled()
+    const data = (await json(res))['data'] as Record<string, unknown>
+    expect(data['defaultStore']).toBe('legacy')
+    expect(data['legacyConfigured']).toBe(true)
+    const roles = data['roles'] as Array<Record<string, unknown>>
+    expect(roles.find((r) => r['role'] === 'operations')).toEqual({
+      role: 'operations',
+      store: 'cloud',
+      configured: true,
+    })
+    expect(roles.find((r) => r['role'] === 'coordinator')).toEqual({
+      role: 'coordinator',
+      store: 'legacy',
+      configured: false,
+    })
+    expect(data['stores']).toMatchObject({
+      legacy: { dueDateRequired: true },
+      cloud: { idFormat: 'uuid', rejects: ['assigneeCode'] },
+    })
+  })
+
+  it('needs ReadTask', async () => {
+    const res = await buildApp(['viewer']).request('/pegii/tasks/routing')
+    expect(res.status).toBe(403)
+  })
+})
+
+describe('by id: the id’s shape picks the store', () => {
+  it('GET a UUID reads the cloud store', async () => {
+    cloud.getTask.mockResolvedValue(cloudTask())
+
+    const res = await buildApp().request(`/pegii/tasks/${CLOUD_ID}`)
+
+    expect(res.status).toBe(200)
+    expect(cloud.getTask).toHaveBeenCalledWith(CLOUD_ID)
+    expect(getTask).not.toHaveBeenCalled()
+  })
+
+  it('close by a UUID closes in the cloud store', async () => {
+    cloud.closeTask.mockResolvedValue({
+      task: cloudTask({ status: 'closed', reason: 'ok' }),
+      alreadyClosed: false,
+    })
+
+    const res = await buildApp().request(
+      '/pegii/tasks/close',
+      post({ taskId: CLOUD_ID, reason: 'ok' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(cloud.closeTask).toHaveBeenCalledWith(CLOUD_ID, 'ok')
+    expect(closeTask).not.toHaveBeenCalled()
+  })
+
+  it('close by (order, type) with one open task in each store is TASK_AMBIGUOUS across stores', async () => {
+    listOrderTasks.mockResolvedValue([taskDto({ taskType: 'Confirm Actuals' })])
+    cloud.listOrderTasks.mockResolvedValue([cloudTask()])
+
+    const res = await buildApp().request(
+      '/pegii/tasks/close',
+      post({ orderId: '490317', taskType: 'confirm actuals' }),
+    )
+
+    expect(res.status).toBe(409)
+    expect(await json(res)).toMatchObject({
+      code: 'TASK_AMBIGUOUS',
+      candidateIds: ['77', CLOUD_ID],
+    })
+  })
+
+  it('close by (order, type) closes the one open task in whichever store holds it', async () => {
+    listOrderTasks.mockResolvedValue([])
+    cloud.listOrderTasks.mockResolvedValue([cloudTask()])
+    cloud.closeTask.mockResolvedValue({
+      task: cloudTask({ status: 'closed' }),
+      alreadyClosed: false,
+    })
+
+    const res = await buildApp().request(
+      '/pegii/tasks/close',
+      post({ orderId: '490317', taskType: 'Confirm Actuals' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(cloud.closeTask).toHaveBeenCalledWith(CLOUD_ID, null)
   })
 })

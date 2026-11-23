@@ -65,11 +65,14 @@ describe.skipIf(!hasDb)('resolveMoveDispatcher', () => {
       },
     })
 
-  const resolve = (operationsId: unknown, over: { tenantId?: string; companyId?: string } = {}) =>
+  const resolve = (
+    operationsId: unknown,
+    over: { tenantId?: string; companyId?: string | null } = {},
+  ) =>
     resolveMoveDispatcher({
       db: scoped(over.tenantId ?? tenantA),
       tenantId: over.tenantId ?? tenantA,
-      companyId: over.companyId ?? companyA,
+      companyId: over.companyId === undefined ? companyA : over.companyId,
       orderNum: 490317,
       readOperationsId: vi.fn().mockResolvedValue(operationsId),
     })
@@ -111,6 +114,15 @@ describe.skipIf(!hasDb)('resolveMoveDispatcher', () => {
     expect(await resolve(null)).toEqual({ found: false })
     expect(await resolve('')).toEqual({ found: false })
     expect(await resolve(0)).toEqual({ found: false })
+  })
+
+  it('a tenant with no company yet finds the dispatcher but no cloud user', async () => {
+    await link(tenantA, companyA, dispatcher, 1196)
+    expect(await resolve(1196, { companyId: null })).toEqual({
+      found: true,
+      employeeCode: 1196,
+      tenantUserId: null,
+    })
   })
 
   it('a dispatcher with no linked cloud user has tenantUserId null', async () => {

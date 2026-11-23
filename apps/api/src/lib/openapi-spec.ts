@@ -51,7 +51,13 @@ function apiKeyGet(
 /** The SDK's task row (handlers/pegii-runtime.ts toTaskResponse). */
 const TASK_SHAPE =
   '{id, orderId, taskType, title, description, priority, dueDate, assigneeCode, status: "open"|"closed", reason, ' +
-  'createdByApi, active, completedAt, completedBy, actualDate, createdAt, closedAt}'
+  'createdByApi, active, completedAt, completedBy, actualDate, createdAt, closedAt, ' +
+  'store: "legacy"|"cloud", role, assigneeUnresolved: null|"NO_DISPATCHER"|"DISPATCHER_NOT_LINKED"}'
+
+/** One sentence every task route repeats: the two stores (task queue plan TQ-D4). */
+const TASK_STORES_NOTE =
+  'Tasks live in one of two stores, and every task says which (store): legacy = MoveManager (ids are digits), ' +
+  'cloud = the platform (ids are UUIDs). A role routes to a store per tenant; see getPegiiTaskRouting. '
 
 // The operational `vnd_`-reachable GET surface (workflows / executions / triggers,
 // pegII orders+tasks, secrets/config reads, projection cache + 0026 read-model,
@@ -263,40 +269,59 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
   ),
   '/api/v1/pegii/tasks': apiKeyGet(
     'listPegiiTasks',
-    "List pegII tasks (ReadTask): an order's tasks, or one type across orders",
+    "List tasks (ReadTask): an order's tasks from every store, or one type across orders from one store",
     {
       tags: ['pegII'],
       query: [
         {
           name: 'orderId',
           description:
-            "Every task on this order (digits) — MoveManager's own and the cloud's — in one response",
+            "Every task on this order (digits), from BOTH stores (legacy first): MoveManager's own, the ones the cloud created there, and cloud-store tasks",
         },
         {
           name: 'taskType',
           description:
-            'Without orderId: cloud-created tasks of this type across orders (keyset-paged). With orderId: a filter. One of orderId/taskType is required',
+            'Without orderId: tasks of this type across orders, from ONE store (keyset-paged); legacy returns only tasks the cloud created. With orderId: a filter. One of orderId/taskType is required',
+        },
+        {
+          name: 'role',
+          description:
+            'taskType search only: chooses the store the way a create does (no role, or a role with no routing entry: legacy). Unknown role: 400 UNKNOWN_ROLE. Not allowed with orderId',
         },
         { name: 'status', description: 'open | closed' },
         { name: 'dueBefore', description: 'YYYY-MM-DD; due strictly before' },
         {
           name: 'cursor',
-          description: 'meta.nextCursor from the previous page (taskType search only)',
+          description:
+            'meta.nextCursor from the previous page (taskType search only; opaque, and only valid for the same store). Anything else: 400 INVALID_CURSOR',
         },
         { name: 'limit', description: '1-500, default 100 (taskType search only)' },
       ],
       responseDescription:
-        `{data: [${TASK_SHAPE}], meta: {count, nextCursor}}. ` +
-        'Ids are the pegII task id, one per task. A desktop task reports its legacy code as taskType and has no priority; ' +
-        'createdAt is set only for a task the cloud created, closedAt only for a close made through the API, completedAt is the site-local completion time. ' +
+        `{data: [${TASK_SHAPE}], meta: {count, nextCursor, store?}} (store: the searched store, on a taskType search). ` +
+        TASK_STORES_NOTE +
+        'A desktop task reports its legacy code as taskType and has no priority; for a legacy task createdAt is set only when the cloud created it, ' +
+        'closedAt only for a close made through the API, and completedAt is the site-local completion time. role and assigneeUnresolved are null on legacy. ' +
         "400 when neither orderId nor taskType is given; 404 ORDER_NOT_FOUND; an order with no tasks is []. 503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.tasks.v1.",
     },
   ),
-  '/api/v1/pegii/tasks/{taskId}': apiKeyGet('getPegiiTask', 'Get a pegII task (ReadTask)', {
+  '/api/v1/pegii/tasks/routing': apiKeyGet(
+    'getPegiiTaskRouting',
+    "Which store each role's tasks use here, and what each store supports (ReadTask)",
+    {
+      tags: ['pegII'],
+      responseDescription:
+        '{data: {defaultStore: "legacy", rule, legacyConfigured, roles: [{role, store, configured}], ' +
+        'stores: {legacy: {idFormat, dueDateRequired: true, acceptsAssigneeCode: true, rejects[], assignment}, cloud: {idFormat: "uuid", dueDateRequired: false, acceptsAssigneeCode: false, rejects: ["assigneeCode"], assignment}}}}. ' +
+        'roles lists every valid task role: operations (resolved per move to its dispatcher, sales.operations_id) and the Cedar role groups. ' +
+        'A task with no role, or a role with no routing entry, uses legacy. Routing is set per tenant by an admin (PATCH /api/v1/settings/app, operations.taskRouting).',
+    },
+  ),
+  '/api/v1/pegii/tasks/{taskId}': apiKeyGet('getPegiiTask', 'Get a task (ReadTask)', {
     tags: ['pegII'],
     path: ['taskId'],
     responseDescription:
-      '{data: task} (same shape as listPegiiTasks rows); 404 NOT_FOUND if unknown',
+      '{data: task} (same shape as listPegiiTasks rows). The id names its store: digits = legacy, a UUID = cloud. 404 NOT_FOUND if unknown',
   }),
   '/api/v1/orders': apiKeyGet('listOrders', 'List orders — legacy M2M order surface (ReadOrder)', {
     tags: ['Orders'],
@@ -3448,12 +3473,17 @@ export function getOpenApiSpec() {
         ...OPERATIONAL_READ_PATHS['/api/v1/pegii/tasks'],
         post: {
           operationId: 'createPegiiTask',
-          summary: 'Create a task on a pegII order (CreateTask, billable)',
+          summary: 'Create a task on an order (CreateTask, billable on both stores)',
           description:
-            'Body: { orderId, taskType, title, dueDate, description?, priority?, assigneeCode?, dedupKey? }. ' +
-            'MoveManager shows it as a user-defined (USRDEF) task on the order: the coordinator sees, edits and completes it like their own; its grid text is the title uppercased and cut to 50. ' +
-            'taskType must be a type the site registers (today: Pulse Follow-Up); title up to 200; description (the task note) up to 1000; priority low | normal | high (default normal); ' +
-            "dueDate YYYY-MM-DD, required; assigneeCode a MoveManager employee code (default: the order's coordinator). " +
+            'Body: { orderId, taskType, title, dueDate?, description?, priority?, assigneeCode?, role?, dedupKey? }. ' +
+            TASK_STORES_NOTE +
+            'role (the owner) chooses the store: no role, or a role with no routing entry, is legacy, exactly as before; unknown role: 400 UNKNOWN_ROLE. ' +
+            'On legacy, MoveManager shows it as a user-defined (USRDEF) task on the order: the coordinator sees, edits and completes it like their own; its grid text is the title uppercased and cut to 50; taskType must be a type the site registers (today: Pulse Follow-Up). ' +
+            'title up to 200; description (the task note) up to 1000; priority low | normal | high (default normal). ' +
+            'dueDate YYYY-MM-DD: required on legacy (400 VALIDATION_ERROR without a role, 400 DUE_DATE_REQUIRED with a legacy-routed role), optional on cloud. ' +
+            "assigneeCode: a MoveManager employee code, legacy only (default: the order's coordinator); on cloud 400 UNSUPPORTED_ON_CLOUD_STORE. " +
+            "role operations goes to the move's dispatcher (sales.operations_id): on legacy as the assigneeCode (no dispatcher: 409 ASSIGNEE_UNRESOLVED; pass assigneeCode), " +
+            'on cloud to their linked cloud user (none: created unassigned with assigneeUnresolved NO_DISPATCHER | DISPATCHER_NOT_LINKED). 503 DISPATCHER_UNAVAILABLE when the dispatcher could not be read. ' +
             'dedupKey (up to 190) makes it idempotent: the same key with the same request is 200 alreadyExists: true with the original task, not billed; with a different request, 409 IDEMPOTENCY_KEY_REUSED. ' +
             "503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.tasks.v1.",
           tags: ['pegII'],
@@ -3464,7 +3494,7 @@ export function getOpenApiSpec() {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['orderId', 'taskType', 'title', 'dueDate'],
+                  required: ['orderId', 'taskType', 'title'],
                   example: {
                     orderId: '490317',
                     taskType: 'Pulse Follow-Up',
@@ -3484,26 +3514,31 @@ export function getOpenApiSpec() {
             },
             '400': {
               description:
-                "VALIDATION_ERROR, or the site's UNKNOWN_TASK_TYPE / INVALID_TITLE / INVALID_DUE_DATE / INVALID_PRIORITY / INVALID_DESCRIPTION / UNKNOWN_ASSIGNEE",
+                "VALIDATION_ERROR, UNKNOWN_ROLE, DUE_DATE_REQUIRED, UNSUPPORTED_ON_CLOUD_STORE, UNSUPPORTED_ON_LEGACY_STORE, or the site's UNKNOWN_TASK_TYPE / INVALID_TITLE / INVALID_DUE_DATE / INVALID_PRIORITY / INVALID_DESCRIPTION / UNKNOWN_ASSIGNEE",
             },
             '403': { description: 'Missing CreateTask' },
             '404': { description: 'ORDER_NOT_FOUND' },
             '409': {
               description:
-                "IDEMPOTENCY_KEY_REUSED (same dedupKey, different request) or IDEMPOTENT_TASK_DELETED (the key's task was deleted in MoveManager); nothing written",
+                "IDEMPOTENCY_KEY_REUSED (same dedupKey, different request), IDEMPOTENT_TASK_DELETED (the key's task was deleted in MoveManager), or ASSIGNEE_UNRESOLVED (legacy operations task, no dispatcher on the order); nothing written",
             },
-            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
+            '503': {
+              description:
+                'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE / DISPATCHER_UNAVAILABLE',
+            },
           },
         },
       },
       '/api/v1/pegii/tasks/close': {
         post: {
           operationId: 'closePegiiTask',
-          summary: 'Close a pegII task by taskId, or by (orderId, taskType) (CloseTask, billable)',
+          summary: 'Close a task by taskId, or by (orderId, taskType) (CloseTask, billable)',
           description:
-            'Body: { taskId } or { orderId, taskType }, plus reason? (up to 1000). Exactly one form. Closes ANY task, as a coordinator would: completed, completion time and employee, the actual date if empty; ' +
-            "the reason is appended to the task note as 'Closed by Pegasus: …'. By (orderId, taskType) the order's OPEN tasks of that type decide: one is closed; two or more is 409 TASK_AMBIGUOUS with candidateIds and nothing closed; " +
-            'none open but some closed returns the latest with alreadyClosed: true. Idempotent: closing a closed task is 200 alreadyClosed: true, not billed. ' +
+            'Body: { taskId } or { orderId, taskType }, plus reason? (up to 1000). Exactly one form. ' +
+            TASK_STORES_NOTE +
+            'By taskId, the id names the store. A legacy close completes ANY task, as a coordinator would: completed, completion time and employee, the actual date if empty; ' +
+            "the reason is appended to the task note as 'Closed by Pegasus: …'. By (orderId, taskType) the order's OPEN tasks of that type in BOTH stores decide: one is closed; two or more is 409 TASK_AMBIGUOUS with candidateIds (either store's ids) and nothing closed; " +
+            'none open but some closed returns the newest (a cloud one first) with alreadyClosed: true. Idempotent: closing a closed task is 200 alreadyClosed: true, not billed. ' +
             "A refused close (404, 409) is not billed. 503 PEGII_CAPABILITY_MISSING when the site's pegII API predates pegii.tasks.v1.",
           tags: ['pegII'],
           security: [{ ApiKeyAuth: [] }],

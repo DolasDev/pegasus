@@ -60,8 +60,12 @@ export function toEmployeeCode(raw: unknown): number | null {
 export interface ResolveMoveDispatcherArgs {
   db: PrismaClient
   tenantId: string
-  /** The company whose employee codes the order's database uses. */
-  companyId: string
+  /**
+   * The company whose employee codes the order's database uses. Null when the
+   * tenant has no company yet: nobody can be linked, so a dispatcher found on
+   * the order resolves to no cloud user.
+   */
+  companyId: string | null
   orderNum: number
   readOperationsId: ReadOperationsId
 }
@@ -71,6 +75,7 @@ export async function resolveMoveDispatcher(
 ): Promise<MoveDispatcher> {
   const employeeCode = toEmployeeCode(await args.readOperationsId(args.orderNum))
   if (employeeCode === null) return { found: false }
+  if (args.companyId === null) return { found: true, employeeCode, tenantUserId: null }
 
   // CompanyMembership and TenantUser aren't auto-scoped: bind tenantId explicitly.
   const membership = await args.db.companyMembership.findFirst({

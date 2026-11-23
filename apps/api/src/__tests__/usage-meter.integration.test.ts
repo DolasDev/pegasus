@@ -26,8 +26,15 @@ import { _clearAuthzCache } from '../lib/authz'
 // One open date_confirmation task on ORDER_NUMBER; closing it flips it closed.
 const ORDER_NUMBER = 4_900_001
 const { tasks } = vi.hoisted(() => ({ tasks: new Map<string, TaskRecord>() }))
-vi.mock('../gateways/task-gateway.factory', () => ({
-  resolveTaskGateway: vi.fn(async () => ({
+vi.mock('../gateways/task-gateway.factory', () => {
+  // The cloud store is empty here: every task is the legacy one below.
+  const cloud = {
+    store: 'cloud',
+    listOrderTasks: async () => [],
+    getTask: async () => null,
+    closeTask: async () => null,
+  }
+  const legacy = {
     store: 'legacy',
     listOrderTasks: async (n: string) => [...tasks.values()].filter((t) => t.orderId === n),
     getTask: async (id: string) => tasks.get(id) ?? null,
@@ -43,8 +50,14 @@ vi.mock('../gateways/task-gateway.factory', () => ({
       tasks.set(id, closed)
       return { task: closed, alreadyClosed: false }
     },
-  })),
-}))
+  }
+  return {
+    resolveTaskGateway: vi.fn(async () => legacy),
+    resolveCloudTaskGateway: vi.fn(() => cloud),
+    resolveTaskGatewayForStore: vi.fn(async (s: string) => (s === 'cloud' ? cloud : legacy)),
+    hasLegacyTaskStore: vi.fn(async () => true),
+  }
+})
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 const SLUG = 'test-usage-meter-e2e'

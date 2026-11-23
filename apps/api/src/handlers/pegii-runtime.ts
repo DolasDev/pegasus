@@ -17,6 +17,7 @@
 //   GET  /salesmen               ReadSalesman  list salesmen (?active=…)
 //   GET  /salesmen/:salesmanId   ReadSalesman  fetch one salesman
 //   GET  /tasks                  ReadTask      an order's tasks (?orderId=) or one type across orders (?taskType=)
+//   GET  /tasks/routing          ReadTask      which store each role's tasks use, and what each store supports
 //   GET  /tasks/:taskId          ReadTask      fetch one task
 //   POST /tasks                  CreateTask    create a task on an order (idempotent with dedupKey)
 //   POST /tasks/close            CloseTask     close by taskId or (orderId, taskType) — idempotent
@@ -26,8 +27,9 @@
 // LIVE: GET /orders/:orderId resolves an OrderGateway (gateways/order-gateway.
 // factory.ts) and fetches the serialized order from the pegII team's on-prem API
 // at `/api/v1/pegii/serialized/orders/:id` over the WireGuard tunnel; selecting
-// orders is the site's live search (GET /orders/search). Tasks are the site's
-// task API (pegii.tasks.v1, NW pulse Phase 6) through a TaskGateway.
+// orders is the site's live search (GET /orders/search). Tasks live in one of two
+// stores, chosen per (tenant, role) (task queue plan Phase 3a): the site's task
+// API (pegii.tasks.v1, NW pulse Phase 6) or the platform's own cloud store.
 //
 // Distinct from the M2M `/api/v1/orders` endpoint (handlers/orders.ts), which is
 // a move-backed reporting view for integration clients and is left untouched.
@@ -54,9 +56,25 @@ import {
   ORDER_SEARCH_MAX_SPAN_DAYS,
 } from '../gateways/pegii/pegii-order-search.dto'
 import type { SalesmanRecord } from '../services/pegii-salesmen'
-import { resolveTaskGateway } from '../gateways/task-gateway.factory'
-import type { TaskRecord } from '../gateways/task.gateway'
+import { resolveTaskGatewayForStore, hasLegacyTaskStore } from '../gateways/task-gateway.factory'
+import { TaskStoreError, type TaskCreateInput, type TaskRecord } from '../gateways/task.gateway'
 import { isPegiiInt } from '../gateways/pegii-task.gateway'
+import {
+  OPERATIONS_TASK_ROLE,
+  TASK_ASSIGNMENT_RULES,
+  TASK_ROLES,
+  isTaskRole,
+  resolveTaskStore,
+  taskStoreForId,
+} from '../lib/task-routing'
+import {
+  DispatcherUnavailableError,
+  cloudAssigneeFrom,
+  listOrderTasksAllStores,
+  moveDispatcherFor,
+  taskGatewayContext,
+  taskRoutingFor,
+} from '../lib/task-store-context'
 import { TASK_SEARCH_MAX_LIMIT } from '../gateways/pegii/pegii-task.dto'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
 import { resolveMemoGateway } from '../gateways/memo-gateway.factory'
@@ -94,13 +112,19 @@ const isoDay = (name: string) =>
     }, `${name} is not a real date`)
 const DAY_MS = 24 * 60 * 60 * 1000
 
+/** A task's owning role: `operations` (the move's dispatcher) or a Cedar role group. */
+const taskRole = z.string().trim().min(1, 'role must not be empty').max(64)
+
 const TaskListQuery = z
   .object({
     orderId: orderNumber.optional(),
     taskType: taskType.optional(),
+    /** Chooses the store for the cross-order search, like a create's role. */
+    role: taskRole.optional(),
     status: z.enum(['open', 'closed'], { error: "status must be 'open' or 'closed'" }).optional(),
     dueBefore: isoDay('dueBefore').optional(),
-    cursor: z.coerce.number().int().min(0, 'cursor must not be negative').optional(),
+    /** Opaque: digits from the legacy store, a token from the cloud store. */
+    cursor: z.string().min(1, 'cursor must not be empty').max(200).optional(),
     limit: z.coerce
       .number()
       .int()
@@ -116,6 +140,12 @@ const TaskListQuery = z
       ctx.addIssue({
         code: 'custom',
         message: "cursor/limit page the cross-order search; an order's tasks come in one response",
+      })
+    if (q.orderId !== undefined && q.role !== undefined)
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          "role chooses the store for the cross-order search; an order's tasks come from every store",
       })
   })
 
@@ -136,12 +166,15 @@ const CreateTaskBody = z
     priority: z
       .enum(['low', 'normal', 'high'], { error: "priority must be 'low', 'normal' or 'high'" })
       .optional(),
-    dueDate: isoDay('dueDate'),
+    /** Required on the legacy store; optional on the cloud store. */
+    dueDate: isoDay('dueDate').optional(),
     assigneeCode: z
       .number()
       .int()
       .positive('assigneeCode must be a MoveManager employee code')
       .optional(),
+    /** The owner, which also chooses the store (lib/task-routing.ts). */
+    role: taskRole.optional(),
     dedupKey: z
       .string()
       .trim()
@@ -150,6 +183,18 @@ const CreateTaskBody = z
       .optional(),
   })
   .strict()
+  .superRefine((b, ctx) => {
+    // A role-less create is today's legacy contract, unchanged: dueDate is required.
+    if (b.role === undefined && b.dueDate === undefined)
+      ctx.addIssue({ code: 'custom', message: 'dueDate is required (YYYY-MM-DD)' })
+  })
+
+/**
+ * Create fields only the cloud store understands; sent to a legacy-routed role
+ * they are a loud 400 UNSUPPORTED_ON_LEGACY_STORE (TQ-D4 guardrail 2). None
+ * yet: `role` only chooses the store. Phase 3c adds `definition` / `satisfiedWhen`.
+ */
+const CLOUD_ONLY_CREATE_FIELDS: readonly (keyof z.infer<typeof CreateTaskBody>)[] = []
 
 const CloseBody = z
   .object({
@@ -318,6 +363,17 @@ function toTaskResponse(task: TaskRecord) {
     createdAt: task.createdAt,
     closedAt: task.closedAt,
     store: task.store,
+    role: task.role,
+    assigneeUnresolved: task.assigneeUnresolved,
+  }
+}
+
+/** 400 UNKNOWN_ROLE naming the valid ones, or null when the role is fine. */
+function unknownRole(role: string | undefined) {
+  if (role === undefined || isTaskRole(role)) return null
+  return {
+    error: `Unknown role: ${role}. Valid roles: ${TASK_ROLES.join(', ')}`,
+    code: 'UNKNOWN_ROLE',
   }
 }
 
@@ -332,6 +388,16 @@ export const pegiiRuntimeHandler = new Hono<AppEnv>()
 // from its routes, and a re-throw here propagates to the parent onError. See
 // sdk-feedback spec 0018.
 pegiiRuntimeHandler.onError((err, c) => {
+  // A task store's own refusal (cloud store, or legacy's DUE_DATE_REQUIRED).
+  if (err instanceof TaskStoreError) {
+    const correlationId = c.get('correlationId') ?? 'unknown'
+    return c.json({ error: err.message, code: err.code, correlationId }, err.status)
+  }
+  if (err instanceof DispatcherUnavailableError) {
+    const correlationId = c.get('correlationId') ?? 'unknown'
+    logger.warn("task create: the move's dispatcher could not be read", { correlationId })
+    return c.json({ error: err.message, code: 'DISPATCHER_UNAVAILABLE', correlationId }, 503)
+  }
   if (err instanceof PegiiApiError) {
     const { status, code, message } = pegiiApiErrorToHttp(err)
     const correlationId = c.get('correlationId') ?? 'unknown'
@@ -623,17 +689,22 @@ pegiiRuntimeHandler.get(
 
 // ── Tasks ─────────────────────────────────────────────────────────────────
 //
-// Backed by the pegII site's task API (gateways/pegii-task.gateway.ts), gated on
-// the site's `pegii.tasks.v1` (503 PEGII_CAPABILITY_MISSING without it). Ids are
-// pegII's `Tasks.id`, one per task instance. Reads cover every task on an
-// order, the desktop's own included (a desktop task reports its legacy code as
-// `taskType` and has no priority); create writes a desktop user-defined task;
-// close completes any task.
+// Two stores behind one noun (task queue plan TQ-D4, Phase 3a):
+//   - legacy: the pegII site's task API (gateways/pegii-task.gateway.ts), gated
+//     on the site's `pegii.tasks.v1` (503 PEGII_CAPABILITY_MISSING without it).
+//     Ids are pegII's `Tasks.id` (digits). Reads cover every task on an order,
+//     the desktop's own included (a desktop task reports its legacy code as
+//     `taskType` and has no priority); create writes a desktop user-defined task.
+//   - cloud: the platform's WorkItem rows (gateways/cloud-task.gateway.ts). Ids
+//     are UUIDs.
+// Every task carries `store`. A create (and a cross-order search) goes where
+// its `role` routes (lib/task-routing.ts: no role, or a role with no routing
+// entry → legacy); a read or close by id goes where the id's shape says.
 
-// GET /tasks — an order's tasks (`orderId`), or cloud-created tasks of one type
-// across orders (`taskType`, keyset-paged by `meta.nextCursor`). One of the two
-// is required. An unknown order → 404 ORDER_NOT_FOUND; an order with no tasks
-// → []. Nothing is created by a read.
+// GET /tasks — an order's tasks (`orderId`, from EVERY store), or tasks of one
+// type across orders (`taskType`, one store chosen by `role`, keyset-paged by
+// `meta.nextCursor`). One of the two is required. An unknown order → 404
+// ORDER_NOT_FOUND; an order with no tasks → []. Nothing is created by a read.
 pegiiRuntimeHandler.get(
   '/tasks',
   requirePermission(Actions.ReadTask),
@@ -648,10 +719,10 @@ pegiiRuntimeHandler.get(
   async (c) => {
     const tenantId = c.get('tenantId')
     const q = c.req.valid('query')
-    const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+    const ctx = taskGatewayContext(c)
 
     if (q.orderId !== undefined) {
-      const all = await gateway.listOrderTasks(q.orderId)
+      const all = await listOrderTasksAllStores(ctx, q.orderId)
       if (all === null) {
         return c.json({ error: `Order ${q.orderId} not found`, code: 'ORDER_NOT_FOUND' }, 404)
       }
@@ -661,22 +732,33 @@ pegiiRuntimeHandler.get(
           (q.status === undefined || t.status === q.status) &&
           (q.dueBefore === undefined || (t.dueDate !== null && t.dueDate < q.dueBefore)),
       )
-      logger.info('pegII tasks listed', { tenantId, orderId: q.orderId, count: tasks.length })
+      logger.info('tasks listed', { tenantId, orderId: q.orderId, count: tasks.length })
       return c.json({
         data: tasks.map(toTaskResponse),
         meta: { count: tasks.length, nextCursor: null },
       })
     }
 
+    const bad = unknownRole(q.role)
+    if (bad) return c.json(bad, 400)
+    const store = resolveTaskStore(await taskRoutingFor(ctx.db, tenantId), q.role)
+    if (store === 'legacy' && q.cursor !== undefined && !/^\d{1,10}$/.test(q.cursor)) {
+      return c.json(
+        { error: 'cursor is not one this search returned', code: 'INVALID_CURSOR' },
+        400,
+      )
+    }
+    const gateway = await resolveTaskGatewayForStore(store, ctx)
     const page = await gateway.searchTasks({
       taskType: q.taskType!,
       ...(q.status !== undefined ? { open: q.status === 'open' } : {}),
       ...(q.dueBefore !== undefined ? { dueBefore: q.dueBefore } : {}),
-      ...(q.cursor !== undefined ? { cursor: String(q.cursor) } : {}),
+      ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
       ...(q.limit !== undefined ? { limit: q.limit } : {}),
     })
-    logger.info('pegII tasks searched', {
+    logger.info('tasks searched', {
       tenantId,
+      store,
       taskType: q.taskType,
       count: page.items.length,
       more: page.nextCursor !== null,
@@ -686,21 +768,60 @@ pegiiRuntimeHandler.get(
       meta: {
         count: page.items.length,
         nextCursor: page.nextCursor,
+        store,
       },
     })
   },
 )
 
-// GET /tasks/:taskId — one task, desktop or cloud. An id that isn't a pegII
-// task id (e.g. the retired stub's `task_<order>_<type>`) is simply not found.
-pegiiRuntimeHandler.get('/tasks/:taskId', requirePermission(Actions.ReadTask), async (c) => {
+// GET /tasks/routing — the discoverable store (TQ-D4 guardrail 1): which store
+// each role's tasks use here, the rule for roles with no entry, and what each
+// store supports. Registered BEFORE /tasks/:taskId, which would otherwise
+// swallow it as a task id.
+pegiiRuntimeHandler.get('/tasks/routing', requirePermission(Actions.ReadTask), async (c) => {
   const tenantId = c.get('tenantId')
+  const db = c.get('db')
+  const routing = (await taskRoutingFor(db, tenantId)) ?? {}
+  return c.json({
+    data: {
+      defaultStore: 'legacy',
+      rule: 'A task with no role, or a role with no routing entry, uses the legacy store; a role routed to cloud uses the cloud store. Reads and closes by id go to the store the id belongs to.',
+      legacyConfigured: await hasLegacyTaskStore(db, tenantId),
+      roles: TASK_ROLES.map((role) => ({
+        role,
+        store: resolveTaskStore(routing, role),
+        configured: Object.prototype.hasOwnProperty.call(routing, role),
+      })),
+      stores: {
+        legacy: {
+          idFormat: 'digits (a MoveManager task id)',
+          dueDateRequired: true,
+          acceptsAssigneeCode: true,
+          rejects: [...CLOUD_ONLY_CREATE_FIELDS],
+          assignment: TASK_ASSIGNMENT_RULES.legacy,
+        },
+        cloud: {
+          idFormat: 'uuid',
+          dueDateRequired: false,
+          acceptsAssigneeCode: false,
+          rejects: ['assigneeCode'],
+          assignment: TASK_ASSIGNMENT_RULES.cloud,
+        },
+      },
+    },
+  })
+})
+
+// GET /tasks/:taskId — one task, from the store its id belongs to. An id of
+// neither shape (e.g. the retired stub's `task_<order>_<type>`) is not found.
+pegiiRuntimeHandler.get('/tasks/:taskId', requirePermission(Actions.ReadTask), async (c) => {
   const taskId = c.req.param('taskId') ?? ''
-  if (!isPegiiInt(taskId)) {
+  const store = taskStoreForId(taskId)
+  if (store === null) {
     return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404)
   }
 
-  const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+  const gateway = await resolveTaskGatewayForStore(store, taskGatewayContext(c))
   const task = await gateway.getTask(taskId)
   if (!task) {
     return c.json({ error: 'Task not found', code: 'NOT_FOUND' }, 404)
@@ -708,13 +829,15 @@ pegiiRuntimeHandler.get('/tasks/:taskId', requirePermission(Actions.ReadTask), a
   return c.json({ data: toTaskResponse(task) })
 })
 
-// POST /tasks — create a task on an order (CreateTask, billable). The site
-// writes a MoveManager user-defined (USRDEF) task the coordinator sees and
-// completes like their own, and validates the type (`Pulse Follow-Up` today),
-// title, priority and assignee — its 400s pass through with their codes.
-// `dedupKey` makes it idempotent: the same key with the same request answers
-// 200 `alreadyExists: true` (the original task; not billed), with a different
-// request 409 IDEMPOTENCY_KEY_REUSED. A new task is 201.
+// POST /tasks — create a task on an order (CreateTask, billable on both stores).
+// `role` chooses the store (no role → legacy, exactly as before). On legacy the
+// site writes a MoveManager user-defined (USRDEF) task the coordinator sees and
+// completes like their own, and validates the type, title, priority and
+// assignee — its 400s pass through with their codes. `operations` resolves to
+// the move's dispatcher on either store (D4). `dedupKey` makes it idempotent:
+// the same key with the same request answers 200 `alreadyExists: true` (the
+// original task; not billed), with a different request 409
+// IDEMPOTENCY_KEY_REUSED. A new task is 201.
 pegiiRuntimeHandler.post(
   '/tasks',
   requirePermission(Actions.CreateTask),
@@ -730,26 +853,86 @@ pegiiRuntimeHandler.post(
   async (c) => {
     const tenantId = c.get('tenantId')
     const b = c.req.valid('json')
+    const bad = unknownRole(b.role)
+    if (bad) return c.json(bad, 400)
 
-    const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
-    const result = await gateway.createTask(b.orderId, {
+    const ctx = taskGatewayContext(c)
+    const store = resolveTaskStore(await taskRoutingFor(ctx.db, tenantId), b.role)
+
+    // Guardrail 2: a field the chosen store can't honor is a loud 400, checked
+    // before any legacy read.
+    if (store === 'legacy') {
+      const sent = CLOUD_ONLY_CREATE_FIELDS.filter((f) => b[f] !== undefined)
+      if (sent.length > 0) {
+        return c.json(
+          {
+            error: `${sent.join(', ')} ${sent.length === 1 ? 'is' : 'are'} not supported on the legacy (MoveManager) store, which role ${b.role ?? '(none)'} uses`,
+            code: 'UNSUPPORTED_ON_LEGACY_STORE',
+          },
+          400,
+        )
+      }
+      if (b.dueDate === undefined) {
+        return c.json(
+          {
+            error: `dueDate is required: role ${b.role} uses the legacy (MoveManager) store`,
+            code: 'DUE_DATE_REQUIRED',
+          },
+          400,
+        )
+      }
+    } else if (b.assigneeCode !== undefined) {
+      return c.json(
+        {
+          error: `assigneeCode is a MoveManager employee code; role ${b.role} uses the cloud store, where the assignee comes from the role`,
+          code: 'UNSUPPORTED_ON_CLOUD_STORE',
+        },
+        400,
+      )
+    }
+
+    const input: TaskCreateInput = {
       taskType: b.taskType,
       title: b.title,
-      dueDate: b.dueDate,
+      ...(b.dueDate !== undefined ? { dueDate: b.dueDate } : {}),
       ...(b.description !== undefined ? { description: b.description } : {}),
       ...(b.priority !== undefined ? { priority: b.priority } : {}),
       ...(b.assigneeCode !== undefined ? { assigneeCode: b.assigneeCode } : {}),
+      ...(b.role !== undefined ? { role: b.role } : {}),
       ...(b.dedupKey !== undefined ? { idempotencyKey: b.dedupKey } : {}),
-    })
+    }
+
+    // `operations` goes to the move's dispatcher (an explicit legacy assigneeCode wins).
+    if (b.role === OPERATIONS_TASK_ROLE && b.assigneeCode === undefined) {
+      const dispatcher = await moveDispatcherFor(ctx, Number(b.orderId))
+      if (store === 'cloud') {
+        input.assignee = cloudAssigneeFrom(dispatcher)
+      } else if (dispatcher.found) {
+        input.assigneeCode = dispatcher.employeeCode
+      } else {
+        return c.json(
+          {
+            error: `Order ${b.orderId} has no dispatcher (sales.operations_id) to assign an operations task to, or there is no such order; pass assigneeCode`,
+            code: 'ASSIGNEE_UNRESOLVED',
+          },
+          409,
+        )
+      }
+    }
+
+    const gateway = await resolveTaskGatewayForStore(store, ctx)
+    const result = await gateway.createTask(b.orderId, input)
     if (!result.found) {
       return c.json({ error: `Order ${b.orderId} not found`, code: result.code }, 404)
     }
 
-    logger.info('pegII task created', {
+    logger.info('task created', {
       tenantId,
+      store,
       orderId: b.orderId,
       taskId: result.task.id,
       taskType: b.taskType,
+      role: b.role ?? null,
       alreadyExists: result.alreadyExists,
     })
     return c.json(
@@ -759,12 +942,29 @@ pegiiRuntimeHandler.post(
   },
 )
 
+/**
+ * The newest of an order's tasks of one type, for "none open": a cloud task
+ * when there is one (newest by creation), else the legacy task with the highest
+ * id (pegII ids rise with time; desktop tasks have no created time).
+ */
+function newestTask(matches: TaskRecord[]): TaskRecord | null {
+  const cloud = matches.filter((t) => t.store === 'cloud')
+  if (cloud.length > 0) {
+    return cloud.reduce((best, t) => ((t.createdAt ?? '') > (best.createdAt ?? '') ? t : best))
+  }
+  return matches.reduce<TaskRecord | null>(
+    (best, t) => (best === null || Number(t.id) > Number(best.id) ? t : best),
+    null,
+  )
+}
+
 // POST /tasks/close — close one task (CloseTask, billable), by `taskId` or by
 // `(orderId, taskType)`. Exactly one form. Idempotent: closing a closed task is
-// 200 `alreadyClosed: true` (not billed). By (order, type), the order's OPEN
-// tasks of that type decide: one → closed; two or more → 409 TASK_AMBIGUOUS
-// naming `candidateIds`, nothing closed; none open but some closed → the latest
-// as `alreadyClosed`; none at all → 404 TASK_NOT_FOUND.
+// 200 `alreadyClosed: true` (not billed). By id, the id's shape picks the store.
+// By (order, type), the order's OPEN tasks of that type in EVERY store decide:
+// one → closed; two or more → 409 TASK_AMBIGUOUS naming `candidateIds`,
+// nothing closed; none open but some closed → the newest as `alreadyClosed`;
+// none at all → 404 TASK_NOT_FOUND.
 pegiiRuntimeHandler.post(
   '/tasks/close',
   requirePermission(Actions.CloseTask),
@@ -781,24 +981,25 @@ pegiiRuntimeHandler.post(
     const tenantId = c.get('tenantId')
     const body = c.req.valid('json')
     const reason = body.reason ?? null
-    const gateway = await resolveTaskGateway(c.get('db'), tenantId, () => resolvePegiiCaller(c))
+    const ctx = taskGatewayContext(c)
 
-    let taskId: string
+    let target: { id: string; store: 'legacy' | 'cloud' }
     if (body.taskId !== undefined) {
-      if (!isPegiiInt(body.taskId)) {
+      const store = taskStoreForId(body.taskId)
+      if (store === null) {
         return c.json({ error: `Task ${body.taskId} not found`, code: 'TASK_NOT_FOUND' }, 404)
       }
-      taskId = body.taskId
+      target = { id: body.taskId, store }
     } else {
       const { orderId, taskType } = body as { orderId: string; taskType: string }
-      const all = await gateway.listOrderTasks(orderId)
+      const all = await listOrderTasksAllStores(ctx, orderId)
       if (all === null) {
         return c.json({ error: `Order ${orderId} not found`, code: 'ORDER_NOT_FOUND' }, 404)
       }
       const matches = all.filter((t) => sameTaskType(t.taskType, taskType))
       const open = matches.filter((t) => t.status === 'open')
       if (open.length > 1) {
-        const candidateIds = open.map((t) => String(t.id))
+        const candidateIds = open.map((t) => t.id)
         return c.json(
           {
             error: `Order ${orderId} has ${open.length} open ${taskType} tasks; close one by taskId`,
@@ -809,29 +1010,36 @@ pegiiRuntimeHandler.post(
         )
       }
       if (open.length === 0) {
-        // Legacy ids are pegII ints: the newest is the highest.
-        const latest = matches.reduce<TaskRecord | null>(
-          (best, t) => (best === null || Number(t.id) > Number(best.id) ? t : best),
-          null,
-        )
+        const latest = newestTask(matches)
         if (latest === null) {
           return c.json(
             { error: `No ${taskType} task on order ${orderId}`, code: 'TASK_NOT_FOUND' },
             404,
           )
         }
-        logger.info('pegII task closed', { tenantId, taskId: latest.id, alreadyClosed: true })
+        logger.info('task closed', {
+          tenantId,
+          store: latest.store,
+          taskId: latest.id,
+          alreadyClosed: true,
+        })
         return c.json({ data: { ...toTaskResponse(latest), alreadyClosed: true } })
       }
-      taskId = open[0]!.id
+      target = { id: open[0]!.id, store: open[0]!.store }
     }
 
-    const result = await gateway.closeTask(taskId, reason)
+    const gateway = await resolveTaskGatewayForStore(target.store, ctx)
+    const result = await gateway.closeTask(target.id, reason)
     if (!result) {
       // A miss is a 404, never a fabricated success; the meter skips non-2xx.
-      return c.json({ error: `Task ${taskId} not found`, code: 'TASK_NOT_FOUND' }, 404)
+      return c.json({ error: `Task ${target.id} not found`, code: 'TASK_NOT_FOUND' }, 404)
     }
-    logger.info('pegII task closed', { tenantId, taskId, alreadyClosed: result.alreadyClosed })
+    logger.info('task closed', {
+      tenantId,
+      store: target.store,
+      taskId: target.id,
+      alreadyClosed: result.alreadyClosed,
+    })
     return c.json({ data: { ...toTaskResponse(result.task), alreadyClosed: result.alreadyClosed } })
   },
 )
