@@ -1201,10 +1201,12 @@ The pegII operational surface (legacy orders + tasks + salesmen) has its own rea
 client.search_orders("plan_pack", "2026-10-20", "2026-10-20")  # ReadOrder — LIVE from sales, all pages
 client.get_order("SO-12345")         # ReadOrder — projected row {id, orderNumber, status, …}
 client.update_order("490317", {"Survey": {"SerivceStatus": "In Progress"}})  # WriteOrder — native fragment
-client.list_tasks(order_id="490317")    # ReadTask — every task on the order, MoveManager's own too
-client.list_tasks(task_type="Pulse Follow-Up", status="open", due_before=today)  # ReadTask — across orders
-client.get_task("1234567")           # ReadTask
+client.list_tasks(order_id="490317")    # ReadTask — every task on the order, both stores, MoveManager's own too
+client.list_tasks(task_type="Pulse Follow-Up", status="open", due_before=today)  # ReadTask — across orders, one store
+client.get_task("1234567")           # ReadTask — digits = legacy, a UUID = cloud
+client.get_task_routing()            # ReadTask — which store each role's tasks use here
 client.create_task("490317", "Pulse Follow-Up", "Call back", due_date=today, dedup_key="pulse-490317-2026-10-16")  # CreateTask
+client.create_task("490317", "Confirm Actuals", "Confirm actuals with PVO", role="operations", dedup_key="actuals-490317")  # → the move's dispatcher
 client.close_task(task_id="1234567", reason="Customer replied")  # CloseTask — or order_id= + task_type=
 client.add_order_memo("490317", 4, "Pulse reply", "Crew was great", dedup_key="pulse-reply-4455")  # WriteOrderMemo
 client.list_memo_types()             # ReadOrder — {company, items: [{code, label}]}, the labels are the company's
@@ -1212,46 +1214,79 @@ client.list_salesmen(active="true")  # ReadSalesman — the whole directory, liv
 client.get_salesman("213056")        # ReadSalesman — {id, name, email, branch, active, …}
 ```
 
-#### Tasks (real since 0.52.0)
+#### Tasks (real since 0.52.0; two stores since 0.68.0)
 
-Tasks are the coordinator's task list on an order in MoveManager. Every call
-reaches the tenant's pegII site, which must advertise `pegii.tasks.v1` (else 503
-`PEGII_CAPABILITY_MISSING`).
+Tasks live in one of two **stores**, and every task says which (`store`):
 
-- **Ids are pegII's own**, one per task (strings, e.g. `"1234567"`). Two tasks of
-  the same type on one order have different ids.
-- **`create_task`** puts a MoveManager user-defined task on the order. The
-  coordinator sees it like one they added: they can edit and complete it there,
-  and MoveManager never re-dates it. Its grid text is the title, uppercased and
-  cut to 50; the full title is kept.
-  - `task_type` must be one the site lets the cloud create. Today that is only
-    `"Pulse Follow-Up"`; anything else is 400 `UNKNOWN_TASK_TYPE`.
-  - `due_date` is **required**.
+| `store`    | What it is                                   | Ids                      |
+| ---------- | -------------------------------------------- | ------------------------ |
+| `"legacy"` | The order's task list in MoveManager (pegII) | digits, e.g. `"1234567"` |
+| `"cloud"`  | The platform's own task store                | UUIDs                    |
+
+Legacy calls reach the tenant's pegII site, which must advertise `pegii.tasks.v1`
+(else 503 `PEGII_CAPABILITY_MISSING`).
+
+**Which store?** A create's `role` (the task's owner) chooses, per tenant:
+
+- no `role`, or a role with no routing entry → **legacy**, exactly as before 0.68.0;
+- a role the tenant routed to `"cloud"` → **cloud**.
+
+`get_task_routing()` lists every valid role (`operations` plus the platform's role
+groups, e.g. `coordinator`, `driver`), which store each uses here, and what each
+store supports. A tenant moves a role to the cloud by changing its routing, so
+**your workflow code never changes at a switchover**. Reads and closes by id go to
+the store the id belongs to.
+
+- **`create_task`** (billable on both stores).
+  - On legacy it puts a MoveManager user-defined task on the order. The
+    coordinator sees it like one they added: they can edit and complete it there,
+    and MoveManager never re-dates it. Its grid text is the title, uppercased and
+    cut to 50; the full title is kept. `task_type` must be one the site lets the
+    cloud create: today only `"Pulse Follow-Up"`; anything else is 400
+    `UNKNOWN_TASK_TYPE`.
+  - `due_date` is **required on legacy** (no role and no `due_date` is a
+    `ValueError`; a role routed to legacy is 400 `DUE_DATE_REQUIRED`) and optional
+    on cloud.
   - `priority` is `low` / `normal` / `high`.
-  - `assignee_code` is a MoveManager employee code; it defaults to the order's coordinator.
+  - `assignee_code` is a MoveManager employee code, **legacy only** (default: the
+    order's coordinator). On a cloud-routed role it is 400 `UNSUPPORTED_ON_CLOUD_STORE`.
+  - **`role="operations"` goes to the move's dispatcher**
+    (`sales.operations_id`):
+    - legacy: the dispatcher becomes the `assignee_code` (unless you pass one); an
+      order with no dispatcher is 409 `ASSIGNEE_UNRESOLVED`, so pass `assignee_code`;
+    - cloud: assigned to the dispatcher's linked Pegasus user; with none it is still
+      created, unassigned, and `assigneeUnresolved` says why (`NO_DISPATCHER` or
+      `DISPATCHER_NOT_LINKED`);
+    - 503 `DISPATCHER_UNAVAILABLE` when the dispatcher couldn't be read.
+  - An unknown role is 400 `UNKNOWN_ROLE`, naming the valid ones.
   - **Pass a `dedup_key`.** The same key with the same request returns the original task
     with `alreadyExists: True` and isn't billed. The same key with a different request is
     409 `IDEMPOTENCY_KEY_REUSED`.
-- **`close_task`** completes **any** task, the way a coordinator does. It takes
-  `task_id=` or `order_id=` + `task_type=`, exactly one of the two (else
-  `ValueError`).
-  - By type, the order's open tasks of that type decide:
+- **`close_task`** completes **any** task in either store (on legacy, the way a
+  coordinator does). It takes `task_id=` or `order_id=` + `task_type=`, exactly one of
+  the two (else `ValueError`).
+  - By type, the order's open tasks of that type **in both stores** decide:
     - exactly one → closed;
-    - two or more → `TaskAmbiguous` (409, `candidate_ids`), nothing closed;
-    - none open but some closed → the latest, with `alreadyClosed: True`;
+    - two or more → `TaskAmbiguous` (409, `candidate_ids`, ids of either store), nothing closed;
+    - none open but some closed → the newest (a cloud one first), with `alreadyClosed: True`;
     - none at all → 404 `TASK_NOT_FOUND`.
-  - `reason` is appended to the task's note in MoveManager as `Closed by Pegasus: …`.
+  - On legacy, `reason` is appended to the task's note in MoveManager as `Closed by Pegasus: …`.
   - A repeat close, a 404 and a 409 are never billed.
+- **Every task row** carries `store`, `role` (the owner; `None` on legacy) and
+  `assigneeUnresolved` (`None` unless a cloud `operations` task found no dispatcher).
 - **Reads cover MoveManager's own tasks too.** A desktop task reports:
   - its legacy code (e.g. `PACK`) as `taskType`;
   - its grid text as `title`;
   - `priority: None`.
 
-  `createdAt` is set only for a task the cloud created. `closedAt` (UTC) is set only for a
-  close made through the API. `completedAt` is the site-local time of any completion.
+  For a legacy task, `createdAt` is set only when the cloud created it, `closedAt` (UTC)
+  only for a close made through the API, and `completedAt` is the site-local time of
+  any completion.
 
-- `list_tasks(task_type=...)` without `order_id` searches **cloud-created** tasks of
-  that type across orders, following every page.
+- `list_tasks(order_id)` lists the order's tasks from **both** stores, legacy first.
+- `list_tasks(task_type=..., role=None)` without `order_id` searches **one** store
+  across orders, the one `role` routes to, following every page. Legacy returns only
+  cloud-created tasks. `role` with `order_id` is a `ValueError`.
 - `list_tasks` needs `order_id` or `task_type`.
 - An unknown order is 404 `ORDER_NOT_FOUND`. An order with no tasks is `[]`.
 

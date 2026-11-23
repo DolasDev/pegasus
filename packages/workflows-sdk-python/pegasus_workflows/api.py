@@ -3451,15 +3451,19 @@ class PegasusClient:
         native = self.get_order(order_id, shape="native")
         return self.map_from_external(integration_id, native)
 
-    # Tasks are the unit of human work in the moving-ops flow: the coordinator's
-    # task list on an order in MoveManager (pegII). A workflow reads them, puts a
-    # follow-up on a coordinator's list, and closes them out. Reads are gated by
-    # ``ReadTask``, ``create_task`` by ``CreateTask``, ``close_task`` by
+    # Tasks are the unit of human work in the moving-ops flow. A workflow reads
+    # them, puts a follow-up on someone's list, and closes them out. Reads are
+    # gated by ``ReadTask``, ``create_task`` by ``CreateTask``, ``close_task`` by
     # ``CloseTask`` — declared in the workflow manifest ``required_actions``.
     #
-    # Real since 0.52.0 (NW pulse Phase 6): every call reaches the tenant's pegII
-    # site, which must advertise ``pegii.tasks.v1`` (else 503
-    # ``PEGII_CAPABILITY_MISSING``). A task id is pegII's own, one per task.
+    # Two stores, one API (0.68.0). Every task says which (``store``):
+    #   * ``"legacy"`` — the order's task list in MoveManager (pegII). Ids are
+    #     digits. Needs the site to advertise ``pegii.tasks.v1`` (else 503
+    #     ``PEGII_CAPABILITY_MISSING``).
+    #   * ``"cloud"`` — the platform's own task store. Ids are UUIDs.
+    # A create's ``role`` (the owner) chooses the store, per tenant:
+    # get_task_routing() says which store each role uses and what each supports.
+    # No role, or a role with no routing entry, is legacy — exactly as before.
 
     def list_tasks(
         self,
@@ -3468,19 +3472,23 @@ class PegasusClient:
         task_type: str | None = None,
         status: str | None = None,
         due_before: str | _dt.date | None = None,
+        role: str | None = None,
         max_results: int = 1000,
         **params: Any,
     ) -> list[dict[str, Any]]:
-        """List pegII tasks: an order's, or one type across orders. Requires ``ReadTask``.
+        """List tasks: an order's, or one type across orders. Requires ``ReadTask``.
 
         Two modes:
 
-        * ``order_id`` given — **every** task on that order, MoveManager's own
-          and the cloud's, in one response. ``task_type``/``status``/
+        * ``order_id`` given — **every** task on that order, from **both**
+          stores (MoveManager's own, the ones the cloud created there, then
+          cloud-store tasks), in one response. ``task_type``/``status``/
           ``due_before`` filter it.
-        * ``task_type`` only — tasks the cloud created of that type across all
-          orders (the daily check's "open Pulse Follow-Ups due before today").
-          Pages are followed until the last one.
+        * ``task_type`` only — tasks of that type across all orders, from
+          **one** store: the one ``role`` routes to (no role: legacy, which
+          returns only tasks the cloud created). This is the daily check's
+          "open Pulse Follow-Ups due before today". Pages are followed until
+          the last one.
 
         Args:
             order_id: The order (pegII order number, digits).
@@ -3489,6 +3497,9 @@ class PegasusClient:
             status: ``"open"`` or ``"closed"`` (omit for both).
             due_before: Only tasks due strictly before this day (a ``date`` or
                 ``"YYYY-MM-DD"``). Tasks with no due date never match.
+            role: Cross-order mode only: search the store this role's tasks
+                use (see :meth:`get_task_routing`). Not allowed with ``order_id``,
+                whose list already spans both stores.
             max_results: Safety cap for the cross-order mode. More matches raise
                 ``ValueError`` rather than silently truncating.
             **params: Extra query params, passed through.
@@ -3501,25 +3512,39 @@ class PegasusClient:
                  reason,                        # the close reason given through the API
                  createdByApi, active,
                  completedAt, completedBy, actualDate,
-                 createdAt, closedAt}
+                 createdAt, closedAt,
+                 store,                         # "legacy" | "cloud"
+                 role,                          # the owner; None on legacy
+                 assigneeUnresolved}            # None | "NO_DISPATCHER" | "DISPATCHER_NOT_LINKED"
 
-            ``id``/``orderId`` are strings. A MoveManager task reports its
-            legacy code as ``taskType`` (e.g. ``"PACK"``), its grid text as
-            ``title``, and ``priority: None``. ``createdAt`` is set only for a task
-            the cloud created; ``closedAt`` (UTC) only for a close made through
-            the API; ``completedAt`` is the site-local time MoveManager stamps on
-            any completion. An order with no tasks is ``[]``.
+            ``id``/``orderId`` are strings; a legacy id is digits, a cloud id a
+            UUID. A MoveManager task reports its legacy code as ``taskType``
+            (e.g. ``"PACK"``), its grid text as ``title``, and ``priority: None``.
+            For a legacy task ``createdAt`` is set only when the cloud created
+            it, ``closedAt`` (UTC) only for a close made through the API, and
+            ``completedAt`` is the site-local time MoveManager stamps on any
+            completion. ``assigneeCode`` on a cloud task is the employee it was
+            assigned from (an ``operations`` task's dispatcher). An order with
+            no tasks is ``[]``.
 
         Raises:
-            ValueError: When neither ``order_id`` nor ``task_type`` is given
-                (before any request), or past ``max_results``.
-            PegasusApiError: On 400, 403 (manifest lacks ``ReadTask``), 404
-                ``ORDER_NOT_FOUND``, 503 ``PEGII_CAPABILITY_MISSING``, or any
-                other non-2xx.
+            ValueError: When neither ``order_id`` nor ``task_type`` is given, or
+                ``role`` comes with ``order_id`` (before any request), or past
+                ``max_results``.
+            PegasusApiError: On 400 (``UNKNOWN_ROLE``, ``INVALID_CURSOR``, …),
+                403 (manifest lacks ``ReadTask``), 404 ``ORDER_NOT_FOUND``, 503
+                ``PEGII_CAPABILITY_MISSING``, or any other non-2xx.
         """
         if order_id is None and task_type is None:
             raise ValueError("list_tasks needs order_id, or task_type to search across orders")
+        if order_id is not None and role is not None:
+            raise ValueError(
+                "list_tasks: role chooses the store for the cross-order search; "
+                "an order's tasks already come from every store"
+            )
         query: dict[str, Any] = dict(params)
+        if role is not None:
+            query["role"] = role
         if task_type is not None:
             query["taskType"] = task_type
         if status is not None:
@@ -3546,7 +3571,10 @@ class PegasusClient:
             query["cursor"] = next_cursor
 
     def get_task(self, task_id: str | int) -> dict[str, Any]:
-        """Fetch a single pegII task by id. Requires ``ReadTask``.
+        """Fetch a single task by id. Requires ``ReadTask``.
+
+        The id names its store: digits are a legacy (MoveManager) task, a UUID
+        a cloud task.
 
         Returns:
             The task row, same shape as :meth:`list_tasks`.
@@ -3557,37 +3585,84 @@ class PegasusClient:
         """
         return self._get_json(f"/api/v1/pegii/tasks/{task_id}")["data"]
 
+    def get_task_routing(self) -> dict[str, Any]:
+        """Which store each role's tasks use for this tenant. Requires ``ReadTask``.
+
+        Ask before relying on a store's behaviour: routing is per tenant and
+        changes when a role switches over to the cloud store, with no change
+        to your workflow code.
+
+        Returns:
+            ::
+
+                {defaultStore: "legacy",
+                 rule,                    # how a create picks its store, in words
+                 legacyConfigured,        # does the tenant have a MoveManager site at all
+                 roles: [{role, store, configured}],   # every valid role
+                 stores: {
+                   legacy: {idFormat, dueDateRequired: True, acceptsAssigneeCode: True,
+                            rejects, assignment},
+                   cloud:  {idFormat: "uuid", dueDateRequired: False,
+                            acceptsAssigneeCode: False, rejects: ["assigneeCode"],
+                            assignment}}}
+
+            ``roles`` lists ``operations`` (resolved per order to the move's
+            dispatcher) and the platform's role groups (``coordinator``,
+            ``driver``, …). ``assignment`` says, per store, how each role's
+            assignee is chosen.
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``ReadTask``) or any other non-2xx.
+        """
+        return self._get_json("/api/v1/pegii/tasks/routing")["data"]
+
     def create_task(
         self,
         order_id: str,
         task_type: str,
         title: str,
         *,
-        due_date: str | _dt.date,
+        due_date: str | _dt.date | None = None,
         description: str | None = None,
         priority: str | None = None,
         assignee_code: int | None = None,
+        role: str | None = None,
         dedup_key: str | None = None,
     ) -> dict[str, Any]:
-        """Put a task on an order's MoveManager task list. Requires ``CreateTask``. Billable.
+        """Put a task on an order. Requires ``CreateTask``. Billable on both stores.
 
-        The coordinator sees it on the order like a task they added themselves
-        (a MoveManager user-defined task): they can edit and complete it there,
-        and MoveManager never re-dates it. The task list's grid shows the title
-        uppercased and cut to 50 characters; the full title is kept and returned.
+        ``role`` (the owner) chooses the store, per tenant (see
+        :meth:`get_task_routing`). With no role, or a role with no routing
+        entry, it goes on the order's MoveManager task list, exactly as before:
+        the coordinator sees it like a task they added themselves (a
+        MoveManager user-defined task), can edit and complete it there, and
+        MoveManager never re-dates it. The grid shows the title uppercased and
+        cut to 50 characters; the full title is kept and returned. A role
+        routed to ``"cloud"`` creates it in the platform's task store instead.
+
+        ``role="operations"`` goes to the **move's dispatcher**: on legacy as
+        the ``assignee_code`` (unless you pass one), on cloud to the
+        dispatcher's linked Pegasus user. A cloud task whose dispatcher can't
+        be found is still created, unassigned, with ``assigneeUnresolved``
+        saying why.
 
         Args:
             order_id: The order (pegII order number, digits).
-            task_type: A type the site lets the cloud create — today only
-                ``"Pulse Follow-Up"``. Anything else is a 400 ``UNKNOWN_TASK_TYPE``.
+            task_type: On legacy, a type the site lets the cloud create — today
+                only ``"Pulse Follow-Up"`` (anything else is a 400
+                ``UNKNOWN_TASK_TYPE``). Free text on cloud.
             title: Up to 200 characters.
-            due_date: Required — a ``date`` or ``"YYYY-MM-DD"`` (a ``datetime``'s
-                time is dropped). A task with no due date would never show up in
-                a "due before" check.
+            due_date: A ``date`` or ``"YYYY-MM-DD"`` (a ``datetime``'s time is
+                dropped). **Required on legacy** — a task with no due date would
+                never show up in a "due before" check; optional on cloud.
             description: Optional note, up to 1000 characters.
             priority: ``"low"``, ``"normal"`` (the default) or ``"high"``.
-            assignee_code: A MoveManager employee code; defaults to the order's
-                coordinator.
+            assignee_code: A MoveManager employee code. Legacy only (defaults to
+                the order's coordinator, or the dispatcher for ``operations``);
+                on a cloud-routed role it is a 400 ``UNSUPPORTED_ON_CLOUD_STORE``.
+            role: The owner, which chooses the store: ``"operations"`` (the
+                move's dispatcher) or a role group such as ``"coordinator"``.
+                :meth:`get_task_routing` lists the valid ones.
             dedup_key: Makes the create idempotent (up to 190 characters). The
                 same key with the same request returns the original task with
                 ``alreadyExists: True`` — not billed; the same key with a
@@ -3595,29 +3670,45 @@ class PegasusClient:
                 per logical follow-up, e.g. ``f"pulse-{order_id}-{day}"``.
 
         Returns:
-            The task row (see :meth:`list_tasks`) plus ``alreadyExists``.
+            The task row (see :meth:`list_tasks`, including ``store``) plus
+            ``alreadyExists``.
 
         Raises:
-            ValueError: On a ``priority`` outside the vocabulary (before any request).
-            PegasusApiError: On 400 (``VALIDATION_ERROR``, ``UNKNOWN_TASK_TYPE``,
-                ``UNKNOWN_ASSIGNEE``, …); 403 (manifest lacks ``CreateTask``); 404
-                ``ORDER_NOT_FOUND``; 409 ``IDEMPOTENCY_KEY_REUSED`` or
-                ``IDEMPOTENT_TASK_DELETED`` (the key's task was deleted in
-                MoveManager); 503 ``PEGII_CAPABILITY_MISSING``; or any other
-                non-2xx. Under ``--dry-run`` and ``pegasus_workflows.testing`` the
-                create is captured, not sent.
+            ValueError: On a ``priority`` outside the vocabulary, or no
+                ``due_date`` and no ``role`` (a role-less task is legacy, which
+                needs one) — before any request.
+            PegasusApiError: On 400 (``VALIDATION_ERROR``, ``UNKNOWN_ROLE``,
+                ``DUE_DATE_REQUIRED`` — the role routes to legacy,
+                ``UNSUPPORTED_ON_CLOUD_STORE``, ``UNSUPPORTED_ON_LEGACY_STORE``,
+                ``UNKNOWN_TASK_TYPE``, ``UNKNOWN_ASSIGNEE``, …); 403 (manifest
+                lacks ``CreateTask``); 404 ``ORDER_NOT_FOUND``; 409
+                ``IDEMPOTENCY_KEY_REUSED``, ``IDEMPOTENT_TASK_DELETED`` (the key's
+                task was deleted in MoveManager) or ``ASSIGNEE_UNRESOLVED`` (a
+                legacy ``operations`` task on an order with no dispatcher — pass
+                ``assignee_code``); 503 ``PEGII_CAPABILITY_MISSING`` or
+                ``DISPATCHER_UNAVAILABLE``; or any other non-2xx. Under
+                ``--dry-run`` and ``pegasus_workflows.testing`` the create is
+                captured, not sent.
         """
         if priority is not None and priority not in TASK_PRIORITIES:
             raise ValueError(
                 f"priority must be one of {', '.join(TASK_PRIORITIES)}; got {priority!r}"
             )
-        due = _iso_day(due_date)
+        if due_date is None and role is None:
+            raise ValueError(
+                "create_task needs due_date: a task with no role goes on the MoveManager "
+                "(legacy) task list, which requires one"
+            )
+        due = _iso_day(due_date) if due_date is not None else None
         payload: dict[str, Any] = {
             "orderId": order_id,
             "taskType": task_type,
             "title": title,
-            "dueDate": due,
         }
+        if due is not None:
+            payload["dueDate"] = due
+        if role is not None:
+            payload["role"] = role
         if description is not None:
             payload["description"] = description
         if priority is not None:
@@ -3637,6 +3728,7 @@ class PegasusClient:
                 "description": description,
                 "priority": priority,
                 "assignee_code": assignee_code,
+                "role": role,
                 "dedup_key": dedup_key,
             },
             {
@@ -3649,6 +3741,9 @@ class PegasusClient:
                 "dueDate": due,
                 "status": "open",
                 "createdByApi": True,
+                # Which store is decided server-side by the tenant's routing.
+                "store": None,
+                "role": role,
                 "alreadyExists": False,
                 "dryRun": True,
             },
@@ -3670,15 +3765,17 @@ class PegasusClient:
     ) -> dict[str, Any]:
         """Complete a task. Requires ``CloseTask``. Billable.
 
-        Closes **any** task — one the cloud created or one a coordinator added —
-        the way a coordinator completes it in MoveManager. Name it one of two ways:
+        Closes **any** task in either store — on legacy, one the cloud created
+        or one a coordinator added, the way a coordinator completes it in
+        MoveManager. Name it one of two ways:
 
         * ``task_id`` — the task's id (from :meth:`create_task` or
-          :meth:`list_tasks`). Preferred.
-        * ``order_id`` + ``task_type`` — the order's one OPEN task of that type.
-          Two or more open matches raise :class:`TaskAmbiguous` naming them and
-          close nothing; none open but some already closed returns the latest
-          with ``alreadyClosed: True``; none at all is a 404.
+          :meth:`list_tasks`); its shape names the store. Preferred.
+        * ``order_id`` + ``task_type`` — the order's one OPEN task of that type,
+          looked for in **both** stores. Two or more open matches (in either
+          or both) raise :class:`TaskAmbiguous` naming them and close nothing;
+          none open but some already closed returns the newest (a cloud one
+          first) with ``alreadyClosed: True``; none at all is a 404.
 
         **Idempotent**: closing a closed task is a success with
         ``alreadyClosed: True`` (not billed), so an activity can retry safely.
@@ -3687,8 +3784,9 @@ class PegasusClient:
             task_id: The task's id.
             order_id: The order, with ``task_type``.
             task_type: The type, e.g. ``"Pulse Follow-Up"`` (case-insensitive).
-            reason: Optional, up to 1000 characters. Kept with the task and
-                appended to its note in MoveManager as ``Closed by Pegasus: …``.
+            reason: Optional, up to 1000 characters. Kept with the task; on
+                legacy also appended to its note in MoveManager as
+                ``Closed by Pegasus: …``.
 
         Returns:
             The task row (``status == "closed"``) plus ``alreadyClosed``.

@@ -324,32 +324,52 @@ current values is free. No order-saved event fires. NW's database already sets
 these two fields itself, from its own Weichert integration, so don't write them
 there until that integration has moved to the platform.
 
-## pegII tasks (create / read / close)
+## Tasks (create / read / close) — two stores, one API
 
-Tasks are the coordinator's task list on an order in MoveManager. Every call
-reaches the site, which must advertise ``pegii.tasks.v1`` (else 503
-``PEGII_CAPABILITY_MISSING``). Ids are pegII's own, one per task.
+Every task says which store holds it (``store``):
 
-- ``create_task(order_id, task_type, title, *, due_date, description=None,
-  priority=None, assignee_code=None, dedup_key=None)`` (``CreateTask``, billable)
-  adds a MoveManager user-defined task that the coordinator completes like their own.
-  - ``task_type`` must be one the site registers: today only ``"Pulse Follow-Up"``.
-  - ``due_date`` is required.
+- ``"legacy"`` = the order's task list in MoveManager. Ids are digits. Needs the site
+  to advertise ``pegii.tasks.v1`` (else 503 ``PEGII_CAPABILITY_MISSING``).
+- ``"cloud"`` = the platform's task store. Ids are UUIDs.
+
+A create's ``role`` (the owner) picks the store, per tenant. ``get_task_routing()``
+(``ReadTask``) lists every valid role, which store it uses here, and what each store
+supports. No role, or a role with no routing entry, is legacy, exactly as before.
+Routing changes when a tenant switches a role over; your workflow code doesn't.
+
+- ``create_task(order_id, task_type, title, *, due_date=None, description=None,
+  priority=None, assignee_code=None, role=None, dedup_key=None)`` (``CreateTask``,
+  billable on both stores).
+  - On legacy it adds a MoveManager user-defined task that the coordinator completes
+    like their own. ``task_type`` must be one the site registers: today only
+    ``"Pulse Follow-Up"``. ``due_date`` is REQUIRED on legacy (no role and no
+    ``due_date``: ``ValueError``; a legacy-routed role: 400 ``DUE_DATE_REQUIRED``).
+  - ``role="operations"`` goes to the MOVE'S DISPATCHER: on legacy as the
+    ``assignee_code`` (no dispatcher: 409 ``ASSIGNEE_UNRESOLVED``, so pass
+    ``assignee_code``); on cloud to the dispatcher's linked user (none: created
+    unassigned, ``assigneeUnresolved`` = ``NO_DISPATCHER`` | ``DISPATCHER_NOT_LINKED``).
+    503 ``DISPATCHER_UNAVAILABLE`` when the dispatcher could not be read.
+  - ``assignee_code`` is legacy-only: on a cloud-routed role it is 400
+    ``UNSUPPORTED_ON_CLOUD_STORE``. An unknown role is 400 ``UNKNOWN_ROLE``.
   - ALWAYS pass a ``dedup_key``. A replay returns ``alreadyExists: True`` and is
     free; a different request under the same key is 409 ``IDEMPOTENCY_KEY_REUSED``.
 - ``close_task(task_id=...)`` or ``close_task(order_id=..., task_type=...)``
-  (``CloseTask``, billable) takes exactly one form, else ``ValueError``. It closes
-  ANY task. By type:
-  - two or more OPEN matches raise ``TaskAmbiguous`` (409, ``candidate_ids``),
-    and nothing is closed;
-  - none open but some closed returns the latest with ``alreadyClosed: True``;
+  (``CloseTask``, billable) takes exactly one form, else ``ValueError``. A
+  ``task_id``'s shape names its store. By type it looks in BOTH stores:
+  - two or more OPEN matches raise ``TaskAmbiguous`` (409, ``candidate_ids``, ids of
+    either store), and nothing is closed;
+  - none open but some closed returns the newest (a cloud one first) with
+    ``alreadyClosed: True``;
   - none at all is 404 ``TASK_NOT_FOUND``.
 
-  ``reason`` lands in the task note as ``Closed by Pegasus: …``.
-- ``list_tasks(order_id)`` returns EVERY task on the order (MoveManager's own too).
-  A desktop task reports its legacy code as ``taskType`` and ``priority: None``.
-  ``list_tasks(task_type=..., status="open", due_before=day)`` searches cloud-created
-  tasks across orders (all pages). One of ``order_id`` / ``task_type`` is required.
+  On legacy, ``reason`` lands in the task note as ``Closed by Pegasus: …``.
+- ``list_tasks(order_id)`` returns EVERY task on the order from both stores
+  (MoveManager's own too). A desktop task reports its legacy code as ``taskType``
+  and ``priority: None``. ``list_tasks(task_type=..., status="open",
+  due_before=day, role=None)`` searches one store across orders (all pages): the one
+  ``role`` routes to; legacy returns only cloud-created tasks. One of ``order_id`` /
+  ``task_type`` is required; ``role`` with ``order_id`` is a ``ValueError``.
+- ``get_task(task_id)`` reads one task from the store its id names.
 
 ## pegII order memos and text-message links
 

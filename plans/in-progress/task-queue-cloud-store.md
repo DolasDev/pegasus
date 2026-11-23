@@ -97,7 +97,16 @@ The parent plan suggested 3a = tables + gateway, with every SDK change in 3c. Th
 - [x] **6. OpenAPI** (`lib/openapi-spec.ts`): `role`, `store`, the new errors, `/tasks/routing`. Done 2026-11-23.
   - `TASK_SHAPE` gains `store`, `role` and `assigneeUnresolved`; a shared `TASK_STORES_NOTE` is used on every task route.
   - New `getPegiiTaskRouting`; create no longer requires `dueDate` in the schema; all the new error codes are listed.
-- [ ] **7. SDK** (next free version, 0.68.0 if still free — re-check `origin/main` at landing):
+- [x] **7. SDK** (next free version, 0.68.0 if still free — re-check `origin/main` at landing): Done 2026-11-23 as **0.68.0**. `origin/main` was merged in first: it had moved to 0.67.1 (#983).
+  - **`create_task(role=)`:** `due_date` is optional in the signature. No role and no `due_date` → `ValueError` before any request.
+  - **Dry run:** the captured result has `store: None`, because the tenant's routing decides the store server-side.
+  - **`list_tasks(role=)`:** cross-order search only; `role` with `order_id` → `ValueError`.
+  - **`get_task_routing()`** is classified as a READ in `testing._READS`.
+  - **Parity matrix** gains a role-routed create.
+  - **Docs:** the README "Tasks" section is rewritten for two stores; the MCP section is "Tasks — two stores, one API"; the CHANGELOG has a 0.68.0 entry.
+  - **CLI:** no task-specific `--help` exists. The MCP api-reference introspects public methods, so it picks up `get_task_routing` without changes.
+  - **Format:** `ruff format --check` flags `tests/test_api.py` and `cli/mcp_server.py` on `origin/main` too, so I didn't reformat them.
+  - **After merge:** tag `sdk-python-v0.68.0` on the merge commit, then update `~/repos/pegasus-workflows/CLAUDE.md` and its pin.
   - `create_task(..., role=None)`; `due_date` becomes optional in the signature (the server enforces it for legacy).
   - `list_tasks(..., role=None)` for the cross-order search.
   - `get_task_routing()`.

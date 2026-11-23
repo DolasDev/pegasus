@@ -330,6 +330,13 @@ _MUTATION_CALLS = [
         priority="high",
         dedup_key="pulse-490317-2026-10-16",
     ),
+    lambda c: c.create_task(
+        "490317",
+        "Confirm Actuals",
+        "Confirm actuals with PVO",
+        role="operations",
+        dedup_key="actuals-490317",
+    ),
     lambda c: c.update_order("S-1", {"Survey": {"SerivceStatus": "In Progress"}}),
     lambda c: c.add_order_memo(
         "490317",
