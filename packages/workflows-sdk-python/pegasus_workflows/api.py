@@ -21,9 +21,9 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote as _urlquote
 
 import httpx
-from urllib.parse import quote as _urlquote
 
 __all__ = [
     "PegasusApiError",
