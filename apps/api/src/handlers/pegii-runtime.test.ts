@@ -779,6 +779,8 @@ describe('GET /pegii/tasks', () => {
       limit: 1,
     })
     expect((await json(res))['meta']).toEqual({ count: 1, nextCursor: '77', store: 'legacy' })
+    // A role-less search never reads the tenant's routing (the pre-3a path).
+    expect(taskRoutingFor).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -1335,6 +1337,7 @@ describe('POST /pegii/tasks — routing by role', () => {
     expect(res.status).toBe(201)
     expect(cloud.createTask).not.toHaveBeenCalled()
     expect(moveDispatcherFor).not.toHaveBeenCalled()
+    expect(taskRoutingFor).not.toHaveBeenCalled()
     expect((await json(res))['data']).toMatchObject({ store: 'legacy', role: null })
   })
 

@@ -741,7 +741,11 @@ pegiiRuntimeHandler.get(
 
     const bad = unknownRole(q.role)
     if (bad) return c.json(bad, 400)
-    const store = resolveTaskStore(await taskRoutingFor(ctx.db, tenantId), q.role)
+    // A role-less search is legacy without reading routing (the pre-3a path, unchanged).
+    const store =
+      q.role === undefined
+        ? 'legacy'
+        : resolveTaskStore(await taskRoutingFor(ctx.db, tenantId), q.role)
     if (store === 'legacy' && q.cursor !== undefined && !/^\d{1,10}$/.test(q.cursor)) {
       return c.json(
         { error: 'cursor is not one this search returned', code: 'INVALID_CURSOR' },
@@ -857,7 +861,11 @@ pegiiRuntimeHandler.post(
     if (bad) return c.json(bad, 400)
 
     const ctx = taskGatewayContext(c)
-    const store = resolveTaskStore(await taskRoutingFor(ctx.db, tenantId), b.role)
+    // A role-less create is legacy without reading routing: Pulse's path is exactly as before 3a.
+    const store =
+      b.role === undefined
+        ? 'legacy'
+        : resolveTaskStore(await taskRoutingFor(ctx.db, tenantId), b.role)
 
     // Guardrail 2: a field the chosen store can't honor is a loud 400, checked
     // before any legacy read.

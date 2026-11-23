@@ -2,7 +2,12 @@
 
 **Branch:** `feat/task-queue-cloud-store` (worktree `../pegasus-task-queue-cloud-store`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D3, TQ-D4). Phases 1, 2a and 2b shipped (#969, #971, #975).
-**Status:** drafted 2026-11-19; step 1 in progress 2026-11-20. Steve's answers (2026-11-19/20): D1 revised (OPS → the move's dispatcher), D3 = an unconfigured role falls back to **legacy** (the desktop), and Blocked notifies the move's dispatcher (step 4b). Remaining D-decisions can still be vetoed.
+**Status:** DONE 2026-11-23. All steps built and the full gate is green; landing as one PR. Steve's answers (2026-11-19/20):
+
+- D1 revised: OPS → the move's dispatcher.
+- D3: an unconfigured role falls back to **legacy** (the desktop).
+- Blocked notifies the move's dispatcher (step 4b).
+- Cloud tasks are billable.
 
 ## Phase 3 split (re-cut 2026-11-19)
 
@@ -15,11 +20,19 @@ The parent plan suggested 3a = tables + gateway, with every SDK change in 3c. Th
 
 ## Resume here
 
-- Status: not started.
-- **Deploy is a prod no-op by design:** no tenant has a routing entry, and a role-less create behaves exactly as today (Pulse is live at NW).
-- **After merge:** tag `sdk-python-v<ver>` on the merge commit (verify `git merge-base --is-ancestor` first); update `~/repos/pegasus-workflows/CLAUDE.md` (`role=`, `store`, `get_task_routing`) and bump its pin.
+- **Status:** built; landing as one PR.
+- **What changes in prod on deploy.** No tenant has a routing entry, so nothing goes to the cloud store until an admin sets `operations.taskRouting`. Even so, these change at once:
+  - **Blocked recipients (step 4b):** a driver's Blocked task now notifies the move's dispatcher. It falls back to the operations roles when there's no dispatcher, the dispatcher is unlinked or is the driver, or the lookup fails. The block costs one extra legacy read (`sales.operations_id`).
+  - **Order task list for a tenant with no pegII peer:** `GET /tasks?orderId=` returns 200 `[]` (cloud tasks only) where it used to be 503. Close-by-type returns 404 `TASK_NOT_FOUND` where it used to be 503. Tenants with a peer are unchanged.
+  - **Every task response** gains `store`, `role` and `assigneeUnresolved`. The cross-order search's `meta` gains `store`.
+  - **A legacy search with a non-numeric `cursor`** returns 400 `INVALID_CURSOR` (it was a coerce `VALIDATION_ERROR`).
+  - **Role-less creates and searches** never read routing, so Pulse's request path is otherwise unchanged.
+- **After merge:**
+  - Tag `sdk-python-v0.68.0` on the merge commit (check `git merge-base --is-ancestor` first).
+  - Update `~/repos/pegasus-workflows/CLAUDE.md` (`role=`, `store`, `get_task_routing`) and bump its pin.
+  - Ship a mobile build: the Blocked copy now names the dispatcher.
 
-## Decisions (made while drafting — veto here)
+## Decisions (made while drafting; Steve's answers folded in)
 
 1. **Role noun (revised after Steve's answer, 2026-11-19):**
    - **`operations` (OPS) is a task owner that resolves per move.** **Steve:** "OPS tasks should go to the user that is the dispatcher on the move." The move's dispatcher is `sales.operations_id`, a salesman code: the column the trip save cascades and the shipments/activities lists filter on. `CompanyMembership` (cloud identity I3, `LINKED` rows) maps that code to a `TenantUser`.
