@@ -196,6 +196,15 @@ item-to-revision table. **Check what a plan says is owed before building on it.*
   - **One SDK noun:** `create_task`/`close_task`/`list_tasks`/`get_task` route per (tenant, role) through `task.gateway.ts`. Each response carries `store`; a cloud-only field sent to legacy is a loud `UNSUPPORTED_ON_LEGACY_STORE`; awaiting works on both stores (legacy by polling only the awaited tasks).
   - Rejected: folding into legacy (no drivers, no history, a release per site per capability), two-way sync, and a second noun such as `work_item` (switchover would mean rewriting Workflows).
   - Evidence: NW's usage, measured through the tunnel (40,831 tasks on 1,634 orders; non-applicable templates and three checkable titles cause most of the noise).
+  - **Routing, as built in Phase 3a (Steve, 2026-11-19/20):**
+    - **The cloud store is opt-in per (tenant, role).** No role, or a role with no `appSettings.operations.taskRouting` entry, uses legacy. This reverses the earlier "Workflow-created tasks are cloud-only from day one": a Workflow's tasks go where its role routes. A role-less create is byte-for-byte today's contract, so Pulse needed no change.
+    - **Reads and closes by id never consult routing.** The id's shape names the store: a UUID is cloud, digits are legacy. An order's list and close-by-type span both stores.
+    - **The role noun is `operations` plus the Cedar role groups.** `operations` resolves PER MOVE to the move's dispatcher (`sales.operations_id` → a `LINKED` `CompanyMembership`), not to a group.
+      - On legacy, the dispatcher becomes the `assigneeCode`. With no dispatcher it is a 409 `ASSIGNEE_UNRESOLVED`, never the coordinator.
+      - On cloud, it is assigned to the dispatcher's linked user, or else created unassigned with `assigneeUnresolved`.
+    - **A driver's Blocked task notifies the move's dispatcher too.** It falls back to the operations roles when there's no dispatcher, the dispatcher is unlinked or is the driver, or the lookup fails.
+    - **Cloud `CreateTask`/`CloseTask` are billable**, like legacy.
+    - Plan: `plans/completed/*-task-queue-cloud-store.md` once archived.
   - Plan: `plans/todo/task-queue-and-activity-feed.md`.
 
 ---

@@ -4052,3 +4052,12 @@ in that path closes the comment, and the rest of the line becomes code: oxc
 (vitest) fails with "Expected a semicolon", and tsc errors far from the cause.
 Hit twice in one PR (the assistant-converse plan, PR 2). Put the citation in a
 `//` comment, or name the plan without the glob ("the assistant-converse plan").
+
+## Prisma 7 `migrate dev` no longer regenerates the client
+
+Before Prisma 7, `prisma migrate dev` ran `prisma generate` after applying. It
+doesn't any more. After `npm run db:migrate` adds a model, tsc reports
+`Property 'workItem' does not exist on type 'PrismaClient'` and
+`Module '"@prisma/client"' has no exported member 'WorkItem'`, although the
+migration applied fine. Run `npm run db:generate` from `apps/api` after every
+`db:migrate` (seen in task queue Phase 3a, 2026-11-21).

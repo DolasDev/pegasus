@@ -2,16 +2,20 @@
 
 **Branch (this plan):** none (the plan lives on `main`). Each phase gets its own `feat/` worktree and branch; earlier phase plans are in `plans/completed/`.
 **Goal:** Give drivers a To Do list and an Activity feed in the mobile app, then give office roles guided task queues on the web that replace legacy reports. Tenants control the tasks through their Workflows and through task definitions they can edit.
-**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phases 1, 2a and 2b are SHIPPED (merged, deployed to prod, Android vcode 25 on closed testing). **Phase 3a is planned (2026-11-19) in its own worktree; no code yet.**
+**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phases 1, 2a and 2b are SHIPPED (merged, deployed to prod, Android vcode 25 on closed testing). **Phase 3a is built (2026-11-23) in its own worktree, awaiting its PR.**
 
 ---
 
-## Resume here (2026-11-19; Phase 3a planned, awaiting Steve's veto on its decisions)
+## Resume here (2026-11-23; Phase 3a built, its PR next)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-cloud-store`, branch `feat/task-queue-cloud-store`, based on `1ce60f6d` (#977).
-  - This file and `plans/in-progress/task-queue-cloud-store.md` are **uncommitted** in that worktree; they land with the 3a PR. Tearing the worktree down before committing loses them.
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-cloud-store`, branch `feat/task-queue-cloud-store`. `origin/main` was merged in at `a5cd9b36` (#983, SDK 0.67.1).
+  - Steps 1–8 of `plans/in-progress/task-queue-cloud-store.md` are committed on the branch, not pushed. Next: step 9 (full gate), then the PR.
   - The primary checkout is clean on `main`.
-- **Before coding:** get Steve's answer on the 3a plan's decisions, D1 (role noun) and D3 (default store for an unconfigured role) first. Both are frozen into Workflow code once the SDK publishes.
+- **Steve's answers (2026-11-19/20), all built in 3a:**
+  - OPS tasks go to the move's dispatcher.
+  - A role with no routing entry uses legacy (the desktop).
+  - Blocked notifies the move's dispatcher.
+  - Cloud tasks are billable.
 
 ### Shipped so far (all merged and deployed to prod)
 
@@ -27,7 +31,7 @@
 
 ### Next action
 
-**Phase 3a is in progress** (2026-11-19): worktree `../pegasus-task-queue-cloud-store`, branch `feat/task-queue-cloud-store`, plan `plans/in-progress/task-queue-cloud-store.md` (its decisions D1–D10 are open to Steve's veto). Phase 3 split, each its own PR:
+**Phase 3a is built** (2026-11-23): worktree `../pegasus-task-queue-cloud-store`, branch `feat/task-queue-cloud-store`, plan `plans/in-progress/task-queue-cloud-store.md`. Steps 1–8 are committed; step 9 (the full gate) and the PR remain. After merge: tag `sdk-python-v0.68.0`, update the authoring repo's `CLAUDE.md`, and ship a mobile build (Blocked copy names the dispatcher). Phase 3 split, each its own PR:
 
 - **3a:** `WorkItem` + minimal `TaskDefinition`, a store-neutral `TaskGateway` + cloud gateway, routing per (tenant, role), the routing endpoint, guardrails 1–3, **and the SDK surface for those** (`role=`, `store`, `get_task_routing()`). The SDK moved here from 3c because guardrail 1 and CLAUDE.md require it to ship with the routes.
 - **3b:** the sweeper Lambda + `packages/infra` EventBridge schedule (auto-done/cancel, overdue `notify()`, signal awaiting Workflows, legacy awaited-task poll ≥ 15 min). Decides the `TaskState` fold.
@@ -103,7 +107,8 @@
 
 ### TQ-D3 (Q1): Migrate per tenant × role, build in parallel, no sync (Steve, 2026-11-12)
 
-- Driver tasks and Workflow-created tasks are cloud-only from day one. Legacy has no driver tasks, so nothing overlaps.
+- Driver tasks are cloud-only from day one. Legacy has no driver tasks, so nothing overlaps.
+- **Amended (Steve, 2026-11-20; Phase 3a):** Workflow-created tasks are NOT automatically cloud. The cloud store is opt-in per (tenant, role): a task with no role, or a role with no routing entry, uses legacy, and a role moves to the cloud when its routing entry says `cloud`.
 - **Office tasks:** legacy `Tasks`/`mastertasks` stays authoritative until a tenant moves **one role** to the cloud queue. Switchover per (tenant, role):
   1. Import that role's `mastertasks` as task definitions, and have the tenant review the import.
   2. Set those templates `active='N'` in legacy, so the desktop stops creating tasks from them.
@@ -265,7 +270,7 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
   - Overdue reminders through `notify()`.
   - Signal the awaiting Workflow on completion.
   - Poll legacy tasks that a Workflow is awaiting (TQ-D4 guardrail 4).
-- [ ] **Cloud `TaskGateway` + per-(tenant, role) routing** in `task-gateway.factory.ts`, with a routing setting per tenant.
+- [x] **Cloud `TaskGateway` + per-(tenant, role) routing** in `task-gateway.factory.ts`, with a routing setting per tenant. **3a**, with `WorkItem` + a minimal `TaskDefinition`; see `plans/in-progress/task-queue-cloud-store.md`.
 - [ ] **SDK:**
   - `create_task` gains optional `role`, `definition`, `satisfied_when`.
   - Add `await_task` (a Temporal helper: `wait_condition` on the completion signal).

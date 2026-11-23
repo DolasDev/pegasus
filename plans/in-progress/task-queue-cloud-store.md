@@ -112,7 +112,11 @@ The parent plan suggested 3a = tables + gateway, with every SDK change in 3c. Th
   - `get_task_routing()`.
   - Every task dict documents `store`.
   - `uv lock`, CHANGELOG, README, `cli/mcp_server.py` (`pegasus://reference/*`), CLI `--help` where tasks appear, `testing/__init__.py` `_MUTATIONS`, `tests/test_testing_harness.py` parity.
-- [ ] **8. Docs:** parent plan updated (split, Resume; amend TQ-D3's "Workflow-created tasks are cloud-only from day one": per Steve 2026-11-20 the cloud is opt-in per role, and an unconfigured role uses the desktop); `dolas/agents/project/DECISIONS.md` one bullet (routing resolution D3); GOTCHAS if anything bites.
+- [x] **8. Docs:** parent plan updated (split, Resume; amend TQ-D3's "Workflow-created tasks are cloud-only from day one": per Steve 2026-11-20 the cloud is opt-in per role, and an unconfigured role uses the desktop); `dolas/agents/project/DECISIONS.md` one bullet (routing resolution D3); GOTCHAS if anything bites. Done 2026-11-23.
+  - **`DECISIONS.md`:** routing sub-bullets under the existing task-queue decision (cloud opt-in per role; id shape picks the store; `operations` = the move's dispatcher; Blocked → dispatcher; cloud tasks billable).
+  - **`GOTCHAS.md`:** Prisma 7 `migrate dev` no longer regenerates the client.
+  - **Parent plan:** TQ-D3 amended, Phase 3 cloud-gateway item checked, Resume rewritten.
+  - **`apps/mobile/README.md`:** Blocked now goes to the dispatcher.
 - [ ] **9. Gate:** `npm run typecheck`, api + domain tests, SDK tests; restore coverage floors (`git checkout` the two `vitest.config.ts`) before committing.
 
 ## Out of scope (3b–3d, Phase 4)
