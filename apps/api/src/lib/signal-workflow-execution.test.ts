@@ -25,7 +25,14 @@ const { mockSignal, mockGetHandle, mockWithTemporalClient, mockEnsureTenantRunne
 vi.mock('./temporal-client', () => ({ withTemporalClient: mockWithTemporalClient }))
 vi.mock('./tenant-runner', () => ({ ensureTenantRunner: mockEnsureTenantRunner }))
 
-import { declaredSignals, signalDurableExecution } from './signal-workflow-execution'
+import {
+  TASK_CLOSED_SIGNAL,
+  declaredSignals,
+  isReservedSignalName,
+  reservedSignalNameError,
+  signalDurableExecution,
+  signalPlatformExecution,
+} from './signal-workflow-execution'
 
 const db = {} as PrismaClient
 const now = new Date('2026-11-10T12:00:00Z')
@@ -159,5 +166,72 @@ describe('declaredSignals', () => {
     expect(declaredSignals({ name: 'x' })).toEqual([])
     expect(declaredSignals(null)).toEqual([])
     expect(declaredSignals('x')).toEqual([])
+  })
+})
+
+describe('reserved platform signal names', () => {
+  it.each(['pegasus.task_closed', 'PEGASUS.task_closed', 'Pegasus.x', 'pegasus.'])(
+    'reserves %s',
+    (name) => {
+      expect(isReservedSignalName(name)).toBe(true)
+      expect(reservedSignalNameError(name)).toMatch(/reserved for the platform/)
+    },
+  )
+
+  it.each(['proceed', 'pegasus', 'pegasus_task_closed', 'my.pegasus.x'])('allows %s', (name) => {
+    expect(isReservedSignalName(name)).toBe(false)
+    expect(reservedSignalNameError(name)).toBeNull()
+  })
+
+  it('TASK_CLOSED_SIGNAL is reserved', () => {
+    expect(TASK_CLOSED_SIGNAL).toBe('pegasus.task_closed')
+    expect(isReservedSignalName(TASK_CLOSED_SIGNAL)).toBe(true)
+  })
+})
+
+describe('signalPlatformExecution', () => {
+  it('delivers a reserved signal the manifest does not declare', async () => {
+    const result = await signalPlatformExecution(db, {
+      workflow: durableWorkflow,
+      execution: runningExecution,
+      signalName: TASK_CLOSED_SIGNAL,
+      args: [{ store: 'cloud', taskId: 't-1' }],
+    })
+    expect(result).toEqual({ outcome: 'SIGNALLED' })
+    expect(mockSignal).toHaveBeenCalledWith('pegasus.task_closed', {
+      store: 'cloud',
+      taskId: 't-1',
+    })
+  })
+
+  it('keeps the durable-execution refusals (TERMINAL, NOT_DURABLE)', async () => {
+    const base = { signalName: TASK_CLOSED_SIGNAL, args: [] }
+    await expect(
+      signalPlatformExecution(db, {
+        ...base,
+        workflow: durableWorkflow,
+        execution: { ...runningExecution, status: 'COMPLETED' },
+      }),
+    ).resolves.toEqual({ outcome: 'TERMINAL' })
+    await expect(
+      signalPlatformExecution(db, {
+        ...base,
+        workflow: { ...durableWorkflow, kind: 'AUTOMATION' as const },
+        execution: runningExecution,
+      }),
+    ).resolves.toEqual({ outcome: 'NOT_DURABLE' })
+    expect(mockWithTemporalClient).not.toHaveBeenCalled()
+  })
+
+  it('throws on a non-reserved name without touching Temporal', async () => {
+    await expect(
+      signalPlatformExecution(db, {
+        workflow: durableWorkflow,
+        execution: runningExecution,
+        signalName: 'proceed',
+        args: [],
+      }),
+    ).rejects.toThrow(/only sends reserved/)
+    expect(mockWithTemporalClient).not.toHaveBeenCalled()
   })
 })

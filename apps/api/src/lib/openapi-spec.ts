@@ -3064,7 +3064,7 @@ export function getOpenApiSpec() {
           operationId: 'signalWorkflowExecution',
           summary: 'Deliver a signal to a running durable Workflow (SignalWorkflowExecution)',
           description:
-            'Body { name, payload? }. `name` must be one of the signals the execution’s Workflow version declares in its manifest `signals` (400 SIGNAL_NOT_DECLARED otherwise — the error lists them). `payload`, when present (JSON null included), is the signal’s single argument; absent, the signal carries none — so declare the handler `def name(self, payload: dict | None = None)`. Payload ≤ 128 KiB (413 SIGNAL_PAYLOAD_TOO_LARGE). ' +
+            'Body { name, payload? }. `name` must be one of the signals the execution’s Workflow version declares in its manifest `signals` (400 SIGNAL_NOT_DECLARED otherwise — the error lists them). Names starting `pegasus.` are reserved for platform signals (e.g. `pegasus.task_closed`, which `await_task` handles) and are refused with 400 SIGNAL_NAME_RESERVED. `payload`, when present (JSON null included), is the signal’s single argument; absent, the signal carries none — so declare the handler `def name(self, payload: dict | None = None)`. Payload ≤ 128 KiB (413 SIGNAL_PAYLOAD_TOO_LARGE). ' +
             'Only durable Workflows (kind WORKFLOW) that are QUEUED or RUNNING take signals: 409 EXECUTION_NOT_SIGNALLABLE for an Automation, a terminal execution, one not yet started on Temporal, or one Temporal reports is no longer running. ' +
             'A signal is not a run: it counts toward no quota or cap, and the kill switch (WORKFLOWS_DISABLED) does not block it — open Workflows keep running and keep receiving signals. Delivery is at-least-once (a retried request delivers again), so make the handler idempotent. 202 means Temporal accepted the signal; the returned row is unchanged.',
           tags: ['Workflows'],
@@ -3091,7 +3091,8 @@ export function getOpenApiSpec() {
           responses: {
             '202': { description: 'Signal delivered ({data: execution})' },
             '400': {
-              description: 'SIGNAL_NOT_DECLARED, or VALIDATION_ERROR (malformed body / name)',
+              description:
+                'SIGNAL_NOT_DECLARED, SIGNAL_NAME_RESERVED (a `pegasus.` platform name), or VALIDATION_ERROR (malformed body / name)',
             },
             '404': { description: 'NOT_FOUND (workflow or execution)' },
             '409': { description: 'EXECUTION_NOT_SIGNALLABLE' },

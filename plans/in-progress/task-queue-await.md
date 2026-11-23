@@ -2,16 +2,19 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–2 done; step 3 next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–3 done; step 4 next.
 
 ## Resume here (2026-11-23, end of session)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 2, `feat(api): TaskAwait table` (step 1 was `e28b885f`). Nothing is pushed and no PR exists.
-- **Status:** steps 1–2 `[x]`, steps 3–10 `[ ]` (see Steps).
-- **Next action — step 3 (reserved `pegasus.` signal prefix):**
-  - Refuse `pegasus.`-prefixed signal names on the public route (`POST …/executions/:id/signal`) and in event-routed delivery.
-  - Add a platform delivery path that skips the manifest's declared-signals check for those names (used by steps 5–6).
-  - Tests for both refusals and the bypass. Commit on its own.
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 3, `feat(api): reserve pegasus. signal names` (step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
+- **Status:** steps 1–3 `[x]`, steps 4–10 `[ ]` (see Steps).
+- **Next action — step 4 (`POST /api/v1/pegii/tasks/:taskId/await`, D2):**
+  - A `task-await.repository` (tenant-scoped; upsert on (`executionId`, `store`, `taskId`), idempotent).
+  - Resolve the run from the body's Temporal workflow id via `WorkflowExecution.temporalWorkflowId` (+ `tenantId`). Then check: same tenant, durable `WORKFLOW`, RUNNING, and the execution's workflow is the calling runtime client's (`workflowIdFromClientName`). Anything else → 404.
+  - Read the task's current state through the TaskGateway (both stores). Closed → return it with no row; open → upsert a `waiting` awaiter (legacy: `nextPollAt = now`) and return it.
+  - Gated on `ReadTask`; not billable.
+  - Tests: cross-tenant, wrong workflow, terminal, already closed, idempotent.
+  - Platform delivery for steps 5–6 is `signalPlatformExecution(db, { …, signalName: TASK_CLOSED_SIGNAL })` (`lib/signal-workflow-execution.ts`).
 - **Uncommitted work:** only `apps/e2e/.env.test`. It's the worktree's isolated-DB wiring, written by `scripts/new-worktree.sh`. Never stage or commit it.
 - **In flight:** nothing.
   - #985 is merged and deployed.
@@ -31,7 +34,7 @@
   - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
   - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
 - **Verification still owed:**
-  - Steps 3–10 are unbuilt.
+  - Steps 4–10 are unbuilt.
   - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
@@ -106,7 +109,7 @@
 
 - [x] 1. `buildPegiiCaller` extracted (no behaviour change; own commit). Done 2026-11-23: `resolvePegiiCaller` is now a thin wrapper; two direct tests (service account + correlation id; a user outside the tenant does not resolve). Full API suite green.
 - [x] 2. Prisma: `TaskAwait` + drop `WorkItem.awaitingExecutionId`; migration; `TENANT_SCOPED_MODELS`. Done 2026-11-23: migration `20261123231442_task_awaits` (enums `TaskStore`, `TaskAwaitStatus`; table `task_awaits`; `DROP COLUMN awaiting_execution_id`), applied to the worktree DB; client regenerated; tsc clean; tenant-isolation + cloud-task gateway tests green.
-- [ ] 3. Reserved `pegasus.` signal prefix (public route + event routing) + platform delivery bypass; tests.
+- [x] 3. Reserved `pegasus.` signal prefix (public route + event routing) + platform delivery bypass; tests. Done 2026-11-23: `lib/signal-workflow-execution.ts` has `RESERVED_SIGNAL_PREFIX`, `TASK_CLOSED_SIGNAL`, `isReservedSignalName` (case-insensitive) and `signalPlatformExecution`, which skips the declared-signals check and throws on a non-reserved name. Three tenant paths refuse reserved names: the signal route (400 `SIGNAL_NAME_RESERVED`, checked before the regex), manifest `signals`, and `signalBindingError` (trigger create/patch, re-run at dispatch). The tests declare the reserved name in the manifest, so they prove the explicit check and not the regex; dotted names already failed `SIGNAL_NAME_REGEX`. OpenAPI signal-route text updated. **Owed in step 8:** the SDK's `manifest.py` validator refuses dotted names only through the regex; add the explicit `pegasus.` check there too.
 - [ ] 4. `POST /tasks/:taskId/await` (D2) + repository; tests (cross-tenant, wrong workflow, terminal, already closed, idempotent).
 - [ ] 5. Cloud close → post-commit signal to waiters (D5); tests.
 - [ ] 6. Sweeper Lambda (D6) + tests on Postgres with a fake signaller and a fake legacy gateway.
