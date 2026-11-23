@@ -36,9 +36,16 @@ vi.mock('../middleware/dual-auth', () => ({
 }))
 
 // The real route under "leaves a real route alone" reads the site's tasks; stand the site in.
-vi.mock('../gateways/task-gateway.factory', () => ({
-  resolveTaskGateway: vi.fn(async () => ({ listOrderTasks: async () => [] })),
-}))
+vi.mock('../gateways/task-gateway.factory', () => {
+  const legacy = { store: 'legacy', listOrderTasks: async () => [] }
+  const cloud = { store: 'cloud', listOrderTasks: async () => [] }
+  return {
+    resolveTaskGateway: vi.fn(async () => legacy),
+    resolveCloudTaskGateway: vi.fn(() => cloud),
+    resolveTaskGatewayForStore: vi.fn(async (s: string) => (s === 'cloud' ? cloud : legacy)),
+    hasLegacyTaskStore: vi.fn(async () => true),
+  }
+})
 
 import { app } from '../app'
 

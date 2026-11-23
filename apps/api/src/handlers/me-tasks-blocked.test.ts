@@ -9,10 +9,18 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, type Mock } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
+import type * as MoveDispatcherModule from '../lib/move-dispatcher'
 
 vi.mock('../lib/chat-access', () => ({ legacyConnectionString: vi.fn() }))
 vi.mock('../lib/itinerary/fetch', () => ({ fetchItinerary: vi.fn() }))
 vi.mock('../lib/push-forward-invoke', () => ({ kickPushForwarder: vi.fn() }))
+// The real dispatcher resolution (CompanyMembership on Postgres), over a mocked
+// read of the order's `sales.operations_id`.
+const { readOperationsId } = vi.hoisted(() => ({ readOperationsId: vi.fn() }))
+vi.mock('../lib/move-dispatcher', async (importOriginal) => ({
+  ...(await importOriginal<typeof MoveDispatcherModule>()),
+  legacyOperationsIdReader: () => readOperationsId,
+}))
 
 import type { AppEnv } from '../types'
 import { db } from '../db'
@@ -22,6 +30,7 @@ import { legacyConnectionString } from '../lib/chat-access'
 import { fetchItinerary } from '../lib/itinerary/fetch'
 import { kickPushForwarder } from '../lib/push-forward-invoke'
 import { meTasksHandler } from './me-tasks'
+import { createCompanyRepository } from '../repositories/company.repository'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 const cs = legacyConnectionString as unknown as Mock
@@ -73,7 +82,29 @@ async function wipe(tenantId: string) {
   await db.notification.deleteMany({ where: { tenantId } })
   await db.pushNotificationOutbox.deleteMany({ where: { tenantId } })
   await db.taskState.deleteMany({ where: { tenantId } })
+  await db.companyMembership.deleteMany({ where: { tenantId } })
   await db.tenantUser.deleteMany({ where: { tenantId } })
+  await db.company.deleteMany({ where: { tenantId } })
+  await db.site.deleteMany({ where: { tenantId } })
+}
+
+/** Gives tenant A a default company and links `who` to salesman `code` in it. */
+async function linkDispatcher(who: string, code: number) {
+  const tenant = await db.tenant.findUniqueOrThrow({ where: { id: tenantA } })
+  const { company } = await createCompanyRepository(
+    createTenantDb(db as unknown as PrismaClient, tenantA) as unknown as PrismaClient,
+  ).ensureDefaultTarget(tenant)
+  await db.companyMembership.create({
+    data: {
+      tenantId: tenantA,
+      companyId: company.id,
+      tenantUserId: U[who]!.id,
+      employeeCode: code,
+      status: 'LINKED',
+      matchedBy: 'EMAIL',
+      lastSyncedAt: new Date(),
+    },
+  })
 }
 
 afterAll(async () => {
@@ -98,6 +129,7 @@ describe.skipIf(!hasDb)('Blocked tasks (integration)', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     cs.mockResolvedValue('Server=fake')
+    readOperationsId.mockResolvedValue(null)
     kick.mockResolvedValue(true)
     fetchMock.mockResolvedValue({
       items: [
@@ -138,6 +170,7 @@ describe.skipIf(!hasDb)('Blocked tasks (integration)', () => {
     await mk('gone', tenantA, ['operations_admin'], { status: 'DEACTIVATED' })
     await mk('bot', tenantA, ['operations_admin'], { isServiceAccount: true })
     await mk('elsewhere', tenantB, ['operations_admin'])
+    await mk('dispatcher', tenantA, ['long_distance_dispatch'])
   })
 
   const block = (reason = 'Customer not home') =>
@@ -146,10 +179,16 @@ describe.skipIf(!hasDb)('Blocked tasks (integration)', () => {
   it("notifies the tenant's active operations users, once, and kicks delivery", async () => {
     const r = await block()
     expect(r.status).toBe(200)
-    expect(r.body['data']).toMatchObject({ blocked: { reason: 'Customer not home' }, notified: 2 })
+    expect(r.body['data']).toMatchObject({
+      blocked: { reason: 'Customer not home' },
+      notified: 3,
+      notifiedVia: 'operations-roles',
+    })
 
     const rows = await db.notification.findMany({ where: { type: 'task.blocked' } })
-    expect(rows.map((n) => n.recipientUserId).sort()).toEqual([U['ops']!.id, U['admin']!.id].sort())
+    expect(rows.map((n) => n.recipientUserId).sort()).toEqual(
+      [U['ops']!.id, U['admin']!.id, U['dispatcher']!.id].sort(),
+    )
     expect(rows[0]).toMatchObject({
       tenantId: tenantA,
       actorUserId: U['driver']!.id,
@@ -158,13 +197,58 @@ describe.skipIf(!hasDb)('Blocked tasks (integration)', () => {
       title: 'driver@blocked.test is blocked on #500',
       data: { type: 'task.blocked', orderNum: '500', taskKey: KEY },
     })
-    expect(await db.pushNotificationOutbox.count({ where: { tenantId: tenantA } })).toBe(2)
+    expect(await db.pushNotificationOutbox.count({ where: { tenantId: tenantA } })).toBe(3)
     expect(kick).toHaveBeenCalledTimes(1)
 
     // Blocking again (a new reason) updates the reason but tells no one again.
     const again = await block('Gate locked')
-    expect(again.body['data']).toMatchObject({ blocked: { reason: 'Gate locked' }, notified: 0 })
-    expect(await db.notification.count({ where: { type: 'task.blocked' } })).toBe(2)
+    expect(again.body['data']).toMatchObject({
+      blocked: { reason: 'Gate locked' },
+      notified: 0,
+      notifiedVia: null,
+    })
+    expect(await db.notification.count({ where: { type: 'task.blocked' } })).toBe(3)
+  })
+
+  it("goes to the move's dispatcher only, when they have a linked cloud user", async () => {
+    await linkDispatcher('dispatcher', 1196)
+    readOperationsId.mockResolvedValue('1196')
+
+    const r = await block()
+
+    expect(r.body['data']).toMatchObject({ notified: 1, notifiedVia: 'dispatcher' })
+    expect(readOperationsId).toHaveBeenCalledWith(500)
+    const rows = await db.notification.findMany({ where: { type: 'task.blocked' } })
+    expect(rows.map((n) => n.recipientUserId)).toEqual([U['dispatcher']!.id])
+  })
+
+  it('a dispatcher with no linked cloud user falls back to the operations roles', async () => {
+    readOperationsId.mockResolvedValue(4242)
+
+    const r = await block()
+
+    expect(r.body['data']).toMatchObject({ notified: 3, notifiedVia: 'operations-roles' })
+  })
+
+  it('a failed dispatcher read still tells operations (a stopped driver must reach someone)', async () => {
+    await linkDispatcher('dispatcher', 1196)
+    readOperationsId.mockRejectedValue(new Error('QUERY_FAILED: tunnel down'))
+
+    const r = await block()
+
+    expect(r.status).toBe(200)
+    expect(r.body['data']).toMatchObject({ notified: 3, notifiedVia: 'operations-roles' })
+  })
+
+  it('a driver who is their own dispatcher falls back to the operations roles', async () => {
+    await linkDispatcher('driver', 77)
+    readOperationsId.mockResolvedValue(77)
+
+    const r = await block()
+
+    expect(r.body['data']).toMatchObject({ notifiedVia: 'operations-roles' })
+    const rows = await db.notification.findMany({ where: { type: 'task.blocked' } })
+    expect(rows.map((n) => n.recipientUserId)).not.toContain(U['driver']!.id)
   })
 
   it('keeps a blocked task on the list even when snoozed, and unblocks', async () => {

@@ -9,10 +9,14 @@
 //   POST /api/v1/pegii/tasks/{id}/close      close any task
 //
 // All five are gated on `pegii.tasks.v1`. Numeric ids only: the site's routes
-// are `{n:int}`/`{id:int}`, so the handler validates before calling here.
+// are `{n:int}`/`{id:int}`. An id that isn't a pegII int can't name a task
+// here, so getTask/closeTask answer null for it without calling the site.
+//
+// This is the `legacy` store: each PegiiTaskDto is adapted to the neutral
+// TaskRecord (task.gateway.ts) on the way out.
 // ---------------------------------------------------------------------------
 
-import type { TaskGateway } from './task.gateway'
+import { TaskStoreError, type TaskGateway, type TaskRecord } from './task.gateway'
 import type { PegiiCaller } from '../lib/pegii-request-context'
 import {
   createPegiiApiClient,
@@ -23,11 +27,43 @@ import {
 import { requirePegiiCapabilities, PegiiCapabilities } from '../lib/pegii-capabilities'
 import type {
   PegiiCloseTaskResultDto,
+  PegiiCreateTaskBody,
   PegiiCreateTaskResultDto,
   PegiiOrderTasksDto,
   PegiiTaskDto,
   PegiiTaskSearchPageDto,
 } from './pegii/pegii-task.dto'
+
+/** A pegII order number or task id: the site's routes are `{n:int}` (Int32, positive). */
+const PEGII_INT_RE = /^[1-9]\d{0,9}$/
+const PEGII_INT_MAX = 2_147_483_647
+export const isPegiiInt = (v: string): boolean => PEGII_INT_RE.test(v) && Number(v) <= PEGII_INT_MAX
+
+/** pegII's TaskDto → the neutral TaskRecord (`store: 'legacy'`). */
+export function pegiiTaskToRecord(task: PegiiTaskDto): TaskRecord {
+  return {
+    store: 'legacy',
+    id: String(task.id),
+    orderId: String(task.orderNumber),
+    taskType: task.taskType,
+    title: task.title,
+    description: task.description,
+    priority: task.priority,
+    dueDate: task.dueDate,
+    assigneeCode: task.assigneeCode,
+    status: task.completed ? 'closed' : 'open',
+    reason: task.closeReason,
+    createdByApi: task.createdByApi,
+    active: task.active,
+    completedAt: task.completedAt,
+    completedBy: task.completedBy,
+    actualDate: task.actualDate,
+    createdAt: task.createdUtc,
+    closedAt: task.closedUtc,
+    role: null,
+    assigneeUnresolved: null,
+  }
+}
 
 export interface PegiiTaskGatewayOptions {
   tenantId: string
@@ -66,17 +102,22 @@ export function createPegiiTaskGateway(opts: PegiiTaskGatewayOptions): TaskGatew
   }
 
   return {
+    store: 'legacy',
+
     async listOrderTasks(orderNumber) {
       await requireTasks()
+      if (!isPegiiInt(orderNumber)) return null
       const page = await orNull(() =>
         client.get<PegiiOrderTasksDto>(`/api/v1/pegii/orders/${orderNumber}/tasks`),
       )
-      return page === null ? null : (page.items ?? [])
+      return page === null ? null : (page.items ?? []).map(pegiiTaskToRecord)
     },
 
     async getTask(taskId) {
       await requireTasks()
-      return orNull(() => client.get<PegiiTaskDto>(`/api/v1/pegii/tasks/${taskId}`))
+      if (!isPegiiInt(taskId)) return null
+      const task = await orNull(() => client.get<PegiiTaskDto>(`/api/v1/pegii/tasks/${taskId}`))
+      return task === null ? null : pegiiTaskToRecord(task)
     },
 
     async searchTasks(criteria) {
@@ -88,17 +129,45 @@ export function createPegiiTaskGateway(opts: PegiiTaskGatewayOptions): TaskGatew
         cursor: criteria.cursor,
         limit: criteria.limit,
       })
-      return { items: page?.items ?? [], nextCursor: page?.nextCursor ?? null }
+      const next = page?.nextCursor ?? null
+      return {
+        items: (page?.items ?? []).map(pegiiTaskToRecord),
+        nextCursor: next === null ? null : String(next),
+      }
     },
 
-    async createTask(orderNumber, body) {
+    async createTask(orderNumber, input) {
       await requireTasks()
+      if (!isPegiiInt(orderNumber)) {
+        return { found: false, code: 'ORDER_NOT_FOUND', message: `Order ${orderNumber} not found` }
+      }
+      // A desktop task with no due date never shows in a "due before" check.
+      if (input.dueDate === undefined) {
+        throw new TaskStoreError(
+          'DUE_DATE_REQUIRED',
+          400,
+          'dueDate is required for a task on the legacy (MoveManager) store',
+        )
+      }
+      const body: PegiiCreateTaskBody = {
+        taskType: input.taskType,
+        title: input.title,
+        dueDate: input.dueDate,
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.assigneeCode !== undefined ? { assigneeCode: input.assigneeCode } : {}),
+        ...(input.idempotencyKey !== undefined ? { idempotencyKey: input.idempotencyKey } : {}),
+      }
       try {
         const result = await client.post<PegiiCreateTaskResultDto>(
           `/api/v1/pegii/orders/${orderNumber}/tasks`,
           body,
         )
-        return { found: true, ...result }
+        return {
+          found: true,
+          task: pegiiTaskToRecord(result.task),
+          alreadyExists: result.alreadyExists,
+        }
       } catch (err) {
         // Keep pegII's code (ORDER_NOT_FOUND) rather than the boundary's generic NOT_FOUND.
         if (isPegiiNotFound(err) && err instanceof PegiiApiError) {
@@ -110,12 +179,16 @@ export function createPegiiTaskGateway(opts: PegiiTaskGatewayOptions): TaskGatew
 
     async closeTask(taskId, reason) {
       await requireTasks()
-      return orNull(() =>
+      if (!isPegiiInt(taskId)) return null
+      const result = await orNull(() =>
         client.post<PegiiCloseTaskResultDto>(
           `/api/v1/pegii/tasks/${taskId}/close`,
           reason === null ? {} : { reason },
         ),
       )
+      return result === null
+        ? null
+        : { task: pegiiTaskToRecord(result.task), alreadyClosed: result.alreadyClosed }
     },
   }
 }

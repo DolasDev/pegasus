@@ -1946,6 +1946,123 @@ def test_create_task_and_close_by_id_are_captured_under_dry_run() -> None:
     assert [c["capability"] for c in client.captured] == ["CreateTask", "CloseTask"]
 
 
+# -- tasks in two stores (0.68.0) -----------------------------------------------
+
+
+def test_create_task_sends_role_and_may_omit_due_date() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            201,
+            json={
+                "data": {
+                    "id": "2b916653-df32-438d-a885-e9aedae40286",
+                    "store": "cloud",
+                    "role": "operations",
+                    "assigneeUnresolved": None,
+                    "alreadyExists": False,
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    result = client.create_task(
+        "490317", "Confirm Actuals", "Confirm actuals with PVO", role="operations"
+    )
+
+    assert result["store"] == "cloud"
+    assert captured["body"] == {
+        "orderId": "490317",
+        "taskType": "Confirm Actuals",
+        "title": "Confirm actuals with PVO",
+        "role": "operations",
+    }
+
+
+def test_create_task_without_role_still_needs_due_date_before_any_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request expected")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="needs due_date"):
+        client.create_task("490317", "Pulse Follow-Up", "t")
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (400, "UNKNOWN_ROLE"),
+        (400, "DUE_DATE_REQUIRED"),
+        (400, "UNSUPPORTED_ON_CLOUD_STORE"),
+        (409, "ASSIGNEE_UNRESOLVED"),
+        (503, "DISPATCHER_UNAVAILABLE"),
+    ],
+)
+def test_create_task_raises_the_routing_errors(status: int, code: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": "x", "code": code})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.create_task("490317", "Confirm Actuals", "t", role="operations")
+    assert exc_info.value.status_code == status
+    assert exc_info.value.code == code
+
+
+def test_list_tasks_passes_role_on_the_cross_order_search() -> None:
+    seen: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.url.params))
+        return httpx.Response(
+            200, json={"data": [], "meta": {"count": 0, "nextCursor": None, "store": "cloud"}}
+        )
+
+    client = _client_with(handler)
+    assert client.list_tasks(task_type="Confirm Actuals", role="operations") == []
+    assert seen[0]["role"] == "operations"
+    assert seen[0]["taskType"] == "Confirm Actuals"
+
+
+def test_list_tasks_refuses_role_with_order_id_before_any_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request expected")
+
+    client = _client_with(handler)
+    with pytest.raises(ValueError, match="role chooses the store"):
+        client.list_tasks(order_id="490317", role="operations")
+
+
+def test_get_task_routing_returns_the_routing() -> None:
+    routing = {
+        "defaultStore": "legacy",
+        "roles": [{"role": "operations", "store": "cloud", "configured": True}],
+        "stores": {"cloud": {"idFormat": "uuid"}},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/pegii/tasks/routing"
+        return httpx.Response(200, json={"data": routing})
+
+    client = _client_with(handler)
+    assert client.get_task_routing() == routing
+
+
+def test_create_task_with_role_is_captured_under_dry_run_with_store_undecided() -> None:
+    client = PegasusClient(base_url="http://dry-run.invalid", token="dry-run", dry_run=True)
+
+    created = client.create_task("490317", "Confirm Actuals", "t", role="operations")
+
+    assert created["dryRun"] is True
+    assert created["role"] == "operations"
+    assert created["store"] is None  # the tenant's routing decides, server-side
+    assert created["dueDate"] is None
+    assert client.captured[0]["capability"] == "CreateTask"
+
+
 def test_add_order_memo_posts_the_body_and_returns_the_memo() -> None:
     captured: dict = {}
 

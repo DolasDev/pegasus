@@ -1,23 +1,88 @@
 # Task queues + Activity feed (mobile To Do, web role queues, Workflow-driven human tasks)
 
-**Branch (this plan):** `docs/task-queue-plan` (worktree `../pegasus-task-queue-plan`). Each phase below gets its own worktree and branch.
+**Branch (this plan):** none (the plan lives on `main`). Each phase gets its own `feat/` worktree and branch; earlier phase plans are in `plans/completed/`.
 **Goal:** Give drivers a To Do list and an Activity feed in the mobile app, then give office roles guided task queues on the web that replace legacy reports. Tenants control the tasks through their Workflows and through task definitions they can edit.
-**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phase 1 built 2026-11-16 (`plans/completed/61e536c9-task-queue-driver-todo.md`). Phase 2 is next.
+**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phases 1, 2a and 2b are SHIPPED (merged, deployed to prod, Android vcode 25 on closed testing). **Phase 3a is shipped (2026-11-23); 3b is next.**
 
 ---
 
-## Resume here (2026-11-16)
+## Resume here (2026-11-23; Phase 3a landed through the merge queue, 3b next)
 
-- **Phase 1 (driver To Do) is built** on `feat/task-queue-driver-todo`. Its plan, `plans/completed/61e536c9-task-queue-driver-todo.md`, lists nine deviations from the Phase 1 text below. Read it before Phase 2.
-  - Still owed: a device / staging check with a tenant's rules turned on (tenant-web Settings → App → Operations → Driver To Do).
-  - Still owed: Steve's answer on open question 5 (arrival _time_ vs "mark done").
-- **Phase 2a (Activity feed + `notify()`, mobile) is built.** Its plan is `plans/completed/6f4c8919-task-queue-activity-feed.md`.
-- **Phase 2b is built:** Blocked notifying the operations role, the tenant-web bell and settings, and SDK `notify` (0.67.0). Its plan is `plans/completed/a25abe3c-task-queue-blocked-web-sdk.md`.
-- **Next action:** Phase 3 (persistent task store, definitions as data, Workflow integration).
-- **In parallel, unrelated to Phase 1:**
-  - The **QMM task-list 500** fix is landed on movemanager `dev` (`3d31b955`, 2026-11-14) but **not yet on QMM's site**, which runs `2026.11.12.1`, older than every channel. Once QMM's `/version` moves past it, re-run the per-order task probe (§2 method).
-  - Measurement is done for all three sites (§2 "cross-site"). Only the NW interview is still owed: _"Which reports do you open every day?"_
-- **Long-running Workflows:** its Phase 4 is done except the tenant-web section, with signal triggers, `run_automation` and list/query/cancel shipped (SDK 0.66.0). Phase 3 here depends on it and is unblocked.
+- **Phase 3a** shipped as one PR from `feat/task-queue-cloud-store`. Its plan, with every decision made while building and what changed in prod on deploy, is `plans/completed/8cde70bf-task-queue-cloud-store.md`.
+- **Owed after its merge:**
+  - Publish the SDK: tag `sdk-python-v0.68.0` on the merge commit.
+  - Update `~/repos/pegasus-workflows/CLAUDE.md` (`role=`, `store`, `get_task_routing`) and bump its pin.
+  - Ship a mobile build: the Blocked copy names the dispatcher.
+- **Steve's answers (2026-11-19/20), all built in 3a:**
+  - OPS tasks go to the move's dispatcher.
+  - A role with no routing entry uses legacy (the desktop).
+  - Blocked notifies the move's dispatcher.
+  - Cloud tasks are billable.
+- **Next: Phase 3b** (the sweeper). It decides the `TaskState` fold and fixes the `TaskDefinition` predicate columns.
+
+### Shipped so far (all merged and deployed to prod)
+
+| Phase                                                   | PR   | Merge      | Plan with that phase's deviations (read before Phase 3)  |
+| ------------------------------------------------------- | ---- | ---------- | -------------------------------------------------------- |
+| 1, driver To Do, computed on read                       | #969 | `9d16e31e` | `plans/completed/61e536c9-task-queue-driver-todo.md`     |
+| 2a, Activity feed + `notify()`, mobile bell             | #971 | `c3d292ce` | `plans/completed/6f4c8919-task-queue-activity-feed.md`   |
+| 2b, Blocked → operations, web bell, SDK `notify` 0.67.0 | #975 | `0498d977` | `plans/completed/a25abe3c-task-queue-blocked-web-sdk.md` |
+
+- **Side fix:** #972 allowlisted picomatch GHSA-fc5q-39xc-vjpf in `audit-ci.jsonc`. No patched release exists, and it is used only by tooling.
+- **SDK 0.67.0 is published** (tag `sdk-python-v0.67.0` on `0498d977`). `~/repos/pegasus-workflows` is bumped to 0.67.0 with `notify` documented in its `CLAUDE.md` (`605d5fa`).
+- **Android closed testing:** vcode 24 (Activity) and vcode 25 (Blocked, EAS build `0f583641`) both landed on the alpha track. Promoting to production is a manual staged rollout in the Play Console.
+
+### Next action
+
+**Phase 3a is shipped** (2026-11-23; plan `plans/completed/8cde70bf-task-queue-cloud-store.md`). Phase 3 split, each its own PR:
+
+- **3a:** `WorkItem` + minimal `TaskDefinition`, a store-neutral `TaskGateway` + cloud gateway, routing per (tenant, role), the routing endpoint, guardrails 1–3, **and the SDK surface for those** (`role=`, `store`, `get_task_routing()`). The SDK moved here from 3c because guardrail 1 and CLAUDE.md require it to ship with the routes.
+- **3b:** the sweeper Lambda + `packages/infra` EventBridge schedule (auto-done/cancel, overdue `notify()`, signal awaiting Workflows, legacy awaited-task poll ≥ 15 min). Decides the `TaskState` fold.
+- **3c:** SDK `definition=` / `satisfied_when=`, `await_task`, `block_task`, plus Cedar `ManageTaskDefinitions` / `BlockTask`.
+- **3d:** the tenant-web definition editor + routing UI, and the `workflows-stdlib` default longhaul Workflow.
+
+### Decisions already made (don't re-ask)
+
+- TQ-D1..D5 (§1).
+- **Q3:** a Blocked task notifies the **operations role** (Steve, 2026-11-18).
+- **`notify()`** (`apps/api/src/lib/notify.ts`):
+  - It is the only way to write Activity, and the SDK's notify is the only Workflow-facing way.
+  - Types are registered in `packages/domain/src/notifications/index.ts`. `task.blocked` defaults to push; `workflow.message` defaults to feed.
+- **The Phase 3 plan text says `TaskState` folds into `WorkItem`.** `TaskState` today holds per-user snooze, dismiss and blocked state for COMPUTED driver tasks, keyed by `task:<rule>:<orderNum>:<item>`.
+  - Decide whether computed driver tasks become `WorkItem` rows (needs the sweeper) or stay computed.
+  - Blocked state, and its notify-on-transition, live in `apps/api/src/handlers/me-tasks.ts`.
+
+### Gotchas learned (the next steps depend on these)
+
+- **Cross-repo work:** this session is worktree-isolated once inside a worktree. Git commands must target that worktree, so `git worktree add ../x` is refused there. Exit to the primary checkout to create other worktrees. Long heredoc commands that mention git get refused; write a script file and run it.
+- **`TenantUser` is NOT in `TENANT_SCOPED_MODELS`.** Every `tenantUser` query must bind `tenantId` explicitly. The extension also does not rewrite `upsert`, so pass `tenantId` in its `where` and `create`.
+- **New Cedar action checklist** (mirror `21d7886f`):
+  - `authz/actions.ts`, `authz/cedar.schema.json`, `policies/30-personas/*.cedar`;
+  - OpenAPI `lib/openapi-spec.ts`;
+  - `lib/usage/billable-actions.ts` if it reaches outside;
+  - check `apps/e2e/tests/api/authz-smoke.spec.ts` for pinned persona permissions (it runs only post-merge).
+- **SDK release:**
+  - Bump `packages/workflows-sdk-python/pyproject.toml` to the next free version (0.67.0 is current on main; re-check `git show origin/main:packages/workflows-sdk-python/pyproject.toml` at landing). Then `uv lock`, CHANGELOG, README, `cli/mcp_server.py`, `testing/__init__.py` `_MUTATIONS`, `tests/test_testing_harness.py` parity.
+  - After merge, tag `sdk-python-vX.Y.Z` on the merge commit (verify `git merge-base --is-ancestor` first).
+  - PyPI takes about a minute to serve a new version.
+  - The tag push runs the full pre-push test hook, which flaked once (a retry passed).
+- **Test runs rewrite coverage floors** (`apps/api/vitest.config.ts`, `packages/domain/vitest.config.ts`, `autoUpdate`). `git checkout` them before committing. Never commit raised floors.
+- **Mocks need the new models:** `apps/api/src/app.test.ts` and `src/lib/push-triggers.test.ts` hand-mock the db. New Prisma models used by `notify()` or the push triggers must be added there.
+- **Prettier:** don't run it on `apps/mobile/jest.setup.js`; it reformats the whole file. Edit by hand.
+- **Mobile release:** `gh workflow run mobile-release.yml --ref main -f env=prod -f platform=android -f submit=true`. EAS free-tier queue waits have run 1–2 h for the build, plus about 50 min for the submission. Poll via `https://api.expo.dev/graphql` using the `~/.expo/state.json` session.
+
+### Still owed (not blocking Phase 3)
+
+- **Device and staging checks for Phases 1–2b** on vcode 25:
+  - enable rules for a test tenant;
+  - block a task and see the operations push and Activity row, then the tap opening `/chat/<order>`;
+  - web bell and `/notifications/settings`.
+- **Steve:** open question 5 (arrival time vs "mark done").
+- **Steve:** the NW interview, "Which reports do you open every day?"
+- **QMM task-list 500 fix:** on movemanager `dev` `3d31b955` but not yet on QMM's site (`2026.11.12.1`). Re-run the per-order probe (§2) once its `/version` moves.
+- **2b review notes, unactioned:**
+  - namespace `/notifications/send`'s free-form `dedupeKey` as `staff:`;
+  - show the Workflow's name as actor on `workflow.message` rows.
 
 ---
 
@@ -45,7 +110,8 @@
 
 ### TQ-D3 (Q1): Migrate per tenant × role, build in parallel, no sync (Steve, 2026-11-12)
 
-- Driver tasks and Workflow-created tasks are cloud-only from day one. Legacy has no driver tasks, so nothing overlaps.
+- Driver tasks are cloud-only from day one. Legacy has no driver tasks, so nothing overlaps.
+- **Amended (Steve, 2026-11-20; Phase 3a):** Workflow-created tasks are NOT automatically cloud. The cloud store is opt-in per (tenant, role): a task with no role, or a role with no routing entry, uses legacy, and a role moves to the cloud when its routing entry says `cloud`.
 - **Office tasks:** legacy `Tasks`/`mastertasks` stays authoritative until a tenant moves **one role** to the cloud queue. Switchover per (tenant, role):
   1. Import that role's `mastertasks` as task definitions, and have the tenant review the import.
   2. Set those templates `active='N'` in legacy, so the desktop stops creating tasks from them.
@@ -201,13 +267,13 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
 - [ ] **Prisma:**
   - `TaskDefinition` (tenant-scoped, versioned): key, title, owningRole, appliesWhen (rule ref + params), satisfiedWhen (fact predicate ref | form | explicit), dueBase + offset, escalation, deepLink.
   - `WorkItem`: id, definitionKey + version, orderNum, owningRole, assigneeUserId?, status `open|blocked|done|cancelled`, dueAt, timestamps for each transition, `awaitingExecutionId?`, store.
-  - Phase 1's `TaskState` folds into `WorkItem`.
+  - Phase 1's `TaskState` folds into `WorkItem`. **Deferred to 3b** (3a plan D10): computed driver tasks can't become rows without the sweeper.
 - [ ] **Sweeper (EventBridge schedule):**
   - Re-evaluate `appliesWhen`/`satisfiedWhen` for open items: auto-done, auto-cancel (F2).
   - Overdue reminders through `notify()`.
   - Signal the awaiting Workflow on completion.
   - Poll legacy tasks that a Workflow is awaiting (TQ-D4 guardrail 4).
-- [ ] **Cloud `TaskGateway` + per-(tenant, role) routing** in `task-gateway.factory.ts`, with a routing setting per tenant.
+- [x] **Cloud `TaskGateway` + per-(tenant, role) routing** in `task-gateway.factory.ts`, with a routing setting per tenant. **3a**, with `WorkItem` + a minimal `TaskDefinition`; see `plans/completed/8cde70bf-task-queue-cloud-store.md`.
 - [ ] **SDK:**
   - `create_task` gains optional `role`, `definition`, `satisfied_when`.
   - Add `await_task` (a Temporal helper: `wait_condition` on the completion signal).

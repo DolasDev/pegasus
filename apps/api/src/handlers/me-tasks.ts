@@ -41,6 +41,8 @@ import { notify } from '../lib/notify'
 import { kickPushForwarder } from '../lib/push-forward-invoke'
 import { logger } from '../lib/logger'
 import { AUTHOR_SELECT, displayName } from '../repositories/chat.repository'
+import { createCompanyRepository } from '../repositories/company.repository'
+import { legacyOperationsIdReader, resolveMoveDispatcher } from '../lib/move-dispatcher'
 import { callerDriverIds, driverNotMapped } from './longhaul-cloud/itinerary'
 
 /** How far back an unfinished act still asks to be finished. Older ones drop off. */
@@ -249,6 +251,52 @@ async function operationsRecipients(c: Context<AppEnv>, exceptUserId: string): P
   return users.filter((u) => hasOperationsRole(u.roleNames)).map((u) => u.id)
 }
 
+/** Who heard about a block, and how they were chosen. */
+type BlockedRecipients = { userIds: string[]; via: 'dispatcher' | 'operations-roles' }
+
+/**
+ * A blocked task goes to the move's dispatcher (`sales.operations_id` → their
+ * linked cloud user; task queue Phase 3a step 4b, Steve 2026-11-20). It falls
+ * back to the operations roles when the order has no dispatcher, the dispatcher
+ * has no linked active cloud user, the dispatcher is the driver themselves, or
+ * the lookup fails. A stopped driver must always reach someone. One legacy read;
+ * run before the transaction, never inside it.
+ */
+async function blockedRecipients(
+  c: Context<AppEnv>,
+  orderNum: number,
+  driverUserId: string,
+): Promise<BlockedRecipients> {
+  const tenantId = c.get('tenantId')
+  const db = c.get('db')
+  try {
+    const target = await createCompanyRepository(db).getDefaultTarget()
+    if (target) {
+      const dispatcher = await resolveMoveDispatcher({
+        db,
+        tenantId,
+        companyId: target.company.id,
+        orderNum,
+        readOperationsId: legacyOperationsIdReader(tenantId),
+      })
+      if (
+        dispatcher.found &&
+        dispatcher.tenantUserId !== null &&
+        dispatcher.tenantUserId !== driverUserId
+      ) {
+        return { userIds: [dispatcher.tenantUserId], via: 'dispatcher' }
+      }
+    }
+  } catch (err) {
+    logger.warn("blocked task: the move's dispatcher couldn't be resolved; telling operations", {
+      tenantId,
+      orderNum,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  return { userIds: await operationsRecipients(c, driverUserId), via: 'operations-roles' }
+}
+
 meTasksHandler.put('/state', async (c) => {
   const parsed = StateBody.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return validationError(c, parsed.error)
@@ -282,6 +330,8 @@ meTasksHandler.put('/state', async (c) => {
   })
   const now = new Date()
   const becomesBlocked = blocked != null && existing?.blockedAt == null
+  const recipients =
+    becomesBlocked && task ? await blockedRecipients(c, task.orderNum, userId) : null
 
   const data = {
     ...(snoozedUntil !== undefined
@@ -311,14 +361,14 @@ meTasksHandler.put('/state', async (c) => {
     })
     let notified = 0
     let pushed = 0
-    if (becomesBlocked && task && blocked) {
+    if (becomesBlocked && task && blocked && recipients) {
       const me = await tx.tenantUser.findFirst({
         where: { id: userId, tenantId },
         select: AUTHOR_SELECT,
       })
       const who = me ? displayName(me) : 'A driver'
       const rule = isDriverTaskRuleId(task.rule) ? DRIVER_TASK_RULE_LABELS[task.rule] : task.title
-      for (const recipientUserId of await operationsRecipients(c, userId)) {
+      for (const recipientUserId of recipients.userIds) {
         const r = await notify(tx, tenantId, {
           type: 'task.blocked',
           recipient: { userId: recipientUserId },
@@ -348,8 +398,10 @@ meTasksHandler.put('/state', async (c) => {
         row.blockedAt != null
           ? { reason: row.blockReason ?? '', at: row.blockedAt.toISOString() }
           : null,
-      /** How many operations users were told (only on a new block). */
+      /** How many people were told (only on a new block). */
       notified: becomesBlocked ? notified.count : 0,
+      /** Who they were: the move's dispatcher, or the operations roles as a fallback. Null when no one was told. */
+      notifiedVia: recipients?.via ?? null,
     },
   })
 })

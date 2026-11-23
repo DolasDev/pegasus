@@ -307,6 +307,7 @@ describe('PUT /me/tasks/state', () => {
       dismissedAt: null,
       blocked: null,
       notified: 0,
+      notifiedVia: null,
     })
   })
 

@@ -3,6 +3,42 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.68.0
+
+### Added — tasks in two stores, routed by role
+
+Tasks now live in one of two stores, and every task says which:
+
+- `"legacy"`: the order's task list in MoveManager. Ids are digits.
+- `"cloud"`: the platform's own task store. Ids are UUIDs.
+
+Nothing changes for existing callers. A task created without a role still goes on
+the MoveManager list exactly as before.
+
+- `create_task(..., role=None)`: the owner, which also picks the store per tenant. A
+  role with no routing entry stays on legacy; a role the tenant routed to `"cloud"`
+  goes to the cloud store. `role="operations"` goes to the **move's dispatcher**: on
+  legacy as the `assignee_code`, on cloud to their linked Pegasus user. A cloud task
+  whose dispatcher can't be found is still created, unassigned, with
+  `assigneeUnresolved` saying why.
+- `create_task`'s `due_date` is now optional in the signature. It is still required
+  on legacy: no role and no `due_date` raises `ValueError`, and a role routed to
+  legacy is 400 `DUE_DATE_REQUIRED`.
+- `get_task_routing()` (`ReadTask`): every valid role, which store it uses here, and
+  what each store supports.
+- `list_tasks(task_type=..., role=None)`: the cross-order search reads the store
+  `role` routes to. `list_tasks(order_id)` now lists both stores.
+- `get_task` / `close_task(task_id=...)` go to the store the id names.
+  `close_task(order_id=..., task_type=...)` looks in both stores.
+- Every task row gains `store`, `role` and `assigneeUnresolved`.
+- New errors:
+  - 400: `UNKNOWN_ROLE`, `DUE_DATE_REQUIRED`, `UNSUPPORTED_ON_CLOUD_STORE`
+    (`assignee_code` on a cloud-routed role), `UNSUPPORTED_ON_LEGACY_STORE`,
+    `INVALID_CURSOR`;
+  - 409: `ASSIGNEE_UNRESOLVED` (a legacy `operations` task with no dispatcher; pass
+    `assignee_code`);
+  - 503: `DISPATCHER_UNAVAILABLE`.
+
 ## 0.67.1
 
 ### Added — register custom event types from the SDK and CLI

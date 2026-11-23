@@ -74,6 +74,20 @@ describe('AppSettingsSchema', () => {
     ).toThrow()
   })
 
+  it('accepts task routing by known role to legacy or cloud, and nothing else', () => {
+    const parsed = AppSettingsSchema.parse({
+      operations: { taskRouting: { operations: 'cloud', coordinator: 'legacy' } },
+    })
+    expect(parsed.operations.taskRouting).toEqual({ operations: 'cloud', coordinator: 'legacy' })
+    expect(AppSettingsSchema.parse({}).operations.taskRouting).toBeUndefined()
+    expect(
+      AppSettingsSchema.safeParse({ operations: { taskRouting: { OPS: 'cloud' } } }).success,
+    ).toBe(false)
+    expect(
+      AppSettingsSchema.safeParse({ operations: { taskRouting: { operations: 'both' } } }).success,
+    ).toBe(false)
+  })
+
   it('accepts null for operations.longhaulClient (explicit "unconfigured")', () => {
     const parsed = AppSettingsSchema.parse({ operations: { longhaulClient: null } })
     expect(parsed.operations.longhaulClient).toBeNull()
