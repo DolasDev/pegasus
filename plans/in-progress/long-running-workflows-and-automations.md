@@ -19,7 +19,15 @@
   `plans/completed/92d35285-tenant-web-workflows-section.md`). Phase 4 is code-complete;
   Phase 5 is next.
 
-## Resume here (2026-11-17)
+## Resume here (2026-11-22)
+
+- **Phase 4 done** (#974 + #977 deployed; SDK 0.66.1 published). **Phase 5 started:**
+  `feat/billing-readiness-workflow` shipped slice 5a (RVS billing readiness: custom events
+  on staging, SDK 0.67.1 event-type registry, workflows in pegasus-workflows
+  `reliable/billing_readiness/`). Next — the Dolios staging acceptance, then 5b–5e — is in
+  `plans/todo/billing-readiness-followups.md`.
+
+## Earlier resume notes (2026-11-17)
 
 - **Phase 4 is code-complete.** The tenant-web Workflows section landed on
   `feat/tenant-web-workflows-section`: top-level `/workflows` (open instances,
@@ -512,7 +520,17 @@ Done 2026-09-29. Evidence, transcripts and probe scripts are in
       only; `parentExecutionId` list filter (SDK 0.66.1) for the steps panel;
       Automations lists filtered to `kind=AUTOMATION`.
 
-### Phase 5: Prove it with `nw/order_lifecycle` + discovery surfaces (branch `feat/workflows-discoverability`)
+### Phase 5: Prove it with an RVS billing readiness Workflow + discovery surfaces
+
+**Re-targeted 2026-11-22 (Steve):** the proving Workflow is a **billing readiness**
+Workflow for RVS (start when planned/actual delivery is on or before today; track
+delivered, premium services authorized, signed BOL submitted, audit date set; end when
+invoiced), not `nw/order_lifecycle`. Full plan and slices 5a–5e:
+`plans/todo/billing-readiness-followups.md`. The `order_lifecycle` items below are
+superseded by it; the discovery-surface, metrics, SDK and spec-0008 items carry over as 5e.
+**SDK publishing:** Steve's standing rule is to publish the SDK from the platform session
+after a bump merges (as done for 0.66.0/0.66.1); the "never from a platform session" wording
+below predates it.
 
 - [ ] Rewrite `nw/order_lifecycle` (in `~/repos/pegasus-workflows`) as a
       `kind="workflow"` Workflow plus small Automations.

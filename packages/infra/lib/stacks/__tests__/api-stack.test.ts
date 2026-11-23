@@ -3,7 +3,7 @@ import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as s3 from 'aws-cdk-lib/aws-s3'
-import { ApiStack } from '../api-stack'
+import { ApiStack, ASSISTANT_OPUS_5, resolveAssistantModels } from '../api-stack'
 import { CognitoStack } from '../cognito-stack'
 
 function synthApiStack() {
@@ -1939,6 +1939,76 @@ describe('ApiStack — AI assistant', () => {
     expect(policies).not.toMatch(/inference-profile\/global\./)
   })
 
+  it('defaults the model list to Opus 5 on both functions', () => {
+    const t = synth()
+    for (const timeout of [29, 300]) {
+      const env = fnByTimeout(t, timeout).Environment.Variables
+      expect(env['ASSISTANT_MODEL_ID']).toBe('us.anthropic.claude-opus-5')
+      expect(env['ASSISTANT_ALLOWED_MODELS']).toBe('us.anthropic.claude-opus-5')
+    }
+  })
+
+  it('grants exactly the listed models and exposes them as ASSISTANT_ALLOWED_MODELS', () => {
+    const nova = {
+      profileId: 'us.amazon.nova-2-lite-v1:0',
+      foundationModelId: 'amazon.nova-2-lite-v1:0',
+      destinationRegions: ['us-east-1', 'us-west-2'],
+    }
+    const t = synth({
+      assistantModels: [ASSISTANT_OPUS_5, nova],
+      assistantDefaultModel: nova.profileId,
+    })
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'AssistantBedrockInvoke',
+            Action: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+            Resource: [
+              'arn:aws:bedrock:us-east-1:111111111111:inference-profile/us.anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-west-1::foundation-model/anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-opus-5',
+              'arn:aws:bedrock:us-east-1:111111111111:inference-profile/us.amazon.nova-2-lite-v1:0',
+              'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-2-lite-v1:0',
+              'arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-2-lite-v1:0',
+            ],
+          }),
+        ]),
+      }),
+    })
+    for (const timeout of [29, 300]) {
+      const env = fnByTimeout(t, timeout).Environment.Variables
+      expect(env['ASSISTANT_MODEL_ID']).toBe('us.amazon.nova-2-lite-v1:0')
+      expect(env['ASSISTANT_ALLOWED_MODELS']).toBe(
+        'us.anthropic.claude-opus-5,us.amazon.nova-2-lite-v1:0',
+      )
+    }
+  })
+
+  it('refuses a bad model list at synth time', () => {
+    const opus = ASSISTANT_OPUS_5
+    expect(() => resolveAssistantModels([], undefined)).toThrow(/at least one/)
+    expect(() =>
+      resolveAssistantModels([{ ...opus, profileId: 'global.anthropic.claude-opus-5' }], undefined),
+    ).toThrow(/global\.\*/)
+    expect(() =>
+      resolveAssistantModels(
+        [{ ...opus, foundationModelId: 'anthropic.claude-haiku-5-5' }],
+        undefined,
+      ),
+    ).toThrow(/not a geo profile/)
+    expect(() => resolveAssistantModels([{ ...opus, destinationRegions: [] }], undefined)).toThrow(
+      /no destination regions/,
+    )
+    expect(() => resolveAssistantModels([opus, opus], undefined)).toThrow(/listed twice/)
+    expect(() => resolveAssistantModels([opus], 'us.anthropic.claude-haiku-5-5')).toThrow(
+      /not in assistantModels/,
+    )
+    expect(resolveAssistantModels([opus], undefined).defaultModel).toBe(opus.profileId)
+  })
+
   it('exposes a streaming Function URL with in-function auth and the CORS allowlist', () => {
     const t = synth({ corsAllowedOrigins: ['https://pegasus.dolas.dev'] })
     t.hasResourceProperties('AWS::Lambda::Url', {
@@ -1963,5 +2033,38 @@ describe('ApiStack — AI assistant', () => {
     const on = synth({ assistantEnabled: true })
     expect(fnByTimeout(on, 29).Environment.Variables['ASSISTANT_ENABLED']).toBe('true')
     expect(fnByTimeout(on, 300).Environment.Variables['ASSISTANT_ENABLED']).toBe('true')
+  })
+})
+
+describe('ApiStack — custom events (customEventsEnabled)', () => {
+  function synthEnabled() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiCustomEventsEnabled', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      customEventsEnabled: true,
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('leaves CUSTOM_EVENTS_ENABLED unset on every Lambda by default', () => {
+    const fns = synthApiStack().findResources('AWS::Lambda::Function')
+    const withFlag = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.CUSTOM_EVENTS_ENABLED !== undefined,
+    )
+    if (withFlag.length !== 0) {
+      throw new Error(`expected no Lambda to carry CUSTOM_EVENTS_ENABLED, found ${withFlag.length}`)
+    }
+  })
+
+  it('sets CUSTOM_EVENTS_ENABLED=true on the api Lambda (and its assistant twin) when enabled', () => {
+    const fns = synthEnabled().findResources('AWS::Lambda::Function')
+    const enabled = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.CUSTOM_EVENTS_ENABLED === 'true',
+    )
+    if (enabled.length !== 2) {
+      throw new Error(
+        `expected exactly 2 Lambdas (api + assistant) with CUSTOM_EVENTS_ENABLED, found ${enabled.length}`,
+      )
+    }
   })
 })

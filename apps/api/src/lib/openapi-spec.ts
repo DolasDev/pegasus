@@ -3572,6 +3572,39 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/event-types': {
+        ...OPERATIONAL_READ_PATHS['/api/v1/event-types'],
+        post: {
+          operationId: 'createEventType',
+          summary: 'Register a tenant custom event type (ManageEventTypes)',
+          description:
+            'Registers a custom event an Automation can emit (POST /event-types/{name}/emit) and an EVENT trigger can subscribe to. Body: {name, description?, payloadSchema? (JSON Schema emits are validated against), domainCondition?, enabled?}. The whole /event-types surface answers 404 NOT_FOUND "Custom events are not enabled" where the platform switch (CUSTOM_EVENTS_ENABLED) is off. SDK: PegasusClient.create_event_type; CLI: pegasus-workflows event-types create.',
+          tags: ['Events'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '201': { description: '{data: TenantEventType}' },
+            '400': { description: 'VALIDATION_ERROR' },
+            '404': { description: 'Custom events are not enabled' },
+            '409': { description: 'Name already registered' },
+          },
+        },
+      },
+      '/api/v1/event-types/{name}/emit': {
+        post: {
+          operationId: 'emitEvent',
+          summary: 'Emit an instance of a custom event (EmitTenantEvent)',
+          description:
+            'Body: {payload?}. The payload is validated against the type\'s payloadSchema and becomes the domain event\'s payload, so an EVENT trigger with mode=START and correlationPath "payload.<field>" starts (or signals) ONE durable Workflow per key. SDK: PegasusClient.emit_event (an Automation declares required_actions = ["EmitTenantEvent"]).',
+          tags: ['Events'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'name', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '201': { description: '{data: {emitted, eventType, occurredAt}}' },
+            '400': { description: "Payload fails the type's schema" },
+            '404': { description: 'Unknown / disabled type, or custom events not enabled' },
+          },
+        },
+      },
       '/api/v1/workflows/retire': {
         post: {
           operationId: 'retireWorkflow',

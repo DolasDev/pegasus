@@ -204,7 +204,28 @@ describe.skipIf(explicitSkip)(`ApiStack — bundled asset contract`, () => {
     // The plan's §4 bundling check: the assistant's inference client must be
     // bundled like any other dependency, not left as an external require.
     const bundle = fs.readFileSync(path.join(assets.assistant, 'index.js'), 'utf8')
+    // Anthropic Messages adapter (plans/*/assistant-converse.md D2): remove
+    // this line with the adapter in that plan's step 15.
     expect(bundle).toContain('invoke-with-response-stream')
     expect(bundle).not.toMatch(/require\(["']@anthropic-ai\//)
+    // The Converse adapter is in the bundle.
+    expect(bundle).toContain('ConverseStream')
   })
+
+  it.each(['api', 'assistant'] as const)(
+    'ships a pinned @aws-sdk/client-bedrock-runtime in the %s asset, not the runtime copy',
+    (which) => {
+      // assistant-converse plan D7: the Lambda runtime's copy can lag, and smithy
+      // silently drops request members it doesn't know (cachePoint, toolResult.status).
+      const pkg = path.join(
+        assets[which],
+        'node_modules/@aws-sdk/client-bedrock-runtime/package.json',
+      )
+      expect(fs.existsSync(pkg)).toBe(true)
+      const { version } = JSON.parse(fs.readFileSync(pkg, 'utf8')) as { version: string }
+      const [major, minor] = version.split('.').map(Number)
+      // 3.1166 is the version this was built and tested against.
+      expect(major === 3 && (minor ?? 0) >= 1166).toBe(true)
+    },
+  )
 })

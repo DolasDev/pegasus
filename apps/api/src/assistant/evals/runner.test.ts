@@ -74,14 +74,21 @@ describe('summarize', () => {
     toolsOffered: [],
     inputTokens: 100,
     outputTokens: 10,
-    cacheReadTokens: 0,
+    cacheReadTokens: tools * 40,
+    rounds: tools + 1,
     latencyMs: 1000,
+    modelId: 'us.anthropic.claude-opus-5',
   })
 
   it('computes the pass rate over graded cases only (errors count as graded failures)', () => {
     const s = summarize([r('pass', 2), r('fail'), r('error'), r('ungraded')])
     expect(s).toMatchObject({ total: 4, graded: 3, passed: 1, meanToolCalls: 0.5 })
     expect(s.passRate).toBeCloseTo(1 / 3)
+  })
+
+  it('averages rounds and cache reads per question, for the per-model comparison', () => {
+    const s = summarize([r('pass', 2), r('fail')])
+    expect(s).toMatchObject({ meanRounds: 2, meanCacheReadTokens: 40 })
   })
 
   it('has a null pass rate when nothing is graded', () => {

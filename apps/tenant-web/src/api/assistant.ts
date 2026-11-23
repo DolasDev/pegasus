@@ -96,7 +96,9 @@ export interface EvalCaseResult {
   inputTokens: number
   outputTokens: number
   cacheReadTokens: number
+  rounds: number
   latencyMs: number
+  modelId: string
 }
 
 export interface EvalSummary {
@@ -107,7 +109,15 @@ export interface EvalSummary {
   meanToolCalls: number
   meanInputTokens: number
   meanOutputTokens: number
+  meanCacheReadTokens: number
+  meanRounds: number
   meanLatencyMs: number
+}
+
+/** The models the eval runner may pick; chat always uses `default`. */
+export interface AssistantModels {
+  default: string
+  allowed: string[]
 }
 
 const BASE = '/api/v1/assistant'
@@ -119,7 +129,13 @@ export const assistantKeys = {
   conversations: () => [...assistantKeys.all, 'conversations'] as const,
   conversation: (id: string) => [...assistantKeys.all, 'conversation', id] as const,
   evalCases: () => [...assistantKeys.all, 'eval-cases'] as const,
+  models: () => [...assistantKeys.all, 'models'] as const,
 }
+
+export const assistantModelsQueryOptions = queryOptions({
+  queryKey: assistantKeys.models(),
+  queryFn: () => apiFetch<AssistantModels>(`${BASE}/models`),
+})
 
 export const offeredToolsQueryOptions = queryOptions({
   queryKey: assistantKeys.tools(),
@@ -180,7 +196,7 @@ export function streamChat(
 }
 
 export function streamEvalRun(
-  body: { promptVersionId?: string; caseIds?: string[]; effort?: Effort },
+  body: { promptVersionId?: string; caseIds?: string[]; effort?: Effort; modelId?: string },
   signal?: AbortSignal,
 ): AsyncGenerator<SseEvent> {
   return streamClient.stream(`${BASE}/evals/run`, body, signal)

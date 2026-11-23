@@ -503,6 +503,11 @@ Files: `apps/api/src/assistant/{http,loop,prompt}.ts`, `assistant/tools/*`,
 5. Manual checks (Verification 4/5): operations_admin asks "which trips are running late
    this week?" and reads the trace; a driver-only login can't reach the Lab at all.
 
+**Converse PR 1 landed (2026-11-22):** inference moved from the Anthropic SDK tool runner to
+the Bedrock Converse API, so the model becomes a config choice. Plan
+`plans/todo/assistant-converse.md` (step 10, PR 2, PR 3 open). The code landed before
+items 1–4. Its staging gates (V1–V4 and the eval-baseline comparison) still wait on them.
+
 ---
 
 ## Phase 2 — Chat UI for gated roles

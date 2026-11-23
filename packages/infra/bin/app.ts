@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as cdk from 'aws-cdk-lib'
 import { CognitoStack } from '../lib/stacks/cognito-stack'
-import { ApiStack } from '../lib/stacks/api-stack'
+import { ApiStack, ASSISTANT_OPUS_5, type AssistantModel } from '../lib/stacks/api-stack'
 import { ApiCdnStack } from '../lib/stacks/api-cdn-stack'
 import { FrontendStack } from '../lib/stacks/frontend-stack'
 import { AdminFrontendStack } from '../lib/stacks/admin-frontend-stack'
@@ -206,6 +206,25 @@ const reportingEnabled = envName === 'staging' || envName === 'prod'
 // Flip staging first. Access is still Cedar-gated: UseAssistant is held only by
 // operations_admin (policies/60-assistant.cedar) and tenant_admin.
 const assistantEnabled = false
+
+// ── Tenant custom events (staging only, for now) ─────────────────────────────
+// Ungates CUSTOM_EVENTS_ENABLED on the api Lambda: the event-type registry and
+// emit_event. The billing readiness sweep (plans/todo/
+// billing-readiness-followups.md) emits one `billing.delivery_due` per order to
+// start a keyed durable Workflow. Staging first (Steve, 2026-11-22); prod — where
+// RVS lives — flips after the staging proof, with approval.
+const customEventsEnabled = envName === 'staging'
+
+// ── AI assistant models (plans/*/assistant-converse.md D8) ───────────────────
+// The Bedrock models the assistant may call. The IAM grant covers exactly this
+// list; the Lab's eval runner can pick any of them; chat uses the default.
+// To add a model: append its geo profile here (destination regions from the
+// Bedrock user guide's inference-profile table), deploy, then have an ADMIN
+// make its first call (plan V5: a third-party model's first call starts a
+// Marketplace subscription, which the Lambda role can't do). To switch the
+// default, change assistantDefaultModel.
+const assistantModels: AssistantModel[] = [ASSISTANT_OPUS_5]
+const assistantDefaultModel = ASSISTANT_OPUS_5.profileId
 
 // ── CORS allowlist (staging/prod) ────────────────────────────────────────────
 // Browser origins allowed to call the API cross-origin. Tenant + admin SPA
@@ -478,6 +497,9 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   reportingEnabled,
   corsAllowedOrigins,
   assistantEnabled,
+  customEventsEnabled,
+  assistantModels,
+  assistantDefaultModel,
 })
 apiStack.addDependency(cognitoStack)
 

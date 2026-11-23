@@ -3944,21 +3944,31 @@ only PID 1, and the runner sends the child the same shutdown line as an
 idle-exit. A one-off clean stop proves nothing here (it's a race) — judge a
 fix over several stops with a worker that has been up a few minutes.
 
-## The Anthropic SDK tool runner defaults to server-held threads — pass `thread: false` on Bedrock
+## AI assistant inference: every round complete, strict alternation, and Bedrock drops what it doesn't know
 
-Found building the AI assistant (2026-11-10). In `@anthropic-ai/sdk` 1.8,
-`client.beta.messages.toolRunner(...)` opens a **server-held message thread** by
-default. Round 1 sends `thread: {type: "create"}`, and every later round sends only
-the new `tool_result` plus `thread: {type: "continue", previous_message_id}`: no
-`system`, no `tools`, no history. That works only where the provider holds the thread
-(Anthropic-hosted). On Bedrock's invoke path there is no thread to continue, so the
-second round would arrive without its prompt, its tools or the conversation. A
-single-round test never notices.
-`apps/api/src/assistant/loop.ts` passes `thread: false`, and `loop.test.ts` asserts
-that no request carries `thread` and that round 2 has all three messages. Keep both
-whenever you touch the loop or bump the SDK. The scripted provider
-(`lib/inference/fake.ts`, a real `Anthropic` client over a fake `fetch`) is what made
-this visible, because it records the actual request bodies.
+The assistant's tool loop (`apps/api/src/assistant/loop.ts`) is our own, over a
+one-round seam (`lib/inference/types.ts`) with Converse and Anthropic adapters
+(plans/*/assistant-converse.md). Three traps, each pinned by a test:
+
+- **Every round must be a complete request.** The loop used to be
+  `@anthropic-ai/sdk` 1.8's `toolRunner`, which by default opens a _server-held
+  thread_. Its later rounds sent only the new `tool_result` plus
+  `previous_message_id`, with no system prompt, tools or history, and Bedrock
+  has no thread to continue. That is why the runner was replaced (2026-11-10:
+  `thread: false`; 2026-11-21: own loop). If an SDK helper ever comes back,
+  re-check this. `loop.test.ts` asserts round 2 carries all three messages.
+- **Converse demands strict user/assistant alternation, starting with a user
+  message.** The Anthropic API quietly merged same-role runs. A failed turn
+  leaves a stored question with no stored answer, so `historyFromTurns` merges
+  runs and drops a trailing unanswered question. Blank text blocks are rejected
+  too, and the adapter drops them.
+- **Smithy clients silently drop request members they don't know.** An
+  `@aws-sdk/client-bedrock-runtime` older than a field such as `cachePoint`,
+  `toolResult.status` or `cachePoint.ttl` sends the request without it. There is
+  no error, just no cache reads. `@aws-sdk/*` is external in the Lambda bundle
+  (resolved from the runtime), so this client is pinned with `apiBundling.nodeModules`
+  instead. `api-stack.bundle.test.ts` asserts the asset ships its own copy. Bump its
+  floor in that test when you rely on a newer field.
 
 ## A Temporal query with no worker HANGS ~29 s, and a raising query handler looks like "not registered"
 
@@ -4033,3 +4043,12 @@ its full 300 s, and the runner wrote the row back as **COMPLETED**.
   (an infra test enforces it). Without them it silently mints per container.
 - Measure in prod with the `ringcentral token` log line (`outcome`:
   `l1_hit | l2_hit | l2_hit_after_lock | mint | mint_unshared`).
+
+## `plans/*/x.md` inside a `/** */` comment ends the comment
+
+Code cites plans as `plans/*/<name>.md` so the citation survives a plan moving
+between `todo/`, `in-progress/` and `completed/`. Inside a JSDoc block, the `*/`
+in that path closes the comment, and the rest of the line becomes code: oxc
+(vitest) fails with "Expected a semicolon", and tsc errors far from the cause.
+Hit twice in one PR (the assistant-converse plan, PR 2). Put the citation in a
+`//` comment, or name the plan without the glob ("the assistant-converse plan").

@@ -554,3 +554,31 @@ cycle. Two rules:
 - **Never let a request choose its principal.** Only the token decides. That's why the eval
   runner can narrow the tool _offer_ to a case's role, but the lookups still run as the
   caller.
+
+## Calling an LLM from server code — go through the one-round seam in `lib/inference/`
+
+Don't import a model SDK in feature code. `apps/api/src/lib/inference/` exposes one
+provider-neutral operation, `streamRound(request, signal)`: one model request in, text
+deltas plus one `round_end` (content, stop reason, usage) out. Any tool loop above it is
+the caller's own (the assistant's is `assistant/loop.ts`). Adapters translate a round to
+an API: `converse.ts` (Bedrock Converse, the default, any Bedrock chat model) and
+`anthropic.ts` (Anthropic Messages on the InvokeModel path, kept for A/B evals; removed by
+plans/*/assistant-converse.md step 15). Model-family quirks (which sections accept a
+`cachePoint`, Anthropic's `output_config.effort`) live in one table, `models.ts`, so
+changing models is configuration. The models a deployment may call are ONE list in
+`packages/infra/bin/app.ts` (`assistantModels` + `assistantDefaultModel`): CDK derives
+the IAM grant (profile + per-region foundation-model ARNs) and the env
+(`ASSISTANT_MODEL_ID`, `ASSISTANT_ALLOWED_MODELS`) from it, so the grant and what the
+code may ask for cannot drift. Rules:
+
+- **A model id from a request is checked against `isAllowedModel` first** (400
+  `MODEL_NOT_ALLOWED`), then resolved with `resolveInferenceProvider(modelId)`, which
+  refuses it again. Chat never takes a model from the request; only evals do.
+
+- **Load SDKs lazily** (`await import(...)` on the first round). The API Lambda
+  imports this code and must not pay for, or crash on, an SDK at INIT (#594).
+- **Reasoning is opaque.** An adapter emits it as `{type: 'reasoning', raw}` and gets it
+  back unchanged on the next round of the same turn (signatures are verified). Never
+  persist it or send it across turns.
+- **Test at the seam** with `lib/inference/fake.ts`, and test each adapter's wire mapping
+  separately (`converse.test.ts`, `anthropic.test.ts`).

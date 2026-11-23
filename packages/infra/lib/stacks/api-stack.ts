@@ -26,23 +26,66 @@ import {
 } from '../metrics'
 
 // ---------------------------------------------------------------------------
-// AI assistant inference (plans/*/ai-chat-assistant.md, §2).
-// Claude in Amazon Bedrock through the US GEO cross-region inference profile —
-// never `global.*`, which routes worldwide. AWS is the sole data processor.
+// AI assistant inference (plans/*/ai-chat-assistant.md §2, plans/*/assistant-converse.md D8).
+// Models in Amazon Bedrock through GEO cross-region inference profiles, never
+// `global.*`, which routes worldwide. AWS is the sole data processor.
 // ---------------------------------------------------------------------------
-export const ASSISTANT_FOUNDATION_MODEL_ID = 'anthropic.claude-opus-5'
-export const ASSISTANT_INFERENCE_PROFILE_ID = `us.${ASSISTANT_FOUNDATION_MODEL_ID}`
+
+/** One Bedrock model the assistant may call, through a geo inference profile. */
+export interface AssistantModel {
+  /** The inference profile id the code sends, e.g. `us.anthropic.claude-opus-5`. */
+  readonly profileId: string
+  /** The foundation model behind it, e.g. `anthropic.claude-opus-5`. */
+  readonly foundationModelId: string
+  /**
+   * Every region the profile can route to. A geo profile needs the grant on the
+   * profile AND on the foundation model in each of these; the profile grant
+   * alone does not cover the model. Take the list from the profile's entry in
+   * the Bedrock user guide, per model: it differs between models.
+   */
+  readonly destinationRegions: readonly string[]
+}
+
+/** Claude Opus 5 on the US geo profile: the model phase 1 shipped with. */
+export const ASSISTANT_OPUS_5: AssistantModel = {
+  profileId: 'us.anthropic.claude-opus-5',
+  foundationModelId: 'anthropic.claude-opus-5',
+  // From us-east-1 it routes to us-east-1/us-east-2/us-west-2; us-west-1 adds itself.
+  destinationRegions: ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2'],
+}
+
 /**
- * Every region the US geo profile can route to, across US source regions (from
- * us-east-1 it is us-east-1/us-east-2/us-west-2; us-west-1 adds itself). The
- * foundation-model grant must cover each one the profile may pick.
+ * Check the model list at synth time. Each rule catches a mistake a deploy
+ * would otherwise surface only at the first model call, or never (a worldwide
+ * route).
  */
-export const ASSISTANT_PROFILE_DESTINATION_REGIONS = [
-  'us-east-1',
-  'us-east-2',
-  'us-west-1',
-  'us-west-2',
-] as const
+export function resolveAssistantModels(
+  models: readonly AssistantModel[],
+  defaultModel: string | undefined,
+): { models: readonly AssistantModel[]; defaultModel: string } {
+  if (models.length === 0) throw new Error('assistantModels must list at least one model')
+  const seen = new Set<string>()
+  for (const m of models) {
+    if (m.profileId.startsWith('global.')) {
+      throw new Error(`assistantModels: ${m.profileId} is a global.* profile (routes worldwide)`)
+    }
+    if (!m.profileId.endsWith(`.${m.foundationModelId}`)) {
+      throw new Error(
+        `assistantModels: ${m.profileId} is not a geo profile of ${m.foundationModelId}`,
+      )
+    }
+    if (m.destinationRegions.length === 0) {
+      throw new Error(`assistantModels: ${m.profileId} lists no destination regions`)
+    }
+    if (seen.has(m.profileId)) throw new Error(`assistantModels: ${m.profileId} is listed twice`)
+    seen.add(m.profileId)
+  }
+  const chosen = defaultModel ?? models[0]!.profileId
+  if (!seen.has(chosen)) {
+    throw new Error(`assistantDefaultModel ${chosen} is not in assistantModels`)
+  }
+  return { models, defaultModel: chosen }
+}
 
 export interface ApiStackProps extends cdk.StackProps {
   /**
@@ -318,6 +361,29 @@ export interface ApiStackProps extends cdk.StackProps {
    * (plan Infrastructure §2) — before that, every model call fails.
    */
   readonly assistantEnabled?: boolean
+
+  /**
+   * Tenant custom events master switch → `CUSTOM_EVENTS_ENABLED=true` on the api
+   * Lambda (apps/api/src/lib/custom-events-feature.ts). Ungates the event-type
+   * registry (`/event-types`) and `POST …/emit` — a Workflow's `emit_event`. The
+   * dispatcher's derivation path is not gated by it. Only an env var is set — no
+   * IAM. Default off. Needed by the billing readiness sweep
+   * (plans/todo/billing-readiness-followups.md), which starts one keyed
+   * Workflow per order through a custom event.
+   */
+  readonly customEventsEnabled?: boolean
+
+  /**
+   * The Bedrock models the assistant may call (assistant-converse plan, D8).
+   * The IAM grant covers exactly these, and ASSISTANT_ALLOWED_MODELS lists them.
+   * The Lab's eval runner may pick any of them; chat always uses the default.
+   * Adding one is a list edit in bin/app.ts plus the plan's V5 (an admin makes
+   * the first call). Absent → Opus 5 only.
+   */
+  readonly assistantModels?: readonly AssistantModel[]
+
+  /** The profile id chat uses → ASSISTANT_MODEL_ID. Must be in assistantModels; absent → the first. */
+  readonly assistantDefaultModel?: string
 }
 
 export class ApiStack extends cdk.Stack {
@@ -499,7 +565,15 @@ export class ApiStack extends cdk.Stack {
       // dependency in the Lambda asset, preserving the package layout. Without
       // this, init throws ENOENT on `/var/task/cedar_wasm_bg.wasm` and the
       // Lambda returns a bare API Gateway 500 before our onError sees it.
-      nodeModules: ['@cedar-policy/cedar-wasm'],
+      //
+      // @aws-sdk/client-bedrock-runtime is installed the same way, for a different
+      // reason: to pin its version. `@aws-sdk/*` is otherwise external and comes
+      // from the Lambda runtime, whose copy can lag. Smithy clients silently DROP
+      // request members they don't know, so an older runtime client would send
+      // Converse requests without `cachePoint` or `toolResult.status` and fail
+      // quietly: no error, just no cache reads (plans/*/assistant-converse.md D7).
+      // A real copy in the asset's node_modules wins over the runtime's.
+      nodeModules: ['@cedar-policy/cedar-wasm', '@aws-sdk/client-bedrock-runtime'],
       // apps/api/src/authz/load.ts reads `cedar.schema.json` and the
       // `policies/` tree from `__dirname` at runtime to push them into AVP
       // (POST /api/admin/tenants → provisionTenantPolicyStore) and to feed
@@ -564,13 +638,7 @@ export class ApiStack extends cdk.Stack {
       entry: path.join(__dirname, '../../../../apps/api/src/lambda-assistant.ts'),
       handler: 'handler',
       role: apiFunction.role!,
-      environment: {
-        ...apiEnvironment,
-        // Bedrock inference — Infrastructure §2. The US geo profile keeps
-        // inference in us-east-1/us-east-2/us-west-2; the provider refuses any
-        // global.* id.
-        ASSISTANT_MODEL_ID: ASSISTANT_INFERENCE_PROFILE_ID,
-      },
+      environment: { ...apiEnvironment },
       bundling: apiBundling,
       memorySize: 1024,
       timeout: cdk.Duration.minutes(5),
@@ -588,11 +656,26 @@ export class ApiStack extends cdk.Stack {
       assistantFunction.addEnvironment(key, value)
     }
 
-    // The pinned Bedrock grant (Infrastructure §2). The default AnthropicBedrock
-    // client calls /model/{id}/invoke[-with-response-stream], which the Service
-    // Authorization Reference maps to exactly these two actions. A geo inference
-    // profile needs the grant on the profile AND on the foundation model in every
-    // region it can route to — the profile grant alone does not cover the model.
+    // The model list (plan D8). Both functions get the env, because the main API
+    // mounts the same /api/v1/assistant routes. The provider refuses any model
+    // outside ASSISTANT_ALLOWED_MODELS, and any global.* id, before calling Bedrock.
+    const assistant = resolveAssistantModels(
+      props.assistantModels ?? [ASSISTANT_OPUS_5],
+      props.assistantDefaultModel,
+    )
+    addApiEnvironment('ASSISTANT_MODEL_ID', assistant.defaultModel)
+    addApiEnvironment(
+      'ASSISTANT_ALLOWED_MODELS',
+      assistant.models.map((m) => m.profileId).join(','),
+    )
+
+    // The pinned Bedrock grant (Infrastructure §2), over exactly the listed
+    // models. Converse needs bedrock:InvokeModel and ConverseStream needs
+    // bedrock:InvokeModelWithResponseStream (Bedrock user guide): the same two
+    // actions the InvokeModel path maps to in the Service Authorization
+    // Reference. A geo inference profile needs the grant on the profile AND on
+    // the foundation model in every region it can route to; the profile grant
+    // alone does not cover the model.
     // The role is shared, so ApiFunction holds this grant too. That is intended:
     // the main API mounts the same /api/v1/assistant routes (behind the same
     // ASSISTANT_ENABLED + Cedar gates), and a /chat that arrives through API
@@ -602,13 +685,12 @@ export class ApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         sid: 'AssistantBedrockInvoke',
         actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
-        resources: [
-          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/${ASSISTANT_INFERENCE_PROFILE_ID}`,
-          ...ASSISTANT_PROFILE_DESTINATION_REGIONS.map(
-            (region) =>
-              `arn:aws:bedrock:${region}::foundation-model/${ASSISTANT_FOUNDATION_MODEL_ID}`,
+        resources: assistant.models.flatMap((m) => [
+          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/${m.profileId}`,
+          ...m.destinationRegions.map(
+            (region) => `arn:aws:bedrock:${region}::foundation-model/${m.foundationModelId}`,
           ),
-        ],
+        ]),
       }),
     )
 
@@ -634,6 +716,12 @@ export class ApiStack extends cdk.Stack {
     // functions answer every /api/v1/assistant route with 404 ASSISTANT_DISABLED.
     if (props.assistantEnabled) {
       addApiEnvironment('ASSISTANT_ENABLED', 'true')
+    }
+
+    // Tenant custom events (registry + emit). Absent is off: every /event-types
+    // route answers 404.
+    if (props.customEventsEnabled) {
+      addApiEnvironment('CUSTOM_EVENTS_ENABLED', 'true')
     }
 
     // ---------------------------------------------------------------------------

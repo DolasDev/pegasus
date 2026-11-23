@@ -188,6 +188,19 @@ describe.skipIf(!hasDb)('/assistant (integration)', () => {
     })
   })
 
+  it('continues a conversation after a failed turn without sending an empty message', async () => {
+    useScript([]) // the model call fails, as it will before the use-case form is submitted
+    const first = await events(await post(opsAdmin(), '/chat', { question: 'q1' }))
+    const conversationId = (first.at(-1)![1] as { conversationId: string }).conversationId
+
+    const p = useScript([{ content: [{ type: 'text', text: 'second' }] }])
+    await events(await post(opsAdmin(), '/chat', { question: 'q2', conversationId }))
+    // The unanswered q1 is dropped: Converse needs strict alternation and no empty content.
+    const sent = p.requests[0]!.messages
+    expect(sent.map((m) => m.role)).toEqual(['user'])
+    for (const m of sent) expect(m.content.length).toBeGreaterThan(0)
+  })
+
   it('continues a conversation with its history and keeps it private to its owner', async () => {
     useScript([{ content: [{ type: 'text', text: 'first' }] }])
     const first = await events(await post(opsAdmin(), '/chat', { question: 'q1' }))
@@ -195,8 +208,7 @@ describe.skipIf(!hasDb)('/assistant (integration)', () => {
 
     const p = useScript([{ content: [{ type: 'text', text: 'second' }] }])
     await events(await post(opsAdmin(), '/chat', { question: 'q2', conversationId }))
-    const sent = p.requests[0]!['messages'] as Array<{ role: string }>
-    expect(sent.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
+    expect(p.requests[0]!.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
 
     // Another user in the same tenant cannot read or continue it…
     const other = app({ tenantId: tenantA, roleNames: ['operations_admin'], userId: 'user-b' })
@@ -272,5 +284,66 @@ describe.skipIf(!hasDb)('/assistant (integration)', () => {
       verdict: 'pass',
     })
     expect(evs[2]![1]).toMatchObject({ summary: { total: 1, graded: 1, passed: 1 } })
+  })
+
+  describe('model choice (plan D8)', () => {
+    const saved = {
+      def: process.env['ASSISTANT_MODEL_ID'],
+      list: process.env['ASSISTANT_ALLOWED_MODELS'],
+    }
+    beforeEach(() => {
+      process.env['ASSISTANT_MODEL_ID'] = 'us.anthropic.claude-opus-5'
+      process.env['ASSISTANT_ALLOWED_MODELS'] =
+        'us.anthropic.claude-opus-5,us.amazon.nova-2-lite-v1:0'
+    })
+    afterEach(() => {
+      for (const [k, v] of [
+        ['ASSISTANT_MODEL_ID', saved.def],
+        ['ASSISTANT_ALLOWED_MODELS', saved.list],
+      ] as const) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    })
+
+    it('lists the default and the allowed models for prompt managers only', async () => {
+      const res = await opsAdmin().request('/api/v1/assistant/models')
+      expect(await res.json()).toEqual({
+        data: {
+          default: 'us.anthropic.claude-opus-5',
+          allowed: ['us.anthropic.claude-opus-5', 'us.amazon.nova-2-lite-v1:0'],
+        },
+      })
+      const viewer = app({ tenantId: tenantA, roleNames: ['viewer'], userId: 'u' })
+      expect((await viewer.request('/api/v1/assistant/models')).status).toBe(403)
+    })
+
+    it('runs an eval on an allowed model and stamps the model on every row', async () => {
+      useScript([{ content: [{ type: 'text', text: "I don't have access to billing." }] }])
+      const evs = await events(
+        await post(opsAdmin(), '/evals/run', {
+          caseIds: ['example-driver-asks-for-an-invoice-total'],
+          modelId: 'us.amazon.nova-2-lite-v1:0',
+        }),
+      )
+      // The scripted provider answers whatever model is asked for; the row
+      // carries the model that actually answered.
+      expect(evs[1]![1]).toMatchObject({ modelId: 'fake-model', rounds: 1 })
+      expect(evs[2]![1]).toMatchObject({ summary: { meanRounds: 1 } })
+    })
+
+    it('refuses a model outside the list with 400, not 503', async () => {
+      const res = await post(opsAdmin(), '/evals/run', { modelId: 'us.anthropic.claude-haiku-5-5' })
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { code: string }).code).toBe('MODEL_NOT_ALLOWED')
+    })
+
+    it('never lets chat pick a model: it always uses the default', async () => {
+      const res = await post(opsAdmin(), '/chat', {
+        question: 'hi',
+        modelId: 'us.amazon.nova-2-lite-v1:0',
+      })
+      expect(res.status).toBe(400)
+    })
   })
 })

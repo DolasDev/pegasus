@@ -21,6 +21,7 @@ import time
 import warnings
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote as _urlquote
 
 import httpx
 
@@ -402,6 +403,11 @@ def _iso_day(value: str | _dt.date) -> str:
     if isinstance(value, _dt.date):
         return value.isoformat()
     return value
+
+
+def _seg(value: str) -> str:
+    """One URL path segment: a ``/`` or ``?`` in *value* can't reach another route."""
+    return _urlquote(str(value), safe="")
 
 
 def _raise_for_status(response: httpx.Response) -> None:
@@ -1698,11 +1704,98 @@ class PegasusClient:
             return captured
         with self._client() as client:
             response = client.post(
-                f"/api/v1/event-types/{name}/emit",
+                f"/api/v1/event-types/{_seg(name)}/emit",
                 json={"payload": payload or {}},
             )
         _raise_for_status(response)
         return response.json()["data"]
+
+    # -- custom event types (0.67.1) --------------------------------------
+
+    def create_event_type(
+        self,
+        name: str,
+        *,
+        payload_schema: dict[str, Any] | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """Register a tenant custom event type (0.67.1+). Requires ``ManageEventTypes``.
+
+        An operator step (``workflow_developer`` / ``tenant_admin`` key), not a
+        runtime one. Once registered, an Automation can :meth:`emit_event` it and an
+        EVENT trigger can subscribe to it, including ``mode="START"`` with a
+        ``correlation_path`` into the payload to start ONE durable Workflow per key
+        (e.g. ``"payload.orderNum"``).
+
+        Args:
+            name: Dotted lowercase name, e.g. ``"billing.delivery_due"``. Must not
+                collide with a built-in event type.
+            payload_schema: Optional JSON Schema; :meth:`emit_event` payloads are
+                validated against it server-side (400 on mismatch).
+            description: Optional human note.
+
+        Returns:
+            The created event-type row.
+
+        Raises:
+            PegasusApiError: 404 ``NOT_FOUND`` "Custom events are not enabled" when
+                the platform's custom-events switch is off for this environment;
+                400 (bad name / schema), 403 (lacks ``ManageEventTypes``), 409 (name
+                taken).
+        """
+        body: dict[str, Any] = {"name": name}
+        if payload_schema is not None:
+            body["payloadSchema"] = payload_schema
+        if description is not None:
+            body["description"] = description
+        with self._client() as client:
+            response = client.post("/api/v1/event-types", json=body)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def list_event_types(self) -> list[dict[str, Any]]:
+        """List the tenant's custom event types (0.67.1+). Requires ``ManageEventTypes``."""
+        return self._get_json("/api/v1/event-types")["data"]
+
+    def get_event_type(self, name: str) -> dict[str, Any]:
+        """One custom event type by name (0.67.1+). Requires ``ManageEventTypes``."""
+        return self._get_json(f"/api/v1/event-types/{_seg(name)}")["data"]
+
+    def update_event_type(
+        self,
+        name: str,
+        *,
+        enabled: bool | None = None,
+        description: str | None = None,
+        payload_schema: dict[str, Any] | None = None,
+        clear_schema: bool = False,
+    ) -> dict[str, Any]:
+        """Change a custom event type (0.67.1+). Requires ``ManageEventTypes``.
+
+        Only the arguments you pass are sent. ``enabled=False`` stops new emits
+        (404) without deleting the type; ``clear_schema=True`` removes the payload
+        schema. The name can't change.
+        """
+        body: dict[str, Any] = {}
+        if enabled is not None:
+            body["enabled"] = enabled
+        if description is not None:
+            body["description"] = description
+        if payload_schema is not None or clear_schema:
+            body["payloadSchema"] = payload_schema
+        with self._client() as client:
+            response = client.patch(f"/api/v1/event-types/{_seg(name)}", json=body)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def delete_event_type(self, name: str) -> None:
+        """Delete a custom event type (0.67.1+). Requires ``ManageEventTypes``.
+
+        Triggers that subscribe to it are left in place (they stop matching).
+        """
+        with self._client() as client:
+            response = client.delete(f"/api/v1/event-types/{_seg(name)}")
+        _raise_for_status(response)
 
     def send_sms(self, to: str, body: str, *, dedup_key: str | None = None) -> dict[str, Any]:
         """Send an outbound SMS via the tenant's configured provider.

@@ -1433,9 +1433,45 @@ client.emit_event("quote.followed_up", {"quoteId": "Q-1", "channel": "sms"})
 # → {"emitted": True, "eventType": "quote.followed_up", "occurredAt": "…"}
 ```
 
-The event type must already exist for the tenant (define it in the tenant UI or via
-the events surface). `emit_event` is a mutation — captured, not performed, under the
-offline test harness and the server-side `--dry-run`.
+The event type must already exist for the tenant. Register it once as an operator
+(0.67.1+; needs `ManageEventTypes`, held by `workflow_developer`):
+
+```python
+client.create_event_type(
+    "billing.delivery_due",
+    payload_schema={"type": "object", "required": ["orderNum"],
+                    "properties": {"orderNum": {"type": "integer"}}},
+    description="An order's delivery date has arrived",
+)
+client.list_event_types()          # / get_event_type("billing.delivery_due")
+```
+
+```
+pegasus-workflows event-types create billing.delivery_due --schema schema.json -d "…"
+pegasus-workflows event-types list
+```
+
+`emit_event` is a mutation — captured, not performed, under the offline test harness
+and the server-side `--dry-run`. Where the platform's custom-events switch is off,
+every event-types call (and `emit_event`) answers 404 "Custom events are not enabled".
+
+**Starting one durable Workflow per key from a scheduled sweep.** An Automation can't
+start a Workflow directly, but it can emit a custom event that a Workflow's EVENT
+trigger starts on. Give the event the business key and subscribe with `mode="START"`:
+
+```python
+# in the daily sweep Automation (SCHEDULE trigger; required_actions = ["EmitTenantEvent"])
+client.emit_event("billing.delivery_due", {"orderNum": 1234})
+
+# once, as an operator: the Workflow's trigger
+client.create_trigger(wf_id, kind="EVENT", event_type="billing.delivery_due",
+                      mode="START", correlation_path="payload.orderNum",
+                      signal_name="delivery_due")
+```
+
+Each key starts at most one instance for life; an event for a key whose instance is
+open is delivered to it as the `signal_name` signal. Emit each key once (keep a claim in
+`put_workflow_state`) rather than re-emitting daily, so closed keys aren't re-started.
 
 ### Calling a read endpoint directly (`api_get`)
 
