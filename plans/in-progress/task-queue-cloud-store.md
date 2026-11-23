@@ -117,7 +117,12 @@ The parent plan suggested 3a = tables + gateway, with every SDK change in 3c. Th
   - **`GOTCHAS.md`:** Prisma 7 `migrate dev` no longer regenerates the client.
   - **Parent plan:** TQ-D3 amended, Phase 3 cloud-gateway item checked, Resume rewritten.
   - **`apps/mobile/README.md`:** Blocked now goes to the dispatcher.
-- [ ] **9. Gate:** `npm run typecheck`, api + domain tests, SDK tests; restore coverage floors (`git checkout` the two `vitest.config.ts`) before committing.
+- [x] **9. Gate:** `npm run typecheck`, api + domain tests, SDK tests; restore coverage floors (`git checkout` the two `vitest.config.ts`) before committing. Green 2026-11-23, after merging `origin/main` (`a5cd9b36`).
+  - `npm run typecheck` 15/15 and `npm run lint` 10/10.
+  - API `vitest --coverage` 343 files / 5,508 tests, thresholds met.
+  - Domain 548, mobile jest 508, SDK pytest 671.
+  - Both `vitest.config.ts` floor rewrites were restored.
+  - Flakes seen, unrelated (each passes alone): `workflow-executions.test.ts` terminate cases (38/38 alone), and earlier `automation-steps.test.ts` 429 CONCURRENCY_LIMIT (22/22 alone). Both race on the shared DB under the parallel full run.
 
 ## Out of scope (3b–3d, Phase 4)
 
