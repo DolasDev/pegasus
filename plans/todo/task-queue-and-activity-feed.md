@@ -18,7 +18,7 @@
   - A role with no routing entry uses legacy (the desktop).
   - Blocked notifies the move's dispatcher.
   - Cloud tasks are billable.
-- **Next: Phase 3b** (the sweeper). It decides the `TaskState` fold and fixes the `TaskDefinition` predicate columns.
+- **Phase 3b is DRAFTED (2026-11-23), no code:** worktree `../pegasus-task-queue-await`, branch `feat/task-queue-await`, plan `plans/in-progress/task-queue-await.md`. It proposes re-cutting 3b/3c: 3b becomes "await a task, end to end" and 3c gets definitions + predicates. **Steve's calls S1–S5 are pending before code.**
 
 ### Shipped so far (all merged and deployed to prod)
 
