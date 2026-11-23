@@ -2,7 +2,37 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Step 1 done; step 2 next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–2 done; step 3 next.
+
+## Resume here (2026-11-23, end of session)
+
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 2, `feat(api): TaskAwait table` (step 1 was `e28b885f`). Nothing is pushed and no PR exists.
+- **Status:** steps 1–2 `[x]`, steps 3–10 `[ ]` (see Steps).
+- **Next action — step 3 (reserved `pegasus.` signal prefix):**
+  - Refuse `pegasus.`-prefixed signal names on the public route (`POST …/executions/:id/signal`) and in event-routed delivery.
+  - Add a platform delivery path that skips the manifest's declared-signals check for those names (used by steps 5–6).
+  - Tests for both refusals and the bypass. Commit on its own.
+- **Uncommitted work:** only `apps/e2e/.env.test`. It's the worktree's isolated-DB wiring, written by `scripts/new-worktree.sh`. Never stage or commit it.
+- **In flight:** nothing.
+  - #985 is merged and deployed.
+  - SDK 0.68.0 is published (tag `sdk-python-v0.68.0`).
+  - `pegasus-workflows` `c8a7c1f` is pushed.
+  - Android vcode 26 (EAS `75915c4b`) is SUBMITTED to the Play `alpha` track (closed testing), 2026-11-23 19:24Z.
+- **Decisions (this session):**
+  - S1–S5: Steve said YES to all five as recommended. See below.
+  - D7 changed: the sweeper acts as the **awaiting Workflow's runtime service account**, not an anonymous service principal. `lib/pegii-token.ts` refuses a token with no `tenantUserId` (`PEGII_PRINCIPAL_UNRESOLVED`).
+  - The runtime ApiClient is `wf-runtime-<workflowId>`: one per **workflow**, not per execution (`lib/start-workflow-execution.ts` `provisionRuntimeServiceAccount`; `lib/usage/billable-actions.ts` `workflowIdFromClientName`). So the server can't tell which run is calling. The register activity sends `activity.info().workflow_id`, which the server maps to the run via `WorkflowExecution.temporalWorkflowId` (indexed with `tenantId`), then checks the run belongs to the caller's workflow.
+- **Gotchas:**
+  - `buildPegiiCaller(tenantDb, …)` MUST get a `createTenantDb`-scoped client. `company.repository` `getDefaultTarget()` has no `tenantId` filter of its own.
+  - Prisma 7 `migrate dev` does NOT regenerate the client: run `npm run db:generate`.
+  - The worktree-isolated shell refuses long or compound commands, and any command mentioning `.github` or several `git` calls. Put scripts in files under `$CLAUDE_JOB_DIR/tmp` and run them, or split the commands.
+  - Test runs rewrite the coverage floors in `apps/api/vitest.config.ts` and `packages/domain/vitest.config.ts`. `git checkout --` both before committing.
+  - Full-suite flakes that pass alone: `workflow-executions.test.ts` (terminate cases) and `automation-steps.test.ts` (429 `CONCURRENCY_LIMIT`).
+  - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
+  - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
+- **Verification still owed:**
+  - Steps 3–10 are unbuilt.
+  - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
 
@@ -75,7 +105,7 @@
 ## Steps
 
 - [x] 1. `buildPegiiCaller` extracted (no behaviour change; own commit). Done 2026-11-23: `resolvePegiiCaller` is now a thin wrapper; two direct tests (service account + correlation id; a user outside the tenant does not resolve). Full API suite green.
-- [ ] 2. Prisma: `TaskAwait` + drop `WorkItem.awaitingExecutionId`; migration; `TENANT_SCOPED_MODELS`.
+- [x] 2. Prisma: `TaskAwait` + drop `WorkItem.awaitingExecutionId`; migration; `TENANT_SCOPED_MODELS`. Done 2026-11-23: migration `20261123231442_task_awaits` (enums `TaskStore`, `TaskAwaitStatus`; table `task_awaits`; `DROP COLUMN awaiting_execution_id`), applied to the worktree DB; client regenerated; tsc clean; tenant-isolation + cloud-task gateway tests green.
 - [ ] 3. Reserved `pegasus.` signal prefix (public route + event routing) + platform delivery bypass; tests.
 - [ ] 4. `POST /tasks/:taskId/await` (D2) + repository; tests (cross-tenant, wrong workflow, terminal, already closed, idempotent).
 - [ ] 5. Cloud close → post-commit signal to waiters (D5); tests.

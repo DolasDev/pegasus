@@ -321,6 +321,7 @@ model Tenant {
   itineraryActFacts      ItineraryActFact[]
   taskStates             TaskState[]
   workItems              WorkItem[]
+  taskAwaits             TaskAwait[]
   taskDefinitions        TaskDefinition[]
   notifications          Notification[]
   notificationPrefs      NotificationPreference[]
@@ -1956,7 +1957,8 @@ model WorkflowExecution {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  workflow Workflow @relation(fields: [workflowId], references: [id])
+  workflow   Workflow    @relation(fields: [workflowId], references: [id])
+  taskAwaits TaskAwait[]
 
   /// Step idempotency. NULLs never collide, so non-step rows are unaffected.
   @@unique([tenantId, stepKey])
@@ -3831,8 +3833,6 @@ model WorkItem {
   /// Andon. Set and notified from Phase 3b/3c; columns only in 3a.
   blockedAt            DateTime?      @map("blocked_at") @db.Timestamptz(6)
   blockReason          String?        @map("block_reason") @db.VarChar(500)
-  /// The Workflow execution awaiting this task (Phase 3c signals it).
-  awaitingExecutionId  String?        @map("awaiting_execution_id")
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   doneAt               DateTime?      @map("done_at") @db.Timestamptz(6)
@@ -3847,6 +3847,62 @@ model WorkItem {
   @@index([tenantId, owningRole, status, dueDate])
   @@index([tenantId, taskType, status])
   @@map("work_items")
+  @@schema("public")
+}
+
+/// Which store an awaited task lives in (task queue plan TQ-D2).
+enum TaskStore {
+  legacy
+  cloud
+
+  @@schema("public")
+}
+
+/// Lifecycle of a TaskAwait. `delivered` = the Workflow was signalled
+/// `pegasus.task_closed`; `abandoned` = the execution ended (or can't take a
+/// signal) before the task closed.
+enum TaskAwaitStatus {
+  waiting
+  delivered
+  abandoned
+
+  @@schema("public")
+}
+
+/// A durable Workflow execution waiting on a task to close (task queue Phase
+/// 3b, SDK `await_task`). One table for both stores: a cloud close signals its
+/// waiters after commit; the sweeper redelivers, polls legacy tasks (batched
+/// by order) and abandons waiters whose execution ended. Many-to-many: a task
+/// can have several waiters, an execution can wait on several tasks.
+/// Tenant-scoped.
+model TaskAwait {
+  id          String          @id @default(uuid())
+  tenantId    String          @map("tenant_id")
+  executionId String          @map("execution_id")
+  store       TaskStore
+  /// Cloud: WorkItem.id. Legacy: the pegII task id, as a string.
+  taskId      String          @map("task_id") @db.VarChar(64)
+  /// The pegII order number; the sweeper batches legacy polls by order.
+  orderNum    Int             @map("order_num")
+  status      TaskAwaitStatus @default(waiting)
+  /// Failed delivery attempts (signal or legacy poll).
+  attempts    Int             @default(0)
+  lastError   String?         @map("last_error") @db.VarChar(500)
+  /// Legacy only: when the sweeper next polls this task. Null = now.
+  nextPollAt  DateTime?       @map("next_poll_at") @db.Timestamptz(6)
+  deliveredAt DateTime?       @map("delivered_at") @db.Timestamptz(6)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  execution WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([executionId, store, taskId])
+  /// The sweeper's lanes: waiting awaiters per store, legacy by nextPollAt.
+  @@index([tenantId, status, store, nextPollAt])
+  /// A close's waiter lookup.
+  @@index([tenantId, store, taskId, status])
+  @@map("task_awaits")
   @@schema("public")
 }
 
