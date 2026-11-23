@@ -2,9 +2,9 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** DRAFT 2026-11-23. No code. **Steve's calls S1–S5 below come first.**
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Step 1 done; step 2 next.
 
-## Steve's calls (answer before code)
+## Steve's calls (all five: YES, as recommended, 2026-11-23)
 
 - **S1. Re-cut 3b/3c (recommended).**
   - **The problem with the current split:** 3b's sweeper would ship with nothing to sweep. Nothing sets an awaiter until 3c's `await_task`, and no `appliesWhen`/`satisfiedWhen` predicates exist until 3c.
@@ -54,8 +54,9 @@
    - **(a) Redelivery:** `waiting` cloud awaiters whose task is closed get signalled.
    - **(b) Legacy poll:** `waiting` legacy awaiters with `nextPollAt <= now`, grouped by (tenant, order), at most 50 orders per tick. One `listOrderTasks` per order; closed tasks get signalled; the rest get `nextPollAt = now + 15 min`.
    - **(c) Cleanup:** awaiters whose execution is terminal become `abandoned`.
-7. **A pegII caller without a request.** Extract `buildPegiiCaller(db, tenantId, { tenantUserId, correlationId, companyId? })` from `resolvePegiiCaller`, which keeps its signature.
-   - The sweeper calls as a service principal (`isServiceAccount: true`), so writes are attributed to the company's `systemEmployeeCode`. It only reads.
+7. **A pegII caller without a request.** Extract `buildPegiiCaller(tenantDb, { tenantId, tenantUserId, correlationId, companyId? })` from `resolvePegiiCaller`, which keeps its signature.
+   - `tenantDb` MUST be scoped to `tenantId` (`createTenantDb`). The default-company lookup has no `tenantId` of its own, so on the root client it would pick any tenant's default company. The sweeper builds a scoped client per tenant.
+   - **The sweeper acts as the awaiting Workflow's own runtime service account** (its ApiClient's acts-as `TenantUser`). Minting refuses a subject-less principal (`PEGII_PRINCIPAL_UNRESOLVED`), and this attributes each poll to the Workflow that is waiting. It only reads.
    - pegII goes through `tunnelFetch` (the in-VPC tunnel-proxy Lambda), so the sweeper needs no VPC, just invoke rights.
 8. **Infra:** a `NodejsFunction` in `api-stack.ts` beside the reconciler, in the Temporal-configured branch.
    - Same Temporal env, secret and `workflowTokenKey.grantDecrypt`.
@@ -73,7 +74,7 @@
 
 ## Steps
 
-- [ ] 1. `buildPegiiCaller` extracted (no behaviour change; own commit).
+- [x] 1. `buildPegiiCaller` extracted (no behaviour change; own commit). Done 2026-11-23: `resolvePegiiCaller` is now a thin wrapper; two direct tests (service account + correlation id; a user outside the tenant does not resolve). Full API suite green.
 - [ ] 2. Prisma: `TaskAwait` + drop `WorkItem.awaitingExecutionId`; migration; `TENANT_SCOPED_MODELS`.
 - [ ] 3. Reserved `pegasus.` signal prefix (public route + event routing) + platform delivery bypass; tests.
 - [ ] 4. `POST /tasks/:taskId/await` (D2) + repository; tests (cross-tenant, wrong workflow, terminal, already closed, idempotent).
