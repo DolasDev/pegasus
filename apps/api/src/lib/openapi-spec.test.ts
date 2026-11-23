@@ -91,6 +91,16 @@ describe('getOpenApiSpec', () => {
     expect(list?.description).toContain('parentExecutionId')
   })
 
+  it('documents registering and emitting a custom event type (the keyed-START path)', () => {
+    const types = spec.paths['/api/v1/event-types']
+    expect(Object.keys(types ?? {}).sort()).toEqual(['get', 'post'])
+    expect((types?.['post'] as { operationId?: string }).operationId).toBe('createEventType')
+    const emit = spec.paths['/api/v1/event-types/{name}/emit']?.['post'] as
+      { operationId?: string; description?: string } | undefined
+    expect(emit?.operationId).toBe('emitEvent')
+    expect(emit?.description).toContain('correlationPath')
+  })
+
   it('declares the vnd_ API-key security scheme, applied to the authoring routes', () => {
     expect(spec.components.securitySchemes).toHaveProperty('ApiKeyAuth')
     // Public discovery routes carry no security; authoring routes do.

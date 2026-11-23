@@ -207,6 +207,14 @@ const reportingEnabled = envName === 'staging' || envName === 'prod'
 // operations_admin (policies/60-assistant.cedar) and tenant_admin.
 const assistantEnabled = false
 
+// ── Tenant custom events (staging only, for now) ─────────────────────────────
+// Ungates CUSTOM_EVENTS_ENABLED on the api Lambda: the event-type registry and
+// emit_event. The billing readiness sweep (plans/todo/
+// billing-readiness-followups.md) emits one `billing.delivery_due` per order to
+// start a keyed durable Workflow. Staging first (Steve, 2026-11-22); prod — where
+// RVS lives — flips after the staging proof, with approval.
+const customEventsEnabled = envName === 'staging'
+
 // ── AI assistant models (plans/*/assistant-converse.md D8) ───────────────────
 // The Bedrock models the assistant may call. The IAM grant covers exactly this
 // list; the Lab's eval runner can pick any of them; chat uses the default.
@@ -489,6 +497,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   reportingEnabled,
   corsAllowedOrigins,
   assistantEnabled,
+  customEventsEnabled,
   assistantModels,
   assistantDefaultModel,
 })

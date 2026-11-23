@@ -3,6 +3,25 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.67.1
+
+### Added — register custom event types from the SDK and CLI
+
+- `PegasusClient.create_event_type(name, *, payload_schema=None, description=None)`,
+  `list_event_types()`, `get_event_type(name)`, `update_event_type(name, enabled=…,
+description=…, payload_schema=…)` and `delete_event_type(name)` (need `ManageEventTypes`, held by
+  `workflow_developer`). Before this, `emit_event` could only fire a type someone had
+  registered by hand against the API.
+- CLI: `pegasus-workflows event-types create <name> [--schema FILE] [--description …]`
+  and `event-types list`.
+- Documented pattern: an Automation `emit_event`s a custom event carrying a business
+  key, and a durable Workflow's EVENT trigger subscribes with `mode="START"` +
+  `correlation_path="payload.<key>"` → one Workflow instance per key. This is how a
+  SCHEDULE sweep starts keyed Workflows (an Automation cannot start a Workflow
+  directly).
+- The whole custom-events surface answers 404 "Custom events are not enabled" where
+  the platform switch is off (it is on in staging as of this release).
+
 ## 0.67.0
 
 ### Added — `notify`: post to your company's users' Activity

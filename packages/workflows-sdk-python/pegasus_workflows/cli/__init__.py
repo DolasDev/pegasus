@@ -29,6 +29,7 @@ from __future__ import annotations
 import typer
 
 from .diagram import diagram_command
+from .event_types import event_types_app
 from .executions import executions_app
 from .feedback_form import feedback_form_app
 from .ingress import ingress_app
@@ -92,6 +93,7 @@ app.command("mcp")(mcp_command)
 app.command("requirements")(requirements_command)
 app.add_typer(integration_config_app)
 app.add_typer(executions_app)
+app.add_typer(event_types_app)
 app.add_typer(schedule_app)
 app.add_typer(ingress_app)
 app.add_typer(feedback_form_app)
