@@ -1,6 +1,6 @@
 # AI Chat Assistant — move inference to the Bedrock Converse API
 
-**Branch:** PR 1 landed from `feat/assistant-converse` (#981). PR 2 (steps 11–12) is on `feat/assistant-models`. PR 3 gets its own branch. When parked, this plan goes to `plans/todo/` (not `completed/`) while step 10, 13–14 or 15 remain.
+**Branch:** PR 1 landed from `feat/assistant-converse` (#981). PR 2 (steps 11–12) landed from `feat/assistant-models`. PR 3 gets its own branch. **PARKED** in `plans/todo/` (not `completed/`): step 10 and steps 13–14 wait on the use-case form, a staging AWS session and the eval set; step 15 (PR 3) comes after them.
 **Goal:** the assistant's model becomes a configuration choice among the Bedrock models we allow, not a code change. It stays on Amazon Bedrock, so AWS remains the only data processor.
 
 **Status:** approved and started 2026-11-21 (Steve ran `/workstream-start`). It builds on Phase 1 of
