@@ -927,6 +927,7 @@ describe('SSO handler', () => {
 
     beforeEach(() => {
       vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', DESKTOP)
+      vi.stubEnv('COGNITO_MOBILE_CLIENT_ID', '')
     })
 
     afterEach(() => {
@@ -1015,6 +1016,128 @@ describe('SSO handler', () => {
           }
         }
         if (cmd?.__cmd === 'UpdateUserPoolClient' && cmd.ClientId === DESKTOP) {
+          throw new Error('AccessDeniedException')
+        }
+        return {}
+      })
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+
+      expect(res.status).toBe(500)
+      expect(DeleteIdentityProviderCommand).not.toHaveBeenCalled()
+      expect(mockDb.tenantSsoProvider.delete).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── Mobile app client ─────────────────────────────────────────────────────
+  // The driver app shows "SIGN IN WITH <provider>" for any tenant with providers and
+  // signs in through the Hosted UI on its own client. Until 2026-11-24 no provider was
+  // ever permitted on that client, so every mobile SSO sign-in 400'd at the callback.
+  describe('mobile app client', () => {
+    const MOBILE = 'mobile-client-id'
+
+    function writeTargets(): string[] {
+      return mockSend.mock.calls
+        .map((c) => c[0] as { __cmd?: string; ClientId?: string })
+        .filter((c) => c.__cmd === 'UpdateUserPoolClient')
+        .map((c) => c.ClientId ?? '')
+    }
+
+    beforeEach(() => {
+      vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', '')
+      vi.stubEnv('COGNITO_MOBILE_CLIENT_ID', MOBILE)
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('GET /providers repairs drift on the mobile client as well as the tenant client', async () => {
+      mockDb.tenantSsoProvider.findMany.mockResolvedValue([mockProviderRow])
+
+      const res = await buildApp().request('/providers')
+
+      expect(res.status).toBe(200)
+      expect(writeTargets()).toHaveLength(2)
+      expect(writeTargets()[1]).toBe(MOBILE)
+      expect(appClientWrites()).toEqual([
+        ['COGNITO', 'GoogleOIDC'],
+        ['COGNITO', 'GoogleOIDC'],
+      ])
+    })
+
+    it('POST /providers permits the new provider on the mobile client too', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+
+      expect(res.status).toBe(201)
+      expect(writeTargets()).toEqual([expect.any(String), MOBILE])
+    })
+
+    it('POST /providers permits on desktop and mobile when both are configured', async () => {
+      vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', 'desktop-client-id')
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+
+      expect(res.status).toBe(201)
+      expect(writeTargets().slice(1)).toEqual(['desktop-client-id', MOBILE])
+    })
+
+    it('POST /providers still succeeds (no rollback) when only the mobile permit fails', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string; ClientId?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') return { UserPoolClient: { ...mockAppClient } }
+        if (cmd?.__cmd === 'UpdateUserPoolClient' && cmd.ClientId === MOBILE) {
+          throw new Error('AccessDeniedException')
+        }
+        return {}
+      })
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+
+      expect(res.status).toBe(201)
+      expect(DeleteIdentityProviderCommand).not.toHaveBeenCalled()
+      expect(mockDb.tenantSsoProvider.delete).not.toHaveBeenCalled()
+    })
+
+    it('DELETE /providers/:id revokes on the mobile client before deleting the IdP', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') {
+          return {
+            UserPoolClient: {
+              ...mockAppClient,
+              SupportedIdentityProviders: ['COGNITO', 'GoogleOIDC'],
+            },
+          }
+        }
+        return {}
+      })
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+
+      expect(res.status).toBe(204)
+      expect(writeTargets()[1]).toBe(MOBILE)
+      expect(appClientWrites()).toEqual([['COGNITO'], ['COGNITO']])
+      const order = mockSend.mock.calls.map((c) => (c[0] as { __cmd?: string }).__cmd ?? 'idp')
+      expect(order.lastIndexOf('UpdateUserPoolClient')).toBeLessThan(order.lastIndexOf('idp'))
+    })
+
+    it('DELETE /providers/:id returns 500 and keeps the IdP when the mobile revoke fails', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string; ClientId?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') {
+          return {
+            UserPoolClient: {
+              ...mockAppClient,
+              SupportedIdentityProviders: ['COGNITO', 'GoogleOIDC'],
+            },
+          }
+        }
+        if (cmd?.__cmd === 'UpdateUserPoolClient' && cmd.ClientId === MOBILE) {
           throw new Error('AccessDeniedException')
         }
         return {}
