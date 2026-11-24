@@ -254,6 +254,7 @@ describe('workItemToRecord', () => {
     closedByUserId: null,
     blockedAt: null,
     blockReason: null,
+    awaitingExecutionId: null,
     createdAt: new Date('2026-11-21T10:00:00Z'),
     updatedAt: new Date('2026-11-21T10:00:00Z'),
     doneAt: null,

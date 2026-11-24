@@ -295,7 +295,7 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
 - [ ] **Prisma:**
   - `TaskDefinition` (tenant-scoped, versioned): key, title, owningRole, appliesWhen (rule ref + params), satisfiedWhen (fact predicate ref | form | explicit), dueBase + offset, escalation, deepLink.
   - `WorkItem`: id, definitionKey + version, orderNum, owningRole, assigneeUserId?, status `open|blocked|done|cancelled`, dueAt, timestamps for each transition, store.
-    - 3b dropped the unused `awaitingExecutionId`. The many-to-many `TaskAwait` table replaces it, covering both stores.
+    - 3b deprecated the unused `awaitingExecutionId`; the many-to-many `TaskAwait` table replaces it, covering both stores. **Owed:** a contract-only migration dropping `work_items.awaiting_execution_id`, at least one release after 3b ships (PATTERNS.md expand-contract).
   - ~~Phase 1's `TaskState` folds into `WorkItem`.~~ **Not folded** (S2): the driver To Do stays computed.
 - [ ] **Sweeper (EventBridge schedule):** `TaskSweeperFunction`, every 5 min (3b).
   - [ ] Re-evaluate `appliesWhen`/`satisfiedWhen` for open items: auto-done, auto-cancel (F2). **3c.**

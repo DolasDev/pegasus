@@ -8,6 +8,10 @@
 
 - **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Commits were rebased onto `0d7dc6e4` on 2026-11-24, so their SHAs changed. Use `git log --oneline origin/main..HEAD`. Nothing is pushed and no PR exists.
 - **Status:** COMPLETE. Steps 1–10 `[x]` (see Steps). Rebased on `origin/main` `0d7dc6e4` (#988), and landing through the merge queue.
+- **Review fix before the PR (2026-11-24):** step 2's `DROP COLUMN work_items.awaiting_execution_id` broke PATTERNS.md's expand-contract rule, and `scripts/check-migration-safety.sh` flagged it.
+  - **Failure scenario:** rolling back to 3a would bring back a Prisma client that still selects the dropped column, so every cloud task read and write would fail.
+  - **The fix:** the migration is now expand-only (the `TaskAwait` table only), and `WorkItem.awaitingExecutionId` stays in the schema, deprecated and never written.
+  - **Owed:** a contract-only migration dropping it, at least one release after 3b ships.
 - **Landing:** through `/workstream-finish` (Steve, 2026-11-24): this plan archived to `plans/completed/62a6f5aa-task-queue-await.md`, then a PR with auto-merge through the merge queue. After it merges, re-run `/workstream-finish` to tear the worktree down.
 - **After the PR merges (owed):**
   - Publish SDK 0.69.0 (tag `sdk-python-v0.69.0`; feedback: ALWAYS publish after a bump merges).

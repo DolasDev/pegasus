@@ -1,17 +1,8 @@
-/*
-  Warnings:
-
-  - You are about to drop the column `awaiting_execution_id` on the `work_items` table. All the data in the column will be lost.
-
-*/
 -- CreateEnum
 CREATE TYPE "TaskStore" AS ENUM ('legacy', 'cloud');
 
 -- CreateEnum
 CREATE TYPE "TaskAwaitStatus" AS ENUM ('waiting', 'delivered', 'abandoned');
-
--- AlterTable
-ALTER TABLE "work_items" DROP COLUMN "awaiting_execution_id";
 
 -- CreateTable
 CREATE TABLE "task_awaits" (

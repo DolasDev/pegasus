@@ -3833,6 +3833,11 @@ model WorkItem {
   /// Andon. Set and notified from Phase 3b/3c; columns only in 3a.
   blockedAt            DateTime?      @map("blocked_at") @db.Timestamptz(6)
   blockReason          String?        @map("block_reason") @db.VarChar(500)
+  /// DEPRECATED (task queue 3b): never written; the many-to-many `TaskAwait`
+  /// table replaced it. Kept so the 3a code a rollback would restore still
+  /// finds it (PATTERNS.md: destructive DDL is contract-only). Drop it in a
+  /// contract-only migration at least one release after 3b ships.
+  awaitingExecutionId  String?        @map("awaiting_execution_id")
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   doneAt               DateTime?      @map("done_at") @db.Timestamptz(6)
