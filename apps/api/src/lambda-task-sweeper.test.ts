@@ -32,9 +32,12 @@ import {
   CLOUD_RECHECK_MS,
   LEGACY_POLL_INTERVAL_MS,
   REDELIVERY_GRACE_MS,
+  TASK_AWAIT_METRICS,
   sweepTaskAwaits,
   type SweepOptions,
 } from './lambda-task-sweeper'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 const SLUG = 'test-task-sweeper'
@@ -210,6 +213,21 @@ afterAll(async () => {
   if (!hasDb) return
   for (const t of [tenantId, otherTenantId].filter(Boolean)) await wipe(t).catch(() => undefined)
   await db.$disconnect()
+})
+
+// No DB needed: the emitter's metric names must match the infra contract
+// (packages/infra/lib/metrics.ts repeats them; apps/api can't import infra).
+describe('task-await sweeper metrics contract', () => {
+  const infraMetrics = readFileSync(
+    join(__dirname, '../../../packages/infra/lib/metrics.ts'),
+    'utf8',
+  )
+  it.each(Object.values(TASK_AWAIT_METRICS))('%s is declared in infra metrics.ts', (name) => {
+    expect(infraMetrics).toContain(`'${name}'`)
+  })
+  it('publishes to the Pegasus/Workflows namespace infra grants', () => {
+    expect(infraMetrics).toContain("PEGASUS_WORKFLOWS_METRIC_NAMESPACE = 'Pegasus/Workflows'")
+  })
 })
 
 describe.skipIf(!hasDb)('task-await sweeper (integration)', () => {

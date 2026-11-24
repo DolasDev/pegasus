@@ -928,6 +928,9 @@ export class ApiStack extends cdk.Stack {
     // Set inside the branch below; the RingCentral capture + sync Lambdas
     // (defined later) kick it when it exists — see grantDispatchKick.
     let dispatchTriggersFunction: nodejs.NodejsFunction | undefined
+    // Set inside the branch below; the tenant-runner and tunnel wiring further
+    // down extend it (it signals durable Workflows and polls pegII).
+    let taskSweeperFunction: nodejs.NodejsFunction | undefined
     if (
       props.temporalAddress &&
       props.temporalNamespace &&
@@ -1139,6 +1142,100 @@ export class ApiStack extends cdk.Stack {
       })
 
       // -----------------------------------------------------------------------
+      // Task-await sweeper (task queue Phase 3b)
+      //
+      // Moves TaskAwait rows — durable Workflows waiting in the SDK's
+      // await_task — toward delivered / abandoned every 5 minutes: abandons
+      // waits whose run ended, redelivers cloud closes the close-time signal
+      // couldn't reach, and polls legacy pegII tasks (which have no close
+      // hook), batched by order. Reads/writes cross-tenant via the root `db`.
+      //
+      // In this Temporal-configured branch because delivery is a Temporal
+      // signal. It also needs, wired below and further down:
+      //   - the workflow-token key, encrypt + decrypt: a tenant namespace's key
+      //     is KMS-encrypted, and a signal ensures the tenant's runner, which
+      //     may mint its wbk_ broker credential (same grant as the dispatcher);
+      //   - the tenant-runner env + ECS grants (same loop as the dispatcher);
+      //   - kms:Sign on the pegII token key + PEGII_TOKEN_*: a legacy poll is a
+      //     pegII read, acting as the awaiting Workflow's runtime service
+      //     account (a subject-less token is refused);
+      //   - tunnel-proxy invoke + PEGII_API_TUNNEL_*: pegII is reached through
+      //     the in-VPC tunnel proxy, so this Lambda itself needs no VPC.
+      // -----------------------------------------------------------------------
+      const taskSweeperLogGroup = new logs.LogGroup(this, 'TaskSweeperLogGroup', {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      })
+      cronLogGroupNames.push(taskSweeperLogGroup.logGroupName)
+
+      taskSweeperFunction = new nodejs.NodejsFunction(this, 'TaskSweeperFunction', {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: path.join(__dirname, '../../../../apps/api/src/lambda-task-sweeper.ts'),
+        handler: 'handler',
+        environment: {
+          NODE_ENV: 'production',
+          DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+          LOG_LEVEL: 'INFO',
+          TEMPORAL_ADDRESS: props.temporalAddress,
+          TEMPORAL_NAMESPACE: props.temporalNamespace,
+          TEMPORAL_TASK_QUEUE: props.temporalTaskQueue,
+          TEMPORAL_CLOUD_API_KEY: temporalSecret.secretValueFromJson('apiKey').unsafeUnwrap(),
+          WORKFLOW_TOKEN_KMS_KEY_ID: workflowTokenKey.keyId,
+          PEGII_TOKEN_KMS_KEY_IDS: pegiiTokenSigningKey.keyId,
+          ...(props.pegiiTokenIssuer ? { PEGII_TOKEN_ISSUER: props.pegiiTokenIssuer } : {}),
+        },
+        bundling: {
+          minify: true,
+          sourceMap: true,
+          externalModules: ['@aws-sdk/*'],
+        },
+        memorySize: 256,
+        // The sweep stops starting new work at 4 min (DEFAULT_BUDGET_MS in the
+        // handler); the last order's tunnel round-trip finishes inside this.
+        timeout: cdk.Duration.minutes(5),
+        logGroup: taskSweeperLogGroup,
+        // ONE sweep at a time: two overlapping ticks would poll the same
+        // orders and double-signal (harmless — the Workflow dedupes — but
+        // wasted tunnel calls).
+        reservedConcurrentExecutions: 1,
+      })
+      // A failed tick is redone by the next; never retry a stale one.
+      taskSweeperFunction.configureAsyncInvoke({
+        retryAttempts: 0,
+        maxEventAge: cdk.Duration.minutes(5),
+      })
+
+      dbSecret.grantRead(taskSweeperFunction)
+      temporalSecret.grantRead(taskSweeperFunction)
+      workflowTokenKey.grantEncryptDecrypt(taskSweeperFunction)
+      // Sign pegII tokens only — never grantEncryptDecrypt on a signing key.
+      taskSweeperFunction.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['kms:Sign', 'kms:GetPublicKey'],
+          resources: [pegiiTokenSigningKey.keyArn],
+        }),
+      )
+      // Same namespace-scoped PutMetricData grant as the reconcile poller.
+      taskSweeperFunction.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['cloudwatch:PutMetricData'],
+          resources: ['*'],
+          conditions: {
+            StringEquals: { 'cloudwatch:namespace': PEGASUS_WORKFLOWS_METRIC_NAMESPACE },
+          },
+        }),
+      )
+
+      new events.Rule(this, 'TaskSweeperSchedule', {
+        // Every 5 minutes: a legacy task a Workflow awaits is seen closed
+        // within ~5–20 min (15-min re-poll of an open task + the tick).
+        schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+        description:
+          'Task-await sweeper: delivers closed tasks to waiting durable Workflows (cloud redelivery + legacy poll) and abandons waits whose run ended.',
+        targets: [new eventsTargets.LambdaFunction(taskSweeperFunction)],
+      })
+
+      // -----------------------------------------------------------------------
       // Temporal namespace provisioner (Phase 3b)
       //
       // Creates, rotates and deletes each tenant's own Temporal Cloud
@@ -1336,7 +1433,10 @@ export class ApiStack extends cdk.Stack {
           }),
         ]
 
-        for (const fn of [apiFunction, dispatchTriggersFunction]) {
+        // The task sweeper too: its delivery is a signal, which ensures the
+        // tenant's runner (lib/signal-workflow-execution.ts).
+        for (const fn of [apiFunction, dispatchTriggersFunction, taskSweeperFunction]) {
+          if (!fn) continue
           for (const [key, value] of Object.entries(tenantRunnerEnv)) {
             fn.addEnvironment(key, value)
           }
@@ -1395,6 +1495,14 @@ export class ApiStack extends cdk.Stack {
     if (props.tunnelProxyFunction) {
       props.tunnelProxyFunction.grantInvoke(apiFunction)
       addApiEnvironment('TUNNEL_PROXY_FUNCTION_NAME', props.tunnelProxyFunction.functionName)
+      // The task sweeper's legacy poll reaches pegII the same way.
+      if (taskSweeperFunction) {
+        props.tunnelProxyFunction.grantInvoke(taskSweeperFunction)
+        taskSweeperFunction.addEnvironment(
+          'TUNNEL_PROXY_FUNCTION_NAME',
+          props.tunnelProxyFunction.functionName,
+        )
+      }
     }
 
     // ---------------------------------------------------------------------------
@@ -1411,6 +1519,8 @@ export class ApiStack extends cdk.Stack {
     // secrets under `pegasus/<env>/pegii/` are deliberately NOT readable.
     addApiEnvironment('PEGII_API_TUNNEL_SCHEME', 'http')
     addApiEnvironment('PEGII_API_TUNNEL_PORT', '65274')
+    taskSweeperFunction?.addEnvironment('PEGII_API_TUNNEL_SCHEME', 'http')
+    taskSweeperFunction?.addEnvironment('PEGII_API_TUNNEL_PORT', '65274')
 
     // ---------------------------------------------------------------------------
     // MSSQL executor — grant invoke + surface function name as env var.

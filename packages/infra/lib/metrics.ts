@@ -133,6 +133,31 @@ export const WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME = 'WorkflowExecutionRecon
 export const WORKFLOW_EXECUTION_CLOSED_METRIC_NAME = 'WorkflowExecutionClosed'
 
 // ---------------------------------------------------------------------------
+// Task-await sweeper metrics (task queue Phase 3b).
+//
+// Emitted once per tick by apps/api/src/lambda-task-sweeper.ts (its
+// TASK_AWAIT_METRICS repeats these strings literally — keep both sides in
+// sync). Undimensioned Counts, 0 included. No alarm: a site whose tunnel is
+// down fails its legacy polls every tick until it's back, which is a site
+// outage, not a platform fault. Sweeper crashes trip the account-wide Lambda
+// Errors alarm; a waiter stuck past 12 attempts logs ERROR ("Task await
+// stuck"), which the pegasus/cron-failures query surfaces.
+// ---------------------------------------------------------------------------
+
+/** Waiting Workflows signalled `pegasus.task_closed` by the sweeper this tick
+ * (redelivered cloud closes + legacy closes found by polling). */
+export const TASK_AWAIT_DELIVERED_METRIC_NAME = 'TaskAwaitDelivered'
+
+/** Awaiters ended without delivery: the run ended, or the task / order is gone. */
+export const TASK_AWAIT_ABANDONED_METRIC_NAME = 'TaskAwaitAbandoned'
+
+/** Failed signal deliveries this tick; each stays waiting and is retried. */
+export const TASK_AWAIT_DELIVERY_FAILED_METRIC_NAME = 'TaskAwaitDeliveryFailed'
+
+/** (tenant, order) legacy polls that failed this tick (tunnel / site / identity). */
+export const TASK_AWAIT_LEGACY_POLL_FAILED_METRIC_NAME = 'TaskAwaitLegacyPollFailed'
+
+// ---------------------------------------------------------------------------
 // Tenant-runner orchestration metrics (Phase 3 Unit 9).
 //
 // Emitted by apps/api/src/lib/tenant-runner.ts (from both the API Lambda's

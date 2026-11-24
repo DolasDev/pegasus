@@ -2,28 +2,32 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–6 done; step 7 next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–7 done; step 8 next.
 
 ## Resume here (2026-11-23, end of session)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 6, `feat(api): task-await sweeper` (step 5 `ec126f31`, step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
-- **Status:** steps 1–6 `[x]`, steps 7–10 `[ ]` (see Steps).
-- **Next action — step 7 (infra, D8), in `packages/infra/lib/api-stack.ts`:** add a `NodejsFunction` for `apps/api/src/lambda-task-sweeper.ts` (export `handler`) beside the reconciler, in the Temporal-configured branch.
-  - **Permissions and env:**
-    - the same Temporal env and secret, and `workflowTokenKey.grantDecrypt`;
-    - the DB secret;
-    - tunnel-proxy invoke permission, because the legacy poll goes through `tunnelFetch`;
-    - `cloudwatch:PutMetricData`.
-  - **Schedule:** an EventBridge rule, `rate(5 minutes)`.
-  - **Timeout:** ≥ 5 min. The sweep's own time budget is 4 min (`DEFAULT_BUDGET_MS`).
-  - **Reserved concurrency 1**, so two ticks never overlap.
-  - **Logging and alarms:**
-    - its own log group;
-    - an alarm on Lambda `Errors`;
-    - optionally an alarm on `TaskAwaitLegacyPollFailed`.
-  - **Metrics:** add the four names in `TASK_AWAIT_METRICS` (`TaskAwaitDelivered`, `TaskAwaitAbandoned`, `TaskAwaitDeliveryFailed`, `TaskAwaitLegacyPollFailed`, namespace `Pegasus/Workflows`) to `packages/infra/lib/metrics.ts`. Keep both sides in sync, as the comment says.
-  - **Infra tests:** the rule, the permissions, and the timeout and concurrency settings.
-  - **Check how the reconciler gets its tunnel / pegII env.** The sweeper builds a legacy gateway through `resolveTaskGateway`, then `resolvePegiiOverlayTarget`, then `tunnelFetch`. Copy whatever env the API Lambda gives those (tunnel-proxy function name/ARN, pegII token signing key) — grep the API function's environment for `TUNNEL` / `PEGII`.
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 7, `feat(infra): task-await sweeper Lambda` (step 6 `9a5de7fb`, step 5 `ec126f31`, step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
+- **Status:** steps 1–7 `[x]`, steps 8–10 `[ ]` (see Steps).
+- **Next action — step 8 (SDK `await_task`, D1 + D9 + D10), in `packages/workflows-sdk-python`:**
+  - **`pegasus_workflows/tasks.py` (new module):**
+    - `await_task(task_id, *, timeout=None)` and `TaskAwaitTimeout`.
+    - The built-in activity `pegasus.await_task_register`. It POSTs `/api/v1/pegii/tasks/{id}/await` with `{temporalWorkflowId: activity.info().workflow_id}`.
+      - The response is the task plus `awaiting`.
+      - 403 `AWAIT_CALLER_NOT_WORKFLOW`, 404 `EXECUTION_NOT_OPEN` and 404 `TASK_NOT_FOUND` are final (non-retryable).
+      - 5xx is retried by Temporal.
+  - **Workflow side:**
+    - `awaiting: false` → return the task at once.
+    - Otherwise: `workflow.set_signal_handler('pegasus.task_closed', …)`, deduped by task id.
+    - It must coexist with several concurrent `await_task` calls in one Workflow. Use one shared handler with a dict of waiting ids → results; don't install a handler per call.
+    - Then `workflow.wait_condition(…, timeout=timeout)`. On timeout, raise `TaskAwaitTimeout`.
+  - **Both entry points return the same dict shape:** the task wire shape from `lib/task-response.ts`, without `awaiting`.
+  - **Registration:** add the activity to `pegasus_workflows.steps.BUILTIN_ACTIVITIES`, which `apps/tenant-runner/.../workflow_worker_driver.py` registers (D10). Check that the runner test that lists the built-ins still passes, or update it.
+  - **Owed from step 3:** an explicit `pegasus.` reserved-name check in `manifest.py`'s signals validator.
+  - **Testing harness:**
+    - Classify the activity.
+    - Add an offline fake that resolves from a staged task: closed now → return it; open → a test can close it, and the harness delivers the signal.
+  - **Docs and version:** README, MCP reference resource, CHANGELOG, and the next free SDK version. Check `git show origin/main:packages/workflows-sdk-python/pyproject.toml` first; 0.69.0 if free.
+  - **Tests:** run them the way CI does: `uv run --extra dev python -m pytest -q` in the SDK, `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q`. Delete any `uv.lock` those runs create.
 - **Uncommitted work:** only `apps/e2e/.env.test`. It's the worktree's isolated-DB wiring, written by `scripts/new-worktree.sh`. Never stage or commit it.
 - **In flight:** nothing.
   - #985 is merged and deployed.
@@ -43,7 +47,7 @@
   - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
   - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
 - **Verification still owed:**
-  - Steps 7–10 are unbuilt.
+  - Steps 8–10 are unbuilt.
   - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
@@ -185,7 +189,32 @@
     - The pegII caller is built for real, and the tests assert the poll acted as the runtime service account.
     - Mutation checks are caught: the cloud tenant scope, the ApiClient tenant scope, and legacy delivery.
     - The full API suite passes (346 files, 5585 tests).
-- [ ] 7. Infra (D8) + infra tests.
+- [x] 7. Infra (D8) + infra tests. Done 2026-11-24.
+  - **What was built:** `TaskSweeperFunction` in `packages/infra/lib/stacks/api-stack.ts`, in the Temporal-configured branch after the dispatcher.
+    - NodejsFunction on Node 24, 256 MB, 5-min timeout (the work budget is 4 min).
+    - Reserved concurrency 1; async invoke with 0 retries and a 5-min max event age.
+    - Its own log group, which is in `cronLogGroupNames`, so it shows up in the `pegasus/cron-failures` query.
+    - `TaskSweeperSchedule`: `rate(5 minutes)`.
+  - **Grants and env:**
+    - DB and Temporal secrets plus the Temporal env.
+    - Workflow-token key with encrypt **and** decrypt, like the dispatcher. Tenant namespace keys are KMS-encrypted, and a signal ensures the tenant's runner, which may mint its `wbk_` broker credential.
+    - `kms:Sign` and `GetPublicKey` on the pegII signing key, plus `PEGII_TOKEN_KMS_KEY_IDS` / `PEGII_TOKEN_ISSUER`.
+    - Namespace-scoped PutMetricData.
+    - The tenant-runner env and ECS statements: the sweeper was added to the `[apiFunction, dispatchTriggersFunction]` loop.
+    - Tunnel-proxy invoke plus `TUNNEL_PROXY_FUNCTION_NAME`, and `PEGII_API_TUNNEL_SCHEME` / `PEGII_API_TUNNEL_PORT`.
+  - **Metrics:** the four `TaskAwait*` names are in `lib/metrics.ts`. A new parity test in `apps/api/src/lambda-task-sweeper.test.ts` reads that file and checks each name the emitter sends; it needs no DB.
+  - **No new alarm.**
+    - Sweeper crashes trip the existing account-wide Lambda `Errors` alarm.
+    - A poll-failure alarm would page whenever one customer site's tunnel is down.
+    - A stuck waiter logs ERROR, which the cron-failures query surfaces.
+  - **Tests:** 9 new infra tests: schedule, concurrency and timeout, async config, env, pegII sign and tunnel invoke, workflow-key encrypt/decrypt, metric namespace, the no-tunnel synth, and no sweeper without Temporal.
+  - **Two pinned tenant-runner tests updated to 3 Lambdas.**
+    - The env test now names the three functions explicitly instead of counting them.
+    - The RunTask test counts 3 role policies.
+  - **Results:**
+    - The infra suite passes (17 files, 468 tests); typecheck and lint are clean.
+    - The bundle guard needs a built `packages/domain`; I ran `npx turbo run build --filter=@pegasus/domain` and it passed.
+    - That guard covers only the API and assistant bundles, so I bundled `lambda-task-sweeper.ts` by hand with esbuild (CJS, `@aws-sdk/*` external): about 10 MB, the same as the reconciler.
 - [ ] 8. SDK `await_task` (D1, D9) + harness + docs; tenant-runner registration check (D10).
 - [ ] 9. OpenAPI; parent plan (re-cut, S2 fold decision, TQ-D4 guardrail 4 as built); DECISIONS; GOTCHAS.
 - [ ] 10. Gate: typecheck, lint, API/domain/mobile/infra tests, SDK + stdlib + runner + worker pytest; restore coverage floors.
