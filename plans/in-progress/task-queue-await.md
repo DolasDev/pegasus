@@ -2,26 +2,18 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–9 done; step 10 (gate) next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–10 done; the gate is green; the PR is next.
 
 ## Resume here (2026-11-23, end of session)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 9, `docs: task queue 3b records` (step 8 `5d669a10` + fix `72f4c634`, step 7 `49824712`, step 6 `9a5de7fb`, step 5 `ec126f31`, step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
-- **Status:** steps 1–9 `[x]`, step 10 `[ ]` (see Steps).
-- **Next action — step 10 (the gate), then the PR.** Run CI's checks in this worktree:
-  - **Root:** `npm run typecheck` and `npm run lint`.
-  - **`apps/api`:** `npx vitest run`. Last full run: 346 files, 5585 tests, before steps 7–9. Step 9 only touched the OpenAPI text.
-  - **`packages/domain`:** tests (untouched by 3b; run for the gate).
-  - **`packages/infra`:** `npx vitest run`. Build `@pegasus/domain` first, or the bundle guard throws.
-  - **`apps/mobile`:** tests, if the gate covers them (3b touches no mobile code).
-  - **Python, as CI runs it:** SDK, `apps/tenant-runner`, `apps/temporal-worker`, and stdlib. Delete any `uv.lock` the runs create in `apps/`; the SDK's `uv.lock` is tracked and already bumped.
-  - **Restore the coverage floors:** `git checkout -- apps/api/vitest.config.ts packages/domain/vitest.config.ts`.
-  - **Then:**
-    - Re-check the SDK version is still free against `origin/main` and open PRs.
-    - Rebase on `origin/main`.
-    - Move this plan to `plans/completed/` (feedback: archive BEFORE opening the PR).
-    - Review the diff.
-    - Open the PR through `/workstream-finish` (the merge queue), or as Steve directs.
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Commits were rebased onto `0d7dc6e4` on 2026-11-24, so their SHAs changed. Use `git log --oneline origin/main..HEAD`. Nothing is pushed and no PR exists.
+- **Status:** steps 1–10 `[x]` (see Steps). Rebased on `origin/main` `0d7dc6e4` (#988). Nothing is pushed, and no PR exists.
+- **Next action — the PR.** It waits on Steve's choice of route: `/workstream-finish` (the merge queue, with the worktree torn down after merge) or a plain PR left for him to merge.
+  - **Just before opening it** (the archive is a permanent record, so it moves last):
+    - `git mv` this plan to `plans/completed/<short-hash>-task-queue-await.md`, using `git rev-parse --short HEAD`.
+    - Update the two references: the parent plan's resume, and DECISIONS' "Plan:" line.
+    - Commit.
+  - **Then** push, open the PR, and run the merge route Steve picks.
 - **After the PR merges (owed):**
   - Publish SDK 0.69.0 (tag `sdk-python-v0.69.0`; feedback: ALWAYS publish after a bump merges).
   - Then update the authoring repo's `~/repos/pegasus-workflows/CLAUDE.md` (await_task, pin 0.69.0).
@@ -45,7 +37,7 @@
   - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
   - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
 - **Verification still owed:**
-  - Step 10 (the full gate) is not yet run.
+  - The staging checks after merge (see below).
   - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
@@ -266,7 +258,21 @@
     - the bundle guard skips crons (bundle by hand and diff env and grants);
     - the SDK's CI job doesn't require a dev server.
   - **OpenAPI:** `awaitPegiiTask` (step 4) and the signal route (step 3) were already done. Also added the reserved prefix to the trigger-create 400 causes. The OpenAPI tests pass (20).
-- [ ] 10. Gate: typecheck, lint, API/domain/mobile/infra tests, SDK + stdlib + runner + worker pytest; restore coverage floors.
+- [x] 10. Gate: typecheck, lint, API/domain/mobile/infra tests, SDK + stdlib + runner + worker pytest; restore coverage floors. Done 2026-11-24.
+  - **Before the rebase:**
+    - `npm run typecheck`: 15/15. `npm run lint`: 10/10.
+    - `turbo run test`: 16/16 tasks. That covers API 346 files, infra 17, mobile 60 suites / 508 tests, tenant-web 168, domain 22, domain-reference 30, and the rest.
+    - Python, the way CI runs it: SDK 694, stdlib 11, tenant-runner 167 (including the dev-server e2e), temporal-worker 30. Ruff is clean on all four.
+    - The coverage floors were restored, and the stray `uv.lock` / `.venv` files deleted.
+  - **SDK 0.69.0 is still free:** main is on 0.68.0, and no open PR touches `pyproject.toml`.
+  - **Rebased onto `origin/main` `0d7dc6e4`** (#986–#988).
+    - Used `--autostash`, so the shared stash list wasn't touched.
+    - Two conflicts, both additive: the infra test imports (main's assistant models, plus my `lambda` import), and the end of GOTCHAS.md (main's driver-ETA entry, then mine).
+    - Main brought no new migrations.
+  - **After the rebase:**
+    - Typecheck 15/15 and infra 17 files / 469 tests pass.
+    - Full API run: 5601/5603. The 2 failures are the known `workflow-executions.test.ts` terminate flakes; that file passes alone (38/38) twice.
+  - **Diff review:** 45 files, all planned scope, with no debug leftovers or focused or skipped tests.
 
 ## Open questions for Steve
 
