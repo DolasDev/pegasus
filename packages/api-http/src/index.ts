@@ -39,6 +39,14 @@ export interface ApiClientOptions {
   getBaseUrl: () => string
   /** Called on every request; return null/undefined to omit the Authorization header. */
   getToken: () => string | null | undefined
+  /**
+   * Optional. Called when a request answers 401: refresh the session and
+   * resolve the new bearer token, or null if it can't be refreshed. A token
+   * retries the request ONCE with it; null (or a second 401) throws the 401 as
+   * usual. Callers that omit it keep the plain throw-on-401 behavior. The mobile
+   * app wires it to its single-flight Cognito refresh.
+   */
+  onUnauthorized?: () => Promise<string | null>
 }
 
 export interface ApiClient {
@@ -182,25 +190,31 @@ export function createStreamClient(options: ApiClientOptions): StreamClient {
 }
 
 export function createApiClient(options: ApiClientOptions): ApiClient {
-  const { getBaseUrl, getToken } = options
+  const { getBaseUrl, getToken, onUnauthorized } = options
 
-  function buildHeaders(init?: RequestInit): Headers {
+  function buildHeaders(init: RequestInit | undefined, token: string | null | undefined): Headers {
     const headers = new Headers(init?.headers)
     headers.set('Content-Type', 'application/json')
     headers.set('x-correlation-id', randomCorrelationId())
-    const token = getToken()
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
     return headers
   }
 
+  /** Send once; on a 401 with a hook, refresh and retry exactly once. */
+  async function send(path: string, init?: RequestInit): Promise<Response> {
+    const url = `${getBaseUrl()}${path}`
+    const res = await globalThis.fetch(url, { ...init, headers: buildHeaders(init, getToken()) })
+    if (res.status !== 401 || !onUnauthorized) return res
+    const fresh = await onUnauthorized()
+    if (!fresh) return res
+    return globalThis.fetch(url, { ...init, headers: buildHeaders(init, fresh) })
+  }
+
   return {
     async fetch<T>(path: string, init?: RequestInit): Promise<T> {
-      const res = await globalThis.fetch(`${getBaseUrl()}${path}`, {
-        ...init,
-        headers: buildHeaders(init),
-      })
+      const res = await send(path, init)
 
       if (res.status === 204) return null as T
 
@@ -217,10 +231,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       path: string,
       init?: RequestInit,
     ): Promise<{ data: T[]; meta: PaginationMeta }> {
-      const res = await globalThis.fetch(`${getBaseUrl()}${path}`, {
-        ...init,
-        headers: buildHeaders(init),
-      })
+      const res = await send(path, init)
 
       const json = (await res.json()) as PaginatedEnvelope<T[]> | ErrorEnvelope
 

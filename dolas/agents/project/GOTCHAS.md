@@ -335,6 +335,8 @@ that caused an intermittent "account has not been granted access" failure:
   silently anyway by calling `select-tenant`
   immediately before each refresh: the fresh `AuthSession` wins, exactly as at
   sign-in. Any other client that wants silent multi-tenant refresh must do the same.
+  The mobile driver app does (`refreshSession` in `apps/mobile/src/auth/authService.ts`,
+  from the mobile-session-refresh plan).
 
 Cognito wraps any pre-token `throw` as `UserLambdaValidationException` with the
 message `PreTokenGeneration failed with error <msg>.`. `unwrapPreTokenMessage`
@@ -4073,6 +4075,41 @@ setting, so a tenant that was already using them (NW) loses them on deploy
 until an admin ticks the box. The mobile app learns the flag from
 `GET /me/driver` → `driverEtaEnabled`; the trip screen sits outside the
 drawer's `TripsProvider` and fetches `/me/driver` itself.
+
+## A Lambda Function URL with `cors` + Hono's `cors()` = a duplicated Allow-Origin
+
+Function URL CORS is not a substitute for the function's own headers; Lambda
+adds its copy on top of whatever the function returns. The assistant Function
+URL had a `cors` block, and the Hono app (same bundle as the API) stamps
+`Access-Control-Allow-Origin` from `CORS_ALLOWED_ORIGINS`. So every real
+response carried the header twice. Browsers reject that even when both values
+match ("contains multiple values … but only one is allowed"), and every
+staging `/chat` was blocked. Unit tests and synth can't see it. Only a real
+response can: `curl -s -D - -o /dev/null -H 'Origin: <spa>' <url>/api/v1/assistant/models | grep -i access-control`.
+Preflight looked fine, because Lambda answers `OPTIONS` itself and never calls
+the function. Fix: no `cors` on the Function URL, and let Hono own CORS. With
+no URL CORS, `OPTIONS` reaches the function.
+
+## Mobile: an `AppState` listener never fires on a cold start
+
+Drivers reported being "logged in but nothing works" a day after signing in
+(fixed 2026-11-24, the mobile-session-refresh plan). The only expiry check lived
+in an `AppState` `change` listener. A cold start (the OS killed the app
+overnight) publishes the stored session without any `change` event, so the
+8-hour ID token was restored as-is and every request 401'd. Nothing reacted to
+the 401s, and both sign-in paths had dropped the 30-day refresh token.
+
+The rules now:
+
+- Any check that must hold when the app opens runs in the **restore** path, not
+  only on foreground.
+- The refresh token lives in its own SecureStore key (`pegasus_refresh`).
+- A 401 goes through `@pegasus/api-http`'s `onUnauthorized` hook, which
+  refreshes once (single-flight) and retries once.
+- Only a _rejected_ refresh signs the driver out. A network failure keeps the
+  session (`isRefreshRejected`).
+- Don't "fix" this by lengthening Cognito token lifetimes. The ID token caps at
+  one day, and a `UserPoolClient` edit wipes tenant IdPs (#518).
 
 ## Mobile OS permissions: never prompt from background code; trust `status`, not `granted`
 

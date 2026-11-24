@@ -173,6 +173,10 @@ function isFederatedSignIn(
   return providerName !== null && triggerSource === 'TokenGeneration_HostedAuth'
 }
 
+// ⚠️ The mobile app tells a deliberate denial from an outage by these throws' MESSAGES
+// (Cognito reports every trigger throw as UserLambdaValidationException): see
+// PRE_TOKEN_DENIALS in apps/mobile/src/auth/authService.ts. Rewording a denial there
+// without updating that list turns it into "transient" — the driver keeps a dead session.
 export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   const groups: string[] = event.request.groupConfiguration?.groupsToOverride ?? []
 

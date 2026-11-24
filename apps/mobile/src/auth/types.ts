@@ -9,6 +9,31 @@ export type Session = BaseSession & {
   token: string
 }
 
+/**
+ * The Cognito refresh token, kept in its own SecureStore key (never inside the
+ * session blob). `kind` records which channel issued it, and the refresh goes
+ * back through that same channel: `password` → InitiateAuth REFRESH_TOKEN_AUTH,
+ * `sso` → the Hosted UI's /oauth2/token.
+ */
+export type StoredRefresh = {
+  refreshToken: string
+  kind: 'password' | 'sso'
+}
+
+/** What a sign-in (or a refresh) yields: the session, plus the refresh token to keep. */
+export type SignInResult = {
+  session: Session
+  /** null when Cognito returned no refresh token — the session then can't be renewed. */
+  refresh: StoredRefresh | null
+}
+
+/** Tokens from a Cognito sign-in or refresh. */
+export type CognitoTokens = {
+  idToken: string
+  /** Absent on a refresh unless the client rotates refresh tokens. */
+  refreshToken?: string
+}
+
 /** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
 export class AuthError extends Error {
   constructor(

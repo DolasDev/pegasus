@@ -1,4 +1,4 @@
-import { getApiClient, setTokenProvider, _resetApiClient } from './client'
+import { getApiClient, setTokenProvider, setUnauthorizedHandler, _resetApiClient } from './client'
 
 // Mock @pegasus/api-http
 const mockFetch = jest.fn()
@@ -52,6 +52,24 @@ describe('mobile API client', () => {
     // Getting client after setting token provider ensures it's wired
     const client = getApiClient()
     expect(client).toBeDefined()
+  })
+
+  it('passes onUnauthorized through to the handler set by setUnauthorizedHandler', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createApiClient } = require('@pegasus/api-http')
+    getApiClient()
+    const options = (createApiClient as jest.Mock).mock.calls.at(-1)![0] as {
+      onUnauthorized: () => Promise<string | null>
+    }
+
+    // default (no session wired yet): let the 401 through
+    await expect(options.onUnauthorized()).resolves.toBeNull()
+
+    // set AFTER the client was created — the singleton must still see it
+    const handler = jest.fn(async () => 'fresh-token')
+    setUnauthorizedHandler(handler)
+    await expect(options.onUnauthorized()).resolves.toBe('fresh-token')
+    expect(handler).toHaveBeenCalledTimes(1)
   })
 
   it('_resetApiClient creates a fresh client on next call', () => {

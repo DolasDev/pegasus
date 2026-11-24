@@ -203,7 +203,7 @@ const reportingEnabled = envName === 'staging' || envName === 'prod'
 // ── AI assistant master switch ───────────────────────────────────────────────
 // plans/*/ai-chat-assistant.md. The assistant Lambda + its Function
 // URL deploy in every env regardless (dark); this only sets ASSISTANT_ENABLED.
-// OFF everywhere until BOTH of these are done for the env's AWS account:
+// An env turns ON only after BOTH of these are done for its AWS account:
 //   1. The one-time Bedrock Anthropic use-case form
 //      (`aws bedrock put-use-case-for-model-access`) — without it every model
 //      call fails with ResourceNotFoundException.
@@ -212,7 +212,10 @@ const reportingEnabled = envName === 'staging' || envName === 'prod'
 //      only while an Anthropic model is in the list.
 // Flip staging first. Access is still Cedar-gated: UseAssistant is held only by
 // operations_admin (policies/60-assistant.cedar) and tenant_admin.
-const assistantEnabled = false
+//
+// STAGING ON (Steve, 2026-11-24): the form is on file, and a Kimi K3.1 (the
+// default) tool-use call from 248812875460 succeeded. Prod stays off.
+const assistantEnabled = envName === 'staging'
 
 // ── Tenant custom events (staging only, for now) ─────────────────────────────
 // Ungates CUSTOM_EVENTS_ENABLED on the api Lambda: the event-type registry and

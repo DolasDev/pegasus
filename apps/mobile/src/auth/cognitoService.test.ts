@@ -1,4 +1,4 @@
-import { signIn } from './cognitoService'
+import { refresh, revoke, signIn } from './cognitoService'
 import { AuthError } from './types'
 
 // Mock global fetch
@@ -102,6 +102,63 @@ describe('cognitoService', () => {
         'https://cognito-idp.eu-west-2.amazonaws.com/',
         expect.anything(),
       )
+    })
+
+    it('returns the refresh token alongside the ID token', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          AuthenticationResult: { IdToken: 'id', RefreshToken: 'rt' },
+        }),
+      })
+      await expect(signIn('u@test.com', 'p', 'us-east-1_ABC', 'client123')).resolves.toEqual({
+        idToken: 'id',
+        refreshToken: 'rt',
+      })
+    })
+  })
+
+  describe('refresh', () => {
+    it('calls InitiateAuth REFRESH_TOKEN_AUTH and returns the new ID token', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ AuthenticationResult: { IdToken: 'new-id' } }),
+      })
+
+      await expect(refresh('rt', 'us-east-1_ABC', 'client123')).resolves.toEqual({
+        idToken: 'new-id',
+      })
+      const [url, init] = mockFetch.mock.calls[0]!
+      expect(url).toBe('https://cognito-idp.us-east-1.amazonaws.com/')
+      expect(init.headers['X-Amz-Target']).toBe('AWSCognitoIdentityProviderService.InitiateAuth')
+      expect(JSON.parse(init.body)).toEqual({
+        AuthFlow: 'REFRESH_TOKEN_AUTH',
+        AuthParameters: { REFRESH_TOKEN: 'rt' },
+        ClientId: 'client123',
+      })
+    })
+
+    it('rejects with AuthError(NotAuthorizedException) for an expired or revoked token', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        json: async () => ({
+          __type: 'NotAuthorizedException',
+          message: 'Refresh Token has expired',
+        }),
+      })
+      await expect(refresh('rt', 'us-east-1_ABC', 'client123')).rejects.toMatchObject({
+        code: 'NotAuthorizedException',
+      })
+    })
+  })
+
+  describe('revoke', () => {
+    it('calls RevokeToken with the token and client id', async () => {
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) })
+      await revoke('rt', 'us-east-1_ABC', 'client123')
+      const [, init] = mockFetch.mock.calls[0]!
+      expect(init.headers['X-Amz-Target']).toBe('AWSCognitoIdentityProviderService.RevokeToken')
+      expect(JSON.parse(init.body)).toEqual({ Token: 'rt', ClientId: 'client123' })
     })
   })
 })

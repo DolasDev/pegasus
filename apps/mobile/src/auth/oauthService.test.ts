@@ -6,6 +6,7 @@ import {
   generateCodeVerifier,
   generateCodeChallenge,
   authorize,
+  refresh,
   type OAuthConfig,
 } from './oauthService'
 
@@ -178,5 +179,44 @@ describe('authorize', () => {
       expect(err).toBeInstanceOf(AuthError)
       expect((err as AuthError).code).toBe('TokenExchangeFailed')
     }
+  })
+})
+
+describe('refresh', () => {
+  it('POSTs grant_type=refresh_token to the token endpoint and returns the new ID token', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      new Response(JSON.stringify({ id_token: 'new-id', access_token: 'a', expires_in: 28800 }), {
+        status: 200,
+      }),
+    )
+
+    await expect(refresh(mockConfig, 'rt-sso')).resolves.toEqual({ idToken: 'new-id' })
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]!
+    expect(url).toBe(`${mockConfig.hostedUiDomain}/oauth2/token`)
+    const body = new URLSearchParams(init.body as string)
+    expect(body.get('grant_type')).toBe('refresh_token')
+    expect(body.get('client_id')).toBe('mobile-client-id')
+    expect(body.get('refresh_token')).toBe('rt-sso')
+  })
+
+  it('returns a rotated refresh token when the endpoint sends one', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      new Response(JSON.stringify({ id_token: 'new-id', refresh_token: 'rt-2' }), { status: 200 }),
+    )
+    await expect(refresh(mockConfig, 'rt-sso')).resolves.toEqual({
+      idToken: 'new-id',
+      refreshToken: 'rt-2',
+    })
+  })
+
+  it('rejects with AuthError(invalid_grant, 400) for an expired or revoked token', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValue(
+      new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 }),
+    )
+    await expect(refresh(mockConfig, 'rt-sso')).rejects.toMatchObject({
+      code: 'invalid_grant',
+      status: 400,
+    })
   })
 })
