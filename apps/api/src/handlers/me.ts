@@ -36,6 +36,7 @@ import type { AppEnv } from '../types'
 import { listAllowedPermissions } from '../lib/authz'
 import { isReportingEnabled } from '../lib/reporting-feature'
 import { assistantEnabled } from '../lib/assistant-feature'
+import { supportEnabled } from '../lib/support-alert'
 import { executeSql } from '../lib/mssql-executor-client'
 import { logger } from '../lib/logger'
 import { driverWeekFor } from '../lib/driver-week'
@@ -68,6 +69,12 @@ export interface Capabilities {
    * exists whether or not the assistant is switched on.
    */
   assistant: boolean
+  /**
+   * The support channel is enabled on this deployment (SUPPORT_ENABLED, set by
+   * CDK). `support:read` is granted to everyone by Cedar, so the SPA keys the
+   * Help entry off this instead.
+   */
+  support: boolean
 }
 
 // Resolve tenant capability flags. Defensive: an M2M / service-account
@@ -79,13 +86,14 @@ async function resolveCapabilities(c: Context<AppEnv>): Promise<Capabilities> {
   const tenantId = c.get('tenantId')
   const reporting = isReportingEnabled()
   const assistant = assistantEnabled()
-  if (!db || !tenantId) return { longhaul: false, reporting, assistant }
+  const support = supportEnabled()
+  if (!db || !tenantId) return { longhaul: false, reporting, assistant, support }
 
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
     select: { mssqlConnectionString: true },
   })
-  return { longhaul: tenant?.mssqlConnectionString != null, reporting, assistant }
+  return { longhaul: tenant?.mssqlConnectionString != null, reporting, assistant, support }
 }
 
 // No requirePermission gate — every authenticated principal may read their

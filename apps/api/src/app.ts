@@ -24,6 +24,7 @@ import { jwksHandler } from './handlers/jwks'
 import { settingsCompaniesHandler } from './handlers/settings-companies'
 import { documentsHandler } from './handlers/documents'
 import { chatHandler } from './handlers/chat'
+import { supportHandler } from './handlers/support'
 import { laborHandler } from './handlers/labor'
 import { operationsLocalDriversHandler } from './handlers/longhaul-cloud/local-drivers'
 import { localDriversHandler } from './handlers/local-drivers'
@@ -498,6 +499,9 @@ v1.route('/local-drivers', localDriversHandler)
 // Move chat: a room per move for employees + the move's assigned drivers. On the
 // Cognito-only router on purpose — no API client or service account reaches it.
 v1.route('/chat', chatHandler)
+// Support: a user's own threads with the platform operator (support-channel
+// plan). Cognito-only for the same reason; gated by SUPPORT_ENABLED.
+v1.route('/support', supportHandler)
 // Labor: a driver's private book of cash-labor crews (mobile Labor module).
 // Cognito-only for the same reason; access is the caller's own crew links.
 v1.route('/labor', laborHandler)

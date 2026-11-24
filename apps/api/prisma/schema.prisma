@@ -332,6 +332,10 @@ model Tenant {
   chatMessages    ChatMessage[]
   chatRoomMembers ChatRoomMember[]
 
+  // Support threads (tenant user ↔ platform operator)
+  supportThreads  SupportThread[]
+  supportMessages SupportMessage[]
+
   // Labor on longhaul activities
   activityLaborCrews   ActivityLaborCrew[]
   activityLaborPackers ActivityLaborPacker[]
@@ -564,6 +568,8 @@ model TenantUser {
   pushNotifications            PushNotificationOutbox[]
   chatMessages                 ChatMessage[]
   chatRoomMembers              ChatRoomMember[]
+  supportThreadsOpened         SupportThread[]
+  supportMessages              SupportMessage[]
   companyMemberships           CompanyMembership[]
   laborCrewLinks               CrewLink[]
   laborCrewLinkAdds            CrewLinkAdd[]
@@ -4095,6 +4101,76 @@ model ChatRoomMember {
   @@id([roomId, userId])
   @@index([tenantId, userId])
   @@map("chat_room_members")
+  @@schema("public")
+}
+
+// ===========================================================================
+// Support context — a tenant user's threads with the platform operator
+// Plan: plans/in-progress/support-channel.md (Phase 1a). Not move chat: the
+// operator is a platform admin (Cognito sub), not a TenantUser, and reads
+// across tenants through the admin API on the base client.
+// ===========================================================================
+
+/// One support conversation, opened by a tenant user. Only its author reads it
+/// on the tenant side; the platform operator reads every thread. `status` is
+/// one of SUPPORT_THREAD_STATUSES (@pegasus/domain).
+model SupportThread {
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  openedByUserId      String    @map("opened_by_user_id")
+  subject             String    @db.VarChar(200)
+  /// The first message's clientMessageId. Unique per author, so a double-tapped
+  /// or resent "open" lands on one thread even when the two sends race.
+  openClientMessageId String    @map("open_client_message_id") @db.VarChar(64)
+  status              String    @default("awaiting_operator") @db.VarChar(32)
+  lastMessageAt       DateTime  @default(now()) @map("last_message_at") @db.Timestamptz(6)
+  /// Who wrote the newest message (`customer` | `operator`): unread for a side
+  /// is "the other side wrote after my last read".
+  lastAuthorKind      String    @default("customer") @map("last_author_kind") @db.VarChar(16)
+  /// When the operator was last alerted (SNS) about this thread — the debounce.
+  lastOperatorAlertAt DateTime? @map("last_operator_alert_at") @db.Timestamptz(6)
+  customerLastReadAt  DateTime? @map("customer_last_read_at") @db.Timestamptz(6)
+  operatorLastReadAt  DateTime? @map("operator_last_read_at") @db.Timestamptz(6)
+  /// Diagnostic context the SPA attached when the thread was opened.
+  pageUrl             String?   @map("page_url") @db.VarChar(2000)
+  userAgent           String?   @map("user_agent") @db.VarChar(500)
+  appVersion          String?   @map("app_version") @db.VarChar(50)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  openedBy TenantUser       @relation(fields: [openedByUserId], references: [id], onUpdate: Cascade)
+  messages SupportMessage[]
+
+  @@unique([openedByUserId, openClientMessageId])
+  @@index([tenantId, openedByUserId, lastMessageAt])
+  @@index([status, lastMessageAt])
+  @@map("support_threads")
+  @@schema("public")
+}
+
+/// One message on a support thread. `authorKind` is `customer` (authorUserId
+/// set) or `operator` (operatorSub + operatorEmail set). `clientMessageId` is
+/// the sender's idempotency key, unique per thread and author kind.
+model SupportMessage {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  threadId        String   @map("thread_id")
+  authorKind      String   @map("author_kind") @db.VarChar(16)
+  authorUserId    String?  @map("author_user_id")
+  operatorSub     String?  @map("operator_sub")
+  operatorEmail   String?  @map("operator_email")
+  clientMessageId String   @map("client_message_id") @db.VarChar(64)
+  body            String
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  thread SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  author TenantUser?   @relation(fields: [authorUserId], references: [id], onUpdate: Cascade)
+
+  @@unique([threadId, authorKind, clientMessageId])
+  @@index([threadId, createdAt])
+  @@map("support_messages")
   @@schema("public")
 }
 

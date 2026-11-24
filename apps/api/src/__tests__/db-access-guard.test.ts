@@ -159,6 +159,10 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   // (platform admin, cross-tenant; TenantTemporalNamespace is
   // INTENTIONALLY_UNSCOPED); every query names tenantId.
   'admin/temporal-namespace.ts',
+  // admin/support.ts is the platform operator's support inbox across ALL
+  // tenants (PLATFORM_ADMIN only); every write takes tenantId from the thread
+  // row, never the request.
+  'admin/support.ts',
   'admin/vpn-diagnose.ts',
   'admin/vpn.ts',
   'admin/workflows.ts',

@@ -68,6 +68,9 @@ const SALES_PERMISSIONS = [
   'chat:post',
   'labor:read',
   'labor:write',
+  // Own support threads (57-support-shared.cedar).
+  'support:read',
+  'support:post',
 ] as const
 const VIEWER_PERMISSIONS = [
   'quote:read',
@@ -102,6 +105,9 @@ const VIEWER_PERMISSIONS = [
   'chat:post',
   'labor:read',
   'labor:write',
+  // Own support threads (57-support-shared.cedar).
+  'support:read',
+  'support:post',
 ] as const
 
 type PersonaSession = {

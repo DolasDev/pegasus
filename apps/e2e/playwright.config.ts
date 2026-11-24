@@ -135,6 +135,8 @@ export default defineConfig({
             DEFAULT_TENANT_ID:
               process.env['DEFAULT_TENANT_ID'] ?? 'e2e00000-0000-0000-0000-000000000001',
             SKIP_AUTH: process.env['SKIP_AUTH'] ?? 'true',
+            // Support channel routes (tests/api/support.spec.ts); off by default in the API.
+            SUPPORT_ENABLED: process.env['SUPPORT_ENABLED'] ?? 'true',
             PORT: String(API_PORT),
             HOST: process.env['HOST'] ?? '0.0.0.0',
             NODE_ENV: 'test',

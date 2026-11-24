@@ -27,6 +27,10 @@ describe('notification types', () => {
     expect(NOTIFICATION_TYPE_INFO['workflow.message'].defaultChannel).toBe('feed')
   })
 
+  it('keeps a support reply in the feed by default', () => {
+    expect(NOTIFICATION_TYPE_INFO['support.reply'].defaultChannel).toBe('feed')
+  })
+
   it('guards types and channels', () => {
     expect(isNotificationType('chat.mention')).toBe(true)
     expect(isNotificationType('chat.message')).toBe(false)

@@ -225,6 +225,26 @@ const assistantEnabled = envName === 'staging'
 // RVS lives — flips after the staging proof, with approval.
 const customEventsEnabled = envName === 'staging'
 
+// Alarm (and support alert) notifications go to a human on staging + prod; dev
+// stays silent. Overridable per-synth via `-c alarmEmail=...`. NOTE: each SNS
+// email subscription needs a one-time confirmation click per env after deploy.
+const alarmEmail =
+  (app.node.tryGetContext('alarmEmail') as string | undefined) ??
+  (envName === 'staging' || envName === 'prod' ? 'dolasllc@gmail.com' : undefined)
+
+// ── Support channel (plans/in-progress/support-channel.md, Phase 1a) ──────────
+// Ungates /api/v1/support + /api/admin/support and creates the
+// pegasus-support-alerts SNS topic. Staging first (Steve, 2026-11-24); prod flips
+// once the Phase 1b UIs are tried on staging. The alert email follows alarmEmail
+// (same `-c alarmEmail=...` override) and needs a one-time confirmation click
+// per env after the first deploy.
+const supportEnabled = envName === 'staging'
+const SUPPORT_ADMIN_URL: Record<Exclude<EnvName, 'dev'>, string> = {
+  staging: 'https://admin.pegasus-qa.dolas.dev',
+  prod: 'https://admin.pegasus.dolas.dev',
+}
+const supportAdminUrl = envName === 'dev' ? undefined : SUPPORT_ADMIN_URL[envName]
+
 // ── AI assistant models (plans/*/assistant-converse.md D8) ───────────────────
 // The Bedrock models the assistant may call. The IAM grant covers exactly this
 // list; the Lab's eval runner can pick any of them; chat uses the default.
@@ -520,6 +540,9 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   customEventsEnabled,
   assistantModels,
   assistantDefaultModel,
+  supportEnabled,
+  ...(supportAdminUrl ? { supportAdminUrl } : {}),
+  ...(alarmEmail ? { supportAlertEmail: alarmEmail } : {}),
 })
 apiStack.addDependency(cognitoStack)
 
@@ -607,12 +630,8 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   // mapper-pipeline alarms. Staging/prod only; dev leaves them undefined.
   integrationBufferQueueName: outboxConfig?.bufferQueueName,
   integrationBufferDlqName: outboxConfig?.bufferDlqName,
-  // Alarm notifications go to a human on staging + prod; dev stays silent.
-  // Overridable per-synth via `-c alarmEmail=...`. NOTE: the SNS email
-  // subscription needs a one-time confirmation click per env after deploy.
-  alarmEmail:
-    (app.node.tryGetContext('alarmEmail') as string | undefined) ??
-    (envName === 'staging' || envName === 'prod' ? 'dolasllc@gmail.com' : undefined),
+  // See the `alarmEmail` const above (staging + prod only, `-c` overridable).
+  alarmEmail,
   // Phase 1 — Temporal worker ECS alarm. Names are deterministic and equal:
   // cluster + service both use `pegasus-temporal-worker-${envName}`.
   // Staging/prod only; dev has no Fargate worker → props remain undefined.

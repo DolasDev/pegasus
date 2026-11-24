@@ -257,6 +257,28 @@ export {
   formatMentionToken,
 } from './chat/index'
 
+// Support context (tenant user ↔ platform operator threads)
+export type {
+  SupportThreadStatus,
+  SupportAuthorKind,
+  SupportContext,
+  AlertDecisionInput,
+} from './support/index'
+export {
+  SUPPORT_THREAD_STATUSES,
+  SUPPORT_AUTHOR_KINDS,
+  MAX_SUPPORT_SUBJECT_LENGTH,
+  MAX_SUPPORT_BODY_LENGTH,
+  OPERATOR_ALERT_INTERVAL_MS,
+  isSupportThreadStatus,
+  statusAfterMessage,
+  validateSupportSubject,
+  validateSupportBody,
+  subjectFromBody,
+  shouldAlertOperator,
+  sanitizeSupportContext,
+} from './support/index'
+
 // Labor context (driver-private cash-labor crews)
 export type {
   CrewInput,

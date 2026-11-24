@@ -6,7 +6,7 @@
 // in step with the SPA's permission gate consumers when adding actions.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
@@ -85,6 +85,8 @@ describe('GET /permissions', () => {
         Actions.PostChat.permission,
         Actions.ReadLabor.permission,
         Actions.WriteLabor.permission,
+        Actions.ReadSupport.permission,
+        Actions.PostSupport.permission,
       ]),
     )
   })
@@ -102,8 +104,23 @@ describe('GET /permissions', () => {
         Actions.PostChat.permission,
         Actions.ReadLabor.permission,
         Actions.WriteLabor.permission,
+        Actions.ReadSupport.permission,
+        Actions.PostSupport.permission,
       ]),
     )
+  })
+
+  describe('capabilities.support', () => {
+    afterEach(() => {
+      delete process.env['SUPPORT_ENABLED']
+    })
+
+    it('follows SUPPORT_ENABLED, since support:read is granted either way', async () => {
+      process.env['SUPPORT_ENABLED'] = 'true'
+      const res = await buildApp(['sales'], null).app.request('/permissions')
+      const body = (await res.json()) as { capabilities: { support: boolean } }
+      expect(body.capabilities.support).toBe(true)
+    })
   })
 
   describe('capabilities.longhaul', () => {
@@ -111,7 +128,12 @@ describe('GET /permissions', () => {
       const { app, tenantFindUnique } = buildApp(['tenant_admin'], 'Server=legacy;Database=lh;')
       const res = await app.request('/permissions')
       const body = (await res.json()) as { capabilities: { longhaul: boolean } }
-      expect(body.capabilities).toEqual({ longhaul: true, reporting: false, assistant: false })
+      expect(body.capabilities).toEqual({
+        longhaul: true,
+        reporting: false,
+        assistant: false,
+        support: false,
+      })
       expect(tenantFindUnique).toHaveBeenCalledWith({
         where: { id: 'test-tenant-id' },
         select: { mssqlConnectionString: true },
@@ -121,7 +143,12 @@ describe('GET /permissions', () => {
     it('is false when the tenant has no mssqlConnectionString', async () => {
       const res = await buildApp(['tenant_admin'], null).app.request('/permissions')
       const body = (await res.json()) as { capabilities: { longhaul: boolean } }
-      expect(body.capabilities).toEqual({ longhaul: false, reporting: false, assistant: false })
+      expect(body.capabilities).toEqual({
+        longhaul: false,
+        reporting: false,
+        assistant: false,
+        support: false,
+      })
     })
 
     it('is false (no throw) for a principal with no tenant-scoped db', async () => {
@@ -132,7 +159,12 @@ describe('GET /permissions', () => {
       const res = await app.request('/permissions')
       expect(res.status).toBe(200)
       const body = (await res.json()) as { capabilities: { longhaul: boolean } }
-      expect(body.capabilities).toEqual({ longhaul: false, reporting: false, assistant: false })
+      expect(body.capabilities).toEqual({
+        longhaul: false,
+        reporting: false,
+        assistant: false,
+        support: false,
+      })
     })
   })
 })

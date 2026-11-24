@@ -16,6 +16,7 @@ import { adminAuthMiddleware } from '../../middleware/admin-auth'
 import { adminTenantsRouter } from './tenants'
 import { adminWorkflowsRouter } from './workflows'
 import { adminTariffsRouter } from './tariffs'
+import { adminSupportRouter } from './support'
 
 export const adminRouter = new Hono<AdminEnv>()
 
@@ -26,6 +27,8 @@ adminRouter.use('*', adminAuthMiddleware)
 adminRouter.route('/tenants', adminTenantsRouter)
 adminRouter.route('/workflows', adminWorkflowsRouter)
 adminRouter.route('/tariffs', adminTariffsRouter)
+// Support inbox across tenants (support-channel plan); gated by SUPPORT_ENABLED.
+adminRouter.route('/support', adminSupportRouter)
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/me
