@@ -3888,7 +3888,8 @@ model TaskAwait {
   /// Failed delivery attempts (signal or legacy poll).
   attempts    Int             @default(0)
   lastError   String?         @map("last_error") @db.VarChar(500)
-  /// Legacy only: when the sweeper next polls this task. Null = now.
+  /// When the sweeper next checks this awaiter (legacy: polls the site; cloud:
+  /// the redelivery backstop re-checks the WorkItem). Null = due now.
   nextPollAt  DateTime?       @map("next_poll_at") @db.Timestamptz(6)
   deliveredAt DateTime?       @map("delivered_at") @db.Timestamptz(6)
   createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)

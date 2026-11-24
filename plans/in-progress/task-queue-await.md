@@ -2,26 +2,28 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–5 done; step 6 next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–6 done; step 7 next.
 
 ## Resume here (2026-11-23, end of session)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 5, `feat(api): a cloud close signals its waiters` (step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
-- **Status:** steps 1–5 `[x]`, steps 6–10 `[ ]` (see Steps).
-- **Next action — step 6 (sweeper Lambda, D6): `src/lambda-task-sweeper.ts`.** It runs on the root client and names `tenantId` everywhere. Each tick has three lanes:
-  - **(a) Cloud redelivery.**
-    - Take `waiting` cloud awaiters whose WorkItem is closed (`done` / `cancelled`): join or look up by `taskId`, bound per tick.
-    - Call `deliverTaskClosed(db, tenantId, awaiter, workItemToRecord(row))` from `lib/task-await-delivery.ts`. It already maps every outcome and never throws.
-    - This lane also catches a close that ran while its awaiter was being registered, and any waiter whose close-time signal failed.
-  - **(b) Legacy poll.**
-    - Take `waiting` legacy awaiters with `nextPollAt <= now`, grouped by (tenant, order), at most 50 orders per tick.
-    - Build one `listOrderTasks` per order with a pegII caller from `buildPegiiCaller(createTenantDb(db, tenantId), { tenantId, tenantUserId: <the awaiting Workflow's runtime ApiClient acts-as user>, correlationId })` (D7).
-    - A closed task → `deliverTaskClosed`. Still open → `nextPollAt = now + 15 min`. Task missing → decide; probably abandon with `TASK_NOT_FOUND`.
-    - A poll error → `recordFailure`, plus a backoff on `nextPollAt`.
-    - New repository methods: `listDueLegacy`, `deferPoll`.
-  - **(c) Cleanup.** `waiting` awaiters whose execution is terminal → `abandoned`.
-  - **Also decide:** a cap on `attempts` for cloud redelivery. Once Temporal is healthy again a retry succeeds, so log loudly past N and don't abandon.
-  - **Tests:** on Postgres, with a fake signaller (vi.mock `signalPlatformExecution`, as `lib/task-await-delivery.test.ts` does) and a fake legacy gateway.
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 6, `feat(api): task-await sweeper` (step 5 `ec126f31`, step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
+- **Status:** steps 1–6 `[x]`, steps 7–10 `[ ]` (see Steps).
+- **Next action — step 7 (infra, D8), in `packages/infra/lib/api-stack.ts`:** add a `NodejsFunction` for `apps/api/src/lambda-task-sweeper.ts` (export `handler`) beside the reconciler, in the Temporal-configured branch.
+  - **Permissions and env:**
+    - the same Temporal env and secret, and `workflowTokenKey.grantDecrypt`;
+    - the DB secret;
+    - tunnel-proxy invoke permission, because the legacy poll goes through `tunnelFetch`;
+    - `cloudwatch:PutMetricData`.
+  - **Schedule:** an EventBridge rule, `rate(5 minutes)`.
+  - **Timeout:** ≥ 5 min. The sweep's own time budget is 4 min (`DEFAULT_BUDGET_MS`).
+  - **Reserved concurrency 1**, so two ticks never overlap.
+  - **Logging and alarms:**
+    - its own log group;
+    - an alarm on Lambda `Errors`;
+    - optionally an alarm on `TaskAwaitLegacyPollFailed`.
+  - **Metrics:** add the four names in `TASK_AWAIT_METRICS` (`TaskAwaitDelivered`, `TaskAwaitAbandoned`, `TaskAwaitDeliveryFailed`, `TaskAwaitLegacyPollFailed`, namespace `Pegasus/Workflows`) to `packages/infra/lib/metrics.ts`. Keep both sides in sync, as the comment says.
+  - **Infra tests:** the rule, the permissions, and the timeout and concurrency settings.
+  - **Check how the reconciler gets its tunnel / pegII env.** The sweeper builds a legacy gateway through `resolveTaskGateway`, then `resolvePegiiOverlayTarget`, then `tunnelFetch`. Copy whatever env the API Lambda gives those (tunnel-proxy function name/ARN, pegII token signing key) — grep the API function's environment for `TUNNEL` / `PEGII`.
 - **Uncommitted work:** only `apps/e2e/.env.test`. It's the worktree's isolated-DB wiring, written by `scripts/new-worktree.sh`. Never stage or commit it.
 - **In flight:** nothing.
   - #985 is merged and deployed.
@@ -41,7 +43,7 @@
   - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
   - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
 - **Verification still owed:**
-  - Steps 6–10 are unbuilt.
+  - Steps 7–10 are unbuilt.
   - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
@@ -146,7 +148,43 @@
     - 14 Postgres tests in `lib/task-await-delivery.test.ts`, three of them end to end through the factory gateway's `closeTask`.
     - 2 gateway hook tests: it fires once and post-commit, and a throwing hook doesn't fail the close.
     - The full API suite passes (345 files, 5566 tests).
-- [ ] 6. Sweeper Lambda (D6) + tests on Postgres with a fake signaller and a fake legacy gateway.
+- [x] 6. Sweeper Lambda (D6) + tests on Postgres with a fake signaller and a fake legacy gateway. Done 2026-11-24.
+  - **What was built:** `src/lambda-task-sweeper.ts`.
+    - `sweepTaskAwaits(opts)` does the work; `handler` runs it and then emits CloudWatch counts.
+    - Root client, with `tenantId` named on every per-tenant query.
+    - A 4-min time budget: no new work starts after it.
+  - **Lane order** — cleanup first, so the sweeper never polls or signals for a dead run:
+    - **(c) Cleanup:** `waiting` awaiters whose run has ended → `abandoned` / `EXECUTION_ENDED`. One cross-tenant `updateMany`; each row is judged through its own foreign key.
+    - **(a) Cloud backstop:** up to 100 due cloud awaiters.
+      - Their WorkItems are looked up by (`tenantId`, id).
+      - Closed → `deliverTaskClosed`.
+      - Still open → re-checked in 15 min. This makes open waits rotate, so they never starve the batch.
+      - Closed less than 60 s ago → left to the close's own delivery.
+      - Not in its own tenant → `abandoned` / `TASK_NOT_FOUND`.
+    - **(b) Legacy poll:** due legacy awaiters, grouped by (tenant, order), at most 50 orders, one `listOrderTasks` per order.
+      - Closed → delivered.
+      - Open → re-polled in 15 min.
+      - Missing → `abandoned` (`TASK_NOT_FOUND`, or `ORDER_NOT_FOUND` when the whole order is gone).
+      - A failed poll → `attempts + 1` and re-polled in 15 min.
+  - **Decisions made in this step:**
+    - **Cloud also uses `nextPollAt`.** It now means "when the sweeper next checks this awaiter" for both stores. Only the schema doc comment changed, so no migration.
+      - **Why:** `db-access-guard` allows raw SQL only in the health check and one advisory lock, each addition with a security review.
+      - The closed-task join was replaced by reading due awaiters first, then their WorkItems.
+    - **A legacy task that disappears is abandoned.** The Workflow's `await_task` timeout or its lifetime cap ends its wait.
+      - **Possible follow-up:** a "task gone" signal, so the Workflow learns of it at once.
+    - **No cap on attempts.** At 12 or more (`STUCK_ATTEMPTS`), each tick logs an error ("Task await stuck") and the row is never abandoned. Once Temporal or the tunnel recovers, the next attempt succeeds.
+  - **Identity (D7):**
+    - Each legacy poll acts as the first waiter's Workflow runtime account: Workflow → `runtimeApiClientId` → an ApiClient in **this** tenant, not revoked → `actsAsUserId`.
+    - The caller is built on `createTenantDb(db, tenantId)`.
+    - If no account resolves, the result is `RUNTIME_ACCOUNT_UNRESOLVED` (`attempts + 1`). The sweeper never guesses an identity.
+    - This applies to a GLOBAL Workflow row too, whose client lives in the platform tenant. The `automation-steps` caller check has the same limit already.
+  - **New option `onlyTenantIds`.** It restricts every lane to the listed tenants.
+    - The sweeper is cross-tenant, so in the shared test database a sweep from one suite touched another suite's rows; the first parallel run failed that way.
+    - The tests always pass this option. It also works as an operator's one-tenant sweep.
+  - **Tests:** 19 Postgres tests in `src/lambda-task-sweeper.test.ts`.
+    - The pegII caller is built for real, and the tests assert the poll acted as the runtime service account.
+    - Mutation checks are caught: the cloud tenant scope, the ApiClient tenant scope, and legacy delivery.
+    - The full API suite passes (346 files, 5585 tests).
 - [ ] 7. Infra (D8) + infra tests.
 - [ ] 8. SDK `await_task` (D1, D9) + harness + docs; tenant-runner registration check (D10).
 - [ ] 9. OpenAPI; parent plan (re-cut, S2 fold decision, TQ-D4 guardrail 4 as built); DECISIONS; GOTCHAS.

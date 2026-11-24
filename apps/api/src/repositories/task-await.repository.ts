@@ -121,12 +121,40 @@ export function createTaskAwaitRepository(db: PrismaClient, tenantId: string) {
      * A failed delivery attempt: stays `waiting` (the sweeper retries), counted,
      * with the error kept. Only while still `waiting`.
      */
-    async recordFailure(id: string, error: string): Promise<number> {
+    async recordFailure(id: string, error: string, nextPollAt?: Date): Promise<number> {
       const { count } = await db.taskAwait.updateMany({
         where: { id, tenantId, status: 'waiting' },
-        data: { attempts: { increment: 1 }, lastError: error.slice(0, 500) },
+        data: {
+          attempts: { increment: 1 },
+          lastError: error.slice(0, 500),
+          ...(nextPollAt ? { nextPollAt } : {}),
+        },
       })
       return count
+    },
+
+    /** Legacy: poll these again no sooner than `until` — only while `waiting`. */
+    async deferPoll(ids: string[], until: Date): Promise<number> {
+      if (ids.length === 0) return 0
+      const { count } = await db.taskAwait.updateMany({
+        where: { id: { in: ids }, tenantId, status: 'waiting' },
+        data: { nextPollAt: until },
+      })
+      return count
+    },
+
+    /** Legacy: this (tenant, order)'s waiting awaiters that are due for a poll. */
+    async listDueLegacyForOrder(orderNum: number, now: Date): Promise<TaskAwaitRow[]> {
+      return db.taskAwait.findMany({
+        where: {
+          tenantId,
+          store: 'legacy',
+          orderNum,
+          status: 'waiting',
+          OR: [{ nextPollAt: null }, { nextPollAt: { lte: now } }],
+        },
+        orderBy: { createdAt: 'asc' },
+      })
     },
 
     async findOne(input: {
