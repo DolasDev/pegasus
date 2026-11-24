@@ -2,6 +2,8 @@
 
 **Branch:** PR 1 landed from `feat/assistant-converse` (#981). PR 2 (steps 11–12) landed from `feat/assistant-models`. PR 3 gets its own branch. **PARKED** in `plans/todo/` (not `completed/`): step 10 and steps 13–14 wait on the use-case form, a staging AWS session and the eval set; step 15 (PR 3) comes after them.
 
+**Staging ON (2026-11-24, `feat/assistant-staging-on`):** `assistantEnabled = envName === 'staging'`; prod stays off. Next: staging V1–V4 on Kimi.
+
 **Interim default (2026-11-24, `feat/assistant-kimi-default`):** AWS denies every Anthropic model on both member accounts ("not available for this account … contact AWS Sales") even though the use-case form is on file in each and the Opus 5 agreement is AVAILABLE on staging. The management account can call Claude. A support case is the fix. Until AWS lifts the gate, chat defaults to `us.moonshotai.kimi-k3.1`, the generic family (no cache points, no effort). The list is Kimi K3.1, Opus 5, Nova 2 Lite. To switch back, set `assistantDefaultModel` to Opus 5 in `bin/app.ts`.
 **Goal:** the assistant's model becomes a configuration choice among the Bedrock models we allow, not a code change. It stays on Amazon Bedrock, so AWS remains the only data processor.
 
