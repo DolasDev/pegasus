@@ -1,6 +1,7 @@
-import { createAuthService } from './authService'
-import { AuthError, type Session, type TenantResolution } from './types'
+import { createAuthService, isRefreshRejected } from './authService'
+import { AuthError, type CognitoTokens, type Session, type TenantResolution } from './types'
 import type { MobileConfig } from '../config'
+import type { OAuthConfig } from './oauthService'
 
 const mockConfig: MobileConfig = {
   apiUrl: 'http://api.test',
@@ -40,17 +41,23 @@ const mockTenants: TenantResolution[] = [
 ]
 
 const mockCognitoService = {
-  signIn: jest.fn<Promise<{ idToken: string }>, [string, string, string, string]>(),
+  signIn: jest.fn<Promise<CognitoTokens>, [string, string, string, string]>(),
+  refresh: jest.fn<Promise<CognitoTokens>, [string, string, string]>(),
+  revoke: jest.fn<Promise<void>, [string, string, string]>(),
 }
 
 const mockOAuthService = {
-  authorize: jest.fn<Promise<{ idToken: string }>, [Record<string, string>, string]>(),
+  authorize: jest.fn<Promise<CognitoTokens>, [OAuthConfig, string]>(),
+  refresh: jest.fn<Promise<CognitoTokens>, [OAuthConfig, string]>(),
 }
 
 beforeEach(() => {
   global.fetch = jest.fn()
   mockCognitoService.signIn.mockReset()
+  mockCognitoService.refresh.mockReset()
+  mockCognitoService.revoke.mockReset()
   mockOAuthService.authorize.mockReset()
+  mockOAuthService.refresh.mockReset()
 })
 
 describe('createAuthService', () => {
@@ -79,8 +86,10 @@ describe('createAuthService', () => {
         'us-east-1_ABC',
         'client123',
       )
-      expect(result).toEqual({ ...mockApiSession, token: 'raw-id-token' })
-      expect(result.token).toBe('raw-id-token')
+      expect(result).toEqual({
+        session: { ...mockApiSession, token: 'raw-id-token' },
+        refresh: null,
+      })
     })
 
     it('makes exactly 1 fetch call (validate-token only — no config fetch)', async () => {
@@ -339,8 +348,10 @@ describe('createAuthService', () => {
         },
         'GoogleSSO',
       )
-      expect(result).toEqual({ ...mockApiSession, token: 'sso-id-token' })
-      expect(result.token).toBe('sso-id-token')
+      expect(result).toEqual({
+        session: { ...mockApiSession, token: 'sso-id-token' },
+        refresh: null,
+      })
     })
 
     it('makes exactly 1 fetch call (validate-token only — no config fetch)', async () => {
@@ -455,5 +466,175 @@ describe('createAuthService', () => {
         expect((err as AuthError).code).toBe('UserCancelled')
       }
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Session refresh
+// ---------------------------------------------------------------------------
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function service() {
+  return createAuthService({
+    config: mockConfig,
+    cognitoService: mockCognitoService,
+    oauthService: mockOAuthService,
+  })
+}
+
+/** fetch stub answering select-tenant 200 then validate-token with the session. */
+function stubSelectThenValidate(): jest.Mock {
+  const fetchMock = global.fetch as jest.Mock
+  fetchMock
+    .mockResolvedValueOnce(jsonResponse({ data: { ok: true } }))
+    .mockResolvedValueOnce(jsonResponse({ data: mockApiSession }))
+  return fetchMock
+}
+
+const currentSession: Session = { ...mockApiSession, token: 'old-id-token' }
+
+describe('sign-in keeps the refresh token', () => {
+  it('authenticate returns a password-kind refresh token', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({ data: mockApiSession }))
+    mockCognitoService.signIn.mockResolvedValue({ idToken: 'id', refreshToken: 'rt-pw' })
+    const result = await service().authenticate('a@b.com', 'pass', 'tenant-1')
+    expect(result.refresh).toEqual({ refreshToken: 'rt-pw', kind: 'password' })
+    // never inside the session blob
+    expect(JSON.stringify(result.session)).not.toContain('rt-pw')
+  })
+
+  it('authenticateWithSso returns an sso-kind refresh token', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({ data: mockApiSession }))
+    mockOAuthService.authorize.mockResolvedValue({ idToken: 'id', refreshToken: 'rt-sso' })
+    const result = await service().authenticateWithSso('tenant-1', 'GoogleSSO')
+    expect(result.refresh).toEqual({ refreshToken: 'rt-sso', kind: 'sso' })
+  })
+})
+
+describe('refreshSession', () => {
+  it('password kind: select-tenant FIRST, then REFRESH_TOKEN_AUTH, then validate-token', async () => {
+    const fetchMock = stubSelectThenValidate()
+    mockCognitoService.refresh.mockResolvedValue({ idToken: 'new-id-token' })
+
+    const result = await service().refreshSession(currentSession, {
+      refreshToken: 'rt-pw',
+      kind: 'password',
+    })
+
+    expect(fetchMock.mock.calls[0]![0]).toBe('http://api.test/api/auth/select-tenant')
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({
+      email: 'a@b.com',
+      tenantId: 'tenant-1',
+    })
+    expect(mockCognitoService.refresh).toHaveBeenCalledWith('rt-pw', 'us-east-1_ABC', 'client123')
+    expect(fetchMock.mock.calls[1]![0]).toBe('http://api.test/api/auth/validate-token')
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ idToken: 'new-id-token' })
+    // select-tenant ran before the Cognito refresh
+    expect(fetchMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockCognitoService.refresh.mock.invocationCallOrder[0]!,
+    )
+    expect(mockOAuthService.refresh).not.toHaveBeenCalled()
+    expect(result.session).toEqual({ ...mockApiSession, token: 'new-id-token' })
+    // no rotation → keep the same refresh token
+    expect(result.refresh).toEqual({ refreshToken: 'rt-pw', kind: 'password' })
+  })
+
+  it('sso kind refreshes through the Hosted UI token endpoint', async () => {
+    stubSelectThenValidate()
+    mockOAuthService.refresh.mockResolvedValue({ idToken: 'new-id-token' })
+
+    await service().refreshSession(currentSession, { refreshToken: 'rt-sso', kind: 'sso' })
+
+    expect(mockOAuthService.refresh).toHaveBeenCalledWith(
+      {
+        hostedUiDomain: mockConfig.cognito.domain,
+        clientId: mockConfig.cognito.clientId,
+        redirectUri: mockConfig.cognito.redirectUri,
+      },
+      'rt-sso',
+    )
+    expect(mockCognitoService.refresh).not.toHaveBeenCalled()
+  })
+
+  it('stores a rotated refresh token when Cognito returns one', async () => {
+    stubSelectThenValidate()
+    mockCognitoService.refresh.mockResolvedValue({ idToken: 'id', refreshToken: 'rt-rotated' })
+    const result = await service().refreshSession(currentSession, {
+      refreshToken: 'rt-pw',
+      kind: 'password',
+    })
+    expect(result.refresh).toEqual({ refreshToken: 'rt-rotated', kind: 'password' })
+  })
+
+  it('does not touch Cognito when select-tenant refuses (status carried for classification)', async () => {
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({ error: 'no' }, 403))
+    const err = await service()
+      .refreshSession(currentSession, { refreshToken: 'rt', kind: 'password' })
+      .catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(AuthError)
+    expect((err as AuthError).status).toBe(403)
+    expect(isRefreshRejected(err)).toBe(true)
+    expect(mockCognitoService.refresh).not.toHaveBeenCalled()
+  })
+})
+
+describe('revokeRefreshToken', () => {
+  it('revokes through Cognito RevokeToken for either kind', async () => {
+    mockCognitoService.revoke.mockResolvedValue()
+    await service().revokeRefreshToken({ refreshToken: 'rt-sso', kind: 'sso' })
+    expect(mockCognitoService.revoke).toHaveBeenCalledWith('rt-sso', 'us-east-1_ABC', 'client123')
+  })
+})
+
+describe('isRefreshRejected', () => {
+  it.each([
+    ['NotAuthorizedException', undefined],
+    ['UserNotFoundException', undefined],
+    ['invalid_grant', 400],
+    ['ValidateTokenFailed', 401],
+    ['SelectTenantFailed', 403],
+    ['SelectTenantFailed', 404],
+  ])('%s (status %s) → sign in again', (code, status) => {
+    expect(isRefreshRejected(new AuthError(code, 'x', status))).toBe(true)
+  })
+
+  it.each([
+    ['TooManyRequestsException', undefined],
+    ['InternalErrorException', undefined],
+    ['SelectTenantFailed', 503],
+    ['ValidateTokenFailed', 500],
+    ['SelectTenantFailed', 429],
+    // an unknown OAuth 4xx is not proof the token is dead
+    ['invalid_request', 400],
+    ['RefreshFailed', 400],
+  ])('%s (status %s) → transient, keep the session', (code, status) => {
+    expect(isRefreshRejected(new AuthError(code, 'x', status))).toBe(false)
+  })
+
+  it.each([
+    'Your account has not been granted access. Contact your administrator.',
+    'Your account has been deactivated. Contact your administrator.',
+    'Your session has expired. Please sign in again.',
+    'Authentication failed: this identity provider is disabled.',
+  ])('a deliberate Pre-Token denial ends the session: %s', (message) => {
+    expect(isRefreshRejected(new AuthError('UserLambdaValidationException', message))).toBe(true)
+  })
+
+  it('an unexpected Pre-Token failure (e.g. the database) is transient', () => {
+    expect(
+      isRefreshRejected(
+        new AuthError('UserLambdaValidationException', "Can't reach database server at db:5432"),
+      ),
+    ).toBe(false)
+  })
+
+  it('a network failure (TypeError from fetch) is transient', () => {
+    expect(isRefreshRejected(new TypeError('Network request failed'))).toBe(false)
   })
 })

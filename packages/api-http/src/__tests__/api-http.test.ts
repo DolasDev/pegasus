@@ -204,3 +204,89 @@ describe('createApiClient().fetchPaginated', () => {
     expect(UUID_REGEX.test(id!)).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// onUnauthorized — refresh once and retry on a 401 (mobile session refresh)
+// ---------------------------------------------------------------------------
+
+describe('createApiClient onUnauthorized', () => {
+  beforeEach(() => vi.restoreAllMocks())
+
+  const unauthorized = () =>
+    Promise.resolve(makeResponse({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401))
+
+  function authOf(call: unknown[]): string | null {
+    return new Headers((call[1] as RequestInit).headers).get('Authorization')
+  }
+
+  function clientWith(onUnauthorized?: () => Promise<string | null>) {
+    return createApiClient({
+      getBaseUrl: () => 'https://api.test',
+      getToken: () => 'old',
+      ...(onUnauthorized ? { onUnauthorized } : {}),
+    })
+  }
+
+  it('without the hook, a 401 throws as before (no retry)', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(unauthorized)
+    const err = (await clientWith()
+      .fetch('/x')
+      .catch((e: unknown) => e)) as ApiError
+    expect(err.status).toBe(401)
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('on a 401, awaits the hook once and retries with the token it returns', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(unauthorized)
+      .mockResolvedValueOnce(makeResponse({ data: { ok: true } }))
+    const onUnauthorized = vi.fn(async () => 'fresh')
+    await expect(
+      clientWith(onUnauthorized).fetch('/x', { method: 'POST', body: '{}' }),
+    ).resolves.toEqual({ ok: true })
+    expect(onUnauthorized).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledTimes(2)
+    expect(authOf(spy.mock.calls[0]!)).toBe('Bearer old')
+    expect(authOf(spy.mock.calls[1]!)).toBe('Bearer fresh')
+    expect((spy.mock.calls[1]![1] as RequestInit).method).toBe('POST')
+    expect((spy.mock.calls[1]![1] as RequestInit).body).toBe('{}')
+  })
+
+  it('throws the original 401 when the hook returns null (refresh failed)', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(unauthorized)
+    const err = (await clientWith(async () => null)
+      .fetch('/x')
+      .catch((e: unknown) => e)) as ApiError
+    expect(err.status).toBe(401)
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries only once — a second 401 throws without calling the hook again', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(unauthorized)
+    const onUnauthorized = vi.fn(async () => 'fresh')
+    const err = (await clientWith(onUnauthorized)
+      .fetch('/x')
+      .catch((e: unknown) => e)) as ApiError
+    expect(err.status).toBe(401)
+    expect(onUnauthorized).toHaveBeenCalledTimes(1)
+    expect(spy).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not call the hook for non-401 errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      makeResponse({ error: 'Forbidden', code: 'FORBIDDEN' }, 403),
+    )
+    const onUnauthorized = vi.fn(async () => 'fresh')
+    await expect(clientWith(onUnauthorized).fetch('/x')).rejects.toBeInstanceOf(ApiError)
+    expect(onUnauthorized).not.toHaveBeenCalled()
+  })
+
+  it('applies to fetchPaginated too', async () => {
+    const body = { data: [{ id: '1' }], meta: { total: 1, count: 1, limit: 50, offset: 0 } }
+    vi.spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(unauthorized)
+      .mockResolvedValueOnce(makeResponse(body))
+    await expect(clientWith(async () => 'fresh').fetchPaginated('/x')).resolves.toEqual(body)
+  })
+})
