@@ -723,13 +723,13 @@ export class ApiStack extends cdk.Stack {
     const assistantUrl = assistantFunction.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
       invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
-      cors: {
-        allowedOrigins: props.corsAllowedOrigins ?? ['*'],
-        allowedMethods: [lambda.HttpMethod.GET, lambda.HttpMethod.POST],
-        allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'X-Tenant-Slug'],
-        exposedHeaders: ['x-correlation-id'],
-        maxAge: cdk.Duration.hours(1),
-      },
+      // NO `cors` here, on purpose. The Hono app's cors middleware already
+      // answers preflights and stamps Access-Control-Allow-Origin from
+      // CORS_ALLOWED_ORIGINS (set on this function too). With CORS on the URL
+      // as well, Lambda adds a second copy of the header. Browsers reject two
+      // values even when they match, so every staging /chat was blocked
+      // (found 2026-11-24 by curl after #988). Without URL CORS, OPTIONS
+      // reaches the function, so Hono is the one source.
     })
     this.assistantUrl = assistantUrl.url
 

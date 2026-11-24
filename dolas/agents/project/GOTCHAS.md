@@ -4073,3 +4073,17 @@ setting, so a tenant that was already using them (NW) loses them on deploy
 until an admin ticks the box. The mobile app learns the flag from
 `GET /me/driver` → `driverEtaEnabled`; the trip screen sits outside the
 drawer's `TripsProvider` and fetches `/me/driver` itself.
+
+## A Lambda Function URL with `cors` + Hono's `cors()` = a duplicated Allow-Origin
+
+Function URL CORS is not a substitute for the function's own headers; Lambda
+adds its copy on top of whatever the function returns. The assistant Function
+URL had a `cors` block, and the Hono app (same bundle as the API) stamps
+`Access-Control-Allow-Origin` from `CORS_ALLOWED_ORIGINS`. So every real
+response carried the header twice. Browsers reject that even when both values
+match ("contains multiple values … but only one is allowed"), and every
+staging `/chat` was blocked. Unit tests and synth can't see it. Only a real
+response can: `curl -s -D - -o /dev/null -H 'Origin: <spa>' <url>/api/v1/assistant/models | grep -i access-control`.
+Preflight looked fine, because Lambda answers `OPTIONS` itself and never calls
+the function. Fix: no `cors` on the Function URL, and let Hono own CORS. With
+no URL CORS, `OPTIONS` reaches the function.
