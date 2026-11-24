@@ -29,6 +29,7 @@ import {
   type TaskAssigneeUnresolved,
 } from './task.gateway'
 import { isPegiiInt } from './pegii-task.gateway'
+import { logger } from '../lib/logger'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -45,6 +46,13 @@ export interface CloudTaskGatewayOptions {
    * idempotent replay, never on a read). Absent = no check.
    */
   orderExists?: (orderNumber: number) => Promise<boolean>
+  /**
+   * Called once, AFTER the close is written, when THIS call closed the task
+   * (never on a repeat close, or when a concurrent close won). The factory
+   * wires it to signal the Workflows awaiting the task (lib/task-await-
+   * delivery.ts). Best-effort: if it throws, the close still succeeds.
+   */
+  onClosed?: (task: TaskRecord) => Promise<unknown>
   /** Test seam. */
   now?: () => Date
 }
@@ -256,7 +264,22 @@ export function createCloudTaskGateway(opts: CloudTaskGatewayOptions): TaskGatew
       })
       const after = await findOne(taskId)
       if (after === null) return null
-      return { task: workItemToRecord(after), alreadyClosed: count === 0 }
+      const task = workItemToRecord(after)
+      // Post-commit: the update above is its own statement, so any waiter that
+      // registered before it is visible here (POST /tasks/:id/await re-reads
+      // the task after registering, covering one that registers after).
+      if (count === 1 && opts.onClosed) {
+        try {
+          await opts.onClosed(task)
+        } catch (err) {
+          logger.error('cloud task onClosed hook failed; the close stands', {
+            tenantId,
+            taskId: row.id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+      return { task, alreadyClosed: count === 0 }
     },
   }
 }

@@ -305,5 +305,15 @@ async def run_automation_activity(request: dict[str, Any]) -> Any:
         raise
 
 
-#: Activities every durable Workflow worker registers alongside the Workflow's own.
-BUILTIN_ACTIVITIES = [run_automation_activity]
+def _builtin_activities() -> list[Any]:
+    # tasks.py imports only Temporal, like this module; imported here, not at the
+    # top, only to keep the steps → tasks dependency one-way and explicit.
+    from .tasks import await_task_register_activity
+
+    return [run_automation_activity, await_task_register_activity]
+
+
+#: Activities every durable Workflow worker registers alongside the Workflow's
+#: own: ``pegasus.run_automation`` (0.65.0) and ``pegasus.await_task_register``
+#: (0.69.0). The tenant runner registers exactly this list.
+BUILTIN_ACTIVITIES = _builtin_activities()

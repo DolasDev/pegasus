@@ -21,7 +21,7 @@ vi.mock('../../repositories/company-membership.repository', () => ({
   createCompanyMembershipRepository: vi.fn(() => memberships),
 }))
 
-import { resolvePegiiCaller, type PegiiCaller } from '../pegii-request-context'
+import { buildPegiiCaller, resolvePegiiCaller, type PegiiCaller } from '../pegii-request-context'
 
 const TARGET = {
   site: { id: 'site-1', name: 'Primary', cloudAuthEnabled: true },
@@ -192,5 +192,52 @@ describe('resolvePegiiCaller', () => {
       slug: 'nw',
     })
     expect(caller.site.id).toBe('site-1')
+  })
+})
+
+describe('buildPegiiCaller (no request)', () => {
+  const dbWith = (users: Record<string, { id: string; isServiceAccount: boolean }>) =>
+    ({
+      tenantUser: {
+        findFirst: vi.fn(async ({ where }: { where: { id: string; tenantId: string } }) =>
+          where.tenantId === 'tenant-1' ? (users[where.id] ?? null) : null,
+        ),
+      },
+      tenant: { findUnique: tenantFindUnique },
+    }) as unknown as PrismaClient
+
+  it('acts as the named service account, with the given correlation id', async () => {
+    const caller = await buildPegiiCaller(
+      dbWith({ 'svc-wf': { id: 'svc-wf', isServiceAccount: true } }),
+      {
+        tenantId: 'tenant-1',
+        tenantUserId: 'svc-wf',
+        correlationId: 'sweep-7',
+      },
+    )
+
+    expect(caller).toEqual({
+      tenantId: 'tenant-1',
+      correlationId: 'sweep-7',
+      principal: { tenantUserId: 'svc-wf', isServiceAccount: true, attribution: null },
+      site: { id: 'site-1', cloudAuthEnabled: true },
+      company: { id: 'co-1', code: 'NW', dataSourceKey: null, systemEmployeeCode: 1001 },
+    })
+    // A service account is never attributed to a desktop employee.
+    expect(memberships.findLinked).not.toHaveBeenCalled()
+  })
+
+  it("a user outside the tenant doesn't resolve (minting then refuses it)", async () => {
+    const caller = await buildPegiiCaller(dbWith({}), {
+      tenantId: 'tenant-1',
+      tenantUserId: 'someone-else',
+      correlationId: 'sweep-8',
+    })
+
+    expect(caller.principal).toEqual({
+      tenantUserId: null,
+      isServiceAccount: false,
+      attribution: null,
+    })
   })
 })

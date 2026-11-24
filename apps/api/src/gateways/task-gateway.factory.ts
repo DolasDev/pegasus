@@ -23,6 +23,7 @@ import { resolveOrderGateway } from './order-gateway.factory'
 import { resolvePegiiOverlayTarget } from '../lib/pegii-overlay-target'
 import { PegiiApiError } from '../lib/pegii-api-client'
 import { logger } from '../lib/logger'
+import { notifyTaskWaiters } from '../lib/task-await-delivery'
 
 export interface TaskGatewayContext {
   db: PrismaClient
@@ -75,6 +76,8 @@ export function resolveCloudTaskGateway(ctx: TaskGatewayContext): TaskGateway {
     db,
     tenantId,
     actorUserId: ctx.actorUserId ?? null,
+    // Signal the Workflows awaiting the task (task queue Phase 3b, D5).
+    onClosed: (task) => notifyTaskWaiters(db, tenantId, task),
     orderExists: async (orderNum) => {
       if (!(await hasLegacyTaskStore(db, tenantId))) return true
       const orders = await resolveOrderGateway(db, tenantId, ctx.callerOf)

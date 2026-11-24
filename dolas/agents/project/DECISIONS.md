@@ -205,6 +205,18 @@ item-to-revision table. **Check what a plan says is owed before building on it.*
     - **A driver's Blocked task notifies the move's dispatcher too.** It falls back to the operations roles when there's no dispatcher, the dispatcher is unlinked or is the driver, or the lookup fails.
     - **Cloud `CreateTask`/`CloseTask` are billable**, like legacy.
     - Plan: `plans/completed/8cde70bf-task-queue-cloud-store.md`.
+  - **Awaiting a task, as built in Phase 3b (Steve, S1–S5, 2026-11-23; built 2026-11-24):**
+    - **`pegasus.`-prefixed signal names are reserved for the platform.** The signal route (400 `SIGNAL_NAME_RESERVED`), manifest `signals` and EVENT-trigger bindings all refuse them, case-insensitively, and the SDK's manifest loader too. So a Workflow can trust a `pegasus.task_closed` came from the platform. Only `signalPlatformExecution` sends one, and it throws on any other name.
+    - **One awaiter table for both stores, `TaskAwait`:** many-to-many, unique per (run, store, task). `nextPollAt` means "when the sweeper next checks this awaiter" for both stores.
+      - Writes are conditional on `status = 'waiting'`, so a close and a sweeper tick never regress each other.
+      - The Workflow dedupes a double signal by task id.
+    - **Registration answers the task's current state.** A task already closed returns at once, so no wake-up is missed. A cloud task is re-read after the row is written. The route accepts an unstamped manual run by the execution id embedded in its Temporal id, because `markStarted` stamps the id only after Temporal's start returns.
+    - **A cloud close signals its waiters inline, after commit, best-effort** (`cloud-task.gateway` `onClosed`, wired by the factory). A failed signal never fails the close: the row stays `waiting` and the sweeper redelivers.
+    - **The sweeper is one Lambda every 5 min.** It acts as the awaiting Workflow's own runtime service account (D7), never a guessed identity, and needs no VPC (pegII goes through the tunnel proxy).
+      - **Lanes:** abandon waits whose run ended → cloud redelivery → legacy poll (batched by order).
+      - **No retry cap:** a waiter stuck past 12 attempts logs ERROR, and is never abandoned.
+      - **No poll-failure alarm:** one site's tunnel outage would page every tick. Crashes trip the account-wide Lambda Errors alarm.
+    - **Plan:** `plans/completed/62a6f5aa-task-queue-await.md`.
   - Plan: `plans/todo/task-queue-and-activity-feed.md`.
 
 ---

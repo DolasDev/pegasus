@@ -40,13 +40,31 @@ export interface PegiiCaller {
   company: PegiiTokenCompany & { id: string; code: string }
 }
 
-export async function resolvePegiiCaller(
-  c: Context<AppEnv>,
-  opts: { companyId?: string } = {},
+/** Who to act as, without a request: what {@link buildPegiiCaller} needs. */
+export interface PegiiCallerInput {
+  tenantId: string
+  /** The TenantUser to act as (a human, or a service account); null when unresolved. */
+  tenantUserId: string | null
+  correlationId: string
+  /** Name a company; default: the tenant's default company. */
+  companyId?: string
+}
+
+/**
+ * Resolve a pegII caller from plain values — for code with no request, such as a
+ * scheduled Lambda (the task sweeper acts as an awaiting Workflow's runtime
+ * service account). {@link resolvePegiiCaller} is this plus the request's values.
+ *
+ * `tenantDb` MUST be scoped to `input.tenantId` (`createTenantDb`): the default
+ * company lookup carries no tenantId of its own, so on the root client it would
+ * find ANY tenant's default company — and mint a token for its site.
+ */
+export async function buildPegiiCaller(
+  tenantDb: PrismaClient,
+  input: PegiiCallerInput,
 ): Promise<PegiiCaller> {
-  const tenantId = c.get('tenantId')
-  const db = c.get('db') as PrismaClient
-  const tenantUserId = c.get('apiClient')?.actsAsUserId ?? c.get('userId') ?? null
+  const { tenantId, tenantUserId, correlationId } = input
+  const db = tenantDb
 
   const user = tenantUserId
     ? await db.tenantUser.findFirst({
@@ -57,12 +75,12 @@ export async function resolvePegiiCaller(
 
   const repo = createCompanyRepository(db)
   let target: CompanyTarget | null
-  if (opts.companyId) {
+  if (input.companyId) {
     // Tenant-scoped reads: another tenant's company id resolves to nothing.
-    const company = await repo.findCompany(opts.companyId)
+    const company = await repo.findCompany(input.companyId)
     const site = company ? await repo.findSite(company.siteId) : null
     if (!company || !site) {
-      throw new Error(`company ${opts.companyId} not found while resolving the pegII caller`)
+      throw new Error(`company ${input.companyId} not found while resolving the pegII caller`)
     }
     target = { company, site }
   } else {
@@ -84,7 +102,7 @@ export async function resolvePegiiCaller(
 
   return {
     tenantId,
-    correlationId: c.get('correlationId') ?? 'unknown',
+    correlationId,
     principal: {
       tenantUserId: user?.id ?? null,
       isServiceAccount: user?.isServiceAccount ?? false,
@@ -103,4 +121,17 @@ export async function resolvePegiiCaller(
       systemEmployeeCode: target.company.systemEmployeeCode,
     },
   }
+}
+
+/** The pegII caller for this request: its tenant-scoped db, principal and correlation id. */
+export async function resolvePegiiCaller(
+  c: Context<AppEnv>,
+  opts: { companyId?: string } = {},
+): Promise<PegiiCaller> {
+  return buildPegiiCaller(c.get('db') as PrismaClient, {
+    tenantId: c.get('tenantId'),
+    tenantUserId: c.get('apiClient')?.actsAsUserId ?? c.get('userId') ?? null,
+    correlationId: c.get('correlationId') ?? 'unknown',
+    ...(opts.companyId ? { companyId: opts.companyId } : {}),
+  })
 }

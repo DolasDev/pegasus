@@ -706,6 +706,11 @@ describe('workflows handler', () => {
           { ...durableManifest, signals: ['go-now'] },
           'signal',
         ],
+        [
+          'a reserved platform signal name',
+          { ...durableManifest, signals: ['pegasus.task_closed'] },
+          'reserved for the platform',
+        ],
         ['an unknown kind', { ...validManifest, kind: 'saga' }, 'kind'],
       ])('400 VALIDATION_ERROR: %s', async (_label, manifest, mentions) => {
         const res = await buildApp().request('/', post({ workflowId, manifest }))
@@ -1891,6 +1896,23 @@ describe('workflows handler', () => {
       expect(mockHandleSignal).not.toHaveBeenCalled()
     })
 
+    it.each(['pegasus.task_closed', 'PEGASUS.task_closed', 'pegasus.anything'])(
+      'returns 400 SIGNAL_NAME_RESERVED for the platform name %s — even if declared',
+      async (name) => {
+        // A manifest can't declare one today; prove the refusal doesn't lean on that.
+        mockRepo.findByIdForTenant.mockResolvedValue({
+          ...durableRow,
+          manifest: { ...durableRow.manifest, signals: ['proceed', name] },
+        })
+        const res = await buildApp().request(url, post({ name, payload: { taskId: 't-1' } }))
+        expect(res.status).toBe(400)
+        const body = await json(res)
+        expect(body.code).toBe('SIGNAL_NAME_RESERVED')
+        expect(String(body.error)).toContain('reserved for the platform')
+        expect(mockHandleSignal).not.toHaveBeenCalled()
+      },
+    )
+
     it('returns 400 VALIDATION_ERROR for a malformed name', async () => {
       const res = await buildApp().request(url, post({ name: 'quote.accepted' }))
       expect(res.status).toBe(400)
@@ -2636,6 +2658,22 @@ describe('workflows handler', () => {
       const res = await buildApp().request('/wf-1/triggers', post(body))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      expect(mockTriggerRepo.create).not.toHaveBeenCalled()
+    })
+
+    it('400 VALIDATION_ERROR for a reserved platform signalName, even one the version declares', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue({
+        ...durableRow,
+        manifest: { ...durableRow.manifest, signals: ['order_event', 'pegasus.task_closed'] },
+      })
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ ...binding, signalName: 'pegasus.task_closed' }),
+      )
+      expect(res.status).toBe(400)
+      const body = await json(res)
+      expect(body.code).toBe('VALIDATION_ERROR')
+      expect(String(body.error)).toContain('reserved for the platform')
       expect(mockTriggerRepo.create).not.toHaveBeenCalled()
     })
 

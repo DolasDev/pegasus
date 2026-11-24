@@ -104,6 +104,13 @@ describe('signalBindingError', () => {
     [{ ...start, correlationPath: 'orderId' }, durable, /must start at an event-envelope field/],
     [{ ...start, signalName: undefined }, durable, /requires a signalName/],
     [{ ...start, signalName: 'other' }, durable, /not declared .*declared: order_event/],
+    // Reserved even when a (forged / legacy) manifest lists it: the dispatcher
+    // re-runs this check at dispatch, so a stored binding can't send it either.
+    [
+      { ...start, signalName: 'pegasus.task_closed' },
+      { ...durable, manifest: { signals: ['order_event', 'pegasus.task_closed'] } },
+      /reserved for the platform/,
+    ],
   ])('refuses %#', (trigger, workflow, message) => {
     expect(signalBindingError(trigger, workflow)).toMatch(message)
   })

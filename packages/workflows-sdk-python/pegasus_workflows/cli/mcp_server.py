@@ -544,6 +544,24 @@ runtime, so it can wait for days:
   (an Automation runs once): catch ``AutomationStepFailed`` and call again to
   retry. Only a Workflow can call it — an Automation's runtime token is
   refused.
+- **Waiting for a task** (SDK 0.69.0+): inside the Workflow,
+  ``task = await await_task(task_id, timeout=timedelta(days=3))`` (``from
+  pegasus_workflows import await_task, TaskAwaitTimeout, TaskAwaitRefused``)
+  returns the task (``get_task``'s dict, ``status == "closed"``) once it is
+  closed, in either store; an already-closed task returns at once. A cloud task
+  wakes the Workflow on close; a legacy (MoveManager) task is checked every 15
+  minutes (allow ~20). Several can be awaited concurrently (``asyncio.gather``);
+  awaiting the same task twice returns the same result. ``timeout`` (default
+  ``None`` = the Workflow's lifetime) raises ``TaskAwaitTimeout``;
+  ``TaskAwaitRefused`` (``.code``: ``TASK_NOT_FOUND`` / ``EXECUTION_NOT_OPEN`` /
+  ``AWAIT_CALLER_NOT_WORKFLOW`` / ``PEGII_API_NOT_CONFIGURED`` /
+  ``PEGII_CAPABILITY_MISSING``) is not retried; a briefly-down site is. A legacy task deleted in
+  MoveManager never closes, so pass a ``timeout`` when that matters. It works
+  through a built-in activity (``pegasus.await_task_register``) and the
+  platform's reserved signal ``pegasus.task_closed``; nothing in the manifest
+  declares either. Test it in a Temporal test environment with
+  ``pegasus_workflows.testing.staged_task_await(tasks)`` as the activity and
+  ``await close_staged_task(handle, task, reason=...)`` as the platform.
 - Activities work as in an Automation (``PegasusClient.from_runtime()``) and get
   Temporal's per-activity retries.
 - No dry runs (422 ``DRY_RUN_UNSUPPORTED``) — test locally against a Temporal dev
@@ -803,7 +821,9 @@ def resource_reference_manifest() -> str:
         "only declared names can be run (``PegasusClient.query_execution`` /\n"
         "``executions query``).\n"
         "A Workflow runs an Automation as a step with ``await run_automation(name, input)``\n"
-        "(SDK 0.65.0+); nothing in the manifest declares it.\n"
+        "(SDK 0.65.0+), and waits for a task to close with ``await await_task(task_id)``\n"
+        "(SDK 0.69.0+); nothing in the manifest declares either. Signal and query\n"
+        "names starting ``pegasus.`` are reserved for the platform and refused.\n"
         "Each kind's fields are refused on the other kind.\n\n"
         "## Packaging requirement — Automation diagram\n\n"
         f"Every Automation must ship a Mermaid diagram at ``<source_dir>/{DIAGRAM_FILENAME}``.\n"

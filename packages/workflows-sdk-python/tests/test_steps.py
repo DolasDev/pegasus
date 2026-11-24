@@ -309,7 +309,13 @@ def test_step_failed_round_trips_through_the_activity_boundary() -> None:
 def test_exports_and_builtins() -> None:
     assert pegasus_workflows.run_automation is steps.run_automation
     assert pegasus_workflows.AutomationStepFailed is steps.AutomationStepFailed
-    assert steps.BUILTIN_ACTIVITIES == [steps.run_automation_activity]
+    from pegasus_workflows import tasks
+
+    # 0.69.0: await_task's register activity is a built-in too.
+    assert steps.BUILTIN_ACTIVITIES == [
+        steps.run_automation_activity,
+        tasks.await_task_register_activity,
+    ]
     defn = steps.run_automation_activity.__temporal_activity_definition  # type: ignore[attr-defined]
     assert defn.name == steps.RUN_AUTOMATION_ACTIVITY == "pegasus.run_automation"
 

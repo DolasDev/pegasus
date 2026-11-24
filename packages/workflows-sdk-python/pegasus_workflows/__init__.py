@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     )
     from .manifest import Manifest, ManifestError, load_manifest
     from .steps import AutomationStepFailed, run_automation
+    from .tasks import TaskAwaitRefused, TaskAwaitTimeout, await_task
 
 __all__ = [
     "activity",
@@ -64,6 +65,9 @@ __all__ = [
     "WORKFLOW_META_ATTR",
     "run_automation",
     "AutomationStepFailed",
+    "await_task",
+    "TaskAwaitTimeout",
+    "TaskAwaitRefused",
 ]
 
 # api.py pulls in httpx (and transitively urllib), which Temporal's workflow
@@ -90,6 +94,9 @@ _LAZY_EXPORTS = {
     # Sandbox-safe (Temporal-only imports); lazy only for symmetry.
     "run_automation": "steps",
     "AutomationStepFailed": "steps",
+    "await_task": "tasks",
+    "TaskAwaitTimeout": "tasks",
+    "TaskAwaitRefused": "tasks",
 }
 
 

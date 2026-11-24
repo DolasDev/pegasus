@@ -187,6 +187,40 @@ describe.skipIf(!hasDb)('createCloudTaskGateway', () => {
     expect((await a.getTask(created.task.id))?.status).toBe('open')
   })
 
+  it('onClosed fires once, after the write, only for the close that closed it', async () => {
+    const seen: Array<{ status: string; reason: string | null }> = []
+    const onClosed = vi.fn(async (task: { status: string; reason: string | null }) => {
+      // The row is already closed when the hook runs (post-commit).
+      const row = await db.workItem.findFirstOrThrow({ where: { tenantId: tenantA } })
+      expect(row.status).toBe('done')
+      seen.push({ status: task.status, reason: task.reason })
+    })
+    const gw = createCloudTaskGateway({ db: scoped(tenantA), tenantId: tenantA, onClosed })
+    const created = await gw.createTask('490317', input())
+    if (!created.found) throw new Error('unreachable')
+
+    await gw.closeTask(created.task.id, 'done')
+    await gw.closeTask(created.task.id, 'again') // repeat: alreadyClosed, no hook
+
+    expect(onClosed).toHaveBeenCalledTimes(1)
+    expect(seen).toEqual([{ status: 'closed', reason: 'done' }])
+  })
+
+  it('a throwing onClosed never fails the close', async () => {
+    const gw = createCloudTaskGateway({
+      db: scoped(tenantA),
+      tenantId: tenantA,
+      onClosed: async () => {
+        throw new Error('temporal down')
+      },
+    })
+    const created = await gw.createTask('490317', input())
+    if (!created.found) throw new Error('unreachable')
+
+    const result = await gw.closeTask(created.task.id, null)
+    expect(result).toMatchObject({ alreadyClosed: false, task: { status: 'closed' } })
+  })
+
   it('a cursor it did not issue is a 400 INVALID_CURSOR', async () => {
     const gw = createCloudTaskGateway({ db: scoped(tenantA), tenantId: tenantA })
 

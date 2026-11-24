@@ -2,11 +2,11 @@
 
 **Branch (this plan):** none (the plan lives on `main`). Each phase gets its own `feat/` worktree and branch; earlier phase plans are in `plans/completed/`.
 **Goal:** Give drivers a To Do list and an Activity feed in the mobile app, then give office roles guided task queues on the web that replace legacy reports. Tenants control the tasks through their Workflows and through task definitions they can edit.
-**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phases 1, 2a and 2b are SHIPPED (merged, deployed to prod, Android vcode 25 on closed testing). **Phase 3a is shipped (2026-11-23); 3b is next.**
+**Status:** Design APPROVED by Steve 2026-11-12..14 (Q1–Q3 below). Phases 1, 2a and 2b are SHIPPED (merged, deployed to prod, Android vcode 25 on closed testing). **Phase 3a is shipped (2026-11-23). Phase 3b ("await a task, end to end") is BUILT on `feat/task-queue-await` (2026-11-24), PR pending.**
 
 ---
 
-## Resume here (2026-11-23; Phase 3a landed through the merge queue, 3b next)
+## Resume here (2026-11-24; Phase 3b built, PR pending)
 
 - **Phase 3a** shipped as one PR from `feat/task-queue-cloud-store`. Its plan, with every decision made while building and what changed in prod on deploy, is `plans/completed/8cde70bf-task-queue-cloud-store.md`.
 - **Owed after its merge:**
@@ -18,7 +18,18 @@
   - A role with no routing entry uses legacy (the desktop).
   - Blocked notifies the move's dispatcher.
   - Cloud tasks are billable.
-- **Next: Phase 3b** (the sweeper). It decides the `TaskState` fold and fixes the `TaskDefinition` predicate columns.
+- **Phase 3b is BUILT (2026-11-24), PR pending:** worktree `../pegasus-task-queue-await`, branch `feat/task-queue-await`, plan `plans/completed/62a6f5aa-task-queue-await.md` (every decision made while building, with what changed from the draft). Landing via the merge queue (`/workstream-finish`).
+  - Steve said yes to S1–S5 (2026-11-23): 3b/3c re-cut, `TaskState` not folded, overdue reminders, `operations` re-assignment and the replay 409 deferred to Phase 4. See "Decisions already made".
+  - What 3b ships:
+    - SDK 0.69.0 `await_task` / `TaskAwaitTimeout` / `TaskAwaitRefused`;
+    - `POST /pegii/tasks/:id/await`;
+    - the `TaskAwait` table;
+    - the reserved `pegasus.` signal prefix;
+    - a cloud close signalling its waiters;
+    - the `TaskSweeperFunction` every 5 min.
+  - **Owed after it merges:**
+    - Publish SDK 0.69.0 (tag `sdk-python-v0.69.0`), then update `~/repos/pegasus-workflows/CLAUDE.md` (await_task, pin 0.69.0).
+    - A staging check: a Workflow that awaits a cloud task, and then one that awaits a legacy task.
 
 ### Shipped so far (all merged and deployed to prod)
 
@@ -34,12 +45,19 @@
 
 ### Next action
 
-**Phase 3a is shipped** (2026-11-23; plan `plans/completed/8cde70bf-task-queue-cloud-store.md`). Phase 3 split, each its own PR:
+Phase 3 split, each its own PR. **Re-cut 2026-11-23 (Steve, S1):** the old 3b's sweeper would have shipped with nothing to sweep, because nothing set an awaiter until 3c's `await_task` and no predicates existed until 3c.
 
-- **3a:** `WorkItem` + minimal `TaskDefinition`, a store-neutral `TaskGateway` + cloud gateway, routing per (tenant, role), the routing endpoint, guardrails 1–3, **and the SDK surface for those** (`role=`, `store`, `get_task_routing()`). The SDK moved here from 3c because guardrail 1 and CLAUDE.md require it to ship with the routes.
-- **3b:** the sweeper Lambda + `packages/infra` EventBridge schedule (auto-done/cancel, overdue `notify()`, signal awaiting Workflows, legacy awaited-task poll ≥ 15 min). Decides the `TaskState` fold.
-- **3c:** SDK `definition=` / `satisfied_when=`, `await_task`, `block_task`, plus Cedar `ManageTaskDefinitions` / `BlockTask`.
+- **3a (SHIPPED, #985):** `WorkItem` + minimal `TaskDefinition`, a store-neutral `TaskGateway` + cloud gateway, routing per (tenant, role), the routing endpoint, guardrails 1–3, **and the SDK surface for those** (`role=`, `store`, `get_task_routing()`).
+- **3b (BUILT, PR pending): await a task, end to end.**
+  - SDK `await_task` (0.69.0) and the awaiter registry for both stores (`TaskAwait`).
+  - The reserved `pegasus.task_closed` signal; a cloud close signals its waiters after commit.
+  - The sweeper, limited to what awaiting needs: cloud redelivery, the legacy poll (batched per order, 15-min re-poll) and abandoning waits whose run ended.
+- **3c (next): definitions as data.**
+  - `TaskDefinition` with `appliesWhen` / `satisfiedWhen` predicates, and auto-done / auto-cancel from them (a new sweeper lane).
+  - SDK `definition=` / `satisfied_when=`, `block_task`.
+  - Cedar `ManageTaskDefinitions` / `BlockTask`.
 - **3d:** the tenant-web definition editor + routing UI, and the `workflows-stdlib` default longhaul Workflow.
+- **Phase 4 (deferred into it by S3–S5):** overdue reminders (cloud tasks have no human screen until the role queue), re-assigning `operations` tasks when the move's dispatcher changes, and the legacy `operations` replay 409 (#985).
 
 ### Decisions already made (don't re-ask)
 
@@ -48,9 +66,14 @@
 - **`notify()`** (`apps/api/src/lib/notify.ts`):
   - It is the only way to write Activity, and the SDK's notify is the only Workflow-facing way.
   - Types are registered in `packages/domain/src/notifications/index.ts`. `task.blocked` defaults to push; `workflow.message` defaults to feed.
-- **The Phase 3 plan text says `TaskState` folds into `WorkItem`.** `TaskState` today holds per-user snooze, dismiss and blocked state for COMPUTED driver tasks, keyed by `task:<rule>:<orderNum>:<item>`.
-  - Decide whether computed driver tasks become `WorkItem` rows (needs the sweeper) or stay computed.
-  - Blocked state, and its notify-on-transition, live in `apps/api/src/handlers/me-tasks.ts`.
+- **`TaskState` does NOT fold into `WorkItem` (Steve, S2, 2026-11-23).** The driver To Do stays computed on read, and `TaskState` stays its per-user overlay (snooze, dismiss, blocked), keyed by `task:<rule>:<orderNum>:<item>`.
+  - **Why:** folding means rows a sweeper keeps in step with every driver's itinerary. That means reading itineraries through the tunnel on a timer, which §5's risks forbid.
+  - Blocked state, and its notify-on-transition, stay in `apps/api/src/handlers/me-tasks.ts`.
+- **S3–S5 (Steve, 2026-11-23) are deferred to Phase 4:**
+  - overdue reminders;
+  - re-assigning `operations` tasks on a dispatcher change;
+  - the legacy `operations` replay 409.
+- **`pegasus.`-prefixed signal names are the platform's** (3b). Every tenant path refuses them, so a Workflow can trust a `pegasus.task_closed`.
 
 ### Gotchas learned (the next steps depend on these)
 
@@ -134,6 +157,11 @@
   2. **Loud failure.** A cloud-only field sent to a legacy-routed role returns `400 UNSUPPORTED_ON_LEGACY_STORE`. Legacy-routed creates still require `due_date`.
   3. **Ids carry their store.** Cloud ids are UUIDs and legacy ids are ints; `get_task`/`close_task` route by id.
   4. **Awaiting works on both stores.** A cloud task signals on completion. For a legacy task the platform polls only the tasks some Workflow is awaiting (about every 15 min) and signals when one closes.
+     - **As built (Phase 3b, 2026-11-24):**
+       - **Registering:** `await_task` registers a `TaskAwait` row through `POST /pegii/tasks/:id/await` and gets the task's current state, so a task already closed returns at once.
+       - **Cloud:** a close signals `pegasus.task_closed` to every waiter after it commits. The sweeper redelivers what that missed.
+       - **Legacy:** the sweeper (every 5 min) polls due awaiters, one `listOrderTasks` per order and at most 50 orders a tick. It re-polls an open task every 15 min and acts as the waiting Workflow's runtime service account.
+       - **Missing or ended:** a task gone from MoveManager, or a run that ended, makes the wait `abandoned`.
 - **Implied movemanager change:** remove the compiled `ApiTaskTypes` allowlist (`Pulse Follow-Up` only). Legacy accepts any type and the cloud validates against definitions. One release per site, not one per type.
 
 ### TQ-D5 (Q3): Measure legacy usage before designing the import (Steve, 2026-11-14)
@@ -266,17 +294,18 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
 
 - [ ] **Prisma:**
   - `TaskDefinition` (tenant-scoped, versioned): key, title, owningRole, appliesWhen (rule ref + params), satisfiedWhen (fact predicate ref | form | explicit), dueBase + offset, escalation, deepLink.
-  - `WorkItem`: id, definitionKey + version, orderNum, owningRole, assigneeUserId?, status `open|blocked|done|cancelled`, dueAt, timestamps for each transition, `awaitingExecutionId?`, store.
-  - Phase 1's `TaskState` folds into `WorkItem`. **Deferred to 3b** (3a plan D10): computed driver tasks can't become rows without the sweeper.
-- [ ] **Sweeper (EventBridge schedule):**
-  - Re-evaluate `appliesWhen`/`satisfiedWhen` for open items: auto-done, auto-cancel (F2).
-  - Overdue reminders through `notify()`.
-  - Signal the awaiting Workflow on completion.
-  - Poll legacy tasks that a Workflow is awaiting (TQ-D4 guardrail 4).
+  - `WorkItem`: id, definitionKey + version, orderNum, owningRole, assigneeUserId?, status `open|blocked|done|cancelled`, dueAt, timestamps for each transition, store.
+    - 3b deprecated the unused `awaitingExecutionId`; the many-to-many `TaskAwait` table replaces it, covering both stores. **Owed:** a contract-only migration dropping `work_items.awaiting_execution_id`, at least one release after 3b ships (PATTERNS.md expand-contract).
+  - ~~Phase 1's `TaskState` folds into `WorkItem`.~~ **Not folded** (S2): the driver To Do stays computed.
+- [ ] **Sweeper (EventBridge schedule):** `TaskSweeperFunction`, every 5 min (3b).
+  - [ ] Re-evaluate `appliesWhen`/`satisfiedWhen` for open items: auto-done, auto-cancel (F2). **3c.**
+  - [ ] Overdue reminders through `notify()`. **Phase 4** (S3).
+  - [x] Signal the awaiting Workflow on completion. **3b:** inline on a cloud close, with a sweeper redelivery lane as the backstop.
+  - [x] Poll legacy tasks that a Workflow is awaiting (TQ-D4 guardrail 4). **3b.**
 - [x] **Cloud `TaskGateway` + per-(tenant, role) routing** in `task-gateway.factory.ts`, with a routing setting per tenant. **3a**, with `WorkItem` + a minimal `TaskDefinition`; see `plans/completed/8cde70bf-task-queue-cloud-store.md`.
 - [ ] **SDK:**
   - `create_task` gains optional `role`, `definition`, `satisfied_when`.
-  - Add `await_task` (a Temporal helper: `wait_condition` on the completion signal).
+  - [x] Add `await_task` (a Temporal helper: `wait_condition` on the completion signal). **3b, SDK 0.69.0.**
   - Add `block_task`.
   - Responses gain `store`. Add the routing introspection endpoint.
   - SDK version = next free at the time. MCP `pegasus://reference/*`, CLI `--help`, OpenAPI, README, and the authoring repo's `CLAUDE.md`.
@@ -336,6 +365,7 @@ Built as below, with the deviations recorded in `plans/completed/61e536c9-task-q
 - **Phase 1 reads legacy through the tunnel on every To Do load,** via the itinerary. Keep it to one itinerary read; never poll it on a timer.
 - **Push fatigue:** default preferences send to the feed only, except assignment and mention, which also push.
 - **Legacy awaited-task poller (Phase 3) loads the tunnel.** Poll only awaited tasks, batch per order, at ≥ 15 min intervals.
+  - As built in 3b: at most 50 orders a tick, every 5 min, and each order is re-polled no sooner than 15 min. A failed poll waits 15 min too.
 - **The switchover leaves old tasks visible on the desktop.** Decide read-only vs hidden at the first switchover.
 - **Weight-ticket rule:** a document can exist with a wrong weight. Accepted for v1 (no weight write path).
 

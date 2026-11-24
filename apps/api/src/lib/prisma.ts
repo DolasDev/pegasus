@@ -176,6 +176,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // TaskDefinition has no reader or writer until 3c.
   'WorkItem',
   'TaskDefinition',
+  // Awaiters (task queue Phase 3b): a durable Workflow run waiting on a task.
+  // Written through the scoped client on POST /pegii/tasks/:id/await; the
+  // sweeper reads and updates them on the root client, naming tenantId on
+  // every query (repositories/task-await.repository.ts). Creates set tenantId.
+  'TaskAwait',
   // Activity feed rows and per-type channel preferences. Served through the
   // scoped client on /me/activity and /me/notification-preferences; lib/notify
   // sets tenantId explicitly on every write (including upserts, which the

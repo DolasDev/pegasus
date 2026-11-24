@@ -28,7 +28,8 @@ export type SignalDurableExecutionOptions = {
   /** The execution's workflow (version) row — the execution row carries no kind. */
   workflow: Pick<WorkflowRow, 'name' | 'executable' | 'kind'>
   execution: WorkflowExecutionRow
-  /** A signal the Workflow declares (the caller checks; see declaredSignals). */
+  /** A signal the Workflow declares (the caller checks; see declaredSignals),
+   * or — via signalPlatformExecution only — a reserved platform signal. */
   signalName: string
   /** Positional signal arguments: [] or [payload]. */
   args: unknown[]
@@ -47,6 +48,35 @@ export type SignalDurableExecutionResult =
   | { outcome: 'NOT_RUNNING' }
   /** Any other Temporal / connection failure. */
   | { outcome: 'SIGNAL_FAILED'; message: string }
+
+/**
+ * Signal names under this prefix are the PLATFORM's (task queue Phase 3b): the
+ * platform sends them (signalPlatformExecution), the SDK handles them
+ * (`await_task` installs a `pegasus.task_closed` handler), and a Workflow
+ * never declares them. No tenant path may send one — the signal route, event-
+ * routed triggers and manifest `signals` all refuse them — so a Workflow can
+ * trust that a `pegasus.task_closed` came from the platform. (Their dotted
+ * form also fails SIGNAL_NAME_REGEX today; the explicit check keeps the
+ * reservation if that regex ever widens.) Matched case-insensitively.
+ */
+export const RESERVED_SIGNAL_PREFIX = 'pegasus.'
+
+/** Delivered to a Workflow waiting in `await_task` when its task closes. */
+export const TASK_CLOSED_SIGNAL = 'pegasus.task_closed'
+
+export function isReservedSignalName(name: string): boolean {
+  return name.toLowerCase().startsWith(RESERVED_SIGNAL_PREFIX)
+}
+
+/**
+ * The refusal message for a reserved name on a tenant path, or null. Shared so
+ * every path says the same thing.
+ */
+export function reservedSignalNameError(name: string): string | null {
+  return isReservedSignalName(name)
+    ? `signal names starting "${RESERVED_SIGNAL_PREFIX}" are reserved for the platform`
+    : null
+}
 
 /**
  * The signal names a Workflow version declares (manifest `signals`), or `[]`
@@ -118,4 +148,23 @@ export async function signalDurableExecution(
     })
   }
   return { outcome: 'SIGNALLED' }
+}
+
+/**
+ * Platform delivery of a RESERVED signal (e.g. TASK_CLOSED_SIGNAL). Skips the
+ * manifest's declared-signals check — a Workflow never declares `pegasus.`
+ * names; the SDK installs their handlers at run time — and is otherwise
+ * signalDurableExecution. Throws on a non-reserved name, so it can never
+ * deliver an undeclared tenant signal.
+ */
+export async function signalPlatformExecution(
+  db: PrismaClient,
+  opts: SignalDurableExecutionOptions,
+): Promise<SignalDurableExecutionResult> {
+  if (!isReservedSignalName(opts.signalName)) {
+    throw new Error(
+      `signalPlatformExecution only sends reserved "${RESERVED_SIGNAL_PREFIX}" signals, not "${opts.signalName}"`,
+    )
+  }
+  return signalDurableExecution(db, opts)
 }

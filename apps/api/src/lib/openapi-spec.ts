@@ -2912,7 +2912,7 @@ export function getOpenApiSpec() {
           summary: 'Attach an EVENT or SCHEDULE trigger to an automation (ManageWorkflowTriggers)',
           description:
             'Body { kind: EVENT | SCHEDULE, eventType? (EVENT: a built-in or registered custom event type), filter? (EVENT: payload match), cronExpression? (SCHEDULE: 5-field UTC cron), enabled? (default true), dryRun? (default false) }. The trigger row belongs to the caller’s tenant, even on a GLOBAL automation. dryRun: the trigger fires on every matching event / cron minute, but every execution it starts is a dry run — reads live, mutations (send_sms, send_email, …) captured in the execution trace, never performed — so the wiring can be validated before it acts; PATCH dryRun:false to go live. Tenant-runner automations only: 400 DRY_RUN_UNSUPPORTED for a curated workflow or a durable Workflow (kind WORKFLOW). SDK: create_trigger; CLI: schedule create [--dry-run].' +
-            ' Event-routed signals (durable Workflows, EVENT only): mode NEW (default) starts a new execution per event; mode START / DELIVER instead delivers each matching event to ONE Workflow instance per business key — the value at correlationPath (a dot path into the event envelope {domainEventId, eventType, occurredAt, payload}, e.g. payload.orderId; a string or integer, [A-Za-z0-9._:-]{1,128}) — as the signal signalName (one the Workflow version declares). The signal’s single argument is the event envelope. START creates the instance (signal-with-start; the event is also its run input) when none is open, and is gated and charged like any start (kill switch, open-Workflow cap, daily quota); DELIVER only signals an open one. One instance per key for life: a key whose instance already closed is not restarted. A plain signal is not a run — no quota, and the kill switch does not block it. Delivery is at-least-once (dedupe on domainEventId). Failed deliveries (no open instance, missing key, …) are logged and counted, not retried. 400 VALIDATION_ERROR when the binding is incomplete, the target is an Automation, or the signal is undeclared; NEW takes neither field.',
+            ' Event-routed signals (durable Workflows, EVENT only): mode NEW (default) starts a new execution per event; mode START / DELIVER instead delivers each matching event to ONE Workflow instance per business key — the value at correlationPath (a dot path into the event envelope {domainEventId, eventType, occurredAt, payload}, e.g. payload.orderId; a string or integer, [A-Za-z0-9._:-]{1,128}) — as the signal signalName (one the Workflow version declares). The signal’s single argument is the event envelope. START creates the instance (signal-with-start; the event is also its run input) when none is open, and is gated and charged like any start (kill switch, open-Workflow cap, daily quota); DELIVER only signals an open one. One instance per key for life: a key whose instance already closed is not restarted. A plain signal is not a run — no quota, and the kill switch does not block it. Delivery is at-least-once (dedupe on domainEventId). Failed deliveries (no open instance, missing key, …) are logged and counted, not retried. 400 VALIDATION_ERROR when the binding is incomplete, the target is an Automation, the signal is undeclared, or signalName starts `pegasus.` (reserved for platform signals); NEW takes neither field.',
           tags: ['Workflows'],
           security: [{ ApiKeyAuth: [] }],
           parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -3064,7 +3064,7 @@ export function getOpenApiSpec() {
           operationId: 'signalWorkflowExecution',
           summary: 'Deliver a signal to a running durable Workflow (SignalWorkflowExecution)',
           description:
-            'Body { name, payload? }. `name` must be one of the signals the execution’s Workflow version declares in its manifest `signals` (400 SIGNAL_NOT_DECLARED otherwise — the error lists them). `payload`, when present (JSON null included), is the signal’s single argument; absent, the signal carries none — so declare the handler `def name(self, payload: dict | None = None)`. Payload ≤ 128 KiB (413 SIGNAL_PAYLOAD_TOO_LARGE). ' +
+            'Body { name, payload? }. `name` must be one of the signals the execution’s Workflow version declares in its manifest `signals` (400 SIGNAL_NOT_DECLARED otherwise — the error lists them). Names starting `pegasus.` are reserved for platform signals (e.g. `pegasus.task_closed`, which `await_task` handles) and are refused with 400 SIGNAL_NAME_RESERVED. `payload`, when present (JSON null included), is the signal’s single argument; absent, the signal carries none — so declare the handler `def name(self, payload: dict | None = None)`. Payload ≤ 128 KiB (413 SIGNAL_PAYLOAD_TOO_LARGE). ' +
             'Only durable Workflows (kind WORKFLOW) that are QUEUED or RUNNING take signals: 409 EXECUTION_NOT_SIGNALLABLE for an Automation, a terminal execution, one not yet started on Temporal, or one Temporal reports is no longer running. ' +
             'A signal is not a run: it counts toward no quota or cap, and the kill switch (WORKFLOWS_DISABLED) does not block it — open Workflows keep running and keep receiving signals. Delivery is at-least-once (a retried request delivers again), so make the handler idempotent. 202 means Temporal accepted the signal; the returned row is unchanged.',
           tags: ['Workflows'],
@@ -3091,7 +3091,8 @@ export function getOpenApiSpec() {
           responses: {
             '202': { description: 'Signal delivered ({data: execution})' },
             '400': {
-              description: 'SIGNAL_NOT_DECLARED, or VALIDATION_ERROR (malformed body / name)',
+              description:
+                'SIGNAL_NOT_DECLARED, SIGNAL_NAME_RESERVED (a `pegasus.` platform name), or VALIDATION_ERROR (malformed body / name)',
             },
             '404': { description: 'NOT_FOUND (workflow or execution)' },
             '409': { description: 'EXECUTION_NOT_SIGNALLABLE' },
@@ -3569,6 +3570,46 @@ export function getOpenApiSpec() {
                 'TASK_AMBIGUOUS {candidateIds[]}: two or more open tasks of that type; nothing closed',
             },
             '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE' },
+          },
+        },
+      },
+      '/api/v1/pegii/tasks/{taskId}/await': {
+        post: {
+          operationId: 'awaitPegiiTask',
+          summary: 'A durable Workflow waits for a task to close (ReadTask, not billable)',
+          description:
+            "Called by the SDK's await_task (its built-in activity pegasus.await_task_register) — authors use await_task(task_id, timeout=…), not this route. " +
+            "Body: { temporalWorkflowId } — the calling run's Temporal workflow id (activity.info().workflow_id). " +
+            "The caller must be a durable Workflow's runtime key (403 AWAIT_CALLER_NOT_WORKFLOW otherwise, e.g. an Automation's), and the run an OPEN execution of that same Workflow in the caller's tenant (else 404 EXECUTION_NOT_OPEN). " +
+            TASK_STORES_NOTE +
+            "Answers the task's CURRENT state plus awaiting. A closed task answers awaiting: false at once (no wake-up is missed). An open one registers the wait and answers awaiting: true; " +
+            'when it closes the platform signals the run with the reserved signal pegasus.task_closed (cloud: on close; legacy: polled every few minutes). Idempotent per (run, task): a repeat re-arms the same wait.',
+          tags: ['pegII'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'taskId', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['temporalWorkflowId'],
+                  properties: { temporalWorkflowId: { type: 'string', maxLength: 512 } },
+                  additionalProperties: false,
+                },
+                example: { temporalWorkflowId: 'wfl/<tenant>/order_lifecycle/500123' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{data: {...task, awaiting: boolean}}' },
+            '400': { description: 'VALIDATION_ERROR' },
+            '403': { description: 'Missing ReadTask, or AWAIT_CALLER_NOT_WORKFLOW' },
+            '404': {
+              description:
+                "TASK_NOT_FOUND, or EXECUTION_NOT_OPEN (unknown, closed, or not this Workflow's run)",
+            },
+            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE (legacy)' },
           },
         },
       },

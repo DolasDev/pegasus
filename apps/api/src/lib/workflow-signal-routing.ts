@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import type { WorkflowTriggerMode } from '../repositories/workflow-trigger.repository'
-import { declaredSignals } from './signal-workflow-execution'
+import { declaredSignals, reservedSignalNameError } from './signal-workflow-execution'
 import { resolveWorkflowRoute } from './workflow-route'
 
 /** The envelope fields a correlation path may start from. */
@@ -121,6 +121,8 @@ export function signalBindingError(
   const pathError = correlationPathError(trigger.correlationPath)
   if (pathError) return pathError
   if (!trigger.signalName) return `mode ${trigger.mode} requires a signalName`
+  const reserved = reservedSignalNameError(trigger.signalName)
+  if (reserved) return reserved
   const declared = declaredSignals(workflow.manifest)
   if (!declared.includes(trigger.signalName)) {
     return `signalName "${trigger.signalName}" is not declared by this Workflow version (declared: ${declared.length ? declared.join(', ') : 'none'})`

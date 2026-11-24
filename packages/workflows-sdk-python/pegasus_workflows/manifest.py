@@ -25,6 +25,7 @@ __all__ = [
     "DEFAULT_MAX_LIFETIME_DAYS",
     "MAX_LIFETIME_DAYS",
     "SIGNAL_NAME_REGEX",
+    "RESERVED_SIGNAL_PREFIX",
     "DIAGRAM_FILENAME",
     "Manifest",
     "Requirement",
@@ -65,6 +66,11 @@ MAX_LIFETIME_DAYS = 365
 #: Mirrors the server's ``SIGNAL_NAME_REGEX``; at most 50 per workflow. Query
 #: names follow the same rule (and the same cap).
 SIGNAL_NAME_REGEX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+
+#: Signal / query names under this prefix belong to the platform (0.69.0): it
+#: sends them (``pegasus.task_closed`` for :func:`pegasus_workflows.await_task`),
+#: and no manifest may declare one. Mirrors the server; matched case-insensitively.
+RESERVED_SIGNAL_PREFIX = "pegasus."
 MAX_SIGNALS = 50
 
 #: Allowed workflow names. Mirrors the server's ``NAME_REGEX``.
@@ -348,6 +354,14 @@ def _validate_handler_names(value: object, plural: str, singular: str) -> None:
     if len(value) > MAX_SIGNALS:
         raise ManifestError(f"at most {MAX_SIGNALS} {plural} may be declared")
     for name in value:
+        # Checked first, and explicitly: `pegasus.` names are the platform's
+        # (e.g. `pegasus.task_closed`, which await_task handles), whatever the
+        # identifier rule below allows. Mirrors the server's reserved prefix.
+        if isinstance(name, str) and name.lower().startswith(RESERVED_SIGNAL_PREFIX):
+            raise ManifestError(
+                f"{singular} names starting {RESERVED_SIGNAL_PREFIX!r} are reserved for the "
+                f"platform (got {name!r})"
+            )
         if not isinstance(name, str) or not SIGNAL_NAME_REGEX.match(name):
             raise ManifestError(
                 f"each {singular} must be a Python identifier (letters, digits, _; max 64) "

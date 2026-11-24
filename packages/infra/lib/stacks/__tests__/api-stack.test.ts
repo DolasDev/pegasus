@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as s3 from 'aws-cdk-lib/aws-s3'
+import * as lambda from 'aws-cdk-lib/aws-lambda'
 import {
   ApiStack,
   ASSISTANT_KIMI_K3_1,
@@ -1362,6 +1363,146 @@ describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', 
 })
 
 // ---------------------------------------------------------------------------
+describe('ApiStack — task-await sweeper (task queue Phase 3b)', () => {
+  const temporalProps = {
+    env: { account: '111111111111', region: 'us-east-1' },
+    temporalAddress: 'pegasus-staging.chgel.tmprl.cloud:7233',
+    temporalNamespace: 'pegasus-staging.chgel',
+    temporalTaskQueue: 'pegasus-stdlib-staging',
+    temporalCloudSecretArn:
+      'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-aBcDeF',
+  }
+  const DESCRIPTION =
+    'Task-await sweeper: delivers closed tasks to waiting durable Workflows (cloud redelivery + legacy poll) and abandons waits whose run ended.'
+
+  /** With Temporal, a tunnel proxy and a pegII token issuer — the production shape. */
+  function synth() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const tunnelStack = new cdk.Stack(app, 'TestTunnel', { env: temporalProps.env })
+    const tunnelProxyFunction = lambda.Function.fromFunctionArn(
+      tunnelStack,
+      'TunnelProxy',
+      'arn:aws:lambda:us-east-1:111111111111:function:pegasus-tunnel-proxy-staging',
+    )
+    const apiStack = new ApiStack(app, 'TestApiTaskSweeper', {
+      ...temporalProps,
+      tunnelProxyFunction,
+      pegiiTokenIssuer: 'https://api.staging.example',
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  function sweeper(template: Template) {
+    const entry = Object.entries(template.findResources('AWS::Lambda::Function')).find(([id]) =>
+      id.startsWith('TaskSweeperFunction'),
+    )
+    if (!entry) throw new Error('task sweeper Lambda not found')
+    return { logicalId: entry[0], fn: entry[1] }
+  }
+
+  function sweeperPolicyDocs(template: Template): string {
+    const roleRef = (sweeper(template).fn.Properties?.Role as { 'Fn::GetAtt'?: string[] })[
+      'Fn::GetAtt'
+    ]?.[0]
+    return JSON.stringify(
+      Object.values(template.findResources('AWS::IAM::Policy'))
+        .filter((p) => JSON.stringify(p.Properties?.Roles ?? []).includes(String(roleRef)))
+        .map((p) => p.Properties?.PolicyDocument),
+    )
+  }
+
+  it('does NOT synthesize the sweeper when Temporal is unconfigured', () => {
+    const template = synthApiStack()
+    const ids = Object.keys(template.findResources('AWS::Lambda::Function'))
+    expect(ids.some((id) => id.startsWith('TaskSweeperFunction'))).toBe(false)
+    const rules = Object.values(template.findResources('AWS::Events::Rule'))
+    expect(rules.some((r) => r.Properties?.Description === DESCRIPTION)).toBe(false)
+  })
+
+  it('runs every 5 minutes via EventBridge', () => {
+    const template = synth()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(5 minutes)',
+      State: 'ENABLED',
+      Description: DESCRIPTION,
+      Targets: Match.arrayWith([
+        Match.objectLike({ Arn: { 'Fn::GetAtt': [sweeper(template).logicalId, 'Arn'] } }),
+      ]),
+    })
+  })
+
+  it('one sweep at a time, with a timeout past the 4-minute work budget', () => {
+    const { fn } = sweeper(synth())
+    expect(fn.Properties?.ReservedConcurrentExecutions).toBe(1)
+    expect(fn.Properties?.Timeout).toBe(300)
+    expect(fn.Properties?.MemorySize).toBe(256)
+  })
+
+  it('drops a failed or stale tick instead of retrying — the next tick is the retry', () => {
+    const template = synth()
+    template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
+      FunctionName: { Ref: sweeper(template).logicalId },
+      MaximumRetryAttempts: 0,
+      MaximumEventAgeInSeconds: 300,
+    })
+  })
+
+  it('has the DB, Temporal, workflow-token and pegII env it signals and polls with', () => {
+    const vars = sweeper(synth()).fn.Properties?.Environment?.Variables ?? {}
+    expect(vars).toMatchObject({
+      TEMPORAL_ADDRESS: 'pegasus-staging.chgel.tmprl.cloud:7233',
+      TEMPORAL_NAMESPACE: 'pegasus-staging.chgel',
+      TEMPORAL_TASK_QUEUE: 'pegasus-stdlib-staging',
+      PEGII_TOKEN_ISSUER: 'https://api.staging.example',
+      PEGII_API_TUNNEL_SCHEME: 'http',
+      PEGII_API_TUNNEL_PORT: '65274',
+      TUNNEL_PROXY_FUNCTION_NAME: 'pegasus-tunnel-proxy-staging',
+    })
+    for (const key of [
+      'DATABASE_URL',
+      'TEMPORAL_CLOUD_API_KEY',
+      'WORKFLOW_TOKEN_KMS_KEY_ID',
+      'PEGII_TOKEN_KMS_KEY_IDS',
+    ]) {
+      expect(vars[key], key).toBeDefined()
+    }
+  })
+
+  it('may sign pegII tokens (Sign + GetPublicKey only) and invoke the tunnel proxy', () => {
+    const docs = sweeperPolicyDocs(synth())
+    expect(docs).toContain('kms:Sign')
+    expect(docs).toContain('kms:GetPublicKey')
+    expect(docs).toContain('PegiiTokenSigningKey')
+    expect(docs).toContain('lambda:InvokeFunction')
+    expect(docs).toContain('pegasus-tunnel-proxy-staging')
+  })
+
+  it('may encrypt + decrypt with the workflow-token key (tenant keys; runner broker credential)', () => {
+    const docs = sweeperPolicyDocs(synth())
+    expect(docs).toContain('kms:Decrypt')
+    expect(docs).toContain('kms:Encrypt')
+    expect(docs).toContain('WorkflowTokenKey')
+  })
+
+  it('publishes metrics only to the Pegasus/Workflows namespace', () => {
+    const docs = sweeperPolicyDocs(synth())
+    expect(docs).toContain('cloudwatch:PutMetricData')
+    expect(docs).toContain('"cloudwatch:namespace":"Pegasus/Workflows"')
+  })
+
+  it('without a tunnel proxy it still synthesizes, with no tunnel env or invoke grant', () => {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const template = Template.fromStack(
+      new ApiStack(app, 'TestApiTaskSweeperNoTunnel', temporalProps),
+    )
+    const vars = sweeper(template).fn.Properties?.Environment?.Variables ?? {}
+    expect(vars.TUNNEL_PROXY_FUNCTION_NAME).toBeUndefined()
+    expect(vars.PEGII_TOKEN_ISSUER).toBeUndefined()
+    expect(sweeperPolicyDocs(template)).not.toContain('lambda:InvokeFunction')
+  })
+})
+
+// ---------------------------------------------------------------------------
 describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () => {
   // Runner wiring needs the Temporal branch active PLUS the network refs
   // (subnets + SG) WireGuardStack provides in production. A sibling network
@@ -1424,17 +1565,23 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
     }
   })
 
-  it('injects the TENANT_RUNNER_* env contract into exactly the API + dispatcher Lambdas', () => {
+  it('injects the TENANT_RUNNER_* env contract into exactly the API, dispatcher and task-sweeper Lambdas', () => {
     const template = synthTenantRunner()
     const fns = template.findResources('AWS::Lambda::Function')
-    const wired = Object.values(fns).filter(
-      (fn) => fn.Properties?.Environment?.Variables?.TENANT_RUNNER_CLUSTER_ARN !== undefined,
+    const wiredEntries = Object.entries(fns).filter(
+      ([, fn]) => fn.Properties?.Environment?.Variables?.TENANT_RUNNER_CLUSTER_ARN !== undefined,
     )
-    // The API Lambda (run-path hook) + the trigger dispatcher (sweep). The
-    // reconcile poller and the other crons must NOT get launch powers.
-    if (wired.length !== 2) {
-      throw new Error(`expected exactly 2 Lambdas with TENANT_RUNNER_* env, found ${wired.length}`)
-    }
+    // The API Lambda (run-path hook), the trigger dispatcher (sweep), and the
+    // task-await sweeper (its delivery is a signal, which ensures the tenant's
+    // runner). The reconcile poller and the other crons must NOT get launch
+    // powers.
+    const wiredIds = wiredEntries.map(([id]) => id.replace(/[0-9A-F]{8}$/, '')).sort()
+    expect(wiredIds).toEqual([
+      'ApiFunction',
+      'DispatchWorkflowTriggersFunction',
+      'TaskSweeperFunction',
+    ])
+    const wired = wiredEntries.map(([, fn]) => fn)
     for (const fn of wired) {
       const vars = fn.Properties?.Environment?.Variables ?? {}
       if (
@@ -1530,7 +1677,7 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
     })
   })
 
-  it('both launch-capable roles carry the RunTask statement (api + dispatcher)', () => {
+  it('every launch-capable role carries the RunTask statement (api + dispatcher + task sweeper)', () => {
     const template = synthTenantRunner().toJSON() as {
       Resources?: Record<
         string,
@@ -1549,10 +1696,11 @@ describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () 
           (Array.isArray(s.Action) ? s.Action : [s.Action]).includes('ecs:RunTask'),
         ),
     )
-    // One default policy per role — API Lambda role + dispatcher role.
-    if (policiesWithRunTask.length !== 2) {
+    // One default policy per role — the API Lambda, the dispatcher, and the
+    // task sweeper (its signals ensure the tenant's runner).
+    if (policiesWithRunTask.length !== 3) {
       throw new Error(
-        `expected ecs:RunTask in exactly 2 role policies, found ${policiesWithRunTask.length}`,
+        `expected ecs:RunTask in exactly 3 role policies, found ${policiesWithRunTask.length}`,
       )
     }
   })

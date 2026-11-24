@@ -63,7 +63,12 @@ import {
   provisionRuntimeServiceAccount,
   startWorkflowExecution,
 } from '../lib/start-workflow-execution'
-import { declaredSignals, signalDurableExecution } from '../lib/signal-workflow-execution'
+import {
+  declaredSignals,
+  isReservedSignalName,
+  reservedSignalNameError,
+  signalDurableExecution,
+} from '../lib/signal-workflow-execution'
 import { executionHandle } from '../lib/workflow-execution-handle'
 import { signalBindingError } from '../lib/workflow-signal-routing'
 import {
@@ -215,9 +220,14 @@ const ManifestSchema = z
     // delivering signals to running Workflows is Phase 4. Workflow only.
     signals: z
       .array(
-        z.string().regex(SIGNAL_NAME_REGEX, {
-          message: 'each signal must be a Python identifier (letters, digits, _; max 64)',
-        }),
+        z
+          .string()
+          .refine((s) => !isReservedSignalName(s), {
+            message: 'signal names starting "pegasus." are reserved for the platform',
+          })
+          .regex(SIGNAL_NAME_REGEX, {
+            message: 'each signal must be a Python identifier (letters, digits, _; max 64)',
+          }),
       )
       .max(50, { message: 'at most 50 signals may be declared' })
       .optional(),
@@ -1688,6 +1698,8 @@ workflowsHandler.post(
 // no quota or open-cap charge. Delivery is at-least-once (a client retry
 // re-delivers), so handlers should be idempotent.
 //
+// `pegasus.`-prefixed names are the platform's: 400 SIGNAL_NAME_RESERVED.
+//
 // Response: { data: WorkflowExecutionResponse } (202) | 400 | 404
 //   | 409 EXECUTION_NOT_SIGNALLABLE | 413 SIGNAL_PAYLOAD_TOO_LARGE
 //   | 502 TEMPORAL_SIGNAL_FAILED
@@ -1705,6 +1717,11 @@ workflowsHandler.post(
   '/:id/executions/:executionId/signal',
   requirePermission(Actions.SignalWorkflowExecution),
   validator('json', (value, c) => {
+    // Reserved platform names first, with their own code: a tenant can never
+    // send `pegasus.task_closed` (lib/signal-workflow-execution.ts).
+    const rawName = (value as { name?: unknown } | null)?.name
+    const reserved = typeof rawName === 'string' ? reservedSignalNameError(rawName) : null
+    if (reserved) return c.json({ error: reserved, code: 'SIGNAL_NAME_RESERVED' }, 400)
     const r = SignalBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
     return r.data
