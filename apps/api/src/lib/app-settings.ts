@@ -125,6 +125,11 @@ const OperationsSchema = z
       )
       .nullable()
       .optional(),
+    /// Whether drivers may submit ETAs from the mobile app (the trip screen's
+    /// Delivery / SIT-IN ETA editor and the itinerary's ETA action). Opt-in:
+    /// unset, null or false ⇒ off, and both ETA write routes answer 403
+    /// DRIVER_ETA_DISABLED. Read it through isDriverEtaEnabled, never directly.
+    driverEtaSubmission: z.boolean().nullable().optional(),
   })
   .partial()
   .default({})
@@ -148,6 +153,11 @@ export const AppSettingsSchema = z.object({
 })
 
 export type AppSettings = z.infer<typeof AppSettingsSchema>
+
+/** Driver ETA submission is opt-in: only an explicit `true` turns it on. */
+export function isDriverEtaEnabled(settings: AppSettings): boolean {
+  return settings.operations.driverEtaSubmission === true
+}
 
 /** Partial-update payload accepted by PATCH /settings/app. Same shape as the
  *  root, but every section is optional and inner objects are partial — a
@@ -182,7 +192,14 @@ export async function getAppSettings(db: PrismaClient, tenantId: string): Promis
   // The Json column can be anything in TS terms; zod is the guard. Unknown
   // keys are stripped silently (zod's default), which is fine for a forwards-
   // compatible schema.
-  return AppSettingsSchema.parse(row.appSettings ?? {})
+  return parseAppSettings(row.appSettings)
+}
+
+/** Parse-with-defaults for a raw `Tenant.appSettings` value a handler already
+ *  selected alongside other tenant columns (saves the second tenant read
+ *  getAppSettings would make). */
+export function parseAppSettings(raw: unknown): AppSettings {
+  return AppSettingsSchema.parse(raw ?? {})
 }
 
 /** Deep-merges `patch` into the tenant's current appSettings, revalidates the

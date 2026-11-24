@@ -98,7 +98,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   executeSqlMock.mockReset()
   resetArrivalWindowProvisioningCache()
-  tenantFindMock.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+  tenantFindMock.mockResolvedValue({
+    mssqlConnectionString: 'Server=a,1433',
+    appSettings: { operations: { driverEtaSubmission: true } },
+  })
   tenantUserFindMock.mockResolvedValue({ longhaulDriverId: DRIVER_ID })
   recomputeMock.mockResolvedValue(1)
   routeSql(activityRow())
@@ -251,8 +254,25 @@ describe('PATCH /driver/activities/:id/eta', () => {
   })
 
   it('returns 422 when the tenant has no legacy DB', async () => {
-    tenantFindMock.mockResolvedValue({ mssqlConnectionString: null })
+    tenantFindMock.mockResolvedValue({
+      mssqlConnectionString: null,
+      appSettings: { operations: { driverEtaSubmission: true } },
+    })
     const res = await patch('5', { committed: true })
     expect(res.status).toBe(422)
   })
+
+  it.each([
+    ['unset', {}],
+    ['false', { operations: { driverEtaSubmission: false } }],
+  ])(
+    'returns 403 DRIVER_ETA_DISABLED when the tenant setting is %s, before any SQL',
+    async (_label, appSettings) => {
+      tenantFindMock.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', appSettings })
+      const res = await patch('5', { estimated_date: '2026-11-02', committed: true })
+      expect(res.status).toBe(403)
+      expect(((await res.json()) as { code: string }).code).toBe('DRIVER_ETA_DISABLED')
+      expect(executeSqlMock).not.toHaveBeenCalled()
+    },
+  )
 })

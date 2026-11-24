@@ -16,13 +16,15 @@ import { formatLonghaulSpread } from '../utils/longhaul-format'
 // ---------------------------------------------------------------------------
 // One Delivery / SIT-IN activity on the trip screen: its ETA, arrival window
 // and whether it is Confirmed with the shipper. Tapping it opens the editor —
-// unless the delivery already has an actual date, when the card is read-only.
+// unless the delivery already has an actual date, or there is no `onPress` (the
+// tenant has driver ETA submission off), when the card is read-only.
 // ---------------------------------------------------------------------------
 
 interface Props {
   activity: LonghaulActivity
   shipperName?: string | null
-  onPress: () => void
+  /** Absent ⇒ read-only (tenant has driver ETA submission off). */
+  onPress?: () => void
 }
 
 export function DeliveryEtaCard({ activity, shipperName, onPress }: Props) {
@@ -36,16 +38,19 @@ export function DeliveryEtaCard({ activity, shipperName, onPress }: Props) {
   const label = etaActivityLabel(activity)
   const doneOn = completedOn(activity)
   const orderSuffix = activity.order_num ? ` #${activity.order_num}` : ''
+  const editable = doneOn == null && onPress != null
   return (
     <TouchableOpacity
       style={[styles.card, committed && styles.cardCommitted]}
       onPress={onPress}
-      disabled={doneOn != null}
+      disabled={!editable}
       activeOpacity={0.7}
       accessibilityLabel={
         doneOn
           ? `${label}${orderSuffix}, delivered`
-          : `${hasEta ? 'Set ETA' : 'Set arrival window'} for ${label}${orderSuffix}`
+          : editable
+            ? `${hasEta ? 'Set ETA' : 'Set arrival window'} for ${label}${orderSuffix}`
+            : `${label}${orderSuffix}`
       }
     >
       <View style={styles.header}>
@@ -55,9 +60,9 @@ export function DeliveryEtaCard({ activity, shipperName, onPress }: Props) {
         </Text>
         {doneOn ? (
           <Text style={styles.done}>Delivered</Text>
-        ) : (
+        ) : editable ? (
           <Text style={styles.action}>{hasEta ? 'Set ETA ›' : 'Set window ›'}</Text>
-        )}
+        ) : null}
       </View>
       {shipperName ? (
         <Text style={styles.sub} numberOfLines={1}>

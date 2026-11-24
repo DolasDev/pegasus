@@ -13,12 +13,13 @@ jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: { children: React.ReactNode }) => children,
 }))
 jest.mock('../../src/services/tripService', () => ({
-  TripService: { getTrip: jest.fn(), updateActivityEta: jest.fn() },
+  TripService: { getTrip: jest.fn(), updateActivityEta: jest.fn(), getDriverMapping: jest.fn() },
 }))
 jest.mock('../../src/utils/logger', () => ({ logger: { error: jest.fn(), warn: jest.fn() } }))
 
 const getTripMock = TripService.getTrip as jest.Mock
 const updateMock = TripService.updateActivityEta as jest.Mock
+const mappingMock = TripService.getDriverMapping as jest.Mock
 
 const trip = {
   id: 100,
@@ -63,6 +64,11 @@ const trip = {
 beforeEach(() => {
   jest.spyOn(Alert, 'alert').mockImplementation(() => {})
   getTripMock.mockResolvedValue(trip)
+  mappingMock.mockResolvedValue({
+    longhaulDriverId: 42,
+    localDriverEmployeeId: null,
+    driverEtaEnabled: true,
+  })
 })
 
 describe('Trip detail — delivery ETAs', () => {
@@ -76,6 +82,31 @@ describe('Trip detail — delivery ETAs', () => {
     expect(getByText('You and the shipper have committed to this date.')).toBeTruthy()
     expect(getAllByText('Jane Shipper').length).toBeGreaterThan(0)
     expect(queryByText(/SIT-OUT/)).toBeNull()
+  })
+
+  it('cards are read-only when the tenant has driver ETAs off — the ETA still shows', async () => {
+    mappingMock.mockResolvedValue({
+      longhaulDriverId: 42,
+      localDriverEmployeeId: null,
+      driverEtaEnabled: false,
+    })
+    const { findByText, getByLabelText, queryByLabelText, queryByText } = render(
+      <TripDetailScreen />,
+    )
+    expect(await findByText('DELIVERY ETAS (2)')).toBeTruthy()
+    await waitFor(() => expect(mappingMock).toHaveBeenCalled())
+    expect(queryByText('Set ETA ›')).toBeNull()
+    expect(queryByLabelText('Set ETA for Delivery #1234')).toBeNull()
+    fireEvent.press(getByLabelText('Delivery #1234'))
+    expect(queryByLabelText('Mark as Confirmed')).toBeNull()
+  })
+
+  it('cards are read-only when the driver mapping call fails', async () => {
+    mappingMock.mockRejectedValue(new Error('offline'))
+    const { findByText, queryByText } = render(<TripDetailScreen />)
+    expect(await findByText('DELIVERY ETAS (2)')).toBeTruthy()
+    await waitFor(() => expect(mappingMock).toHaveBeenCalled())
+    expect(queryByText('Set ETA ›')).toBeNull()
   })
 
   it('a delivered activity is read-only — no editor opens', async () => {

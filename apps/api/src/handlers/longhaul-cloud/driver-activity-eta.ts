@@ -43,6 +43,8 @@ import {
   patchTouchesArrivalWindow,
 } from '../../lib/longhaul-arrival-window-schema'
 import { logger } from '../../lib/logger'
+import { isDriverEtaEnabled, parseAppSettings } from '../../lib/app-settings'
+import { driverEtaDisabled } from '../../lib/driver-eta-setting'
 import { activityOwnerDriverId, realDriverId } from '../../lib/longhaul-driver-activity'
 
 /** Activity types a driver may set an ETA on: Delivery and Delivery to Storage (SIT-IN). */
@@ -156,8 +158,12 @@ export const driverActivityEtaHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
-    select: { mssqlConnectionString: true },
+    select: { mssqlConnectionString: true, appSettings: true },
   })
+  // Tenant opt-in (Settings → App → Operations); checked before any legacy SQL.
+  if (!isDriverEtaEnabled(parseAppSettings(tenant?.appSettings))) {
+    return driverEtaDisabled(c)
+  }
   if (!tenant?.mssqlConnectionString) {
     logger.warn('Tenant has no mssqlConnectionString configured', { tenantId })
     return c.json(

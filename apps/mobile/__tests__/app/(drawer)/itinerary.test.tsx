@@ -19,6 +19,11 @@ jest.mock('../../../src/services/itineraryService', () => ({
 const mockPush = jest.fn()
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }))
 
+let mockDriverEtaEnabled = true
+jest.mock('../../../src/context/TripsContext', () => ({
+  useTrips: () => ({ driverEtaEnabled: mockDriverEtaEnabled }),
+}))
+
 const HOME = { street: '1 Elm St', unit: null, city: 'Austin', state: 'TX', zip: '78701' }
 
 function item(partial: Partial<ItineraryItem>): ItineraryItem {
@@ -60,6 +65,7 @@ beforeEach(() => {
   mockPush.mockReset()
   mockSetDone.mockReset()
   mockSetEta.mockReset()
+  mockDriverEtaEnabled = true
   jest.useFakeTimers({ now: new Date(2026, 9, 27, 9, 0), doNotFake: ['nextTick', 'setImmediate'] })
 })
 afterEach(() => jest.useRealTimers())
@@ -256,6 +262,15 @@ describe("ItineraryScreen — the driver's own ETA and done", () => {
     expect(mockPush).toHaveBeenCalledWith('/trip/55')
     expect(queryByText('Your ETA')).toBeNull()
     expect(mockSetEta).not.toHaveBeenCalled()
+  })
+
+  it('offers no ETA action when the tenant has driver ETAs off — done still works', async () => {
+    mockDriverEtaEnabled = false
+    mockGet.mockResolvedValue(ok([item(LOCAL), item({ key: 'a', actName: 'Pack', tripId: 55 })]))
+    const { findByLabelText, queryByLabelText } = render(<ItineraryScreen />)
+    expect(await findByLabelText('Mark done: Load, order 200')).toBeTruthy()
+    expect(queryByLabelText('ETA for Load, order 200')).toBeNull()
+    expect(queryByLabelText('ETA for Pack, order 100')).toBeNull()
   })
 
   it('offers no buttons on an act dispatch already marked done in legacy', async () => {

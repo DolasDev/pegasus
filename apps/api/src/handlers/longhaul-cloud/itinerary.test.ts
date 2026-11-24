@@ -25,6 +25,7 @@ const fetchMock = fetchItinerary as unknown as Mock
 const tenantUserFind = vi.fn()
 const factCreate = vi.fn()
 const factFind = vi.fn()
+const tenantFind = vi.fn()
 
 function buildApp(roleNames: string[] = ['driver']) {
   const app = new Hono<AppEnv>()
@@ -39,6 +40,7 @@ function buildApp(roleNames: string[] = ['driver']) {
       roleNames,
     } as AppEnv['Variables']['principal'])
     c.set('db', {
+      tenant: { findUniqueOrThrow: tenantFind },
       tenantUser: { findUnique: tenantUserFind },
       itineraryActFact: { create: factCreate, findMany: factFind },
     } as unknown as PrismaClient)
@@ -60,6 +62,7 @@ beforeEach(() => {
   tenantUserFind.mockResolvedValue({ longhaulDriverId: 1203, localDriverEmployeeId: 412 })
   factCreate.mockResolvedValue({})
   factFind.mockResolvedValue([])
+  tenantFind.mockResolvedValue({ appSettings: { operations: { driverEtaSubmission: true } } })
 })
 
 async function get(path: string, roles?: string[]) {
@@ -300,6 +303,32 @@ describe('PUT /me/itinerary/acts/eta and /acts/done', () => {
       }),
     })
     expect(body['data']).toMatchObject({ key: LOCAL.key })
+  })
+
+  it.each([
+    ['unset', {}],
+    ['false', { operations: { driverEtaSubmission: false } }],
+  ])(
+    'refuses an ETA with 403 DRIVER_ETA_DISABLED when the tenant setting is %s',
+    async (_label, appSettings) => {
+      tenantFind.mockResolvedValue({ appSettings })
+      const { status, body } = await put('eta', {
+        key: LOCAL.key,
+        day: '2026-11-03',
+        eta: { day: '2026-11-04', window: null },
+      })
+      expect(status).toBe(403)
+      expect(body['code']).toBe('DRIVER_ETA_DISABLED')
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(factCreate).not.toHaveBeenCalled()
+    },
+  )
+
+  it('still records done when driver ETA submission is off', async () => {
+    tenantFind.mockResolvedValue({ appSettings: {} })
+    const { status } = await put('done', { key: LOCAL.key, day: '2026-11-03', done: '2026-11-03' })
+    expect(status).toBe(200)
+    expect(factCreate).toHaveBeenCalled()
   })
 
   it("records done on any of the caller's acts — a trip activity too — and clears with null", async () => {

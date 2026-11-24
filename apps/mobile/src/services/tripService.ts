@@ -32,12 +32,15 @@ export class TripService {
   static async getDriverMapping(): Promise<{
     longhaulDriverId: number | null
     localDriverEmployeeId: number | null
+    /** May this driver submit ETAs? An older API omits it (and doesn't enforce) ⇒ true. */
+    driverEtaEnabled: boolean
   }> {
     const client = getApiClient()
     const res = await client.fetch<DriverMapping>('/api/v1/me/driver')
     return {
       longhaulDriverId: res?.longhaulDriverId ?? null,
       localDriverEmployeeId: res?.localDriverEmployeeId ?? null,
+      driverEtaEnabled: res?.driverEtaEnabled ?? true,
     }
   }
 

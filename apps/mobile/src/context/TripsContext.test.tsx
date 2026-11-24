@@ -13,7 +13,11 @@ const mockGetDriverMapping = TripService.getDriverMapping as jest.MockedFunction
   typeof TripService.getDriverMapping
 >
 /** /me/driver's answer with only a longhaul id (or none). */
-const ids = (longhaulDriverId: number | null) => ({ longhaulDriverId, localDriverEmployeeId: null })
+const ids = (longhaulDriverId: number | null) => ({
+  longhaulDriverId,
+  localDriverEmployeeId: null,
+  driverEtaEnabled: true,
+})
 const mockGetMyTrips = TripService.getMyTrips as jest.MockedFunction<typeof TripService.getMyTrips>
 
 function TestConsumer({
@@ -59,7 +63,11 @@ describe('TripsProvider', () => {
   })
 
   it('exposes a local-only crew id without fetching trips (a local job has none)', async () => {
-    mockGetDriverMapping.mockResolvedValue({ longhaulDriverId: null, localDriverEmployeeId: 3097 })
+    mockGetDriverMapping.mockResolvedValue({
+      longhaulDriverId: null,
+      localDriverEmployeeId: 3097,
+      driverEtaEnabled: true,
+    })
 
     const ctxRef = renderProvider()
     await act(async () => {})
@@ -68,6 +76,29 @@ describe('TripsProvider', () => {
     expect(ctxRef.current!.localDriverId).toBe(3097)
     expect(mockGetMyTrips).not.toHaveBeenCalled()
     expect(ctxRef.current!.trips).toEqual([])
+  })
+
+  it("exposes the tenant's driver ETA opt-in from the mapping", async () => {
+    mockGetDriverMapping.mockResolvedValue({ ...ids(42), driverEtaEnabled: false })
+    mockGetMyTrips.mockResolvedValue([])
+
+    const ctxRef = renderProvider()
+    expect(ctxRef.current!.driverEtaEnabled).toBe(false)
+    await act(async () => {})
+    expect(ctxRef.current!.driverEtaEnabled).toBe(false)
+
+    mockGetDriverMapping.mockResolvedValue(ids(42))
+    await act(async () => {
+      await ctxRef.current!.refresh()
+    })
+    expect(ctxRef.current!.driverEtaEnabled).toBe(true)
+  })
+
+  it('keeps driver ETAs off when the mapping lookup fails', async () => {
+    mockGetDriverMapping.mockRejectedValue(new Error('Unauthorized'))
+    const ctxRef = renderProvider()
+    await act(async () => {})
+    expect(ctxRef.current!.driverEtaEnabled).toBe(false)
   })
 
   it('reports a failed mapping lookup as an error, not as "no driver"', async () => {

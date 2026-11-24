@@ -39,6 +39,7 @@ import { assistantEnabled } from '../lib/assistant-feature'
 import { executeSql } from '../lib/mssql-executor-client'
 import { logger } from '../lib/logger'
 import { driverWeekFor } from '../lib/driver-week'
+import { getAppSettings, isDriverEtaEnabled } from '../lib/app-settings'
 import { resolvePegiiCaller } from '../lib/pegii-request-context'
 import { resolveDriverGateway } from '../gateways/driver-gateway.factory'
 import {
@@ -121,24 +122,44 @@ meHandler.get('/permissions', async (c) => {
 // `userId` is the caller's TenantUser id, so the driver app can tell which
 // chat messages are its own. (/permissions carries it too, but outside the
 // `{ data }` envelope the app's API client unwraps.)
+//
+// `driverEtaEnabled` is the tenant's `operations.driverEtaSubmission` opt-in
+// (lib/app-settings isDriverEtaEnabled): the app hides its ETA editors when it
+// is false. The two ETA write routes enforce it independently.
 meHandler.get('/driver', async (c) => {
   const db = c.get('db')
   const userId = c.get('userId')
 
   if (!userId) {
-    return c.json({ data: { longhaulDriverId: null, localDriverEmployeeId: null, userId: null } })
+    return c.json({
+      data: {
+        longhaulDriverId: null,
+        localDriverEmployeeId: null,
+        userId: null,
+        driverEtaEnabled: false,
+      },
+    })
   }
 
-  const user = await db.tenantUser.findUnique({
-    where: { id: userId },
-    select: { longhaulDriverId: true, localDriverEmployeeId: true },
-  })
+  const [user, settings] = await Promise.all([
+    db.tenantUser.findUnique({
+      where: { id: userId },
+      select: { longhaulDriverId: true, localDriverEmployeeId: true },
+    }),
+    // A settings read failure must not cost the app its driver mapping: report
+    // ETAs off (the write routes enforce the setting on their own anyway).
+    getAppSettings(db, c.get('tenantId')).catch((err: unknown) => {
+      logger.warn('/me/driver: app settings unreadable; reporting driver ETAs off', { err })
+      return null
+    }),
+  ])
 
   return c.json({
     data: {
       longhaulDriverId: user?.longhaulDriverId ?? null,
       localDriverEmployeeId: user?.localDriverEmployeeId ?? null,
       userId,
+      driverEtaEnabled: settings ? isDriverEtaEnabled(settings) : false,
     },
   })
 })

@@ -25,6 +25,8 @@ import { z } from 'zod'
 import type { AppEnv } from '../../types'
 import { legacyConnectionString } from '../../lib/chat-access'
 import { logger } from '../../lib/logger'
+import { getAppSettings, isDriverEtaEnabled } from '../../lib/app-settings'
+import { driverEtaDisabled } from '../../lib/driver-eta-setting'
 import { hasOperationsRole } from '../../lib/longhaul-read-scope'
 import { fetchItinerary, type ItineraryQuery } from '../../lib/itinerary/fetch'
 import { realId } from '../../lib/itinerary/values'
@@ -265,6 +267,11 @@ export const myItineraryEtaHandler: Handler<AppEnv> = async (c) => {
   const parsed = EtaBody.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return validationError(c, parsed.error)
   const { eta } = parsed.data
+  // Tenant opt-in (Settings → App → Operations). Here, not in assertOnOwnItem:
+  // the DONE route shares that and stays open whatever this setting says.
+  if (!isDriverEtaEnabled(await getAppSettings(c.get('db'), c.get('tenantId')))) {
+    return driverEtaDisabled(c)
+  }
   return assertOnOwnItem(c, parsed.data, 'ETA', {
     day: eta?.day ?? null,
     window: eta?.window ?? null,

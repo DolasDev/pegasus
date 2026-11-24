@@ -21,6 +21,11 @@ interface TripsContextValue {
   driverId: number | null
   /** Their local crew id, or null. Not used for trips — a local job has none. */
   localDriverId: number | null
+  /**
+   * May the driver submit ETAs (tenant opt-in, from /me/driver)? False until
+   * the mapping resolves, and when it fails — the API enforces it anyway.
+   */
+  driverEtaEnabled: boolean
   /** Visible trips (excludes pending + canceled), sorted by planned start desc. */
   trips: LonghaulTrip[]
   /** Count of trips currently in the Offered status. */
@@ -39,6 +44,7 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
   const [mappingFailed, setMappingFailed] = useState(false)
   const [driverId, setDriverId] = useState<number | null>(null)
   const [localDriverId, setLocalDriverId] = useState<number | null>(null)
+  const [driverEtaEnabled, setDriverEtaEnabled] = useState(false)
   const [trips, setTrips] = useState<LonghaulTrip[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -52,6 +58,7 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
       mapped = true
       setDriverId(id)
       setLocalDriverId(mapping.localDriverEmployeeId)
+      setDriverEtaEnabled(mapping.driverEtaEnabled)
       setMappingResolved(true)
       setMappingFailed(false)
       if (id == null) {
@@ -81,12 +88,23 @@ export function TripsProvider({ children }: { children: React.ReactNode }) {
       mappingFailed,
       driverId,
       localDriverId,
+      driverEtaEnabled,
       trips,
       offeredCount: trips.filter(isOfferedTrip).length,
       error,
       refresh,
     }),
-    [loading, mappingResolved, mappingFailed, driverId, localDriverId, trips, error, refresh],
+    [
+      loading,
+      mappingResolved,
+      mappingFailed,
+      driverId,
+      localDriverId,
+      driverEtaEnabled,
+      trips,
+      error,
+      refresh,
+    ],
   )
 
   return <TripsContext.Provider value={value}>{children}</TripsContext.Provider>

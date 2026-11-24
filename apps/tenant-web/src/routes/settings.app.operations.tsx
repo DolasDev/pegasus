@@ -27,6 +27,7 @@ import {
 import { DriverImportCard } from '@/features/settings/app/DriverImport'
 import { EmailRecipientDomainsCard } from '@/features/settings/app/EmailRecipientDomains'
 import { DriverTaskRulesCard } from '@/features/settings/app/DriverTaskRules'
+import { DriverEtaCard } from '@/features/settings/app/DriverEta'
 
 // The storage states the dropdown represents. `''` = "not configured",
 // modeled separately from `LonghaulClient` so the controlled <select> can render
@@ -129,6 +130,7 @@ export function AppSettingsOperationsPage() {
       </Card>
       <EmailRecipientDomainsCard />
       <DriverTaskRulesCard />
+      <DriverEtaCard />
       <DriverImportCard />
     </div>
   )
