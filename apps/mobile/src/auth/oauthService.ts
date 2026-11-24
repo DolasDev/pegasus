@@ -1,7 +1,7 @@
 import * as WebBrowser from 'expo-web-browser'
 import * as Crypto from 'expo-crypto'
 import { base64UrlEncode } from '@pegasus/auth'
-import { AuthError } from './types'
+import { AuthError, type CognitoTokens } from './types'
 
 export type OAuthConfig = {
   hostedUiDomain: string
@@ -9,7 +9,7 @@ export type OAuthConfig = {
   redirectUri: string
 }
 
-export type OAuthResult = { idToken: string }
+export type OAuthResult = CognitoTokens
 
 /**
  * Generates a cryptographically random PKCE code verifier (43–128 characters).
@@ -38,7 +38,7 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
  *
  * @param config  Cognito OAuth configuration (domain, clientId, redirectUri)
  * @param providerId  The identity_provider hint — routes directly to the IdP
- * @returns The ID token from the Cognito token exchange
+ * @returns The ID token and refresh token from the Cognito token exchange
  */
 export async function authorize(config: OAuthConfig, providerId: string): Promise<OAuthResult> {
   const verifier = await generateCodeVerifier()
@@ -82,7 +82,41 @@ export async function authorize(config: OAuthConfig, providerId: string): Promis
   }
 
   const tokens = await exchangeCodeForTokens(config, code, verifier)
-  return { idToken: tokens.id_token }
+  return tokensOf(tokens)
+}
+
+/**
+ * Exchanges a refresh token from an SSO sign-in for a fresh ID token via the
+ * Hosted UI token endpoint (grant_type=refresh_token; public client, no secret).
+ * The caller must POST /api/auth/select-tenant first — the Pre-Token trigger
+ * resolves a refresh's tenant from that AuthSession, not from the IdP.
+ *
+ * Rejects with AuthError('invalid_grant' | …, status) on an HTTP error — an
+ * expired or revoked refresh token answers 400 invalid_grant. A network failure
+ * rejects with the underlying fetch error.
+ */
+export async function refresh(config: OAuthConfig, refreshToken: string): Promise<OAuthResult> {
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: config.clientId,
+    refresh_token: refreshToken,
+  })
+  const res = await fetch(`${config.hostedUiDomain}/oauth2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  })
+  if (!res.ok) {
+    let code = 'RefreshFailed'
+    try {
+      const json = (await res.json()) as { error?: string }
+      code = json.error ?? code
+    } catch {
+      // not JSON
+    }
+    throw new AuthError(code, `Token refresh failed (HTTP ${res.status})`, res.status)
+  }
+  return tokensOf((await res.json()) as TokenResponse)
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +134,13 @@ type TokenResponse = {
   refresh_token?: string
   expires_in: number
   token_type: string
+}
+
+function tokensOf(tokens: TokenResponse): OAuthResult {
+  return {
+    idToken: tokens.id_token,
+    ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+  }
 }
 
 async function exchangeCodeForTokens(

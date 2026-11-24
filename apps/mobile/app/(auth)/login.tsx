@@ -79,7 +79,7 @@ export default function LoginScreen() {
   const [ssoError, setSsoError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
 
-  const { login, loginWithSso } = useAuth()
+  const { login, loginWithSso, sessionExpired } = useAuth()
   const router = useRouter()
 
   /** Advance to the correct auth step based on tenant capabilities. */
@@ -365,6 +365,14 @@ export default function LoginScreen() {
       <View style={styles.content}>
         <BrandHeader />
 
+        {/* Shown after the app signed the driver out because the session could no
+            longer be renewed — so a forced sign-in reads as expected, not as a bug. */}
+        {sessionExpired && (
+          <Text style={styles.noticeText} accessibilityRole="alert">
+            Your session expired. Please sign in again.
+          </Text>
+        )}
+
         <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Text style={styles.label}>EMAIL</Text>
@@ -460,6 +468,12 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: fontSize.medium,
     marginTop: spacing.sm,
+  },
+  noticeText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.medium,
+    textAlign: 'center',
+    marginBottom: spacing.md,
   },
   inputWrapper: {
     flexDirection: 'row',

@@ -4,6 +4,7 @@ import { render, fireEvent, act } from '@testing-library/react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import LoginScreen from '../../../app/(auth)/login'
 import { type TenantResolution, AuthError } from '../../../src/auth/types'
+import { useAuth } from '../../../src/context/AuthContext'
 
 // Mock the authServiceInstance module used by login and tenant-picker screens
 const mockResolveTenants = jest.fn()
@@ -69,6 +70,21 @@ describe('LoginScreen', () => {
     it('renders EMAIL label', () => {
       const { getByText } = render(<LoginScreen />)
       expect(getByText('EMAIL')).toBeTruthy()
+    })
+
+    it('shows no session-expired notice on a normal visit', () => {
+      const { queryByText } = render(<LoginScreen />)
+      expect(queryByText(/session expired/i)).toBeNull()
+    })
+
+    it('shows the session-expired notice after the app signed the driver out', () => {
+      ;(useAuth as jest.Mock).mockReturnValueOnce({
+        login: mockLogin,
+        loginWithSso: mockLoginWithSso,
+        sessionExpired: true,
+      })
+      const { getByText } = render(<LoginScreen />)
+      expect(getByText('Your session expired. Please sign in again.')).toBeTruthy()
     })
 
     it('renders "FIND MY COMPANY" submit button', () => {
