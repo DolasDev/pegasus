@@ -554,7 +554,8 @@ runtime, so it can wait for days:
   awaiting the same task twice returns the same result. ``timeout`` (default
   ``None`` = the Workflow's lifetime) raises ``TaskAwaitTimeout``;
   ``TaskAwaitRefused`` (``.code``: ``TASK_NOT_FOUND`` / ``EXECUTION_NOT_OPEN`` /
-  ``AWAIT_CALLER_NOT_WORKFLOW``) is not retried. A legacy task deleted in
+  ``AWAIT_CALLER_NOT_WORKFLOW`` / ``PEGII_API_NOT_CONFIGURED`` /
+  ``PEGII_CAPABILITY_MISSING``) is not retried; a briefly-down site is. A legacy task deleted in
   MoveManager never closes, so pass a ``timeout`` when that matters. It works
   through a built-in activity (``pegasus.await_task_register``) and the
   platform's reserved signal ``pegasus.task_closed``; nothing in the manifest

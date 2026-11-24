@@ -71,6 +71,10 @@ TASK_AWAIT_TIMEOUT_TYPE = "TaskAwaitTimeout"
 
 _REGISTER_START_TO_CLOSE = timedelta(seconds=60)
 
+#: 503s that won't clear while a Workflow waits (the tenant has no MoveManager
+#: site, or its site has no task API): refused, not retried for the run's life.
+_PERMANENT_UNAVAILABLE_CODES = frozenset({"PEGII_API_NOT_CONFIGURED", "PEGII_CAPABILITY_MISSING"})
+
 #: The attribute holding one run's await state on its Workflow instance.
 _STATE_ATTR = "__pegasus_task_awaits__"
 
@@ -86,6 +90,8 @@ class TaskAwaitRefused(ApplicationError):
       Workflow (it is closing, or this is not a platform-run Workflow).
     - ``AWAIT_CALLER_NOT_WORKFLOW``: only a durable Workflow can await a task;
       an Automation's runtime token is refused.
+    - ``PEGII_API_NOT_CONFIGURED`` / ``PEGII_CAPABILITY_MISSING``: a legacy id,
+      but the tenant has no MoveManager site, or its site has no task API.
 
     Attributes:
         task_id: The task id that was awaited.
@@ -292,7 +298,8 @@ async def await_task_register_activity(request: dict[str, Any]) -> dict[str, Any
             temporal_workflow_id=activity.info().workflow_id,
         )
     except PegasusApiError as err:
-        if err.status_code >= 500 or err.status_code == 429:
+        permanent = err.code in _PERMANENT_UNAVAILABLE_CODES
+        if (err.status_code >= 500 or err.status_code == 429) and not permanent:
             raise  # transient: Temporal retries the activity
         raise TaskAwaitRefused(
             f"await_task({task_id!r}) was refused: {err}",

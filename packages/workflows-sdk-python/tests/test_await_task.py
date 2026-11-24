@@ -101,6 +101,9 @@ async def test_register_posts_the_run_and_returns_the_task(monkeypatch) -> None:
         (404, "EXECUTION_NOT_OPEN"),
         (403, "AWAIT_CALLER_NOT_WORKFLOW"),
         (400, "VALIDATION_ERROR"),
+        # 503s that never clear mid-run are refusals, not retried forever.
+        (503, "PEGII_API_NOT_CONFIGURED"),
+        (503, "PEGII_CAPABILITY_MISSING"),
     ],
 )
 @_sync

@@ -1899,8 +1899,10 @@ class OrderLifecycle:
   awaiting the same task again picks it up.
 - **`TaskAwaitRefused`** (`.code`, `.task_id`, not retried):
   `TASK_NOT_FOUND`, `EXECUTION_NOT_OPEN`, `AWAIT_CALLER_NOT_WORKFLOW` (only a
-  durable Workflow can await; an Automation's token is refused). A store that is
-  briefly down (a MoveManager site offline) is retried, not raised.
+  durable Workflow can await; an Automation's token is refused), and for a legacy
+  id `PEGII_API_NOT_CONFIGURED` (no MoveManager site) or
+  `PEGII_CAPABILITY_MISSING` (its site has no task API). A store that is briefly
+  down (a MoveManager site offline) is retried, not raised.
 - **A legacy task deleted in MoveManager** never closes: its wait is dropped, and
   `timeout` (or the Workflow's lifetime) ends it. Pass a `timeout` when that
   matters.

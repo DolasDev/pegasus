@@ -14,7 +14,9 @@ follows [Semantic Versioning](https://semver.org/).
   and awaiting the same task twice returns the same result.
 - `TaskAwaitTimeout` (`timeout` ran out; the wait stays registered) and
   `TaskAwaitRefused` (`.code`: `TASK_NOT_FOUND`, `EXECUTION_NOT_OPEN`,
-  `AWAIT_CALLER_NOT_WORKFLOW`; not retried). Both fail the Workflow if uncaught.
+  `AWAIT_CALLER_NOT_WORKFLOW`, and for a legacy id `PEGII_API_NOT_CONFIGURED` /
+  `PEGII_CAPABILITY_MISSING`; not retried). A briefly-down MoveManager site is
+  retried. Both fail the Workflow if uncaught.
 - A new built-in activity, `pegasus.await_task_register`, in
   `pegasus_workflows.steps.BUILTIN_ACTIVITIES`; the platform runner registers it on
   every Workflow worker. Its transport is `PegasusClient.register_task_await`

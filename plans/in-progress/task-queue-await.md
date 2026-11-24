@@ -244,6 +244,15 @@
     - These skip offline unless `PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER=1`, and the SDK's CI job doesn't set it. I didn't edit the CI workflow, because pushes touching it have been blocked by token scope before. The CI-enforced gate is the tenant-runner builtins test (below).
   - **Runner (D10):** `apps/tenant-runner/tests/test_workflow_worker_driver_builtins.py` now pins the driver's built-ins as [`pegasus.run_automation`, `pegasus.await_task_register`].
   - **Results:** SDK 692, tenant-runner 167 (including its dev-server e2e), temporal-worker 30, stdlib 11 — all pass; ruff check is clean on the SDK and the runner. `ruff format --check` isn't a gate: 22 files were already unformatted.
+  - **Review follow-ups (same day):**
+    - **Permanent 503s are refused, not retried.** `PEGII_API_NOT_CONFIGURED` (the tenant has no MoveManager site) and `PEGII_CAPABILITY_MISSING` (the site has no task API) now raise `TaskAwaitRefused`; otherwise `timeout=None` would retry them for the Workflow's whole life. A briefly-down site (`PEGII_SOURCE_UNAVAILABLE`, other 5xx, 429) is still retried. Tests, README, MCP and CHANGELOG updated; SDK now 694 tests.
+    - **Manifest `requiredActions` is NOT a runtime gate.** It is validated against known ids and shown in the tenant UI. The runtime token's powers are the `workflow_runtime` Cedar role, which holds `ReadTask`. So authors declare nothing for `await_task`.
+    - **The sweeper's env and grants were audited against its bundle.**
+      - I bundled `lambda-task-sweeper.ts` and diffed its `process.env` reads and `@aws-sdk/*` clients against the stack, and every one is covered.
+      - The `TENANT_RUNNER_*` vars are read as `env['…']` and come from the runner loop.
+      - The only extras pulled in are `DOCUMENTS_BUCKET_NAME` and S3, both from `workflow.repository`'s import of `documents-s3`. They sit behind a lazy function that only artifact downloads call; the dispatcher has the same import and runs fine without the variable.
+    - **Task ids are canonical, so a stored awaiter id always equals the store's `task.id`.** A legacy id must match `^[1-9]\d{0,9}$` (no leading zeros). A cloud id has to equal the stored UUID, because Postgres compares text case-sensitively. No change needed.
+    - **Re-check 0.69.0 at landing**, against `origin/main` and open PRs.
 - [ ] 9. OpenAPI; parent plan (re-cut, S2 fold decision, TQ-D4 guardrail 4 as built); DECISIONS; GOTCHAS.
 - [ ] 10. Gate: typecheck, lint, API/domain/mobile/infra tests, SDK + stdlib + runner + worker pytest; restore coverage floors.
 
