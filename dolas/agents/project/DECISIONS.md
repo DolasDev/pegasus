@@ -216,7 +216,7 @@ item-to-revision table. **Check what a plan says is owed before building on it.*
       - **Lanes:** abandon waits whose run ended → cloud redelivery → legacy poll (batched by order).
       - **No retry cap:** a waiter stuck past 12 attempts logs ERROR, and is never abandoned.
       - **No poll-failure alarm:** one site's tunnel outage would page every tick. Crashes trip the account-wide Lambda Errors alarm.
-    - **Plan:** `plans/in-progress/task-queue-await.md` (moves to `plans/completed/` when the PR merges).
+    - **Plan:** `plans/completed/62a6f5aa-task-queue-await.md`.
   - Plan: `plans/todo/task-queue-and-activity-feed.md`.
 
 ---

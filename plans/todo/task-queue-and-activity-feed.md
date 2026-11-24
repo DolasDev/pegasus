@@ -18,7 +18,7 @@
   - A role with no routing entry uses legacy (the desktop).
   - Blocked notifies the move's dispatcher.
   - Cloud tasks are billable.
-- **Phase 3b is BUILT (2026-11-24), PR pending:** worktree `../pegasus-task-queue-await`, branch `feat/task-queue-await`, plan `plans/in-progress/task-queue-await.md` (every decision made while building, with what changed from the draft).
+- **Phase 3b is BUILT (2026-11-24), PR pending:** worktree `../pegasus-task-queue-await`, branch `feat/task-queue-await`, plan `plans/completed/62a6f5aa-task-queue-await.md` (every decision made while building, with what changed from the draft). Landing via the merge queue (`/workstream-finish`).
   - Steve said yes to S1–S5 (2026-11-23): 3b/3c re-cut, `TaskState` not folded, overdue reminders, `operations` re-assignment and the replay 409 deferred to Phase 4. See "Decisions already made".
   - What 3b ships:
     - SDK 0.69.0 `await_task` / `TaskAwaitTimeout` / `TaskAwaitRefused`;

@@ -2,18 +2,13 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–10 done; the gate is green; the PR is next.
+**Status:** COMPLETE 2026-11-24. Approved 2026-11-23 (S1–S5 yes); all ten steps built, the gate green, landing through the merge queue.
 
 ## Resume here (2026-11-23, end of session)
 
 - **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Commits were rebased onto `0d7dc6e4` on 2026-11-24, so their SHAs changed. Use `git log --oneline origin/main..HEAD`. Nothing is pushed and no PR exists.
-- **Status:** steps 1–10 `[x]` (see Steps). Rebased on `origin/main` `0d7dc6e4` (#988). Nothing is pushed, and no PR exists.
-- **Next action — the PR.** It waits on Steve's choice of route: `/workstream-finish` (the merge queue, with the worktree torn down after merge) or a plain PR left for him to merge.
-  - **Just before opening it** (the archive is a permanent record, so it moves last):
-    - `git mv` this plan to `plans/completed/<short-hash>-task-queue-await.md`, using `git rev-parse --short HEAD`.
-    - Update the two references: the parent plan's resume, and DECISIONS' "Plan:" line.
-    - Commit.
-  - **Then** push, open the PR, and run the merge route Steve picks.
+- **Status:** COMPLETE. Steps 1–10 `[x]` (see Steps). Rebased on `origin/main` `0d7dc6e4` (#988), and landing through the merge queue.
+- **Landing:** through `/workstream-finish` (Steve, 2026-11-24): this plan archived to `plans/completed/62a6f5aa-task-queue-await.md`, then a PR with auto-merge through the merge queue. After it merges, re-run `/workstream-finish` to tear the worktree down.
 - **After the PR merges (owed):**
   - Publish SDK 0.69.0 (tag `sdk-python-v0.69.0`; feedback: ALWAYS publish after a bump merges).
   - Then update the authoring repo's `~/repos/pegasus-workflows/CLAUDE.md` (await_task, pin 0.69.0).
