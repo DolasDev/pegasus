@@ -30,6 +30,7 @@ import {
   type ItinerarySourceName,
 } from '@/api/queries/driver-itinerary'
 import { ShipmentDetail } from '../containers/ShipmentDetail'
+import { DriverPhoneStatusLine } from '../components/DriverPhoneStatus'
 import { selectShipment } from '../redux/shipments'
 import { useAppDispatch } from '../redux/hooks'
 import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
@@ -179,6 +180,10 @@ export function ItineraryModule() {
         <p className="text-xs text-muted-foreground">
           A driver's longhaul and local work are recorded under different ids. Pick either or both.
         </p>
+        <DriverPhoneStatusLine
+          longhaulDriverId={longhaulDriverId}
+          localDriverEmployeeId={localDriverEmployeeId}
+        />
 
         {!picked ? (
           <EmptyState

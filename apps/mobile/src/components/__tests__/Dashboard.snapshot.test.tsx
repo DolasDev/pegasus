@@ -5,6 +5,10 @@ import { getDriverMetrics } from '../../services/driverMetrics'
 
 jest.mock('../../services/driverMetrics')
 jest.mock('../../utils/logger')
+// The notifications banner reads the session for its Fix action.
+jest.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ session: { email: 'driver@example.com' } }),
+}))
 jest.mock('../../context/TripsContext', () => ({
   useTrips: () => ({ offeredCount: 0, refresh: jest.fn() }),
 }))

@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { MetricCard } from '../../src/components/MetricCard'
+import { PermissionBanner } from '../../src/components/PermissionBanner'
 import { getDriverMetrics } from '../../src/services/driverMetrics'
 import { useTrips } from '../../src/context/TripsContext'
 import { useTasks } from '../../src/context/TasksContext'
@@ -132,6 +133,10 @@ export default function DashboardScreen() {
           />
         }
       >
+        <PermissionBanner
+          snoozeable
+          message="Notifications are off, so you’ll miss trip assignments and messages from dispatch."
+        />
         {todoEnabled ? (
           <TouchableOpacity
             style={styles.todoCard}

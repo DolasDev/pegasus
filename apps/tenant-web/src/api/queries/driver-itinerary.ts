@@ -92,11 +92,65 @@ export interface ItineraryCrew {
   name: string
 }
 
+// ---------------------------------------------------------------------------
+// Phone status — can the picked driver get push notifications? From the OS
+// permission the mobile app reports with its push token on every open
+// (`GET /onprem/longhaul/drivers/phone-status`, Operations roles only).
+// Contract copied from apps/api/src/handlers/longhaul-cloud/phone-status.ts.
+// ---------------------------------------------------------------------------
+
+export type PhoneStatus = 'on' | 'off' | 'unknown' | 'noApp' | 'notLinked'
+export type DevicePermission = 'granted' | 'limited' | 'askable' | 'blocked' | 'channelOff'
+
+export interface PhoneStatusDevice {
+  platform: 'IOS' | 'ANDROID'
+  permission: DevicePermission | null
+  lastSeenAt: string
+}
+
+/** One driver id's answer — decided by the phone opened most recently. */
+export interface DriverPhoneStatus {
+  status: PhoneStatus
+  /** When that deciding phone last opened the app. */
+  lastSeenAt: string | null
+  devices: PhoneStatusDevice[]
+}
+
+/**
+ * One answer PER picked id (null when that id wasn't picked). The longhaul and
+ * local ids can be different people, so they are never merged.
+ */
+export interface DriverPhoneStatuses {
+  longhaul: DriverPhoneStatus | null
+  local: DriverPhoneStatus | null
+}
+
+export type DriverIds = Pick<DriverItineraryQuery, 'longhaulDriverId' | 'localDriverEmployeeId'>
+
 export const driverItineraryKeys = {
   all: ['driver-itinerary'] as const,
   list: (q: DriverItineraryQuery) => [...driverItineraryKeys.all, 'list', q] as const,
   crews: () => [...driverItineraryKeys.all, 'crews'] as const,
+  phone: (ids: DriverIds) => [...driverItineraryKeys.all, 'phone', ids] as const,
 }
+
+export function driverPhoneStatusPath(ids: DriverIds): string {
+  const params = new URLSearchParams()
+  if (ids.longhaulDriverId != null) params.set('longhaulDriverId', String(ids.longhaulDriverId))
+  if (ids.localDriverEmployeeId != null)
+    params.set('localDriverEmployeeId', String(ids.localDriverEmployeeId))
+  return `/api/v1/onprem/longhaul/drivers/phone-status?${params.toString()}`
+}
+
+export const driverPhoneStatusQueryOptions = (ids: DriverIds) =>
+  queryOptions({
+    queryKey: driverItineraryKeys.phone(ids),
+    queryFn: () => apiFetch<DriverPhoneStatuses>(driverPhoneStatusPath(ids)),
+    enabled: ids.longhaulDriverId != null || ids.localDriverEmployeeId != null,
+    // A driver flips the switch on their phone; a minute is fresh enough.
+    staleTime: 60 * 1000,
+    retry: false,
+  })
 
 export function driverItineraryPath(q: DriverItineraryQuery): string {
   const params = new URLSearchParams({ from: q.from, to: q.to })

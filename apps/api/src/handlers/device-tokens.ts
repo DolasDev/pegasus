@@ -2,8 +2,9 @@
 // /api/v1/device-tokens — push-notification device registration.
 //
 // Self-service: the mobile app registers/refreshes the current user's Expo push
-// token after the driver grants notification permission, and deactivates it on
-// logout. Like /api/v1/me there is NO requirePermission gate — the principal
+// token on every login / foreground resume — whether or not notifications are
+// allowed — reporting the OS permission with it, and deactivates it on logout.
+// Like /api/v1/me there is NO requirePermission gate — the principal
 // only ever acts on their OWN devices: userId is taken from the validated JWT
 // (c.get('userId')), never from the request body, so cross-user registration is
 // structurally impossible.
@@ -33,9 +34,21 @@ const ExpoPushToken = z
   .max(255)
   .regex(/^Expo(nent)?PushToken\[.+\]$/, 'must be a valid Expo push token')
 
+// The app's PermissionState (apps/mobile/src/services/permissions.ts), minus
+// `notApplicable` — a device that can't do push never registers.
+const PERMISSION_TO_DB = {
+  granted: 'GRANTED',
+  limited: 'LIMITED',
+  askable: 'ASKABLE',
+  blocked: 'BLOCKED',
+  channelOff: 'CHANNEL_OFF',
+} as const
+
 const RegisterBody = z.object({
   platform: z.enum(['IOS', 'ANDROID']),
   expoPushToken: ExpoPushToken,
+  /** Optional: app versions before permission reporting don't send it. */
+  permission: z.enum(Object.keys(PERMISSION_TO_DB) as [keyof typeof PERMISSION_TO_DB]).optional(),
 })
 
 const DeactivateBody = z.object({
@@ -85,8 +98,13 @@ deviceTokensHandler.post(
       return c.json({ error: 'No tenant user resolved for this principal', code: 'NO_USER' }, 409)
     }
     const db = c.get('db')
-    const { platform, expoPushToken } = c.req.valid('json')
-    const id = await upsertDeviceToken(db, c.get('tenantId'), { userId, platform, expoPushToken })
+    const { platform, expoPushToken, permission } = c.req.valid('json')
+    const id = await upsertDeviceToken(db, c.get('tenantId'), {
+      userId,
+      platform,
+      expoPushToken,
+      ...(permission ? { pushPermission: PERMISSION_TO_DB[permission] } : {}),
+    })
     return c.json({ data: { id } }, 201)
   },
 )

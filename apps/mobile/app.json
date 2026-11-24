@@ -17,8 +17,7 @@
       "bundleIdentifier": "com.movingstorage.driverapp",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "This app uses the camera to scan shipment documents.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to attach shipment documents.",
+        "NSCameraUsageDescription": "Pegasus uses the camera to scan shipment documents.",
         "NSContactsUsageDescription": "Pegasus reads your contacts only when you choose crews to import into your Labor list."
       }
     },
@@ -28,14 +27,14 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F8FAFC"
       },
-      "permissions": [
+      "permissions": ["android.permission.POST_NOTIFICATIONS", "android.permission.READ_CONTACTS"],
+      "blockedPermissions": [
+        "android.permission.WRITE_CONTACTS",
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.POST_NOTIFICATIONS",
-        "android.permission.READ_CONTACTS"
+        "android.permission.RECORD_AUDIO"
       ],
-      "blockedPermissions": ["android.permission.WRITE_CONTACTS"],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -56,8 +55,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "This app needs access to your photos to capture proof of delivery.",
-          "cameraPermission": "This app requires camera access to capture proof of delivery photos."
+          "photosPermission": false,
+          "microphonePermission": false,
+          "cameraPermission": "Pegasus uses the camera to scan shipment documents."
         }
       ],
       "expo-secure-store",
@@ -72,7 +72,7 @@
       [
         "react-native-document-scanner-plugin",
         {
-          "cameraPermission": "Allow Pegasus to use the camera to scan shipment documents."
+          "cameraPermission": "Pegasus uses the camera to scan shipment documents."
         }
       ]
     ],

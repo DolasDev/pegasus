@@ -80,6 +80,7 @@ import {
   myItineraryDoneHandler,
   driverItineraryHandler,
 } from './handlers/longhaul-cloud/itinerary'
+import { driverPhoneStatusHandler } from './handlers/longhaul-cloud/phone-status'
 import {
   longhaulTripStatusHandler,
   longhaulTripCancelHandler,
@@ -609,6 +610,10 @@ v1.get('/onprem/longhaul/me/itinerary', myItineraryHandler)
 v1.put('/onprem/longhaul/me/itinerary/acts/eta', myItineraryEtaHandler)
 v1.put('/onprem/longhaul/me/itinerary/acts/done', myItineraryDoneHandler)
 v1.get('/onprem/longhaul/drivers/itinerary', driverItineraryHandler)
+// Can that driver get push notifications? Postgres only (DeviceToken
+// permission reported by the app); same Operations gate. Shown beside the
+// Itinerary pickers. See handlers/longhaul-cloud/phone-status.ts.
+v1.get('/onprem/longhaul/drivers/phone-status', driverPhoneStatusHandler)
 v1.get('/onprem/longhaul/local-drivers', operationsLocalDriversHandler)
 // Phase 3: /filter-options and /dispatchers are served cloud-direct. Their
 // per-client query config (MoveType filter, dispatcher SQL) is resolved from
