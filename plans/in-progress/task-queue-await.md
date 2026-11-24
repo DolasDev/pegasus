@@ -2,25 +2,26 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–4 done; step 5 next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–5 done; step 6 next.
 
 ## Resume here (2026-11-23, end of session)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 4, `feat(api): POST /pegii/tasks/:taskId/await` (step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
-- **Status:** steps 1–4 `[x]`, steps 5–10 `[ ]` (see Steps).
-- **Next action — step 5 (cloud close → post-commit signal to waiters, D5):**
-  - In the cloud close path (`gateways/cloud-task.gateway.ts` `closeTask`, or the route right after it), AFTER the close commits:
-    - look up `waiting` awaiters for (`cloud`, taskId);
-    - signal each with `signalPlatformExecution(db, { workflow, execution, signalName: TASK_CLOSED_SIGNAL, args: [payload] })`.
-  - Outcome handling:
-    - `SIGNALLED` → `delivered`.
-    - `TERMINAL` / `NOT_RUNNING` / `NOT_DURABLE` → `abandoned`.
-    - `SIGNAL_FAILED` → stays `waiting`, with `attempts + 1` and `lastError`; the sweeper redelivers.
-  - Best-effort: a failed signal never fails the close.
-  - Add repository methods for this: `listWaitingForTask(store, taskId)`, `markAbandoned`, `recordFailure`. All are conditional on `status: 'waiting'`, like `markDelivered`.
-  - **Must look up waiters after the commit.** Step 4's route re-reads a cloud task after writing its row; that only closes the race if the close looks up waiters after it commits.
-  - Decide the signal payload: the closed task's response shape (`toTaskResponse`), so the SDK returns the same thing whether the task was already closed or closed later.
-  - Tests: signalled → delivered; terminal → abandoned; a failed signal leaves it waiting and the close still succeeds; an already-closed task signals nobody.
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 5, `feat(api): a cloud close signals its waiters` (step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
+- **Status:** steps 1–5 `[x]`, steps 6–10 `[ ]` (see Steps).
+- **Next action — step 6 (sweeper Lambda, D6): `src/lambda-task-sweeper.ts`.** It runs on the root client and names `tenantId` everywhere. Each tick has three lanes:
+  - **(a) Cloud redelivery.**
+    - Take `waiting` cloud awaiters whose WorkItem is closed (`done` / `cancelled`): join or look up by `taskId`, bound per tick.
+    - Call `deliverTaskClosed(db, tenantId, awaiter, workItemToRecord(row))` from `lib/task-await-delivery.ts`. It already maps every outcome and never throws.
+    - This lane also catches a close that ran while its awaiter was being registered, and any waiter whose close-time signal failed.
+  - **(b) Legacy poll.**
+    - Take `waiting` legacy awaiters with `nextPollAt <= now`, grouped by (tenant, order), at most 50 orders per tick.
+    - Build one `listOrderTasks` per order with a pegII caller from `buildPegiiCaller(createTenantDb(db, tenantId), { tenantId, tenantUserId: <the awaiting Workflow's runtime ApiClient acts-as user>, correlationId })` (D7).
+    - A closed task → `deliverTaskClosed`. Still open → `nextPollAt = now + 15 min`. Task missing → decide; probably abandon with `TASK_NOT_FOUND`.
+    - A poll error → `recordFailure`, plus a backoff on `nextPollAt`.
+    - New repository methods: `listDueLegacy`, `deferPoll`.
+  - **(c) Cleanup.** `waiting` awaiters whose execution is terminal → `abandoned`.
+  - **Also decide:** a cap on `attempts` for cloud redelivery. Once Temporal is healthy again a retry succeeds, so log loudly past N and don't abandon.
+  - **Tests:** on Postgres, with a fake signaller (vi.mock `signalPlatformExecution`, as `lib/task-await-delivery.test.ts` does) and a fake legacy gateway.
 - **Uncommitted work:** only `apps/e2e/.env.test`. It's the worktree's isolated-DB wiring, written by `scripts/new-worktree.sh`. Never stage or commit it.
 - **In flight:** nothing.
   - #985 is merged and deployed.
@@ -40,7 +41,7 @@
   - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
   - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
 - **Verification still owed:**
-  - Steps 5–10 are unbuilt.
+  - Steps 6–10 are unbuilt.
   - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
@@ -129,7 +130,22 @@
   - **Closed task:** answers `awaiting: false` and marks any earlier `waiting` row for this run `delivered`.
   - **Open task:** `registerWaiting` creates or re-arms the row (`attempts` 0, `lastError` null, `deliveredAt` null; legacy `nextPollAt` = now, cloud null). A unique-key race re-arms the winner's row.
   - **Cloud close race:** a cloud task is re-read once after the row write, so a close in between answers `awaiting: false` and leaves the row `delivered`. A legacy task is read once; the sweeper polls it.
-- [ ] 5. Cloud close → post-commit signal to waiters (D5); tests.
+- [x] 5. Cloud close → post-commit signal to waiters (D5); tests. Done 2026-11-24.
+  - **Delivery module:** `lib/task-await-delivery.ts`.
+    - `deliverTaskClosed(db, tenantId, awaiter, task)` handles one waiter. The sweeper reuses it.
+    - `notifyTaskWaiters(db, tenantId, task)` fans out to every waiter of a task. It runs sequentially and never throws.
+    - The payload is the task's wire shape. `toTaskResponse` moved to `lib/task-response.ts`, so `await_task` gets the same shape from the route and from the signal.
+  - **Outcomes:**
+    - `SIGNALLED` → `delivered`.
+    - `TERMINAL`, `NOT_RUNNING`, `NOT_DURABLE`, or a missing run or workflow row → `abandoned`, with the reason in `lastError`.
+    - `NOT_STARTED`, `SIGNAL_FAILED`, or a thrown error → stays `waiting`, with `attempts + 1` and `lastError`.
+  - **Hook point:** `cloud-task.gateway` gained an `onClosed` option. It fires once, after the update, and only when this call did the close (`count === 1`). A hook that throws is logged and the close stands. `resolveCloudTaskGateway` wires it to `notifyTaskWaiters`, so every cloud close through the gateway signals its waiters, including Phase 3c's and Phase 4's.
+  - **Only one close path exists today:** `/tasks/close`. No other code writes `WorkItem.status`.
+  - **Repository methods added:** `listWaitingForTask`, `markDeliveredById`, `markAbandoned`, `recordFailure`. All are conditional on `waiting`, so two racing deliveries never regress a row.
+  - **Tests:**
+    - 14 Postgres tests in `lib/task-await-delivery.test.ts`, three of them end to end through the factory gateway's `closeTask`.
+    - 2 gateway hook tests: it fires once and post-commit, and a throwing hook doesn't fail the close.
+    - The full API suite passes (345 files, 5566 tests).
 - [ ] 6. Sweeper Lambda (D6) + tests on Postgres with a fake signaller and a fake legacy gateway.
 - [ ] 7. Infra (D8) + infra tests.
 - [ ] 8. SDK `await_task` (D1, D9) + harness + docs; tenant-runner registration check (D10).

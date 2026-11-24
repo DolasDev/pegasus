@@ -83,6 +83,7 @@ import type { PegiiMemoDto } from '../gateways/pegii/pegii-memo.dto'
 import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
 import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 import { logger } from '../lib/logger'
+import { toTaskResponse } from '../lib/task-response'
 import type { PrismaClient } from '@prisma/client'
 import { createWorkflowRepository } from '../repositories/workflow.repository'
 import { createTaskAwaitRepository } from '../repositories/task-await.repository'
@@ -337,38 +338,6 @@ function toMemoResponse(memo: PegiiMemoDto) {
     personCode: memo.personCode,
     acknowledged: memo.acknowledged,
     createdBy: memo.createdBy,
-  }
-}
-
-/**
- * A task in the SDK's shape. Ids are strings (opaque per store) and `store` says
- * which store answered (`legacy` = pegII, `cloud` = the platform). For a legacy
- * task, `createdAt` is known only when the cloud created it (pegII's `Tasks` has
- * no created column) and `closedAt` only for a close made through the API;
- * `completedAt` is the site-local time MoveManager stamps on any completion.
- */
-function toTaskResponse(task: TaskRecord) {
-  return {
-    id: task.id,
-    orderId: task.orderId,
-    taskType: task.taskType,
-    title: task.title,
-    description: task.description,
-    priority: task.priority,
-    dueDate: task.dueDate,
-    assigneeCode: task.assigneeCode,
-    status: task.status,
-    reason: task.reason,
-    createdByApi: task.createdByApi,
-    active: task.active,
-    completedAt: task.completedAt,
-    completedBy: task.completedBy,
-    actualDate: task.actualDate,
-    createdAt: task.createdAt,
-    closedAt: task.closedAt,
-    store: task.store,
-    role: task.role,
-    assigneeUnresolved: task.assigneeUnresolved,
   }
 }
 

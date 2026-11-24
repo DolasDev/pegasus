@@ -88,6 +88,47 @@ export function createTaskAwaitRepository(db: PrismaClient, tenantId: string) {
       return count
     },
 
+    /** Every `waiting` awaiter of one task (a close's fan-out), oldest first. */
+    async listWaitingForTask(store: TaskStore, taskId: string): Promise<TaskAwaitRow[]> {
+      return db.taskAwait.findMany({
+        where: { tenantId, store, taskId, status: 'waiting' },
+        orderBy: { createdAt: 'asc' },
+      })
+    },
+
+    /** Delivered (signalled) — only while still `waiting`. */
+    async markDeliveredById(id: string): Promise<number> {
+      const { count } = await db.taskAwait.updateMany({
+        where: { id, tenantId, status: 'waiting' },
+        data: { status: 'delivered', deliveredAt: new Date(), nextPollAt: null },
+      })
+      return count
+    },
+
+    /**
+     * Abandoned: the run can't take the signal (ended, gone, or not durable) —
+     * only while still `waiting`. `reason` is kept in `lastError`.
+     */
+    async markAbandoned(id: string, reason: string): Promise<number> {
+      const { count } = await db.taskAwait.updateMany({
+        where: { id, tenantId, status: 'waiting' },
+        data: { status: 'abandoned', lastError: reason.slice(0, 500), nextPollAt: null },
+      })
+      return count
+    },
+
+    /**
+     * A failed delivery attempt: stays `waiting` (the sweeper retries), counted,
+     * with the error kept. Only while still `waiting`.
+     */
+    async recordFailure(id: string, error: string): Promise<number> {
+      const { count } = await db.taskAwait.updateMany({
+        where: { id, tenantId, status: 'waiting' },
+        data: { attempts: { increment: 1 }, lastError: error.slice(0, 500) },
+      })
+      return count
+    },
+
     async findOne(input: {
       executionId: string
       store: TaskStore
