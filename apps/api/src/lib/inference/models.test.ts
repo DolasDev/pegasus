@@ -27,6 +27,9 @@ describe('modelFamily', () => {
       'us.openai.gpt-oss-120b-1:0',
       'mistral.mistral-large-3',
       'us.deepseek.v3-2',
+      // The interim default: Bedrock rejects `cachePoint` for it ("This model
+      // doesn't support the cachePoint field"), so it must stay generic.
+      'us.moonshotai.kimi-k3.1',
     ]) {
       const f = modelFamily(id)
       expect(f.id).toBe('generic')

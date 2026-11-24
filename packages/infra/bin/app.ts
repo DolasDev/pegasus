@@ -3,7 +3,13 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as cdk from 'aws-cdk-lib'
 import { CognitoStack } from '../lib/stacks/cognito-stack'
-import { ApiStack, ASSISTANT_OPUS_5, type AssistantModel } from '../lib/stacks/api-stack'
+import {
+  ApiStack,
+  ASSISTANT_KIMI_K3_1,
+  ASSISTANT_NOVA_2_LITE,
+  ASSISTANT_OPUS_5,
+  type AssistantModel,
+} from '../lib/stacks/api-stack'
 import { ApiCdnStack } from '../lib/stacks/api-cdn-stack'
 import { FrontendStack } from '../lib/stacks/frontend-stack'
 import { AdminFrontendStack } from '../lib/stacks/admin-frontend-stack'
@@ -201,8 +207,9 @@ const reportingEnabled = envName === 'staging' || envName === 'prod'
 //   1. The one-time Bedrock Anthropic use-case form
 //      (`aws bedrock put-use-case-for-model-access`) — without it every model
 //      call fails with ResourceNotFoundException.
-//   2. One verified InvokeModel against us.anthropic.claude-opus-5 from the
-//      account (rules out a missing form vs an IAM problem).
+//   2. One verified call against assistantDefaultModel (below) from the
+//      account (rules out a missing form vs an IAM problem). Step 1 matters
+//      only while an Anthropic model is in the list.
 // Flip staging first. Access is still Cedar-gated: UseAssistant is held only by
 // operations_admin (policies/60-assistant.cedar) and tenant_admin.
 const assistantEnabled = false
@@ -223,8 +230,18 @@ const customEventsEnabled = envName === 'staging'
 // make its first call (plan V5: a third-party model's first call starts a
 // Marketplace subscription, which the Lambda role can't do). To switch the
 // default, change assistantDefaultModel.
-const assistantModels: AssistantModel[] = [ASSISTANT_OPUS_5]
-const assistantDefaultModel = ASSISTANT_OPUS_5.profileId
+//
+// INTERIM DEFAULT: Kimi K3.1. AWS denies every Anthropic model on both member
+// accounts ("not available for this account … contact AWS Sales") although
+// the use-case form and the Opus 5 agreement are on file; the management
+// account works. A support case is open. Opus 5 stays in the list so the Lab
+// can try it and switching back is a one-line default change once AWS lifts the gate.
+const assistantModels: AssistantModel[] = [
+  ASSISTANT_KIMI_K3_1,
+  ASSISTANT_OPUS_5,
+  ASSISTANT_NOVA_2_LITE,
+]
+const assistantDefaultModel = ASSISTANT_KIMI_K3_1.profileId
 
 // ── CORS allowlist (staging/prod) ────────────────────────────────────────────
 // Browser origins allowed to call the API cross-origin. Tenant + admin SPA

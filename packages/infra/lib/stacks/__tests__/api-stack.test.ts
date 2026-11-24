@@ -3,7 +3,13 @@ import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as s3 from 'aws-cdk-lib/aws-s3'
-import { ApiStack, ASSISTANT_OPUS_5, resolveAssistantModels } from '../api-stack'
+import {
+  ApiStack,
+  ASSISTANT_KIMI_K3_1,
+  ASSISTANT_NOVA_2_LITE,
+  ASSISTANT_OPUS_5,
+  resolveAssistantModels,
+} from '../api-stack'
 import { CognitoStack } from '../cognito-stack'
 
 function synthApiStack() {
@@ -2007,6 +2013,13 @@ describe('ApiStack — AI assistant', () => {
       /not in assistantModels/,
     )
     expect(resolveAssistantModels([opus], undefined).defaultModel).toBe(opus.profileId)
+  })
+
+  it('accepts the shipped model constants (dotted and versioned ids)', () => {
+    const list = [ASSISTANT_KIMI_K3_1, ASSISTANT_OPUS_5, ASSISTANT_NOVA_2_LITE]
+    expect(resolveAssistantModels(list, ASSISTANT_KIMI_K3_1.profileId).defaultModel).toBe(
+      'us.moonshotai.kimi-k3.1',
+    )
   })
 
   it('exposes a streaming Function URL with in-function auth and the CORS allowlist', () => {
