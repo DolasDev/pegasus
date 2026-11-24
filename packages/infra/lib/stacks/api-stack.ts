@@ -10,6 +10,8 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2'
 import * as apigwv2i from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
+import * as sns from 'aws-cdk-lib/aws-sns'
+import * as snsSubscriptions from 'aws-cdk-lib/aws-sns-subscriptions'
 import * as sqs from 'aws-cdk-lib/aws-sqs'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources'
@@ -316,6 +318,24 @@ export interface ApiStackProps extends cdk.StackProps {
    * tenant-web origin used for CORS). Only consulted when `feedbackEnabled`.
    */
   readonly feedbackPublicWebUrl?: string
+
+  /**
+   * Master switch for the support channel (plans/in-progress/support-channel.md). When true,
+   * `SUPPORT_ENABLED=true` is set on the api Lambda, ungating /api/v1/support and
+   * /api/admin/support (both 404 when off), and an SNS topic
+   * `pegasus-support-alerts` is created for operator alerts, with publish granted
+   * to the api Lambda. Default off.
+   */
+  readonly supportEnabled?: boolean
+
+  /** Admin SPA origin, used to link an alert to the thread (`<url>/support/<id>`). */
+  readonly supportAdminUrl?: string
+
+  /**
+   * Email subscribed to the support alert topic. Needs a one-time confirmation
+   * click per env after the first deploy, like `alarmEmail`.
+   */
+  readonly supportAlertEmail?: string
 
   /**
    * Master switch for crew-leader links. When true, `CREW_LEADER_LINK_ENABLED=true`
@@ -821,6 +841,29 @@ export class ApiStack extends cdk.Stack {
       if (props.feedbackPublicWebUrl) {
         addApiEnvironment('FEEDBACK_PUBLIC_WEB_URL', props.feedbackPublicWebUrl)
       }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Support channel (plans/*/support-channel.md). The flag ungates the tenant
+    // and admin routes; the topic carries operator alerts (tenant + subject +
+    // admin link, not the message body — lib/support-alert.ts). Only the API
+    // Lambda publishes: the assistant twin gets the env var but never posts a
+    // customer message.
+    // ---------------------------------------------------------------------------
+    if (props.supportEnabled) {
+      addApiEnvironment('SUPPORT_ENABLED', 'true')
+      if (props.supportAdminUrl) addApiEnvironment('SUPPORT_ADMIN_URL', props.supportAdminUrl)
+      const supportAlerts = new sns.Topic(this, 'SupportAlertsTopic', {
+        topicName: 'pegasus-support-alerts',
+        displayName: 'Pegasus support',
+      })
+      if (props.supportAlertEmail) {
+        supportAlerts.addSubscription(
+          new snsSubscriptions.EmailSubscription(props.supportAlertEmail),
+        )
+      }
+      supportAlerts.grantPublish(apiFunction)
+      apiFunction.addEnvironment('SUPPORT_ALERT_TOPIC_ARN', supportAlerts.topicArn)
     }
 
     // Crew-leader links (lib/crew-link.ts) — env vars only, like feedback above.

@@ -42,6 +42,7 @@ export type ResourceType =
   | 'Blob'
   | 'Document'
   | 'ChatRoom'
+  | 'SupportThread'
   | 'LaborCrew'
   | 'Feedback'
   | 'Report'
@@ -491,6 +492,21 @@ export const Actions = {
     id: 'PostChat',
     resourceType: 'ChatRoom',
     permission: 'chat:post',
+  },
+  // ── Support (a user's own threads with the platform operator) ────────────
+  // Granted to every authenticated user (57-support-shared.cedar). The handler
+  // (handlers/support.ts) only ever serves threads the caller opened. The SPA
+  // gates the Help entry on the `support` capability, not on these, because
+  // the grant exists even where SUPPORT_ENABLED is off.
+  ReadSupport: {
+    id: 'ReadSupport',
+    resourceType: 'SupportThread',
+    permission: 'support:read',
+  },
+  PostSupport: {
+    id: 'PostSupport',
+    resourceType: 'SupportThread',
+    permission: 'support:post',
   },
   // ── Labor (a driver's private book of cash-labor crews) ──────────────────
   // Granted to every authenticated user (56-labor-shared.cedar). The handler

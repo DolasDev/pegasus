@@ -25,6 +25,7 @@ export const NOTIFICATION_TYPES = [
   'staff.message',
   'task.blocked',
   'workflow.message',
+  'support.reply',
 ] as const
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
 
@@ -42,6 +43,8 @@ export const NOTIFICATION_TYPE_INFO: Record<NotificationType, NotificationTypeIn
   'task.blocked': { label: 'A driver is blocked on a task', defaultChannel: 'push' },
   // Tenant Workflows can post often; feed-only until a user opts into push.
   'workflow.message': { label: 'Updates from your company’s automations', defaultChannel: 'feed' },
+  // The operator answered the user's own support thread.
+  'support.reply': { label: 'Pegasus support replies to you', defaultChannel: 'feed' },
 }
 
 export function isNotificationType(v: unknown): v is NotificationType {

@@ -26,6 +26,7 @@ import {
   type NotificationType,
 } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { supportEnabled } from '../lib/support-alert'
 import { AUTHOR_SELECT, displayName } from '../repositories/chat.repository'
 
 export const ACTIVITY_PAGE_MAX = 50
@@ -203,7 +204,10 @@ async function preferenceList(c: Context<AppEnv>, userId: string) {
     select: { type: true, channel: true },
   })
   const chosen = new Map(rows.map((r) => [r.type, r.channel]))
-  return NOTIFICATION_TYPES.map((type: NotificationType) => {
+  // A feature's type is listed only where the feature is on, so a dark deploy
+  // shows nothing new in anyone's settings (web or phone).
+  const listed = NOTIFICATION_TYPES.filter((t) => t !== 'support.reply' || supportEnabled())
+  return listed.map((type: NotificationType) => {
     const own = chosen.get(type)
     return {
       type,

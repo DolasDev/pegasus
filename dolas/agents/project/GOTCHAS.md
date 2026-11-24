@@ -4216,3 +4216,32 @@ silently if the download failed in CI. Anything that must be gated belongs in
 the tenant-runner suite, which already pins the built-in activities, or needs
 the flag added to the SDK job. Pushes touching the CI workflow directory have been blocked by
 the gh token's missing `workflow` scope.
+
+## SNS rejects a `Subject` with a line break, a control character, or 100+ characters
+
+`PublishCommand`'s `Subject` (the email subject line) must be one line with no
+control characters and under 100 characters, or SNS answers `InvalidParameter`
+and **nothing** is delivered. A tenant name or user text with a newline silently
+drops the alert. The current Publish API reference allows UTF-8; some older SDK
+docs (Java, Ruby v2) still say ASCII only. `lib/support-alert.ts` collapses
+whitespace, strips control characters and caps the length; its test pins that.
+
+## `SKIP_AUTH` acts as `skip-auth-user`, which has no `tenant_users` row
+
+Local dev and the local e2e run (`SKIP_AUTH=true`) set `userId = 'skip-auth-user'`,
+but no `TenantUser` has that id, so any write with an FK to `tenant_users` (a
+support thread, a chat message) fails with a 500 under SKIP_AUTH. The synthesised
+`db` is also the **base** client, not the tenant-scoped one. A spec that needs such
+a write seeds the row itself and removes it only if it created it
+(`apps/e2e/tests/api/support.spec.ts`).
+
+## `new-worktree.sh` treats a worktree whose path STARTS WITH the new one as existing
+
+`scripts/new-worktree.sh` checks for an existing worktree with
+`grep -qF "worktree $WORKTREE_PATH"` on `git worktree list --porcelain`, an
+unanchored substring match. With `../pegasus-support-channel-plan` present,
+`new-worktree.sh feat support-channel` printed "already exists — reusing it",
+created nothing, and `workstream-start.sh` then failed with "Expected worktree …
+but it does not exist". Until the grep is anchored (`-x` on the whole line), pick
+a slug that isn't a prefix of an existing worktree's directory, or remove the
+other worktree first.

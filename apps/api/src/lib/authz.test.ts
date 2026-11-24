@@ -101,6 +101,8 @@ describe('authorize — offline (cedar-wasm)', () => {
     Actions.PostChat.id,
     Actions.ReadLabor.id,
     Actions.WriteLabor.id,
+    Actions.ReadSupport.id,
+    Actions.PostSupport.id,
   ]
 
   it('sales matches its persona policy (invariant c)', async () => {
@@ -289,6 +291,8 @@ describe('listAllowedPermissions — offline', () => {
         Actions.PostChat.permission,
         Actions.ReadLabor.permission,
         Actions.WriteLabor.permission,
+        Actions.ReadSupport.permission,
+        Actions.PostSupport.permission,
       ]),
     )
   })
@@ -303,6 +307,8 @@ describe('listAllowedPermissions — offline', () => {
         Actions.PostChat.permission,
         Actions.ReadLabor.permission,
         Actions.WriteLabor.permission,
+        Actions.ReadSupport.permission,
+        Actions.PostSupport.permission,
       ]),
     )
   })

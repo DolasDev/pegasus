@@ -215,6 +215,21 @@ describe.skipIf(!hasDb)('Activity feed (integration)', () => {
     expect((await put('loud')).status).toBe(400)
   })
 
+  it('lists the support.reply preference only where SUPPORT_ENABLED is on', async () => {
+    const types = async () =>
+      (
+        await call<{ data: Array<{ type: string }> }>('driver', '/me/notification-preferences')
+      ).body.data.map((p) => p.type)
+    try {
+      delete process.env['SUPPORT_ENABLED']
+      expect(await types()).not.toContain('support.reply')
+      process.env['SUPPORT_ENABLED'] = 'true'
+      expect(await types()).toContain('support.reply')
+    } finally {
+      delete process.env['SUPPORT_ENABLED']
+    }
+  })
+
   it('pushes to a crew member with no login and writes no feed row', async () => {
     const crew = await db.crewMember.create({
       data: { tenantId: tenantA, name: 'Pat Crew', role: 'DRIVER', licenceClasses: [] },

@@ -2232,3 +2232,69 @@ describe('ApiStack — custom events (customEventsEnabled)', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Support channel (plans/*/support-channel.md, Phase 1a)
+// ---------------------------------------------------------------------------
+describe('ApiStack — support channel (supportEnabled)', () => {
+  type Props = NonNullable<ConstructorParameters<typeof ApiStack>[2]>
+  const synth = (props: Partial<Props> = {}) => {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const stack = new ApiStack(app, 'TestApiSupport', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      ...props,
+    })
+    return Template.fromStack(stack)
+  }
+  type FnProps = { Timeout: number; Environment?: { Variables?: Record<string, unknown> } }
+  /** The API Lambda's env (timeout 29; the assistant twin is 300). */
+  const apiEnv = (t: Template): Record<string, unknown> => {
+    const fns = Object.values(t.findResources('AWS::Lambda::Function'))
+      .map((f) => f['Properties'] as FnProps)
+      .filter(
+        (p) => p.Timeout === 29 && p.Environment?.Variables?.['COGNITO_JWKS_URL'] !== undefined,
+      )
+    if (fns.length !== 1) throw new Error(`expected one API Lambda, found ${fns.length}`)
+    return fns[0]!.Environment!.Variables!
+  }
+
+  it('is OFF by default: no flag, no topic', () => {
+    const t = synth()
+    expect(JSON.stringify(t.findResources('AWS::Lambda::Function'))).not.toContain('SUPPORT_')
+    t.resourceCountIs('AWS::SNS::Topic', 0)
+  })
+
+  it('when enabled: sets the flag + admin URL and wires a topic the API may publish to', () => {
+    const t = synth({
+      supportEnabled: true,
+      supportAdminUrl: 'https://admin.pegasus-qa.dolas.dev',
+      supportAlertEmail: 'ops@example.com',
+    })
+    const env = apiEnv(t)
+    expect(env['SUPPORT_ENABLED']).toBe('true')
+    expect(env['SUPPORT_ADMIN_URL']).toBe('https://admin.pegasus-qa.dolas.dev')
+    expect((env['SUPPORT_ALERT_TOPIC_ARN'] as { Ref: string }).Ref).toMatch(/^SupportAlertsTopic/)
+
+    t.hasResourceProperties('AWS::SNS::Topic', { TopicName: 'pegasus-support-alerts' })
+    t.hasResourceProperties('AWS::SNS::Subscription', {
+      Protocol: 'email',
+      Endpoint: 'ops@example.com',
+    })
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'sns:Publish',
+            Resource: { Ref: Match.stringLikeRegexp('SupportAlertsTopic') },
+          }),
+        ]),
+      }),
+    })
+  })
+
+  it('creates the topic without a subscription when no alert email is given', () => {
+    const t = synth({ supportEnabled: true })
+    t.resourceCountIs('AWS::SNS::Topic', 1)
+    t.resourceCountIs('AWS::SNS::Subscription', 0)
+  })
+})

@@ -159,6 +159,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   'ChatRoom',
   'ChatMessage',
   'ChatRoomMember',
+  // Support threads — tenant-owned. The tenant side (/support) uses the scoped
+  // client; the platform operator's inbox (/api/admin/support) deliberately
+  // reads across tenants on the base client, behind PLATFORM_ADMIN.
+  'SupportThread',
+  'SupportMessage',
   // Labor on longhaul activities — keyed by the tenant's legacy activity id, so
   // tenant-owned even though the crews and packers they point at are not.
   // Served only through the scoped client on /labor; creates set tenantId.

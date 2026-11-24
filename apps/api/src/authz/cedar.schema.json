@@ -177,6 +177,13 @@
           "attributes": {}
         }
       },
+      "SupportThread": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "LaborCrew": {
         "memberOfTypes": [],
         "shape": {
@@ -462,6 +469,12 @@
       },
       "PostChat": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ChatRoom"] }
+      },
+      "ReadSupport": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["SupportThread"] }
+      },
+      "PostSupport": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["SupportThread"] }
       },
       "ReadLabor": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["LaborCrew"] }
