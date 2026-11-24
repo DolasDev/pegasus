@@ -1,4 +1,7 @@
-"""The worker driver registers the SDK's built-in activities (run_automation, SDK 0.65.0+)."""
+"""The worker driver registers the SDK's built-in activities.
+
+run_automation (SDK 0.65.0+) and await_task's register activity (0.69.0+).
+"""
 
 from __future__ import annotations
 
@@ -51,10 +54,16 @@ def test_an_sdk_without_steps_adds_nothing(monkeypatch: pytest.MonkeyPatch) -> N
     assert driver.builtin_activities() == []
 
 
-def test_the_sdk_steps_module_provides_run_automation(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_sdk_provides_run_automation_and_await_task(monkeypatch: pytest.MonkeyPatch) -> None:
     if not (SDK_SRC / "pegasus_workflows" / "steps.py").exists():  # pragma: no cover
         pytest.skip("SDK source not next to the runner")
     for name in [m for m in sys.modules if m.startswith("pegasus_workflows")]:
         monkeypatch.delitem(sys.modules, name)
     monkeypatch.syspath_prepend(str(SDK_SRC))
-    assert _names(driver.builtin_activities()) == ["pegasus.run_automation"]
+    # run_automation (SDK 0.65.0) and await_task's register activity (0.69.0):
+    # the platform signals pegasus.task_closed only to Workflows whose worker
+    # has the latter.
+    assert _names(driver.builtin_activities()) == [
+        "pegasus.run_automation",
+        "pegasus.await_task_register",
+    ]

@@ -3585,6 +3585,35 @@ class PegasusClient:
         """
         return self._get_json(f"/api/v1/pegii/tasks/{task_id}")["data"]
 
+    def register_task_await(
+        self, task_id: str | int, *, temporal_workflow_id: str
+    ) -> dict[str, Any]:
+        """Register that a durable Workflow run is waiting for a task to close (0.69.0+).
+
+        The transport under :func:`pegasus_workflows.await_task` — call that from
+        a Workflow instead. Only a durable Workflow's runtime token may call this
+        (403 ``AWAIT_CALLER_NOT_WORKFLOW`` otherwise), for an open run of that
+        Workflow named by its Temporal workflow id. Requires ``ReadTask``; not
+        billable. Idempotent per (run, task). When the task closes, the platform
+        signals the run ``pegasus.task_closed`` with the task.
+
+        Returns:
+            The task's current state (same shape as :meth:`get_task`) plus
+            ``awaiting``: ``False`` when it is already closed (no wait needed).
+
+        Raises:
+            PegasusApiError: 403 ``AWAIT_CALLER_NOT_WORKFLOW``; 404
+                ``EXECUTION_NOT_OPEN`` / ``TASK_NOT_FOUND``; 503 (legacy store
+                unreachable); or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/pegii/tasks/{task_id}/await",
+                json={"temporalWorkflowId": temporal_workflow_id},
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def get_task_routing(self) -> dict[str, Any]:
         """Which store each role's tasks use for this tenant. Requires ``ReadTask``.
 

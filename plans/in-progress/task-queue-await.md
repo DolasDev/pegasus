@@ -2,32 +2,34 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–7 done; step 8 next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–8 done; step 9 next.
 
 ## Resume here (2026-11-23, end of session)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 7, `feat(infra): task-await sweeper Lambda` (step 6 `9a5de7fb`, step 5 `ec126f31`, step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
-- **Status:** steps 1–7 `[x]`, steps 8–10 `[ ]` (see Steps).
-- **Next action — step 8 (SDK `await_task`, D1 + D9 + D10), in `packages/workflows-sdk-python`:**
-  - **`pegasus_workflows/tasks.py` (new module):**
-    - `await_task(task_id, *, timeout=None)` and `TaskAwaitTimeout`.
-    - The built-in activity `pegasus.await_task_register`. It POSTs `/api/v1/pegii/tasks/{id}/await` with `{temporalWorkflowId: activity.info().workflow_id}`.
-      - The response is the task plus `awaiting`.
-      - 403 `AWAIT_CALLER_NOT_WORKFLOW`, 404 `EXECUTION_NOT_OPEN` and 404 `TASK_NOT_FOUND` are final (non-retryable).
-      - 5xx is retried by Temporal.
-  - **Workflow side:**
-    - `awaiting: false` → return the task at once.
-    - Otherwise: `workflow.set_signal_handler('pegasus.task_closed', …)`, deduped by task id.
-    - It must coexist with several concurrent `await_task` calls in one Workflow. Use one shared handler with a dict of waiting ids → results; don't install a handler per call.
-    - Then `workflow.wait_condition(…, timeout=timeout)`. On timeout, raise `TaskAwaitTimeout`.
-  - **Both entry points return the same dict shape:** the task wire shape from `lib/task-response.ts`, without `awaiting`.
-  - **Registration:** add the activity to `pegasus_workflows.steps.BUILTIN_ACTIVITIES`, which `apps/tenant-runner/.../workflow_worker_driver.py` registers (D10). Check that the runner test that lists the built-ins still passes, or update it.
-  - **Owed from step 3:** an explicit `pegasus.` reserved-name check in `manifest.py`'s signals validator.
-  - **Testing harness:**
-    - Classify the activity.
-    - Add an offline fake that resolves from a staged task: closed now → return it; open → a test can close it, and the harness delivers the signal.
-  - **Docs and version:** README, MCP reference resource, CHANGELOG, and the next free SDK version. Check `git show origin/main:packages/workflows-sdk-python/pyproject.toml` first; 0.69.0 if free.
-  - **Tests:** run them the way CI does: `uv run --extra dev python -m pytest -q` in the SDK, `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q`. Delete any `uv.lock` those runs create.
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 8, `feat(sdk): await_task — SDK 0.69.0` (step 7 `49824712`, step 6 `9a5de7fb`, step 5 `ec126f31`, step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
+- **Status:** steps 1–8 `[x]`, steps 9–10 `[ ]` (see Steps).
+- **Next action — step 9 (docs and records).**
+  - **Parent plan `plans/todo/task-queue-and-activity-feed.md`:**
+    - Record the 3b/3c re-cut (S1), and the S2 decision not to fold `TaskState` into `WorkItem`.
+    - Mark TQ-D4 guardrail 4 "as built": the awaiter registry, the reserved signal, the sweeper.
+  - **`dolas/agents/project/DECISIONS.md`:**
+    - The reserved `pegasus.` signal prefix.
+    - One `TaskAwait` table for both stores; `nextPollAt` means "next check" for both.
+    - The sweeper acts as the runtime service account (D7).
+    - No poll-failure alarm.
+  - **`dolas/agents/project/GOTCHAS.md`:**
+    - `run_automation`'s pre-stamp race. It treats `PARENT_NOT_OPEN` as final, and `automation-steps` has no fallback; the await route does have one.
+    - A cross-tenant sweeper in a shared test database touches other suites' rows: use `onlyTenantIds`.
+    - `db-access-guard` forbids raw SQL.
+    - In Temporal Python, a workflow-side exception must subclass `ApplicationError`, or it fails the workflow TASK and retries forever.
+    - `@pegasus_workflow` already applies `workflow.defn`.
+    - The api-stack bundle guard covers only the API and assistant bundles.
+  - **Check OpenAPI:** `awaitPegiiTask` was done in step 4, and the signal route's reserved-name text in step 3. Confirm neither needs more.
+  - **Then step 10, the gate:** typecheck, lint, the API/domain/mobile/infra tests, and the SDK, stdlib, runner and worker pytest suites. Restore the coverage floors.
+- **After the PR merges (owed):**
+  - Publish SDK 0.69.0 (tag `sdk-python-v0.69.0`; feedback: ALWAYS publish after a bump merges).
+  - Then update the authoring repo's `~/repos/pegasus-workflows/CLAUDE.md` (await_task, pin 0.69.0).
+  - Staging check: start a durable Workflow that awaits a cloud task, close the task, and see it wake. Then the same with a legacy task (wakes within ~20 min).
 - **Uncommitted work:** only `apps/e2e/.env.test`. It's the worktree's isolated-DB wiring, written by `scripts/new-worktree.sh`. Never stage or commit it.
 - **In flight:** nothing.
   - #985 is merged and deployed.
@@ -47,7 +49,7 @@
   - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
   - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
 - **Verification still owed:**
-  - Steps 8–10 are unbuilt.
+  - Steps 9–10 are unbuilt.
   - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
@@ -215,7 +217,33 @@
     - The infra suite passes (17 files, 468 tests); typecheck and lint are clean.
     - The bundle guard needs a built `packages/domain`; I ran `npx turbo run build --filter=@pegasus/domain` and it passed.
     - That guard covers only the API and assistant bundles, so I bundled `lambda-task-sweeper.ts` by hand with esbuild (CJS, `@aws-sdk/*` external): about 10 MB, the same as the reconciler.
-- [ ] 8. SDK `await_task` (D1, D9) + harness + docs; tenant-runner registration check (D10).
+- [x] 8. SDK `await_task` (D1, D9) + harness + docs; tenant-runner registration check (D10). Done 2026-11-24, SDK **0.69.0** (free on `origin/main`; `pyproject.toml` and the `uv.lock` self-version bumped, as every bump does).
+  - **`pegasus_workflows/tasks.py`** (sandbox-safe, Temporal-only imports):
+    - `await_task(task_id, *, timeout=None)`;
+    - `TaskAwaitTimeout` and `TaskAwaitRefused`. Both are `ApplicationError`, non-retryable: a plain Exception would fail the workflow task and retry forever.
+    - The activity `pegasus.await_task_register`:
+      - `403` and `4xx` → `TaskAwaitRefused`;
+      - `429` and `5xx` are re-raised, so Temporal retries them.
+  - **Per-run state** lives on `workflow.instance()`, with a fallback keyed by run id.
+    - One `pegasus.task_closed` handler per run, installed before the register activity; Temporal buffers a signal that arrives before the handler exists.
+    - First delivery wins, and the closed-task cache makes a repeat `await_task` return at once.
+  - **One deadline:** the register activity's `schedule_to_close` is `timeout`, and the wait gets what is left.
+  - **Other SDK files:**
+    - `PegasusClient.register_task_await` (classified `_IGNORED` in the harness: it's the transport).
+    - `steps.BUILTIN_ACTIVITIES` = [run_automation, await_task_register].
+    - Package exports.
+    - `manifest.py`: `RESERVED_SIGNAL_PREFIX` plus an explicit check (owed from step 3).
+    - Testing: `staged_task_await(tasks)` (the activity, answering from staged tasks; `.awaited`) and `close_staged_task(handle, task, **changes)`.
+    - README: a new "Waiting for a task to close" section, plus bullets in the feature list, the signals section and the tasks section.
+    - The MCP reference (both spots) and the CHANGELOG.
+  - **Tests:** `tests/test_await_task.py`, 21 tests.
+    - The register activity, through ActivityEnvironment and a mock transport.
+    - Exports, the httpx-free import, and reserved manifest names.
+    - Six Workflow tests on a **real local Temporal dev server**, each followed by a `Replayer` replay of its history: already closed; open then signalled; close signalled before the wait; three concurrent awaits; timeout; unknown task refused.
+    - The Workflows live in `tests/_await_workflows.py` so the sandbox can import them.
+    - These skip offline unless `PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER=1`, and the SDK's CI job doesn't set it. I didn't edit the CI workflow, because pushes touching it have been blocked by token scope before. The CI-enforced gate is the tenant-runner builtins test (below).
+  - **Runner (D10):** `apps/tenant-runner/tests/test_workflow_worker_driver_builtins.py` now pins the driver's built-ins as [`pegasus.run_automation`, `pegasus.await_task_register`].
+  - **Results:** SDK 692, tenant-runner 167 (including its dev-server e2e), temporal-worker 30, stdlib 11 — all pass; ruff check is clean on the SDK and the runner. `ruff format --check` isn't a gate: 22 files were already unformatted.
 - [ ] 9. OpenAPI; parent plan (re-cut, S2 fold decision, TQ-D4 guardrail 4 as built); DECISIONS; GOTCHAS.
 - [ ] 10. Gate: typecheck, lint, API/domain/mobile/infra tests, SDK + stdlib + runner + worker pytest; restore coverage floors.
 

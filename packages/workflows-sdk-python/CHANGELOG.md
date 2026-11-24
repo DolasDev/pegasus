@@ -3,6 +3,33 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.69.0
+
+### Added — a durable Workflow can wait for a task to close
+
+- `await_task(task_id, *, timeout=None)`: in a durable Workflow, returns the task
+  (`get_task`'s dict, `status == "closed"`) once it is closed, in either store. A task
+  already closed returns at once. A cloud task wakes the Workflow when it closes; a
+  legacy (MoveManager) task is checked every 15 minutes. Several can be awaited at once,
+  and awaiting the same task twice returns the same result.
+- `TaskAwaitTimeout` (`timeout` ran out; the wait stays registered) and
+  `TaskAwaitRefused` (`.code`: `TASK_NOT_FOUND`, `EXECUTION_NOT_OPEN`,
+  `AWAIT_CALLER_NOT_WORKFLOW`; not retried). Both fail the Workflow if uncaught.
+- A new built-in activity, `pegasus.await_task_register`, in
+  `pegasus_workflows.steps.BUILTIN_ACTIVITIES`; the platform runner registers it on
+  every Workflow worker. Its transport is `PegasusClient.register_task_await`
+  (`POST /api/v1/pegii/tasks/{id}/await`, `ReadTask`, not billed).
+- Testing: `pegasus_workflows.testing.staged_task_await(tasks)` stands in for that
+  activity in a Temporal test environment, and `close_staged_task(handle, task, ...)`
+  sends the close signal the platform would.
+
+### Changed
+
+- Signal and query names starting `pegasus.` are reserved for the platform (it sends
+  `pegasus.task_closed`). A manifest declaring one fails to load (`ManifestError`), and
+  the API refuses sending one (400 `SIGNAL_NAME_RESERVED`) or binding a trigger to one.
+  Dotted names were already invalid identifiers, so no valid manifest changes.
+
 ## 0.68.0
 
 ### Added — tasks in two stores, routed by role

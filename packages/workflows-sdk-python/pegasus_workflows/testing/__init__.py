@@ -55,7 +55,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-__all__ = ["fake_client", "run_activity", "FakeClient", "CaptureError"]
+__all__ = [
+    "fake_client",
+    "run_activity",
+    "FakeClient",
+    "CaptureError",
+    "staged_task_await",
+    "close_staged_task",
+]
 
 
 class CaptureError(RuntimeError):
@@ -241,6 +248,10 @@ _IGNORED: frozenset[str] = frozenset(
         "start_automation_step",
         "get_automation_step",
         "cancel_automation_step",
+        # The await_task transport (0.69.0): called only by the built-in
+        # pegasus.await_task_register activity. Test a Workflow that awaits with
+        # staged_task_await() + close_staged_task() instead.
+        "register_task_await",
     }
 )
 
@@ -484,3 +495,82 @@ async def arun_activity(activity_fn: Callable[..., Any], *args: Any, client: Fak
         if inspect.isawaitable(result):
             return await result
         return result
+
+
+# --- await_task (0.69.0): a Workflow-level stand-in -------------------------
+#
+# await_task is a Workflow helper, not an activity, so it is tested in a
+# Temporal test environment (``WorkflowEnvironment``), with these two standing
+# in for the platform: ``staged_task_await`` is the built-in register activity
+# answering from staged tasks, and ``close_staged_task`` is the platform's
+# ``pegasus.task_closed`` signal.
+#
+# .. code-block:: python
+#
+#     from pegasus_workflows.testing import close_staged_task, staged_task_await
+#
+#     tasks = {"4242": {"id": "4242", "status": "open", "store": "legacy"}}
+#     async with Worker(env.client, task_queue="q", workflows=[OrderLifecycle],
+#                       activities=[staged_task_await(tasks)]):
+#         handle = await env.client.start_workflow(
+#             OrderLifecycle.run, order, id="w", task_queue="q"
+#         )
+#         await close_staged_task(handle, tasks["4242"], reason="Customer confirmed")
+#         assert (await handle.result())["closedBecause"] == "Customer confirmed"
+
+
+def staged_task_await(tasks: Mapping[str, Mapping[str, Any]]) -> Callable[..., Any]:
+    """The ``pegasus.await_task_register`` activity, answering from ``tasks``.
+
+    Register it on your test worker in place of the platform's. ``tasks`` maps a
+    task id to the task dict (``get_task``'s shape; at least ``status``). A task
+    whose ``status`` is ``"closed"`` returns at once; an open one waits until
+    :func:`close_staged_task` signals it. An id not in ``tasks`` is refused with
+    ``TaskAwaitRefused(code="TASK_NOT_FOUND")``, as the platform does.
+
+    The returned activity records each awaited id in its ``.awaited`` list.
+    """
+    from temporalio import activity
+
+    from ..tasks import AWAIT_TASK_REGISTER_ACTIVITY, TaskAwaitRefused
+
+    awaited: list[str] = []
+
+    @activity.defn(name=AWAIT_TASK_REGISTER_ACTIVITY)
+    async def fake_await_task_register(request: dict[str, Any]) -> dict[str, Any]:
+        task_id = str(request["taskId"])
+        awaited.append(task_id)
+        task = tasks.get(task_id)
+        if task is None:
+            raise TaskAwaitRefused(
+                f"no staged task {task_id!r}",
+                task_id=task_id,
+                code="TASK_NOT_FOUND",
+                error_message="Task not found",
+            )
+        return {"id": task_id, **dict(task), "awaiting": task.get("status") != "closed"}
+
+    fake_await_task_register.awaited = awaited  # type: ignore[attr-defined]
+    return fake_await_task_register
+
+
+async def close_staged_task(handle: Any, task: Mapping[str, Any], **changes: Any) -> dict[str, Any]:
+    """Close a staged task: signal ``pegasus.task_closed`` to a running Workflow.
+
+    What the platform does when the task closes. ``changes`` override fields of
+    the delivered task (e.g. ``reason="Customer confirmed"``); ``status`` is set
+    to ``"closed"``.
+
+    Args:
+        handle: The ``WorkflowHandle`` of the Workflow awaiting the task.
+        task: The staged task (must carry ``id``).
+        **changes: Fields to set on the delivered task.
+
+    Returns:
+        The task dict that was delivered.
+    """
+    from ..tasks import TASK_CLOSED_SIGNAL
+
+    delivered = {**dict(task), "status": "closed", **changes}
+    await handle.signal(TASK_CLOSED_SIGNAL, delivered)
+    return delivered

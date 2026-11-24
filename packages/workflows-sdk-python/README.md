@@ -1289,6 +1289,9 @@ the store the id belongs to.
   cloud-created tasks. `role` with `order_id` is a `ValueError`.
 - `list_tasks` needs `order_id` or `task_type`.
 - An unknown order is 404 `ORDER_NOT_FOUND`. An order with no tasks is `[]`.
+- **Waiting for a close:** in a durable Workflow, `await await_task(task_id)`
+  (0.69.0+) returns the task once it is closed — see
+  [Waiting for a task to close](#waiting-for-a-task-to-close).
 
 #### Order memos (`add_order_memo`, 0.53.0+)
 
@@ -1689,6 +1692,9 @@ days. (0.56.0+)
 - **Steps** (0.65.0+): `await run_automation("name", input)` runs a published
   Automation and returns its result — see
   [Running an Automation as a step](#running-an-automation-as-a-step).
+- **Waiting for a task** (0.69.0+): `await await_task(task_id)` returns the task
+  once it is closed, in either store — see
+  [Waiting for a task to close](#waiting-for-a-task-to-close).
 - **Activities** work as in an Automation (`PegasusClient.from_runtime()`) and
   get Temporal's per-activity retries.
 - **No dry runs** (422 `DRY_RUN_UNSUPPORTED`, and no dry-run triggers). Test
@@ -1743,6 +1749,10 @@ def note(self, payload: dict | None = None) -> None:
   the declared names) · 409 `EXECUTION_NOT_SIGNALLABLE` (an Automation, a closed
   execution, one not started on Temporal yet, or one Temporal reports is no
   longer running) · 413 `SIGNAL_PAYLOAD_TOO_LARGE` · 502 `TEMPORAL_SIGNAL_FAILED`.
+- **`pegasus.` names are the platform's** (0.69.0+): `pegasus.task_closed` is
+  how [`await_task`](#waiting-for-a-task-to-close) wakes up. No manifest may
+  declare one, and sending one is 400 `SIGNAL_NAME_RESERVED` (an EVENT trigger's
+  `signal_name` likewise), so a Workflow can trust it came from the platform.
 - Needs `SignalWorkflowExecution` (the `workflow_developer` role).
 - `executions show` lists each delivered signal in the timeline
   (`WorkflowExecutionSignaled  signal: note`).
@@ -1856,6 +1866,55 @@ class OrderLifecycle:
   refused (403 `STEP_CALLER_NOT_WORKFLOW`), so Automations can't start each other.
 - **Testing:** in a Temporal test environment, register a stand-in activity named
   `pegasus.run_automation` (it receives `{"automation", "version", "input"}`).
+
+### Waiting for a task to close
+
+A Workflow waits until a task is done (0.69.0+), in either store:
+
+```python
+from datetime import timedelta
+from pegasus_workflows import TaskAwaitTimeout, await_task, pegasus_workflow, workflow
+
+@pegasus_workflow(name="order_lifecycle", version="1.0.0")
+class OrderLifecycle:
+    @workflow.run
+    async def run(self, order: dict) -> dict:
+        try:
+            task = await await_task(order["confirmTaskId"], timeout=timedelta(days=3))
+        except TaskAwaitTimeout:
+            return {"escalated": True}
+        return {"closedBecause": task["reason"]}
+```
+
+- **Returns the closed task**, the same dict as `get_task` (`status == "closed"`,
+  `reason`, `closedAt` / `completedAt`, `store`). A task that is already closed
+  returns at once.
+- **How soon:** a **cloud** task wakes the Workflow when it closes. A **legacy**
+  (MoveManager) task has no close hook, so the platform checks it every 15
+  minutes: allow up to ~20 minutes.
+- **Several at once:** `asyncio.gather(await_task(a), await_task(b))` works, and
+  awaiting the same task twice returns the same result.
+- **`timeout`** (default `None`: as long as the Workflow lives) raises
+  `TaskAwaitTimeout` (`.task_id`, `.timeout`). The wait stays registered, so
+  awaiting the same task again picks it up.
+- **`TaskAwaitRefused`** (`.code`, `.task_id`, not retried):
+  `TASK_NOT_FOUND`, `EXECUTION_NOT_OPEN`, `AWAIT_CALLER_NOT_WORKFLOW` (only a
+  durable Workflow can await; an Automation's token is refused). A store that is
+  briefly down (a MoveManager site offline) is retried, not raised.
+- **A legacy task deleted in MoveManager** never closes: its wait is dropped, and
+  `timeout` (or the Workflow's lifetime) ends it. Pass a `timeout` when that
+  matters.
+- **How it works:** a built-in activity (`pegasus.await_task_register`, which the
+  platform runner registers on every Workflow worker) registers the wait and
+  reads the task; when it closes, the platform sends the Workflow the reserved
+  signal `pegasus.task_closed`. Nothing in the manifest declares it; `ReadTask`
+  covers it, and it is not billed.
+- **Which SDK runs it:** the platform runner's. You need 0.69.0+ locally only to
+  import `await_task`.
+- **Testing:** in a Temporal test environment, register
+  `pegasus_workflows.testing.staged_task_await(tasks)` as the activity (it answers
+  from your staged tasks: `{id: {"status": "open", ...}}`), and play the platform
+  with `await close_staged_task(handle, task, reason="...")`.
 
 ### Inspecting and stopping open Workflows
 
