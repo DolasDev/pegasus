@@ -21,6 +21,7 @@
 //   GET  /tasks/:taskId          ReadTask      fetch one task
 //   POST /tasks                  CreateTask    create a task on an order (idempotent with dedupKey)
 //   POST /tasks/close            CloseTask     close by taskId or (orderId, taskType) — idempotent
+//   POST /tasks/:taskId/await    ReadTask      a durable Workflow waits for the task to close (await_task)
 //
 // This is a namespaced legacy-bridge surface, exactly like the retired longhaul
 // cloud handlers lived under `/api/v1/onprem/longhaul/*`. Single-order reads are
@@ -82,6 +83,9 @@ import type { PegiiMemoDto } from '../gateways/pegii/pegii-memo.dto'
 import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
 import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 import { logger } from '../lib/logger'
+import type { PrismaClient } from '@prisma/client'
+import { createWorkflowRepository } from '../repositories/workflow.repository'
+import { createTaskAwaitRepository } from '../repositories/task-await.repository'
 
 const orderNumber = z
   .string({ error: 'orderId is required' })
@@ -1049,6 +1053,160 @@ pegiiRuntimeHandler.post(
       alreadyClosed: result.alreadyClosed,
     })
     return c.json({ data: { ...toTaskResponse(result.task), alreadyClosed: result.alreadyClosed } })
+  },
+)
+
+// POST /tasks/:taskId/await — a durable Workflow registers that it is waiting
+// for this task to close (task queue Phase 3b; the SDK's `await_task`, via its
+// `pegasus.await_task_register` activity). ReadTask; not billable — it changes
+// nothing outside the caller's own run.
+//
+// The runtime key is per WORKFLOW, not per run, so the body names the run by
+// its Temporal workflow id (`activity.info().workflow_id`). The caller must be
+// a durable Workflow's runtime token (else 403 AWAIT_CALLER_NOT_WORKFLOW, like
+// run_automation's STEP_CALLER_NOT_WORKFLOW), and the run an OPEN execution of
+// that same Workflow in the caller's tenant — another tenant's, another
+// Workflow's, a closed or an unknown run are one indistinguishable 404
+// EXECUTION_NOT_OPEN.
+//
+// Answers the task's CURRENT state, plus `awaiting`:
+//   - closed → `awaiting: false`; the Workflow returns at once (no missed
+//     wake-up), and any earlier `waiting` row for this run is marked delivered.
+//   - open   → a `waiting` TaskAwait row (re-armed if one exists: idempotent per
+//     (run, task)), `awaiting: true`; the platform signals `pegasus.task_closed`
+//     when it closes (cloud: on close; legacy: the sweeper's poll).
+// A cloud task is re-read after the row is written, so a close that committed
+// in between is answered here rather than left to the sweeper.
+//
+// Response: { data: Task & { awaiting } } (200) | 400 | 403 | 404 TASK_NOT_FOUND
+//   | 404 EXECUTION_NOT_OPEN | the legacy store's 5xx.
+// ---------------------------------------------------------------------------
+const AwaitBody = z
+  .object({
+    temporalWorkflowId: z
+      .string({ error: 'temporalWorkflowId is required' })
+      .min(1, 'temporalWorkflowId must not be empty')
+      .max(512),
+  })
+  .strict()
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The open run of `callerWorkflowId` behind a Temporal workflow id, or null.
+ * A manual run's id (`wf/<tenant>/<name>/<executionId>`) is stamped on its row
+ * only AFTER Temporal's start returns (markStarted), so a Workflow whose first
+ * step awaits can call before the stamp: that form names its row, so it
+ * resolves by id while the stamp is still null. Keyed (`wfl/…`) and trigger
+ * ids are written at insert and need no fallback.
+ */
+async function findAwaitingRun(
+  db: PrismaClient,
+  tenantId: string,
+  caller: { id: string; name: string },
+  temporalWorkflowId: string,
+): Promise<{ id: string } | null> {
+  const prefix = `wf/${tenantId}/${caller.name}/`
+  const embeddedId = temporalWorkflowId.startsWith(prefix)
+    ? temporalWorkflowId.slice(prefix.length)
+    : null
+  return db.workflowExecution.findFirst({
+    where: {
+      tenantId,
+      workflowId: caller.id,
+      status: { in: ['QUEUED', 'RUNNING'] },
+      OR: [
+        { temporalWorkflowId },
+        ...(embeddedId && UUID_RE.test(embeddedId)
+          ? [{ id: embeddedId, temporalWorkflowId: null }]
+          : []),
+      ],
+    },
+    select: { id: true },
+  })
+}
+
+pegiiRuntimeHandler.post(
+  '/tasks/:taskId/await',
+  requirePermission(Actions.ReadTask),
+  validator('json', (value, c) => {
+    const parsed = AwaitBody.safeParse(value)
+    if (!parsed.success) {
+      const message = parsed.error.issues.map((i) => i.message).join('; ')
+      return c.json({ error: message, code: 'VALIDATION_ERROR' }, 400)
+    }
+    return parsed.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const db = c.get('db')
+    const taskId = c.req.param('taskId') ?? ''
+    const { temporalWorkflowId } = c.req.valid('json')
+
+    const apiClientId = c.get('apiClient')?.id
+    const caller = apiClientId
+      ? await createWorkflowRepository(db).findByRuntimeApiClientId(apiClientId, tenantId)
+      : null
+    if (!caller || caller.kind !== 'WORKFLOW') {
+      return c.json(
+        {
+          error: 'Only a durable Workflow can await a task (await_task).',
+          code: 'AWAIT_CALLER_NOT_WORKFLOW',
+        },
+        403,
+      )
+    }
+
+    const run = await findAwaitingRun(db, tenantId, caller, temporalWorkflowId)
+    if (!run) {
+      return c.json(
+        {
+          error: `No open execution of Workflow "${caller.name}" has Temporal id ${temporalWorkflowId}`,
+          code: 'EXECUTION_NOT_OPEN',
+        },
+        404,
+      )
+    }
+
+    const store = taskStoreForId(taskId)
+    if (store === null) {
+      return c.json({ error: `Task ${taskId} not found`, code: 'TASK_NOT_FOUND' }, 404)
+    }
+    const gateway = await resolveTaskGatewayForStore(store, taskGatewayContext(c))
+    const awaits = createTaskAwaitRepository(db, tenantId)
+    const waitKey = { executionId: run.id, store, taskId }
+
+    const answer = (task: TaskRecord, awaiting: boolean) => {
+      logger.info('task awaited', {
+        tenantId,
+        executionId: run.id,
+        store,
+        taskId,
+        awaiting,
+      })
+      return c.json({ data: { ...toTaskResponse(task), awaiting } })
+    }
+
+    let task = await gateway.getTask(taskId)
+    if (!task) {
+      return c.json({ error: `Task ${taskId} not found`, code: 'TASK_NOT_FOUND' }, 404)
+    }
+    if (task.status === 'closed') {
+      await awaits.markDelivered(waitKey)
+      return answer(task, false)
+    }
+
+    await awaits.registerWaiting({ ...waitKey, orderNum: Number(task.orderId) })
+
+    if (store === 'cloud') {
+      const reread = await gateway.getTask(taskId)
+      if (reread && reread.status === 'closed') {
+        await awaits.markDelivered(waitKey)
+        return answer(reread, false)
+      }
+      if (reread) task = reread
+    }
+    return answer(task, true)
   },
 )
 

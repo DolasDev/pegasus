@@ -3573,6 +3573,46 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/pegii/tasks/{taskId}/await': {
+        post: {
+          operationId: 'awaitPegiiTask',
+          summary: 'A durable Workflow waits for a task to close (ReadTask, not billable)',
+          description:
+            "Called by the SDK's await_task (its built-in activity pegasus.await_task_register) — authors use await_task(task_id, timeout=…), not this route. " +
+            "Body: { temporalWorkflowId } — the calling run's Temporal workflow id (activity.info().workflow_id). " +
+            "The caller must be a durable Workflow's runtime key (403 AWAIT_CALLER_NOT_WORKFLOW otherwise, e.g. an Automation's), and the run an OPEN execution of that same Workflow in the caller's tenant (else 404 EXECUTION_NOT_OPEN). " +
+            TASK_STORES_NOTE +
+            "Answers the task's CURRENT state plus awaiting. A closed task answers awaiting: false at once (no wake-up is missed). An open one registers the wait and answers awaiting: true; " +
+            'when it closes the platform signals the run with the reserved signal pegasus.task_closed (cloud: on close; legacy: polled every few minutes). Idempotent per (run, task): a repeat re-arms the same wait.',
+          tags: ['pegII'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'taskId', in: 'path', required: true, schema: { type: 'string' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['temporalWorkflowId'],
+                  properties: { temporalWorkflowId: { type: 'string', maxLength: 512 } },
+                  additionalProperties: false,
+                },
+                example: { temporalWorkflowId: 'wfl/<tenant>/order_lifecycle/500123' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{data: {...task, awaiting: boolean}}' },
+            '400': { description: 'VALIDATION_ERROR' },
+            '403': { description: 'Missing ReadTask, or AWAIT_CALLER_NOT_WORKFLOW' },
+            '404': {
+              description:
+                "TASK_NOT_FOUND, or EXECUTION_NOT_OPEN (unknown, closed, or not this Workflow's run)",
+            },
+            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE (legacy)' },
+          },
+        },
+      },
       '/api/v1/event-types': {
         ...OPERATIONAL_READ_PATHS['/api/v1/event-types'],
         post: {

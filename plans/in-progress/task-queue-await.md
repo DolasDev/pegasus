@@ -2,19 +2,25 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–3 done; step 4 next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–4 done; step 5 next.
 
 ## Resume here (2026-11-23, end of session)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 3, `feat(api): reserve pegasus. signal names` (step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
-- **Status:** steps 1–3 `[x]`, steps 4–10 `[ ]` (see Steps).
-- **Next action — step 4 (`POST /api/v1/pegii/tasks/:taskId/await`, D2):**
-  - A `task-await.repository` (tenant-scoped; upsert on (`executionId`, `store`, `taskId`), idempotent).
-  - Resolve the run from the body's Temporal workflow id via `WorkflowExecution.temporalWorkflowId` (+ `tenantId`). Then check: same tenant, durable `WORKFLOW`, RUNNING, and the execution's workflow is the calling runtime client's (`workflowIdFromClientName`). Anything else → 404.
-  - Read the task's current state through the TaskGateway (both stores). Closed → return it with no row; open → upsert a `waiting` awaiter (legacy: `nextPollAt = now`) and return it.
-  - Gated on `ReadTask`; not billable.
-  - Tests: cross-tenant, wrong workflow, terminal, already closed, idempotent.
-  - Platform delivery for steps 5–6 is `signalPlatformExecution(db, { …, signalName: TASK_CLOSED_SIGNAL })` (`lib/signal-workflow-execution.ts`).
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 4, `feat(api): POST /pegii/tasks/:taskId/await` (step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
+- **Status:** steps 1–4 `[x]`, steps 5–10 `[ ]` (see Steps).
+- **Next action — step 5 (cloud close → post-commit signal to waiters, D5):**
+  - In the cloud close path (`gateways/cloud-task.gateway.ts` `closeTask`, or the route right after it), AFTER the close commits:
+    - look up `waiting` awaiters for (`cloud`, taskId);
+    - signal each with `signalPlatformExecution(db, { workflow, execution, signalName: TASK_CLOSED_SIGNAL, args: [payload] })`.
+  - Outcome handling:
+    - `SIGNALLED` → `delivered`.
+    - `TERMINAL` / `NOT_RUNNING` / `NOT_DURABLE` → `abandoned`.
+    - `SIGNAL_FAILED` → stays `waiting`, with `attempts + 1` and `lastError`; the sweeper redelivers.
+  - Best-effort: a failed signal never fails the close.
+  - Add repository methods for this: `listWaitingForTask(store, taskId)`, `markAbandoned`, `recordFailure`. All are conditional on `status: 'waiting'`, like `markDelivered`.
+  - **Must look up waiters after the commit.** Step 4's route re-reads a cloud task after writing its row; that only closes the race if the close looks up waiters after it commits.
+  - Decide the signal payload: the closed task's response shape (`toTaskResponse`), so the SDK returns the same thing whether the task was already closed or closed later.
+  - Tests: signalled → delivered; terminal → abandoned; a failed signal leaves it waiting and the close still succeeds; an already-closed task signals nobody.
 - **Uncommitted work:** only `apps/e2e/.env.test`. It's the worktree's isolated-DB wiring, written by `scripts/new-worktree.sh`. Never stage or commit it.
 - **In flight:** nothing.
   - #985 is merged and deployed.
@@ -34,7 +40,7 @@
   - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
   - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
 - **Verification still owed:**
-  - Steps 4–10 are unbuilt.
+  - Steps 5–10 are unbuilt.
   - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
@@ -110,7 +116,19 @@
 - [x] 1. `buildPegiiCaller` extracted (no behaviour change; own commit). Done 2026-11-23: `resolvePegiiCaller` is now a thin wrapper; two direct tests (service account + correlation id; a user outside the tenant does not resolve). Full API suite green.
 - [x] 2. Prisma: `TaskAwait` + drop `WorkItem.awaitingExecutionId`; migration; `TENANT_SCOPED_MODELS`. Done 2026-11-23: migration `20261123231442_task_awaits` (enums `TaskStore`, `TaskAwaitStatus`; table `task_awaits`; `DROP COLUMN awaiting_execution_id`), applied to the worktree DB; client regenerated; tsc clean; tenant-isolation + cloud-task gateway tests green.
 - [x] 3. Reserved `pegasus.` signal prefix (public route + event routing) + platform delivery bypass; tests. Done 2026-11-23: `lib/signal-workflow-execution.ts` has `RESERVED_SIGNAL_PREFIX`, `TASK_CLOSED_SIGNAL`, `isReservedSignalName` (case-insensitive) and `signalPlatformExecution`, which skips the declared-signals check and throws on a non-reserved name. Three tenant paths refuse reserved names: the signal route (400 `SIGNAL_NAME_RESERVED`, checked before the regex), manifest `signals`, and `signalBindingError` (trigger create/patch, re-run at dispatch). The tests declare the reserved name in the manifest, so they prove the explicit check and not the regex; dotted names already failed `SIGNAL_NAME_REGEX`. OpenAPI signal-route text updated. **Owed in step 8:** the SDK's `manifest.py` validator refuses dotted names only through the regex; add the explicit `pegasus.` check there too.
-- [ ] 4. `POST /tasks/:taskId/await` (D2) + repository; tests (cross-tenant, wrong workflow, terminal, already closed, idempotent).
+- [x] 4. `POST /tasks/:taskId/await` (D2) + repository; tests (cross-tenant, wrong workflow, terminal, already closed, idempotent). Done 2026-11-24.
+  - **What was built:** `repositories/task-await.repository.ts` (`registerWaiting`, `markDelivered`, `findOne`) and the route in `handlers/pegii-runtime.ts`. Body `{ temporalWorkflowId }`; the response is the task plus `awaiting`. The OpenAPI entry `awaitPegiiTask` is done now, not in step 9.
+  - **Tests:** 22 Postgres integration tests in `handlers/pegii-runtime-await.test.ts`. A mutation check confirmed that the `workflowId` scope and the cloud re-read are each caught by a test.
+  - **The caller is resolved like `automation-steps`.** `findByRuntimeApiClientId` must give a `WORKFLOW`; this is stronger than parsing the `wf-runtime-` name.
+  - **Deviations from D2:**
+    - A caller that isn't a durable Workflow's token (an Automation's, or a human session) gets **403 `AWAIT_CALLER_NOT_WORKFLOW`**, matching `STEP_CALLER_NOT_WORKFLOW`.
+    - Every run mismatch (another tenant's, another Workflow's, a closed or an unknown run) is one indistinguishable **404 `EXECUTION_NOT_OPEN`**.
+    - The run may be **QUEUED or RUNNING** (D2 said RUNNING), the same as `PARENT_NOT_OPEN` and `signalDurableExecution`.
+  - **Pre-stamp race, closed on the server.** A manual run's `temporalWorkflowId` is stamped by `markStarted` only AFTER Temporal's start returns, so a Workflow that awaits first could call too early. The default id `wf/<tenant>/<name>/<executionId>` contains the execution id, so the route also matches that id on an unstamped row (same tenant, the caller's workflow, open). Keyed `wfl/…` and trigger ids are written at insert.
+  - **`run_automation` has the same latent race and it is NOT fixed.** It treats `PARENT_NOT_OPEN` as final (`steps.py`), and `automation-steps` has no fallback. It's a candidate follow-up; record it in GOTCHAS in step 9.
+  - **Closed task:** answers `awaiting: false` and marks any earlier `waiting` row for this run `delivered`.
+  - **Open task:** `registerWaiting` creates or re-arms the row (`attempts` 0, `lastError` null, `deliveredAt` null; legacy `nextPollAt` = now, cloud null). A unique-key race re-arms the winner's row.
+  - **Cloud close race:** a cloud task is re-read once after the row write, so a close in between answers `awaiting: false` and leaves the row `delivered`. A legacy task is read once; the sweeper polls it.
 - [ ] 5. Cloud close → post-commit signal to waiters (D5); tests.
 - [ ] 6. Sweeper Lambda (D6) + tests on Postgres with a fake signaller and a fake legacy gateway.
 - [ ] 7. Infra (D8) + infra tests.
