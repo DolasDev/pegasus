@@ -1,10 +1,12 @@
 // Unit tests for the push-notification registration service.
+import { Platform } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
 import { getApiClient } from '../api/client'
 import { storage } from '../utils/storage'
 import {
   registerForPush,
+  enableNotifications,
   unregisterForPush,
   setupNotificationTapHandler,
   notificationRoute,
@@ -41,11 +43,21 @@ describe('registerForPush', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
-  it('no-ops when permission is denied', async () => {
-    ;(Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' })
-    ;(Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' })
-    await registerForPush(ACCOUNT)
-    expect(mockFetch).not.toHaveBeenCalled()
+  // The server needs the row to show dispatch that notifications are off; it
+  // never pushes to a blocked/askable device.
+  it('still registers the token when permission is denied, reporting it', async () => {
+    ;(Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'denied',
+      canAskAgain: false,
+    })
+    mockedStorage.getItem.mockResolvedValue(null)
+    mockFetch.mockResolvedValue({ id: 'dt-1' })
+
+    const state = await registerForPush(ACCOUNT)
+
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string)
+    expect(body).toMatchObject({ permission: 'blocked' })
+    expect(state.status).toBe('skipped')
   })
 
   it('registers the token with the API and caches it', async () => {
@@ -59,17 +71,36 @@ describe('registerForPush', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string)
-    expect(body).toEqual({ platform: expect.any(String), expoPushToken: 'ExponentPushToken[abc]' })
+    expect(body).toEqual({
+      platform: expect.any(String),
+      expoPushToken: 'ExponentPushToken[abc]',
+      permission: 'granted',
+    })
     expect(mockedStorage.setItem).toHaveBeenCalledWith(
       expect.stringMatching(KEY_RE),
-      'ExponentPushToken[abc]',
+      'ExponentPushToken[abc]|granted',
     )
   })
 
-  it('skips the network call when the token is unchanged', async () => {
-    mockedStorage.getItem.mockResolvedValue('ExponentPushToken[abc]')
+  it('skips the network call when the token AND permission are unchanged', async () => {
+    mockedStorage.getItem.mockResolvedValue('ExponentPushToken[abc]|granted')
     await registerForPush(ACCOUNT)
     expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('re-reports when only the permission changed (fixed in Settings)', async () => {
+    mockedStorage.getItem.mockResolvedValue('ExponentPushToken[abc]|blocked')
+    mockFetch.mockResolvedValue({ id: 'dt-1' })
+    await registerForPush(ACCOUNT)
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string)
+    expect(body).toMatchObject({ permission: 'granted' })
+  })
+
+  it('re-reports once over a cache value written before permission reporting', async () => {
+    mockedStorage.getItem.mockResolvedValue('ExponentPushToken[abc]')
+    mockFetch.mockResolvedValue({ id: 'dt-1' })
+    await registerForPush(ACCOUNT)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 
   it('never throws when the API call fails', async () => {
@@ -126,13 +157,90 @@ describe('registerForPush', () => {
   })
 
   it('reports denied permission as a skip, with the reason', async () => {
-    ;(Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' })
-    ;(Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' })
+    ;(Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'denied',
+      canAskAgain: false,
+    })
 
     const state = await registerForPush(ACCOUNT)
 
     expect(state.status).toBe('skipped')
     expect((state as { reason: string }).reason).toContain('denied')
+    expect((state as { permission?: string }).permission).toBe('blocked')
+  })
+
+  // The regression this guards: registerForPush runs on EVERY foreground
+  // resume, and used to call requestPermissionsAsync each time — re-showing
+  // Android 13+'s dialog until two dismissals made the denial permanent.
+  it('never shows the OS prompt, even when the OS still could', async () => {
+    ;(Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'denied',
+      canAskAgain: true,
+    })
+
+    mockedStorage.getItem.mockResolvedValue(null)
+    mockFetch.mockResolvedValue({ id: 'dt-1' })
+
+    const state = await registerForPush(ACCOUNT)
+
+    expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled()
+    expect((state as { permission?: string }).permission).toBe('askable')
+  })
+})
+
+describe('registerForPush — Android channel switched off', () => {
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, get: () => 'ios' })
+  })
+
+  it('still registers the token (the switched-off channel is only a nudge)', async () => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, get: () => 'android' })
+    ;(Notifications.getNotificationChannelAsync as jest.Mock).mockResolvedValueOnce({
+      id: 'default',
+      importance: Notifications.AndroidImportance.NONE,
+    })
+    mockedStorage.getItem.mockResolvedValue(null)
+    mockFetch.mockResolvedValue({ id: 'dt-1' })
+
+    const state = await registerForPush(ACCOUNT)
+
+    expect(state.status).toBe('registered')
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/v1/device-tokens',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+})
+
+describe('enableNotifications', () => {
+  it('prompts when askable, then registers on a grant', async () => {
+    ;(Notifications.getPermissionsAsync as jest.Mock)
+      .mockResolvedValueOnce({ status: 'denied', canAskAgain: true }) // request's pre-check
+      .mockResolvedValue({ status: 'granted' }) // registerForPush's check
+    ;(Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValueOnce({
+      status: 'granted',
+    })
+    mockedStorage.getItem.mockResolvedValue(null)
+    mockFetch.mockResolvedValue({ id: 'dt-1' })
+
+    await expect(enableNotifications(ACCOUNT)).resolves.toBe('granted')
+
+    expect(Notifications.requestPermissionsAsync).toHaveBeenCalledTimes(1)
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/v1/device-tokens',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('returns blocked without prompting', async () => {
+    ;(Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      status: 'denied',
+      canAskAgain: false,
+    })
+
+    await expect(enableNotifications(ACCOUNT)).resolves.toBe('blocked')
+
+    expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled()
   })
 })
 
@@ -148,6 +256,16 @@ describe('unregisterForPush', () => {
       expect.objectContaining({ method: 'DELETE' }),
     )
     expect(mockedStorage.deleteItem).toHaveBeenCalledWith(expect.stringMatching(KEY_RE))
+  })
+
+  it('sends only the token part of a `token|permission` cache marker', async () => {
+    mockedStorage.getItem.mockResolvedValue('ExponentPushToken[abc]|blocked')
+    mockFetch.mockResolvedValue({ deactivated: true })
+
+    await unregisterForPush(ACCOUNT)
+
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string)
+    expect(body).toEqual({ expoPushToken: 'ExponentPushToken[abc]' })
   })
 
   it('no-ops when there is no cached token', async () => {

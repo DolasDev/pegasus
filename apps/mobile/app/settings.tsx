@@ -8,6 +8,9 @@ import {
   loadPushRegistrationState,
   type PushRegistrationState,
 } from '../src/services/pushNotifications'
+import { usePermission } from '../src/hooks/usePermission'
+import { needsFix, type PermissionKind, type PermissionState } from '../src/services/permissions'
+import { fixLabel, fixPermission } from '../src/components/PermissionPrompt'
 
 /**
  * The published privacy policy — the same URL registered with the App Store and
@@ -46,12 +49,79 @@ function describePushState(s: PushRegistrationState): string {
     case 'registered':
       return 'Registered'
     case 'skipped':
-      return `Not registered — ${s.reason}`
+      // A permission skip still registers the device (so dispatch can see
+      // notifications are off) — it just can't show anything.
+      return s.permission ? `Off — ${s.reason}` : `Not registered — ${s.reason}`
     case 'failed':
       return `Failed — ${s.reason}`
     default:
       return 'Not registered yet'
   }
+}
+
+function describePermission(state: PermissionState | null): string {
+  switch (state) {
+    case 'granted':
+      return 'Allowed'
+    case 'limited':
+      return 'Limited'
+    case 'askable':
+      return 'Not allowed yet'
+    case 'blocked':
+      return 'Off'
+    case 'channelOff':
+      return 'Off (category)'
+    default:
+      return '…'
+  }
+}
+
+/**
+ * One permission: its live OS state plus the fix that works on this platform
+ * (prompt while the OS can, else Settings). Hidden where it doesn't apply —
+ * e.g. Camera on Android, whose scanner needs no permission.
+ */
+function PermissionRow({
+  kind,
+  label,
+  why,
+  accountKey,
+  onChanged,
+}: {
+  kind: PermissionKind
+  label: string
+  why: string
+  accountKey: string
+  onChanged?: () => void
+}) {
+  const { state, setState } = usePermission(kind)
+  if (state === 'notApplicable') return null
+  const fix = async () => {
+    if (!state) return
+    setState(await fixPermission(kind, state, accountKey))
+    onChanged?.()
+  }
+  return (
+    <View style={styles.permRow}>
+      <View style={styles.permText}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.permWhy}>{why}</Text>
+      </View>
+      <View style={styles.permRight}>
+        <Text
+          style={[styles.permStatus, state && needsFix(state) ? styles.permOff : null]}
+          accessibilityLabel={`${label}: ${describePermission(state)}`}
+        >
+          {describePermission(state)}
+        </Text>
+        {state && needsFix(state) ? (
+          <TouchableOpacity onPress={() => void fix()} accessibilityRole="button" hitSlop={8}>
+            <Text style={styles.permFix}>{fixLabel(state)}</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  )
 }
 
 export default function SettingsScreen() {
@@ -62,6 +132,7 @@ export default function SettingsScreen() {
   // without pulling logs off the handset. Surfacing the last outcome here makes
   // it self-diagnosable.
   const [pushState, setPushState] = useState<PushRegistrationState>({ status: 'unknown' })
+  const reloadPushState = () => loadPushRegistrationState().then(setPushState)
   useEffect(() => {
     let active = true
     loadPushRegistrationState().then((s) => {
@@ -71,6 +142,7 @@ export default function SettingsScreen() {
       active = false
     }
   }, [])
+  const accountKey = session?.email ?? ''
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
@@ -105,6 +177,31 @@ export default function SettingsScreen() {
             <Text style={styles.label}>Role</Text>
             <Text style={styles.value}>{session?.role ?? '—'}</Text>
           </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>PERMISSIONS</Text>
+        <View style={styles.infoCard}>
+          <PermissionRow
+            kind="notifications"
+            label="Notifications"
+            why="Trip assignments, chat, and blocked-task alerts"
+            accountKey={accountKey}
+            onChanged={() => void reloadPushState()}
+          />
+          <PermissionRow
+            kind="camera"
+            label="Camera"
+            why="Scanning shipment documents"
+            accountKey={accountKey}
+          />
+          <PermissionRow
+            kind="contacts"
+            label="Contacts"
+            why="Importing crews into Labor (only those you pick)"
+            accountKey={accountKey}
+          />
         </View>
       </View>
 
@@ -244,6 +341,23 @@ const styles = StyleSheet.create({
     fontSize: fontSize.large,
     color: colors.textPrimary,
     fontWeight: '600',
+  },
+  permRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  permText: { flex: 1, paddingRight: spacing.md },
+  permWhy: { fontSize: fontSize.small, color: colors.textSecondary, marginTop: spacing.xs },
+  permRight: { alignItems: 'flex-end' },
+  permStatus: { fontSize: fontSize.medium, color: colors.textPrimary, fontWeight: '600' },
+  permOff: { color: colors.error },
+  permFix: {
+    fontSize: fontSize.medium,
+    color: colors.primary,
+    fontWeight: '700',
+    marginTop: spacing.xs,
   },
   linkButton: {
     backgroundColor: colors.background,

@@ -22,6 +22,21 @@ import Constants from 'expo-constants'
 import { getApiClient } from '../api/client'
 import { storage } from '../utils/storage'
 import { logger } from '../utils/logger'
+import {
+  ANDROID_CHANNEL_ID,
+  getPermission,
+  requestPermission,
+  type PermissionState,
+} from './permissions'
+
+const PERMISSION_REASON: Record<PermissionState, string> = {
+  granted: 'permission granted',
+  limited: 'permission limited',
+  askable: 'permission not asked yet',
+  blocked: 'permission denied',
+  channelOff: 'notification channel switched off',
+  notApplicable: 'not supported here',
+}
 
 /**
  * Secure-store key holding the Expo push token we last successfully registered,
@@ -59,6 +74,15 @@ function accountSlug(accountKey: string): string {
 const registeredTokenKey = (accountKey: string): string =>
   accountKey ? `${REGISTERED_TOKEN_KEY}.${accountSlug(accountKey)}` : REGISTERED_TOKEN_KEY
 
+/**
+ * The cached marker is `token|permission`. Values written before permission
+ * reporting are a bare token: they simply miss once and get rewritten.
+ */
+const cacheMarker = (token: string, permission: PermissionState): string => `${token}|${permission}`
+
+/** The token part of a cached marker (or a pre-reporting bare token). */
+const tokenFromMarker = (marker: string): string => marker.split('|')[0] ?? marker
+
 /** Secure-store key holding the last registration outcome (see PushRegistrationState). */
 const REGISTRATION_STATE_KEY = 'pegasus_push_state'
 
@@ -72,7 +96,13 @@ const REGISTRATION_STATE_KEY = 'pegasus_push_state'
 export type PushRegistrationState =
   | { status: 'unknown' }
   | { status: 'registered'; account: string; at: string }
-  | { status: 'skipped'; reason: string; at: string }
+  | {
+      status: 'skipped'
+      reason: string
+      /** Set when the skip is a permission problem — branch on this, not `reason`. */
+      permission?: PermissionState
+      at: string
+    }
   | { status: 'failed'; reason: string; at: string }
 
 let lastState: PushRegistrationState = { status: 'unknown' }
@@ -101,8 +131,6 @@ async function recordState(state: PushRegistrationState): Promise<void> {
     // Persistence is best-effort; the in-memory value still serves this session.
   }
 }
-
-const ANDROID_CHANNEL_ID = 'default'
 
 type ApiPlatform = 'IOS' | 'ANDROID'
 
@@ -145,8 +173,8 @@ export async function initNotifications(): Promise<void> {
 }
 
 /**
- * Requests permission (if not already granted), obtains the Expo push token, and
- * registers it with the API. Idempotent and cheap to call repeatedly: a no-op on
+ * If permission is ALREADY granted (it never prompts — see enableNotifications),
+ * obtains the Expo push token and registers it with the API. Idempotent and cheap to call repeatedly: a no-op on
  * unsupported platforms, when permission is denied, or when the token is
  * unchanged since the last successful registration. Never throws — failures are
  * logged so they can't break app startup.
@@ -161,15 +189,22 @@ export async function registerForPush(accountKey: string): Promise<PushRegistrat
       return lastState
     }
 
-    const existing = await Notifications.getPermissionsAsync()
-    let status = existing.status
-    if (status !== 'granted') {
-      const requested = await Notifications.requestPermissionsAsync()
-      status = requested.status
-    }
-    if (status !== 'granted') {
-      logger.info('Push permission not granted', { status })
-      await recordState({ status: 'skipped', reason: `permission ${status}`, at })
+    // CHECK only — never prompt here. This runs on every login and every
+    // foreground resume; prompting from it re-showed Android 13+'s dialog on
+    // each resume until two dismissals made the denial permanent, and spent
+    // iOS's single prompt with no context. Prompting is `enableNotifications`,
+    // called from a user tap (the primer screen, a banner's Fix button).
+    // The foreground re-run is still what notices a toggle flipped in Settings.
+    //
+    // The token is registered WHATEVER the permission, with the permission
+    // reported alongside it: minting needs no notification permission (iOS
+    // registerForRemoteNotifications, Android FCM), and the server needs the
+    // row to show dispatch that this driver has notifications off. The server
+    // never pushes to an `askable`/`blocked` device
+    // (device-tokens.repository.ts → listActiveTokensForUser).
+    const permission = await getPermission('notifications')
+    if (permission === 'notApplicable') {
+      await recordState({ status: 'skipped', reason: PERMISSION_REASON[permission], at })
       return lastState
     }
 
@@ -189,27 +224,59 @@ export async function registerForPush(accountKey: string): Promise<PushRegistrat
     }
 
     // Skip the round-trip only when this token is already registered for THIS
-    // account — see registeredTokenKey.
+    // account WITH THIS permission — see registeredTokenKey. Caching the pair
+    // is what re-reports a permission the driver changed in Settings.
     const key = registeredTokenKey(accountKey)
+    const marker = cacheMarker(expoPushToken, permission)
     const cached = await storage.getItem(key)
-    if (cached === expoPushToken) {
-      await recordState({ status: 'registered', account: accountKey, at })
-      return lastState
+    if (cached !== marker) {
+      await getApiClient().fetch<{ id: string }>('/api/v1/device-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ platform, expoPushToken, permission }),
+      })
+      await storage.setItem(key, marker)
+      logger.info('Registered device for push notifications', { platform, permission })
     }
 
-    await getApiClient().fetch<{ id: string }>('/api/v1/device-tokens', {
-      method: 'POST',
-      body: JSON.stringify({ platform, expoPushToken }),
-    })
-    await storage.setItem(key, expoPushToken)
-    logger.info('Registered device for push notifications', { platform })
-    await recordState({ status: 'registered', account: accountKey, at })
+    // `channelOff` counts as registered: the app-level permission is held and
+    // the server still delivers; the switched-off channel is a nudge only.
+    if (permission === 'granted' || permission === 'limited' || permission === 'channelOff') {
+      await recordState({ status: 'registered', account: accountKey, at })
+    } else {
+      logger.info('Push permission not granted', { permission })
+      await recordState({
+        status: 'skipped',
+        reason: PERMISSION_REASON[permission],
+        permission,
+        at,
+      })
+    }
     return lastState
   } catch (error) {
     logger.error('Push registration failed', error)
     await recordState({ status: 'failed', reason: String(error), at })
     return lastState
   }
+}
+
+/**
+ * User-initiated: show the OS prompt if the OS still can, then register. Call
+ * ONLY from a tap — see registerForPush for why background code must not
+ * prompt. Returns the permission state so the caller can fall back to
+ * "Open Settings" when it is `blocked`/`channelOff`.
+ */
+export async function enableNotifications(accountKey: string): Promise<PermissionState> {
+  let state: PermissionState
+  try {
+    state = await requestPermission('notifications')
+  } catch (error) {
+    logger.error('Notification permission request failed', error)
+    return 'askable'
+  }
+  if (state === 'granted' || state === 'limited' || state === 'channelOff') {
+    await registerForPush(accountKey)
+  }
+  return state
 }
 
 /**
@@ -224,7 +291,7 @@ export async function unregisterForPush(accountKey: string): Promise<void> {
     if (!cached) return
     await getApiClient().fetch('/api/v1/device-tokens', {
       method: 'DELETE',
-      body: JSON.stringify({ expoPushToken: cached }),
+      body: JSON.stringify({ expoPushToken: tokenFromMarker(cached) }),
     })
     logger.info('Deactivated device push token')
   } catch (error) {

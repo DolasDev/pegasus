@@ -56,6 +56,45 @@ Where credentials are still missing, the failure is silent by design:
 `registerForPush` catches and logs, so no token is ever registered and outbox
 rows simply find no device to deliver to. Nothing errors, nothing is lost.
 
+## Permission: who asks, and when
+
+`registerForPush` **never prompts.** It runs on every login and every foreground
+resume, so prompting from it re-showed Android 13+'s dialog on each resume until
+two dismissals made the denial permanent, and it spent iOS's single prompt
+without explaining anything. It only checks permission, and re-registers the
+moment the driver flips the switch in Settings.
+
+The OS prompt is shown only by `enableNotifications`, called from a tap:
+
+| Surface                                     | When                                                            | Fix button                                                               |
+| ------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `PushPrimer` ("Stay in the loop" modal)     | Once per device after login, only while the OS can still prompt | "Turn on notifications" → OS prompt; "Not now" leaves the prompt unspent |
+| `PermissionBanner` on the dashboard         | Push off; "Later" snoozes 3 days                                | Askable → OS prompt; blocked / channel off → Settings                    |
+| `PermissionBanner` on Notification settings | Push off (no snooze)                                            | same                                                                     |
+| Settings → PERMISSIONS                      | Always                                                          | same, per permission                                                     |
+
+The shared model is `src/services/permissions.ts`. Every surface branches on
+`askable` (the OS can still prompt) vs `blocked` (Settings only). It never relies
+on `undetermined`. It reads `status` + `canAskAgain`, plus Android's `default`
+channel importance, which catches a granted app whose channel is switched off.
+
+### The token is registered even when notifications are off
+
+Minting a token needs no notification permission (iOS
+`registerForRemoteNotifications`, Android FCM). So `registerForPush` always
+registers it on a physical device and sends the OS permission with it
+(`POST /device-tokens` `{ permission }` → `DeviceToken.pushPermission`). It
+re-reports whenever the permission changes (the cache marker is
+`token|permission`).
+
+- **Delivery:** `listActiveTokensForUser` never returns an `ASKABLE`/`BLOCKED`
+  device, which matches delivery before reporting existed, when those devices had
+  no row. A null (older app version) or `CHANNEL_OFF` device is still delivered to.
+- **Dispatch:** Operations → Itinerary shows "Notifications on / off / unknown /
+  No app / No login linked" for the picked driver
+  (`GET /onprem/longhaul/drivers/phone-status`, Operations roles only), stamped
+  with the app's last open.
+
 ## Step 1 — Android (Firebase / FCM)
 
 FCM is the only push transport Google Play devices accept, and FCM credentials

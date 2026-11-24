@@ -26,6 +26,13 @@ import {
   type PreparedDocument,
 } from '../services/documentCapture'
 import { DocumentService } from '../services/documentService'
+import {
+  getPermission,
+  requestPermission,
+  openPermissionSettings,
+  settingsSteps,
+  type PermissionState,
+} from '../services/permissions'
 import { logger } from '../utils/logger'
 
 interface Props {
@@ -67,8 +74,56 @@ export function AddDocumentModal({ visible, orderNum, onClose, onUploaded, initi
     onClose()
   }
 
+  // iOS only (Android's ML Kit scanner needs no camera permission, so
+  // getPermission says notApplicable there). The VisionKit scanner never checks
+  // camera access itself, so without this a driver who once tapped "Don't
+  // Allow" hits a dead scanner with no way back.
   const handleScan = async () => {
     setError(null)
+    let camera: PermissionState
+    try {
+      camera = await getPermission('camera')
+    } catch {
+      camera = 'notApplicable' // Can't tell — let the scanner try.
+    }
+    if (camera === 'askable') {
+      // Soft ask: iOS shows its own camera prompt exactly once.
+      Alert.alert(
+        'Allow camera access',
+        'Pegasus uses the camera only to scan documents for your shipments.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Continue', onPress: () => void askCameraThenScan() },
+        ],
+      )
+      return
+    }
+    if (camera === 'blocked') {
+      Alert.alert(
+        'Camera access is off',
+        `To scan, turn it on: ${settingsSteps('camera')} Or choose a file instead.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Choose file', onPress: () => void handlePick() },
+          { text: 'Open Settings', onPress: () => void openPermissionSettings() },
+        ],
+      )
+      return
+    }
+    await runScan()
+  }
+
+  const askCameraThenScan = async () => {
+    const result = await requestPermission('camera').catch(() => 'askable' as const)
+    if (result === 'granted') {
+      await runScan()
+      return
+    }
+    // They just said no — don't bounce them to Settings; leave the way out.
+    setError('Camera access is needed to scan. You can choose a file instead.')
+  }
+
+  const runScan = async () => {
     try {
       const pages = await scanPages()
       if (pages.length === 0) return // cancelled

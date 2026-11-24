@@ -12,6 +12,7 @@ import type { NotificationChannel } from '@pegasus/domain'
 import { ActivityService } from '../src/services/activityService'
 import type { NotificationPreferenceRow } from '../src/types/activity'
 import { logger } from '../src/utils/logger'
+import { PermissionBanner } from '../src/components/PermissionBanner'
 import { colors, fontSize, spacing, borderRadius } from '../src/theme/colors'
 
 // ---------------------------------------------------------------------------
@@ -68,6 +69,7 @@ export default function NotificationSettingsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content}>
+        <PermissionBanner message="Notifications are off on this phone, so “Push” choices below won’t reach you." />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {rows.map((row) => (
           <View key={row.type} style={styles.card}>

@@ -248,3 +248,39 @@ between two asserters, never between an asserter and a subject. **A citation is 
 text says this, and that the text is right.** Losing that argument did not make the defect
 disappear, though: the brand is still a fossil. _Losing an argument for a change is not an argument
 against it_ — it changes what you are allowed to break for it.
+
+## Mobile push: always register the token, report the OS permission, show dispatch per driver id (2026-11-24)
+
+**Decision.**
+
+- The driver app registers its Expo push token on every login and foreground
+  resume, **whether or not notifications are allowed**, and sends the OS
+  permission with it (`DeviceToken.pushPermission`). Minting a token needs no
+  notification permission: iOS `registerForRemoteNotifications`, Android FCM.
+- Delivery (`listActiveTokensForUser`) skips `ASKABLE`/`BLOCKED` devices, so who
+  receives pushes is exactly what it was before.
+- Dispatchers see the result in Operations → Itinerary
+  (`GET /onprem/longhaul/drivers/phone-status`). It is gated by the same
+  Operations role-name check as `/drivers/itinerary` (no Cedar action).
+
+**Why.**
+
+- A driver with notifications off used to be invisible off the phone: no row, so
+  no signal anywhere. Dispatch is who notices a missed trip assignment.
+- The OS can't be re-prompted (iOS asks once; Android stops after two denials),
+  so the remedy is a person telling the driver, and dispatch needs to know whom
+  to tell.
+
+**Shape choices.**
+
+- **One answer per picked id, never merged.** The longhaul and local crew ids
+  are separate numbering spaces and sometimes different people.
+- **The most recently opened phone decides.** An old handset with notifications
+  on says nothing about the phone the driver carries.
+- **No login emails in the response.** Only `tenant_admin` may list users.
+- **Shown on Itinerary, not the admin-only Users page** (user's call): that is
+  where dispatchers already work.
+
+**Trade-off accepted.** A driver who declined notifications now has a
+device-token row (token + permission, no content). Privacy-policy and Play
+Data safety wording follows from that.

@@ -2916,6 +2916,25 @@ enum DevicePlatform {
   @@schema("public")
 }
 
+/// What the phone's OS lets the app show, as the mobile app last reported it
+/// (apps/mobile/src/services/permissions.ts → PermissionState). The app mints
+/// and registers its token whether or not notifications are allowed, so
+/// dispatch can see who has them off.
+enum PushPermission {
+  /// Allowed.
+  GRANTED
+  /// Partially allowed (iOS provisional) — delivers.
+  LIMITED
+  /// Not allowed; the OS will still show its prompt.
+  ASKABLE
+  /// Not allowed; only the phone's Settings app can turn it on.
+  BLOCKED
+  /// Android: allowed, but the app's notification channel is switched off.
+  CHANNEL_OFF
+
+  @@schema("public")
+}
+
 enum RcTokenStatus {
   ACTIVE
   EXPIRED
@@ -3438,6 +3457,12 @@ model DeviceToken {
   platform      DevicePlatform
   expoPushToken String         @map("expo_push_token")
   isActive      Boolean        @default(true) @map("is_active")
+
+  /// The OS notification permission as last reported by the app. Null = an app
+  /// version that predates reporting it (those only registered when granted).
+  /// ASKABLE / BLOCKED devices are kept for visibility but never pushed to
+  /// (repositories/device-tokens.repository.ts → listActiveTokensForUser).
+  pushPermission PushPermission? @map("push_permission")
 
   /// Refreshed each time the app re-registers (login / foreground resume), so
   /// stale devices can be aged out.

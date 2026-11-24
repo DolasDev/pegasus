@@ -4073,3 +4073,39 @@ setting, so a tenant that was already using them (NW) loses them on deploy
 until an admin ticks the box. The mobile app learns the flag from
 `GET /me/driver` → `driverEtaEnabled`; the trip screen sits outside the
 drawer's `TripsProvider` and fetches `/me/driver` itself.
+
+## Mobile OS permissions: never prompt from background code; trust `status`, not `granted`
+
+- **iOS shows a permission prompt once; Android 13+ shows `POST_NOTIFICATIONS`
+  until two denials.** Code that runs on every foreground must only _check_.
+  `registerForPush` used to call `requestPermissionsAsync` on every resume,
+  which re-showed Android's dialog until the denial became permanent. Prompts
+  now go through `enableNotifications` / `requestPermission`, called only from
+  a tap (`src/services/permissions.ts`, PR for mobile-permission-nudges).
+- **expo-notifications on Android 13+ can return `granted: true` with
+  `status: 'denied'`.** That means the runtime permission is held but the app's
+  notifications are switched off in App info
+  (`NotificationPermissionsModule.kt`). Reading `granted` says "fine". Read
+  `status`. Re-asking can't fix it: Settings only.
+- **On Android ≤12, `canAskAgain` mirrors `areNotificationsEnabled`.** So
+  notifications switched off there are `blocked`, never `askable`.
+- **The document scanner needs a camera permission only on iOS.** VisionKit
+  needs one and the plugin never checks it. Android's ML Kit scanner runs in
+  Play services, and "Choose file" is the system picker, so there is no
+  storage permission. Don't add Android camera or storage nudges.
+- **Jest: mutating `Device.isDevice` from a test doesn't always reach the
+  module under test** (each module may get its own interop copy). Use a getter
+  mock: `jest.mock('expo-device', () => ({ get isDevice() { return mockIsDevice } }))`.
+- **A `DeviceToken` row no longer means "this phone can show pushes."** The app
+  registers its token even with notifications off, reporting `pushPermission`.
+  Anything that picks push targets must go through `listActiveTokensForUser`,
+  which skips `ASKABLE`/`BLOCKED`. A new `deviceToken.findMany` for delivery that
+  filters only on `isActive` would push to phones that drop it, and still count
+  the push as sent.
+- **The Android manifest is cleaned through `app.json` → `blockedPermissions`,
+  not by removing entries from `permissions`.** Plugins and libraries re-add what
+  they want (expo-image-picker added `RECORD_AUDIO` and `CAMERA`). Check the
+  result with
+  `npx expo config --type introspect --json` → `_internal.modResults.android.manifest`.
+  Don't set image-picker `cameraPermission: false`: it DELETES
+  `NSCameraUsageDescription`, which the iOS VisionKit scanner needs.

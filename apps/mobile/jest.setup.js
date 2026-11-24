@@ -54,9 +54,10 @@ jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
   requestPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
   getExpoPushTokenAsync: jest.fn(() => Promise.resolve({ data: 'ExponentPushToken[test]' })),
+  getNotificationChannelAsync: jest.fn(() => Promise.resolve(null)),
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
-  AndroidImportance: { DEFAULT: 3 },
+  AndroidImportance: { NONE: 2, DEFAULT: 5 },
 }));
 
 // Mock expo-device — default to non-physical so registerForPush() no-ops in
@@ -123,6 +124,9 @@ jest.mock('expo-crypto', () => ({
 
 // Mock expo-image-picker
 jest.mock('expo-image-picker', () => ({
+  getCameraPermissionsAsync: jest.fn(() =>
+    Promise.resolve({ status: 'granted', granted: true, canAskAgain: true })
+  ),
   requestCameraPermissionsAsync: jest.fn(() =>
     Promise.resolve({ status: 'granted' })
   ),

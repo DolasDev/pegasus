@@ -186,4 +186,101 @@ describe('ItineraryModule', () => {
     await user.selectOptions(picker, '134')
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load local jobs')
   })
+
+  describe('phone notifications status', () => {
+    const PHONE = '/api/v1/onprem/longhaul/drivers/phone-status?longhaulDriverId=134'
+
+    function withPhoneStatus(data: unknown) {
+      const base = apiFetchMock.getMockImplementation()!
+      apiFetchMock.mockImplementation(async (path: string) => (path === PHONE ? data : base(path)))
+    }
+
+    async function pickDriver() {
+      const user = userEvent.setup()
+      renderWithStore(<ItineraryModule />)
+      const picker = await screen.findByLabelText('Longhaul driver')
+      await waitFor(() => expect(picker).not.toBeDisabled())
+      await user.selectOptions(picker, '134')
+    }
+
+    it('reads nothing until a driver is picked', async () => {
+      renderWithStore(<ItineraryModule />)
+      await screen.findByText('Pick a driver')
+      expect(apiFetchMock).not.toHaveBeenCalledWith(expect.stringContaining('phone-status'))
+    })
+
+    it('warns the dispatcher when the driver has notifications off, with how to fix it', async () => {
+      withPhoneStatus({
+        longhaul: {
+          status: 'off',
+          lastSeenAt: '2026-11-01T15:00:00Z',
+          devices: [
+            { platform: 'ANDROID', permission: 'blocked', lastSeenAt: '2026-11-01T15:00:00Z' },
+          ],
+        },
+        local: null,
+      })
+      await pickDriver()
+      expect(await screen.findByText('Notifications off')).toBeInTheDocument()
+      expect(screen.getByText(/Settings → Permissions → Notifications/)).toBeInTheDocument()
+      expect(screen.getByText(/as of the app’s last open/)).toBeInTheDocument()
+    })
+
+    it('shows notifications on', async () => {
+      withPhoneStatus({
+        longhaul: {
+          status: 'on',
+          lastSeenAt: '2026-11-01T15:00:00Z',
+          devices: [{ platform: 'IOS', permission: 'granted', lastSeenAt: '2026-11-01T15:00:00Z' }],
+        },
+        local: null,
+      })
+      await pickDriver()
+      expect(await screen.findByText('Notifications on')).toBeInTheDocument()
+      expect(screen.getByText('Longhaul driver:')).toBeInTheDocument()
+    })
+
+    it('says when no login is mapped to the driver', async () => {
+      withPhoneStatus({
+        longhaul: { status: 'notLinked', lastSeenAt: null, devices: [] },
+        local: null,
+      })
+      await pickDriver()
+      expect(await screen.findByText('No login linked')).toBeInTheDocument()
+      expect(screen.queryByText(/as of the app’s last open/)).toBeNull()
+    })
+
+    it('shows the longhaul driver and the local crew separately, never merged', async () => {
+      const BOTH =
+        '/api/v1/onprem/longhaul/drivers/phone-status?longhaulDriverId=134&localDriverEmployeeId=3097'
+      const base = apiFetchMock.getMockImplementation()!
+      apiFetchMock.mockImplementation(async (path: string) =>
+        path === BOTH
+          ? {
+              longhaul: { status: 'on', lastSeenAt: '2026-11-01T15:00:00Z', devices: [] },
+              local: { status: 'off', lastSeenAt: '2026-11-01T15:00:00Z', devices: [] },
+            }
+          : base(path),
+      )
+      const user = userEvent.setup()
+      renderWithStore(<ItineraryModule />)
+      const lh = await screen.findByLabelText('Longhaul driver')
+      const crew = screen.getByLabelText('Local crew')
+      await waitFor(() => expect(crew).not.toBeDisabled())
+      await user.selectOptions(lh, '134')
+      await user.selectOptions(crew, '3097')
+
+      expect(await screen.findByText('Local crew:')).toBeInTheDocument()
+      expect(screen.getByText('Longhaul driver:')).toBeInTheDocument()
+      expect(screen.getByText('Notifications on')).toBeInTheDocument()
+      expect(screen.getByText('Notifications off')).toBeInTheDocument()
+    })
+
+    it('says nothing when the status cannot be read', async () => {
+      // The default mock throws for the phone-status path.
+      await pickDriver()
+      await screen.findByText('Pack')
+      expect(screen.queryByText(/Notifications/)).toBeNull()
+    })
+  })
 })

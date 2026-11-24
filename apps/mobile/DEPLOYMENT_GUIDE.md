@@ -273,8 +273,12 @@ TestFlight needs none of this; a public listing needs all of it.
   Every future update is re-reviewed, so make this a permanent demo tenant.
 - **Privacy policy URL** — mandatory, must be live and public.
 - **App Privacy questionnaire** — declare what is actually collected (contact
-  info, identifiers, camera/photos). The app requests no location permission —
-  don't declare location collection.
+  info, identifiers, scanned document images). The app requests no location
+  permission — don't declare location collection. The photo library and
+  microphone are no longer requested (`app.json`: image-picker
+  `photosPermission`/`microphonePermission: false`); Android's camera and storage
+  permissions are blocked because the ML Kit scanner and the system file picker
+  need neither. Re-check the Play **Data safety** form against that.
 - **Screenshots** — 6.9" iPhone at 1320×2868, generated in
   `store-assets/ios/screenshots/`. `app.json` sets `ios.supportsTablet: false`
   (phone-only), so no 13" iPad set is required and reviewers test on iPhone.

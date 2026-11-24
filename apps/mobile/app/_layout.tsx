@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, AppState } from 'react-native'
 import { Stack, SplashScreen, useRouter } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
 import { ChatProvider } from '../src/chat/ChatContext'
+import { PushPrimer } from '../src/components/PushPrimer'
 import { isConfigValid } from '../src/config'
 import { getAuthService } from '../src/auth/authServiceInstance'
 import {
@@ -112,6 +113,8 @@ function RootLayoutNav() {
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
       </Stack>
+      {/* The soft ask before the one-shot OS notification prompt. */}
+      <PushPrimer enabled={isAuthenticated} accountKey={accountKey} />
     </ChatProvider>
   )
 }
