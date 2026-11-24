@@ -55,6 +55,27 @@ export const ASSISTANT_OPUS_5: AssistantModel = {
 }
 
 /**
+ * Moonshot Kimi K3.1 on the US geo profile. The interim default while AWS gates
+ * Anthropic models on the member accounts (2026-11-24). Converse tool use and
+ * streaming verified on staging and prod; it rejects `cachePoint`, so it runs
+ * as the generic family (no caching, no effort knob).
+ */
+export const ASSISTANT_KIMI_K3_1: AssistantModel = {
+  profileId: 'us.moonshotai.kimi-k3.1',
+  foundationModelId: 'moonshotai.kimi-k3.1',
+  // From `aws bedrock get-inference-profile` in us-east-1.
+  destinationRegions: ['us-east-1', 'us-east-2', 'us-west-2'],
+}
+
+/** Amazon Nova 2 Lite on the US geo profile: a cheap baseline for Lab comparisons. */
+export const ASSISTANT_NOVA_2_LITE: AssistantModel = {
+  profileId: 'us.amazon.nova-2-lite-v1:0',
+  foundationModelId: 'amazon.nova-2-lite-v1:0',
+  // From `aws bedrock get-inference-profile` in us-east-1.
+  destinationRegions: ['us-east-1', 'us-east-2', 'us-west-2'],
+}
+
+/**
  * Check the model list at synth time. Each rule catches a mistake a deploy
  * would otherwise surface only at the first model call, or never (a worldwide
  * route).
