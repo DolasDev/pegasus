@@ -275,12 +275,12 @@ describe.skipIf(!hasDb)('/assistant (integration)', () => {
   it('streams an eval run case by case and ends with a summary', async () => {
     useScript([{ content: [{ type: 'text', text: "I don't have access to billing." }] }])
     const res = await post(opsAdmin(), '/evals/run', {
-      caseIds: ['example-driver-asks-for-an-invoice-total'],
+      caseIds: ['driver-asks-invoice-total'],
     })
     const evs = await events(res)
     expect(evs.map(([e]) => e)).toEqual(['start', 'case', 'summary'])
     expect(evs[1]![1]).toMatchObject({
-      id: 'example-driver-asks-for-an-invoice-total',
+      id: 'driver-asks-invoice-total',
       verdict: 'pass',
     })
     expect(evs[2]![1]).toMatchObject({ summary: { total: 1, graded: 1, passed: 1 } })
@@ -322,7 +322,7 @@ describe.skipIf(!hasDb)('/assistant (integration)', () => {
       useScript([{ content: [{ type: 'text', text: "I don't have access to billing." }] }])
       const evs = await events(
         await post(opsAdmin(), '/evals/run', {
-          caseIds: ['example-driver-asks-for-an-invoice-total'],
+          caseIds: ['driver-asks-invoice-total'],
           modelId: 'us.amazon.nova-2-lite-v1:0',
         }),
       )
