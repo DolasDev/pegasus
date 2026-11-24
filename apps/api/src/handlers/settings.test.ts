@@ -345,6 +345,29 @@ describe('settings handler', () => {
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })
 
+    it('saves operations.driverEtaSubmission — the opt-in that re-enables driver ETAs', async () => {
+      mockDb.tenant['findUniqueOrThrow'] = vi.fn().mockResolvedValue({
+        appSettings: { operations: { longhaulClient: 'nwi' } },
+      })
+      mockDb.tenant.update.mockResolvedValue({})
+
+      const res = await buildApp().request(
+        '/app',
+        patchReq({ operations: { driverEtaSubmission: true } }),
+      )
+
+      expect(res.status).toBe(200)
+      const ops = ((await json(res)).data as JsonBody)['operations'] as JsonBody
+      expect(ops).toEqual({ longhaulClient: 'nwi', driverEtaSubmission: true })
+      // One write — the settings JSON; no longhaulClient mirror for this key.
+      expect(mockDb.tenant.update).toHaveBeenCalledTimes(1)
+      const write = mockDb.tenant.update.mock.calls[0]![0] as JsonBody
+      expect(((write['data'] as JsonBody)['appSettings'] as JsonBody)['operations']).toEqual({
+        longhaulClient: 'nwi',
+        driverEtaSubmission: true,
+      })
+    })
+
     it('writes the merged settings AND mirrors longhaulClient into the column', async () => {
       mockDb.tenant['findUniqueOrThrow'] = vi.fn().mockResolvedValue({
         appSettings: { operations: { longhaulClient: 'nwi' } },

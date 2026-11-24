@@ -146,7 +146,12 @@ meHandler.get('/driver', async (c) => {
       where: { id: userId },
       select: { longhaulDriverId: true, localDriverEmployeeId: true },
     }),
-    getAppSettings(db, c.get('tenantId')),
+    // A settings read failure must not cost the app its driver mapping: report
+    // ETAs off (the write routes enforce the setting on their own anyway).
+    getAppSettings(db, c.get('tenantId')).catch((err: unknown) => {
+      logger.warn('/me/driver: app settings unreadable; reporting driver ETAs off', { err })
+      return null
+    }),
   ])
 
   return c.json({
@@ -154,7 +159,7 @@ meHandler.get('/driver', async (c) => {
       longhaulDriverId: user?.longhaulDriverId ?? null,
       localDriverEmployeeId: user?.localDriverEmployeeId ?? null,
       userId,
-      driverEtaEnabled: isDriverEtaEnabled(settings),
+      driverEtaEnabled: settings ? isDriverEtaEnabled(settings) : false,
     },
   })
 })

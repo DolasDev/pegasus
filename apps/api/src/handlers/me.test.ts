@@ -193,6 +193,15 @@ describe('GET /driver', () => {
     })
   })
 
+  it('still returns the mapping, with ETAs off, when the settings read fails', async () => {
+    mockFindUnique.mockResolvedValue({ longhaulDriverId: 4231, localDriverEmployeeId: null })
+    mockTenantFind.mockRejectedValue(new Error('db blip'))
+    const res = await buildDriverApp('user-1').request('/driver')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data).toMatchObject({ longhaulDriverId: 4231, driverEtaEnabled: false })
+  })
+
   it("carries the tenant's driver ETA opt-in", async () => {
     mockFindUnique.mockResolvedValue({ longhaulDriverId: 4231, localDriverEmployeeId: null })
     mockTenantFind.mockResolvedValue({ appSettings: { operations: { driverEtaSubmission: true } } })
