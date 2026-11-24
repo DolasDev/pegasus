@@ -2022,16 +2022,19 @@ describe('ApiStack — AI assistant', () => {
     )
   })
 
-  it('exposes a streaming Function URL with in-function auth and the CORS allowlist', () => {
+  it('exposes a streaming Function URL with in-function auth and CORS left to Hono', () => {
     const t = synth({ corsAllowedOrigins: ['https://pegasus.dolas.dev'] })
+    // URL-level CORS would duplicate Access-Control-Allow-Origin next to the
+    // Hono middleware's copy, and browsers reject the response.
     t.hasResourceProperties('AWS::Lambda::Url', {
       AuthType: 'NONE',
       InvokeMode: 'RESPONSE_STREAM',
-      Cors: Match.objectLike({
-        AllowOrigins: ['https://pegasus.dolas.dev'],
-        AllowMethods: ['GET', 'POST'],
-      }),
+      Cors: Match.absent(),
     })
+    // The Hono middleware needs the allowlist on the assistant function itself.
+    expect(fnByTimeout(t, 300).Environment.Variables['CORS_ALLOWED_ORIGINS']).toBe(
+      'https://pegasus.dolas.dev',
+    )
   })
 
   it('exports the Function URL under a pinned name for the frontend-assets stack', () => {
