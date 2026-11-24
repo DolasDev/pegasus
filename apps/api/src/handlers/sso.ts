@@ -47,6 +47,7 @@ import {
   addProviderToAppClient,
   removeProviderFromAppClient,
   reconcileAppClientProvidersSafely,
+  secondarySsoClientIdsFromEnv,
 } from '../lib/cognito-app-client'
 
 // ---------------------------------------------------------------------------
@@ -60,17 +61,13 @@ const USER_POOL_ID = process.env['COGNITO_USER_POOL_ID'] ?? ''
 // returned code, and then fails the callback with a bare 400 and no error_description.
 const TENANT_CLIENT_ID = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
 
-// The MoveManager desktop client (cloud identity I4) needs the same providers, or
-// desktop SSO fails the callback exactly the same way. Empty when not deployed.
-// Read per call (not at module load) so tests can stub it.
-function desktopClientId(): string {
-  return process.env['COGNITO_DESKTOP_CLIENT_ID'] ?? ''
-}
+// The MoveManager desktop client (cloud identity I4) and the driver mobile client need
+// the same providers, or their SSO fails the callback exactly the same way. Read per
+// call (not at module load) so tests can stub them; each is skipped when not deployed.
 
-/** The tenant client (always — unchanged behaviour), then the desktop client when set. */
+/** The tenant client (always), then the desktop and mobile clients when set. */
 function ssoAppClientIds(): string[] {
-  const desktop = desktopClientId()
-  return desktop ? [TENANT_CLIENT_ID, desktop] : [TENANT_CLIENT_ID]
+  return [TENANT_CLIENT_ID, ...secondarySsoClientIdsFromEnv()]
 }
 
 // ---------------------------------------------------------------------------
@@ -457,20 +454,19 @@ ssoHandler.post(
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
     }
 
-    // Step 4 — Permit it on the desktop client too (cloud identity I4). Best-effort:
-    // the tenant web client is what this endpoint promises, and POST
-    // /auth/resolve-tenants reconciles the desktop client on the next sign-in, so a
-    // failure here only delays desktop SSO. Rolling back the IdP instead would poison
+    // Step 4 — Permit it on the desktop and mobile clients too. Best-effort: the
+    // tenant web client is what this endpoint promises, and POST
+    // /auth/resolve-tenants reconciles the other clients on the next sign-in, so a
+    // failure here only delays their SSO. Rolling back the IdP instead would poison
     // the tenant client, which already lists it.
-    const desktop = desktopClientId()
-    if (desktop) {
+    for (const clientId of secondarySsoClientIdsFromEnv()) {
       try {
-        await addProviderToAppClient(cognito, USER_POOL_ID, desktop, body.cognitoProviderName)
-      } catch (desktopErr) {
-        logger.warn('POST /providers: failed to permit provider on desktop app client', {
-          error: String(desktopErr),
+        await addProviderToAppClient(cognito, USER_POOL_ID, clientId, body.cognitoProviderName)
+      } catch (clientErr) {
+        logger.warn('POST /providers: failed to permit provider on app client', {
+          error: String(clientErr),
           providerId: provider.id,
-          clientId: desktop,
+          clientId,
         })
       }
     }
@@ -704,7 +700,7 @@ ssoHandler.delete('/providers/:id', requirePermission(Actions.ManageSsoProviders
   // validates SupportedIdentityProviders on every client update, so a list naming a
   // provider that no longer exists poisons the client — the next update, for any other
   // provider, fails with "The provider X does not exist for User Pool ...".
-  // Every client that may list it — the tenant client and the desktop client (I4) —
+  // Every client that may list it — the tenant, desktop (I4) and mobile clients —
   // must drop it first, or the IdP delete below poisons whichever one still names it.
   for (const clientId of ssoAppClientIds()) {
     try {

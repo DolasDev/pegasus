@@ -242,6 +242,7 @@ describe('cognito-app-client', () => {
       vi.stubEnv('COGNITO_USER_POOL_ID', POOL)
       vi.stubEnv('COGNITO_TENANT_CLIENT_ID', CLIENT)
       vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', '')
+      vi.stubEnv('COGNITO_MOBILE_CLIENT_ID', '')
     })
 
     afterEach(() => {
@@ -314,6 +315,33 @@ describe('cognito-app-client', () => {
       await reconcileTenantAppClientFromEnv(['Microsoft'])
 
       expect(sentUpdates().map((u) => u['ClientId'])).toEqual(['desktop-client-id'])
+    })
+
+    // The driver mobile app offers the tenant's provider buttons, so its client needs
+    // the providers too. It never carried them (2026-11-24), and every mobile SSO
+    // sign-in 400'd at the callback.
+    it('also repairs the mobile app client when one is configured', async () => {
+      vi.stubEnv('COGNITO_MOBILE_CLIENT_ID', 'mobile-client-id')
+
+      await reconcileTenantAppClientFromEnv(['Microsoft'])
+
+      expect(sentUpdates().map((u) => u['ClientId'])).toEqual([CLIENT, 'mobile-client-id'])
+      for (const u of sentUpdates()) {
+        expect(u['SupportedIdentityProviders']).toEqual(['COGNITO', 'Microsoft'])
+      }
+    })
+
+    it('repairs tenant, desktop and mobile clients when all are configured', async () => {
+      vi.stubEnv('COGNITO_DESKTOP_CLIENT_ID', 'desktop-client-id')
+      vi.stubEnv('COGNITO_MOBILE_CLIENT_ID', 'mobile-client-id')
+
+      await reconcileTenantAppClientFromEnv(['Microsoft'])
+
+      expect(sentUpdates().map((u) => u['ClientId'])).toEqual([
+        CLIENT,
+        'desktop-client-id',
+        'mobile-client-id',
+      ])
     })
   })
 })
