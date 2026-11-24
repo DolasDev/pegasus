@@ -116,7 +116,9 @@ it.
 
 The format, what makes a good case, and how to keep answers from going stale are
 documented in [`apps/api/src/assistant/evals/README.md`](../apps/api/src/assistant/evals/README.md).
-Three worked examples are in the file already — replace them.
+A drafted candidate set of 40 questions is in the file already — fill in the
+`AUTHOR:` answers and `<PLACEHOLDER>` values from the screens, and settle the
+`DECIDE` cases.
 
 Two things worth insisting on, because they are what the set is really for:
 

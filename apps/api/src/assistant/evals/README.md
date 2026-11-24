@@ -13,7 +13,13 @@ started: [`docs/ai-assistant-ops-admin-onboarding.md`](../../../../../docs/ai-as
 
 30–50 questions a real user would actually type, each paired with the answer
 that is genuinely correct and a note of where a human reads that answer today.
-The three cases currently in the file are **worked examples** — replace them.
+The file holds a **drafted candidate set**: the questions, roles and sources are
+written, but most `answer` cases still carry an `AUTHOR:` expected answer, empty
+`mustInclude`, and `<PLACEHOLDER>` values in the question (a real order number,
+trip number, driver name). Those cases score as _ungraded_ until the operations
+administrator fills them in from the screen named in `source`. The `refuse`
+cases are graded already. Cases whose notes start with **DECIDE** depend on a
+persona grant that may be a gap rather than intent — settle the grant first.
 
 Aim for a spread, not 40 variations of one question:
 
@@ -26,6 +32,13 @@ Aim for a spread, not 40 variations of one question:
 - **Refusals** (`"outcome": "refuse"`). A driver asking a billing question, a
   warehouse user asking about margins. These catch a permissions regression that
   no amount of "does it answer nicely" testing will.
+
+### Choosing `mustNotInclude` markers for a refusal
+
+Use markers that only **leaked data** would contain — a formatted amount
+(`" USD"`, `"$"`), a raw field name (`plan_pack`, `trip_title`), a real order
+number. Never a topic word: a correct refusal says "I can't see invoices", so
+`"invoice"` as a marker fails the very answer the case wants.
 
 ## The shape of a case
 
