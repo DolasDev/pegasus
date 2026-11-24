@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { ApiError } from '@pegasus/api-http'
 import { ItineraryService } from '../../src/services/itineraryService'
+import { useTrips } from '../../src/context/TripsContext'
 import { TripStatusBadge } from '../../src/components/TripStatusBadge'
 import { ItineraryEtaModal, type EtaDraft } from '../../src/components/ItineraryEtaModal'
 import type { ItineraryItem, ItinerarySourceName } from '../../src/types/itinerary'
@@ -71,6 +72,8 @@ export default function ItineraryScreen() {
   const latest = useRef(0)
 
   const [etaItem, setEtaItem] = useState<ItineraryItem | null>(null)
+  // Tenant opt-in (Settings → App → Operations): off ⇒ no ETA action at all.
+  const { driverEtaEnabled } = useTrips()
   const [busyKey, setBusyKey] = useState<string | null>(null)
 
   /** Swap in the server's copy of one item after a write. */
@@ -276,7 +279,7 @@ export default function ItineraryScreen() {
             onItemPress={openItem}
             onTripPress={(tripId) => router.push(`/trip/${tripId}`)}
             onDone={(item) => void toggleDone(item)}
-            onEta={editEta}
+            onEta={driverEtaEnabled ? editEta : undefined}
           />
         )}
         contentContainerStyle={styles.listContent}
@@ -321,7 +324,8 @@ function StopCard({
   onItemPress: (item: ItineraryItem) => void
   onTripPress: (tripId: number) => void
   onDone: (item: ItineraryItem) => void
-  onEta: (item: ItineraryItem) => void
+  /** Absent when the tenant has driver ETA submission off. */
+  onEta?: (item: ItineraryItem) => void
 }) {
   const { line2 } = placeLines(stop.place)
   const title = stopTitle(stop)
@@ -336,7 +340,7 @@ function StopCard({
             item={item}
             busy={busyKey === item.key}
             onDone={() => onDone(item)}
-            onEta={() => onEta(item)}
+            onEta={onEta ? () => onEta(item) : undefined}
           />
         </View>
       ))}
@@ -427,7 +431,8 @@ function ItemActions({
   item: ItineraryItem
   busy: boolean
   onDone: () => void
-  onEta: () => void
+  /** Absent ⇒ the driver can't post an ETA (tenant setting off). */
+  onEta?: () => void
 }) {
   const mine = item.assertion
   const legacyDone = item.actual != null
@@ -446,7 +451,7 @@ function ItemActions({
         ) : null}
       </View>
       {busy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
-      {!legacyDone && !mine?.done && !(activity && item.tripId == null) ? (
+      {onEta && !legacyDone && !mine?.done && !(activity && item.tripId == null) ? (
         <TouchableOpacity
           onPress={onEta}
           disabled={busy}

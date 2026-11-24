@@ -55,10 +55,15 @@ describe('TripService', () => {
 
   describe('getDriverMapping', () => {
     it('returns both mapped ids', async () => {
-      mockFetch.mockResolvedValueOnce({ longhaulDriverId: 4231, localDriverEmployeeId: 3097 })
+      mockFetch.mockResolvedValueOnce({
+        longhaulDriverId: 4231,
+        localDriverEmployeeId: 3097,
+        driverEtaEnabled: false,
+      })
       await expect(TripService.getDriverMapping()).resolves.toEqual({
         longhaulDriverId: 4231,
         localDriverEmployeeId: 3097,
+        driverEtaEnabled: false,
       })
       expect(mockFetch).toHaveBeenCalledWith('/api/v1/me/driver')
     })
@@ -68,6 +73,8 @@ describe('TripService', () => {
       await expect(TripService.getDriverMapping()).resolves.toEqual({
         longhaulDriverId: null,
         localDriverEmployeeId: null,
+        // An older API has no ETA setting and no enforcement.
+        driverEtaEnabled: true,
       })
     })
   })

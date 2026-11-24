@@ -4061,3 +4061,15 @@ doesn't any more. After `npm run db:migrate` adds a model, tsc reports
 `Module '"@prisma/client"' has no exported member 'WorkItem'`, although the
 migration applied fine. Run `npm run db:generate` from `apps/api` after every
 `db:migrate` (seen in task queue Phase 3a, 2026-11-21).
+
+## Driver ETA submission is an OPT-IN tenant setting — enabling it is a rollout step
+
+`operations.driverEtaSubmission` (App Settings → Operations → Driver ETAs) is off
+unless explicitly `true` (`isDriverEtaEnabled`, apps/api/src/lib/app-settings.ts).
+Both driver ETA write routes (`PATCH /onprem/longhaul/driver/activities/:id/eta`,
+`PUT /onprem/longhaul/me/itinerary/acts/eta`) answer `403 DRIVER_ETA_DISABLED`
+when it is off; itinerary "mark done" is NOT gated. Driver ETAs pre-date the
+setting, so a tenant that was already using them (NW) loses them on deploy
+until an admin ticks the box. The mobile app learns the flag from
+`GET /me/driver` → `driverEtaEnabled`; the trip screen sits outside the
+drawer's `TripsProvider` and fetches `/me/driver` itself.

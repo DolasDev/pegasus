@@ -26,6 +26,8 @@ export interface OperationsSettings {
   emailAllowedRecipientDomains?: string[] | null
   /** Built-in driver To Do rules turned on; unset/empty ⇒ drivers get no tasks. */
   driverTaskRules?: DriverTaskRuleId[] | null
+  /** Drivers may submit ETAs from the mobile app; opt-in — only `true` enables it. */
+  driverEtaSubmission?: boolean | null
 }
 
 export interface AppSettings {

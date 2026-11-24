@@ -15,6 +15,7 @@ import {
   AppSettingsSchema,
   AppSettingsPatchSchema,
   mergeAppSettings,
+  isDriverEtaEnabled,
   type AppSettings,
 } from './app-settings'
 
@@ -155,5 +156,38 @@ describe('mergeAppSettings', () => {
     const current = AppSettingsSchema.parse({ operations: { longhaulClient: 'nwi' } })
     const next = mergeAppSettings(current, {})
     expect(next).toEqual(current)
+  })
+})
+
+describe('operations.driverEtaSubmission', () => {
+  it('is OFF when unset — a tenant opts in', () => {
+    expect(isDriverEtaEnabled(AppSettingsSchema.parse({}))).toBe(false)
+  })
+
+  it('is OFF when explicitly null or false', () => {
+    expect(
+      isDriverEtaEnabled(AppSettingsSchema.parse({ operations: { driverEtaSubmission: null } })),
+    ).toBe(false)
+    expect(
+      isDriverEtaEnabled(AppSettingsSchema.parse({ operations: { driverEtaSubmission: false } })),
+    ).toBe(false)
+  })
+
+  it('is ON only when explicitly true', () => {
+    expect(
+      isDriverEtaEnabled(AppSettingsSchema.parse({ operations: { driverEtaSubmission: true } })),
+    ).toBe(true)
+  })
+
+  it('rejects a non-boolean', () => {
+    expect(() =>
+      AppSettingsPatchSchema.parse({ operations: { driverEtaSubmission: 'yes' } }),
+    ).toThrow()
+  })
+
+  it('merging keeps the other operations keys', () => {
+    const current = AppSettingsSchema.parse({ operations: { longhaulClient: 'nwi' } })
+    const next = mergeAppSettings(current, { operations: { driverEtaSubmission: true } })
+    expect(next.operations).toEqual({ longhaulClient: 'nwi', driverEtaSubmission: true })
   })
 })

@@ -29,6 +29,22 @@ export default function TripDetailScreen() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<LonghaulActivity | null>(null)
+  // Tenant opt-in for driver ETAs. This screen sits outside the drawer's
+  // TripsProvider, so it reads /me/driver itself; off until it answers, and
+  // off if it fails (the API refuses the write either way).
+  const [driverEtaEnabled, setDriverEtaEnabled] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    TripService.getDriverMapping()
+      .then((m) => {
+        if (active) setDriverEtaEnabled(m.driverEtaEnabled)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -129,7 +145,7 @@ export default function TripDetailScreen() {
                 key={a.id}
                 activity={a}
                 shipperName={shipperName(a.order_num)}
-                onPress={() => setEditing(a)}
+                onPress={driverEtaEnabled ? () => setEditing(a) : undefined}
               />
             ))}
           </>

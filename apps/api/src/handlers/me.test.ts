@@ -139,12 +139,15 @@ describe('GET /permissions', () => {
 
 describe('GET /driver', () => {
   const mockFindUnique = vi.fn()
+  const mockTenantFind = vi.fn()
 
   function buildDriverApp(userId: string | undefined) {
     const app = new Hono<AppEnv>()
     app.use('*', async (c, next) => {
       c.set('userId', userId as string)
+      c.set('tenantId', 'tenant-1')
       c.set('db', {
+        tenant: { findUniqueOrThrow: mockTenantFind },
         tenantUser: { findUnique: mockFindUnique },
       } as unknown as PrismaClient)
       await next()
@@ -153,14 +156,23 @@ describe('GET /driver', () => {
     return app
   }
 
-  beforeEach(() => mockFindUnique.mockReset())
+  beforeEach(() => {
+    mockFindUnique.mockReset()
+    mockTenantFind.mockReset()
+    mockTenantFind.mockResolvedValue({ appSettings: {} })
+  })
 
   it('returns the mapped longhaul driver id for the calling user', async () => {
     mockFindUnique.mockResolvedValue({ longhaulDriverId: 4231, localDriverEmployeeId: 3097 })
     const res = await buildDriverApp('user-1').request('/driver')
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      data: { longhaulDriverId: 4231, localDriverEmployeeId: 3097, userId: 'user-1' },
+      data: {
+        longhaulDriverId: 4231,
+        localDriverEmployeeId: 3097,
+        userId: 'user-1',
+        driverEtaEnabled: false,
+      },
     })
     expect(mockFindUnique).toHaveBeenCalledWith({
       where: { id: 'user-1' },
@@ -172,7 +184,24 @@ describe('GET /driver', () => {
     mockFindUnique.mockResolvedValue({ longhaulDriverId: null, localDriverEmployeeId: null })
     const res = await buildDriverApp('user-1').request('/driver')
     expect(await res.json()).toEqual({
-      data: { longhaulDriverId: null, localDriverEmployeeId: null, userId: 'user-1' },
+      data: {
+        longhaulDriverId: null,
+        localDriverEmployeeId: null,
+        userId: 'user-1',
+        driverEtaEnabled: false,
+      },
+    })
+  })
+
+  it("carries the tenant's driver ETA opt-in", async () => {
+    mockFindUnique.mockResolvedValue({ longhaulDriverId: 4231, localDriverEmployeeId: null })
+    mockTenantFind.mockResolvedValue({ appSettings: { operations: { driverEtaSubmission: true } } })
+    const res = await buildDriverApp('user-1').request('/driver')
+    const body = (await res.json()) as { data: { driverEtaEnabled: boolean } }
+    expect(body.data.driverEtaEnabled).toBe(true)
+    expect(mockTenantFind).toHaveBeenCalledWith({
+      where: { id: 'tenant-1' },
+      select: { appSettings: true },
     })
   })
 
@@ -180,7 +209,12 @@ describe('GET /driver', () => {
     const res = await buildDriverApp(undefined).request('/driver')
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      data: { longhaulDriverId: null, localDriverEmployeeId: null, userId: null },
+      data: {
+        longhaulDriverId: null,
+        localDriverEmployeeId: null,
+        userId: null,
+        driverEtaEnabled: false,
+      },
     })
     expect(mockFindUnique).not.toHaveBeenCalled()
   })

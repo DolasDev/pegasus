@@ -142,4 +142,9 @@ export interface DriverMapping {
   localDriverEmployeeId?: number | null
   /** The caller's TenantUser id (null for service accounts). Older APIs omit it. */
   userId?: string | null
+  /**
+   * The tenant's opt-in for driver ETA submission (Settings → App → Operations).
+   * Older APIs omit it — they don't enforce the setting either, so absent = true.
+   */
+  driverEtaEnabled?: boolean
 }
