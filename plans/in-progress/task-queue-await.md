@@ -2,30 +2,26 @@
 
 **Branch:** `feat/task-queue-await` (worktree `../pegasus-task-queue-await`)
 **Parent plan:** `plans/todo/task-queue-and-activity-feed.md` §3 Phase 3 (TQ-D2, TQ-D4 guardrail 4). 3a shipped as #985 (`plans/completed/8cde70bf-task-queue-cloud-store.md`).
-**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–8 done; step 9 next.
+**Status:** APPROVED 2026-11-23: Steve said yes to S1–S5 as recommended. Steps 1–9 done; step 10 (gate) next.
 
 ## Resume here (2026-11-23, end of session)
 
-- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 8, `feat(sdk): await_task — SDK 0.69.0` (step 7 `49824712`, step 6 `9a5de7fb`, step 5 `ec126f31`, step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
-- **Status:** steps 1–8 `[x]`, steps 9–10 `[ ]` (see Steps).
-- **Next action — step 9 (docs and records).**
-  - **Parent plan `plans/todo/task-queue-and-activity-feed.md`:**
-    - Record the 3b/3c re-cut (S1), and the S2 decision not to fold `TaskState` into `WorkItem`.
-    - Mark TQ-D4 guardrail 4 "as built": the awaiter registry, the reserved signal, the sweeper.
-  - **`dolas/agents/project/DECISIONS.md`:**
-    - The reserved `pegasus.` signal prefix.
-    - One `TaskAwait` table for both stores; `nextPollAt` means "next check" for both.
-    - The sweeper acts as the runtime service account (D7).
-    - No poll-failure alarm.
-  - **`dolas/agents/project/GOTCHAS.md`:**
-    - `run_automation`'s pre-stamp race. It treats `PARENT_NOT_OPEN` as final, and `automation-steps` has no fallback; the await route does have one.
-    - A cross-tenant sweeper in a shared test database touches other suites' rows: use `onlyTenantIds`.
-    - `db-access-guard` forbids raw SQL.
-    - In Temporal Python, a workflow-side exception must subclass `ApplicationError`, or it fails the workflow TASK and retries forever.
-    - `@pegasus_workflow` already applies `workflow.defn`.
-    - The api-stack bundle guard covers only the API and assistant bundles.
-  - **Check OpenAPI:** `awaitPegiiTask` was done in step 4, and the signal route's reserved-name text in step 3. Confirm neither needs more.
-  - **Then step 10, the gate:** typecheck, lint, the API/domain/mobile/infra tests, and the SDK, stdlib, runner and worker pytest suites. Restore the coverage floors.
+- **Where:** worktree `/home/steve/repos/pegasus-task-queue-await`, branch `feat/task-queue-await` (off `origin/main` at `376062a2`, #985). Last commit: step 9, `docs: task queue 3b records` (step 8 `5d669a10` + fix `72f4c634`, step 7 `49824712`, step 6 `9a5de7fb`, step 5 `ec126f31`, step 4 `708d92ef`, step 3 `934e2906`, step 2 `d886c068`, step 1 `e28b885f`). Nothing is pushed and no PR exists.
+- **Status:** steps 1–9 `[x]`, step 10 `[ ]` (see Steps).
+- **Next action — step 10 (the gate), then the PR.** Run CI's checks in this worktree:
+  - **Root:** `npm run typecheck` and `npm run lint`.
+  - **`apps/api`:** `npx vitest run`. Last full run: 346 files, 5585 tests, before steps 7–9. Step 9 only touched the OpenAPI text.
+  - **`packages/domain`:** tests (untouched by 3b; run for the gate).
+  - **`packages/infra`:** `npx vitest run`. Build `@pegasus/domain` first, or the bundle guard throws.
+  - **`apps/mobile`:** tests, if the gate covers them (3b touches no mobile code).
+  - **Python, as CI runs it:** SDK, `apps/tenant-runner`, `apps/temporal-worker`, and stdlib. Delete any `uv.lock` the runs create in `apps/`; the SDK's `uv.lock` is tracked and already bumped.
+  - **Restore the coverage floors:** `git checkout -- apps/api/vitest.config.ts packages/domain/vitest.config.ts`.
+  - **Then:**
+    - Re-check the SDK version is still free against `origin/main` and open PRs.
+    - Rebase on `origin/main`.
+    - Move this plan to `plans/completed/` (feedback: archive BEFORE opening the PR).
+    - Review the diff.
+    - Open the PR through `/workstream-finish` (the merge queue), or as Steve directs.
 - **After the PR merges (owed):**
   - Publish SDK 0.69.0 (tag `sdk-python-v0.69.0`; feedback: ALWAYS publish after a bump merges).
   - Then update the authoring repo's `~/repos/pegasus-workflows/CLAUDE.md` (await_task, pin 0.69.0).
@@ -49,7 +45,7 @@
   - Run the Python suites the way CI does: `uv run --extra dev python -m pytest -q` in `apps/tenant-runner` and `apps/temporal-worker`; for stdlib, `uv run --project ../workflows-sdk-python --extra dev python -m pytest -q` from `packages/workflows-stdlib`. A plain `uv run` gives false failures. Delete any `uv.lock` those runs create.
   - The tenant runner registers `pegasus_workflows.steps.BUILTIN_ACTIVITIES` only (`apps/tenant-runner/pegasus_tenant_runner/workflow_worker_driver.py`). The new await activity must be added to that list.
 - **Verification still owed:**
-  - Steps 9–10 are unbuilt.
+  - Step 10 (the full gate) is not yet run.
   - The device check of 1–3a on vcode 26: block a task, see the dispatcher's push and Activity row, and the tap opening `/chat/<order>`.
 
 ## Steve's calls (all five: YES, as recommended, 2026-11-23)
@@ -253,7 +249,23 @@
       - The only extras pulled in are `DOCUMENTS_BUCKET_NAME` and S3, both from `workflow.repository`'s import of `documents-s3`. They sit behind a lazy function that only artifact downloads call; the dispatcher has the same import and runs fine without the variable.
     - **Task ids are canonical, so a stored awaiter id always equals the store's `task.id`.** A legacy id must match `^[1-9]\d{0,9}$` (no leading zeros). A cloud id has to equal the stored UUID, because Postgres compares text case-sensitively. No change needed.
     - **Re-check 0.69.0 at landing**, against `origin/main` and open PRs.
-- [ ] 9. OpenAPI; parent plan (re-cut, S2 fold decision, TQ-D4 guardrail 4 as built); DECISIONS; GOTCHAS.
+- [x] 9. OpenAPI; parent plan (re-cut, S2 fold decision, TQ-D4 guardrail 4 as built); DECISIONS; GOTCHAS. Done 2026-11-24.
+  - **Parent plan `plans/todo/task-queue-and-activity-feed.md`:**
+    - Status and resume now say 3b is built, PR pending, with what's owed after merge.
+    - "Next action" records the S1 re-cut: 3b await end to end; 3c definitions and predicates; 3d UI and stdlib; Phase 4 takes S3–S5.
+    - "Decisions" records S2 (no `TaskState` fold, and why), S3–S5 and the reserved prefix.
+    - TQ-D4 guardrail 4 gained an "as built" note.
+    - Phase 3 checklist: `awaitingExecutionId` dropped, the sweeper lanes ticked or assigned to a phase, and `await_task` ticked.
+    - The tunnel-load risk records the as-built limits.
+  - **`DECISIONS.md`:** an "Awaiting a task, as built in Phase 3b" block under the human-tasks decision: the reserved prefix; one `TaskAwait` table; registration answers the current state; inline post-commit cloud signal; the sweeper's identity, lanes, no retry cap and no poll alarm.
+  - **`GOTCHAS.md`:** six new entries:
+    - `run_automation`'s pre-stamp race (not fixed; copy `findAwaitingRun`);
+    - cross-tenant sweepers in a shared test database;
+    - the `$queryRaw` ban and how to join without an FK;
+    - Temporal Python: workflow-side exceptions must be `ApplicationError` (also the `@pegasus_workflow` + `workflow.defn` clash, and a separate test-workflow module);
+    - the bundle guard skips crons (bundle by hand and diff env and grants);
+    - the SDK's CI job doesn't require a dev server.
+  - **OpenAPI:** `awaitPegiiTask` (step 4) and the signal route (step 3) were already done. Also added the reserved prefix to the trigger-create 400 causes. The OpenAPI tests pass (20).
 - [ ] 10. Gate: typecheck, lint, API/domain/mobile/infra tests, SDK + stdlib + runner + worker pytest; restore coverage floors.
 
 ## Open questions for Steve

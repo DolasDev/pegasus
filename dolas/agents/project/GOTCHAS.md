@@ -4146,3 +4146,73 @@ The rules now:
   `npx expo config --type introspect --json` → `_internal.modResults.android.manifest`.
   Don't set image-picker `cameraPermission: false`: it DELETES
   `NSCameraUsageDescription`, which the iOS VisionKit scanner needs.
+
+## `run_automation`'s first step can race the run's own Temporal id
+
+A manual run's row gets its `temporalWorkflowId` from `markStarted`, which runs
+only AFTER Temporal's start call returns. A Workflow whose first step is an
+activity calling the platform with `activity.info().workflow_id` can arrive
+before that stamp. `automation-steps` looks the parent up by that id alone and
+answers 404 `PARENT_NOT_OPEN`, which the SDK treats as final, so the step fails
+with `AutomationStepFailed`. It is rare (the stamp is milliseconds behind) and
+**not fixed** there. `POST /pegii/tasks/:id/await` (task queue 3b) avoids it: the
+default id is `wf/<tenant>/<name>/<executionId>`, so it also matches that
+execution id on a row whose id is still null (same tenant, the caller's
+workflow, open). Keyed `wfl/…` and trigger ids are written at insert. Copy that
+fallback (`findAwaitingRun` in `handlers/pegii-runtime.ts`) into any new route a
+Workflow's activity calls.
+
+## A cross-tenant sweeper in a shared test database touches other suites' rows
+
+Vitest runs test files in parallel against ONE Postgres. A sweeper that runs on
+the root client across every tenant (by design in prod) will deliver, abandon
+and re-date rows that another file's test seeded. Both files then fail, but only
+when run together. `lambda-task-sweeper.ts` takes `onlyTenantIds` to restrict
+every lane, and its tests always pass their own tenants. Give any new
+cross-tenant cron the same option, and run its tests beside the suites that
+seed the same tables.
+
+## `$queryRaw` is banned outside an allowlist — design around joins with no FK
+
+`src/__tests__/db-access-guard.test.ts` permits raw SQL only in `app.ts` (the
+health check) and the RingCentral advisory lock, and any addition needs a
+security review. A join across tables with no Prisma relation (e.g. `TaskAwait.taskId` →
+`WorkItem.id`, which can't be an FK because the id is shared with the legacy
+store) has to be two queries: read the batch, then the rows by
+`(tenantId, id IN …)`. To keep such a batch from starving, give the rows a
+"next check" timestamp and push the not-ready ones back, the way the task
+sweeper's cloud lane does.
+
+## Temporal Python: a workflow-side exception must subclass `ApplicationError`
+
+Raising a plain `Exception` from workflow code (not an activity) does not fail
+the Workflow. It fails the WORKFLOW TASK, which Temporal retries forever, so the
+run hangs, retrying. Errors an SDK helper raises inside a Workflow
+(`AutomationStepFailed`, `TaskAwaitTimeout`, `TaskAwaitRefused`) are
+`ApplicationError` subclasses with `non_retryable=True`. Also:
+`@pegasus_workflow` already applies `workflow.defn`. Stacking both raises
+`ValueError: Class already contains workflow definition`. Test Workflows go in
+their own module (`tests/_await_workflows.py`) so the sandbox can import them
+without the test file's httpx and pytest.
+
+## The api-stack bundle guard covers only the API and assistant bundles
+
+`api-stack.bundle.test.ts` builds the API and assistant Lambdas. The cron
+Lambdas (reconciler, dispatcher, task sweeper, …) are never bundled by a test,
+so a broken import in one surfaces at deploy. For a new cron, bundle its entry
+by hand:
+`npx esbuild apps/api/src/<entry>.ts --bundle --platform=node --target=node24 --external:@aws-sdk/* --outfile=<tmp>`.
+Then diff its `process.env` reads and `@aws-sdk/*` clients against the stack's
+env and grants, because a missing env var on a cron fails quietly. The guard
+itself throws, rather than skipping, when `packages/domain/dist` is missing; run
+`npx turbo run build --filter=@pegasus/domain` first in a fresh worktree.
+
+## The SDK's CI job does not require a Temporal dev server
+
+`tenant-runner`'s CI pytest sets `PEGASUS_REQUIRE_TEMPORAL_DEV_SERVER=1`, so
+its dev-server tests fail rather than skip. The SDK job does NOT, so the SDK's
+`WorkflowEnvironment.start_local()` tests (e.g. `test_await_task.py`) would skip
+silently if the download failed in CI. Anything that must be gated belongs in
+the tenant-runner suite, which already pins the built-in activities, or needs
+the flag added to the SDK job. Pushes touching the CI workflow directory have been blocked by
+the gh token's missing `workflow` scope.
