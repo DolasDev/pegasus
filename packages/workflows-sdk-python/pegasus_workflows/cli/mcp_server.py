@@ -552,10 +552,12 @@ runtime, so it can wait for days:
   wakes the Workflow on close; a legacy (MoveManager) task is checked every 15
   minutes (allow ~20). Several can be awaited concurrently (``asyncio.gather``);
   awaiting the same task twice returns the same result. ``timeout`` (default
-  ``None`` = the Workflow's lifetime) raises ``TaskAwaitTimeout``;
+  ``None`` = the Workflow's lifetime) raises ``TaskAwaitTimeout`` (also when
+  a down store was still being retried at the deadline, 0.69.1+);
   ``TaskAwaitRefused`` (``.code``: ``TASK_NOT_FOUND`` / ``EXECUTION_NOT_OPEN`` /
-  ``AWAIT_CALLER_NOT_WORKFLOW`` / ``PEGII_API_NOT_CONFIGURED`` /
-  ``PEGII_CAPABILITY_MISSING``) is not retried; a briefly-down site is. A legacy task deleted in
+  ``AWAIT_CALLER_NOT_WORKFLOW`` / ``LEGACY_STORE_NOT_CONFIGURED`` (legacy id, no
+  MoveManager site) / ``PEGII_CAPABILITY_MISSING``) is not retried; a
+  briefly-down site is. A legacy task deleted in
   MoveManager never closes, so pass a ``timeout`` when that matters. It works
   through a built-in activity (``pegasus.await_task_register``) and the
   platform's reserved signal ``pegasus.task_closed``; nothing in the manifest

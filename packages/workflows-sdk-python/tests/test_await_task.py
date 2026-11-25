@@ -101,8 +101,8 @@ async def test_register_posts_the_run_and_returns_the_task(monkeypatch) -> None:
         (404, "EXECUTION_NOT_OPEN"),
         (403, "AWAIT_CALLER_NOT_WORKFLOW"),
         (400, "VALIDATION_ERROR"),
-        # 503s that never clear mid-run are refusals, not retried forever.
-        (503, "PEGII_API_NOT_CONFIGURED"),
+        # Conditions that never clear mid-run are refusals, not retried forever.
+        (409, "LEGACY_STORE_NOT_CONFIGURED"),
         (503, "PEGII_CAPABILITY_MISSING"),
     ],
 )
@@ -295,9 +295,33 @@ def test_a_timeout_raises_task_await_timeout(dev_server) -> None:
     assert result == {"timedOut": "4242"}
 
 
+def _always_unavailable() -> Any:
+    """A register activity whose store is always down (a retryable 503)."""
+    from temporalio import activity
+
+    @activity.defn(name=tasks.AWAIT_TASK_REGISTER_ACTIVITY)
+    async def failing_register(request: dict[str, Any]) -> dict[str, Any]:
+        failing_register.attempts += 1  # type: ignore[attr-defined]
+        raise PegasusApiError(503, "PEGII_SOURCE_UNAVAILABLE", "pegII order source is unreachable")
+
+    failing_register.attempts = 0  # type: ignore[attr-defined]
+    return failing_register
+
+
+def test_a_store_down_until_the_deadline_raises_task_await_timeout(dev_server) -> None:
+    # The first attempt fails at once; the next retry (5s backoff) would land past
+    # the 2s deadline, so Temporal fails the activity with the 503 itself (not a
+    # TimeoutError). That is still the caller's timeout, not a Workflow failure.
+    loop, env = dev_server
+    fake = _always_unavailable()
+    result = loop.run_until_complete(
+        _run(env, AwaitOne, {"taskId": "4242", "timeoutSeconds": 2}, fake)
+    )
+    assert result == {"timedOut": "4242"}
+    assert fake.attempts >= 1
+
+
 def test_an_unknown_task_is_refused(dev_server) -> None:
     loop, env = dev_server
-    result = loop.run_until_complete(
-        _run(env, AwaitOne, {"taskId": "nope"}, staged_task_await({}))
-    )
+    result = loop.run_until_complete(_run(env, AwaitOne, {"taskId": "nope"}, staged_task_await({})))
     assert result == {"refused": "TASK_NOT_FOUND", "taskId": "nope"}

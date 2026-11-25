@@ -3603,7 +3603,10 @@ class PegasusClient:
 
         Raises:
             PegasusApiError: 403 ``AWAIT_CALLER_NOT_WORKFLOW``; 404
-                ``EXECUTION_NOT_OPEN`` / ``TASK_NOT_FOUND``; 503 (legacy store
+                ``EXECUTION_NOT_OPEN`` / ``TASK_NOT_FOUND``; 409
+                ``LEGACY_STORE_NOT_CONFIGURED`` (a legacy id, but the tenant has
+                no MoveManager site); 503 ``PEGII_CAPABILITY_MISSING`` (the site
+                has no task API) or ``PEGII_SOURCE_UNAVAILABLE`` (the site is
                 unreachable); or any other non-2xx.
         """
         with self._client() as client:
