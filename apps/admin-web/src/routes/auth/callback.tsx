@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { exchangeCode } from '@/auth/cognito'
+import { takeReturnTo } from '@/auth/return-to'
 
 /**
  * OAuth 2.0 callback handler. Cognito redirects here after a successful login
@@ -9,7 +10,7 @@ import { exchangeCode } from '@/auth/cognito'
  * This component:
  *   1. Reads the authorization code and state from the URL.
  *   2. Exchanges the code for tokens (verifying the CSRF state in the process).
- *   3. Navigates to the tenants list on success, or shows an error on failure.
+ *   3. Navigates to the page the auth guard bounced from (else the tenants list) on success, or shows an error on failure.
  */
 export function AuthCallbackPage() {
   const navigate = useNavigate()
@@ -30,7 +31,7 @@ export function AuthCallbackPage() {
     }
 
     exchangeCode(code, state)
-      .then(() => navigate({ to: '/tenants', replace: true }))
+      .then(() => navigate({ href: takeReturnTo(), replace: true }))
       .catch((err: unknown) => {
         console.error('Token exchange failed:', err)
         void navigate({ to: '/login', replace: true })

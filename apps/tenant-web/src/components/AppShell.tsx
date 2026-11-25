@@ -18,6 +18,7 @@ import {
   Workflow as WorkflowIcon,
   Phone,
   MessageSquareText,
+  LifeBuoy,
   MessagesSquare,
   Blocks,
   SlidersHorizontal,
@@ -36,6 +37,7 @@ import { getCognitoConfig, buildLogoutUrl } from '@/auth/cognito'
 import { usePermissions } from '@/auth/permissions'
 import { AUTOMATION_VIEW_ROLES, OPERATIONS_ROLES } from '@/auth/role-guard'
 import { ChatUnreadBadge } from '@/features/chat/components/ChatUnreadBadge'
+import { SupportUnreadBadge } from '@/features/support/components/SupportUnreadBadge'
 import { ActivityBell } from '@/features/activity/ActivityBell'
 
 const SIDEBAR_COLLAPSED_KEY = 'pegasus.sidebar.collapsed'
@@ -198,6 +200,21 @@ const NAV_ITEMS = [
     roles: null,
     permission: 'assistant:use' as const,
     capability: 'assistant' as const,
+    children: null,
+  },
+  {
+    // Help: the support channel to Pegasus (plans/*/support-channel.md). Cedar
+    // grants `support:read` to everyone, so the deployment flag (SUPPORT_ENABLED,
+    // surfaced as the `support` capability) is what hides it; an older API sends
+    // neither, so the pair fails safe, as with Reporting.
+    to: '/support' as const,
+    label: 'Help',
+    icon: LifeBuoy,
+    exact: false,
+    roles: null,
+    permission: 'support:read' as const,
+    capability: 'support' as const,
+    badge: 'support' as const,
     children: null,
   },
 ] as const
@@ -554,6 +571,8 @@ export function AppShell({ children }: AppShellProps) {
                   badge={
                     'badge' in item && item.badge === 'chat' ? (
                       <ChatUnreadBadge collapsed={collapsed} />
+                    ) : 'badge' in item && item.badge === 'support' ? (
+                      <SupportUnreadBadge collapsed={collapsed} />
                     ) : undefined
                   }
                 />

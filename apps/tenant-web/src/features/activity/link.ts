@@ -7,6 +7,7 @@
 export type ActivityLink =
   | { to: '/messages/shipment/$orderNum'; params: { orderNum: string } }
   | { to: '/driver-planning/trips/$tripId'; params: { tripId: string } }
+  | { to: '/support/$threadId'; params: { threadId: string } }
 
 const id = (v: unknown): string | null =>
   typeof v === 'string' && v.length > 0 ? v : typeof v === 'number' ? String(v) : null
@@ -27,6 +28,11 @@ export function activityLink(
     case 'trip.assigned': {
       const tripId = id(data['tripId'])
       return tripId ? { to: '/driver-planning/trips/$tripId', params: { tripId } } : null
+    }
+    // Pegasus support answered one of my requests.
+    case 'support.reply': {
+      const threadId = id(data['threadId'])
+      return threadId ? { to: '/support/$threadId', params: { threadId } } : null
     }
     default:
       return null

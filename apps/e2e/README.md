@@ -33,7 +33,8 @@ the loader at the top of `playwright.config.ts`.
   under `E2E_TARGET=qa` (page objects in `tests/browser/longhaul/pages/`).
   Core-flow tenant-web specs (`shell-nav`, `customers-list`, `quote-detail`,
   page objects in `tests/browser/pages/`) run wherever `WEB_URL` points at a
-  served **e2e-mode** tenant-web build (see below).
+  served **e2e-mode** tenant-web build (see below). Feature specs that mock
+  their API (`move-chat`, `support`) run there too.
 
 ## Browser specs (local mode)
 
@@ -41,7 +42,8 @@ Browser specs skip unless their web-app URL is set:
 
 - `WEB_URL` — tenant-web. PR CI serves a built tenant-web at
   `http://localhost:4173` so these execute on every PR.
-- `ADMIN_WEB_URL` — admin-web (`admin-vpn-diagnose` only; fully mocked).
+- `ADMIN_WEB_URL` — admin-web (`admin-vpn-diagnose`, `admin-support`; fully
+  mocked). PR CI does not set it, so these run only locally.
 - `E2E_VISUAL=true` — additional opt-in for `trip-date-container` (screenshot
   baselines are machine-dependent; manual-only — see its file header).
 

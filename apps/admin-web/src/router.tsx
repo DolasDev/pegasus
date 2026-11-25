@@ -8,6 +8,9 @@ import { TenantsPage } from '@/routes/_auth/tenants/index'
 import { TenantDetailPage } from '@/routes/_auth/tenants/$id'
 import { WorkflowsPage } from '@/routes/_auth/workflows/index'
 import { TariffsPage } from '@/routes/_auth/tariffs/index'
+import { SupportInboxPage } from '@/routes/_auth/support/index'
+import { SupportThreadPage } from '@/routes/_auth/support/$id'
+import { takeReturnTo } from '@/auth/return-to'
 import { getAccessToken } from '@/auth/cognito'
 
 // ---------------------------------------------------------------------------
@@ -24,7 +27,7 @@ const loginRoute = createRoute({
   // If already authenticated, skip the login page.
   beforeLoad: () => {
     if (getAccessToken()) {
-      throw redirect({ to: '/tenants' })
+      throw redirect({ href: takeReturnTo() })
     }
   },
   component: LoginPage,
@@ -82,6 +85,20 @@ const tariffsRoute = createRoute({
   component: TariffsPage,
 })
 
+// Support inbox. The path must match supportThreadAdminUrl() in
+// apps/api/src/lib/support-alert.ts: the alert email links to /support/<id>.
+const supportRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/support',
+  component: SupportInboxPage,
+})
+
+const supportThreadRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/support/$id',
+  component: SupportThreadPage,
+})
+
 // ---------------------------------------------------------------------------
 // Route tree + router
 // ---------------------------------------------------------------------------
@@ -94,6 +111,8 @@ const routeTree = rootRoute.addChildren([
     tenantDetailRoute,
     workflowsRoute,
     tariffsRoute,
+    supportRoute,
+    supportThreadRoute,
   ]),
 ])
 

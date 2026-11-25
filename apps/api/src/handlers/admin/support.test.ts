@@ -234,6 +234,8 @@ describe.skipIf(!hasDb)('/api/admin/support (integration)', () => {
       recipientUserId: alice,
       entityType: 'support_thread',
       entityId: t.id,
+      // `type` in data is what the web Activity feed and the phone route on.
+      data: { type: 'support.reply', route: `/support/${t.id}`, threadId: t.id },
     })
     // support.reply defaults to the feed: no push queued, no kick.
     expect(kick).not.toHaveBeenCalled()

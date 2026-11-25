@@ -1,5 +1,6 @@
 import { Outlet, Link, redirect, useRouter } from '@tanstack/react-router'
 import { getAccessToken, signOut } from '@/auth/cognito'
+import { rememberReturnTo } from '@/auth/return-to'
 
 /**
  * Auth-guard layout route. All protected routes are children of this route.
@@ -9,8 +10,10 @@ import { getAccessToken, signOut } from '@/auth/cognito'
  * The `beforeLoad` check is synchronous so there is no flash of protected
  * content — TanStack Router aborts the navigation before mounting anything.
  */
-export function authGuard() {
+export function authGuard({ location }: { location: { href: string } }) {
   if (!getAccessToken()) {
+    // Come back here after signing in (e.g. a thread link from a support alert).
+    rememberReturnTo(location.href)
     throw redirect({ to: '/login' })
   }
 }
@@ -19,13 +22,14 @@ const NAV_ITEMS = [
   { to: '/tenants' as const, label: 'Tenants' },
   { to: '/workflows' as const, label: 'Automations' },
   { to: '/tariffs' as const, label: 'Tariffs' },
+  { to: '/support' as const, label: 'Support' },
 ] as const
 
 function NavLinks() {
   const router = useRouter()
   const pathname = router.state.location.pathname
   return (
-    <nav className="flex items-center gap-1">
+    <nav className="flex flex-wrap items-center gap-1">
       {NAV_ITEMS.map((item) => {
         const isActive = pathname === item.to || pathname.startsWith(item.to + '/')
         return (
@@ -49,9 +53,9 @@ function NavLinks() {
 export function AuthLayout() {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-border bg-card px-6 py-3">
+      <header className="border-b border-border bg-card px-4 py-3 sm:px-6">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <span className="text-sm font-semibold text-foreground">Pegasus Admin</span>
             <NavLinks />
           </div>
@@ -63,7 +67,7 @@ export function AuthLayout() {
           </button>
         </div>
       </header>
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-4 sm:p-6">
         <Outlet />
       </main>
     </div>
