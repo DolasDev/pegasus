@@ -44,6 +44,7 @@ vi.mock('../gateways/task-gateway.factory', () => ({
 
 import { pegiiRuntimeHandler } from './pegii-runtime'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
+import { hasLegacyTaskStore } from '../gateways/task-gateway.factory'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 
@@ -406,6 +407,23 @@ describe.skipIf(!hasDb)('POST /pegii/tasks/:taskId/await (integration)', () => {
       expect(res.status).toBe(404)
       expect(res.body['code']).toBe('TASK_NOT_FOUND')
       expect(await rows()).toHaveLength(0)
+    })
+
+    it('409 LEGACY_STORE_NOT_CONFIGURED for a legacy id on a tenant with no MoveManager site', async () => {
+      vi.mocked(hasLegacyTaskStore).mockResolvedValueOnce(false)
+      const res = await awaitTask({}, LEGACY_TASK, { temporalWorkflowId: TEMPORAL_ID })
+      expect(res.status).toBe(409)
+      expect(res.body['code']).toBe('LEGACY_STORE_NOT_CONFIGURED')
+      expect(legacyGetTask).not.toHaveBeenCalled()
+      expect(await rows()).toHaveLength(0)
+    })
+
+    it('a cloud id never consults the legacy store', async () => {
+      vi.mocked(hasLegacyTaskStore).mockClear()
+      cloudGetTask.mockResolvedValue(task())
+      const res = await awaitTask({}, CLOUD_TASK, { temporalWorkflowId: TEMPORAL_ID })
+      expect(res.status).toBe(200)
+      expect(hasLegacyTaskStore).not.toHaveBeenCalled()
     })
 
     it('400 VALIDATION_ERROR without temporalWorkflowId, or with extra fields', async () => {

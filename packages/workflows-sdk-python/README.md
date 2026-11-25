@@ -1895,14 +1895,16 @@ class OrderLifecycle:
 - **Several at once:** `asyncio.gather(await_task(a), await_task(b))` works, and
   awaiting the same task twice returns the same result.
 - **`timeout`** (default `None`: as long as the Workflow lives) raises
-  `TaskAwaitTimeout` (`.task_id`, `.timeout`). The wait stays registered, so
-  awaiting the same task again picks it up.
+  `TaskAwaitTimeout` (`.task_id`, `.timeout`), including when the store was down
+  (and being retried) right up to the deadline (0.69.1+). The wait stays
+  registered, so awaiting the same task again picks it up.
 - **`TaskAwaitRefused`** (`.code`, `.task_id`, not retried):
   `TASK_NOT_FOUND`, `EXECUTION_NOT_OPEN`, `AWAIT_CALLER_NOT_WORKFLOW` (only a
   durable Workflow can await; an Automation's token is refused), and for a legacy
-  id `PEGII_API_NOT_CONFIGURED` (no MoveManager site) or
+  id `LEGACY_STORE_NOT_CONFIGURED` (the tenant has no MoveManager site) or
   `PEGII_CAPABILITY_MISSING` (its site has no task API). A store that is briefly
-  down (a MoveManager site offline) is retried, not raised.
+  down (a MoveManager site offline, `PEGII_SOURCE_UNAVAILABLE`) is retried, not
+  raised.
 - **A legacy task deleted in MoveManager** never closes: its wait is dropped, and
   `timeout` (or the Workflow's lifetime) ends it. Pass a `timeout` when that
   matters.

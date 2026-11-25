@@ -44,7 +44,7 @@ from typing import Any
 
 from temporalio import activity, workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError, RetryState
 from temporalio.exceptions import TimeoutError as TemporalTimeoutError
 
 __all__ = [
@@ -71,9 +71,14 @@ TASK_AWAIT_TIMEOUT_TYPE = "TaskAwaitTimeout"
 
 _REGISTER_START_TO_CLOSE = timedelta(seconds=60)
 
-#: 503s that won't clear while a Workflow waits (the tenant has no MoveManager
-#: site, or its site has no task API): refused, not retried for the run's life.
-_PERMANENT_UNAVAILABLE_CODES = frozenset({"PEGII_API_NOT_CONFIGURED", "PEGII_CAPABILITY_MISSING"})
+#: Codes that won't clear while a Workflow waits: refused, not retried for the
+#: run's life. ``LEGACY_STORE_NOT_CONFIGURED`` (409: a legacy id, but the tenant
+#: has no MoveManager site) is a 4xx and refused anyway; it is listed so the
+#: intent survives a status change. ``PEGII_CAPABILITY_MISSING`` is a 503 (the
+#: site has no task API) and is refused only because it is listed here.
+_PERMANENT_UNAVAILABLE_CODES = frozenset(
+    {"LEGACY_STORE_NOT_CONFIGURED", "PEGII_CAPABILITY_MISSING"}
+)
 
 #: The attribute holding one run's await state on its Workflow instance.
 _STATE_ATTR = "__pegasus_task_awaits__"
@@ -90,8 +95,10 @@ class TaskAwaitRefused(ApplicationError):
       Workflow (it is closing, or this is not a platform-run Workflow).
     - ``AWAIT_CALLER_NOT_WORKFLOW``: only a durable Workflow can await a task;
       an Automation's runtime token is refused.
-    - ``PEGII_API_NOT_CONFIGURED`` / ``PEGII_CAPABILITY_MISSING``: a legacy id,
-      but the tenant has no MoveManager site, or its site has no task API.
+    - ``LEGACY_STORE_NOT_CONFIGURED``: a legacy (digits) id, but the tenant has
+      no MoveManager site.
+    - ``PEGII_CAPABILITY_MISSING``: a legacy id, but the tenant's MoveManager
+      site has no task API.
 
     Attributes:
         task_id: The task id that was awaited.
@@ -217,7 +224,12 @@ async def await_task(task_id: str | int, *, timeout: timedelta | None = None) ->
     Raises:
         TaskAwaitTimeout: ``timeout`` ran out before the task closed.
         TaskAwaitRefused: the platform refused the wait (``TASK_NOT_FOUND``,
-            ``EXECUTION_NOT_OPEN``, ``AWAIT_CALLER_NOT_WORKFLOW``).
+            ``EXECUTION_NOT_OPEN``, ``AWAIT_CALLER_NOT_WORKFLOW``,
+            ``LEGACY_STORE_NOT_CONFIGURED``, ``PEGII_CAPABILITY_MISSING``).
+
+    A store that stays down (a MoveManager site offline) is retried until
+    ``timeout`` runs out, which raises :class:`TaskAwaitTimeout`, never a raw
+    activity failure.
     """
     key = str(task_id)
     started = workflow.now()
@@ -246,7 +258,14 @@ async def await_task(task_id: str | int, *, timeout: timedelta | None = None) ->
         cause = err.cause
         if isinstance(cause, ApplicationError) and cause.type == TASK_AWAIT_REFUSED_TYPE:
             raise TaskAwaitRefused._from_failure(cause) from err
-        if isinstance(cause, TemporalTimeoutError) and timeout is not None:
+        # The activity retries without an attempt limit, so with a timeout set
+        # only the deadline ends it without a refusal. Temporal reports that
+        # either as a TimeoutError or — when the next retry would land past the
+        # deadline — as the LAST attempt's error (a 503, say), with retry_state
+        # TIMEOUT. Both are the caller's timeout, not a Workflow failure.
+        if timeout is not None and (
+            isinstance(cause, TemporalTimeoutError) or err.retry_state == RetryState.TIMEOUT
+        ):
             raise TaskAwaitTimeout(key, timeout) from err
         raise
 

@@ -3,6 +3,21 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.69.1
+
+### Fixed — `await_task` error handling
+
+- A legacy (digits) task id on a tenant with no MoveManager site is now refused at
+  once: `TaskAwaitRefused(code="LEGACY_STORE_NOT_CONFIGURED")` (the API answers
+  `409 LEGACY_STORE_NOT_CONFIGURED`). Before, the API answered
+  `503 PEGII_SOURCE_UNAVAILABLE` — the same as a briefly-down site — so the wait was
+  retried for the Workflow's life. `PEGII_API_NOT_CONFIGURED`, which 0.69.0 listed as
+  a refusal code, never reached the SDK; it is gone from the docs.
+- `await_task(..., timeout=X)` now raises `TaskAwaitTimeout` when the store was down
+  (retryable failures) right up to the deadline. Before, Temporal ended the activity
+  with the last attempt's error, which surfaced as a raw `ActivityError` and failed
+  the Workflow.
+
 ## 0.69.0
 
 ### Added — a durable Workflow can wait for a task to close
@@ -14,8 +29,8 @@ follows [Semantic Versioning](https://semver.org/).
   and awaiting the same task twice returns the same result.
 - `TaskAwaitTimeout` (`timeout` ran out; the wait stays registered) and
   `TaskAwaitRefused` (`.code`: `TASK_NOT_FOUND`, `EXECUTION_NOT_OPEN`,
-  `AWAIT_CALLER_NOT_WORKFLOW`, and for a legacy id `PEGII_API_NOT_CONFIGURED` /
-  `PEGII_CAPABILITY_MISSING`; not retried). A briefly-down MoveManager site is
+  `AWAIT_CALLER_NOT_WORKFLOW`, and for a legacy id `PEGII_CAPABILITY_MISSING`; not
+  retried; see 0.69.1 for the no-MoveManager-site code). A briefly-down MoveManager site is
   retried. Both fail the Workflow if uncaught.
 - A new built-in activity, `pegasus.await_task_register`, in
   `pegasus_workflows.steps.BUILTIN_ACTIVITIES`; the platform runner registers it on

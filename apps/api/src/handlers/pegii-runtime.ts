@@ -1048,7 +1048,9 @@ pegiiRuntimeHandler.post(
 // in between is answered here rather than left to the sweeper.
 //
 // Response: { data: Task & { awaiting } } (200) | 400 | 403 | 404 TASK_NOT_FOUND
-//   | 404 EXECUTION_NOT_OPEN | the legacy store's 5xx.
+//   | 404 EXECUTION_NOT_OPEN | 409 LEGACY_STORE_NOT_CONFIGURED (a legacy id, but
+//   the tenant has no MoveManager site: permanent, so not a 5xx the SDK would
+//   retry) | the legacy store's 5xx (transient: retried).
 // ---------------------------------------------------------------------------
 const AwaitBody = z
   .object({
@@ -1140,6 +1142,19 @@ pegiiRuntimeHandler.post(
     const store = taskStoreForId(taskId)
     if (store === null) {
       return c.json({ error: `Task ${taskId} not found`, code: 'TASK_NOT_FOUND' }, 404)
+    }
+    // A legacy id on a tenant with no MoveManager site at all won't resolve
+    // while the Workflow waits. Without this the gateway's PEGII_API_NOT_CONFIGURED
+    // reaches the wire as 503 PEGII_SOURCE_UNAVAILABLE — the same answer as a
+    // site that is briefly down — and the SDK retries it for the run's life.
+    if (store === 'legacy' && !(await hasLegacyTaskStore(db, tenantId))) {
+      return c.json(
+        {
+          error: `Task ${taskId} is a legacy (MoveManager) task id, but this tenant has no MoveManager site`,
+          code: 'LEGACY_STORE_NOT_CONFIGURED',
+        },
+        409,
+      )
     }
     const gateway = await resolveTaskGatewayForStore(store, taskGatewayContext(c))
     const awaits = createTaskAwaitRepository(db, tenantId)

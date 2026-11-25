@@ -3609,7 +3609,14 @@ export function getOpenApiSpec() {
               description:
                 "TASK_NOT_FOUND, or EXECUTION_NOT_OPEN (unknown, closed, or not this Workflow's run)",
             },
-            '503': { description: 'PEGII_CAPABILITY_MISSING / PEGII_SOURCE_UNAVAILABLE (legacy)' },
+            '409': {
+              description:
+                'LEGACY_STORE_NOT_CONFIGURED: a legacy (digits) task id, but the tenant has no MoveManager site. Permanent: await_task raises TaskAwaitRefused.',
+            },
+            '503': {
+              description:
+                'PEGII_CAPABILITY_MISSING (the site has no task API: permanent, refused by await_task) / PEGII_SOURCE_UNAVAILABLE (the site is down: transient, retried)',
+            },
           },
         },
       },

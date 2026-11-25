@@ -4256,3 +4256,14 @@ notification whose `data` lacks `type` gets no click-through on either client,
 and nothing fails. Support replies shipped that way in #992, and the Phase 1b PR
 added `type: 'support.reply'`. Put `type` in `data` for every new notification
 type, and pin it in the handler's test.
+
+## A Temporal activity that hits `schedule_to_close_timeout` while retrying fails with its LAST error, not a `TimeoutError`
+
+When the next retry would land past an activity's `schedule_to_close_timeout`,
+Temporal fails the activity with the last attempt's error (e.g. a
+`PegasusApiError` 503) and `ActivityError.retry_state == RetryState.TIMEOUT`.
+`ActivityError.cause` is a `TimeoutError` only when an attempt itself was
+running at the deadline. `await_task(..., timeout=X)` mapped only the
+`TimeoutError` cause to `TaskAwaitTimeout`, so a store that stayed down failed
+the whole Workflow (SDK 0.69.1 fix). Check `retry_state` too. Don't treat
+"any non-refusal cause" as a timeout: that also catches cancellation.
