@@ -8,6 +8,7 @@ import {
   CognitoError,
   passwordPolicyMessage,
 } from '@/auth/cognito'
+import { takeReturnTo } from '@/auth/return-to'
 import { PasswordInput } from '@/components/PasswordInput'
 
 type Step = 'credentials' | 'mfa' | 'forgot-email' | 'forgot-confirm'
@@ -54,7 +55,7 @@ export function LoginPage() {
         setMfaState({ session: result.session, username: result.username })
         setStep('mfa')
       } else {
-        await navigate({ to: '/tenants', replace: true })
+        await navigate({ href: takeReturnTo(), replace: true })
       }
     } catch (err) {
       setError(err instanceof CognitoError ? err.message : 'Sign-in failed. Please try again.')
@@ -70,7 +71,7 @@ export function LoginPage() {
     setError(null)
     try {
       await respondToMfaChallenge(mfaState.session, mfaState.username, totp)
-      await navigate({ to: '/tenants', replace: true })
+      await navigate({ href: takeReturnTo(), replace: true })
     } catch (err) {
       setError(
         err instanceof CognitoError ? err.message : 'MFA verification failed. Please try again.',

@@ -1,12 +1,10 @@
 # In-app support channel → AI triage → agent-coded fixes
 
-> **Branch:** `feat/support-channel` (worktree `../pegasus-support-channel`). All changes stay
-> on this branch.
->
-> **Status 2026-11-24: Phase 1a (API slice) SHIPPED** in the PR that moved this file to
-> `plans/todo/` (branch `feat/support-channel`), deployed dark: `SUPPORT_ENABLED` is on for
-> staging only. Parked in `plans/todo/` because Phases 1b, 2 and 3 are not started. Move it
-> back to `plans/in-progress/` when 1b starts. Answer Q1-Q4, Q6, Q7 before Phases 2-3.
+> **Status 2026-11-25: Phase 1a SHIPPED (#992); Phase 1b (UIs) SHIPPED in the PR from
+> `feat/support-web` that moved this file back to `plans/todo/`.** Still dark on prod:
+> `SUPPORT_ENABLED` is on for staging only. Parked here because Phases 2 and 3 are not
+> started; move it to `plans/in-progress/` when one starts, on a fresh branch. Answer
+> Q1-Q4, Q6, Q7 before Phases 2-3.
 >
 > **Decisions taken at kickoff (Steve, 2026-11-24):**
 >
@@ -210,20 +208,63 @@ Checklist (test first, then implementation):
 
 ## Resume here
 
-- **Next action:** after the 1a deploy, confirm the SNS subscription email on staging,
-  open one test thread and check the alert arrives (and no `support operator alert
-failed` in the API logs). Then start Phase 1b on a fresh branch.
+- **Done 2026-11-25:** Steve confirmed the staging SNS subscription for
+  `pegasus-support-alerts` (Deploy for #992, `0008cbfd`, succeeded). Not checked from
+  this machine: no local AWS profile reaches the staging account (248812875460); the
+  `dolas-staging*` profiles are account 013200615444.
+- **Owed by Steve (staging), after 1b deploys:** open a thread from Help on staging, check the alert email
+  arrives and its link opens the thread in admin-web on the phone (through sign-in), reply,
+  and see the reply in the tenant Activity feed.
+- **Then:** decide on the prod flip (`supportEnabled` in `packages/infra/bin/app.ts`), and
+  answer Q1-Q4, Q6, Q7 before Phase 2.
 
-### Phase 1b — UIs (next PR)
+### Phase 1b — UIs (`feat/support-web`)
 
-- [ ] tenant-web: `features/support/` — Help entry in `AppShell.tsx` (**hot file**) gated on
-      capability `support`, thread list + thread view + new-thread form. Attach page
-      URL, app version and user agent automatically. Unread badge.
-- [ ] Tenant-web Activity feed click-through for `support.reply` → `/support/:id`.
-- [ ] admin-web: `routes/_auth/support/` — inbox + thread view + reply + status, built
-      mobile-first (single column, large tap targets). Check on an actual phone.
-- [ ] Browser e2e: customer opens thread, operator replies, customer sees it.
-- [ ] Flip `supportEnabled` on prod after Steve tries it on staging.
+- [x] tenant-web: `features/support/` + `routes/support.tsx` (`/support`, `/support/$threadId`),
+      laid out like `/messages`. Help entry in `AppShell.tsx` gated on permission `support:read`
+      **and** capability `support` (the capability alone fails open on an older API). The
+      page URL (last non-`/support` page, recorded by `router.subscribe('onResolved')`) and
+      the user agent are attached automatically. Unread badge = threads with `unread`.
+- [x] Tenant-web Activity feed click-through for `support.reply` → `/support/:id`.
+- [x] admin-web: `routes/_auth/support/` — inbox (Open / Needs reply / Resolved / All) +
+      thread view + reply + resolve/reopen, mobile-first (single column, whole-row links,
+      44px+ buttons, header wraps). **Real-phone check owed by Steve.**
+- [x] Browser e2e (mocked, `@local-only`): `tests/browser/support.spec.ts` (customer opens,
+      operator reply polls in, customer answers) and `tests/browser/admin-support.spec.ts`
+      (phone viewport: reply + resolve, no horizontal overflow, email link survives sign-in).
+- [ ] Flip `supportEnabled` on prod after Steve tries it on staging. **Not in this PR.**
+
+**Phase 1b — as built (read before Phase 2):**
+
+- **Subject is required in the tenant form** (default chosen while building; Steve can
+  revert). The alert email carries the subject, so this keeps message text out of email.
+  The API still accepts a subject-less open (the subject becomes the first line).
+- **`support.reply` data now carries `type: 'support.reply'`** (admin handler + test).
+  The web Activity feed (`features/activity/link.ts`) and the phone app route on
+  `data.type`; without it the click-through was dead. The phone app maps unknown types to
+  no route, so it ignores `support.reply` until it gets a support screen.
+- **admin-web return-to after sign-in:** the admin session is in `sessionStorage`, so the
+  alert email's link opens a tab with no session. `authGuard` stores the path
+  (`auth/return-to.ts`, same-origin paths only, never `/login` or `/auth/*`), and login,
+  the Hosted UI callback and `/login`'s already-signed-in redirect all go there instead of
+  `/tenants`.
+- Client `clientMessageId` is per draft, not per click (tenant form, tenant reply, admin
+  reply): a retry after an error replays instead of duplicating.
+- The open tenant thread clears its own `unread` flag in the cached list instead of
+  refetching the list on every 10 s poll.
+- On a phone, tenant-web's Help is usable but cramped: the AppShell sidebar never
+  collapses below `md`, which affects every page including `/messages`. That is a shell
+  limitation, not something this PR fixes. admin-web was screenshot-checked at 390px.
+- `rememberPage` skips sign-in and the public token pages (`/login*`, `/c/*`, `/f/*`,
+  `/landing`), so a one-time code or token never ends up on a thread.
+- No app version is attached: tenant-web has no build id. Add one (e.g. a Vite `define` of
+  the commit SHA) if Steve wants it.
+- admin-web has no `@pegasus/domain` dependency, so `api/support.ts` mirrors the DTO types
+  and the 4000-character body limit by hand.
+- Gate 2026-11-25: turbo typecheck + lint + test for api / tenant-web / admin-web / e2e,
+  15/15 tasks (api 5663, tenant-web 1795, admin-web 82); full local Playwright 54 passed,
+  25 skipped, 0 failed (with `WEB_URL` + `ADMIN_WEB_URL` set). CI runs the tenant spec
+  only (it serves tenant-web; no `ADMIN_WEB_URL`), like `admin-vpn-diagnose`.
 
 ## Phase 2 — AI triage → draft issue → Steve approves
 

@@ -4245,3 +4245,14 @@ created nothing, and `workstream-start.sh` then failed with "Expected worktree â
 but it does not exist". Until the grep is anchored (`-x` on the whole line), pick
 a slug that isn't a prefix of an existing worktree's directory, or remove the
 other worktree first.
+
+## A `notify()` deep link needs `type` INSIDE `data`, not just `input.type`
+
+The web Activity feed (`apps/tenant-web/src/features/activity/link.ts`) and the
+phone app (`apps/mobile/src/services/pushNotifications.ts`) choose the screen
+from `data.type`, the push payload contract. `notify()` stores `input.type` in
+the row's own `type` column but copies only `input.data` into `data`, so a
+notification whose `data` lacks `type` gets no click-through on either client,
+and nothing fails. Support replies shipped that way in #992, and the Phase 1b PR
+added `type: 'support.reply'`. Put `type` in `data` for every new notification
+type, and pin it in the handler's test.

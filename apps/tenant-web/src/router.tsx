@@ -17,6 +17,8 @@ import { requireRole, AUTOMATION_VIEW_ROLES, OPERATIONS_ROLES } from '@/auth/rol
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MessagesPage } from '@/routes/messages'
+import { SupportPage } from '@/routes/support'
+import { rememberPage } from '@/features/support/context'
 import { NotificationSettingsPage } from '@/routes/notifications.settings'
 import { AssistantLabPage } from '@/routes/assistant-lab'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
@@ -191,6 +193,20 @@ const messagesRoomRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/messages/shipment/$orderNum',
   component: MessagesPage,
+})
+
+// Help: the support channel. Every signed-in user; the API shows each user only
+// the threads they opened (plans/*/support-channel.md, D9).
+const supportRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/support',
+  component: SupportPage,
+})
+
+const supportThreadRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/support/$threadId',
+  component: SupportPage,
 })
 
 // The signed-in user's own notification channels — every role (task queue
@@ -607,6 +623,8 @@ const routeTree = rootRoute.addChildren([
     movesDetailRoute,
     messagesRoute,
     messagesRoomRoute,
+    supportRoute,
+    supportThreadRoute,
     notificationSettingsRoute,
     quotesIndexRoute,
     quotesDetailRoute,
@@ -665,6 +683,11 @@ const routeTree = rootRoute.addChildren([
 ])
 
 export const router = createRouter({ routeTree })
+
+// A new support request attaches the page the user was on before opening Help.
+router.subscribe('onResolved', ({ toLocation }) => {
+  rememberPage(window.location.origin + toLocation.href)
+})
 
 /**
  * Register the router type globally so TanStack Router can provide full type

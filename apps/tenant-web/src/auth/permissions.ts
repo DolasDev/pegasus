@@ -36,6 +36,8 @@ export type Capabilities = {
   reporting?: boolean
   /** The AI assistant is switched on for this deployment (ASSISTANT_ENABLED). */
   assistant?: boolean
+  /** The support channel (Help) is switched on for this deployment (SUPPORT_ENABLED). */
+  support?: boolean
 }
 
 export type MePermissions = {

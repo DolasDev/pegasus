@@ -189,7 +189,7 @@ adminSupportRouter.post('/threads/:id/messages', async (c) => {
         recipient: { userId: thread.openedByUserId },
         title: `Pegasus support replied: ${thread.subject}`,
         body: preview,
-        data: { route: `/support/${thread.id}`, threadId: thread.id },
+        data: { type: 'support.reply', route: `/support/${thread.id}`, threadId: thread.id },
         entityType: 'support_thread',
         entityId: thread.id,
         groupKey: `support_thread:${thread.id}`,

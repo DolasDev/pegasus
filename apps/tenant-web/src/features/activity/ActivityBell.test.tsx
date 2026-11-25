@@ -98,6 +98,13 @@ describe('activityLink', () => {
       to: '/driver-planning/trips/$tripId',
       params: { tripId: '7' },
     })
+    expect(
+      activityLink({ type: 'support.reply', threadId: 'th-1', route: '/support/th-1' }),
+    ).toEqual({
+      to: '/support/$threadId',
+      params: { threadId: 'th-1' },
+    })
+    expect(activityLink({ type: 'support.reply' })).toBeNull()
     expect(activityLink({ type: 'workflow.message' })).toBeNull()
     expect(activityLink({ type: 'move.assigned', moveId: 'm' })).toBeNull()
     expect(activityLink(null)).toBeNull()

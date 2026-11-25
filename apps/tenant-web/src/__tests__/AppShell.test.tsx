@@ -85,6 +85,9 @@ vi.mock('@/features/chat/components/ChatUnreadBadge', () => ({
     <span data-testid="chat-unread-badge" data-collapsed={String(collapsed)} />
   ),
 }))
+vi.mock('@/features/support/components/SupportUnreadBadge', () => ({
+  SupportUnreadBadge: () => <span data-testid="support-unread-badge" />,
+}))
 // The bell has its own tests (features/activity/ActivityBell.test.tsx).
 vi.mock('@/features/activity/ActivityBell', () => ({
   ActivityBell: () => <span data-testid="activity-bell" />,
@@ -429,6 +432,43 @@ describe('AppShell — Messages nav', () => {
     mockPermissions = { isLoading: false, roles: ['tenant_admin'] }
     renderShell()
     expect(screen.getAllByTestId('chat-unread-badge')).toHaveLength(1)
+  })
+})
+
+describe('AppShell — Help (support) nav', () => {
+  beforeEach(() => {
+    currentPathname = '/dashboard'
+  })
+
+  const renderShell = () =>
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+  const helpLink = () => document.querySelector('a[href="/support"]')
+
+  it('shows Help with its unread badge to any role when the deployment has support on', () => {
+    mockPermissions = { isLoading: false, roles: ['driver'], capabilities: { support: true } }
+    renderShell()
+    expect(helpLink()?.textContent).toContain('Help')
+    expect(helpLink()?.querySelector('[data-testid="support-unread-badge"]')).not.toBeNull()
+  })
+
+  it('hides Help when SUPPORT_ENABLED is off, even for an admin', () => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['tenant_admin'],
+      capabilities: { support: false },
+    }
+    renderShell()
+    expect(helpLink()).toBeNull()
+  })
+
+  it('hides Help without support:read (an older API that sends neither)', () => {
+    mockPermissions = { isLoading: false, roles: ['tenant_admin'], denied: ['support:read'] }
+    renderShell()
+    expect(helpLink()).toBeNull()
   })
 })
 
