@@ -58,7 +58,10 @@ export function isDraftInFlight(status: SupportDraftStatus, createdAt: Date, now
   return s === 'pending' || s === 'running'
 }
 
-const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
+// The leading group pins a match to the start of a local part, so a long run of
+// local-part characters is scanned once, not retried from every position
+// (quadratic). Lengths are capped at the RFC 5321 limits.
+const EMAIL = /(^|[^A-Z0-9._%+-])([A-Z0-9._%+-]{1,64}@[A-Z0-9.-]{1,253}\.[A-Z]{2,63})/gi
 // North American numbers with separators: 555-867-5309, (312) 555 0147,
 // +1 312.555.0147. Separators are required so plain order numbers and ISO
 // dates are left alone. The leading group stands in for a lookbehind, which
@@ -72,5 +75,5 @@ const PHONE = /(^|[^\w+])((?:\+?1[\s.-])?(?:\(\d{3}\)\s?|\d{3}[\s.-])\d{3}[\s.-]
  * addresses, which is why the operator reviews every draft before it leaves.
  */
 export function redactContactDetails(text: string): string {
-  return text.replace(EMAIL, '[email]').replace(PHONE, '$1[phone]')
+  return text.replace(EMAIL, '$1[email]').replace(PHONE, '$1[phone]')
 }

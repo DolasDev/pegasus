@@ -58,6 +58,17 @@ describe('redactContactDetails', () => {
     )
   })
 
+  it('replaces an email at the start, in brackets, and back to back', () => {
+    expect(redactContactDetails('ann@a.example, (bob@b.example)')).toBe('[email], ([email])')
+  })
+
+  it('stays linear on a long run of local-part characters with no @', () => {
+    const s = '%'.repeat(200_000)
+    const t0 = Date.now()
+    expect(redactContactDetails(s)).toBe(s)
+    expect(Date.now() - t0).toBeLessThan(500)
+  })
+
   it('replaces phone numbers in common formats', () => {
     expect(redactContactDetails('call 555-867-5309 or (312) 555 0147 or +1 312.555.0147')).toBe(
       'call [phone] or [phone] or [phone]',
