@@ -263,6 +263,9 @@ export type {
   SupportAuthorKind,
   SupportContext,
   AlertDecisionInput,
+  SupportDraftStatus,
+  SupportWorkItemKind,
+  SupportSeverity,
 } from './support/index'
 export {
   SUPPORT_THREAD_STATUSES,
@@ -277,6 +280,14 @@ export {
   subjectFromBody,
   shouldAlertOperator,
   sanitizeSupportContext,
+  SUPPORT_DRAFT_STATUSES,
+  SUPPORT_WORK_ITEM_KINDS,
+  SUPPORT_SEVERITIES,
+  TRIAGE_STALE_AFTER_MS,
+  isSupportDraftStatus,
+  effectiveDraftStatus,
+  isDraftInFlight,
+  redactContactDetails,
 } from './support/index'
 
 // Labor context (driver-private cash-labor crews)

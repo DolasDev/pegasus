@@ -324,7 +324,8 @@ export interface ApiStackProps extends cdk.StackProps {
    * `SUPPORT_ENABLED=true` is set on the api Lambda, ungating /api/v1/support and
    * /api/admin/support (both 404 when off), and an SNS topic
    * `pegasus-support-alerts` is created for operator alerts, with publish granted
-   * to the api Lambda. Default off.
+   * to the api Lambda. Default off. With `assistantEnabled` as well, it also
+   * creates the support triage worker (Phase 2a) and sets SUPPORT_TRIAGE_ENABLED.
    */
   readonly supportEnabled?: boolean
 
@@ -688,13 +689,49 @@ export class ApiStack extends cdk.Stack {
       tracing: lambda.Tracing.ACTIVE,
     })
 
+    // ---------------------------------------------------------------------------
+    // Support triage worker (plans/*/support-channel.md, Phase 2a). The API
+    // writes a `pending` draft and invokes this asynchronously with { draftId };
+    // one model call fills it (apps/api/src/support/triage.ts). Its own function
+    // because a slow model can outlast API Gateway's 29 s. Same role (so the
+    // assistant's pinned Bedrock grant below covers it), bundle and env as the
+    // API. Only where both support and the assistant are on (staging).
+    //   - retryAttempts 0: a failed run is recorded on the draft row; the
+    //     operator re-drafts. (runTriage's pending → running claim also makes a
+    //     redelivered event a no-op.)
+    //   - reserved concurrency 5: a burst of customer threads can't take the
+    //     shared pool or run up the model bill.
+    // ---------------------------------------------------------------------------
+    const supportTriageFunction =
+      props.supportEnabled && props.assistantEnabled
+        ? new nodejs.NodejsFunction(this, 'SupportTriageFunction', {
+            runtime: lambda.Runtime.NODEJS_24_X,
+            entry: path.join(__dirname, '../../../../apps/api/src/lambda-support-triage.ts'),
+            handler: 'handler',
+            role: apiFunction.role!,
+            environment: { ...apiEnvironment },
+            bundling: apiBundling,
+            memorySize: 512,
+            timeout: cdk.Duration.minutes(2),
+            retryAttempts: 0,
+            reservedConcurrentExecutions: 5,
+            logGroup: new logs.LogGroup(this, 'SupportTriageLogGroup', {
+              retention: logs.RetentionDays.ONE_MONTH,
+              removalPolicy: cdk.RemovalPolicy.DESTROY,
+            }),
+            tracing: lambda.Tracing.ACTIVE,
+          })
+        : undefined
+
     /**
-     * Set an env var on ApiFunction AND AssistantFunction. Every env var the
-     * API Lambda needs, the assistant needs too (it runs the same app).
+     * Set an env var on ApiFunction AND AssistantFunction (and the support
+     * triage worker when it exists). Every env var the API Lambda needs, the
+     * assistant needs too (it runs the same app).
      */
     const addApiEnvironment = (key: string, value: string): void => {
       apiFunction.addEnvironment(key, value)
       assistantFunction.addEnvironment(key, value)
+      supportTriageFunction?.addEnvironment(key, value)
     }
 
     // The model list (plan D8). Both functions get the env, because the main API
@@ -864,6 +901,22 @@ export class ApiStack extends cdk.Stack {
       }
       supportAlerts.grantPublish(apiFunction)
       apiFunction.addEnvironment('SUPPORT_ALERT_TOPIC_ARN', supportAlerts.topicArn)
+    }
+    if (supportTriageFunction) {
+      addApiEnvironment('SUPPORT_TRIAGE_ENABLED', 'true')
+      apiFunction.addEnvironment('SUPPORT_TRIAGE_FUNCTION_NAME', supportTriageFunction.functionName)
+      // A standalone Policy, not grantInvoke: the worker shares the API role, and
+      // a statement in that role's default policy naming the worker would make
+      // the worker depend on itself.
+      new iam.Policy(this, 'SupportTriageInvokePolicy', {
+        roles: [apiFunction.role!],
+        statements: [
+          new iam.PolicyStatement({
+            actions: ['lambda:InvokeFunction'],
+            resources: [supportTriageFunction.functionArn],
+          }),
+        ],
+      })
     }
 
     // Crew-leader links (lib/crew-link.ts) — env vars only, like feedback above.

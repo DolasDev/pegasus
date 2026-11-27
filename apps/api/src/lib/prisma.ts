@@ -164,6 +164,10 @@ export const TENANT_SCOPED_MODELS = new Set([
   // reads across tenants on the base client, behind PLATFORM_ADMIN.
   'SupportThread',
   'SupportMessage',
+  // AI triage drafts (Phase 2a) — operator-only: written by the triage worker
+  // and read by /api/admin/support, both on the base client with tenantId
+  // copied from the thread. Never served on a tenant route.
+  'SupportWorkItemDraft',
   // Labor on longhaul activities — keyed by the tenant's legacy activity id, so
   // tenant-owned even though the crews and packers they point at are not.
   // Served only through the scoped client on /labor; creates set tenantId.

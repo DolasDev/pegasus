@@ -238,6 +238,8 @@ const alarmEmail =
 // once the Phase 1b UIs are tried on staging. The alert email follows alarmEmail
 // (same `-c alarmEmail=...` override) and needs a one-time confirmation click
 // per env after the first deploy.
+// AI triage drafts (Phase 2a) follow automatically wherever support AND
+// assistantEnabled are both on — staging only today (Steve, 2026-11-25).
 const supportEnabled = envName === 'staging'
 const SUPPORT_ADMIN_URL: Record<Exclude<EnvName, 'dev'>, string> = {
   staging: 'https://admin.pegasus-qa.dolas.dev',

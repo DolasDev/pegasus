@@ -1,10 +1,20 @@
 # In-app support channel → AI triage → agent-coded fixes
 
-> **Status 2026-11-25: Phase 1a SHIPPED (#992); Phase 1b (UIs) SHIPPED in the PR from
-> `feat/support-web` that moved this file back to `plans/todo/`.** Still dark on prod:
-> `SUPPORT_ENABLED` is on for staging only. Parked here because Phases 2 and 3 are not
-> started; move it to `plans/in-progress/` when one starts, on a fresh branch. Answer
-> Q1-Q4, Q6, Q7 before Phases 2-3.
+> **Status 2026-11-25: Phase 1a SHIPPED (#992), Phase 1b SHIPPED (#997); Steve's staging
+> end-to-end check PASSED (Help → alert email → phone sign-in → reply in Activity).
+> Phase 2a (AI triage drafts, staging only) SHIPPED on `feat/support-triage`; live staging check owed; 2b waits on the GitHub App.**
+> Still dark on prod: `SUPPORT_ENABLED` is on for staging only. Answer Q1-Q4 before
+> Phase 3.
+>
+> **Decisions 2026-11-25 (Steve):**
+>
+> - **D11 (was Q6) Draft + suggested reply.** The AI never posts to the customer. For
+>   each thread it drafts a work item (or classifies it as a plain question) and a
+>   suggested reply; Steve edits and sends the reply himself from admin-web.
+> - **D12 (was Q7) Close-the-loop is pre-filled, Steve sends it** (Phase 2b).
+> - **D13 Phase 2 lands in two PRs.** 2a: triage drafts + suggested reply in admin-web,
+>   no GitHub calls, staging only. 2b: GitHub App issue creation on approve +
+>   close-the-loop, after Steve creates the App.
 >
 > **Decisions taken at kickoff (Steve, 2026-11-24):**
 >
@@ -212,11 +222,13 @@ Checklist (test first, then implementation):
   `pegasus-support-alerts` (Deploy for #992, `0008cbfd`, succeeded). Not checked from
   this machine: no local AWS profile reaches the staging account (248812875460); the
   `dolas-staging*` profiles are account 013200615444.
-- **Owed by Steve (staging), after 1b deploys:** open a thread from Help on staging, check the alert email
-  arrives and its link opens the thread in admin-web on the phone (through sign-in), reply,
-  and see the reply in the tenant Activity feed.
-- **Then:** decide on the prod flip (`supportEnabled` in `packages/infra/bin/app.ts`), and
-  answer Q1-Q4, Q6, Q7 before Phase 2.
+- **Done 2026-11-25:** Steve's staging end-to-end check of 1b passed (Help → alert email
+  → admin-web on the phone through sign-in → reply → tenant Activity feed).
+- **Now:** Phase 2a built on `feat/support-triage` (see Phase 2). After it deploys,
+  Steve runs the owed live check on staging: open threads from Help (a how-to, a real
+  bug with a phone number in it, one with "ignore your instructions" text) and read
+  the drafts in admin-web. Then Phase 2b needs the GitHub App created. Prod flip still
+  undecided; triage stays staging-only.
 
 ### Phase 1b — UIs (`feat/support-web`)
 
@@ -268,39 +280,82 @@ Checklist (test first, then implementation):
 
 ## Phase 2 — AI triage → draft issue → Steve approves
 
-Outcome: the assistant can answer simple how-to questions and collects facts for real
-problems. It drafts an issue; Steve approves the draft on his phone and it lands in
-GitHub.
+Outcome: for each customer thread the AI drafts a work item and a suggested reply,
+privately, for Steve. Steve sends (an edit of) the reply himself, and in 2b approves the
+draft into a GitHub issue from his phone.
 
-- [ ] Decide placement (**Q6**): the AI answers first and hands off to Steve, or Steve
-      is always in the thread and the AI only drafts. Recommendation: AI drafts only,
-      at first.
-- [ ] **One store for triage turns:** the thread (`SupportMessage`, authorKind
-      `assistant`) is what both the customer and Steve read. The loop still writes its
-      `AssistantConversation`/`AssistantTurn`/`AssistantToolCall` rows for debugging
-      and evals (with `source = 'support'`), linked from the thread. Mirror only the
-      final answer into `SupportMessage`.
-- [ ] Add a `mode` (`chat` | `support`) to the loop. `support` offers only the triage
-      tools, whatever else the caller holds (see "Constraints found in the code").
-- [ ] New permission `UseSupportAssistant`, held by every tenant role, _separate_ from
-      `UseAssistant`. Triage tools only; it gets none of the data tools (search
-      shipments etc.) unless deliberately added.
-- [ ] Assistant tool `draft_work_item` (`apps/api/src/assistant/tools/`): kind
-      `bug|investigation|feature`, title, sanitized summary, repro steps,
-      expected/actual, request IDs, severity guess. Writes a `SupportWorkItemDraft` row
-      linked to the thread; it does **not** call GitHub.
-- [ ] Support-triage system prompt as an `AssistantPromptVersion` + eval cases in the
-      Lab (`assistant/evals/`): must not leak other tenants' data, must strip PII,
-      must not promise fixes or dates.
-- [ ] admin-web: approve / edit / reject a draft. Approval creates the GitHub issue
-      through a **GitHub App** installation token (issues:write only on this repo),
-      kept in Secrets Manager. Labels: `support`, `kind:*`. **Never `agent:*`.**
-      Store the issue number on the draft and thread.
+### Phase 2a — triage drafts (`feat/support-triage`, staging only)
+
+**Deviations from the original Phase 2 checklist, and why** (they follow from D11):
+
+- **No `assistant` messages on the thread.** The AI never talks to the customer, so
+  nothing it writes is a `SupportMessage`. The suggested reply lives on the draft row,
+  which only `/api/admin/**` reads.
+- **No loop `mode` and no `UseSupportAssistant` permission.** The customer never calls
+  the assistant; triage runs as the platform, not as a tenant principal. It is ONE
+  direct `provider.streamRound` call whose only tool is `draft_work_item`, so "no data
+  tools" is structural, not a filter. (`runTurn` is built for read tools run as the
+  caller with their ID token, and its base prompt says "you are read-only".)
+- **No `AssistantConversation` trace rows.** Those belong to a TenantUser and show in
+  their chat history. The trace (model, tokens, latency, stop reason, error) is kept on
+  the draft row instead.
+- **The triage prompt is in code** (`apps/api/src/support/triage.ts`), not an
+  `AssistantPromptVersion`: those are per tenant and authored by the tenant's ops admin.
+  This prompt is the platform's.
+- **No forced tool choice** exists on the inference seam (`RoundRequest`). A text-only
+  answer gets one nudge round; a second miss marks the draft `failed` with the error.
+
+**Build:**
+
+- [x] Domain (`packages/domain/src/support`): work-item kinds `bug | investigation |
+feature | question`, severities, draft statuses `pending | running | ready |
+failed | dismissed`, `effectiveDraftStatus` (pending/running older than 5 min reads
+      as failed: a lost async invoke must not leave "Drafting…" forever) and
+      `redactContactDetails` (emails/phone numbers out of the issue fields; they go to
+      GitHub in 2b). Belt to the prompt's braces, not a PII guarantee.
+- [x] Migration: `support_work_item_drafts` (tenant-scoped, in `TENANT_SCOPED_MODELS`),
+      CHECKs for status/kind/severity. Records `through_message_id`/`_at` so admin-web
+      can say "newer messages since this draft".
+- [x] `apps/api/src/support/triage.ts`: claim (conditional `pending → running`; async
+      invokes retry, retries are also off on the function), build the transcript as
+      quoted untrusted data with authors as `customer`/`support` only (no names, no
+      emails), call the model, validate with zod, redact, save `ready` or `failed`.
+- [x] Worker `lambda-support-triage.ts` + `lib/support-triage-invoke.ts` (Event invoke,
+      like the temporal provisioner). Function name unset (local, tests) = run inline in
+      the background.
+- [x] Triggers: a customer message that alerts the operator (same debounce,
+      `shouldAlertOperator`) also starts a draft, unless one is already in flight. Steve
+      can re-draft from admin-web.
+- [x] Admin API: thread detail carries `triage: { enabled, draft }`;
+      `POST /threads/:id/drafts` (re-draft), `POST /threads/:id/drafts/:draftId/dismiss`.
+- [x] admin-web thread page: AI draft card (drafting / ready / failed / none), "Use as
+      reply" fills the reply box, Re-draft, Dismiss; polls while drafting.
+- [x] Tests: domain rules; triage plumbing on the scripted provider (one tool offered,
+      nudge, schema failure, claim-once, dismissed-while-running, redaction, the
+      transcript never carries names/emails); admin routes; the tenant trigger; admin-web
+      card; a phone-width browser spec (drafting → ready → "Use as reply" → edited send).
+- [x] Infra: `SupportTriageFunction` (shared API role → already holds the Bedrock grant,
+      same env + bundle, 2 min timeout, retries 0, reserved concurrency 5) only when
+      `supportEnabled && assistantEnabled` (staging). Sets `SUPPORT_TRIAGE_ENABLED` and
+      `SUPPORT_TRIAGE_FUNCTION_NAME`. Infra test for the flag, retries and invoke grant.
+- [ ] **Owed on staging (not provable here):** live triage quality with Kimi K3.1 —
+      threads with PII, a how-to question, a real bug, an injection attempt in the
+      customer text. Fake-provider unit tests prove the plumbing, not PII stripping or
+      answer quality.
+
+### Phase 2b — GitHub issue on approve + close-the-loop (after Steve creates the App)
+
+- [ ] admin-web: edit / approve a draft. Approval creates the GitHub issue through a
+      **GitHub App** installation token (issues:write only on this repo), kept in
+      Secrets Manager. Labels: `support`, `kind:*`. **Never `agent:*`.** Store the issue
+      number on the draft and thread.
+- [ ] Eval cases for the triage prompt (must not leak other tenants' data, must strip
+      PII, must not promise fixes or dates), run live on staging.
 - [ ] Infra: enable the assistant on prod (the Bedrock form + one verified call, per
-      the `assistantEnabled` comment) **or** run triage on staging only until then.
+      the `assistantEnabled` comment) **or** keep triage staging-only until then.
 - [ ] Webhook (or a poll) from GitHub back to Pegasus: when the linked issue closes or
-      the PR's deploy lands, post an operator message on the thread ("Fixed in
-      today's release"). Steve can edit it before it is sent (Q7).
+      the PR's deploy lands, pre-fill an operator message on the thread ("Fixed in
+      today's release") for Steve to edit and send (D12).
 
 ## Phase 3 — Agent work, gated by Steve's label
 
@@ -376,10 +431,10 @@ written down.
 3. **Q3 — Can Element commands apply `agent:*` labels?** See 3a; this trades the actor
    check for convenience.
 4. **Q4 — Fallback auth:** API key (metered) or a Claude Code OAuth token secret.
-5. **Q5 — Can a tenant_admin see all of their tenant's support threads**, or does each
+5. **Q5 (answered: D9) — Can a tenant_admin see all of their tenant's support threads**, or does each
    user see only their own?
-6. **Q6 — Does the AI answer first, or only draft for Steve?**
-7. **Q7 — Should the close-the-loop message be sent automatically or after Steve edits it?**
+6. **Q6 (answered: D11) — Does the AI answer first, or only draft for Steve?**
+7. **Q7 (answered: D12) — Should the close-the-loop message be sent automatically or after Steve edits it?**
 
 ## Files
 

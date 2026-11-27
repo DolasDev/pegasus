@@ -158,4 +158,79 @@ test.describe('@local-only admin-web support inbox', () => {
     await expect(page).toHaveURL(/\/support\/th-1$/)
     await expect(page.getByText('Trip 7 shows Tuesday, it should be Monday.')).toBeVisible()
   })
+
+  test('AI draft: drafting, then "Use as reply" fills the box to edit and send', async ({
+    page,
+  }) => {
+    await seedAdminAuth(page)
+    const { thread, messages } = fixtures()
+    let polls = 0
+    const draftPosts: string[] = []
+    const ready = {
+      id: 'd-1',
+      status: 'ready',
+      kind: 'bug',
+      severity: 'medium',
+      title: 'Trip 7 shows the wrong load day',
+      summary: 'After the load date was edited, trip 7 shows Tuesday instead of Monday.',
+      reproSteps: '1. Open trip 7\n2. Edit the load date',
+      expected: 'Monday',
+      actual: 'Tuesday',
+      suggestedReply: 'Thanks for flagging trip 7. I am looking into it now.',
+      requestedBy: 'auto',
+      modelId: 'kimi',
+      error: null,
+      createdAt: new Date().toISOString(),
+      stale: false,
+    }
+
+    await page.route('**/api/admin/support/**', async (route) => {
+      const req = route.request()
+      const url = new URL(req.url())
+      if (url.pathname === '/api/admin/support/threads/th-1/messages') {
+        const body = req.postDataJSON() as { clientMessageId: string; body: string }
+        draftPosts.push(body.body)
+        return json(
+          route,
+          { ...messages[0], id: 'm-2', authorKind: 'operator', body: body.body },
+          201,
+        )
+      }
+      if (url.pathname === '/api/admin/support/threads/th-1') {
+        polls += 1
+        // First load: the auto draft is still being written; the page polls.
+        const draft = polls === 1 ? { ...ready, status: 'running', title: null } : ready
+        return json(route, {
+          thread: { ...thread, pageUrl: null, userAgent: null, appVersion: null },
+          messages,
+          triage: { enabled: true, draft },
+        })
+      }
+      return route.fulfill({ status: 404, body: '{}' })
+    })
+
+    await page.goto(`${ADMIN_WEB_URL}/support/th-1`)
+    const card = page.getByRole('region', { name: 'AI draft' })
+    await expect(card.getByText(/Drafting…/)).toBeVisible()
+    // DRAFTING_POLL_MS is 3 s: the ready draft replaces it without a reload.
+    await expect(card.getByText('Trip 7 shows the wrong load day')).toBeVisible({ timeout: 10_000 })
+    await expect(card.getByText('Only you see this.')).toBeVisible()
+
+    await card.getByRole('button', { name: 'Use as reply' }).click()
+    const box = page.getByLabel('Reply')
+    await expect(box).toHaveValue(ready.suggestedReply)
+    await expect(box).toBeFocused()
+    expect(draftPosts).toEqual([]) // nothing sent until the operator sends it
+
+    await box.fill(`${ready.suggestedReply} Which time zone is the office in?`)
+    await page.getByRole('button', { name: 'Send reply' }).click()
+    await expect
+      .poll(() => draftPosts)
+      .toEqual([`${ready.suggestedReply} Which time zone is the office in?`])
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
 })

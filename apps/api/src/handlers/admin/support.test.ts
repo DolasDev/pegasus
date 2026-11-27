@@ -10,11 +10,18 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, type Mock } 
 import { Hono } from 'hono'
 import { DomainError } from '@pegasus/domain'
 
+import type * as SupportTriageInvoke from '../../lib/support-triage-invoke'
+
 vi.mock('../../lib/push-forward-invoke', () => ({ kickPushForwarder: vi.fn() }))
+vi.mock('../../lib/support-triage-invoke', async (orig) => ({
+  ...(await orig<typeof SupportTriageInvoke>()),
+  invokeSupportTriage: vi.fn(),
+}))
 
 import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { kickPushForwarder } from '../../lib/push-forward-invoke'
+import { invokeSupportTriage } from '../../lib/support-triage-invoke'
 import { adminSupportRouter } from './support'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
@@ -108,6 +115,8 @@ afterAll(async () => {
   if (!hasDb) return
   for (const t of [tenantA, tenantB].filter(Boolean)) await wipeTenant(t).catch(() => undefined)
   delete process.env['SUPPORT_ENABLED']
+  delete process.env['SUPPORT_TRIAGE_ENABLED']
+  delete process.env['SUPPORT_TRIAGE_FUNCTION_NAME']
   await db.$disconnect()
 })
 
@@ -290,5 +299,152 @@ describe.skipIf(!hasDb)('/api/admin/support (integration)', () => {
     const bad = await app().request(`/support/threads/${t.id}`, json({ status: 'open' }, 'PATCH'))
     expect(bad.status).toBe(400)
     expect(await codeOf(bad)).toBe('VALIDATION_ERROR')
+  })
+
+  describe('AI triage drafts', () => {
+    type Draft = {
+      id: string
+      status: string
+      kind: string | null
+      suggestedReply: string | null
+      error: string | null
+      stale: boolean
+      requestedBy: string
+    }
+    type Detail = { triage: { enabled: boolean; draft: Draft | null } }
+    const invoke = invokeSupportTriage as unknown as Mock
+
+    beforeEach(() => {
+      process.env['SUPPORT_TRIAGE_ENABLED'] = 'true'
+      process.env['SUPPORT_TRIAGE_FUNCTION_NAME'] = 'triage-fn'
+      invoke.mockReset()
+      invoke.mockResolvedValue(true)
+    })
+
+    it('is off by default: the detail says so and the routes answer 404', async () => {
+      delete process.env['SUPPORT_TRIAGE_ENABLED']
+      const t = await customerThread(tenantA, alice, 'Off', new Date())
+      const detail = await data<Detail>(await app().request(`/support/threads/${t.id}`))
+      expect(detail.triage).toEqual({ enabled: false, draft: null })
+      const res = await app().request(`/support/threads/${t.id}/drafts`, json({}))
+      expect(res.status).toBe(404)
+      expect(await codeOf(res)).toBe('SUPPORT_TRIAGE_DISABLED')
+    })
+
+    it('starts a draft, returns the same one while it is in flight, and shows it on the thread', async () => {
+      const t = await customerThread(tenantA, alice, 'Draft me', new Date())
+      const first = await app().request(`/support/threads/${t.id}/drafts`, json({}))
+      expect(first.status).toBe(202)
+      const d1 = await data<Draft>(first)
+      expect(d1.status).toBe('pending')
+      expect(d1.requestedBy).toBe('steve@example.com')
+      expect(invoke).toHaveBeenCalledWith(d1.id)
+
+      const again = await app().request(`/support/threads/${t.id}/drafts`, json({}))
+      expect(again.status).toBe(200)
+      expect((await data<Draft>(again)).id).toBe(d1.id)
+
+      const detail = await data<Detail>(await app().request(`/support/threads/${t.id}`))
+      expect(detail.triage.enabled).toBe(true)
+      expect(detail.triage.draft?.id).toBe(d1.id)
+    })
+
+    it('404s a draft for an unknown thread', async () => {
+      const res = await app().request(
+        '/support/threads/00000000-0000-0000-0000-000000000000/drafts',
+        json({}),
+      )
+      expect(res.status).toBe(404)
+    })
+
+    it('marks a ready draft stale when messages arrived after it was built', async () => {
+      const at = new Date(Date.now() - 60_000)
+      const t = await customerThread(tenantA, alice, 'Stale', at)
+      await db.supportWorkItemDraft.create({
+        data: {
+          tenantId: tenantA,
+          threadId: t.id,
+          status: 'ready',
+          requestedBy: 'auto',
+          kind: 'question',
+          suggestedReply: 'Try the Export button.',
+          throughMessageAt: at,
+        },
+      })
+      const before = await data<Detail>(await app().request(`/support/threads/${t.id}`))
+      expect(before.triage.draft).toMatchObject({ status: 'ready', stale: false })
+
+      await db.supportMessage.create({
+        data: {
+          tenantId: tenantA,
+          threadId: t.id,
+          authorKind: 'customer',
+          authorUserId: alice,
+          clientMessageId: cid(),
+          body: 'Also, it is still broken',
+        },
+      })
+      const after = await data<Detail>(await app().request(`/support/threads/${t.id}`))
+      expect(after.triage.draft?.stale).toBe(true)
+    })
+
+    it('does not call a draft stale because the operator replied (e.g. sent its suggestion)', async () => {
+      const at = new Date(Date.now() - 60_000)
+      const t = await customerThread(tenantA, alice, 'Answered', at)
+      await db.supportWorkItemDraft.create({
+        data: {
+          tenantId: tenantA,
+          threadId: t.id,
+          status: 'ready',
+          requestedBy: 'auto',
+          kind: 'question',
+          suggestedReply: 'Try the Export button.',
+          throughMessageAt: at,
+        },
+      })
+      await app().request(
+        `/support/threads/${t.id}/messages`,
+        json({ clientMessageId: cid(), body: 'Try the Export button.' }),
+      )
+      const detail = await data<Detail>(await app().request(`/support/threads/${t.id}`))
+      expect(detail.triage.draft?.stale).toBe(false)
+    })
+
+    it('reads a lost in-flight draft as failed, and a new request starts a fresh one', async () => {
+      const t = await customerThread(tenantA, alice, 'Lost', new Date())
+      const old = await db.supportWorkItemDraft.create({
+        data: {
+          tenantId: tenantA,
+          threadId: t.id,
+          status: 'pending',
+          requestedBy: 'auto',
+          createdAt: new Date(Date.now() - 10 * 60_000),
+        },
+      })
+      const detail = await data<Detail>(await app().request(`/support/threads/${t.id}`))
+      expect(detail.triage.draft).toMatchObject({ id: old.id, status: 'failed' })
+      expect(detail.triage.draft?.error).toMatch(/did not finish/)
+
+      const res = await app().request(`/support/threads/${t.id}/drafts`, json({}))
+      expect(res.status).toBe(202)
+      expect((await data<Draft>(res)).id).not.toBe(old.id)
+    })
+
+    it('dismisses a draft, only through its own thread', async () => {
+      const t = await customerThread(tenantA, alice, 'Dismiss', new Date())
+      const other = await customerThread(tenantB, carol, 'Other', new Date())
+      const d = await data<Draft>(await app().request(`/support/threads/${t.id}/drafts`, json({})))
+
+      const wrong = await app().request(
+        `/support/threads/${other.id}/drafts/${d.id}/dismiss`,
+        json({}),
+      )
+      expect(wrong.status).toBe(404)
+      expect(await codeOf(wrong)).toBe('SUPPORT_DRAFT_NOT_FOUND')
+
+      const ok = await app().request(`/support/threads/${t.id}/drafts/${d.id}/dismiss`, json({}))
+      expect(ok.status).toBe(200)
+      expect((await data<Draft>(ok)).status).toBe('dismissed')
+    })
   })
 })
