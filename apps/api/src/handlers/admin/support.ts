@@ -11,6 +11,12 @@
 //   POST  /threads/:id/messages reply { clientMessageId, body } — notifies the
 //                               customer (`support.reply`, feed by default)
 //   PATCH /threads/:id          { status } — e.g. resolve, or reopen
+//   POST  /threads/:id/drafts   start an AI triage draft (Phase 2a), or return
+//                               the one in flight. 404 when triage is off
+//   POST  /threads/:id/drafts/:draftId/dismiss
+//
+// The thread detail carries `triage: { enabled, draft }` — the newest draft, for
+// the operator only. The AI never writes to the thread (plan D11).
 //
 // Gated by SUPPORT_ENABLED (404 NOT_FOUND when off), same as the tenant side.
 // ---------------------------------------------------------------------------
@@ -20,6 +26,8 @@ import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 import {
   SUPPORT_THREAD_STATUSES,
+  effectiveDraftStatus,
+  isSupportDraftStatus,
   isValidClientMessageId,
   validateSupportBody,
 } from '@pegasus/domain'
@@ -40,6 +48,13 @@ import {
   type SupportMessageRow,
   type SupportThreadRow,
 } from '../../repositories/support.repository'
+import {
+  DRAFT_SELECT,
+  latestDraft,
+  startTriage,
+  supportTriageEnabled,
+  type DraftRow,
+} from '../../support/triage'
 
 type C = Context<AdminEnv>
 
@@ -95,6 +110,34 @@ function messageDto(m: SupportMessageRow) {
   }
 }
 
+/**
+ * A draft as admin-web shows it. `stale` = the customer wrote again after the
+ * messages it was built from, so the suggested reply may not answer the latest.
+ */
+export function draftDto(d: DraftRow, newestCustomerAt: Date | null, now = new Date()) {
+  const status = isSupportDraftStatus(d.status)
+    ? effectiveDraftStatus(d.status, d.createdAt, now)
+    : 'failed'
+  const lost = status === 'failed' && d.status !== 'failed'
+  return {
+    id: d.id,
+    status,
+    kind: d.kind,
+    severity: d.severity,
+    title: d.title,
+    summary: d.summary,
+    reproSteps: d.reproSteps,
+    expected: d.expected,
+    actual: d.actual,
+    suggestedReply: d.suggestedReply,
+    requestedBy: d.requestedBy,
+    modelId: d.modelId,
+    error: lost ? 'The draft did not finish in time. Try again.' : d.error,
+    createdAt: d.createdAt.toISOString(),
+    stale: Boolean(d.throughMessageAt && newestCustomerAt && newestCustomerAt > d.throughMessageAt),
+  }
+}
+
 const notFound = (c: C) =>
   c.json({ error: 'Support thread not found', code: 'SUPPORT_THREAD_NOT_FOUND' }, 404)
 
@@ -137,10 +180,14 @@ adminSupportRouter.get('/threads/:id', async (c) => {
   const messages = await listMessages(db, thread.id)
   const readAt = new Date()
   await db.supportThread.update({ where: { id: thread.id }, data: { operatorLastReadAt: readAt } })
+  const enabled = supportTriageEnabled()
+  const draft = enabled ? await latestDraft(db, thread.id) : null
+  const newestAt = messages.filter((m) => m.authorKind === 'customer').at(-1)?.createdAt ?? null
   return c.json({
     data: {
       thread: detailDto({ ...thread, operatorLastReadAt: readAt }),
       messages: messages.map(messageDto),
+      triage: { enabled, draft: draft ? draftDto(draft, newestAt, readAt) : null },
     },
   })
 })
@@ -233,4 +280,46 @@ adminSupportRouter.patch('/threads/:id', async (c) => {
   })
   const updated = await findInboxThread(existing.id)
   return c.json({ data: inboxDto(updated!) })
+})
+
+// ---------------------------------------------------------------------------
+// AI triage drafts (Phase 2a)
+// ---------------------------------------------------------------------------
+
+const triageOff = (c: C) =>
+  c.json({ error: 'Support triage is not enabled', code: 'SUPPORT_TRIAGE_DISABLED' }, 404)
+
+/** The newest CUSTOMER message: the operator's own reply doesn't make a draft stale. */
+async function newestCustomerMessageAt(threadId: string): Promise<Date | null> {
+  const m = await db.supportMessage.findFirst({
+    where: { threadId, authorKind: 'customer' },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  })
+  return m?.createdAt ?? null
+}
+
+adminSupportRouter.post('/threads/:id/drafts', async (c) => {
+  if (!supportTriageEnabled()) return triageOff(c)
+  const out = await startTriage(c.req.param('id'), c.get('adminEmail') || c.get('adminSub'))
+  if (!out) return notFound(c)
+  const dto = draftDto(out.draft, await newestCustomerMessageAt(out.draft.threadId))
+  return c.json({ data: dto }, out.created ? 202 : 200)
+})
+
+adminSupportRouter.post('/threads/:id/drafts/:draftId/dismiss', async (c) => {
+  if (!supportTriageEnabled()) return triageOff(c)
+  const draft = await db.supportWorkItemDraft.findFirst({
+    where: { id: c.req.param('draftId'), threadId: c.req.param('id') },
+    select: DRAFT_SELECT,
+  })
+  if (!draft) {
+    return c.json({ error: 'Draft not found', code: 'SUPPORT_DRAFT_NOT_FOUND' }, 404)
+  }
+  const updated = await db.supportWorkItemDraft.update({
+    where: { id: draft.id },
+    data: { status: 'dismissed' },
+    select: DRAFT_SELECT,
+  })
+  return c.json({ data: draftDto(updated, await newestCustomerMessageAt(updated.threadId)) })
 })

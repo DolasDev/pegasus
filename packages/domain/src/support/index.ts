@@ -159,3 +159,19 @@ export function sanitizeSupportContext(raw: unknown): SupportContext {
     appVersion: cut(r['appVersion'], MAX_APP_VERSION),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Triage drafts (Phase 2a) — see ./triage.ts
+// ---------------------------------------------------------------------------
+
+export type { SupportDraftStatus, SupportWorkItemKind, SupportSeverity } from './triage'
+export {
+  SUPPORT_DRAFT_STATUSES,
+  SUPPORT_WORK_ITEM_KINDS,
+  SUPPORT_SEVERITIES,
+  TRIAGE_STALE_AFTER_MS,
+  isSupportDraftStatus,
+  effectiveDraftStatus,
+  isDraftInFlight,
+  redactContactDetails,
+} from './triage'

@@ -14,9 +14,15 @@ import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type * as SupportAlert from '../lib/support-alert'
 
+import type * as SupportTriageInvoke from '../lib/support-triage-invoke'
+
 vi.mock('../lib/support-alert', async (importOriginal) => ({
   ...(await importOriginal<typeof SupportAlert>()),
   alertOperator: vi.fn(),
+}))
+vi.mock('../lib/support-triage-invoke', async (orig) => ({
+  ...(await orig<typeof SupportTriageInvoke>()),
+  invokeSupportTriage: vi.fn(),
 }))
 
 import type { AppEnv } from '../types'
@@ -24,6 +30,7 @@ import { db } from '../db'
 import { createTenantDb } from '../lib/prisma'
 import { registerTestErrorHandler } from '../test-helpers'
 import { alertOperator } from '../lib/support-alert'
+import { invokeSupportTriage } from '../lib/support-triage-invoke'
 import { supportHandler } from './support'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
@@ -387,5 +394,30 @@ describe.skipIf(!hasDb)('/support (integration)', () => {
     const row = await db.supportThread.findUniqueOrThrow({ where: { id: t.thread.id } })
     // Not stamped, so the next customer message tries again.
     expect(row.lastOperatorAlertAt).toBeNull()
+  })
+
+  it('starts one AI triage draft for the operator when it alerts, not on every message', async () => {
+    process.env['SUPPORT_TRIAGE_ENABLED'] = 'true'
+    process.env['SUPPORT_TRIAGE_FUNCTION_NAME'] = 'triage-fn'
+    const invoke = invokeSupportTriage as unknown as Mock
+    invoke.mockReset()
+    invoke.mockResolvedValue(true)
+    try {
+      const t = await data<{ thread: Thread }>(await open('alice'))
+      const drafts = await db.supportWorkItemDraft.findMany({ where: { threadId: t.thread.id } })
+      expect(drafts).toHaveLength(1)
+      expect(drafts[0]).toMatchObject({ status: 'pending', requestedBy: 'auto', tenantId: tenantA })
+      expect(invoke).toHaveBeenCalledWith(drafts[0]!.id)
+
+      // A follow-up inside the alert debounce starts nothing new.
+      await appAs('alice').request(
+        `/support/threads/${t.thread.id}/messages`,
+        json({ clientMessageId: cid(), body: 'more' }),
+      )
+      expect(await db.supportWorkItemDraft.count({ where: { threadId: t.thread.id } })).toBe(1)
+    } finally {
+      delete process.env['SUPPORT_TRIAGE_ENABLED']
+      delete process.env['SUPPORT_TRIAGE_FUNCTION_NAME']
+    }
   })
 })

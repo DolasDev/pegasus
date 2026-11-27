@@ -4,7 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { ApiError } from '@pegasus/api-http'
-import type { SupportInboxThread, SupportMessage, SupportThreadDetail } from '@/api/support'
+import type {
+  SupportDraft,
+  SupportInboxThread,
+  SupportMessage,
+  SupportThreadDetail,
+  SupportTriage,
+} from '@/api/support'
 
 // ---------------------------------------------------------------------------
 // Admin support inbox + thread page, against a fake `adminFetch`, plus the
@@ -217,6 +223,110 @@ describe('SupportThreadPage', () => {
     }
     wrap(<SupportThreadPage />)
     expect(await screen.findByText('Thread not found.')).toBeInTheDocument()
+  })
+})
+
+function draft(extra: Partial<SupportDraft> = {}): SupportDraft {
+  return {
+    id: 'd1',
+    status: 'ready',
+    kind: 'bug',
+    severity: 'medium',
+    title: 'Trip 7 shows the wrong load day',
+    summary: 'After editing the load date, trip 7 shows Tuesday.',
+    reproSteps: '1. Open trip 7',
+    expected: 'Monday',
+    actual: 'Tuesday',
+    suggestedReply: 'Thanks, I am looking into trip 7 now.',
+    requestedBy: 'auto',
+    modelId: 'kimi',
+    error: null,
+    createdAt: '2026-11-20T10:01:00.000Z',
+    stale: false,
+    ...extra,
+  }
+}
+
+const withTriage = (triage: SupportTriage) => ({ ...detail(), triage })
+
+describe('SupportThreadPage — AI draft (Phase 2a)', () => {
+  it('shows nothing where triage is off', async () => {
+    handler = () => withTriage({ enabled: false, draft: null })
+    wrap(<SupportThreadPage />)
+    await screen.findByText('Trip 7 shows the wrong day')
+    expect(screen.queryByRole('region', { name: 'AI draft' })).not.toBeInTheDocument()
+  })
+
+  it('shows a ready draft; "Use as reply" fills the reply box without sending', async () => {
+    handler = () => withTriage({ enabled: true, draft: draft() })
+    wrap(<SupportThreadPage />)
+    expect(await screen.findByText('Trip 7 shows the wrong load day')).toBeInTheDocument()
+    expect(screen.getByText('Bug')).toBeInTheDocument()
+    expect(screen.getByText('Only you see this.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Use as reply' }))
+    expect((screen.getByLabelText('Reply') as HTMLTextAreaElement).value).toBe(
+      'Thanks, I am looking into trip 7 now.',
+    )
+    expect(writes()).toHaveLength(0)
+  })
+
+  it('"Use as reply" appends to what the operator already typed instead of replacing it', async () => {
+    handler = () => withTriage({ enabled: true, draft: draft() })
+    wrap(<SupportThreadPage />)
+    const box = (await screen.findByLabelText('Reply')) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: 'Hi Ann,' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Use as reply' }))
+    expect(box.value).toBe('Hi Ann,\n\nThanks, I am looking into trip 7 now.')
+  })
+
+  it('warns when the draft predates newer messages, and re-drafts on request', async () => {
+    handler = (path, init) =>
+      init?.method === 'POST'
+        ? draft({ id: 'd2', status: 'pending' })
+        : withTriage({ enabled: true, draft: draft({ stale: true }) })
+    wrap(<SupportThreadPage />)
+    expect(await screen.findByText(/New messages arrived after this draft/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Re-draft' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]?.path).toBe('/api/admin/support/threads/t1/drafts')
+  })
+
+  it('says it is drafting while the draft is in flight', async () => {
+    handler = () => withTriage({ enabled: true, draft: draft({ status: 'running', title: null }) })
+    wrap(<SupportThreadPage />)
+    expect(await screen.findByText(/Drafting…/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use as reply' })).not.toBeInTheDocument()
+  })
+
+  it('shows a failed draft with its error and lets the operator try again', async () => {
+    handler = (_path, init) =>
+      init?.method === 'POST'
+        ? draft({ status: 'pending' })
+        : withTriage({
+            enabled: true,
+            draft: draft({ status: 'failed', error: 'model timed out' }),
+          })
+    wrap(<SupportThreadPage />)
+    expect(await screen.findByText(/The draft failed: model timed out/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+  })
+
+  it('offers "Draft with AI" when there is none, or after a dismiss', async () => {
+    handler = () => withTriage({ enabled: true, draft: draft({ status: 'dismissed' }) })
+    wrap(<SupportThreadPage />)
+    expect(await screen.findByRole('button', { name: 'Draft with AI' })).toBeInTheDocument()
+  })
+
+  it('dismisses a draft', async () => {
+    handler = (_path, init) =>
+      init?.method === 'POST'
+        ? draft({ status: 'dismissed' })
+        : withTriage({ enabled: true, draft: draft() })
+    wrap(<SupportThreadPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]?.path).toBe('/api/admin/support/threads/t1/drafts/d1/dismiss')
   })
 })
 

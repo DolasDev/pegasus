@@ -333,8 +333,9 @@ model Tenant {
   chatRoomMembers ChatRoomMember[]
 
   // Support threads (tenant user ↔ platform operator)
-  supportThreads  SupportThread[]
-  supportMessages SupportMessage[]
+  supportThreads        SupportThread[]
+  supportMessages       SupportMessage[]
+  supportWorkItemDrafts SupportWorkItemDraft[]
 
   // Labor on longhaul activities
   activityLaborCrews   ActivityLaborCrew[]
@@ -4138,9 +4139,10 @@ model SupportThread {
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  openedBy TenantUser       @relation(fields: [openedByUserId], references: [id], onUpdate: Cascade)
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  openedBy TenantUser             @relation(fields: [openedByUserId], references: [id], onUpdate: Cascade)
   messages SupportMessage[]
+  drafts   SupportWorkItemDraft[]
 
   @@unique([openedByUserId, openClientMessageId])
   @@index([tenantId, openedByUserId, lastMessageAt])
@@ -4171,6 +4173,50 @@ model SupportMessage {
   @@unique([threadId, authorKind, clientMessageId])
   @@index([threadId, createdAt])
   @@map("support_messages")
+  @@schema("public")
+}
+
+/// An AI triage draft for a support thread (plan Phase 2a, D11): a work item
+/// (or `question`) plus a suggested reply, for the operator only — never shown
+/// to the customer. Read and written only by the admin routes and the triage
+/// worker (base client; tenantId copied from the thread). Carries its own
+/// trace (model, tokens, latency, error) instead of AssistantConversation rows,
+/// which belong to a tenant user.
+model SupportWorkItemDraft {
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  threadId         String    @map("thread_id")
+  /// SUPPORT_DRAFT_STATUSES in @pegasus/domain (CHECK in the migration).
+  status           String    @default("pending") @db.VarChar(16)
+  /// The newest message the draft was built from (null until it runs).
+  throughMessageId String?   @map("through_message_id")
+  throughMessageAt DateTime? @map("through_message_at") @db.Timestamptz(6)
+  /// SUPPORT_WORK_ITEM_KINDS / SUPPORT_SEVERITIES; null until ready.
+  kind             String?   @db.VarChar(16)
+  severity         String?   @db.VarChar(8)
+  title            String?   @db.VarChar(200)
+  summary          String?
+  reproSteps       String?   @map("repro_steps")
+  expected         String?
+  actual           String?
+  suggestedReply   String?   @map("suggested_reply")
+  /// Who asked: `auto` (a customer message) or the operator's email.
+  requestedBy      String    @map("requested_by") @db.VarChar(320)
+  modelId          String?   @map("model_id")
+  promptVersion    String?   @map("prompt_version") @db.VarChar(64)
+  stopReason       String?   @map("stop_reason")
+  inputTokens      Int       @default(0) @map("input_tokens")
+  outputTokens     Int       @default(0) @map("output_tokens")
+  latencyMs        Int?      @map("latency_ms")
+  error            String?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  thread SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("support_work_item_drafts")
   @@schema("public")
 }
 

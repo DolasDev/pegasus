@@ -18,7 +18,8 @@
 //
 // A customer message alerts the operator (SNS, lib/support-alert) after the
 // commit, debounced by shouldAlertOperator. The alert is best-effort: a failure
-// leaves lastOperatorAlertAt unstamped, so the next message tries again.
+// leaves lastOperatorAlertAt unstamped, so the next message tries again. The
+// same decision starts an AI triage draft for the operator (support/triage.ts).
 //
 // The operator appears to the customer only as "Pegasus support": their email
 // and Cognito sub never leave the API on this side.
@@ -39,6 +40,8 @@ import type { AppEnv } from '../types'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import { alertOperator, supportEnabled } from '../lib/support-alert'
+import { startTriage } from '../support/triage'
+import { logger } from '../lib/logger'
 import { displayName } from '../repositories/chat.repository'
 import {
   THREAD_SELECT,
@@ -144,6 +147,12 @@ async function maybeAlert(
   if (!shouldAlertOperator({ previousStatus, lastAlertAt: thread.lastOperatorAlertAt, now })) {
     return
   }
+  // The same moments start an AI triage draft for the operator (Phase 2a), so
+  // one is usually ready by the time the alert email is opened. Best-effort:
+  // a failure never fails the customer's message.
+  await startTriage(thread.id, 'auto').catch((err: unknown) =>
+    logger.error('support triage start failed', { threadId: thread.id, error: String(err) }),
+  )
   // Tenant is not a tenant-scoped model: name it by id.
   const tenant = await c.get('db').tenant.findUnique({
     where: { id: c.get('tenantId') },

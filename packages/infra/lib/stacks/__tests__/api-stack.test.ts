@@ -2297,4 +2297,51 @@ describe('ApiStack — support channel (supportEnabled)', () => {
     t.resourceCountIs('AWS::SNS::Topic', 1)
     t.resourceCountIs('AWS::SNS::Subscription', 0)
   })
+
+  describe('triage worker (Phase 2a)', () => {
+    type Fn = { Properties: FnProps & { Handler?: string; ReservedConcurrentExecutions?: number } }
+    const triageFns = (t: Template) =>
+      Object.entries(t.findResources('AWS::Lambda::Function')).filter(([id]) =>
+        id.startsWith('SupportTriageFunction'),
+      ) as [string, Fn][]
+
+    it('exists only when support AND the assistant are on', () => {
+      expect(triageFns(synth({ supportEnabled: true }))).toHaveLength(0)
+      expect(triageFns(synth({ assistantEnabled: true }))).toHaveLength(0)
+      const t = synth({ supportEnabled: true })
+      expect(apiEnv(t)['SUPPORT_TRIAGE_ENABLED']).toBeUndefined()
+    })
+
+    it('when on: a 2-minute worker with no retries, capped concurrency, the API env and an invoke grant', () => {
+      const t = synth({ supportEnabled: true, assistantEnabled: true })
+      const fns = triageFns(t)
+      expect(fns).toHaveLength(1)
+      const [id, fn] = fns[0]!
+      expect(fn.Properties.Timeout).toBe(120)
+      expect(fn.Properties.ReservedConcurrentExecutions).toBe(5)
+      const vars = fn.Properties.Environment!.Variables!
+      expect(vars['SUPPORT_TRIAGE_ENABLED']).toBe('true')
+      expect(vars['SUPPORT_ENABLED']).toBe('true')
+      expect(vars['ASSISTANT_MODEL_ID']).toBeDefined()
+
+      t.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
+        FunctionName: { Ref: id },
+        MaximumRetryAttempts: 0,
+      })
+
+      const env = apiEnv(t)
+      expect(env['SUPPORT_TRIAGE_ENABLED']).toBe('true')
+      expect(env['SUPPORT_TRIAGE_FUNCTION_NAME']).toEqual({ Ref: id })
+      t.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: Match.objectLike({
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: 'lambda:InvokeFunction',
+              Resource: { 'Fn::GetAtt': [id, 'Arn'] },
+            }),
+          ]),
+        }),
+      })
+    })
+  })
 })
